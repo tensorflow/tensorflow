@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 
@@ -41,6 +42,14 @@ class AllocatorFactory {
   // will allocate memory local to numa_node.  If numa_node == kNUMANoAffinity
   // then allocated memory is not specific to any NUMA node.
   virtual SubAllocator* CreateSubAllocator(int numa_node) = 0;
+};
+
+// ProcessState is defined in a package that cannot be a dependency of
+// framework.  This definition allows us to access the one method we need.
+class ProcessStateInterface {
+ public:
+  virtual ~ProcessStateInterface() {}
+  virtual Allocator* GetCPUAllocator(int numa_node) = 0;
 };
 
 // A singleton registry of AllocatorFactories.
@@ -71,6 +80,12 @@ class AllocatorFactoryRegistry {
 
   // Returns the singleton value.
   static AllocatorFactoryRegistry* singleton();
+
+  ProcessStateInterface* process_state() const { return process_state_; }
+
+ protected:
+  friend class ProcessState;
+  ProcessStateInterface* process_state_ = nullptr;
 
  private:
   mutex mu_;

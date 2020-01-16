@@ -84,7 +84,7 @@ XLA_TEST_P(SelectAndScatterTest, ParamTest) {
                    GetParam().window_strides, GetParam().padding_type, source,
                    ConstantR0<float>(&builder_, 0.0f), add_f32_);
 
-  ComputeAndCompare(&builder_, {}, ErrorSpec(1e-5));
+  ComputeAndCompare(&builder_, {}, ErrorSpec(1e-5, 1e-5));
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -146,6 +146,12 @@ INSTANTIATE_TEST_CASE_P(
                                   Padding::kValid,
                                   {3, 3, 1, 1},
                                   {3, 3, 1, 1}},
+        // Uncovered by b/126212776.
+        SelectAndScatterTestParam{{15, 1, 1, 1},
+                                  {2, 1, 1, 1},
+                                  Padding::kValid,
+                                  {14, 1, 1, 1},
+                                  {1, 1, 1, 1}},
         SelectAndScatterTestParam{{7, 3, 4, 4},
                                   {3, 1, 4, 4},
                                   Padding::kValid,
@@ -180,6 +186,11 @@ INSTANTIATE_TEST_CASE_P(
                                   Padding::kValid,
                                   {2, 1, 1},
                                   {3, 1, 1}},
+        SelectAndScatterTestParam{{160, 160, 8, 256},
+                                  {5, 5, 8, 256},
+                                  Padding::kSame,
+                                  {32, 32, 1, 1},
+                                  {32, 32, 1, 1}},
         SelectAndScatterTestParam{
             {9, 16, 128}, {3, 16, 128}, Padding::kValid, {3, 1, 1}, {3, 1, 1}},
         SelectAndScatterTestParam{
@@ -193,7 +204,13 @@ INSTANTIATE_TEST_CASE_P(
         SelectAndScatterTestParam{
             {1, 5, 5}, {1, 5, 5}, Padding::kSame, {3, 1, 1}, {3, 1, 1}},
         SelectAndScatterTestParam{
-            {7, 8, 256}, {4, 8, 256}, Padding::kSame, {2, 1, 1}, {2, 1, 1}}));
+            {7, 8, 256}, {4, 8, 256}, Padding::kSame, {2, 1, 1}, {2, 1, 1}},
+        SelectAndScatterTestParam{{1104}, {551}, Padding::kValid, {3}, {2}},
+        SelectAndScatterTestParam{{1300}, {1171}, Padding::kValid, {130}, {1}},
+        SelectAndScatterTestParam{{3000}, {1701}, Padding::kValid, {1300}, {1}},
+        SelectAndScatterTestParam{{6500}, {5}, Padding::kValid, {1300}, {1300}},
+        SelectAndScatterTestParam{
+            {3000}, {401}, Padding::kValid, {2600}, {1}}));
 
 // Test for F32 1D array, with a zero-element input.
 XLA_TEST_F(SelectAndScatterTest, R1S0F32) {

@@ -23,14 +23,13 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
@@ -59,7 +58,7 @@ Status GpuTransferManager::TransferLiteralToInfeed(
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       shape, [&](const Shape& literal_subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsArray(literal_subshape)) {
+        if (literal_subshape.IsArray()) {
           int64 tuple_element_size = GetByteSizeRequirement(literal_subshape);
           TF_ASSIGN_OR_RETURN(
               *buffer_tree.mutable_element(index),
@@ -126,13 +125,12 @@ static void ShapeTreeToLiteral(
         ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree,
         ShapeIndex* index) {
       const Shape& shape = ShapeUtil::GetSubshape(shape_tree->shape(), *index);
-      if (ShapeUtil::IsArray(shape)) {
+      if (shape.IsArray()) {
         (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
         return;
       }
 
-      CHECK(ShapeUtil::IsTuple(shape))
-          << ShapeUtil::HumanStringWithLayout(shape);
+      CHECK(shape.IsTuple()) << ShapeUtil::HumanStringWithLayout(shape);
       const int64 tuple_element_count = ShapeUtil::TupleElementCount(shape);
       index->push_back(0);
       for (int64 i = 0; i < tuple_element_count; ++i) {
@@ -158,7 +156,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
           std::unique_ptr<gpu::OutfeedBuffer>* buffer) {
         const Shape& shape = ShapeUtil::GetSubshape(literal_shape, index);
         // Do not transfer tuple index buffers.
-        if (ShapeUtil::IsTuple(shape)) {
+        if (shape.IsTuple()) {
           return;
         }
         *buffer = absl::make_unique<gpu::OutfeedBuffer>(
@@ -167,7 +165,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
             absl::make_unique<MutableBorrowingLiteral>(literal, index));
       });
 
-  // Give the tree of buffers to the outfeed mananger. The device will fill it
+  // Give the tree of buffers to the outfeed manager. The device will fill it
   // while we're waiting for it below.
   gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
   outfeed_manager->EnqueueDestination(&outfeed_buffers);
@@ -183,13 +181,22 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::kDataLayout)
+          .getPointerSize(0 /* default address space */));
+}
+
+static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
+  return absl::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::rocm::kROCmPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::kDataLayout)
           .getPointerSize(0 /* default address space */));
 }
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
       stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();

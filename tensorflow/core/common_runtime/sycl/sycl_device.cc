@@ -16,9 +16,9 @@ limitations under the License.
 #if TENSORFLOW_USE_SYCL
 
 #include "tensorflow/core/common_runtime/sycl/sycl_device.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
@@ -74,16 +74,9 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   return status;
 }
 
-Status SYCLDevice::FillContextMap(const Graph* graph,
-                                  DeviceContextMap* device_context_map) {
-  // Fill in the context map.  It is OK for this map to contain
-  // duplicate DeviceContexts so long as we increment the refcount.
-  device_context_map->resize(graph->num_node_ids());
-  for (Node* n : graph->nodes()) {
-    device_context_->Ref();
-    (*device_context_map)[n->id()] = device_context_;
-  }
-
+Status SYCLDevice::TryGetDeviceContext(DeviceContext** out_context) {
+  device_context_->Ref();
+  *out_context = device_context_;
   return Status::OK();
 }
 

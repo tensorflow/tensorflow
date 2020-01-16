@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_node_key.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 

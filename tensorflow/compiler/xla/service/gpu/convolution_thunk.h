@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -52,10 +52,7 @@ class ConvolutionThunk : public Thunk {
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
 
-  // Does the convolution for the thunk on "stream".
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const HloCustomCallInstruction* cudnn_call_;

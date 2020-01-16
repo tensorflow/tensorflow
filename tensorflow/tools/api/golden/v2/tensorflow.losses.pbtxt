@@ -1,71 +1,179 @@
 path: "tensorflow.losses"
 tf_module {
   member {
+    name: "BinaryCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalHinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CosineSimilarity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Hinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Huber"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "KLDivergence"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LogCosh"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Loss"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanAbsoluteError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanAbsolutePercentageError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanSquaredError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanSquaredLogarithmicError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Poisson"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Reduction"
     mtype: "<type \'type\'>"
   }
-  member_method {
-    name: "absolute_difference"
-    argspec: "args=[\'labels\', \'predictions\', \'weights\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+  member {
+    name: "SparseCategoricalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SquaredHinge"
+    mtype: "<type \'type\'>"
   }
   member_method {
-    name: "add_loss"
-    argspec: "args=[\'loss\', \'loss_collection\'], varargs=None, keywords=None, defaults=[\'losses\'], "
+    name: "KLD"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "compute_weighted_loss"
-    argspec: "args=[\'losses\', \'weights\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    name: "MAE"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "cosine_distance"
-    argspec: "args=[\'labels\', \'predictions\', \'axis\', \'weights\', \'scope\', \'loss_collection\', \'reduction\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\', \'None\'], "
+    name: "MAPE"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "get_losses"
-    argspec: "args=[\'scope\', \'loss_collection\'], varargs=None, keywords=None, defaults=[\'None\', \'losses\'], "
+    name: "MSE"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "get_regularization_loss"
-    argspec: "args=[\'scope\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'total_regularization_loss\'], "
+    name: "MSLE"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "get_regularization_losses"
-    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    name: "binary_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'False\', \'0\'], "
   }
   member_method {
-    name: "get_total_loss"
-    argspec: "args=[\'add_regularization_losses\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'total_loss\'], "
+    name: "categorical_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'False\', \'0\'], "
   }
   member_method {
-    name: "hinge_loss"
-    argspec: "args=[\'labels\', \'logits\', \'weights\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    name: "categorical_hinge"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "huber_loss"
-    argspec: "args=[\'labels\', \'predictions\', \'weights\', \'delta\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    name: "cosine_similarity"
+    argspec: "args=[\'y_true\', \'y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {
-    name: "log_loss"
-    argspec: "args=[\'labels\', \'predictions\', \'weights\', \'epsilon\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'1e-07\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    name: "deserialize"
+    argspec: "args=[\'name\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "mean_pairwise_squared_error"
-    argspec: "args=[\'labels\', \'predictions\', \'weights\', \'scope\', \'loss_collection\'], varargs=None, keywords=None, defaults=[\'1.0\', \'None\', \'losses\'], "
+    name: "get"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "hinge"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "kld"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "kullback_leibler_divergence"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "logcosh"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mae"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mape"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mean_absolute_error"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mean_absolute_percentage_error"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "mean_squared_error"
-    argspec: "args=[\'labels\', \'predictions\', \'weights\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "sigmoid_cross_entropy"
-    argspec: "args=[\'multi_class_labels\', \'logits\', \'weights\', \'label_smoothing\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    name: "mean_squared_logarithmic_error"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "softmax_cross_entropy"
-    argspec: "args=[\'onehot_labels\', \'logits\', \'weights\', \'label_smoothing\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    name: "mse"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "sparse_softmax_cross_entropy"
-    argspec: "args=[\'labels\', \'logits\', \'weights\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    name: "msle"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "poisson"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'loss\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sparse_categorical_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
+  }
+  member_method {
+    name: "squared_hinge"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
 }

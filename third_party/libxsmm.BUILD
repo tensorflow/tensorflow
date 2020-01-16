@@ -38,69 +38,52 @@ genrule(
         ":libxsmm_interface",
     ],
     visibility = [
-        "//third_party/eigen3:__pkg__",
         "//tensorflow/core/kernels:__pkg__",
+        "//third_party/eigen3:__pkg__",
     ],
 )
 
 cc_library(
     name = "xsmm_avx",
-    srcs = [
-        "src/libxsmm_cpuid_x86.c",
-        "src/libxsmm_dnn.c",
-        "src/libxsmm_dnn_convolution_backward.c",
-        "src/libxsmm_dnn_convolution_forward.c",
-        "src/libxsmm_dnn_convolution_weight_update.c",
-        "src/libxsmm_dnn_convolution_winograd_backward.c",
-        "src/libxsmm_dnn_convolution_winograd_forward.c",
-        "src/libxsmm_dnn_convolution_winograd_weight_update.c",
-        "src/libxsmm_dnn_handle.c",
-        "src/libxsmm_dump.c",
-        "src/libxsmm_ext_gemm.c",
-        "src/libxsmm_ext_trans.c",
-        "src/libxsmm_fsspmdm.c",
-        "src/libxsmm_gemm.c",
-        "src/libxsmm_main.c",
-        "src/libxsmm_malloc.c",
-        "src/libxsmm_perf.c",
-        "src/libxsmm_spmdm.c",
-        "src/libxsmm_sync.c",
-        "src/libxsmm_timer.c",
-        "src/libxsmm_trace.c",
-        "src/libxsmm_trans.c",
-    ] + glob([
-        "src/generator_*.c",
-    ]),
-    hdrs = [
-        "include/libxsmm_cpuid.h",
-        "include/libxsmm_dnn.h",
-        "include/libxsmm_frontend.h",
-        "include/libxsmm_fsspmdm.h",
-        "include/libxsmm_generator.h",
-        "include/libxsmm_intrinsics_x86.h",
-        "include/libxsmm_macros.h",
-        "include/libxsmm_malloc.h",
-        "include/libxsmm_spmdm.h",
-        "include/libxsmm_sync.h",
-        "include/libxsmm_timer.h",
-        "include/libxsmm_typedefs.h",
-        # Source files #included internally:
-        "src/libxsmm_gemm_diff.c",
+    srcs = glob(
+        [
+            # general source files (translation units)
+            "src/generator_*.c",
+            "src/libxsmm_*.c",
+        ],
+        exclude = [
+            # exclude generators (with main functions)
+            "src/libxsmm_generator_*.c",
+        ],
+    ),
+    hdrs = glob(
+        [
+            # general header files
+            "include/libxsmm_*.h",
+            # trigger rebuild if template changed
+            "src/template/*.c",
+        ],
+        exclude = [
+            # exclude existing/generated headers
+            "include/libxsmm.h",
+            "include/libxsmm_config.h",
+            "include/libxsmm_dispatch.h",
+        ],
+    ) + [
+        # source files included internally
         "src/libxsmm_hash.c",
-        # Generated:
+        # generated header files
         "include/libxsmm.h",
         "include/libxsmm_config.h",
         "include/libxsmm_dispatch.h",
-    ] + glob([
-        # trigger rebuild if template changed
-        "src/template/*.c",
-    ]),
-    copts = [
-        "-mavx",  # JIT does not work without avx anyway, and this silences some CRC32 warnings.
-        "-Wno-vla",  # Libxsmm convolutions heavily use VLA.
     ],
+    #copts = [
+    #    "-mavx",  # JIT does not work without avx anyway, and this silences some CRC32 warnings.
+    #    "-Wno-vla",  # Libxsmm convolutions heavily use VLA.
+    #],
     defines = [
         "LIBXSMM_BUILD",
+        "LIBXSMM_CTOR",
         "__BLAS=0",
     ],
     includes = [

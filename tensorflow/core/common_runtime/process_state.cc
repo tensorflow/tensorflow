@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -32,29 +31,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-ProcessState* ProcessState::instance_ = nullptr;
-
 /*static*/ ProcessState* ProcessState::singleton() {
-  if (instance_ == nullptr) {
-    instance_ = new ProcessState;
-  }
+  static ProcessState* instance = new ProcessState;
+  static std::once_flag f;
+  std::call_once(f, []() {
+    AllocatorFactoryRegistry::singleton()->process_state_ = instance;
+  });
 
-  return instance_;
+  return instance;
 }
 
-ProcessState::ProcessState() : numa_enabled_(false) {
-  CHECK(instance_ == nullptr);
-}
-
-// Normally the ProcessState singleton is never explicitly deleted.
-// This function is defined for debugging problems with the allocators.
-ProcessState::~ProcessState() {
-  CHECK_EQ(this, instance_);
-  instance_ = nullptr;
-  for (Allocator* a : cpu_allocators_) {
-    delete a;
-  }
-}
+ProcessState::ProcessState() : numa_enabled_(false) {}
 
 string ProcessState::MemDesc::DebugString() {
   return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
@@ -72,8 +59,7 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
 }
 
 Allocator* ProcessState::GetCPUAllocator(int numa_node) {
-  CHECK_GE(numa_node, 0);
-  if (!numa_enabled_) numa_node = 0;
+  if (!numa_enabled_ || numa_node == port::kNUMANoAffinity) numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
     // If visitors have been defined we need an Allocator built from
@@ -89,9 +75,10 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     }
     Allocator* allocator = nullptr;
     SubAllocator* sub_allocator =
-        (alloc_visitors_defined || use_bfc_allocator)
-            ? new BasicCPUAllocator(numa_enabled_ ? numa_node : -1,
-                                    cpu_alloc_visitors_, cpu_free_visitors_)
+        (numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
+            ? new BasicCPUAllocator(
+                  numa_enabled_ ? numa_node : port::kNUMANoAffinity,
+                  cpu_alloc_visitors_, cpu_free_visitors_)
             : nullptr;
     if (use_bfc_allocator) {
       // TODO(reedwm): evaluate whether 64GB by default is the best choice.
@@ -109,7 +96,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
                            "bfc_cpu_allocator_for_gpu" /*name*/);
       VLOG(2) << "Using BFCAllocator with memory limit of "
               << cpu_mem_limit_in_mb << " MB for ProcessState CPU allocator";
-    } else if (alloc_visitors_defined) {
+    } else if (sub_allocator) {
       DCHECK(sub_allocator);
       allocator =
           new PoolAllocator(100 /*pool_size_limit*/, true /*auto_resize*/,
@@ -119,7 +106,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
               << " numa_node=" << numa_node;
     } else {
       DCHECK(!sub_allocator);
-      allocator = cpu_allocator();
+      allocator = cpu_allocator_base();
     }
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging
@@ -154,13 +141,16 @@ void ProcessState::AddCPUFreeVisitor(SubAllocator::Visitor visitor) {
 void ProcessState::TestOnlyReset() {
   mutex_lock lock(mu_);
   // Don't delete this value because it's static.
-  Allocator* default_cpu_allocator = cpu_allocator();
+  Allocator* default_cpu_allocator = cpu_allocator_base();
   mem_desc_map_.clear();
   for (Allocator* a : cpu_allocators_) {
     if (a != default_cpu_allocator) delete a;
   }
   cpu_allocators_.clear();
-  gtl::STLDeleteElements(&cpu_al_);
+  for (Allocator* a : cpu_al_) {
+    delete a;
+  }
+  cpu_al_.clear();
 }
 
 }  // namespace tensorflow

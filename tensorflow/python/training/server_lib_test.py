@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -55,6 +56,7 @@ class GrpcServerTest(test.TestCase):
       self.assertAllEqual([[4]], sess.run(e))
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
+  @test_util.run_v1_only("b/120545219")
   def testMultipleSessions(self):
     server = self._cached_server
 
@@ -73,6 +75,7 @@ class GrpcServerTest(test.TestCase):
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
   # Verifies various reset failures.
+  @test_util.run_v1_only("b/120545219")
   def testResetFails(self):
     # Creates variable with container name.
     with ops.container("test0"):
@@ -104,7 +107,7 @@ class GrpcServerTest(test.TestCase):
     self.assertAllEqual(2.0, sess.run(v1))
 
   def _useRPCConfig(self):
-    """Return a `tf.ConfigProto` that ensures we use the RPC stack for tests.
+    """Return a `tf.compat.v1.ConfigProto` that ensures we use the RPC stack for tests.
 
     This configuration ensures that we continue to exercise the gRPC
     stack when testing, rather than using the in-process optimization,
@@ -112,7 +115,7 @@ class GrpcServerTest(test.TestCase):
     master in the same process.
 
     Returns:
-      A `tf.ConfigProto`.
+      A `tf.compat.v1.ConfigProto`.
     """
     return config_pb2.ConfigProto(rpc_options=config_pb2.RPCOptions(
         use_rpc_for_inprocess_master=True))
@@ -146,6 +149,7 @@ class GrpcServerTest(test.TestCase):
       self.assertEqual(0.5, min_val)
       self.assertEqual(0.5, max_val)
 
+  @test_util.run_v1_only("b/120545219")
   def testCloseCancelsBlockingOperation(self):
     server = self._cached_server
     sess = session.Session(server.target, config=self._useRPCConfig())
@@ -174,7 +178,7 @@ class GrpcServerTest(test.TestCase):
     # is not supported, but it should successfully ignore it.
     sess = session.InteractiveSession(server.target)
     c = constant_op.constant(42.0)
-    self.assertEqual(42.0, c.eval())
+    self.assertEqual(42.0, self.evaluate(c))
     sess.close()
 
   def testSetConfiguration(self):
@@ -207,6 +211,7 @@ class GrpcServerTest(test.TestCase):
               "local": ["localhost"]
           }, job_name="local", task_index=0)
 
+  @test_util.run_v1_only("b/120545219")
   def testTimeoutRaisesException(self):
     server = self._cached_server
     q = data_flow_ops.FIFOQueue(1, [dtypes.float32])
@@ -241,6 +246,7 @@ class GrpcServerTest(test.TestCase):
       queue_runner_impl.start_queue_runners(sess)
       sess.run(var.assign(3.0))
 
+  @test_util.run_v1_only("b/120545219")
   def testIsolateSessionState(self):
     server = self._cached_server
 
@@ -296,6 +302,7 @@ class GrpcServerTest(test.TestCase):
     self.assertAllEqual(37, isolate_sess_0.run(v))
     self.assertAllEqual([19, 86], isolate_sess_1.run(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testShapeChangingIsolateState(self):
     server = self._cached_server
     sharing_config = config_pb2.ConfigProto(isolate_session_state=False)
@@ -444,6 +451,29 @@ class ClusterSpecTest(test.TestCase):
     job { name: 'worker' tasks { key: 0 value: 'worker0:2222' }
                          tasks { key: 1 value: 'worker1:2222' }
                          tasks { key: 2 value: 'worker2:2222' } }
+    """
+
+    self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto,
+        server_lib.ClusterSpec(cluster_spec).as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto,
+        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto,
+        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
+
+  def testProtoDictDefEquivalencesWithZeroWorker(self):
+    cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": []
+    })
+
+    expected_proto = """
+    job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
+                     tasks { key: 1 value: 'ps1:2222' } }
+    job { name: 'worker' }
     """
 
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())

@@ -22,14 +22,15 @@ limitations under the License.
 #include <sys/types.h>
 #endif
 #include <fstream>
+
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/base64.h"
+#include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -95,6 +96,11 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
   if (!md) {
     return errors::Internal("Could not get a sha256 encryptor.");
   }
+
+  // EVP_MD_CTX_destroy is renamed to EVP_MD_CTX_free in OpenSSL 1.1.0 but
+  // the old name is still retained as a compatibility macro.
+  // Keep this around until support is dropped for OpenSSL 1.0
+  // https://www.openssl.org/news/cl110.txt
   std::unique_ptr<EVP_MD_CTX, std::function<void(EVP_MD_CTX*)>> md_ctx(
       EVP_MD_CTX_create(), [](EVP_MD_CTX* ptr) { EVP_MD_CTX_destroy(ptr); });
   if (!md_ctx) {
@@ -119,7 +125,6 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
   if (EVP_DigestSignFinal(md_ctx.get(), sig.get(), &sig_len) != 1) {
     return errors::Internal("DigestFinal (signature compute) failed.");
   }
-  EVP_MD_CTX_cleanup(md_ctx.get());
   return Base64Encode(StringPiece(reinterpret_cast<char*>(sig.get()), sig_len),
                       signature);
 }
@@ -280,7 +285,7 @@ Status OAuthClient::ParseOAuthResponse(StringPiece response,
     return errors::FailedPrecondition("Unexpected Oauth token type: " +
                                       token_type);
   }
-  int64 expires_in;
+  int64 expires_in = 0;
   TF_RETURN_IF_ERROR(ReadJsonInt(root, "expires_in", &expires_in));
   *expiration_timestamp_sec = request_timestamp_sec + expires_in;
   TF_RETURN_IF_ERROR(ReadJsonString(root, "access_token", token));

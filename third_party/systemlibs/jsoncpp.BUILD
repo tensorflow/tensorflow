@@ -6,6 +6,8 @@ filegroup(
 )
 
 HEADERS = [
+    "include/json/allocator.h",
+    "include/json/assertions.h",
     "include/json/autolink.h",
     "include/json/config.h",
     "include/json/features.h",

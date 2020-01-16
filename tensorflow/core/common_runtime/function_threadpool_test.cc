@@ -50,25 +50,23 @@ namespace {
 class FunctionLibraryRuntimeTest : public ::testing::Test {
  protected:
   void Init(const std::vector<FunctionDef>& flib,
-            thread::ThreadPool* default_thread_pool = nullptr) {
+            thread::ThreadPool* default_thread_pool) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
+    std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices_));
+        options, "/job:localhost/replica:0/task:0", &devices));
 
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    device_mgr_.reset(new DeviceMgr(devices_));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, default_thread_pool, nullptr /* cluster_flr */));
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, default_thread_pool));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
-    flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
-    flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
-    fdef_lib_ = lib_def_->ToProto();
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
@@ -151,9 +149,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsInvalidArgument(status2));
-    EXPECT_TRUE(
-        str_util::StrContains(status2.error_message(), "remote execution."));
+    EXPECT_TRUE(errors::IsNotFound(status2));
+    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
 
     return status;
   }
@@ -173,7 +171,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       opts.runner = nullptr;
     }
     Notification done;
-    std::vector<Tensor> out;
     Status status;
     flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
       status = s;
@@ -192,13 +189,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   FunctionLibraryRuntime* flr0_;
-  FunctionLibraryRuntime* flr1_;
-  FunctionLibraryRuntime* flr2_;
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  FunctionDefLibrary fdef_lib_;
 };
 
 TEST_F(FunctionLibraryRuntimeTest, DefaultThreadpool) {

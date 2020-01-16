@@ -32,12 +32,13 @@ import six
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
+_GLOBAL_CUSTOM_NAMES = {}
 
 
-@tf_export('keras.utils.CustomObjectScope')
+@keras_export('keras.utils.CustomObjectScope')
 class CustomObjectScope(object):
   """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
 
@@ -73,7 +74,7 @@ class CustomObjectScope(object):
     _GLOBAL_CUSTOM_OBJECTS.update(self.backup)
 
 
-@tf_export('keras.utils.custom_object_scope')
+@keras_export('keras.utils.custom_object_scope')
 def custom_object_scope(*args):
   """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
 
@@ -95,8 +96,8 @@ def custom_object_scope(*args):
   ```
 
   Arguments:
-      *args: Variable length list of dictionaries of name,
-          class pairs to add to custom objects.
+      *args: Variable length list of dictionaries of name, class pairs to add to
+        custom objects.
 
   Returns:
       Object of type `CustomObjectScope`.
@@ -104,7 +105,7 @@ def custom_object_scope(*args):
   return CustomObjectScope(*args)
 
 
-@tf_export('keras.utils.get_custom_objects')
+@keras_export('keras.utils.get_custom_objects')
 def get_custom_objects():
   """Retrieves a live reference to the global dictionary of custom objects.
 
@@ -125,76 +126,245 @@ def get_custom_objects():
   return _GLOBAL_CUSTOM_OBJECTS
 
 
-@tf_export('keras.utils.serialize_keras_object')
+def serialize_keras_class_and_config(cls_name, cls_config):
+  """Returns the serialization of the class with the given config."""
+  return {'class_name': cls_name, 'config': cls_config}
+
+
+@keras_export('keras.utils.register_keras_serializable')
+def register_keras_serializable(package='Custom', name=None):
+  """Registers an object with the Keras serialization framework.
+
+  This decorator injects the decorated class or function into the Keras custom
+  object dictionary, so that it can be serialized and deserialized without
+  needing an entry in the user-provided custom object dict. It also injects a
+  function that Keras will call to get the object's serializable string key.
+
+  Note that to be serialized and deserialized, classes must implement the
+  `get_config()` method. Functions do not have this requirement.
+
+  The object will be registered under the key 'package>name' where `name`,
+  defaults to the object name if not passed.
+
+  Arguments:
+    package: The package that this class belongs to.
+    name: The name to serialize this class under in this package. If None, the
+      class's name will be used.
+
+  Returns:
+    A decorator that registers the decorated class with the passed names.
+  """
+
+  def decorator(arg):
+    """Registers a class with the Keras serialization framework."""
+    class_name = name if name is not None else arg.__name__
+    registered_name = package + '>' + class_name
+
+    if tf_inspect.isclass(arg) and not hasattr(arg, 'get_config'):
+      raise ValueError(
+          'Cannot register a class that does not have a get_config() method.')
+
+    if registered_name in _GLOBAL_CUSTOM_OBJECTS:
+      raise ValueError(
+          '%s has already been registered to %s' %
+          (registered_name, _GLOBAL_CUSTOM_OBJECTS[registered_name]))
+
+    if arg in _GLOBAL_CUSTOM_NAMES:
+      raise ValueError('%s has already been registered to %s' %
+                       (arg, _GLOBAL_CUSTOM_NAMES[arg]))
+    _GLOBAL_CUSTOM_OBJECTS[registered_name] = arg
+    _GLOBAL_CUSTOM_NAMES[arg] = registered_name
+
+    return arg
+
+  return decorator
+
+
+@keras_export('keras.utils.get_registered_name')
+def get_registered_name(obj):
+  """Returns the name registered to an object within the Keras framework.
+
+  This function is part of the Keras serialization and deserialization
+  framework. It maps objects to the string names associated with those objects
+  for serialization/deserialization.
+
+  Args:
+    obj: The object to look up.
+
+  Returns:
+    The name associated with the object, or the default Python name if the
+      object is not registered.
+  """
+  if obj in _GLOBAL_CUSTOM_NAMES:
+    return _GLOBAL_CUSTOM_NAMES[obj]
+  else:
+    return obj.__name__
+
+
+@keras_export('keras.utils.get_registered_object')
+def get_registered_object(name, custom_objects=None, module_objects=None):
+  """Returns the class associated with `name` if it is registered with Keras.
+
+  This function is part of the Keras serialization and deserialization
+  framework. It maps strings to the objects associated with them for
+  serialization/deserialization.
+
+  Example:
+  ```
+  def from_config(cls, config, custom_objects=None):
+    if 'my_custom_object_name' in config:
+      config['hidden_cls'] = tf.keras.utils.get_registered_object(
+          config['my_custom_object_name'], custom_objects=custom_objects)
+  ```
+
+  Args:
+    name: The name to look up.
+    custom_objects: A dictionary of custom objects to look the name up in.
+      Generally, custom_objects is provided by the user.
+    module_objects: A dictionary of custom objects to look the name up in.
+      Generally, module_objects is provided by midlevel library implementers.
+
+  Returns:
+    An instantiable class associated with 'name', or None if no such class
+      exists.
+  """
+  if name in _GLOBAL_CUSTOM_OBJECTS:
+    return _GLOBAL_CUSTOM_OBJECTS[name]
+  elif custom_objects and name in custom_objects:
+    return custom_objects[name]
+  elif module_objects and name in module_objects:
+    return module_objects[name]
+  return None
+
+
+@keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
+  """Serialize Keras object into JSON."""
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
+
   if hasattr(instance, 'get_config'):
-    return {
-        'class_name': instance.__class__.__name__,
-        'config': instance.get_config()
-    }
+    config = instance.get_config()
+    serialization_config = {}
+    for key, item in config.items():
+      if isinstance(item, six.string_types):
+        serialization_config[key] = item
+        continue
+
+      # Any object of a different type needs to be converted to string or dict
+      # for serialization (e.g. custom functions, custom classes)
+      try:
+        serialized_item = serialize_keras_object(item)
+        if isinstance(serialized_item, dict) and not isinstance(item, dict):
+          serialized_item['__passive_serialization__'] = True
+        serialization_config[key] = serialized_item
+      except ValueError:
+        serialization_config[key] = item
+
+    name = get_registered_name(instance.__class__)
+    return serialize_keras_class_and_config(name, serialization_config)
   if hasattr(instance, '__name__'):
-    return instance.__name__
-  else:
-    raise ValueError('Cannot serialize', instance)
+    return get_registered_name(instance)
+  raise ValueError('Cannot serialize', instance)
 
 
-@tf_export('keras.utils.deserialize_keras_object')
+def class_and_config_for_serialized_keras_object(
+    config,
+    module_objects=None,
+    custom_objects=None,
+    printable_module_name='object'):
+  """Returns the class name and config for a serialized keras object."""
+  if (not isinstance(config, dict) or 'class_name' not in config or
+      'config' not in config):
+    raise ValueError('Improper config format: ' + str(config))
+
+  class_name = config['class_name']
+  cls = get_registered_object(class_name, custom_objects, module_objects)
+  if cls is None:
+    raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
+
+  cls_config = config['config']
+  deserialized_objects = {}
+  for key, item in cls_config.items():
+    if isinstance(item, dict) and '__passive_serialization__' in item:
+      deserialized_objects[key] = deserialize_keras_object(
+          item,
+          module_objects=module_objects,
+          custom_objects=custom_objects,
+          printable_module_name='config_item')
+    # TODO(momernick): Should this also have 'module_objects'?
+    elif (isinstance(item, six.string_types) and
+          tf_inspect.isfunction(get_registered_object(item, custom_objects))):
+      # Handle custom functions here. When saving functions, we only save the
+      # function's name as a string. If we find a matching string in the custom
+      # objects during deserialization, we convert the string back to the
+      # original function.
+      # Note that a potential issue is that a string field could have a naming
+      # conflict with a custom function name, but this should be a rare case.
+      # This issue does not occur if a string field has a naming conflict with
+      # a custom object, since the config of an object will always be a dict.
+      deserialized_objects[key] = get_registered_object(item, custom_objects)
+  for key, item in deserialized_objects.items():
+    cls_config[key] = deserialized_objects[key]
+
+  return (cls, cls_config)
+
+
+@keras_export('keras.utils.deserialize_keras_object')
 def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
                              printable_module_name='object'):
+  if identifier is None:
+    return None
+
   if isinstance(identifier, dict):
     # In this case we are dealing with a Keras config dictionary.
     config = identifier
-    if 'class_name' not in config or 'config' not in config:
-      raise ValueError('Improper config format: ' + str(config))
-    class_name = config['class_name']
-    if custom_objects and class_name in custom_objects:
-      cls = custom_objects[class_name]
-    elif class_name in _GLOBAL_CUSTOM_OBJECTS:
-      cls = _GLOBAL_CUSTOM_OBJECTS[class_name]
-    else:
-      module_objects = module_objects or {}
-      cls = module_objects.get(class_name)
-      if cls is None:
-        raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
+    (cls, cls_config) = class_and_config_for_serialized_keras_object(
+        config, module_objects, custom_objects, printable_module_name)
+
     if hasattr(cls, 'from_config'):
       arg_spec = tf_inspect.getfullargspec(cls.from_config)
       custom_objects = custom_objects or {}
 
       if 'custom_objects' in arg_spec.args:
         return cls.from_config(
-            config['config'],
+            cls_config,
             custom_objects=dict(
                 list(_GLOBAL_CUSTOM_OBJECTS.items()) +
                 list(custom_objects.items())))
       with CustomObjectScope(custom_objects):
-        return cls.from_config(config['config'])
+        return cls.from_config(cls_config)
     else:
       # Then `cls` may be a function returning a class.
       # in this case by convention `config` holds
       # the kwargs of the function.
       custom_objects = custom_objects or {}
       with CustomObjectScope(custom_objects):
-        return cls(**config['config'])
+        return cls(**cls_config)
   elif isinstance(identifier, six.string_types):
-    function_name = identifier
-    if custom_objects and function_name in custom_objects:
-      fn = custom_objects.get(function_name)
-    elif function_name in _GLOBAL_CUSTOM_OBJECTS:
-      fn = _GLOBAL_CUSTOM_OBJECTS[function_name]
+    object_name = identifier
+    if custom_objects and object_name in custom_objects:
+      obj = custom_objects.get(object_name)
+    elif object_name in _GLOBAL_CUSTOM_OBJECTS:
+      obj = _GLOBAL_CUSTOM_OBJECTS[object_name]
     else:
-      fn = module_objects.get(function_name)
-      if fn is None:
-        raise ValueError('Unknown ' + printable_module_name + ':' +
-                         function_name)
-    return fn
+      obj = module_objects.get(object_name)
+      if obj is None:
+        raise ValueError('Unknown ' + printable_module_name + ':' + object_name)
+    # Classes passed by name are instantiated with no args, functions are
+    # returned as-is.
+    if tf_inspect.isclass(obj):
+      return obj()
+    return obj
+  elif tf_inspect.isfunction(identifier):
+    # If a function has already been deserialized, return as is.
+    return identifier
   else:
-    raise ValueError('Could not interpret serialized ' + printable_module_name +
-                     ': ' + identifier)
+    raise ValueError('Could not interpret serialized %s: %s' %
+                     (printable_module_name, identifier))
 
 
 def func_dump(func):
@@ -246,6 +416,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
     Returns:
         A value wrapped as a cell object (see function "func_load")
     """
+
     def dummy_fn():
       # pylint: disable=pointless-statement
       value  # just access it so it gets captured in .__closure__
@@ -253,8 +424,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
     cell_value = dummy_fn.__closure__[0]
     if not isinstance(value, type(cell_value)):
       return cell_value
-    else:
-      return value
+    return value
 
   if closure is not None:
     closure = tuple(ensure_value_to_cell(_) for _ in closure)
@@ -275,8 +445,8 @@ def has_arg(fn, name, accept_all=False):
   Arguments:
       fn: Callable to inspect.
       name: Check if `fn` can be called with `name` as a keyword argument.
-      accept_all: What to return if there is no parameter called `name`
-                  but the function accepts a `**kwargs` argument.
+      accept_all: What to return if there is no parameter called `name` but the
+        function accepts a `**kwargs` argument.
 
   Returns:
       bool, whether `fn` accepts a `name` keyword argument.
@@ -287,7 +457,7 @@ def has_arg(fn, name, accept_all=False):
   return name in arg_spec.args
 
 
-@tf_export('keras.utils.Progbar')
+@keras_export('keras.utils.Progbar')
 class Progbar(object):
   """Displays a progress bar.
 
@@ -295,19 +465,25 @@ class Progbar(object):
       target: Total number of steps expected, None if unknown.
       width: Progress bar width on screen.
       verbose: Verbosity mode, 0 (silent), 1 (verbose), 2 (semi-verbose)
-      stateful_metrics: Iterable of string names of metrics that
-          should *not* be averaged over time. Metrics in this list
-          will be displayed as-is. All others will be averaged
-          by the progbar before display.
+      stateful_metrics: Iterable of string names of metrics that should *not* be
+        averaged over time. Metrics in this list will be displayed as-is. All
+        others will be averaged by the progbar before display.
       interval: Minimum visual progress update interval (in seconds).
+      unit_name: Display name for step counts (usually "step" or "sample").
   """
 
-  def __init__(self, target, width=30, verbose=1, interval=0.05,
-               stateful_metrics=None):
+  def __init__(self,
+               target,
+               width=30,
+               verbose=1,
+               interval=0.05,
+               stateful_metrics=None,
+               unit_name='step'):
     self.target = target
     self.width = width
     self.verbose = verbose
     self.interval = interval
+    self.unit_name = unit_name
     if stateful_metrics:
       self.stateful_metrics = set(stateful_metrics)
     else:
@@ -316,7 +492,8 @@ class Progbar(object):
     self._dynamic_display = ((hasattr(sys.stdout, 'isatty') and
                               sys.stdout.isatty()) or
                              'ipykernel' in sys.modules or
-                             'posix' in sys.modules)
+                             'posix' in sys.modules or
+                             'PYCHARM_HOSTED' in os.environ)
     self._total_width = 0
     self._seen_so_far = 0
     # We use a dict + list to avoid garbage collection
@@ -331,23 +508,25 @@ class Progbar(object):
 
     Arguments:
         current: Index of current step.
-        values: List of tuples:
-            `(name, value_for_last_step)`.
-            If `name` is in `stateful_metrics`,
-            `value_for_last_step` will be displayed as-is.
-            Else, an average of the metric over time will be displayed.
+        values: List of tuples: `(name, value_for_last_step)`. If `name` is in
+          `stateful_metrics`, `value_for_last_step` will be displayed as-is.
+          Else, an average of the metric over time will be displayed.
     """
     values = values or []
     for k, v in values:
       if k not in self._values_order:
         self._values_order.append(k)
       if k not in self.stateful_metrics:
+        # In the case that progress bar doesn't have a target value in the first
+        # epoch, both on_batch_end and on_epoch_end will be called, which will
+        # cause 'current' and 'self._seen_so_far' to have the same value. Force
+        # the minimal value to 1 here, otherwise stateful_metric will be 0s.
+        value_base = max(current - self._seen_so_far, 1)
         if k not in self._values:
-          self._values[k] = [v * (current - self._seen_so_far),
-                             current - self._seen_so_far]
+          self._values[k] = [v * value_base, value_base]
         else:
-          self._values[k][0] += v * (current - self._seen_so_far)
-          self._values[k][1] += (current - self._seen_so_far)
+          self._values[k][0] += v * value_base
+          self._values[k][1] += value_base
       else:
         # Stateful metrics output a numeric value. This representation
         # means "take an average from a single value" but keeps the
@@ -370,9 +549,8 @@ class Progbar(object):
         sys.stdout.write('\n')
 
       if self.target is not None:
-        numdigits = int(np.floor(np.log10(self.target))) + 1
-        barstr = '%%%dd/%d [' % (numdigits, self.target)
-        bar = barstr % current
+        numdigits = int(np.log10(self.target)) + 1
+        bar = ('%' + str(numdigits) + 'd/%d [') % (current, self.target)
         prog = float(current) / self.target
         prog_width = int(self.width * prog)
         if prog_width > 0:
@@ -397,8 +575,7 @@ class Progbar(object):
         eta = time_per_unit * (self.target - current)
         if eta > 3600:
           eta_format = '%d:%02d:%02d' % (eta // 3600,
-                                         (eta % 3600) // 60,
-                                         eta % 60)
+                                         (eta % 3600) // 60, eta % 60)
         elif eta > 60:
           eta_format = '%d:%02d' % (eta // 60, eta % 60)
         else:
@@ -406,12 +583,12 @@ class Progbar(object):
 
         info = ' - ETA: %s' % eta_format
       else:
-        if time_per_unit >= 1:
-          info += ' %.0fs/step' % time_per_unit
+        if time_per_unit >= 1 or time_per_unit == 0:
+          info += ' %.0fs/%s' % (time_per_unit, self.unit_name)
         elif time_per_unit >= 1e-3:
-          info += ' %.0fms/step' % (time_per_unit * 1e3)
+          info += ' %.0fms/%s' % (time_per_unit * 1e3, self.unit_name)
         else:
-          info += ' %.0fus/step' % (time_per_unit * 1e6)
+          info += ' %.0fus/%s' % (time_per_unit * 1e6, self.unit_name)
 
       for k in self._values_order:
         info += ' - %s:' % k
@@ -435,7 +612,10 @@ class Progbar(object):
       sys.stdout.flush()
 
     elif self.verbose == 2:
-      if self.target is None or current >= self.target:
+      if self.target is not None and current >= self.target:
+        numdigits = int(np.log10(self.target)) + 1
+        count = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
+        info = count + info
         for k in self._values_order:
           info += ' - %s:' % k
           avg = np.mean(self._values[k][0] / max(1, self._values[k][1]))
@@ -481,10 +661,8 @@ def slice_arrays(arrays, start=None, stop=None):
 
   Arguments:
       arrays: Single array or list of arrays.
-      start: can be an integer index (start index)
-          or a list/array of indices
-      stop: integer (stop index); should be None if
-          `start` was a list.
+      start: can be an integer index (start index) or a list/array of indices
+      stop: integer (stop index); should be None if `start` was a list.
 
   Returns:
       A slice of the array(s).
@@ -503,17 +681,18 @@ def slice_arrays(arrays, start=None, stop=None):
       if hasattr(start, 'shape'):
         start = start.tolist()
       return [None if x is None else x[start] for x in arrays]
-    else:
-      return [None if x is None else x[start:stop] for x in arrays]
+    return [
+        None if x is None else
+        None if not hasattr(x, '__getitem__') else x[start:stop] for x in arrays
+    ]
   else:
     if hasattr(start, '__len__'):
       if hasattr(start, 'shape'):
         start = start.tolist()
       return arrays[start]
-    elif hasattr(start, '__getitem__'):
+    if hasattr(start, '__getitem__'):
       return arrays[start:stop]
-    else:
-      return [None]
+    return [None]
 
 
 def to_list(x):
@@ -536,7 +715,7 @@ def to_list(x):
 def object_list_uid(object_list):
   """Creates a single string from object ids."""
   object_list = nest.flatten(object_list)
-  return ', '.join([str(abs(id(x))) for x in object_list])
+  return ', '.join(str(abs(id(x))) for x in object_list)
 
 
 def to_snake_case(name):
@@ -549,13 +728,27 @@ def to_snake_case(name):
   return 'private' + insecure
 
 
-def is_all_none(iterable_or_element):
-  if not isinstance(iterable_or_element, (list, tuple)):
-    iterable = [iterable_or_element]
-  else:
-    iterable = iterable_or_element
+def is_all_none(structure):
+  iterable = nest.flatten(structure)
   # We cannot use Python's `any` because the iterable may return Tensors.
   for element in iterable:
     if element is not None:
       return False
   return True
+
+
+def check_for_unexpected_keys(name, input_dict, expected_values):
+  unknown = set(input_dict.keys()).difference(expected_values)
+  if unknown:
+    raise ValueError('Unknown entries in {} dictionary: {}. Only expected '
+                     'following keys: {}'.format(name, list(unknown),
+                                                 expected_values))
+
+
+def validate_kwargs(kwargs,
+                    allowed_kwargs,
+                    error_message='Keyword argument not understood:'):
+  """Checks that all keyword arguments are in the set of allowed keys."""
+  for kwarg in kwargs:
+    if kwarg not in allowed_kwargs:
+      raise TypeError(error_message, kwarg)

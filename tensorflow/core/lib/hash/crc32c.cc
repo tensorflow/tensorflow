@@ -263,5 +263,16 @@ uint32 Extend(uint32 crc, const char *buf, size_t size) {
   return l ^ 0xffffffffu;
 }
 
+#if defined(PLATFORM_GOOGLE)
+uint32 Extend(uint32 crc, const absl::Cord &cord) {
+  absl::CordReader reader(cord);
+  absl::string_view fragment;
+  while (reader.ReadFragment(&fragment)) {
+    crc = Extend(crc, fragment.data(), fragment.size());
+  }
+  return crc;
+}
+#endif
+
 }  // namespace crc32c
 }  // namespace tensorflow

@@ -17,29 +17,38 @@ limitations under the License.
 
 #include <numeric>
 
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "absl/base/call_once.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
+
+constexpr int64 XlaCompilationCache::kDefaultCompilationThreshold;
 
 XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
                                          DeviceType device_type)
     : client_(client), device_type_(std::move(device_type)) {}
+
 XlaCompilationCache::~XlaCompilationCache() {
   // Ensure any use of our programs have completed by waiting for all stream
   // executors to complete.
@@ -58,20 +67,20 @@ XlaCompilationCache::~XlaCompilationCache() {
   // about?
 }
 
-string XlaCompilationCache::DebugString() {
+string XlaCompilationCache::DebugString() const {
   return "XLA JIT compilation cache";
 }
 
 // Compute a string signature which encodes the shapes of the
 // arguments in the supplied list.
-string XlaCompilationCache::SignatureDebugString(const Signature& sig) {
-  string result = sig.name;
-  for (const auto& a : sig.arg_types) {
-    absl::StrAppend(&result, ",", DataTypeString(a.first),
-                    a.second.DebugString());
+string XlaCompilationCache::Signature::HumanString() const {
+  string result = name;
+  for (const auto& a : arg_shapes) {
+    absl::StrAppend(&result, ",", DataTypeString(a.first));
+    absl::StrAppend(&result, " [", absl::StrJoin(a.second, ","), "]");
   }
 
-  for (const auto& v : sig.arg_values) {
+  for (const auto& v : arg_values) {
     absl::StrAppend(&result, "; ", v.DebugString());
   }
   return result;
@@ -79,11 +88,13 @@ string XlaCompilationCache::SignatureDebugString(const Signature& sig) {
 
 bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
   if (name != other.name) return false;
-  if (arg_types != other.arg_types) return false;
+  if (arg_shapes != other.arg_shapes) return false;
 
   if (arg_values.size() != other.arg_values.size()) return false;
   for (int i = 0; i < arg_values.size(); ++i) {
-    if (arg_values[i].tensor_data() != other.arg_values[i].tensor_data()) {
+    if (arg_values[i].dtype() != other.arg_values[i].dtype() ||
+        arg_values[i].shape() != other.arg_values[i].shape() ||
+        arg_values[i].tensor_data() != other.arg_values[i].tensor_data()) {
       return false;
     }
   }
@@ -93,10 +104,10 @@ bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
 uint64 XlaCompilationCache::Signature::Hash::operator()(
     const XlaCompilationCache::Signature& signature) const {
   uint64 h = std::hash<string>()(signature.name);
-  for (const auto& arg : signature.arg_types) {
+  for (const auto& arg : signature.arg_shapes) {
     h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.first)));
-    h = Hash64Combine(h, std::hash<int>()(arg.second.dims()));
-    for (int dim : arg.second.dim_sizes()) {
+    h = Hash64Combine(h, std::hash<int>()(arg.second.size()));
+    for (int dim : arg.second) {
       h = Hash64Combine(h, std::hash<int>()(dim));
     }
   }
@@ -107,95 +118,31 @@ uint64 XlaCompilationCache::Signature::Hash::operator()(
   return h;
 }
 
-Status XlaCompilationCache::BuildSignature(
-    const NameAttrList& function, const std::map<int, Tensor>& constant_args,
-    const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    Signature* signature) {
-  signature->name = Canonicalize(function.name(), AttrSlice(&function.attr()));
-  signature->arg_values.reserve(constant_args.size());
+xla::StatusOr<XlaCompilationCache::Signature>
+XlaCompilationCache::BuildSignature(
+    const NameAttrList& function,
+    absl::Span<const XlaCompiler::Argument> args) {
+  Signature signature;
+  signature.name = Canonicalize(function.name(), AttrSlice(&function.attr()));
 
-  signature->arg_types.reserve(ctx->num_inputs() - constant_args.size());
-
-  for (int i = 0; i < ctx->num_inputs(); ++i) {
-    if (constant_args.count(i) > 0) {
-      // Use the values of compile time constants in the signature.
-      signature->arg_values.push_back(constant_args.at(i));
-    } else if (variable_args.count(i) > 0) {
-      const OptionalTensor& variable = variable_args.at(i);
-      if (variable.present) {
-        signature->arg_types.emplace_back(variable.value.dtype(),
-                                          variable.value.shape());
-      } else {
-        signature->arg_types.emplace_back(DT_INVALID, TensorShape());
-      }
-    } else {
-      signature->arg_types.emplace_back(ctx->input_dtype(i),
-                                        ctx->input(i).shape());
+  for (const XlaCompiler::Argument& arg : args) {
+    switch (arg.kind) {
+      case XlaCompiler::Argument::kConstant:
+        signature.arg_values.push_back(arg.constant_value);
+        break;
+      case XlaCompiler::Argument::kParameter:
+      case XlaCompiler::Argument::kResource:
+        signature.arg_shapes.emplace_back(arg.type,
+                                          arg.DimensionSizesAsInlinedVector());
+        break;
+      default:
+        return errors::InvalidArgument(
+            "Unhandled argument kind in XlaCompilationCache: ",
+            arg.HumanString());
     }
   }
-  return Status::OK();
+  return std::move(signature);
 }
-
-namespace {
-
-// Builds a XlaCompiler::Argument vector from the arguments to the XlaLaunch op.
-Status BuildArguments(const std::map<int, Tensor>& constant_args,
-                      const std::map<int, OptionalTensor>& variable_args,
-                      OpKernelContext* ctx,
-                      std::vector<XlaCompiler::Argument>* args) {
-  args->resize(ctx->num_inputs());
-
-  for (int64 input_num = 0; input_num < ctx->num_inputs(); ++input_num) {
-    XlaCompiler::Argument& arg = (*args)[input_num];
-    if (constant_args.count(input_num) > 0) {
-      // Handles compile-time constants.
-      const Tensor& input = constant_args.at(input_num);
-      TF_RET_CHECK(input.dtype() != DT_RESOURCE);
-      arg.kind = XlaCompiler::Argument::kConstant;
-      arg.type = input.dtype();
-      arg.shape = input.shape();
-      arg.constant_value = input;
-    } else if (variable_args.count(input_num) == 0) {
-      // Handles the non-constant arguments.
-      const Tensor& input = ctx->input(input_num);
-      TF_RET_CHECK(input.dtype() != DT_RESOURCE);
-      if (input.NumElements() > 0) {
-        arg.kind = XlaCompiler::Argument::kParameter;
-      } else {
-        arg.kind = XlaCompiler::Argument::kConstant;
-        arg.constant_value = input;
-      }
-      arg.type = input.dtype();
-      arg.shape = input.shape();
-    } else {
-      // Handles resource variables.
-      const Tensor& input = ctx->input(input_num);
-      TF_RET_CHECK(input.dtype() == DT_RESOURCE);
-      const OptionalTensor& variable = variable_args.at(input_num);
-      arg.name = variable.name;
-      arg.kind = XlaCompiler::Argument::kResource;
-      arg.resource_kind = XlaResource::kVariable;
-      if (variable.present) {
-        const Tensor& value = variable.value;
-        arg.type = value.dtype();
-        arg.shape = value.shape();
-        arg.initialized = true;
-      } else {
-        // The values of uninitialized variables are not passed as inputs, since
-        // they are meaningless. However, it is legal to assign to a resource
-        // variable for the first time inside the XLA computation, so we do
-        // permit uninitialized variables.
-        arg.initialized = false;
-        arg.type = DT_INVALID;
-        arg.shape = TensorShape();
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
-}  // namespace
 
 Status XlaCompilationCache::BuildExecutable(
     const XlaCompiler::Options& options,
@@ -214,6 +161,7 @@ Status XlaCompilationCache::BuildExecutable(
                                        : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
+  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
 
   auto compile_result =
       client_->Compile(*result.computation, argument_layouts, build_options);
@@ -226,20 +174,38 @@ Status XlaCompilationCache::BuildExecutable(
 
 Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
-    const std::map<int, Tensor>& constant_args,
-    const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+    absl::Span<const XlaCompiler::Argument> args,
     const XlaCompiler::CompileOptions& compile_options,
+    CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  return CompileImpl(options, function, constant_args, variable_args, ctx,
-                     compile_options, /*compile_single_op=*/false,
+  absl::optional<int64> compile_threshold;
+  if (compile_mode == CompileMode::kLazy) {
+    compile_threshold = kDefaultCompilationThreshold;
+  }
+  auto compile_fn = [&](XlaCompiler* compiler,
+                        XlaCompiler::CompilationResult* result) {
+    return compiler->CompileFunction(compile_options, function, args, result);
+  };
+  return CompileImpl(options, function, args, compile_fn,
+                     /*compile_threshold=*/compile_threshold,
                      out_compilation_result, out_executable);
+}
+
+static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
+  const int64 kCompileThreshold = 10;
+  const int64 kMinExecutionsPerCompile = 50;
+
+  // This heuristic is trying to capture the following property: have we sunk a
+  // certain minimum amount of compile time into the cluster that didn't quite
+  // "pay off"?
+  return compile_count > kCompileThreshold &&
+         execution_count < kMinExecutionsPerCompile * compile_count;
 }
 
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
-    const std::map<int, Tensor>& constant_args,
-    const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+    absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
@@ -247,52 +213,59 @@ Status XlaCompilationCache::CompileSingleOp(
   NameAttrList name;
   name.set_name(def.op());
   *name.mutable_attr() = def.attr();
-  return CompileImpl(
-      options, name, constant_args, variable_args, ctx, compile_options,
-      /*compile_single_op=*/true, out_compilation_result, out_executable);
+  // Remove the "_class" attribute from the attribute set used to create the
+  // compilation cache key. This attribute is information for the colocator
+  // and causes false uniqueness between nodes.
+  name.mutable_attr()->erase("_class");
+  auto compile_op = [&](XlaCompiler* compiler,
+                        XlaCompiler::CompilationResult* result) {
+    std::vector<DataType> result_dtypes(ctx->num_outputs());
+    for (int i = 0; i < result_dtypes.size(); ++i) {
+      result_dtypes[i] = ctx->expected_output_dtype(i);
+    }
+    return compiler->CompileSingleOp(compile_options, ctx->op_kernel().def(),
+                                     args, result_dtypes, result);
+  };
+  return CompileImpl(options, name, args, compile_op,
+                     /*compile_threshold=*/absl::nullopt,
+                     out_compilation_result, out_executable);
 }
+
+namespace {
+// Print something that users can search for to definitively ascertain that XLA
+// was used for their TF model.
+//
+// Prints only once to avoid spamming LOG(INFO).
+void LogOnceXlaCompiledFirstCluster() {
+  static absl::once_flag log_once;
+  absl::call_once(log_once, [] {
+    LOG(INFO) << "Compiled cluster using XLA!  This line is logged at most "
+                 "once for the lifetime of the process.";
+  });
+}
+}  // namespace
 
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
-    const std::map<int, Tensor>& constant_args,
-    const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompileOptions& compile_options, bool compile_single_op,
+    absl::Span<const XlaCompiler::Argument> args,
+    const std::function<Status(XlaCompiler* compiler,
+                               XlaCompiler::CompilationResult*)>& compile_fn,
+    absl::optional<int64> compile_threshold,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
-    VLOG(2) << "num_inputs=" << ctx->num_inputs()
-            << " num_constant_args=" << constant_args.size()
-            << " num_variable_args=" << variable_args.size();
-    for (int i = 0; i < ctx->num_inputs(); i++) {
-      TensorShape shape = ctx->input(i).shape();
-      VLOG(2) << i << ": dtype=" << DataTypeString(ctx->input_dtype(i))
-              << " present=" << ctx->has_input(i)
-              << " shape=" << shape.DebugString();
-    }
-    for (auto& iterator : variable_args) {
-      const OptionalTensor& variable = iterator.second;
-      VLOG(2) << "variable present=" << variable.present
-              << " type=" << DataTypeString(variable.value.dtype())
-              << " shape=" << variable.value.shape().DebugString()
-              << " TF arg= " << iterator.first;
-    }
-    VLOG(2) << "num_outputs = " << ctx->num_outputs();
-    for (int i = 0; i < ctx->num_outputs(); i++) {
-      VLOG(2) << i << ": dtype=" << ctx->expected_output_dtype(i);
+    VLOG(2) << "num_inputs=" << args.size();
+    for (int i = 0; i < args.size(); i++) {
+      VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
 
-  TF_RET_CHECK(constant_args.size() + variable_args.size() <=
-               ctx->num_inputs());
+  TF_ASSIGN_OR_RETURN(Signature signature, BuildSignature(function, args));
+  VLOG(2) << "Signature: " << signature.HumanString();
 
-  Signature signature;
-  TF_RETURN_IF_ERROR(
-      BuildSignature(function, constant_args, variable_args, ctx, &signature));
-
-  VLOG(2) << "Signature: " << SignatureDebugString(signature);
   // The outer lock protects the existence of the cache entry. It does not
   // protect the contents of the cache entry.
   Entry* entry;
@@ -306,32 +279,97 @@ Status XlaCompilationCache::CompileImpl(
     entry = e.get();
   }
 
+  // We always compile a cluster the very first time it is executed.  This is an
+  // optimistic guess that pays off for statically shaped TensorFlow graphs
+  // (since they get the benefit of XLA right away without waiting for warmup)
+  // and doesn't hurt much for dynamically shaped TensorFlow graphs (we "pay" at
+  // most one cluster-compilation's worth of compile time).
+  bool is_first_execution;
+
+  // We avoid compiling clusters that have "gone megamorphic" i.e. have an
+  // excessive amount of shape dynamism.
+  bool is_megamorphic;
+
+  {
+    mutex_lock lock(cluster_compile_stats_mu_);
+    auto it =
+        cluster_compile_stats_.emplace(function.name(), ClusterCompileStats{})
+            .first;
+    is_first_execution = it->second.execution_count++ == 0;
+
+    // The is_megamorphic bit is "sticky".  We assume clusters that have been
+    // observed to be megamorphic once stay megamorphic forever.
+    if (!it->second.is_megamorphic &&
+        ShouldBeMegamorphic(/*compile_count=*/it->second.compile_count,
+                            /*execution_count=*/it->second.execution_count)) {
+      VLOG(1) << "Marking " << function.name()
+              << " as megamorphic, compile_count=" << it->second.compile_count
+              << " execution_count=" << it->second.execution_count;
+      it->second.is_megamorphic = true;
+    }
+
+    is_megamorphic = it->second.is_megamorphic;
+  }
+
   // Acquire the cache entry lock and compile, if necessary.
   // TODO(phawkins): this locking will need to be restructured when we implement
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
+  int64 current_request_count = ++entry->request_count;
+  VLOG(2) << "Compilation cache entry hit: " << entry->compiled
+          << " signature: " << signature.HumanString() << " with request count "
+          << current_request_count << " and compile threshold "
+          << compile_threshold.value_or(0);
   if (!entry->compiled) {
-    VLOG(2) << "Compilation cache miss for signature: "
-            << SignatureDebugString(signature);
+    XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
+    const bool should_compile = [&] {
+      if (!compile_threshold.has_value()) {
+        // Lazy compilation is disabled.
+        return true;
+      }
+
+      if (is_megamorphic) {
+        BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
+                                    function.name())
+            .IgnoreError();
+        VLOG(3) << "Not compiling cluster " << function.name()
+                << " because it is megamorphic.";
+        return false;
+      }
+
+      if (is_first_execution) {
+        return true;
+      }
+
+      bool reached_compile_threshold =
+          current_request_count >= *compile_threshold;
+      if (!reached_compile_threshold) {
+        VLOG(3)
+            << "Not compiling cluster " << function.name()
+            << " because it has not reached compile threshold; threshold is "
+            << *compile_threshold << " execution count "
+            << current_request_count << ".";
+      }
+      return reached_compile_threshold;
+    }();
+
+    if (!should_compile) {
+      VLOG(2) << "Not compiling for signature: " << signature.HumanString();
+      *out_compilation_result = nullptr;
+      *out_executable = nullptr;
+      return Status::OK();
+    }
+
     tensorflow::Env* env = tensorflow::Env::Default();
     const uint64 compile_start_us = env->NowMicros();
     // Do the actual JIT compilation without holding the lock (it can take
     // a long time.)
-    std::vector<XlaCompiler::Argument> args;
-    TF_RETURN_IF_ERROR(
-        BuildArguments(constant_args, variable_args, ctx, &args));
 
     XlaCompiler compiler(options);
     entry->compiled = true;
 
-    if (compile_single_op) {
-      entry->compilation_status =
-          compiler.CompileSingleOp(compile_options, signature.name, ctx, args,
-                                   &entry->compilation_result);
-    } else {
-      entry->compilation_status = compiler.CompileFunction(
-          compile_options, function, args, &entry->compilation_result);
-    }
+    entry->compilation_status =
+        compile_fn(&compiler, &entry->compilation_result);
     TF_RETURN_IF_ERROR(entry->compilation_status);
     CHECK_EQ(entry->executable.get(), nullptr);
     entry->compilation_status =
@@ -339,11 +377,13 @@ Status XlaCompilationCache::CompileImpl(
 
     const uint64 compile_end_us = env->NowMicros();
     const uint64 compile_time_us = compile_end_us - compile_start_us;
+    metrics::UpdateXlaCompilationTime(compile_time_us);
     {
-      mutex_lock lock(compile_stats_mu_);
-      auto it = compile_stats_.emplace(function.name(), CompileStats{}).first;
+      mutex_lock lock(cluster_compile_stats_mu_);
+      auto it = cluster_compile_stats_.find(function.name());
       it->second.compile_count++;
       it->second.cumulative_compile_time_us += compile_time_us;
+      LogOnceXlaCompiledFirstCluster();
       VLOG(1) << "compiled " << function.name() << " "
               << it->second.compile_count
               << " times, compile time: " << compile_time_us
@@ -355,6 +395,16 @@ Status XlaCompilationCache::CompileImpl(
               << tensorflow::strings::HumanReadableElapsedTime(
                      it->second.cumulative_compile_time_us / 1.0e6)
               << ")";
+
+      XlaJitCompilationActivity jit_compilation_activity;
+      jit_compilation_activity.set_cluster_name(function.name());
+      jit_compilation_activity.set_compile_count(it->second.compile_count);
+      jit_compilation_activity.set_compile_time_us(compile_time_us);
+      jit_compilation_activity.set_cumulative_compile_time_us(
+          it->second.cumulative_compile_time_us);
+
+      TF_RETURN_IF_ERROR(
+          BroadcastXlaActivity(std::move(jit_compilation_activity)));
     }
   }
   TF_RETURN_IF_ERROR(entry->compilation_status);

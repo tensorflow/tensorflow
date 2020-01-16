@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -54,7 +55,7 @@ class LRNOpTest(test.TestCase):
     return output
 
   def _RunAndVerify(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       # random shape
       shape = np.random.randint(1, 16, size=4)
       # Make depth at least 2 to make it meaningful
@@ -92,6 +93,7 @@ class LRNOpTest(test.TestCase):
       self.assertTrue(err < 1e-2)
     self.assertShapeEqual(expected, lrn_t)
 
+  @test_util.run_deprecated_v1
   def testCompute(self):
     for _ in range(2):
       self._RunAndVerify(dtypes.float32)
@@ -99,8 +101,9 @@ class LRNOpTest(test.TestCase):
       if not test.is_gpu_available():
         self._RunAndVerify(dtypes.float16)
 
+  @test_util.run_deprecated_v1
   def testGradientsZeroInput(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [4, 4, 4, 4]
       p = array_ops.placeholder(dtypes.float32, shape=shape)
       inp_array = np.zeros(shape).astype("f")
@@ -113,7 +116,7 @@ class LRNOpTest(test.TestCase):
     self.assertShapeEqual(expected, grad)
 
   def _RunAndVerifyGradients(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       # random shape
       shape = np.random.randint(1, 5, size=4)
       # Make depth at least 2 to make it meaningful
@@ -147,6 +150,7 @@ class LRNOpTest(test.TestCase):
     else:
       self.assertLess(err, 1.0)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     for _ in range(2):
       self._RunAndVerifyGradients(dtypes.float32)

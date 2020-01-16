@@ -16,16 +16,30 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
 #define TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
 
+#include <vector>
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-// Returns the root directory of the CUDA SDK, which contains sub-folders such
-// as bin, lib64, and nvvm.
-string CudaRoot();
+// Returns, in order of preference, potential locations of the root directory of
+// the CUDA SDK, which contains sub-folders such as bin, lib64, and nvvm.
+std::vector<string> CandidateCudaRoots();
 
-// Returns the directory that contains nvvm libdevice files in the CUDA SDK.
-string LibdeviceRoot();
+// A convenient wrapper for CandidateCudaRoots, which allows supplying a
+// preferred location (inserted first in the output vector), and a flag whether
+// the current working directory should be searched (inserted last).
+inline std::vector<string> CandidateCudaRoots(
+    string preferred_location, bool use_working_directory = true) {
+  std::vector<string> candidates = CandidateCudaRoots();
+  if (!preferred_location.empty()) {
+    candidates.insert(candidates.begin(), preferred_location);
+  }
+
+  // "." is our last resort, even though it probably won't work.
+  candidates.push_back(".");
+
+  return candidates;
+}
 
 }  // namespace tensorflow
 

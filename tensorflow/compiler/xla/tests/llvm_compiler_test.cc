@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
@@ -68,7 +70,7 @@ class LLVMCompilerTest : public ::testing::Test {
     builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
-    auto hlo_module = CreateNewModule();
+    auto hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
     compiler->SetPreOptimizationHook(pre_opt_hook);
@@ -90,30 +92,26 @@ class LLVMCompilerTest : public ::testing::Test {
     builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
-    std::unique_ptr<HloModule> hlo_module = CreateNewModule();
+    std::unique_ptr<HloModule> hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
-    std::vector<std::unique_ptr<HloModule>> modules;
-    modules.push_back(hlo_module->Clone());
-    modules.push_back(std::move(hlo_module));
+    auto module_group = absl::make_unique<HloModuleGroup>("test_module_group");
+    module_group->push_back(hlo_module->Clone());
+    module_group->push_back(std::move(hlo_module));
 
     std::vector<std::vector<se::StreamExecutor *>> executors;
     executors.push_back({backend_->default_stream_executor()});
     executors.push_back({backend_->default_stream_executor()});
 
-    EXPECT_IS_OK(compiler->Compile(std::move(modules), std::move(executors),
+    EXPECT_IS_OK(compiler->Compile(std::move(module_group),
+                                   std::move(executors),
                                    /*device_allocator=*/nullptr));
   }
 
  private:
   Platform *FindPlatform() {
-    for (Platform *platform :
-         PlatformUtil::GetSupportedPlatforms().ConsumeValueOrDie()) {
-      if (platform->Name() == platform_name_) {
-        return platform;
-      }
-    }
-    return nullptr;
+    auto status_or_platform = PlatformUtil::GetPlatform(platform_name_);
+    return status_or_platform.ok() ? status_or_platform.ValueOrDie() : nullptr;
   }
 
   string platform_name_;
@@ -123,10 +121,13 @@ class LLVMCompilerTest : public ::testing::Test {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  static std::unique_ptr<HloModule> CreateNewModule() {
+  std::unique_ptr<HloModule> CreateNewVerifiedModule() {
     HloModuleConfig config;
-    config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    return absl::make_unique<HloModule>(TestName(), config);
+    config.set_debug_options(GetDebugOptionsFromFlags());
+    return absl::make_unique<VerifiedHloModule>(
+        TestName(), config, /*verifier_layout_sensitive=*/false,
+        /*allow_mixed_precision_in_hlo_verifier=*/true,
+        backend_->compiler()->ShapeSizeBytesFunction());
   }
 };
 
@@ -150,12 +151,12 @@ TEST_F(GpuCompilerTest, HooksTest) {
   TestCompilerHooks(&compiler);
 }
 
-TEST_F(CpuCompilerTest, MultiModuleCompilation) {
+TEST_F(CpuCompilerTest, CpuMultiModuleCompilation) {
   cpu::CpuCompiler compiler;
   TestMultiModuleCompilation(&compiler);
 }
 
-TEST_F(GpuCompilerTest, MultModuleCompilation) {
+TEST_F(GpuCompilerTest, NVPTXMultiModuleCompilation) {
   gpu::NVPTXCompiler compiler;
   TestMultiModuleCompilation(&compiler);
 }

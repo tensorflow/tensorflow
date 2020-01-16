@@ -20,7 +20,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -28,9 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-
-class HloComputation;
-class HloInstruction;
 
 // DfsHloVisitor with default action based on the HloInstruction being visited.
 // Users should not use this class directly, but use the type aliases
@@ -91,7 +92,13 @@ class DfsHloVisitorWithDefaultBase
   Status HandleFft(HloInstructionPtr fft) override {
     return DefaultAction(fft);
   }
-  Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
+  Status HandleTriangularSolve(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleCholesky(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
   Status HandleAllToAll(HloInstructionPtr hlo) override {
@@ -100,7 +107,16 @@ class DfsHloVisitorWithDefaultBase
   Status HandleCollectivePermute(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  Status HandleReplicaId(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandlePartitionId(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   Status HandleRng(HloInstructionPtr random) override {
+    return DefaultAction(random);
+  }
+  Status HandleRngGetAndUpdateState(HloInstructionPtr random) override {
     return DefaultAction(random);
   }
   Status HandleInfeed(HloInstructionPtr infeed) override {
@@ -182,6 +198,12 @@ class DfsHloVisitorWithDefaultBase
   Status HandleConditional(HloInstructionPtr conditional) override {
     return DefaultAction(conditional);
   }
+  Status HandleCopyStart(HloInstructionPtr copy_start) override {
+    return DefaultAction(copy_start);
+  }
+  Status HandleCopyDone(HloInstructionPtr copy_done) override {
+    return DefaultAction(copy_done);
+  }
   Status HandleRecv(HloInstructionPtr recv) override {
     return DefaultAction(recv);
   }
@@ -203,6 +225,15 @@ class DfsHloVisitorWithDefaultBase
   Status HandleAfterAll(HloInstructionPtr token) override {
     return DefaultAction(token);
   }
+  Status HandleGetDimensionSize(HloInstructionPtr get_size) override {
+    return DefaultAction(get_size);
+  }
+  Status HandleSetDimensionSize(HloInstructionPtr get_size) override {
+    return DefaultAction(get_size);
+  }
+  Status HandleAddDependency(HloInstructionPtr add_dependency) override {
+    return DefaultAction(add_dependency);
+  }
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".
@@ -218,6 +249,62 @@ class DfsHloVisitorWithDefaultBase
 using DfsHloVisitorWithDefault = DfsHloVisitorWithDefaultBase<HloInstruction*>;
 using ConstDfsHloVisitorWithDefault =
     DfsHloVisitorWithDefaultBase<const HloInstruction*>;
+
+// A common base class for visitors performing rewriting operation.
+//
+// Subclasses call ReplaceWithNewInstruction and ReplaceInstruction while
+// visiting.
+class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
+ public:
+  // Runs a visitor on the module and returns whether the module has changed.
+  StatusOr<bool> RunOnModule(HloModule* module) {
+    bool is_changed = false;
+    for (const auto& computation : module->computations()) {
+      TF_RETURN_IF_ERROR(computation->Accept(this));
+      is_changed |= changed();
+    }
+    return is_changed;
+  }
+
+  // Default visitor action is to do nothing and return OK.
+  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
+    return Status::OK();
+  }
+
+  bool changed() const { return changed_; }
+
+ protected:
+  // Replaces the existing HLO instruction old_instruction, with
+  // new_instruction, and marks the optimizer status as changed.
+  // Returns the Status representing the result of the replace operation.
+  Status ReplaceWithNewInstruction(
+      HloInstruction* old_instruction,
+      std::unique_ptr<HloInstruction> new_instruction) {
+    VLOG(3) << "Replacing instruction:";
+    VLOG(3) << "  old: " << old_instruction->ToString();
+    VLOG(3) << "  new: " << new_instruction->ToString();
+    TF_RETURN_IF_ERROR(old_instruction->parent()->ReplaceWithNewInstruction(
+        old_instruction, std::move(new_instruction)));
+    changed_ = true;
+    return Status::OK();
+  }
+
+  // Replaces the existing HLO instruction old_instruction, with
+  // new_instruction, and marks the optimizer status as changed.
+  // Returns the Status representing the result of the replace operation.
+  Status ReplaceInstruction(HloInstruction* old_instruction,
+                            HloInstruction* new_instruction) {
+    VLOG(3) << "Replacing instruction:";
+    VLOG(3) << "  old: " << old_instruction->ToString();
+    VLOG(3) << "  new: " << new_instruction->ToString();
+    TF_RETURN_IF_ERROR(old_instruction->parent()->ReplaceInstruction(
+        old_instruction, new_instruction));
+    changed_ = true;
+    return Status::OK();
+  }
+
+  bool changed_ = false;
+};
 
 // (Const)FunctionVisitor lets you transform an
 // std::function<Status((const) HloInstruction*)> into a (Const)DfsHloVisitor.

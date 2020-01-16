@@ -33,13 +33,15 @@ class AssertTransformer(converter.Base):
     # Note: The lone tf.Assert call will be wrapped with control_dependencies
     # by side_effect_guards.
     template = """
-      tf.Assert(test, (msg,))
+      ag__.assert_stmt(test, lambda: msg)
     """
 
     if node.msg is None:
       return templates.replace(
-          template, test=node.test, msg=gast.Str('Assertion error'))
-    elif isinstance(node.msg, gast.Str):
+          template,
+          test=node.test,
+          msg=gast.Constant('Assertion error', kind=None))
+    elif isinstance(node.msg, gast.Constant):
       return templates.replace(template, test=node.test, msg=node.msg)
     else:
       raise NotImplementedError('can only convert string messages for now.')

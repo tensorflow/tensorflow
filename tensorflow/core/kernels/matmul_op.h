@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 namespace tensorflow {
 namespace functor {
 
@@ -54,7 +58,7 @@ struct MatMulFunctor {
 
 }  // end namespace functor
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Encapsulate all the shape information that is used in matmul operations.
 class MatmulParameters {
  public:
@@ -113,7 +117,7 @@ class MatmulParameters {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow
 

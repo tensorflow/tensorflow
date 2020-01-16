@@ -39,13 +39,6 @@ namespace {
 
 struct VariantValue {
   string TypeName() const { return "TEST VariantValue"; }
-  static Status ShapeFn(const VariantValue& v, TensorShape* s) {
-    if (v.early_exit) {
-      return errors::InvalidArgument("early exit!");
-    }
-    *s = TensorShape({-0xdeadbeef});
-    return Status::OK();
-  }
   static Status CPUZerosLikeFn(OpKernelContext* ctx, const VariantValue& v,
                                VariantValue* v_out) {
     if (v.early_exit) {
@@ -89,8 +82,6 @@ struct VariantValue {
   int value;
 };
 
-REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(VariantValue, VariantValue::ShapeFn);
-
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(VariantValue, "TEST VariantValue");
 
 INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(
@@ -113,38 +104,6 @@ REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_GPU,
 
 }  // namespace
 
-TEST(VariantOpShapeRegistryTest, TestBasic) {
-  class Blah {};
-  EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetShapeFn(MakeTypeIndex<Blah>()),
-            nullptr);
-
-  auto* shape_fn = UnaryVariantOpRegistry::Global()->GetShapeFn(
-      MakeTypeIndex<VariantValue>());
-  EXPECT_NE(shape_fn, nullptr);
-  TensorShape shape;
-
-  VariantValue vv_early_exit{true /* early_exit */};
-  Variant v = vv_early_exit;
-  Status s0 = (*shape_fn)(v, &shape);
-  EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit!"));
-
-  VariantValue vv_ok{false /* early_exit */};
-  v = vv_ok;
-  TF_EXPECT_OK((*shape_fn)(v, &shape));
-  EXPECT_EQ(shape, TensorShape({-0xdeadbeef}));
-}
-
-TEST(VariantOpShapeRegistryTest, TestDuplicate) {
-  UnaryVariantOpRegistry registry;
-  UnaryVariantOpRegistry::VariantShapeFn f;
-  class FjFjFj {};
-  const auto kTypeIndex = MakeTypeIndex<FjFjFj>();
-  registry.RegisterShapeFn(kTypeIndex, f);
-  EXPECT_DEATH(registry.RegisterShapeFn(kTypeIndex, f),
-               "FjFjFj already registered");
-}
-
 TEST(VariantOpDecodeRegistryTest, TestBasic) {
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetDecodeFn("YOU SHALL NOT PASS"),
             nullptr);
@@ -159,11 +118,28 @@ TEST(VariantOpDecodeRegistryTest, TestBasic) {
   v.Encode(&data);
   VariantTensorDataProto proto;
   data.ToProto(&proto);
-  Variant encoded = proto;
+  Variant encoded = std::move(proto);
   EXPECT_TRUE((*decode_fn)(&encoded));
   VariantValue* decoded = encoded.get<VariantValue>();
   EXPECT_NE(decoded, nullptr);
   EXPECT_EQ(decoded->early_exit, true);
+}
+
+TEST(VariantOpDecodeRegistryTest, TestEmpty) {
+  VariantTensorDataProto empty_proto;
+  Variant empty_encoded = std::move(empty_proto);
+  EXPECT_TRUE(DecodeUnaryVariant(&empty_encoded));
+  EXPECT_TRUE(empty_encoded.is_empty());
+
+  VariantTensorData data;
+  Variant number = 3.0f;
+  number.Encode(&data);
+  VariantTensorDataProto proto;
+  data.ToProto(&proto);
+  proto.set_type_name("");
+  Variant encoded = std::move(proto);
+  // Failure when type name is empty but there's data in the proto.
+  EXPECT_FALSE(DecodeUnaryVariant(&encoded));
 }
 
 TEST(VariantOpDecodeRegistryTest, TestDuplicate) {
@@ -229,8 +205,7 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
   Status s0 = UnaryOpVariant<CPUDevice>(null_context_pointer,
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
+  EXPECT_TRUE(absl::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -255,8 +230,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
   Status s0 = UnaryOpVariant<GPUDevice>(null_context_pointer,
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
+  EXPECT_TRUE(absl::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -302,7 +276,7 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
   Status s0 = BinaryOpVariants<CPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
+  EXPECT_TRUE(absl::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;
@@ -329,7 +303,7 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   Status s0 = BinaryOpVariants<GPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
+  EXPECT_TRUE(absl::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;

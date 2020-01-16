@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,7 +49,7 @@ class DocGeneratorVisitor(object):
   def set_root_name(self, root_name):
     """Sets the root name for subsequent __call__s."""
     self._root_name = root_name or ''
-    self._prefix = (root_name + '.') if root_name else ''
+    self._prefix = (six.ensure_str(root_name) + '.') if root_name else ''
 
   @property
   def index(self):
@@ -178,7 +179,7 @@ class DocGeneratorVisitor(object):
       A tuple of scores. When sorted the preferred name will have the lowest
       value.
     """
-    parts = name.split('.')
+    parts = six.ensure_str(name).split('.')
     short_name = parts[-1]
 
     container = self._index['.'.join(parts[:-1])]
@@ -194,10 +195,11 @@ class DocGeneratorVisitor(object):
       contrib_score = 1
 
     while parts:
-      parts.pop()
       container = self._index['.'.join(parts)]
       if tf_inspect.ismodule(container):
         break
+      parts.pop()
+
     module_length = len(parts)
     if len(parts) == 2:
       # `tf.submodule.thing` is better than `tf.thing`

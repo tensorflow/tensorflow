@@ -42,18 +42,19 @@ namespace xla {
   return std::move(domain_map);
 }
 
-bool HloDomainMap::InSameDomain(HloInstruction* instruction1,
-                                HloInstruction* instruction2) const {
+bool HloDomainMap::InSameDomain(const HloInstruction* instruction1,
+                                const HloInstruction* instruction2) const {
   int64 domain_id1 = GetDomainId(instruction1);
   int64 domain_id2 = GetDomainId(instruction2);
   return domain_id1 >= 0 && domain_id1 == domain_id2;
 }
 
-int64 HloDomainMap::GetDomainId(HloInstruction* instruction) const {
+int64 HloDomainMap::GetDomainId(const HloInstruction* instruction) const {
   return FindOrDefault(instruction_to_domain_, instruction, -1);
 }
 
-int64 HloDomainMap::GetDomainMetadataId(HloInstruction* instruction) const {
+int64 HloDomainMap::GetDomainMetadataId(
+    const HloInstruction* instruction) const {
   return FindOrDie(domain_metadata_id_, instruction);
 }
 
@@ -200,7 +201,8 @@ StatusOr<std::unique_ptr<DomainMetadata::Domain>> HloDomainMap::CreateDomain(
   return std::move(domain);
 }
 
-bool HloDomainMap::IsDomainInstruction(HloInstruction* instruction) const {
+bool HloDomainMap::IsDomainInstruction(
+    const HloInstruction* instruction) const {
   if (instruction->opcode() != HloOpcode::kDomain) {
     return false;
   }
@@ -228,10 +230,10 @@ HloDomainMap::MakeNonDomainInstructions(
     }
   }
   // sort instructions according to instructions_order
-  std::sort(instructions.begin(), instructions.end(),
-            [&instructions_order](HloInstruction* a, HloInstruction* b) {
-              return instructions_order.at(a) < instructions_order.at(b);
-            });
+  absl::c_sort(instructions,
+               [&instructions_order](HloInstruction* a, HloInstruction* b) {
+                 return instructions_order.at(a) < instructions_order.at(b);
+               });
   return instructions;
 }
 

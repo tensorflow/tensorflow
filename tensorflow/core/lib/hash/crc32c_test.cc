@@ -70,6 +70,17 @@ TEST(CRC, Mask) {
   ASSERT_EQ(crc, Unmask(Unmask(Mask(Mask(crc)))));
 }
 
+#if defined(PLATFORM_GOOGLE)
+TEST(CRC, ValuesWithCord) {
+  ASSERT_NE(Value(absl::Cord("a")), Value(absl::Cord("foo")));
+}
+
+TEST(CRC, ExtendWithCord) {
+  ASSERT_EQ(Value(absl::Cord("hello world")),
+            Extend(Value(absl::Cord("hello ")), absl::Cord("world")));
+}
+#endif
+
 static void BM_CRC(int iters, int len) {
   std::string input(len, 'x');
   uint32 h = 0;

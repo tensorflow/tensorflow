@@ -18,27 +18,37 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
+import re
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import traceable_stack
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
-from tensorflow.python.util import tf_stack
+
+# A mock for ``tf_stack.FrameSummary``.
+FrameSummary = collections.namedtuple(
+    "StackFrame", ["filename", "lineno", "name", "line"])
 
 
 def _make_frame_with_filename(op, idx, filename):
   """Return a copy of an existing stack frame with a new filename."""
-  stack_frame = list(op._traceback[idx])
-  stack_frame[tf_stack.TB_FILENAME] = filename
-  return tuple(stack_frame)
+  frame = op._traceback[idx]
+  return FrameSummary(
+      filename,
+      frame.lineno,
+      frame.name,
+      frame.line)
 
 
 def _modify_op_stack_with_filenames(op, num_user_frames, user_filename,
                                     num_inner_tf_frames):
   """Replace op._traceback with a new traceback using special filenames."""
-  tf_filename = "%d" + error_interpolation._BAD_FILE_SUBSTRINGS[0]
+  tf_filename = error_interpolation._FRAMEWORK_PATH_PREFIXES[0] + "%d.py"
   user_filename = os.path.join("%d", "my_favorite_file.py")
 
   num_requested_frames = num_user_frames + num_inner_tf_frames
@@ -112,26 +122,80 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
     self.assertIn("No node-device colocations", summary)
 
 
+# Note that the create_graph_debug_info_def needs to run on graph mode ops,
+# so it is excluded from eager tests. Even when used in eager mode, it is
+# via FunctionGraphs, and directly verifying in graph mode is the narrowest
+# way to unit test the functionality.
+@test_util.run_deprecated_v1
+class CreateGraphDebugInfoDefTest(test.TestCase):
+
+  def setUp(self):
+    super(CreateGraphDebugInfoDefTest, self).setUp()
+    ops.reset_default_graph()
+
+  def _getFirstStackTraceForFile(self, graph_debug_info, key, file_index):
+    self.assertIn(key, graph_debug_info.traces)
+    stack_trace = graph_debug_info.traces[key]
+    found_flc = None
+    for flc in stack_trace.file_line_cols:
+      if flc.file_index == file_index:
+        found_flc = flc
+        break
+    self.assertIsNotNone(found_flc,
+                         "Could not find a stack trace entry for file")
+    return found_flc
+
+  def testStackTraceExtraction(self):
+    # Since the create_graph_debug_info_def() function does not actually
+    # do anything special with functions except name mangling, just verify
+    # it with a loose op and manually provided function name.
+    # The following ops *must* be on consecutive lines (it will be verified
+    # in the resulting trace).
+    # pyformat: disable
+    global_op = constant_op.constant(0, name="Global").op
+    op1 = constant_op.constant(1, name="One").op
+    op2 = constant_op.constant(2, name="Two").op
+    non_traceback_op = constant_op.constant(3, name="NonTraceback").op
+    # Ensure op without traceback does not fail
+    del non_traceback_op._traceback
+    # pyformat: enable
+
+    export_ops = [("", global_op), ("func1", op1), ("func2", op2),
+                  ("func2", non_traceback_op)]
+    graph_debug_info = error_interpolation.create_graph_debug_info_def(
+        export_ops)
+    this_file_index = -1
+    for file_index, file_name in enumerate(graph_debug_info.files):
+      if "{}error_interpolation_test.py".format(os.sep) in file_name:
+        this_file_index = file_index
+    self.assertGreaterEqual(
+        this_file_index, 0,
+        "Could not find this file in trace:" + repr(graph_debug_info))
+
+    # Verify the traces exist for each op.
+    global_flc = self._getFirstStackTraceForFile(graph_debug_info, "Global@",
+                                                 this_file_index)
+    op1_flc = self._getFirstStackTraceForFile(graph_debug_info, "One@func1",
+                                              this_file_index)
+    op2_flc = self._getFirstStackTraceForFile(graph_debug_info, "Two@func2",
+                                              this_file_index)
+
+    global_line = global_flc.line
+    self.assertEqual(op1_flc.line, global_line + 1, "op1 not on next line")
+    self.assertEqual(op2_flc.line, global_line + 2, "op2 not on next line")
+
+
+@test_util.run_deprecated_v1
 class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
 
   def setUp(self):
+    super(InterpolateFilenamesAndLineNumbersTest, self).setUp()
     ops.reset_default_graph()
     # Add nodes to the graph for retrieval by name later.
     constant_op.constant(1, name="One")
     constant_op.constant(2, name="Two")
     three = constant_op.constant(3, name="Three")
     self.graph = three.graph
-
-    # Change the list of bad file substrings so that constant_op.py is chosen
-    # as the defining stack frame for constant_op.constant ops.
-    self.old_bad_strings = error_interpolation._BAD_FILE_SUBSTRINGS
-    error_interpolation._BAD_FILE_SUBSTRINGS = [
-        "%sops.py" % os.sep,
-        "%sutil" % os.sep,
-    ]
-
-  def tearDown(self):
-    error_interpolation._BAD_FILE_SUBSTRINGS = self.old_bad_strings
 
   def testFindIndexOfDefiningFrameForOp(self):
     local_op = constant_op.constant(42).op
@@ -141,7 +205,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
         num_user_frames=3,
         user_filename=user_filename,
         num_inner_tf_frames=5)
-    idx = error_interpolation._find_index_of_defining_frame_for_op(local_op)
+    idx = error_interpolation._find_index_of_defining_frame(local_op._traceback)
     # Expected frame is 6th from the end because there are 5 inner frames witih
     # TF filenames.
     expected_frame = len(local_op._traceback) - 6
@@ -157,7 +221,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
         num_user_frames=0,
         user_filename="user_file.py",
         num_inner_tf_frames=7)
-    idx = error_interpolation._find_index_of_defining_frame_for_op(local_op)
+    idx = error_interpolation._find_index_of_defining_frame(local_op._traceback)
     self.assertEqual(0, idx)
 
   def testNothingToDo(self):
@@ -176,29 +240,64 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     two_tags_no_seps = "{{node One}}{{node Three}}"
     interpolated_string = error_interpolation.interpolate(
         two_tags_no_seps, self.graph)
-    self.assertRegexpMatches(interpolated_string,
-                             "constant_op.py:[0-9]+.*constant_op.py:[0-9]+")
+    self.assertRegexpMatches(
+        interpolated_string, r"error_interpolation_test\.py:[0-9]+."
+        r"*error_interpolation_test\.py:[0-9]+")
 
   def testTwoTagsWithSeps(self):
     two_tags_with_seps = ";;;{{node Two}},,,{{node Three}};;;"
     interpolated_string = error_interpolation.interpolate(
         two_tags_with_seps, self.graph)
-    expected_regex = (
-        r"^;;;.*constant_op.py:[0-9]+\) ,,,.*constant_op.py:[0-9]+\) ;;;$")
+    expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
+                      r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
     self.assertRegexpMatches(interpolated_string, expected_regex)
 
   def testNewLine(self):
     newline = "\n\n{{node One}}"
     interpolated_string = error_interpolation.interpolate(newline, self.graph)
-    self.assertRegexpMatches(interpolated_string, "constant_op.py:[0-9]+.*")
+    self.assertRegexpMatches(interpolated_string,
+                             r"error_interpolation_test\.py:[0-9]+.*")
 
 
+@test_util.run_deprecated_v1
+class InputNodesTest(test.TestCase):
+
+  def setUp(self):
+    super(InputNodesTest, self).setUp()
+    # Add nodes to the graph for retrieval by name later.
+    one = constant_op.constant(1, name="One")
+    two = constant_op.constant(2, name="Two")
+    three = math_ops.add(one, two, name="Three")
+    non_traceback_op = constant_op.constant(3, name="NonTraceback")
+    # Ensure op without traceback does not fail
+    del non_traceback_op.op._traceback
+    self.graph = three.graph
+
+  def testNoInputs(self):
+    two_tags_with_seps = ";;;{{node One}},,,{{node Two}};;;"
+    interpolated_string = error_interpolation.interpolate(
+        two_tags_with_seps, self.graph)
+    expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
+                      r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
+    self.assertRegexpMatches(interpolated_string, expected_regex)
+
+  def testBasicInputs(self):
+    tag = ";;;{{node Three}};;;"
+    interpolated_string = error_interpolation.interpolate(tag, self.graph)
+    expected_regex = re.compile(
+        r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
+        r";;;.*Input.*error_interpolation_test\.py:[0-9]+\)", re.DOTALL)
+    self.assertRegexpMatches(interpolated_string, expected_regex)
+
+
+@test_util.run_deprecated_v1
 class InterpolateDeviceSummaryTest(test.TestCase):
 
   def _fancy_device_function(self, unused_op):
     return "/cpu:*"
 
   def setUp(self):
+    super(InterpolateDeviceSummaryTest, self).setUp()
     ops.reset_default_graph()
     self.zero = constant_op.constant([0.0], name="zero")
     with ops.device("/cpu"):
@@ -236,9 +335,11 @@ class InterpolateDeviceSummaryTest(test.TestCase):
     self.assertRegexpMatches(result, expected_re)
 
 
+@test_util.run_deprecated_v1
 class InterpolateColocationSummaryTest(test.TestCase):
 
   def setUp(self):
+    super(InterpolateColocationSummaryTest, self).setUp()
     ops.reset_default_graph()
     # Add nodes to the graph for retrieval by name later.
     node_one = constant_op.constant(1, name="One")
@@ -284,6 +385,24 @@ class InterpolateColocationSummaryTest(test.TestCase):
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("No node-device colocations", result)
     self.assertNotIn("Two", result)
+
+
+class IsFrameworkFilenameTest(test.TestCase):
+
+  def testAllowsUnitTests(self):
+    self.assertFalse(
+        error_interpolation._is_framework_filename(
+            error_interpolation._FRAMEWORK_PATH_PREFIXES[0] + "foobar_test.py"))
+
+  def testFrameworkPythonFile(self):
+    self.assertTrue(
+        error_interpolation._is_framework_filename(
+            error_interpolation.__file__))
+
+  def testEmbedded(self):
+    self.assertTrue(
+        error_interpolation._is_framework_filename(
+            "<embedded stdlib>/context_lib.py"))
 
 
 if __name__ == "__main__":

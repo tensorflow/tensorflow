@@ -42,21 +42,17 @@ namespace xla {
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
  public:
-  // Different backends can have very different ways to do fusion, so we give
-  // backends the flexibility to decide whether an fusion instruction can share
-  // buffer with it's operands. If this is not specified, a default strategy
-  // will be used; if this is specified, it will be applied *in addition* to the
-  // default strategy.
+  // Infrastructure for passing may-alias hints: HLO passes can populate the
+  // may-alias table. If an empty optional is returned, default rules are used.
   //
-  // The first parameter of the function should be the fusion instruction, the
-  // second parameter should be an operand of the fusion instruction.
-  //
-  // TODO(b/80315712): Find a better way to tell whether a fusion can share
-  // buffer.
-  using FusionCanShareBufferFunction = std::function<bool(
-      const HloInstruction* fusion, const HloInstruction* operand)>;
+  // The first parameter of the function should be the instruction, the
+  // second parameter should be an operand of the instruction. The third
+  // parameter should be the output index of the instruction.
+  using CanShareBuffer = std::function<absl::optional<bool>(
+      const HloInstruction* instr, const HloInstruction* operand,
+      const ShapeIndex& user_index)>;
 
-  // Run dataflow analysis on the given module. Parameters:
+  // Runs dataflow analysis on the given module. Parameters:
   //
   //   ssa_form : If true then new values are defined at the merge points of
   //     kWhile instructions. Abusing nomenclature somewhat, we call these "phi
@@ -76,7 +72,7 @@ class HloDataflowAnalysis {
   static StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
-      const FusionCanShareBufferFunction& fusion_can_share_buffer = nullptr);
+      const CanShareBuffer& can_share_buffer = nullptr);
 
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
 
@@ -85,7 +81,7 @@ class HloDataflowAnalysis {
   bool ValueIsDefinedAt(const HloInstruction* instruction,
                         const ShapeIndex& index = {}) const;
 
-  // Return the HloValue defined by 'instruction' at the given shape index of
+  // Returns the HloValue defined by 'instruction' at the given shape index of
   // its output.
   //
   // Precondition: ValueIsDefinedAt is true for this instruction and index.
@@ -94,13 +90,17 @@ class HloDataflowAnalysis {
   HloValue& GetValueDefinedAt(const HloInstruction* instruction,
                               const ShapeIndex& index = {});
 
-  // Return the InstructionValueSet for the given instruction.
+  // Returns the InstructionValueSet for the given instruction.
   const InstructionValueSet& GetInstructionValueSet(
       const HloInstruction* instruction) const;
   InstructionValueSet& GetInstructionValueSet(
       const HloInstruction* instruction);
 
-  // Return the HloValueSet for the given instruction at the given index or the
+  // Returns all values that are contained in the output of this instruction in
+  // a flattened set.
+  HloValueSet GetFlattenedValueSet(const HloInstruction* instruction) const;
+
+  // Returns the HloValueSet for the given instruction at the given index or the
   // given position.
   const HloValueSet& GetValueSet(const HloInstruction* instruction,
                                  const ShapeIndex& index = {}) const;
@@ -109,7 +109,7 @@ class HloDataflowAnalysis {
   HloValueSet& GetValueSet(const HloInstruction* instruction,
                            const ShapeIndex& index = {});
 
-  // Return the unique value in the HloValueSet at the given instruction and
+  // Returns the unique value in the HloValueSet at the given instruction and
   // shape index. CHECKs if the value set does not contain a exactly one value.
   const HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                                    const ShapeIndex& index = {}) const {
@@ -120,17 +120,17 @@ class HloDataflowAnalysis {
     return GetValue(GetValueSet(instruction, index).GetUniqueValue().id());
   }
 
-  // Return the HloValue with the given Id.
+  // Returns the HloValue with the given Id.
   const HloValue& GetValue(HloValue::Id value_id) const;
   HloValue& GetValue(HloValue::Id value_id);
 
-  // Return the total number of HloValues.
+  // Returns the total number of HloValues.
   int64 value_count() const { return values_.size(); }
 
-  // Return a vector of all HloValues stabily sorted by HloValue::Id.
-  const std::vector<const HloValue*>& values() const { return values_vector_; }
+  // Returns a vector of all HloValues stabily sorted by HloValue::Id.
+  const std::vector<HloValue*>& values() const { return values_vector_; }
 
-  // Return the call graph used for computing the dataflow.
+  // Returns the call graph used for computing the dataflow.
   const CallGraph& call_graph() const { return *call_graph_; }
 
   string ToString() const;
@@ -153,20 +153,21 @@ class HloDataflowAnalysis {
                                      HloInstruction* user,
                                      const ShapeIndex& user_index) const;
 
+  const HloModule& module() const { return module_; }
+
  protected:
-  HloDataflowAnalysis(
-      const HloModule& module, bool ssa_form,
-      bool bitcast_defines_value = false,
-      const FusionCanShareBufferFunction& fusion_can_share_buffer = nullptr);
+  HloDataflowAnalysis(const HloModule& module, bool ssa_form,
+                      bool bitcast_defines_value = false,
+                      const CanShareBuffer& can_share_buffer = nullptr);
 
   // Returns a new HloValue defined at the given instruction and shape index.
   HloValue* NewHloValue(HloInstruction* instruction, const ShapeIndex& index,
                         bool is_phi = false);
 
-  // Mark the HloValue with the given ID for deletion.
+  // Marks the HloValue with the given ID for deletion.
   void MarkValueForDeletion(HloValue::Id value_id);
 
-  // Delete all HloValues marked for deletion. Should be called after
+  // Deletes all HloValues marked for deletion. Should be called after
   // propagation is complete.
   void DeleteMarkedValues();
 
@@ -188,18 +189,22 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateRecvDoneValueSet(HloInstruction* recv_done);
   bool UpdateTupleSelectValueSet(HloInstruction* select);
   bool UpdateSendValueSet(HloInstruction* send);
+  bool UpdateSetDimensionSizeValueSet(HloInstruction* set_dimension_size);
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
+  bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
 
-  // Propagate the dataflow through the module.
+  // Propagates the dataflow through the module. In particular, it propagates
+  // the HloValueSet from its defining instruction to the users of the
+  // instructions.
   void Propagate();
 
-  // Return the result of the SSA Phi function applied to the given inputs at
-  // the given instruction. If skip_top_level is true, then the top level of the
-  // value set of 'instruction' is not modified.
+  // Returns the result of the SSA Phi function applied to the given inputs at
+  // the given instruction.
   bool Phi(HloInstruction* instruction,
            absl::Span<const InstructionValueSet* const> inputs);
 
@@ -214,7 +219,7 @@ class HloDataflowAnalysis {
       HloInstruction* instruction, const InstructionValueSet& new_value_set,
       const InstructionValueSet* prev_value_set = nullptr);
 
-  // Verify various invariants of the dataflow analysis.
+  // Verifies various invariants of the dataflow analysis.
   Status Verify() const;
 
   const HloModule& module_;
@@ -237,14 +242,14 @@ class HloDataflowAnalysis {
   std::vector<HloValue::Id> value_ids_to_delete_;
 
   // A vector containing all HloValues sorted by HloValue::Id.
-  std::vector<const HloValue*> values_vector_;
+  std::vector<HloValue*> values_vector_;
 
   // The Id to use for the next HloValue.
   HloValue::Id next_value_id_ = 0;
 
-  // Backend specific function that decides whether a fusion can share buffer
-  // with its operand.
-  FusionCanShareBufferFunction fusion_can_share_buffer_ = nullptr;
+  // Backend specific function that decides whether an instruction can share
+  // a buffer with its operand.
+  CanShareBuffer can_share_buffer_ = nullptr;
 };
 
 }  // namespace xla

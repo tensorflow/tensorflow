@@ -58,12 +58,13 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
       return CallContext::kSequential;
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSort:
     case HloOpcode::kFusion:
       return CallContext::kParallel;
     default:
@@ -92,6 +93,8 @@ const CallSite* CallGraphNode::GetCallSite(
   }
   return &callsites_[it->second];
 }
+
+std::string CallGraphNode::ToString() const { return computation_->name(); }
 
 void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
   caller_callsites_.push_back(caller_callsite);
@@ -236,13 +239,48 @@ void CallGraph::SetCallContexts() {
   }
 }
 
+void CallGraph::SetNodeDepths() {
+  std::queue<CallGraphNode*> worklist;
+
+  // Initialize node depths to -1.
+  for (CallGraphNode& node : nodes_) {
+    node.set_depth(-1);
+  }
+
+  // Initialize worklist with all roots of the call graph (computations without
+  // callers).
+  for (const HloComputation* computation : module_->computations()) {
+    CallGraphNode& node = GetNode(computation);
+    if (node.callers().empty()) {
+      node.set_depth(0);
+      worklist.push(&node);
+    }
+  }
+
+  while (!worklist.empty()) {
+    CallGraphNode* node = worklist.front();
+    worklist.pop();
+    for (const HloComputation* callee : node->callees()) {
+      CallGraphNode& callee_node = GetNode(callee);
+      if (callee_node.depth() < node->depth() + 1) {
+        callee_node.set_depth(node->depth() + 1);
+        worklist.push(&callee_node);
+      }
+    }
+  }
+
+  for (CallGraphNode& node : nodes_) {
+    CHECK_NE(node.depth(), -1);
+  }
+}
+
 /* static */
 std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
   // Constructor for CallGraph is private so absl::make_unique can't be used.
   auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
-  VLOG(2) << "Building call graph for:";
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(3) << "Building call graph for:";
+  XLA_VLOG_LINES(3, module->ToString());
 
   // Construct nodes of the call graph and populate the callsites.
   for (HloComputation* computation : module->computations()) {
@@ -271,7 +309,9 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
   }
 
   call_graph->SetCallContexts();
-  XLA_VLOG_LINES(1, call_graph->ToString());
+  call_graph->SetNodeDepths();
+
+  XLA_VLOG_LINES(2, call_graph->ToString());
 
   return call_graph;
 }
@@ -325,6 +365,15 @@ bool CallGraph::IsFlattened() const {
   return true;
 }
 
+std::vector<HloInstruction*> CallGraph::GetComputationCallers(
+    HloComputation* c) {
+  std::vector<HloInstruction*> callers;
+  for (auto callsite : GetNode(c).caller_callsites()) {
+    callers.push_back(callsite.instruction());
+  }
+  return callers;
+}
+
 std::pair<HloInstruction*, HloInstruction*>
 CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
                                              HloInstruction* b) const {
@@ -343,14 +392,37 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
 
   // Iterate through the callee->caller chains and find the earliest common
   // element.
-  for (HloInstruction* a_ancestor = a; a_ancestor != nullptr;
-       a_ancestor = next_caller(a_ancestor)) {
-    for (HloInstruction* b_ancestor = b; b_ancestor != nullptr;
-         b_ancestor = next_caller(b_ancestor)) {
-      if (a_ancestor->parent() == b_ancestor->parent()) {
-        return {a_ancestor, b_ancestor};
+  HloInstruction* a_ancestor = a;
+  HloInstruction* b_ancestor = b;
+  int a_depth = GetNode(a->parent()).depth();
+  int b_depth = GetNode(b->parent()).depth();
+
+  // Advance a_ancestor (b_ancestor) up the call chain until the call depth of
+  // a_ancestor or b_ancestor are the same. Necessarily each call to next_caller
+  // reduces the depth by exactly one.
+  if (a_depth > b_depth) {
+    for (int i = 0; i < a_depth - b_depth; ++i) {
+      a_ancestor = next_caller(a_ancestor);
+      if (a_ancestor == nullptr) {
+        return {nullptr, nullptr};
       }
     }
+  } else if (b_depth > a_depth) {
+    for (int i = 0; i < b_depth - a_depth; ++i) {
+      b_ancestor = next_caller(b_ancestor);
+      if (b_ancestor == nullptr) {
+        return {nullptr, nullptr};
+      }
+    }
+  }
+
+  while ((a_ancestor != nullptr) && (b_ancestor != nullptr)) {
+    if (a_ancestor->parent() == b_ancestor->parent()) {
+      return {a_ancestor, b_ancestor};
+    }
+
+    a_ancestor = next_caller(a_ancestor);
+    b_ancestor = next_caller(b_ancestor);
   }
   return {nullptr, nullptr};
 }

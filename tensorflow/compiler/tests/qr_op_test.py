@@ -63,7 +63,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
-    precision = self.AdjustedNorm(xx.eval() - identity.eval())
+    precision = self.AdjustedNorm(xx.eval() - self.evaluate(identity))
     self.assertTrue(np.all(precision < 5.0))
 
   def _test(self, dtype, shape, full_matrices):
@@ -71,7 +71,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
     x_np = np.random.uniform(
         low=-1.0, high=1.0, size=np.prod(shape)).reshape(shape).astype(dtype)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       x_tf = array_ops.placeholder(dtype)
       with self.test_scope():
         q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices)

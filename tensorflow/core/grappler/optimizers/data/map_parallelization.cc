@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/map_parallelization.h"
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 
@@ -28,33 +31,21 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-bool CanParallelize(const FunctionDef& function,
-                    const FunctionLibraryDefinition& library) {
-  if (!function.signature().is_stateful()) return true;
+constexpr char kMapDataset[] = "MapDataset";
+constexpr char kParallelMapDataset[] = "ParallelMapDataset";
 
-  for (const auto& node : function.node_def()) {
-    const OpDef* op_def;
-    TF_CHECK_OK(library.LookUpOpDef(node.op(), &op_def));
-    // Assert is marked as stateful, but it does not have any state (except
-    // changing io).  Similarly to CUDA, we do not give guarantee that the
-    // assert operation that would fail would be the first one, so that we can
-    // parallelize it.
-    if (op_def->is_stateful() && op_def->name() != "Assert") return false;
-  }
-
-  return true;
-}
-
-NodeDef MakeParallelMap(const NodeDef& map_node, MutableGraphView* graph) {
-  NodeDef parallel_map = map_node;
-  graph_utils::SetUniqueGraphNodeName("parallel_map", graph->GetGraph(),
+NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
+  // The inputs of the node to be parallelized could be changed by the
+  // optimization pass, so we need to look it up in the modified graph.
+  int index = graph_utils::FindGraphNodeWithName(name, *graph->graph());
+  DCHECK_NE(index, -1) << "Failed to find node " << name
+                       << " in the optimized graph.";
+  NodeDef parallel_map = graph->graph()->node(index);
+  graph_utils::SetUniqueGraphNodeName(kParallelMapDataset, graph->graph(),
                                       &parallel_map);
-  parallel_map.set_op("ParallelMapDataset");
-  // TODO(b/114475558): We want to set `num_parallel_calls` to a special value,
-  // so that dynamic tunning will pick the optimal value at runtime. Because
-  // this feature is not yet implemented, we set it to 2, which is the smallest
-  // value that introduces parallelism.
-  auto* num_parallel_calls = graph_utils::AddScalarConstNode(2, graph);
+  parallel_map.set_op(kParallelMapDataset);
+  auto* num_parallel_calls = graph_utils::AddScalarConstNode(
+      static_cast<int32>(data::model::kAutotune), graph);
   parallel_map.add_input(num_parallel_calls->name());
 
   return parallel_map;
@@ -62,15 +53,17 @@ NodeDef MakeParallelMap(const NodeDef& map_node, MutableGraphView* graph) {
 
 }  // namespace
 
-Status MapParallelization::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                    GraphDef* output) {
+Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
+                                                   const GrapplerItem& item,
+                                                   GraphDef* output,
+                                                   OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
   auto get_map_node = [](const NodeDef& node) -> const NodeDef* {
-    if (node.op() == "MapDataset") return &node;
+    if (node.op() == kMapDataset) return &node;
     return nullptr;
   };
 
@@ -80,14 +73,18 @@ Status MapParallelization::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* function =
         function_library.Find(map_node->attr().at("f").func().name());
-    if (!CanParallelize(*function, function_library)) continue;
+    if (function_utils::IsFunctionStateful(function_library, *function, true))
+      continue;
 
-    auto* parallel_map = graph.AddNode(MakeParallelMap(*map_node, &graph));
-    graph.ReplaceInput(*map_node, *parallel_map);
+    auto* parallel_map =
+        graph.AddNode(MakeParallelMap(map_node->name(), &graph));
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(map_node->name(), parallel_map->name()));
     nodes_to_delete.insert(map_node->name());
+    stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -99,5 +96,5 @@ void MapParallelization::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapParallelization, "map_parallelization");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

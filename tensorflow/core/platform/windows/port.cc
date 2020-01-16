@@ -21,6 +21,7 @@ limitations under the License.
 #endif
 
 #include <Windows.h>
+#include <processthreadsapi.h>
 #include <shlwapi.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
@@ -52,6 +53,42 @@ int NumSchedulableCPUs() {
   SYSTEM_INFO system_info;
   GetSystemInfo(&system_info);
   return system_info.dwNumberOfProcessors;
+}
+
+int MaxParallelism() { return NumSchedulableCPUs(); }
+
+int MaxParallelism(int numa_node) {
+  if (numa_node != port::kNUMANoAffinity) {
+    // Assume that CPUs are equally distributed over available NUMA nodes.
+    // This may not be true, but there isn't currently a better way of
+    // determining the number of CPUs specific to the requested node.
+    return NumSchedulableCPUs() / port::NUMANumNodes();
+  }
+  return NumSchedulableCPUs();
+}
+
+int NumTotalCPUs() {
+  // TODO(ebrevdo): Make this more accurate.
+  //
+  // This only returns the number of processors in the current
+  // processor group; which may be undercounting if you have more than 64 cores.
+  // For that case, one needs to call
+  // GetLogicalProcessorInformationEx(RelationProcessorCore, ...) and accumulate
+  // the Size fields by iterating over the written-to buffer.  Since I can't
+  // easily test this on Windows, I'm deferring this to someone who can!
+  //
+  // If you fix this, also consider updatig GetCurrentCPU below.
+  return NumSchedulableCPUs();
+}
+
+int GetCurrentCPU() {
+  // NOTE(ebrevdo): This returns the processor number within the processor
+  // group on systems with >64 processors.  Therefore it doesn't necessarily map
+  // naturally to an index in NumSchedulableCPUs().
+  //
+  // On the plus side, this number is probably guaranteed to be within
+  // [0, NumTotalCPUs()) due to its incomplete implementation.
+  return GetCurrentProcessorNumber();
 }
 
 bool NUMAEnabled() {
@@ -90,10 +127,6 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
 }
 
 std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
-
-void AdjustFilenameForLogging(string* filename) {
-  // Nothing to do
-}
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY

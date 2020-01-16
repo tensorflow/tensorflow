@@ -18,10 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -45,8 +43,8 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::IgnoreErrors")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::IgnoreErrors")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -58,6 +56,12 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return "IgnoreErrorsDatasetOp::Dataset";
+    }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
     }
 
    protected:
@@ -83,14 +87,15 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        Status s;
         {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
-          Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-          while (!s.ok()) {
+          s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          while (!s.ok() && !errors::IsCancelled(s)) {
             out_tensors->clear();
             s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
           }
@@ -99,10 +104,16 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           input_impl_.reset();
         }
-        return Status::OK();
+        return s;
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)
@@ -132,10 +143,13 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("IgnoreErrorsDataset").Device(DEVICE_CPU),
+                        IgnoreErrorsDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalIgnoreErrorsDataset").Device(DEVICE_CPU),
     IgnoreErrorsDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

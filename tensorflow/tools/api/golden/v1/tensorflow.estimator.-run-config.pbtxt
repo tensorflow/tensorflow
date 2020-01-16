@@ -1,6 +1,6 @@
 path: "tensorflow.estimator.RunConfig"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.run_config.RunConfig\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.run_config.RunConfig\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "cluster_spec"
@@ -16,6 +16,10 @@ tf_class {
   }
   member {
     name: "evaluation_master"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_max_worker_delay_secs"
     mtype: "<type \'property\'>"
   }
   member {
@@ -79,6 +83,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "session_creation_timeout_secs"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "task_id"
     mtype: "<type \'property\'>"
   }
@@ -96,7 +104,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'model_dir\', \'tf_random_seed\', \'save_summary_steps\', \'save_checkpoints_steps\', \'save_checkpoints_secs\', \'session_config\', \'keep_checkpoint_max\', \'keep_checkpoint_every_n_hours\', \'log_step_count_steps\', \'train_distribute\', \'device_fn\', \'protocol\', \'eval_distribute\', \'experimental_distribute\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'100\', \'<object object instance>\', \'<object object instance>\', \'None\', \'5\', \'10000\', \'100\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'model_dir\', \'tf_random_seed\', \'save_summary_steps\', \'save_checkpoints_steps\', \'save_checkpoints_secs\', \'session_config\', \'keep_checkpoint_max\', \'keep_checkpoint_every_n_hours\', \'log_step_count_steps\', \'train_distribute\', \'device_fn\', \'protocol\', \'eval_distribute\', \'experimental_distribute\', \'experimental_max_worker_delay_secs\', \'session_creation_timeout_secs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'100\', \'<object object instance>\', \'<object object instance>\', \'None\', \'5\', \'10000\', \'100\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'7200\'], "
   }
   member_method {
     name: "replace"

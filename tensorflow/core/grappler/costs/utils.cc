@@ -20,12 +20,6 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-#if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
-#include "cuda/include/cuda_runtime_api.h"
-#include "cuda/include/cudnn.h"
-#endif
-
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -74,7 +68,8 @@ static std::vector<TensorProto> ExtractTensors(const AttrValue& attr_value) {
       }
       break;
     }
-    default: {}
+    default: {
+    }
   }
   return tensors;
 }
@@ -135,7 +130,7 @@ static void ExtractExtraProperties(
         if (tensor.NumElements() != 1) {
           continue;
         }
-        const string filename = tensor.scalar<string>()();
+        const string& filename = tensor.scalar<tstring>()();
 
         Env* env = Env::Default();
         FileStatistics stat;
@@ -199,6 +194,43 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   }
 
   return inputs;
+}
+
+int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
+  int64 size = DataTypeSize(BaseType(prop.dtype()));
+  TensorShapeProto shape = prop.shape();
+
+  // Can't infer the size if the rank is unknown. It has to be at least a
+  // scalar though.
+  if (shape.unknown_rank()) {
+    VLOG(2) << "CalculateTensorSize() -- unknown rank";
+    return size;
+  }
+
+  // If one of the dimensions is unknown statically, assume it's at least one.
+  for (int i = 0; i < shape.dim_size(); ++i) {
+    if (shape.dim(i).size() < 0) {
+      shape.mutable_dim(i)->set_size(1);
+      VLOG(2) << "CalculateTensorSize() -- unknown dim: " << i;
+    }
+  }
+
+  int64 num_elems = TensorShape(shape).num_elements();
+  return num_elems * size;
+}
+
+int64 CalculateOutputSize(
+    const std::vector<OpInfo::TensorProperties>& output_properties,
+    const int port_num) {
+  if (port_num < 0) return 4;  // 4B for control dependency.
+
+  if (port_num >= output_properties.size()) {
+    LOG(ERROR) << "CalculateOutputSize() -- port_num: " << port_num
+               << " >= output_properties.size(): " << output_properties.size();
+    return 0;
+  }
+
+  return CalculateTensorSize(output_properties[port_num]);
 }
 
 DeviceProperties GetDeviceInfo(const string& device_str) {
@@ -472,5 +504,16 @@ string GetStatsStringFromRunMetadata(const RunMetadata& run_metadata,
   return output.str();
 }
 
+void CombineCostsAndUpdateExecutionTime(bool compute_memory_overlap,
+                                        Costs* costs) {
+  if (compute_memory_overlap) {
+    costs->execution_time =
+        std::max(costs->intermediate_memory_time,
+                 std::max(costs->compute_time, costs->memory_time));
+  } else {
+    costs->execution_time = costs->compute_time + costs->memory_time +
+                            costs->intermediate_memory_time;
+  }
+}
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -3,8 +3,9 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
+    "tf_exec_compatible_with",
 )
 
 def all_backends():
@@ -21,7 +22,9 @@ def tf_xla_py_test(
         tags = [],
         data = [],
         main = None,
+        enabled_backends = None,
         disabled_backends = None,
+        use_xla_device = True,
         **kwargs):
     """Generates py_test targets, one per XLA backend.
 
@@ -44,16 +47,33 @@ def tf_xla_py_test(
       tags: Tags to apply to the generated targets.
       data: Data dependencies of the target.
       main: Same as py_test's main attribute.
+      enabled_backends: A list of backends that should be tested. Supported
+        values include "cpu" and "gpu". If not specified, defaults to None.
       disabled_backends: A list of backends that should not be tested. Supported
         values include "cpu" and "gpu". If not specified, defaults to None.
+      use_xla_device: If true then the --test_device argument is set to XLA_CPU
+        and XLA_GPU for the CPU and GPU tests.  Otherwise it is set to CPU and
+        GPU.
       **kwargs: keyword arguments passed onto the generated py_test() rules.
     """
+    if enabled_backends == None:
+        enabled_backends = all_backends()
     if disabled_backends == None:
         disabled_backends = []
+    if type(disabled_backends) != "list":
+        fail("disabled_backends must be a list of strings", "disabled_backends")
 
-    enabled_backends = [b for b in all_backends() if b not in disabled_backends]
+    backends = [b for b in enabled_backends if b not in disabled_backends]
     test_names = []
-    for backend in enabled_backends:
+
+    if use_xla_device:
+        cpu_xla_device = "XLA_CPU"
+        gpu_xla_device = "XLA_GPU"
+    else:
+        cpu_xla_device = "CPU"
+        gpu_xla_device = "GPU"
+
+    for backend in backends:
         test_name = "{}_{}".format(name, backend)
         backend_tags = ["tf_xla_{}".format(backend)]
         backend_args = []
@@ -61,13 +81,13 @@ def tf_xla_py_test(
         backend_data = []
         if backend == "cpu":
             backend_args += [
-                "--test_device=XLA_CPU",
-                "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64",
+                "--test_device=" + cpu_xla_device,
+                "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128",
             ]
         elif backend == "gpu":
             backend_args += [
-                "--test_device=XLA_GPU",
-                "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_BFLOAT16",
+                "--test_device=" + gpu_xla_device,
+                "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128,DT_BFLOAT16",
             ]
             backend_tags += tf_cuda_tests_tags()
         elif backend in plugins:
@@ -82,6 +102,7 @@ def tf_xla_py_test(
         else:
             fail("Unknown backend {}".format(backend))
 
+        test_tags = tags + backend_tags
         native.py_test(
             name = test_name,
             srcs = srcs,
@@ -90,7 +111,8 @@ def tf_xla_py_test(
             main = "{}.py".format(name) if main == None else main,
             data = data + backend_data,
             deps = deps + backend_deps,
-            tags = tags + backend_tags,
+            tags = test_tags,
+            exec_compatible_with = tf_exec_compatible_with({"tags": test_tags}),
             **kwargs
         )
         test_names.append(test_name)

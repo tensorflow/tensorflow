@@ -85,8 +85,8 @@ void ExecStep::AddMemoryStats(const string& dev,
     exec_mem.set_memory_micros(step_stat.all_start_micros() +
                                step_stat.op_end_rel_micros());
   } else {
-    fprintf(stderr, "%s has no start time, skipping\n",
-            step_stat.node_name().c_str());
+    absl::FPrintF(stderr, "%s has no start time, skipping\n",
+                  step_stat.node_name());
     return;
   }
 
@@ -106,8 +106,8 @@ void ExecStep::AddMemoryStats(const string& dev,
     }
   }
   if (accelerator_allocator_cnt > 1) {
-    fprintf(stderr, "found %d gpu allocator for 1 node\n",
-            accelerator_allocator_cnt);
+    absl::FPrintF(stderr, "found %d gpu allocator for 1 node\n",
+                  accelerator_allocator_cnt);
   }
 
   int64 total_output_bytes = 0;
@@ -151,7 +151,7 @@ void ExecStep::AddMemoryStats(const string& dev,
   }
 
   // TODO(xpan): Make this more accurate:
-  // High level: Memory tracking is suspicous and requires large scale
+  // High level: Memory tracking is suspicious and requires large scale
   // clean up.
   // Investigte the memory usage difference between CPU/GPU with OpViewTest.
   //
@@ -194,7 +194,7 @@ void ExecStep::AddMemoryStats(const string& dev,
 
 void TFGraphNode::AddStepStat(int64 step, const string& device,
                               const NodeExecStats& step_stat) {
-  string dev = str_util::Lowercase(device);
+  string dev = absl::AsciiStrToLower(device);
 
   // TODO(xpan): Make this more robust?
   // See run_metadata_test.py

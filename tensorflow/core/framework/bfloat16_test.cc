@@ -15,13 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
+#include "absl/base/casts.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
+
+TEST(Bfloat16Test, DefaultValueIsZero) {
+  EXPECT_EQ(0.0f, static_cast<float>(bfloat16()));
+}
+
+TEST(Bfloat16Test, RepresentableFloatsRoundTripViaBfloat16) {
+  const std::vector<float> values = {
+      -std::numeric_limits<float>::infinity(), -1.0, -0.5, -0.0, 0.0, 0.5, 1.0,
+      std::numeric_limits<float>::infinity(),
+  };
+  for (float v : values) {
+    EXPECT_EQ(v, static_cast<float>(static_cast<bfloat16>(v)));
+  }
+}
 
 TEST(Bfloat16Test, Simple) {
   bfloat16 a(12);
@@ -31,8 +45,8 @@ TEST(Bfloat16Test, Simple) {
 
 float BinaryToFloat(uint32_t sign, uint32_t exponent, uint32_t high_mantissa,
                     uint32_t low_mantissa) {
-  return bit_cast<float>((sign << 31) + (exponent << 23) +
-                         (high_mantissa << 16) + low_mantissa);
+  return absl::bit_cast<float>((sign << 31) + (exponent << 23) +
+                               (high_mantissa << 16) + low_mantissa);
 }
 
 struct Bfloat16TestParam {
@@ -61,7 +75,7 @@ TEST_P(Bfloat16Test, TruncateTest) {
   EXPECT_EQ(GetParam().expected_rounding, float(rounded));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     Bfloat16Test_Instantiation, Bfloat16Test,
     ::testing::Values(
         Bfloat16TestParam{
@@ -154,6 +168,33 @@ static void BM_FloatToBFloat16(int iters) {
   delete[] out;
 }
 BENCHMARK(BM_FloatToBFloat16);
+
+void RoundFloatToBFloat16(const float* src, bfloat16* dst, int64 size) {
+  for (; size != 0; size--) {
+    dst[size] = bfloat16(src[size]);
+  }
+}
+
+static void BM_RoundFloatToBFloat16(int iters) {
+  testing::StopTiming();
+  static const int N = 32 << 20;
+  const int64 tot = static_cast<int64>(iters) * N;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
+
+  float* inp = new float[N];
+  bfloat16* out = new bfloat16[N];
+
+  testing::StartTiming();
+  while (iters--) {
+    RoundFloatToBFloat16(inp, out, N);
+    tensorflow::testing::DoNotOptimize(inp);
+    tensorflow::testing::DoNotOptimize(out);
+  }
+  delete[] inp;
+  delete[] out;
+}
+BENCHMARK(BM_RoundFloatToBFloat16);
 
 static void BM_BFloat16ToFloat(int iters) {
   testing::StopTiming();

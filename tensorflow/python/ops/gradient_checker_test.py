@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.test.compute_gradient and tf.compute_gradient_error."""
+"""Tests for tf.compat.v1.test.compute_gradient and tf.compute_gradient_error."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
@@ -46,9 +47,10 @@ def _nan_grad(unused_op, grad):
 
 class GradientCheckerTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAddSimple(self):
     np.random.seed(1)  # Fix seed to avoid flakiness
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       # a test case for Add operation
       size = (2, 3)
       x1 = constant_op.constant(2.0, shape=size, name="x1")
@@ -58,11 +60,12 @@ class GradientCheckerTest(test.TestCase):
       # checking gradients for x1
       error = gradient_checker.compute_gradient_error(x1, size, y, size)
     tf_logging.info("x1 error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testAddSimpleGPU(self):
     np.random.seed(2)  # Fix seed to avoid flakiness
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # a test case for Add operation
       size = (2, 3)
       x1 = constant_op.constant(2.0, shape=size, name="x1")
@@ -72,8 +75,9 @@ class GradientCheckerTest(test.TestCase):
       # checking gradients for x1
       error = gradient_checker.compute_gradient_error(x1, size, y, size)
     tf_logging.info("x1 error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testAddCustomized(self):
     np.random.seed(3)  # Fix seed to avoid flakiness
     with self.cached_session():
@@ -90,8 +94,9 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(
           x2, size, y, size, x_init_value=x_init_value, delta=1e-2)
     tf_logging.info("x2 error = %f", error)
-    assert error < 1e-10
+    self.assertLess(error, 1e-10)
 
+  @test_util.run_deprecated_v1
   def testGather(self):
     np.random.seed(4)  # Fix seed to avoid flakiness
     with self.cached_session():
@@ -107,8 +112,9 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(params, p_shape, y,
                                                       y_shape)
     tf_logging.info("gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testNestedGather(self):
     np.random.seed(5)  # Fix seed to avoid flakiness
     with self.cached_session():
@@ -128,8 +134,9 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(params, p_shape, y2,
                                                       y2_shape)
     tf_logging.info("nested gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testComplexMul(self):
     with self.cached_session():
       size = ()
@@ -144,6 +151,7 @@ class GradientCheckerTest(test.TestCase):
       self.assertLess(
           gradient_checker.compute_gradient_error(x, size, y, size), 2e-4)
 
+  @test_util.run_deprecated_v1
   def testComplexConj(self):
     with self.cached_session():
       size = ()
@@ -157,6 +165,7 @@ class GradientCheckerTest(test.TestCase):
       self.assertLess(
           gradient_checker.compute_gradient_error(x, size, y, size), 2e-5)
 
+  @test_util.run_deprecated_v1
   def testEmptySucceeds(self):
     with self.cached_session():
       x = array_ops.placeholder(dtypes.float32)
@@ -216,7 +225,7 @@ class MiniMNISTTest(test.TestCase):
     s = label_data.sum(axis=1)
     label_data /= s[:, None]
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # We treat the inputs as "parameters" here
       inp = constant_op.constant(
           inp_data.tolist(),
@@ -279,18 +288,23 @@ class MiniMNISTTest(test.TestCase):
     tf_logging.info("Mini MNIST: %s gradient error = %g", tag, err)
     return err
 
+  @test_util.run_deprecated_v1
   def testInputGradient(self):
     self.assertLess(self._BuildAndTestMiniMNIST(0, "input"), 1e-8)
 
+  @test_util.run_deprecated_v1
   def testHiddenWeightGradient(self):
     self.assertLess(self._BuildAndTestMiniMNIST(1, "hidden_weight"), 1e-8)
 
+  @test_util.run_deprecated_v1
   def testHiddenBiasGradient(self):
     self.assertLess(self._BuildAndTestMiniMNIST(2, "hidden_bias"), 1e-8)
 
+  @test_util.run_deprecated_v1
   def testSoftmaxWeightGradient(self):
     self.assertLess(self._BuildAndTestMiniMNIST(3, "softmax_weight"), 1e-8)
 
+  @test_util.run_deprecated_v1
   def testSoftmaxBiasGradient(self):
     self.assertLess(self._BuildAndTestMiniMNIST(4, "softmax_bias"), 1e-8)
 

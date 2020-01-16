@@ -25,10 +25,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/util/matmul_autotune.h"
 #if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -111,11 +113,11 @@ bool ExplicitVectorMatrixOptimization<Eigen::half>(
 
 template <typename Device, typename T>
 struct LaunchMatMulBase {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   typedef se::blas::AlgorithmType AlgorithmType;
 #else
   typedef int64 AlgorithmType;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   static void launch(
       OpKernelContext* ctx, const Tensor& a, const Tensor& b,
@@ -154,7 +156,7 @@ template <typename T, bool USE_CUBLAS>
 struct LaunchMatMul<SYCLDevice, T, USE_CUBLAS> : public LaunchMatMulSYCL<T> {};
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 
@@ -218,10 +220,11 @@ bool ShouldUseGemv(uint64 n) {
 bool GetCublasAutotuneComputationType(const DataType& dtype,
                                       se::blas::ComputationType* compute_type) {
   using se::blas::ComputationType;
-  bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
   switch (dtype) {
     case DT_HALF:
     case DT_BFLOAT16:
+      static bool use_f32_for_f16_computation =
+          MatmulDoFP32ComputationFP16Input();
       if (use_f32_for_f16_computation) {
         *compute_type = ComputationType::kF32;
       } else {
@@ -433,7 +436,7 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
   }
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T, bool USE_CUBLAS>
 class MatMulOp : public OpKernel {
@@ -483,7 +486,7 @@ class MatMulOp : public OpKernel {
       return;
     }
 
-    if (a.NumElements() == 0 || b.NumElements() == 0) {
+    if (a.NumElements() == 0 && b.NumElements() == 0) {
       // If a has shape [x, 0] and b has shape [0, y], the
       // output shape is [x, y] where x and y are non-zero, so we fill
       // the output with zeros.
@@ -578,53 +581,22 @@ struct MatMulFunctor<SYCLDevice, T> {
                               .Label("cublas"),                    \
                           MatMulOp<GPUDevice, T, true /* cublas */>)
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
-
-// MKL does not support half, bfloat16 and int32 types for
-// matrix-multiplication, so register the kernel to use default Eigen based
-// implementations for these types. REGISTER_CPU defines two versions - Eigen
-// label and NO-LABEL
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_bfloat16(REGISTER_CPU);
-TF_CALL_int32(REGISTER_CPU);
-
-// Float is supported in both MKL DNN as well as in MKL ML
-// Registration for NO-LABEL version is in mkl_matmul_op.cc for types supported
-// by MKL. However we define Eigen label version here just to pass a few unit
-// tests
-TF_CALL_float(REGISTER_CPU_EIGEN);
-
-// MKL DNN does not support complex64/complex128/double, if user specifies
-// to use only opensource MKL DNN then use default implementation for these
-// types otherwise use GEMM from MKL ML binary
-
-#if defined(INTEL_MKL_DNN_ONLY)
-TF_CALL_complex64(REGISTER_CPU);
-TF_CALL_complex128(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
-#else  // INTEL_MKL_DNN_ONLY
-TF_CALL_complex64(REGISTER_CPU_EIGEN);
-TF_CALL_complex128(REGISTER_CPU_EIGEN);
-TF_CALL_double(REGISTER_CPU_EIGEN);
-#endif  // INTEL_MKL_DNN_ONLY
-
-#else   // INTEL_MKL && ENABLE_MKL
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_int32(REGISTER_CPU);
+TF_CALL_int64(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);
-#endif  // INTEL_MKL && ENABLE_MKL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_half(REGISTER_GPU);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(T)                                         \

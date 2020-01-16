@@ -51,7 +51,7 @@ class GoogleAuthProvider : public AuthProvider {
   /// Gets the bearer token from Google Compute Engine environment.
   Status GetTokenFromGce() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Gets the bearer token from the systen env variable, for testing purposes.
+  /// Gets the bearer token from the system env variable, for testing purposes.
   Status GetTokenForTesting() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   std::unique_ptr<OAuthClient> oauth_client_;

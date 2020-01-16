@@ -1,15 +1,15 @@
-# This Dockerfile provides a starting point for a ROCm installation of 
-# MIOpen and tensorflow.  
+# This Dockerfile provides a starting point for a ROCm installation of
+# MIOpen and tensorflow.
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/debian/
+ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.0/
 ARG ROCM_PATH=/opt/rocm
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
 ENV HOME /root/
-RUN apt update && apt install -y wget software-properties-common 
+RUN apt update && apt install -y wget software-properties-common
 
 # Add rocm repository
 RUN apt-get clean all
@@ -44,9 +44,12 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   libboost-filesystem-dev \
   rpm \
   libnuma-dev \
+  pciutils \
   virtualenv \
   python-pip \
   python3-pip \
+  libxml2 \
+  libxml2-dev \
   wget && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
@@ -54,15 +57,12 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
 # Install rocm pkgs
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-    rocm-dev rocm-libs rocm-utils \
-    rocfft miopen-hip miopengemm rocblas hipblas rocrand \
-    rocm-profiler cxlactivitylogger && \
+    rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
+    rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN cd ~ && git clone https://github.com/GPUOpen-ProfessionalCompute-Tools/HIP.git
-RUN cd ~/HIP && mkdir -p build && cd build && cmake .. && make package -j && dpkg -i *.deb
-
+# Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
 ENV OPENCL_ROOT=$ROCM_PATH/opencl
@@ -71,12 +71,7 @@ ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
-RUN echo -e "gfx803\ngfx900" >> /opt/rocm/bin/target.lst
-
-# Setup environment variables, and add those environment variables at the end of ~/.bashrc 
-ARG HCC_HOME=/opt/rocm/hcc
-ARG HIP_PATH=/opt/rocm/hip
-ARG PATH=$HCC_HOME/bin:$HIP_PATH/bin:$PATH
+RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
@@ -92,6 +87,6 @@ RUN /install/install_golang.sh
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
 
-# Configure the build for our CUDA configuration.
+# Configure the build for our ROCm configuration.
 ENV TF_NEED_ROCM 1
 

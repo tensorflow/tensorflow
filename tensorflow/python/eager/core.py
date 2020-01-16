@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.framework import errors
 
 # Trace of execution and memory usage.
@@ -46,7 +46,7 @@ class _NotOkStatusException(Exception):
     return "%s: %s" % (e.__class__.__name__, e)
 
 
-pywrap_tensorflow.TFE_Py_RegisterExceptionClass(_NotOkStatusException)
+pywrap_tfe.TFE_Py_RegisterExceptionClass(_NotOkStatusException)
 
 
 class _FallbackException(Exception):
@@ -60,4 +60,15 @@ class _FallbackException(Exception):
   pass
 
 
-pywrap_tensorflow.TFE_Py_RegisterFallbackExceptionClass(_FallbackException)
+class _SymbolicException(Exception):
+  """Exception class to handle use of symbolic tensors when executing eagerly.
+
+  `keras.Input()` creates symbolic tensors (in a FuncGraph managed by the
+  Keras backend) while in eager execution. This exception is used to
+  identify this case (raised in `convert_to_tensor` cause generated functions
+  for ops to construct graphs instead of executing the kernel).
+  """
+  pass
+
+
+pywrap_tfe.TFE_Py_RegisterFallbackExceptionClass(_FallbackException)

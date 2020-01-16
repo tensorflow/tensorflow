@@ -62,10 +62,17 @@ Status GRPCStub::ResetDevice(const ResetDeviceRequest* request,
   });
 }
 
-Status GRPCStub::ExecuteGraph(const ExecuteGraphRequest* request,
-                              ExecuteResponse* response) {
+Status GRPCStub::Compile(const CompileRequest* request,
+                         CompileResponse* response) {
   return MakeRPC([this, request, response](::grpc::ClientContext* context) {
-    return grpc_stub_->ExecuteGraph(context, *request, response);
+    return grpc_stub_->Compile(context, *request, response);
+  });
+}
+
+Status GRPCStub::Execute(const ExecuteRequest* request,
+                         ExecuteResponse* response) {
+  return MakeRPC([this, request, response](::grpc::ClientContext* context) {
+    return grpc_stub_->Execute(context, *request, response);
   });
 }
 

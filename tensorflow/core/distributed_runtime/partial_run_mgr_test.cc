@@ -139,7 +139,7 @@ TEST_P(StatusPropagationTest, PartialRunDoneFirst) {
 // ExecutorDone and PartialRunDone.
 Status ExecutorError() { return errors::Internal("executor error"); }
 Status PartialRunError() { return errors::Internal("partial run error"); }
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     PartialRunMgr, StatusPropagationTest,
     ::testing::Values(
         StatusTestParam{Status::OK(), Status::OK(), Status::OK()},

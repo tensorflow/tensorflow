@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -27,6 +28,7 @@ from tensorflow.python.platform import test
 
 class AsStringOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testFloat(self):
     float_inputs_ = [
         0, 1, -1, 0.5, 0.25, 0.125, float("INF"), float("NAN"), float("-INF")
@@ -78,6 +80,7 @@ class AsStringOpTest(test.TestCase):
         output = string_ops.as_string(input_, fill="ab")
         output.eval(feed_dict={input_: float_inputs_})
 
+  @test_util.run_deprecated_v1
   def testInt(self):
     # Cannot use values outside -128..127 for test, because we're also
     # testing int8
@@ -112,6 +115,7 @@ class AsStringOpTest(test.TestCase):
         output = string_ops.as_string(input_, precision=0)
         output.eval(feed_dict={input_: int_inputs_})
 
+  @test_util.run_deprecated_v1
   def testLargeInt(self):
     # Cannot use values outside -128..127 for test, because we're also
     # testing int8
@@ -130,6 +134,7 @@ class AsStringOpTest(test.TestCase):
       result = output.eval(feed_dict={input_: int_inputs_})
       self.assertAllEqual(s(result), ["%d" % x for x in int_inputs_])
 
+  @test_util.run_deprecated_v1
   def testHalfInt(self):
     s = lambda strs: [x.decode("ascii") for x in strs]
 
@@ -140,6 +145,7 @@ class AsStringOpTest(test.TestCase):
       result = output.eval(feed_dict={input_: int_inputs_})
       self.assertAllEqual(s(result), ["%d" % x for x in int_inputs_])
 
+  @test_util.run_deprecated_v1
   def testBool(self):
     bool_inputs_ = [False, True]
     s = lambda strs: [x.decode("ascii") for x in strs]
@@ -152,6 +158,7 @@ class AsStringOpTest(test.TestCase):
         result = output.eval(feed_dict={input_: bool_inputs_})
         self.assertAllEqual(s(result), ["false", "true"])
 
+  @test_util.run_deprecated_v1
   def testComplex(self):
     float_inputs_ = [
         0, 1, -1, 0.5, 0.25, 0.125, complex("INF"), complex("NAN"),

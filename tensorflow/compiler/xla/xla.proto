@@ -15,90 +15,35 @@ limitations under the License.
 
 syntax = "proto3";
 
-import "tensorflow/compiler/xla/xla_data.proto";
-import "tensorflow/compiler/xla/service/hlo.proto";
-
 package xla;
 
-// Options for the HLO insert-reduce-precision-operations pass.
-message HloReducePrecisionOptions {
-  // Where and when the reduce-precision operations will be added.
-  enum Location {
-    // Add reduce-precision operations to the inputs of selected instructions.
-    // This is done before any optimization occurs.
-    OP_INPUTS = 0;
-    // Add reduce-precision operations to the outputs of selected instructions.
-    // This is done before any optimization occurs.
-    OP_OUTPUTS = 1;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any selected instructions that have not been fused into
-    // fusion instructions.
-    UNFUSED_OP_OUTPUTS = 2;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any fusion instructions that contain operations matching the
-    // selection criteria.
-    FUSION_INPUTS_BY_CONTENT = 3;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any fusion instructions that contain operations matching the
-    // selection criteria.
-    FUSION_OUTPUTS_BY_CONTENT = 4;
-  }
-  Location location = 1;
-
-  // Exponent and mantissa bit counts for the reduced precision.
-  uint32 exponent_bits = 2;
-  uint32 mantissa_bits = 3;
-
-  // Operations matching these opcodes should be suffixed with reduce-precision
-  // operations.
-  repeated uint32 opcodes_to_suffix = 4;
-
-  // Operations with names containing these substrings should be suffixed with
-  // reduce-precision operations.
-  repeated string opname_substrings_to_suffix = 5;
-}
+import "tensorflow/compiler/xla/service/hlo.proto";
+import "tensorflow/compiler/xla/xla_data.proto";
 
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
 message DebugOptions {
-  // HLO modules matching this regex will be dumped to a .dot file throughout
-  // various stages in compilation (file names are LOG(INFO)'d). Set to ".*" to
-  // dump *all* HLO modules.
-  string xla_generate_hlo_graph = 1;
-
   // Show addresses of HLO ops in graph dump.
   bool xla_hlo_graph_addresses = 2;
-
-  // Path to dump HLO graphs to.
-  string xla_hlo_graph_path = 4;
-
-  // Dump HLO graphs as TensorFlow GraphDefs.
-  bool xla_hlo_dump_as_graphdef = 5;
-
-  // HLO modules matching this regex will be dumped to LOG(INFO). Set to ".*" to
-  // dump *all* HLO modules.
-  string xla_log_hlo_text = 6;
-
-  // Dump all HLO modules as text into the provided directory path.
-  string xla_generate_hlo_text_to = 7;
-
-  // Dump Hlo after all hlo passes are executed as proto binary into this
-  // directory.
-  string xla_dump_optimized_hlo_proto_to = 8;
 
   // Instrument the computation to collect per-HLO cycle counts.
   bool xla_hlo_profile = 9;
 
-  // Dumps computations that XLA executes into the provided directory path.
-  string xla_dump_computations_to = 10;
-
-  // Dumps parameters and results of computations that XLA executes into the
-  // provided directory path.
-  string xla_dump_executions_to = 11;
-
-  // List of HLO passes to disable. These names must exactly match the pass
-  // names as specified by the HloPassInterface::name() method.
+  // List of HLO passes to disable/enable. These names must exactly match the
+  // pass names as specified by the HloPassInterface::name() method.
+  //
+  // At least one of xla_disable_hlo_passes and xla_enable_hlo_passes_only must
+  // be empty.
   repeated string xla_disable_hlo_passes = 30;
+  repeated string xla_enable_hlo_passes_only = 124;
+
+  // Disables all HLO passes.  Notes that some passes are necessary for
+  // correctness and the invariants that must be satisfied by "fully optimized"
+  // HLO are different for different devices and may change over time.  The only
+  // "guarantee", such as it is, is that if you compile XLA and dump the
+  // optimized HLO for some graph, you should be able to run it again on the
+  // same device with the same build of XLA.
+  bool xla_disable_all_hlo_passes = 104;
 
   // Numerical optimization level for the XLA compiler backend; the specific
   // interpretation of this value is left to the backends.
@@ -106,9 +51,6 @@ message DebugOptions {
 
   // Embed the compiler IR as a string in the executable.
   bool xla_embed_ir_in_executable = 33;
-
-  // Dump the compiler IR into this directory as individual files.
-  string xla_dump_ir_to = 34;
 
   // Eliminate implicit broadcasts when lowering user computations to HLO
   // instructions; use explicit broadcast instead.
@@ -142,10 +84,7 @@ message DebugOptions {
   // If true, a set of expensive LLVM optimization passes will not be run.
   bool xla_llvm_disable_expensive_passes = 73;
 
-  // Options for inserting reduce-precision operations for numerical
-  // experimentation.  This is a repeated field, as we may want to have
-  // multiple passes with different parameters.
-  repeated HloReducePrecisionOptions hlo_reduce_precision_options = 80;
+  reserved 80;  // Was hlo_reduce_precision_options
 
   // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
   // computation will run n! times with all permunations of layouts for the
@@ -163,21 +102,11 @@ message DebugOptions {
   // HLO graph.
   bool xla_hlo_graph_sharding_color = 92;
 
-  // Prefix the name scopes of the TF graph exports with "devX" device
-  // assignments, if available.
-  bool xla_hlo_tfgraph_device_scopes = 93;
+  reserved 93;  // Was xla_hlo_tfgraph_device_scopes
 
   // If true, the GPU backend is free to use cudnn for HLO batch normalization
   // ops.
   bool xla_gpu_use_cudnn_batchnorm = 94;
-
-  // Dump HLO before any hlo passes are executed as proto binary into this
-  // directory.
-  string xla_dump_unoptimized_hlo_proto_to = 95;
-
-  // Dump HLO after each pass as an HloProto in binary file format into this
-  // directory.
-  string xla_dump_per_pass_hlo_proto_to = 96;
 
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
@@ -190,15 +119,46 @@ message DebugOptions {
   //
   //  - Reducing the precision of operations (e.g. using an approximate sin
   //    function, or transforming x/y into x * (1/y)).
-  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that operations never produce or consume NaN or +/- Inf (this
+  //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
   //  - Assuming that +0 and -0 are indistinguishable.
   bool xla_cpu_enable_fast_math = 99;
-  bool xla_gpu_enable_fast_math = 100;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_nans = 120;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_infs = 121;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to use the reciprocal of an argument instead of division. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_division = 126;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to approximate calculations for functions. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_functions = 129;
+
+  // When true we lower the Minimum and Maximum hlos in the GPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
+  // this is true we don't propagate NaNs through Min and Max.
+  bool xla_gpu_enable_fast_min_max = 100;
+
+  // Allows xla to increase the output precision of floating point operations.
+  bool xla_allow_excess_precision = 122;
 
   // Crashes the program when any kind of verification fails, instead of just
   // logging the failures. One example is cross checking of convolution results
   // among different algorithms.
   bool xla_gpu_crash_on_verification_failures = 101;
+
+  // Disable GEMM and Convolution auto-tuning.
+  bool xla_gpu_disable_autotune = 123;
 
   // Force the host platform to pretend that there are these many host
   // "devices".  All these devices are backed by the same threadpool.  Defaults
@@ -209,9 +169,99 @@ message DebugOptions {
   // the host that run models in parallel across multiple devices.
   int32 xla_force_host_platform_device_count = 102;
 
+  // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
+  bool xla_gpu_disable_gpuasm_optimizations = 103;
+
+  // Enable fast math with eigen in the HLO evaluator.
+  bool xla_hlo_evaluator_use_fast_path = 106;
+
+  // Temporary option to allow support for both the R1 and the scalar index
+  // versions of DynamicSlice and DynamicUpdateSlice. Only used for testing.
+  bool xla_allow_scalar_index_dynamic_ops = 107;
+
+  enum StepMarkerLocation {
+    // Generate a step marker at the program entry. This handles the case where
+    // each step is done by one or multiple program execution(s). Only the first
+    // program will be tagged for generating a step marker at the program entry.
+    // This is the default.
+    STEP_MARK_AT_ENTRY = 0;
+    // Generate a step marker at each iteration of the top level while loop,
+    // which is assumed to be a training loop.
+    STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP = 1;
+    // Generate a step marker at each iteration of the second level while loops,
+    // which is assumed to be a training or eval loop.
+    STEP_MARK_AT_SECOND_LEVEL_WHILE_LOOP = 3;
+    // No step marker generated.
+    STEP_MARK_NONE = 2;
+  }
+  // Option to emit a target-specific marker to indicate the start of a training
+  // step. The location of the marker (if any) is determined by the option
+  // value.
+  StepMarkerLocation xla_step_marker_location = 108;
+
+  //
+  // BEGIN flags controlling dumping HLO modules for debugging.
+  //
+  // When dumping is enabled, HLO modules dumped at the very beginning and end
+  // of compilation, and optionally also during the pass pipeline.
+  //
+  // In general, if you set one of these flags, we will try to infer reasonable
+  // defaults for the others.  For example:
+  //
+  //  * Setting --xla_dump_to=/tmp/foo without specifying a format
+  //    with --xla_dump_hlo_as_* will turn on --xla_dump_hlo_as_text.
+  //
+  //  * Setting --xla_dump_hlo_as_text without specifying --xla_dump_to will
+  //    dump to stdout.
+  //
+
+  // Directory to dump into.
+  string xla_dump_to = 109;
+
+  // If specified, will only dump modules which match this regexp.
+  string xla_dump_hlo_module_re = 110;
+
+  // If this flag is specified, will also HLO before and after passes that match
+  // this regular expression.  Set to .* to dump before/after all passes.
+  string xla_dump_hlo_pass_re = 111;
+
+  // Specifies the format that HLO is dumped in.  Multiple of these may be
+  // specified.
+  bool xla_dump_hlo_as_text = 112;
+  bool xla_dump_hlo_as_proto = 113;
+  bool xla_dump_hlo_as_dot = 114;
+  bool xla_dump_hlo_as_url = 115;
+
+  // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
+  bool xla_dump_hlo_as_html = 116;
+
+  // If true, every time an HLO module is run, we will dump an HloSnapshot
+  // (essentially, a serialized module plus its inputs) to the --xla_dump_to
+  // directory.
+  bool xla_dump_hlo_snapshots = 118;
+
+  //
+  // END flags controlling dumping HLO modules.
+  //
+
+  bool xla_gpu_force_conv_nchw = 125;
+
+  // Paths to files with ptx code.
+  repeated string xla_gpu_ptx_file = 127;
+
+  // Blacklist for cuDNN convolutions.
+  string xla_gpu_algorithm_blacklist_path = 128;
+
+  // Guarantee run-to-run determinism from reductions on XLA:GPU.
+  bool xla_gpu_deterministic_reductions = 130;
+  // Next id: 131
+
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
+
+  reserved 117;  // was xla_dump_to
+  reserved 5;    // Was xla_hlo_dump_as_graphdef
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings
@@ -224,7 +274,7 @@ message ExecutionOptions {
   // may be faster when using this layout.
   //
   // We use a Shape here to accommodate computations that return a tuple.
-  Shape shape_with_output_layout = 2;
+  ShapeProto shape_with_output_layout = 2;
 
   // Used to seed random-number generators used in this computation.  If this is
   // 0, we generate a seed ourselves.
@@ -238,6 +288,22 @@ message ExecutionOptions {
   // computation on. The computation will be partitioned across these devices.
   // If not provided, the default device will be chosen.
   repeated DeviceHandle device_handles = 5;
+
+  // Number of replicas of the computation to run. If zero, uses the default
+  // number of replicas for the XLA service.
+  int32 num_replicas = 6;
+
+  // This optional field specifies the device assignment if known at compile
+  // time.
+  DeviceAssignmentProto device_assignment = 7;
+
+  // Alias input and output buffers for parameters that are passed-through XLA
+  // modules without being changed.
+  bool alias_passthrough_params = 8;
+
+  // Number of partitions of the computation to run (model parallelism).
+  // If zero, uses the default number of partitions for the XLA service.
+  int32 num_partitions = 9;
 }
 
 message GetDeviceHandlesRequest {
@@ -253,7 +319,7 @@ message TransferToClientRequest {
 
   // This optional field directs the service to return the literal in this
   // layout. A shape is used to hold the layout to accommodate tuples.
-  Shape shape_with_layout = 2;
+  ShapeProto shape_with_layout = 2;
 }
 
 message TransferToClientResponse {
@@ -275,13 +341,12 @@ message TransferToInfeedRequest {
   DeviceHandle device_handle = 3;
 }
 
-message TransferToInfeedResponse {
-}
+message TransferToInfeedResponse {}
 
 message TransferFromOutfeedRequest {
   // This optional field directs the service to return the literal in this
   // layout. A shape is used to hold the layout to accommodate tuples.
-  Shape shape_with_layout = 1;
+  ShapeProto shape_with_layout = 1;
 
   int64 replica_id = 2;
   DeviceHandle device_handle = 3;
@@ -295,8 +360,7 @@ message ResetDeviceRequest {
   DeviceHandle device_handle = 1;
 }
 
-message ResetDeviceResponse {
-}
+message ResetDeviceResponse {}
 
 message ComputationGraphStatsRequest {
   HloModuleProto computation = 1;
@@ -316,12 +380,39 @@ message CreateChannelHandleResponse {
 }
 
 message UnregisterRequest {
-  GlobalDataHandle data = 1;
+  repeated GlobalDataHandle data = 1;
 }
 
-message UnregisterResponse {
+message UnregisterResponse {}
+
+message CompileRequest {
+  // The graph to be compiled.
+  HloModuleProto computation = 1;
+
+  // Options that affect how XLA compiles code to service this request.
+  ExecutionOptions execution_options = 2;
+
+  // The layouts of the input arguments. If not set, the default layout will be
+  // used. Although the real arguments are not needed in compilation, the
+  // layouts of the arguments can affect the compilation.
+  repeated ShapeProto input_shape_with_layout = 3;
 }
 
+message CompileResponse {
+  // The handle to the executable.
+  ExecutionHandle handle = 1;
+}
+
+message ExecuteRequest {
+  ExecutionHandle handle = 1;
+
+  // The shape and layout of the arguments must be the same as the those of the
+  // executable's parameters.
+  repeated GlobalDataHandle arguments = 2;
+}
+
+// TODO(b/118493728): Remove this and ExecuteGraphParallelRequest and replace
+// the uses with calls to Compile and Execute.
 message ExecuteGraphRequest {
   HloModuleProto computation = 1;
   repeated GlobalDataHandle arguments = 2;
@@ -354,7 +445,7 @@ message WaitForExecutionResponse {
 
 message ComputeConstantGraphRequest {
   HloModuleProto computation = 1;
-  Layout output_layout = 2;
+  LayoutProto output_layout = 2;
 }
 
 message ComputeConstantResponse {
@@ -378,7 +469,7 @@ message LoadDataRequest {
   string columnio_field = 2;
 
   // Individual element shape, excluding rows.
-  Shape element_shape = 3;
+  ShapeProto element_shape = 3;
 
   // Warning: ColumnIO does not support random-access, so use offset with
   // caution in performance-critical scenarios.
@@ -394,7 +485,7 @@ message LoadDataRequest {
 
 message LoadDataResponse {
   GlobalDataHandle data = 1;
-  Shape data_shape = 2;
+  ShapeProto data_shape = 2;
   int64 available_rows = 3;
   int64 rows_loaded = 4;
   int64 nanoseconds = 5;
@@ -405,7 +496,7 @@ message GetShapeRequest {
 }
 
 message GetShapeResponse {
-  Shape shape = 1;
+  ShapeProto shape = 1;
 }
 
 message UnpackRequest {

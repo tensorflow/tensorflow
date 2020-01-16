@@ -156,8 +156,7 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     StringPiece loc(value[0]);
-    return str_util::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc)
-                                                                 : "";
+    return absl::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc) : "";
   }
 
   string GraphDebugString() const {
@@ -951,7 +950,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef) {
   EXPECT_TRUE(HasControlEdge("D", sink));
   EXPECT_EQ(9, graph_.num_edges());
 
-  // Importing again should fail because of node name collissions.
+  // Importing again should fail because of node name collisions.
   s = ImportGraphDef(opts, def, &graph_, nullptr);
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
 
@@ -3210,6 +3209,33 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
   options.validate_colocation_constraints = false;
   TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
+  std::string gdef_ascii(
+      R"EOF(
+      node { name: 'test_input' op: 'TestInput' }
+      node { name: 'test_input_with_dev' op: 'TestInput' device: 'some dev'}
+      node { name: 'test_op' op: 'TestMul' input: [ 'test_input:0', 'test_input:1' ] }
+      node { name: 'test_op_with_dev' op: 'TestMul' input: [ 'test_input:0', 'test_input:1' ] device: 'some dev'}
+      )EOF");
+
+  GraphDef gdef;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+
+  ImportGraphDefOptions options;
+  options.default_device = "/gpu:13";
+  ImportGraphDefResults res;
+
+  TF_ASSERT_OK(ImportGraphDef(options, gdef, &graph_, NULL, &res));
+  std::map<string, string> node2dev;
+  for (Node* n : graph_.nodes()) {
+    node2dev[n->name()] = n->requested_device();
+  }
+  EXPECT_EQ(node2dev["test_input"], "/gpu:13");
+  EXPECT_EQ(node2dev["test_op"], "/gpu:13");
+  EXPECT_EQ(node2dev["test_input_with_dev"], "some dev");
+  EXPECT_EQ(node2dev["test_op_with_dev"], "some dev");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {

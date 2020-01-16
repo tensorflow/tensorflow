@@ -38,11 +38,12 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
  public:
   // Each HLO is associated to a vector of properties with the indices given
   // below. Sub-classes can add further properties.
+  // MSVC 14.0 limitation requires the consts.
   typedef std::map<string, float> Properties;
-  static constexpr char kFlopsKey[] = "flops";
-  static constexpr char kTranscendentalsKey[] = "transcendentals";
-  static constexpr char kBytesAccessedKey[] = "bytes accessed";
-  static constexpr char kOptimalSecondsKey[] = "optimal_seconds";
+  static constexpr const char kFlopsKey[] = "flops";
+  static constexpr const char kTranscendentalsKey[] = "transcendentals";
+  static constexpr const char kBytesAccessedKey[] = "bytes accessed";
+  static constexpr const char kOptimalSecondsKey[] = "optimal_seconds";
 
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
@@ -61,6 +62,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleClamp(const HloInstruction* clamp) override;
   Status HandleReducePrecision(const HloInstruction* hlo) override;
   Status HandleConcatenate(const HloInstruction* concatenate) override;
+  Status HandleCopyStart(const HloInstruction* send) override;
+  Status HandleCopyDone(const HloInstruction* send_done) override;
   Status HandleSend(const HloInstruction* send) override;
   Status HandleSendDone(const HloInstruction* send_done) override;
   Status HandleRecv(const HloInstruction* recv) override;
@@ -71,12 +74,17 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleDot(const HloInstruction* dot) override;
   Status HandleConvolution(const HloInstruction* convolution) override;
   Status HandleFft(const HloInstruction* fft) override;
-  Status HandleCrossReplicaSum(const HloInstruction* crs) override;
+  Status HandleTriangularSolve(const HloInstruction* hlo) override;
+  Status HandleCholesky(const HloInstruction* hlo) override;
+  Status HandleAllReduce(const HloInstruction* crs) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;
   Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  Status HandleReplicaId(const HloInstruction* hlo) override;
+  Status HandlePartitionId(const HloInstruction* hlo) override;
   Status HandleInfeed(const HloInstruction* infeed) override;
   Status HandleOutfeed(const HloInstruction* outfeed) override;
   Status HandleRng(const HloInstruction* random) override;
+  Status HandleRngGetAndUpdateState(const HloInstruction* random) override;
   Status HandleReverse(const HloInstruction* reverse) override;
   Status HandleSort(const HloInstruction* sort) override;
   Status HandleParameter(const HloInstruction* parameter) override;
@@ -101,16 +109,23 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleBroadcast(const HloInstruction* broadcast) override;
   Status HandlePad(const HloInstruction* pad) override;
   Status HandleReshape(const HloInstruction* reshape) override;
+  Status HandleAddDependency(const HloInstruction* add_dependency) override;
   Status HandleAfterAll(const HloInstruction* token) override;
   Status HandleTranspose(const HloInstruction* transpose) override;
   Status HandleWhile(const HloInstruction* xla_while) override;
   Status HandleConditional(const HloInstruction* conditional) override;
   Status HandleGather(const HloInstruction* gather) override;
   Status HandleScatter(const HloInstruction* scatter) override;
+  Status HandleGetDimensionSize(const HloInstruction* get_size) override;
+  Status HandleSetDimensionSize(const HloInstruction* set_size) override;
   Status FinishVisit(const HloInstruction* root) override;
 
   Status Preprocess(const HloInstruction* hlo) override;
   Status Postprocess(const HloInstruction* hlo) override;
+
+  // Decorates shape_size_ by returning 0 immediately if the shape does not have
+  // a layout.
+  int64 GetShapeSize(const Shape& shape) const;
 
   // Set the rates used to calculate the time taken by the computation. These
   // need to be set before visiting starts.
@@ -132,14 +147,27 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
+  //
+  // Note that the cost for sub HLO instructions are also returned if asked. For
+  // example, body and condition of a while, fused instructions within a
+  // fusion, or the add instruction of a reduce.
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
   int64 bytes_accessed(const HloInstruction& hlo) const;
+  int64 operand_bytes_accessed(const HloInstruction& hlo, int64 operand_num,
+                               ShapeIndex index = {}) const;
+  int64 output_bytes_accessed(const HloInstruction& hlo,
+                              ShapeIndex index = {}) const;
   float optimal_seconds(const HloInstruction& hlo) const;
 
   const Properties& properties() const { return properties_sum_; }
   const float property(const string& key) const {
     return GetProperty(key, properties());
+  }
+
+  // Returns the specified per-second rate used by cost analysis.
+  const float per_second_rate(const string& key) const {
+    return GetProperty(key, per_second_rates_);
   }
 
  protected:
@@ -151,8 +179,13 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   HloCostAnalysis(const ShapeSizeFunction& shape_size,
                   const Properties& per_second_rates);
 
+  virtual std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis(
+      const ShapeSizeFunction& shape_size, const Properties& per_second_rates);
+
   // Returns the properties computed from visiting the computation rooted at the
-  // given hlo.
+  // given hlo. The cost of visited sub HLO instructions is saved to
+  // hlo_properties_, which will be used by functions such as
+  // flop_count(hlo_instruction) to return cost of a particular HLO instruction.
   StatusOr<Properties> ProcessSubcomputation(HloComputation* computation);
 
   // Utility function to handle all element-wise operations.
@@ -170,9 +203,24 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   static float GetPropertyForHlo(const HloInstruction& hlo, const string& key,
                                  const HloToProperties& hlo_to_properties);
 
-  // Decorates shape_size_ by returning 0 immediately if the shape does not have
-  // a layout.
-  int64 GetShapeSize(const Shape& shape) const;
+  // Traverses a fusion operand to find the actual bytes accessed by the fusion
+  // node.
+  int64 FusionParameterReadBytes(const HloInstruction* hlo) const;
+
+  // Set bytes accessed by the specified operand and shape index.
+  void SetOperandBytesAccessed(int64 operand_num, float value);
+  void SetOperandBytesAccessed(int64 operand_num, ShapeIndex index,
+                               float value);
+
+  // Set bytes accessed by the output at the shape index.
+  void SetOutputBytesAccessed(float value);
+  void SetOutputBytesAccessed(ShapeIndex index, float value);
+
+  // Return the key that is used to index into Properties for the specified
+  // input/output at the shape index.
+  static std::string GetOperandBytesAccessedKey(int64 operand_num,
+                                                ShapeIndex index = {});
+  static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods

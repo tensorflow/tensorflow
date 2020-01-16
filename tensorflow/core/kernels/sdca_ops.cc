@@ -83,7 +83,11 @@ struct ComputeOptions {
           context, false,
           errors::InvalidArgument("Unsupported loss type: ", loss_type));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("adaptative", &adaptive));
+    auto s = context->GetAttr("adaptative", &adaptive);
+    if (!s.ok()) {
+      s = context->GetAttr("adaptive", &adaptive);
+    }
+    OP_REQUIRES_OK(context, s);
     OP_REQUIRES_OK(
         context, context->GetAttr("num_sparse_features", &num_sparse_features));
     OP_REQUIRES_OK(context, context->GetAttr("num_sparse_features_with_values",
@@ -245,6 +249,8 @@ class SdcaOptimizer : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaOptimizer").Device(DEVICE_CPU),
                         SdcaOptimizer);
+REGISTER_KERNEL_BUILDER(Name("SdcaOptimizerV2").Device(DEVICE_CPU),
+                        SdcaOptimizer);
 
 class SdcaShrinkL1 : public OpKernel {
  public:
@@ -306,7 +312,7 @@ class SdcaFprint : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, TensorShape({num_elements, 2}), &out));
 
-    const auto in_values = input.flat<string>();
+    const auto in_values = input.flat<tstring>();
     auto out_values = out->matrix<int64>();
 
     for (int64 i = 0; i < num_elements; ++i) {

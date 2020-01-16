@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ExperimentalIgnoreErrorsDataset"
+  endpoint {
+    name: "data.ExperimentalIgnoreErrorsDataset"
+  }
+}

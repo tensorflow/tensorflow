@@ -54,7 +54,7 @@ class CholeskyOpTest(xla_test.XLATestCase):
 
   def _verifyCholesky(self, x, atol=1e-6):
     # Verify that LL^T == x.
-    with self.cached_session() as sess:
+    with self.session() as sess:
       placeholder = array_ops.placeholder(
           dtypes.as_dtype(x.dtype), shape=x.shape)
       with self.test_scope():

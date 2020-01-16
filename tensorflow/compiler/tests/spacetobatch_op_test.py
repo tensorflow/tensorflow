@@ -72,7 +72,7 @@ class SpaceToBatchTest(xla_test.XLATestCase):
   """Tests input-output pairs for the SpaceToBatch and BatchToSpace ops."""
 
   def _testPad(self, inputs, paddings, block_size, outputs):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       for dtype in self.float_types:
         # outputs = space_to_batch(inputs)
         placeholder = array_ops.placeholder(dtype)
@@ -155,7 +155,7 @@ class SpaceToBatchNDTest(xla_test.XLATestCase):
   def _testPad(self, inputs, block_shape, paddings, outputs):
     block_shape = np.array(block_shape)
     paddings = np.array(paddings).reshape((len(block_shape), 2))
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       for dtype in self.float_types:
         # TODO(b/68813416): Skip bfloat16's as the input type for direct is
         # float32 and results in a mismatch, while making testDirect provide the

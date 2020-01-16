@@ -74,6 +74,9 @@ class OpRegistry : public OpRegistryInterface {
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
 
+  // Returns OpRegistrationData* of registered op type, else returns nullptr.
+  const OpRegistrationData* LookUp(const string& op_type_name) const;
+
   // Fills *ops with all registered OpDefs (except those with names
   // starting with '_' if include_internal == false) sorted in
   // ascending alphabetical order.
@@ -144,6 +147,8 @@ class OpRegistry : public OpRegistryInterface {
   Status RegisterAlreadyLocked(const OpRegistrationDataFactory& op_data_factory)
       const EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  const OpRegistrationData* LookUpSlow(const string& op_type_name) const;
+
   mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
   mutable std::vector<OpRegistrationDataFactory> deferred_ GUARDED_BY(mu_);
@@ -164,10 +169,13 @@ class OpRegistry : public OpRegistryInterface {
 class OpListOpRegistry : public OpRegistryInterface {
  public:
   // Does not take ownership of op_list, *op_list must outlive *this.
-  OpListOpRegistry(const OpList* op_list);
+  explicit OpListOpRegistry(const OpList* op_list);
   ~OpListOpRegistry() override;
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
+
+  // Returns OpRegistrationData* of op type in list, else returns nullptr.
+  const OpRegistrationData* LookUp(const string& op_type_name) const;
 
  private:
   // Values are owned.
@@ -208,7 +216,7 @@ class OpDefBuilderWrapper;
 template <>
 class OpDefBuilderWrapper<true> {
  public:
-  OpDefBuilderWrapper(const char name[]) : builder_(name) {}
+  explicit OpDefBuilderWrapper(const char name[]) : builder_(name) {}
   OpDefBuilderWrapper<true>& Attr(string spec) {
     builder_.Attr(std::move(spec));
     return *this;
@@ -260,7 +268,7 @@ class OpDefBuilderWrapper<true> {
 template <>
 class OpDefBuilderWrapper<false> {
  public:
-  constexpr OpDefBuilderWrapper(const char name[]) {}
+  explicit constexpr OpDefBuilderWrapper(const char name[]) {}
   OpDefBuilderWrapper<false>& Attr(StringPiece spec) { return *this; }
   OpDefBuilderWrapper<false>& Input(StringPiece spec) { return *this; }
   OpDefBuilderWrapper<false>& Output(StringPiece spec) { return *this; }

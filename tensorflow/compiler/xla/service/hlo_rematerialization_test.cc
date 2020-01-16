@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_rematerialization_test_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -36,133 +36,27 @@ namespace op = xla::testing::opcode_matchers;
 
 using ::testing::_;
 
-class HloRematerializationTest : public HloVerifiedTestBase {
+// Inherits methods to create rematerializable computations. See
+// RematerializationTestBase for more.
+class HloRematerializationTest : public RematerializationTestBase {
  protected:
-  // Creates and returns a computation which can benefit from
-  // rematerialization. The computation looks like:
-  //
-  //   F32[1] %param = {...}
-  //   F32[] %reshape = reshape(F32[], param)
-  //   F32[1024] %bcast = broadcast(%param)
-  //   F32[1024] %negate = negate(%bcast)
-  //   F32[2048] %concat_1 = concat({%negate, %negate})
-  //   F32[1] %slice_1 = slice(%concat_1, {0:1})
-  //   F32[1025] %concat_2 = concat({%bcast, %slice_1})
-  //   F32[1] %slice_2 = slice(%concat_2, {0:1});
-  //
-  // The instruction %bcast can be rematerialized before its use at %concat_2
-  // to reduce peak memory usage. This avoids %bcast and %concat_1 being
-  // simultaneously live. Peak memory use is about 16KB before rematerialization
-  // (during execution of %concat_1) and about 12KB after rematerializing %bcast
-  // for its use in %concat_2.
-  std::unique_ptr<HloComputation> MakeRematerializableComputation(
-      const string& suffix = "") {
-    auto builder = HloComputation::Builder(TestName() + suffix);
-    auto param = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, vec1_shape_, "param"));
-    auto reshape = builder.AddInstruction(
-        HloInstruction::CreateReshape(scalar_shape_, param));
-    auto bcast = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(vec1024_shape_, reshape, {}));
-    auto negate = builder.AddInstruction(
-        HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kNegate, bcast));
-    auto concat_1 = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {2048}), {negate, negate},
-        /*dimension=*/0));
-    auto slice_1 = builder.AddInstruction(HloInstruction::CreateSlice(
-        vec1_shape_, concat_1, /*start_indices=*/{0},
-        /*limit_indices=*/{1},
-        /*strides=*/{1}));
-    auto concat_2 = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {1025}), {bcast, slice_1},
-        /*dimension=*/0));
-    // Add a final slice to make the parameter shape match the output shape
-    // which is necessary to use this computation in a while.
-    builder.AddInstruction(HloInstruction::CreateSlice(vec1_shape_, concat_2,
-                                                       /*start_indices=*/{0},
-                                                       /*limit_indices=*/{1},
-                                                       /*strides=*/{1}));
-    return builder.Build();
-  }
-
-  // Creates and returns a computation which includes a while and can benefit
-  // from rematerialization. The computation looks like:
-  //
-  //   F32[] %param = {...}
-  //   F32[1024] %bcast = broadcast(%param)
-  //   F32[1] %slice_1 = slice(%bcast, {0:1})
-  //   F32[1] %while = while(%slice_1, while_body, while_cond)
-  //   F32[1025] %concat = concat({%bcast, %while})
-  //   F32[1] %slice_2 = slice(%concat, {0:1});
-  //
-  // The instruction %bcast can be rematerialized before its use at %concat to
-  // reduce peak memory usage. This avoids %bcast being live during execution of
-  // the while. Peak memory use is maximum of 8K and 4K plus the memory use of
-  // the while subcomputations.
-  std::unique_ptr<HloComputation> MakeRematerializableWhileComputation(
-      HloComputation* while_cond, HloComputation* while_body,
-      const string& suffix = "") {
-    auto builder = HloComputation::Builder(TestName() + suffix);
-    auto param = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, vec1_shape_, "param"));
-    auto reshape = builder.AddInstruction(
-        HloInstruction::CreateReshape(scalar_shape_, param));
-    auto bcast = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(vec1024_shape_, reshape, {}));
-    auto slice_1 = builder.AddInstruction(
-        HloInstruction::CreateSlice(vec1_shape_, bcast, /*start_indices=*/{0},
-                                    /*limit_indices=*/{1},
-                                    /*strides=*/{1}));
-    auto while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
-        vec1_shape_, while_cond, while_body, slice_1));
-    auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {1025}), {bcast, while_inst},
-        /*dimension=*/0));
-    builder.AddInstruction(HloInstruction::CreateSlice(vec1_shape_, concat,
-                                                       /*start_indices=*/{0},
-                                                       /*limit_indices=*/{1},
-                                                       /*strides=*/{1}));
-    return builder.Build();
-  }
-
-  // Create and return a trivial computation appropriate for use as a while
-  // condition.
-  std::unique_ptr<HloComputation> MakeConditionComputation() {
-    auto builder = HloComputation::Builder(TestName() + ".cond");
-    builder.AddInstruction(
-        HloInstruction::CreateParameter(0, vec1_shape_, "param"));
-    builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-    return builder.Build();
-  }
-
-  // Return the byte size of the top-level buffer of the given shape.
-  static int64 ByteSizeOf(const Shape& shape) {
-    return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-  }
-
   StatusOr<bool> RunHloRematerialization(int64 memory_limit_bytes,
                                          HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
     HloMemoryScheduler scheduler(
         [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
-        DefaultMemoryScheduler);
+        ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
     TF_EXPECT_OK(scheduler.Run(module).status());
     HloRematerialization remat(ByteSizeOf, memory_limit_bytes,
                                /*sizes=*/nullptr);
     return remat.Run(module);
   }
-
-  // Various shapes used in the canned computations.
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(xla::F32, {});
-  const Shape vec1_shape_ = ShapeUtil::MakeShape(xla::F32, {1});
-  const Shape vec1024_shape_ = ShapeUtil::MakeShape(xla::F32, {1024});
 };
 
 // Test rematerialization of a single computation produced by
 // MakeRematerializableComputation.
 TEST_F(HloRematerializationTest, SingleComputation) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation =
       module->AddEntryComputation(MakeRematerializableComputation());
 
@@ -177,7 +71,7 @@ TEST_F(HloRematerializationTest, SingleComputation) {
   // with rematerialization so pick a memory limit between these values (14KB).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/14 * 1024, module));
+                              /*memory_limit_bytes=*/14 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // Root should not have changed.
@@ -203,7 +97,7 @@ TEST_F(HloRematerializationTest, SingleComputation) {
 // MakeRematerializableComputation but with a sufficiently high memory limit
 // such that no instructions are rematerialized.
 TEST_F(HloRematerializationTest, SingleComputationNoRematerialization) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* computation =
       module->AddEntryComputation(MakeRematerializableComputation());
 
@@ -211,7 +105,7 @@ TEST_F(HloRematerializationTest, SingleComputationNoRematerialization) {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/20 * 1024, module));
+                              /*memory_limit_bytes=*/20 * 1024, module.get()));
 
   // No instructions should have been materialized.
   EXPECT_FALSE(changed);
@@ -225,7 +119,7 @@ TEST_F(HloRematerializationTest, SingleComputationNoRematerialization) {
 // computation should be the one chosen because rematerialization in the while
 // will presumably be more expensive.
 TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   auto cond_builder = HloComputation::Builder(TestName() + ".cond");
   cond_builder.AddInstruction(
@@ -249,7 +143,7 @@ TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
   // bit lower (17KB) to force rematerialization of the entry computation.
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/17 * 1024, module));
+                              /*memory_limit_bytes=*/17 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // Only the entry computation should have a rematerialized instruction added.
@@ -261,7 +155,7 @@ TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
 // while. Both the entry computation and while body computation should have
 // computations rematerialized.
 TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   auto cond_builder = HloComputation::Builder(TestName() + ".cond");
   cond_builder.AddInstruction(
@@ -282,7 +176,7 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/15 * 1024, module));
+                              /*memory_limit_bytes=*/15 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // Both computations should have rematerialized instructions added.
@@ -293,7 +187,7 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
 // Test rematerialization of a doubly nested computation. All computations
 // should have an instruction rematerialized.
 TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   auto cond_builder = HloComputation::Builder(TestName() + ".cond");
   cond_builder.AddInstruction(
@@ -302,6 +196,8 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
+  HloComputation* while_cond_copy =
+      module->AddEmbeddedComputation(while_cond->Clone());
 
   HloComputation* inner_computation = module->AddEmbeddedComputation(
       MakeRematerializableComputation(/*suffix=*/".inner"));
@@ -311,7 +207,7 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
           /*suffix=*/".middle"));
   HloComputation* entry_computation =
       module->AddEntryComputation(MakeRematerializableWhileComputation(
-          while_cond, /*while_body=*/middle_computation));
+          while_cond_copy, /*while_body=*/middle_computation));
 
   EXPECT_EQ(entry_computation->instruction_count(), 7);
   EXPECT_EQ(middle_computation->instruction_count(), 7);
@@ -321,7 +217,7 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
   // ~12K so pick something slightly larger.
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/13 * 1024, module));
+                              /*memory_limit_bytes=*/13 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // All computations should have rematerialized instructions added.
@@ -346,7 +242,7 @@ TEST_F(HloRematerializationTest, RngNotRematerialized) {
   //
   //   F32[1024] add_2 = add(rng, add(tanh, add_1))  // LIVE: add_2 + add_1 +
   //                                                 //       rng + tanh + exp
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -390,7 +286,7 @@ TEST_F(HloRematerializationTest, RngNotRematerialized) {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloRematerialization(
-          /*memory_limit_bytes=*/4 * ByteSizeOf(vec1024_shape_), module));
+          /*memory_limit_bytes=*/4 * ByteSizeOf(vec1024_shape_), module.get()));
   EXPECT_TRUE(changed);
   // The rng should not have been rematerialized.
   EXPECT_EQ(count_rngs(entry_computation), 1);
@@ -420,7 +316,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   // The value %bcast is live across each call of Subcomputation (which requires
   // 8KB) though the value is not used in the calls. Rematerializing %bcast
   // across these calls reduces peak memory use from ~20KB down to ~16KB.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation* subcomputation = nullptr;
   {
@@ -482,7 +378,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/22 * 1024, module));
+                              /*memory_limit_bytes=*/22 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // The broadcast should have been rematerialized 3 times.
@@ -497,6 +393,52 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   EXPECT_THAT(add_3->operand(0), op::Broadcast(param));
   EXPECT_NE(add_4->operand(0), bcast);
   EXPECT_THAT(add_4->operand(0), op::Broadcast(param));
+}
+
+TEST_F(HloRematerializationTest, CopyNotRematerialized) {
+  // Test that copies are not rematerialized.
+  auto module = CreateNewVerifiedModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, vec1024_shape_, "param"));
+
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kCopy, param));
+
+  auto negate_a_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kNegate, copy));
+
+  auto negate_a_2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      vec1024_shape_, HloOpcode::kNegate, negate_a_1));
+
+  auto negate_b_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kNegate, copy));
+
+  auto negate_b_2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      vec1024_shape_, HloOpcode::kNegate, negate_b_1));
+
+  builder.AddInstruction(HloInstruction::CreateTuple({negate_a_2, negate_b_2}));
+
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/1 * 1024, module.get()));
+
+  auto count_copies = [](const HloComputation* computation) {
+    int64 copy_count = 0;
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopy) {
+        copy_count++;
+      }
+    }
+    return copy_count;
+  };
+  EXPECT_TRUE(changed);
+
+  EXPECT_EQ(count_copies(entry_computation), 1);
 }
 
 class IndirectUseTest : public HloRematerializationTest,
@@ -515,7 +457,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   //   F32[1024] %call = call(Subcomputation, {%add_1})
   //   F32[1024] %add_2 = add(%bcast, call)
   //   {F32[1024], F32[1024]} %tuple = tuple(%bcast, %add_2)
-  //   F32[1024] %gte = GetTupleElememt(%tuple, 0)
+  //   F32[1024] %gte = GetTupleElement(%tuple, 0)
   //   F32[1024] %negate = negate(%gte)
   //
   // Subcomputation:
@@ -533,7 +475,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   // (ie %bcast is used indirectly by %negate), otherwise the %negate operand
   // aliases %add_2.
   const bool indirectly_used = GetParam();
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation* subcomputation = nullptr;
   {
@@ -576,7 +518,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/22 * 1024, module));
+                              /*memory_limit_bytes=*/22 * 1024, module.get()));
   // Rematerialization should only occur if the rematerializable instruction has
   // no indirect uses.
   if (indirectly_used) {
@@ -588,8 +530,144 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(IndirectUseTestInstantiation, IndirectUseTest,
-                        ::testing::Values(true, false));
+INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,
+                         ::testing::Values(true, false));
+
+class CompressingRematerializationTest : public RematerializationTestBase {
+ protected:
+  // A special shape size function, which pads the most minor dimension to 64.
+  static int64 ShapeSizePadMinorTo64(const Shape& shape) {
+    if (shape.IsTuple()) {
+      // Size of a tuple is 4 bytes.
+      return 4;
+    }
+    Shape descending_shape =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+    int64 size =
+        ShapeUtil::ByteSizeOfPrimitiveType(descending_shape.element_type());
+    for (int64 i = 0; i < descending_shape.rank(); ++i) {
+      int64 dim = descending_shape.dimensions(i);
+      if (i == descending_shape.rank() - 1) {
+        dim = RoundUpToNearest<int64>(dim, 64);
+      }
+      size *= dim;
+    }
+    return size;
+  }
+
+  // Swap the layout of the two most-minor dimensions if the second-minor
+  // dimension is bigger than the most-minor dimension.
+  static StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
+    Shape result = shape;
+    Layout layout = result.layout();
+    int64 most_minor_index = layout.minor_to_major()[0];
+    int64 second_minor_index = layout.minor_to_major()[1];
+    int64 most_minor = result.dimensions(most_minor_index);
+    int64 second_minor = result.dimensions(second_minor_index);
+    if (most_minor < second_minor) {
+      Layout new_layout = layout;
+      new_layout.set_minor_to_major(0, second_minor_index);
+      new_layout.set_minor_to_major(1, most_minor_index);
+      *result.mutable_layout() = new_layout;
+    }
+    return result;
+  }
+
+  StatusOr<bool> RunHloRematerialization(int64 memory_limit_bytes,
+                                         HloModule* module) {
+    TF_EXPECT_OK(verifier().Run(module).status());
+    HloRematerialization remat(ShapeSizePadMinorTo64, memory_limit_bytes,
+                               /*sizes=*/nullptr, ChooseCompactLayoutForShape);
+    return remat.Run(module);
+  }
+};
+
+// Test rematerialization of a single instruction.
+TEST_F(CompressingRematerializationTest, SingleRemat) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  %broadcast.0 = f32[64,2]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %negate = f32[64,2]{1,0} negate(f32[64,2]{1,0} broadcast.0)
+  %reduce.0 = f32[] reduce(f32[64,2]{1,0} %negate, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.1 = f32[] reduce(f32[64,2]{1,0} %broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/30 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* broadcast =
+      module->entry_computation()->GetInstructionWithName("broadcast.0");
+  HloInstruction* reduce =
+      module->entry_computation()->GetInstructionWithName("reduce.1");
+  EXPECT_THAT(reduce,
+              op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+}
+
+TEST_F(CompressingRematerializationTest, AllUsersUseSameCopy) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  %broadcast.0 = f32[64,2]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %negate = f32[64,2]{1,0} negate(f32[64,2]{1,0} broadcast.0)
+  %reduce.0 = f32[] reduce(f32[64,2]{1,0} %negate, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.1 = f32[] reduce(f32[64,2]{1,0} %negate, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.2 = f32[] reduce(f32[64,2]{1,0} %broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
+  %reduce.3 = f32[] reduce(f32[64,2]{1,0} %broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add.2 = f32[] add(f32[] %reduce.2, f32[] %reduce.3)
+  ROOT %tuple = (f32[], f32[]) tuple (f32[] add, f32[] add.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/30 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* broadcast =
+      module->entry_computation()->GetInstructionWithName("broadcast.0");
+
+  // Both reduces reuse the same copy instruction.
+  HloInstruction* reduce_2 =
+      module->entry_computation()->GetInstructionWithName("reduce.2");
+
+  HloInstruction* reduce_3 =
+      module->entry_computation()->GetInstructionWithName("reduce.3");
+
+  EXPECT_THAT(reduce_2,
+              op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+
+  EXPECT_THAT(reduce_3,
+              op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+}
 
 }  // namespace
 

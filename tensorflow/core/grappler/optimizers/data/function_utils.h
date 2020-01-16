@@ -61,7 +61,11 @@ void ReplaceReferences(const string& from, const string& to, FunctionDef* func);
 // is unique, and maps to output_tensor_name in the ret dict.
 void AddFunctionOutputWithUniqueName(StringPiece prefix,
                                      StringPiece output_tensor_name,
-                                     FunctionDef* function, DataType dt);
+                                     FunctionDef* fdef, DataType dtype);
+
+// Adds an input to a FunctionDef.
+OpDef_ArgDef* AddFunctionInput(const string& name, FunctionDef* fdef,
+                               DataType dtype);
 
 // Adds a node to a FunctionDef.
 NodeDef* AddNode(StringPiece name, StringPiece op,
@@ -100,6 +104,22 @@ int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
 // the name is unique across the functions nodes.
 void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
                                NodeDef* node);
+
+// Checks if the function is stateful by checking the function graph for
+// stateful ops. Because the "If" and "While" ops are conservatively marked as
+// stateful, the check recurses into their graph to determine whether they are
+// actually stateful. The `skip_assert` argument determines whether the "Assert"
+// op should be treated as stateful or not.
+bool IsFunctionStateful(const FunctionLibraryDefinition& library,
+                        const FunctionDef& function_def,
+                        bool skip_assert = false);
+
+// Checks if the node is stateful. Because the "If" or "While" ops are
+// conservatively marked as stateful, the check recurses into their graph to
+// determine whether they are actually stateful. The `skip_assert` argument
+// determines whether the "Assert" op  should be treated as stateful or not.
+bool IsNodeStateful(const FunctionLibraryDefinition& library,
+                    const NodeDef& node, bool skip_assert = false);
 
 }  // end namespace function_utils
 }  // end namespace grappler

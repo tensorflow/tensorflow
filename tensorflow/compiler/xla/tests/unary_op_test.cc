@@ -64,7 +64,9 @@ class UnaryOpTest : public ClientLibraryTestBase {
         &builder, {-2, 25, 0, static_cast<T>(-0.0), -123, inf<T>(), -inf<T>()});
     Sign(arg);
 
-    ComputeAndCompareR1<T>(&builder, {-1, 1, 0, 0, -1, 1, -1}, {});
+    ComputeAndCompareR1<T>(
+        &builder,
+        {-1, 1, static_cast<T>(+0.0), static_cast<T>(-0.0), -1, 1, -1}, {});
   }
 
   template <typename T>

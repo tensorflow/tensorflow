@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
@@ -114,6 +113,7 @@ int64 CseHash(const HloInstruction* instruction) {
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
+
   const std::function<bool(const HloInstruction*, const HloInstruction*)>
       eq_instructions = std::equal_to<const HloInstruction*>();
   const std::function<bool(const HloComputation*, const HloComputation*)>
@@ -144,7 +144,9 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // If the instruction has zero operands (constants, parameters, etc.) skip
       // over it.
-      if (instruction->operand_count() == 0) {
+      if (instruction->operand_count() == 0 &&
+          instruction->opcode() != HloOpcode::kPartitionId &&
+          instruction->opcode() != HloOpcode::kReplicaId) {
         continue;
       }
       // Skip instructions which have side effects.
@@ -152,16 +154,15 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
         continue;
       }
 
-      auto it = representatives.find(instruction);
-      if (it != representatives.end()) {
-        HloInstruction* equivalent_instruction = *it;
+      auto pair = representatives.insert(instruction);
+      if (!pair.second) {
+        HloInstruction* equivalent_instruction = *pair.first;
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
         changed = true;
         continue;
       }
-      representatives.insert(instruction);
     }
   }
   return changed;

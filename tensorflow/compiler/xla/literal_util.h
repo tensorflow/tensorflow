@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/sparse_index_array.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -102,46 +101,6 @@ class LiteralUtil {
           values,
       const Layout& layout);
 
-  // Creates a literal with a sparse layout and the given indices and values.
-  // The shape is initialized from the given dimensions.  The minor dimension of
-  // the indices array must equal the rank of the shape (i.e. size of the
-  // dimensions array). The major dimension of the indices array must equal the
-  // number of elements in the values array. The maximum number of elements in
-  // the array is taken from the max_indices() value of the index array.
-  //
-  // XLA assumes that sparse literals are in sorted order for all operations. If
-  // the `sort` argument is true, then the indices and values will be sorted
-  // while copying them into the literal. If you have ensured that the indices
-  // and values are already sorted, then you may set the `sort` argument to
-  // false to skip the sorting step.
-  //
-  // For example:
-  //
-  //   CreateSparse(
-  //     {12, 12, 12},
-  //     SparseIndexArray(10, 3,
-  //                      Array2D{
-  //                        {0, 1, 2},
-  //                        {3, 4, 5},
-  //                        {6, 7, 8},
-  //                        {9, 10, 11},
-  //                      }),
-  //     {1.0, 2.0 3.0, 4.0})
-  //
-  // This creates an array with shape F64[12,12,12]sparse{10}, that has the
-  // following non-zero values:
-  //
-  //     [0,  1,  2]: 1.0
-  //     [3,  4,  5]: 2.0
-  //     [6,  7,  8]: 3.0
-  //     [9, 10, 11]: 4.0
-  //
-  template <typename NativeT>
-  static Literal CreateSparse(absl::Span<const int64> dimensions,
-                              SparseIndexArray indices,
-                              absl::Span<const NativeT> values,
-                              bool sort = true);
-
   // Creates a scalar literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
   // Creates a scalar literal value one of the given primitive type.
@@ -152,6 +111,10 @@ class LiteralUtil {
   // Creates a scalar literal value containing the maximum value of the given
   // primitive type. For floating-point types, returns inf.
   static Literal MaxValue(PrimitiveType primitive_type);
+  // Creates a scalar literal value containing the NaN value of the given
+  // primitive type. Fail for non-inexact types. For complex types, returns a
+  // nan + nan * j value.
+  static StatusOr<Literal> NanValue(PrimitiveType primitive_type);
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
   static Literal CreateFullWithDescendingLayout(
@@ -222,8 +185,7 @@ class LiteralUtil {
   // in invocation between the above signature and this one.
   static Literal MakeTupleOwned(std::vector<Literal> elements);
 
-  // This overload lets you pass a braced list of Literals to
-  // MakeTupleOwned:
+  // This overload lets you pass a list of Literals to MakeTupleOwned:
   //
   //   LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1(...), ...).
   //
@@ -261,6 +223,11 @@ class LiteralUtil {
   // recursively converts its elements.
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
 
+  // If the given literal's data type is double, converts it to a bfloat16
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
+
   // Creates a literal with a new shape with the given new dimensions using the
   // data in the given input literal. For reshaping purposes the (flat) data
   // buffer of the input literal is assumed to have the given minor_to_major
@@ -275,7 +242,7 @@ class LiteralUtil {
   template <
       PrimitiveType type,
       typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
-  static StatusOr<Literal> CreateRandomLiteral(
+  static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
       const std::function<T(absl::Span<const int64>)>& generator);
 
@@ -407,21 +374,6 @@ template <typename NativeT>
     ++i0;
   }
   return CreateR4FromArray4DWithLayout(tmp, layout);
-}
-
-template <typename NativeT>
-/* static */ Literal LiteralUtil::CreateSparse(
-    absl::Span<const int64> dimensions, SparseIndexArray indices,
-    absl::Span<const NativeT> values, bool sort) {
-  int64 num_elements = values.size();
-  int64 rank = dimensions.size();
-  CHECK_EQ(num_elements, indices.index_count());
-  CHECK_EQ(rank, indices.rank());
-  Literal literal(ShapeUtil::MakeShapeWithSparseLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(), dimensions,
-      indices.max_indices()));
-  literal.PopulateSparse(indices, values, sort);
-  return literal;
 }
 
 template <typename NativeT>
@@ -558,7 +510,7 @@ template <typename NativeT>
 }
 
 template <PrimitiveType type, typename T>
-/* static */ StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
+/* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
     const std::function<T(absl::Span<const int64>)>& generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
@@ -574,7 +526,7 @@ template <PrimitiveType type, typename E, typename T>
     const Shape& shape, E* engine, T mean, T stddev) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   std::normal_distribution<NativeT> generator(mean, stddev);
-  return CreateRandomLiteral<type, NativeT>(
+  return CreateLiteralWithGenerator<type, NativeT>(
       shape,
       [&](absl::Span<const int64> /*indexes*/) { return generator(*engine); });
 }

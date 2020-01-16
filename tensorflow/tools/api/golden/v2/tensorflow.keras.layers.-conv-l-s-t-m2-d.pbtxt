@@ -4,7 +4,9 @@ tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.convolutional_recurrent.ConvRNN2D\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.RNN\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activation"
@@ -43,6 +45,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dynamic"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "filters"
     mtype: "<type \'property\'>"
   }
@@ -60,6 +66,10 @@ tf_class {
   }
   member {
     name: "input_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "input_spec"
     mtype: "<type \'property\'>"
   }
   member {
@@ -83,7 +93,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "metrics"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name_scope"
     mtype: "<type \'property\'>"
   }
   member {
@@ -135,11 +153,23 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "stateful"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "states"
     mtype: "<type \'property\'>"
   }
   member {
     name: "strides"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "submodules"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable"
     mtype: "<type \'property\'>"
   }
   member {
@@ -179,6 +209,10 @@ tf_class {
     argspec: "args=[\'self\', \'losses\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "add_metric"
+    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "add_update"
     argspec: "args=[\'self\', \'updates\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -188,7 +222,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
   }
   member_method {
     name: "apply"
@@ -209,6 +243,10 @@ tf_class {
   member_method {
     name: "compute_output_shape"
     argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_output_signature"
+    argspec: "args=[\'self\', \'input_signature\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"
@@ -269,5 +307,9 @@ tf_class {
   member_method {
     name: "set_weights"
     argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_name_scope"
+    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
   }
 }

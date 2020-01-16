@@ -39,7 +39,7 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
 
   OP_REQUIRES(
       ctx,
-      xla::ShapeUtil::Rank(crops.shape()) == 2 &&
+      crops.shape().rank() == 2 &&
           block_rank == xla::ShapeUtil::GetDimension(crops.shape(), 0) &&
           2 == xla::ShapeUtil::GetDimension(crops.shape(), 1),
       errors::InvalidArgument("crops should have shape [", block_rank,
@@ -159,8 +159,8 @@ class BatchToSpaceNDOp : public XlaOpKernel {
   }
 };
 REGISTER_XLA_OP(Name("BatchToSpaceND")
-                    .CompileTimeConstInput("block_shape")
-                    .CompileTimeConstInput("crops"),
+                    .CompileTimeConstantInput("block_shape")
+                    .CompileTimeConstantInput("crops"),
                 BatchToSpaceNDOp);
 
 class BatchToSpaceOp : public XlaOpKernel {
@@ -183,7 +183,7 @@ class BatchToSpaceOp : public XlaOpKernel {
  private:
   int block_size_;
 };
-REGISTER_XLA_OP(Name("BatchToSpace").CompileTimeConstInput("crops"),
+REGISTER_XLA_OP(Name("BatchToSpace").CompileTimeConstantInput("crops"),
                 BatchToSpaceOp);
 
 }  // namespace

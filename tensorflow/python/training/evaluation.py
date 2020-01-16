@@ -65,8 +65,8 @@ def _get_latest_eval_step_value(update_ops):
   """Gets the eval step `Tensor` value after running `update_ops`.
 
   Args:
-    update_ops: A list of `Tensors` or a dictionary of names to `Tensors`,
-        which are run before reading the eval step value.
+    update_ops: A list of `Tensors` or a dictionary of names to `Tensors`, which
+      are run before reading the eval step value.
 
   Returns:
     A `Tensor` representing the value for the evaluation step.
@@ -102,21 +102,20 @@ class _MultiStepStopAfterNEvalsHook(session_run_hook.SessionRunHook):
 
   def after_create_session(self, session, coord):
     # Update number of steps to run in the first run call
-    if  self._num_evals is None:
+    if self._num_evals is None:
       steps = self._steps_per_run_initial_value
     else:
       steps = min(self._steps_per_run_initial_value, self._num_evals)
     self._steps_per_run_variable.load(steps, session=session)
 
   def before_run(self, run_context):
-    return session_run_hook.SessionRunArgs({
-        'evals_completed': self._evals_completed
-    })
+    return session_run_hook.SessionRunArgs(
+        {'evals_completed': self._evals_completed})
 
   def after_run(self, run_context, run_values):
     evals_completed = run_values.results['evals_completed']
     # Update number of steps to run in the next iteration
-    if  self._num_evals is None:
+    if self._num_evals is None:
       steps = self._steps_per_run_initial_value
     else:
       steps = min(self._num_evals - evals_completed,
@@ -147,16 +146,15 @@ class _StopAfterNEvalsHook(session_run_hook.SessionRunHook):
     self._evals_completed = None
     self._log_progress = log_progress
     # Reduce logging frequency if there are 20 or more evaluations.
-    self._log_frequency = (1 if (num_evals is None or num_evals < 20)
-                           else math.floor(num_evals / 10.))
+    self._log_frequency = (1 if (num_evals is None or num_evals < 20) else
+                           math.floor(num_evals / 10.))
 
   def _set_evals_completed_tensor(self, updated_eval_step):
     self._evals_completed = updated_eval_step
 
   def before_run(self, run_context):
-    return session_run_hook.SessionRunArgs({
-        'evals_completed': self._evals_completed
-    })
+    return session_run_hook.SessionRunArgs(
+        {'evals_completed': self._evals_completed})
 
   def after_run(self, run_context, run_values):
     evals_completed = run_values.results['evals_completed']
@@ -205,20 +203,20 @@ def _evaluate_once(checkpoint_path,
   Args:
     checkpoint_path: The path to a checkpoint to use for evaluation.
     master: The BNS address of the TensorFlow master.
-    scaffold: An tf.train.Scaffold instance for initializing variables and
-      restoring variables. Note that `scaffold.init_fn` is used by the function
-      to restore the checkpoint. If you supply a custom init_fn, then it must
-      also take care of restoring the model from its checkpoint.
-    eval_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
-      to `Tensors`, which is run until the session is requested to stop,
-      commonly done by a `tf.contrib.training.StopAfterNEvalsHook`.
+    scaffold: An tf.compat.v1.train.Scaffold instance for initializing variables
+      and restoring variables. Note that `scaffold.init_fn` is used by the
+      function to restore the checkpoint. If you supply a custom init_fn, then
+      it must also take care of restoring the model from its checkpoint.
+    eval_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names to
+      `Tensors`, which is run until the session is requested to stop, commonly
+      done by a `tf.contrib.training.StopAfterNEvalsHook`.
     feed_dict: The feed dictionary to use when executing the `eval_ops`.
     final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
       to `Tensors`.
     final_ops_feed_dict: A feed dictionary to use when evaluating `final_ops`.
-    hooks: List of `tf.train.SessionRunHook` callbacks which are run inside the
-      evaluation loop.
-    config: An instance of `tf.ConfigProto` that will be used to
+    hooks: List of `tf.estimator.SessionRunHook` callbacks which are run inside
+      the evaluation loop.
+    config: An instance of `tf.compat.v1.ConfigProto` that will be used to
       configure the `Session`. If left as `None`, the default will be used.
 
   Returns:
@@ -230,7 +228,7 @@ def _evaluate_once(checkpoint_path,
   hooks = list(hooks or [])
 
   if eval_ops is not None:
-    if any([isinstance(h, _MultiStepStopAfterNEvalsHook) for h in hooks]):
+    if any(isinstance(h, _MultiStepStopAfterNEvalsHook) for h in hooks):
       steps_per_run_variable = \
           basic_session_run_hooks.get_or_create_steps_per_run_variable()
       update_eval_step = state_ops.assign_add(
@@ -253,9 +251,9 @@ def _evaluate_once(checkpoint_path,
       if isinstance(h, (_StopAfterNEvalsHook, _MultiStepStopAfterNEvalsHook)):
         h._set_evals_completed_tensor(eval_step_value)  # pylint: disable=protected-access
 
-  logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                         time.gmtime()))
-
+  logging.info('Starting evaluation at ' +
+               time.strftime('%Y-%m-%dT%H:%M:%SZ', time.localtime()))
+  start = time.time()
   # Prepare the session creator.
   session_creator = monitored_session.ChiefSessionCreator(
       scaffold=scaffold,
@@ -263,8 +261,8 @@ def _evaluate_once(checkpoint_path,
       master=master,
       config=config)
 
-  final_ops_hook = basic_session_run_hooks.FinalOpsHook(
-      final_ops, final_ops_feed_dict)
+  final_ops_hook = basic_session_run_hooks.FinalOpsHook(final_ops,
+                                                        final_ops_feed_dict)
   hooks.append(final_ops_hook)
 
   with monitored_session.MonitoredSession(
@@ -272,7 +270,8 @@ def _evaluate_once(checkpoint_path,
     if eval_ops is not None:
       while not session.should_stop():
         session.run(eval_ops, feed_dict)
+  logging.info('Inference Time : {:0.5f}s'.format(time.time() - start))
 
-  logging.info('Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                         time.gmtime()))
+  logging.info('Finished evaluation at ' +
+               time.strftime('%Y-%m-%d-%H:%M:%S', time.localtime()))
   return final_ops_hook.final_ops_values

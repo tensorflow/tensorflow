@@ -1,0 +1,57 @@
+op {
+  name: "StringNGrams"
+  input_arg {
+    name: "data"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data_splits"
+    type_attr: "Tsplits"
+  }
+  output_arg {
+    name: "ngrams"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "ngrams_splits"
+    type_attr: "Tsplits"
+  }
+  attr {
+    name: "separator"
+    type: "string"
+  }
+  attr {
+    name: "ngram_widths"
+    type: "list(int)"
+    has_minimum: true
+  }
+  attr {
+    name: "left_pad"
+    type: "string"
+  }
+  attr {
+    name: "right_pad"
+    type: "string"
+  }
+  attr {
+    name: "pad_width"
+    type: "int"
+  }
+  attr {
+    name: "preserve_short_sequences"
+    type: "bool"
+  }
+  attr {
+    name: "Tsplits"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}

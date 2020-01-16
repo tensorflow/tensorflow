@@ -39,15 +39,19 @@ def download_clang(repo_ctx, out_folder):
 
     # Latest CLANG_REVISION and CLANG_SUB_REVISION of the Chromiums's release
     # can be found in https://chromium.googlesource.com/chromium/src/tools/clang/+/master/scripts/update.py
-    CLANG_REVISION = "340427"
+    CLANG_REVISION = "b4160cb94c54f0b31d0ce14694950dac7b6cd83f"
+    CLANG_SVN_REVISION = "371856"
     CLANG_SUB_REVISION = 1
-
-    package_version = "%s-%s" % (CLANG_REVISION, CLANG_SUB_REVISION)
+    package_version = "%s-%s-%s" % (
+        CLANG_SVN_REVISION,
+        CLANG_REVISION[:8],
+        CLANG_SUB_REVISION,
+    )
 
     checksums = {
-        "Linux_x64": "8a8f21fb624fc7be7e91e439a13114847185375bb932db51ba590174ecaf764b",
-        "Mac": "ba894536b7c8d37103a5ddba784f268d55e65bb2ea1200a2cf9f2ef1590eaacd",
-        "Win": "c3f5bd977266dfd011411c94a13e00974b643b70fb0225a5fb030f7f703fa474",
+        "Linux_x64": "919c19df3ebd7db03b72575b2de5198404357659fc8c85c2d66e679ad4acbafe",
+        "Mac": "5632c516f3ac5fab3654d0a874688cad6c7f99b96845da27ab12336a14187aa2",
+        "Win": "235545b33f4d697190032cb538fdcaba227017c95b752ea8af8f29aab8da7479",
     }
 
     platform_folder = _get_platform_folder(repo_ctx.os.name)

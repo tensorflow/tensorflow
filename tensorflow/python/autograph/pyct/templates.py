@@ -32,6 +32,79 @@ from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 
 
+class ContextAdjuster(gast.NodeTransformer):
+  """Adjusts the ctx field of nodes to ensure consistency.
+
+  This transformer can change the ctx fields of a variable, tuple and other
+  AST elements that allow one, based on whether the element is being read or
+  written.
+  """
+
+  def __init__(self, override_value):
+    self._ctx_override = override_value
+
+  def visit(self, node):
+    original_override = self._ctx_override
+    node = super(ContextAdjuster, self).visit(node)
+    if hasattr(node, 'ctx'):
+      assert node.ctx is not None, 'node {} has ctx unset'.format(node)
+    self._ctx_override = original_override
+    return node
+
+  def _apply_override(self, node):
+    if self._ctx_override is not None:
+      node.ctx = self._ctx_override()
+
+  def visit_Attribute(self, node):
+    self._apply_override(node)
+    self._ctx_override = gast.Load
+    node = self.generic_visit(node)
+    return node
+
+  def visit_Tuple(self, node):
+    self._apply_override(node)
+    return self.generic_visit(node)
+
+  def visit_List(self, node):
+    self._apply_override(node)
+    return self.generic_visit(node)
+
+  def visit_Name(self, node):
+    self._apply_override(node)
+    return self.generic_visit(node)
+
+  def visit_Call(self, node):
+    self._apply_override(node)
+    # We may be able to override these to Load(), but for now it's simpler
+    # to just assert that they're set.
+    self._ctx_override = None
+    return self.generic_visit(node)
+
+  def visit_Dict(self, node):
+    # We may be able to override these to Load(), but for now it's simpler
+    # to just assert that they're set.
+    self._ctx_override = None
+    return self.generic_visit(node)
+
+  def visit_Subscript(self, node):
+    self._apply_override(node)
+    self._ctx_override = gast.Load
+    node.value = self.visit(node.value)
+    return self.generic_visit(node)
+
+  def visit_comprehension(self, node):
+    # We may be able to override some of these, but for now it's simpler
+    # to just assert that they're set.
+    self._ctx_override = None
+    return self.generic_visit(node)
+
+  def visit_Lambda(self, node):
+    # We may be able to override some of these, but for now it's simpler
+    # to just assert that they're set.
+    self._ctx_override = None
+    return self.generic_visit(node)
+
+
 class ReplaceTransformer(gast.NodeTransformer):
   """Replace AST nodes."""
 
@@ -47,7 +120,10 @@ class ReplaceTransformer(gast.NodeTransformer):
     self.preserved_annos = {
         anno.Basic.ORIGIN,
         anno.Basic.SKIP_PROCESSING,
+        anno.Basic.DIRECTIVES,
         anno.Static.ORIG_DEFINITIONS,
+        'extra_test',
+        'function_context_name',
     }
 
   def _prepare_replacement(self, replaced, key):
@@ -90,7 +166,8 @@ class ReplaceTransformer(gast.NodeTransformer):
     # we could allow changing just node arg, so that we end up with bar=baz.
     raise ValueError(
         'a keyword argument may only be replaced by another keyword or a '
-        'non-empty list of keywords. Found: %s' % repl)
+        'non-empty list of keywords. Found: {} for keyword {}'.format(
+            repl, node.arg))
 
   def visit_FunctionDef(self, node):
     node = self.generic_visit(node)
@@ -104,85 +181,6 @@ class ReplaceTransformer(gast.NodeTransformer):
           repl)
     node.name = repl.id
     return node
-
-  def _check_has_context(self, node):
-    if not node.ctx:
-      raise ValueError('node %s is missing ctx value' % node)
-
-  # TODO(mdan): Rewrite _check and _set using a separate transformer.
-  def _check_inner_children_have_context(self, node):
-    if isinstance(node, gast.Attribute):
-      self._check_inner_children_have_context(node.value)
-      self._check_has_context(node)
-    elif isinstance(node, (gast.Tuple, gast.List)):
-      for e in node.elts:
-        self._check_inner_children_have_context(e)
-      self._check_has_context(node)
-    elif isinstance(node, gast.Dict):
-      for e in node.keys:
-        self._check_inner_children_have_context(e)
-      for e in node.values:
-        self._check_inner_children_have_context(e)
-    elif isinstance(node, gast.Index):
-      self._check_inner_children_have_context(node.value)
-    elif isinstance(node, gast.Subscript):
-      self._check_inner_children_have_context(node.value)
-      self._check_inner_children_have_context(node.slice)
-    elif isinstance(node, gast.Slice):
-      self._check_inner_children_have_context(node.lower)
-      if node.upper:
-        self._check_inner_children_have_context(node.upper)
-      if node.step:
-        self._check_inner_children_have_context(node.step)
-    elif isinstance(node, gast.BinOp):
-      self._check_inner_children_have_context(node.left)
-      self._check_inner_children_have_context(node.right)
-    elif isinstance(node, gast.UnaryOp):
-      self._check_inner_children_have_context(node.operand)
-    elif isinstance(node, gast.Name):
-      self._check_has_context(node)
-    elif isinstance(node, (gast.Str, gast.Num)):
-      pass
-    else:
-      raise ValueError('unexpected node type "%s"' % node)
-
-  def _set_inner_child_context(self, node, ctx):
-    if isinstance(node, gast.Attribute):
-      self._set_inner_child_context(node.value, gast.Load())
-      node.ctx = ctx
-    elif isinstance(node, (gast.Tuple, gast.List)):
-      for e in node.elts:
-        self._set_inner_child_context(e, ctx)
-      node.ctx = ctx
-    elif isinstance(node, gast.Name):
-      node.ctx = ctx
-    elif isinstance(node, gast.Call):
-      self._set_inner_child_context(node.func, ctx)
-      # We may be able to override these to Load(), but for now it's simpler
-      # to just assert that they're set.
-      for a in node.args:
-        self._check_inner_children_have_context(a)
-      for k in node.keywords:
-        self._check_inner_children_have_context(k.value)
-    elif isinstance(node, gast.Dict):
-      # We may be able to override these to Load(), but for now it's simpler
-      # to just assert that they're set.
-      for e in node.keys:
-        self._check_inner_children_have_context(e)
-      for e in node.values:
-        self._check_inner_children_have_context(e)
-    elif isinstance(node, gast.Subscript):
-      self._set_inner_child_context(node.value, ctx)
-      self._check_inner_children_have_context(node.slice)
-    elif isinstance(node, gast.BinOp):
-      self._check_inner_children_have_context(node.left)
-      self._check_inner_children_have_context(node.right)
-    elif isinstance(node, gast.UnaryOp):
-      self._check_inner_children_have_context(node.operand)
-    elif isinstance(node, (gast.Str, gast.Num)):
-      pass
-    else:
-      raise ValueError('unexpected node type "%s"' % node)
 
   def visit_Attribute(self, node):
     node = self.generic_visit(node)
@@ -202,17 +200,14 @@ class ReplaceTransformer(gast.NodeTransformer):
 
     new_nodes = self._prepare_replacement(node, node.id)
 
+    if not new_nodes:
+      return new_nodes
+
     # Preserve the target context.
+    adjuster = ContextAdjuster(type(node.ctx))
     for n in new_nodes:
-      if isinstance(n, (gast.Tuple, gast.List)):
-        for e in n.elts:
-          self._set_inner_child_context(e, node.ctx)
-      if isinstance(n, gast.Attribute):
-        # For attributes, the inner Name node receives the context, while the
-        # outer ones have it set to Load.
-        self._set_inner_child_context(n, node.ctx)
-      else:
-        n.ctx = node.ctx
+      if hasattr(n, 'ctx'):
+        adjuster.visit(n)
 
     if len(new_nodes) == 1:
       new_nodes, = new_nodes
@@ -222,10 +217,11 @@ class ReplaceTransformer(gast.NodeTransformer):
 
 def _convert_to_ast(n):
   """Converts from a known data type to AST."""
+  # Note: When generating AST nodes from strings/QNs in isolation, ctx is
+  # unknown. ctx must be filled in according to the template being used.
+  # See ReplaceTransformer.visit_Name.
   if isinstance(n, str):
-    # Note: the node will receive the ctx value from the template, see
-    # ReplaceTransformer.visit_Name.
-    return gast.Name(id=n, ctx=None, annotation=None)
+    return gast.Name(id=n, ctx=None, annotation=None, type_comment=None)
   if isinstance(n, qual_names.QN):
     return n.ast()
   if isinstance(n, list):
@@ -262,13 +258,22 @@ def replace(template, **replacements):
   """
   if not isinstance(template, str):
     raise ValueError('Expected string template, got %s' % type(template))
-  tree = parser.parse_str(textwrap.dedent(template))
   for k in replacements:
     replacements[k] = _convert_to_ast(replacements[k])
-  results = ReplaceTransformer(replacements).visit(tree).body
-  if isinstance(results, list):
-    return [qual_names.resolve(r) for r in results]
-  return qual_names.resolve(results)
+  template_str = parser.STANDARD_PREAMBLE + textwrap.dedent(template)
+  nodes = parser.parse(
+      template_str,
+      preamble_len=parser.STANDARD_PREAMBLE_LEN,
+      single_node=False)
+  results = []
+  for node in nodes:
+    node = ReplaceTransformer(replacements).visit(node)
+    if isinstance(node, (list, tuple)):
+      results.extend(node)
+    else:
+      results.append(node)
+  results = [qual_names.resolve(r) for r in results]
+  return results
 
 
 def replace_as_expression(template, **replacements):
@@ -277,8 +282,7 @@ def replace_as_expression(template, **replacements):
   if len(replacement) != 1:
     raise ValueError(
         'single expression expected; for more general templates use replace')
-  node = replacement[0]
-  node = qual_names.resolve(node)
+  node, = replacement
 
   if isinstance(node, gast.Expr):
     return node.value

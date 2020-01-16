@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
 
-#include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
 namespace tensorflow {
@@ -24,8 +24,15 @@ namespace data {
 
 class PrefetchDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit PrefetchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+  static constexpr const char* const kDatasetType = "Prefetch";
+  static constexpr const char* const kInputDataset = "input_dataset";
+  static constexpr const char* const kBufferSize = "buffer_size";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
+  static constexpr const char* const kSlackPeriod = "slack_period";
+  static constexpr const char* const kLegacyAutotune = "legacy_autotune";
+
+  explicit PrefetchDatasetOp(OpKernelConstruction* ctx);
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -33,6 +40,8 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
+  int64 slack_period_ = 0;
+  bool legacy_autotune_ = true;
 };
 
 }  // namespace data

@@ -42,7 +42,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Normal")
+@tf_export(v1=["distributions.Normal"])
 class Normal(distribution.Distribution):
   """The Normal distribution with location `loc` and `scale` parameters.
 
@@ -189,7 +189,7 @@ class Normal(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
@@ -291,5 +291,5 @@ def _kl_normal_normal(n_a, n_b, name=None):
     s_a_squared = math_ops.square(n_a.scale)
     s_b_squared = math_ops.square(n_b.scale)
     ratio = s_a_squared / s_b_squared
-    return (math_ops.square(n_a.loc - n_b.loc) / (two * s_b_squared) +
-            half * (ratio - one - math_ops.log(ratio)))
+    return (math_ops.squared_difference(n_a.loc, n_b.loc) / (two * s_b_squared)
+            + half * (ratio - one - math_ops.log(ratio)))

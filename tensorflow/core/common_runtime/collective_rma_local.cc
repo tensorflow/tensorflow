@@ -21,6 +21,9 @@ namespace tensorflow {
 
 void CollectiveRemoteAccessLocal::StartAbort(const Status& s) {
   buf_rendezvous_.StartAbort(s);
+  if (errors::IsFailedPrecondition(s)) {
+    dev_resolver_->ClearCache();
+  }
 }
 
 void CollectiveRemoteAccessLocal::RecvFromPeer(
@@ -37,35 +40,61 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
                          "called with peer_is_local=false"));
     return;
   }
-  buf_rendezvous_.ConsumeBuf(
-      key, [this, to_tensor, to_device_ctx, to_device, to_alloc_attr,
-            dev_to_dev_stream_index,
-            done](const Status& s, BufRendezvous::Hook* hook) {
-        if (!s.ok()) {
-          done(s);
-          delete hook;
-        } else {
-          int64 recv_bytes = to_tensor->TotalBytes();
-          CHECK_EQ(recv_bytes, hook->prod_value->TotalBytes());
-          MemCpyAsync(hook->prod_ctx,    // src DeviceContext
-                      to_device_ctx,     // dst DeviceContext
-                      hook->prod_dev,    // src Device
-                      to_device,         // dst Device
-                      hook->prod_attr,   // src AllocatorAttributes
-                      to_alloc_attr,     // dst AllocatorAttributes
-                      hook->prod_value,  // src Tensor*
-                      to_tensor,         // dst Tensor*
-                      dev_to_dev_stream_index, [hook, done](const Status& s) {
-                        // This callback may be executing in the GPUEventMgr
-                        // pool in which case it must be very short duration
-                        // and non-blocking (except e.g. for queue insertion).
-                        // It would be safer, though expensive, to transfer
-                        // to another thread here.
-                        done(s);
-                        BufRendezvous::DoneWithHook(hook);
-                      });
-        }
-      });
+
+  Device* from_device;
+  Status status = dev_mgr_->LookupDevice(peer_device, &from_device);
+  if (!status.ok()) {
+    done(status);
+    return;
+  }
+
+  auto consumer_callback = [to_tensor, to_device_ctx, to_device, to_alloc_attr,
+                            dev_to_dev_stream_index,
+                            done](const Status& status,
+                                  BufRendezvous::Hook* hook) {
+    Status s = status;
+    if (s.ok()) {
+      if (hook == nullptr) {
+        s = errors::Internal("Invalid null hook in ConsumeBuf callback");
+      }
+    } else {
+      if (hook != nullptr) {
+        LOG(ERROR) << "Got hook " << hook << " with status " << s
+                   << " from ConsumeBuf";
+      }
+    }
+
+    if (s.ok()) {
+      int64 recv_bytes = to_tensor->TotalBytes();
+      CHECK_EQ(recv_bytes, hook->prod_value->TotalBytes());
+      MemCpyAsync(hook->prod_ctx,    // src DeviceContext
+                  to_device_ctx,     // dst DeviceContext
+                  hook->prod_dev,    // src Device
+                  to_device,         // dst Device
+                  hook->prod_attr,   // src AllocatorAttributes
+                  to_alloc_attr,     // dst AllocatorAttributes
+                  hook->prod_value,  // src Tensor*
+                  to_tensor,         // dst Tensor*
+                  dev_to_dev_stream_index,
+                  [hook, done](const Status& memcpy_status) {
+                    // This callback may be executing in the GPUEventMgr
+                    // pool in which case it must be very short duration
+                    // and non-blocking (except e.g. for queue insertion).
+                    // It would be safer, though expensive, to transfer
+                    // to another thread here.
+                    done(memcpy_status);
+                    BufRendezvous::DoneWithHook(hook);
+                  });
+    } else {
+      done(s);
+      if (hook != nullptr) {
+        BufRendezvous::DoneWithHook(hook);
+      }
+    }
+  };
+  buf_rendezvous_.ConsumeBuf(key, from_device->name(),
+                             from_device->attributes().incarnation(),
+                             consumer_callback);
 }
 
 void CollectiveRemoteAccessLocal::PostToPeer(

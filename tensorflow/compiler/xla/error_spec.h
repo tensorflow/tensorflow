@@ -30,6 +30,19 @@ struct ErrorSpec {
   // In effect, this allows the tested operation to produce incorrect results
   // for inputs outside its mathematical domain.
   bool relaxed_nans;
+
+  // If this is true, then we treat each +/-inf in the actual result as
+  // equivalent to our choice of either +/-inf or the min/max floating-point
+  // value.
+  //
+  // If the expected result is +/-inf, the actual result must still be +/-inf.
+  //
+  // In effect, this allows the tested operation to overflow, so long as it's
+  // overflowing on "large" values.
+  //
+  // (We could have a symmetric more_infs_ok flag if necessary; right now it
+  // appears not to be.)
+  bool fewer_infs_ok = false;
 };
 
 }  // namespace xla

@@ -20,12 +20,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -150,6 +150,10 @@ class RetryingRandomAccessFile : public RandomAccessFile {
                            const RetryConfig& retry_config)
       : base_file_(std::move(base_file)), retry_config_(retry_config) {}
 
+  Status Name(StringPiece* result) const override {
+    return base_file_->Name(result);
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     return RetryingUtils::CallWithRetries(
@@ -187,9 +191,17 @@ class RetryingWritableFile : public WritableFile {
     return RetryingUtils::CallWithRetries(
         [this]() { return base_file_->Flush(); }, retry_config_);
   }
+  Status Name(StringPiece* result) const override {
+    return base_file_->Name(result);
+  }
   Status Sync() override {
     return RetryingUtils::CallWithRetries(
         [this]() { return base_file_->Sync(); }, retry_config_);
+  }
+  Status Tell(int64* position) override {
+    return RetryingUtils::CallWithRetries(
+        [this, &position]() { return base_file_->Tell(position); },
+        retry_config_);
   }
 
  private:

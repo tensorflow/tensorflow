@@ -14,32 +14,43 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
+
+#include <memory>
+
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-std::unique_ptr<HloModule> GpuCodegenTest::CreateNewModuleWithFTZ(bool ftz) {
+std::unique_ptr<VerifiedHloModule>
+GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
   HloModuleConfig config;
-  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  auto debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_ftz(ftz);
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   config.set_debug_options(debug_options);
 
-  return absl::make_unique<HloModule>(TestName(), config);
+  return absl::make_unique<VerifiedHloModule>(
+      TestName(), config, /*verifier_layout_sensitive=*/true,
+      /*allow_mixed_precision_in_hlo_verifier=*/false,
+      ShapeUtil::ByteSizeOfElements);
 }
 
-void GpuCodegenTest::CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
-                                         const string& pattern) {
+void GpuCodegenTest::CompileAndVerifyPtx(
+    std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern) {
   std::unique_ptr<Executable> executable =
       std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
-  string ptx_str(static_cast<GpuExecutable*>(executable.get())->ptx());
+  string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
   StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());

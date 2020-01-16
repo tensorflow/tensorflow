@@ -40,10 +40,16 @@ class ReduceWindowOp : public XlaOpKernel {
 
     std::vector<int64> window_dimensions;
     std::vector<int64> window_strides;
+    std::vector<int64> base_dilations;
+    std::vector<int64> window_dilations;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector(
                                 "window_dimensions", &window_dimensions));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("window_strides",
                                                               &window_strides));
+    OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("base_dilations",
+                                                              &base_dilations));
+    OP_REQUIRES_OK(context, context->ConstantInputAsIntVector(
+                                "window_dilations", &window_dilations));
 
     const int rank = input_shape.dims();
     OP_REQUIRES(context, rank == window_dimensions.size(),
@@ -56,6 +62,16 @@ class ReduceWindowOp : public XlaOpKernel {
                     "The size of window_strides must be equal to the input "
                     "rank (",
                     window_strides.size(), " vs. ", rank, ")"));
+    OP_REQUIRES(context, rank == base_dilations.size(),
+                errors::InvalidArgument(
+                    "The size of base_dilations must be equal to the input "
+                    "rank (",
+                    base_dilations.size(), " vs. ", rank, ")"));
+    OP_REQUIRES(context, rank == window_dilations.size(),
+                errors::InvalidArgument(
+                    "The size of window_dilations must be equal to the input "
+                    "rank (",
+                    window_dilations.size(), " vs. ", rank, ")"));
 
     // Build the reducer function.
     XlaCompiler::Argument reducer_arg;
@@ -65,7 +81,6 @@ class ReduceWindowOp : public XlaOpKernel {
 
     XlaCompiler::CompileOptions compile_options;
     compile_options.use_tuple_arg = false;
-    compile_options.resolve_compile_time_constants = false;
     compile_options.is_entry_computation = false;
     compile_options.always_return_tuple = false;
     XlaCompiler::CompilationResult reducer;
@@ -102,7 +117,8 @@ class ReduceWindowOp : public XlaOpKernel {
 
     xla::XlaOp output = xla::ReduceWindowWithGeneralPadding(
         context->Input(0), context->Input(1), *reducer.computation,
-        window_dimensions, window_strides, padding);
+        window_dimensions, window_strides, base_dilations, window_dilations,
+        padding);
     context->SetOutput(0, output);
   }
 
@@ -113,9 +129,11 @@ class ReduceWindowOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("XlaReduceWindow")
-                    .CompileTimeConstInput("window_dimensions")
-                    .CompileTimeConstInput("window_strides")
-                    .CompileTimeConstInput("padding"),
+                    .CompileTimeConstantInput("window_dimensions")
+                    .CompileTimeConstantInput("window_strides")
+                    .CompileTimeConstantInput("base_dilations")
+                    .CompileTimeConstantInput("window_dilations")
+                    .CompileTimeConstantInput("padding"),
                 ReduceWindowOp);
 
 }  // namespace

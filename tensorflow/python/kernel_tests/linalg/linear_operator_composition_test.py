@@ -20,8 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -29,7 +28,6 @@ from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 
@@ -38,23 +36,35 @@ class SquareLinearOperatorCompositionTest(
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
   def setUp(self):
-    # Increase from 1e-6 to 1e-4
-    self._atol[dtypes.float32] = 1e-4
+    # Increase from 1e-6 to 1e-4 and 2e-4.
+    self._atol[dtypes.float32] = 2e-4
     self._atol[dtypes.complex64] = 1e-4
-    self._rtol[dtypes.float32] = 1e-4
+    self._rtol[dtypes.float32] = 2e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
-    sess = ops.get_default_session()
+  @staticmethod
+  def skip_these_tests():
+    # Cholesky not implemented.
+    return ["cholesky"]
+
+  def operator_and_matrix(self, build_info, dtype, use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.
     num_operators = rng.randint(low=1, high=3)
-    matrices = [
-        linear_operator_test_util.random_positive_definite_matrix(
-            shape, dtype, force_well_conditioned=True)
-        for _ in range(num_operators)
-    ]
+    if ensure_self_adjoint_and_pd:
+      # The random PD matrices are also symmetric. Here we are computing
+      # A @ A ... @ A. Since A is symmetric and PD, so are any powers of it.
+      matrices = [
+          linear_operator_test_util.random_positive_definite_matrix(
+              shape, dtype, force_well_conditioned=True)] * num_operators
+    else:
+      matrices = [
+          linear_operator_test_util.random_positive_definite_matrix(
+              shape, dtype, force_well_conditioned=True)
+          for _ in range(num_operators)
+      ]
 
     lin_op_matrices = matrices
 
@@ -65,6 +75,8 @@ class SquareLinearOperatorCompositionTest(
 
     operator = linalg.LinearOperatorComposition(
         [linalg.LinearOperatorFullMatrix(l) for l in lin_op_matrices],
+        is_positive_definite=True if ensure_self_adjoint_and_pd else None,
+        is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
         is_square=True)
 
     matmul_order_list = list(reversed(matrices))
@@ -138,14 +150,11 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
-    sess = ops.get_default_session()
+  def operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    del ensure_self_adjoint_and_pd
     shape = list(build_info.shape)
-
-    # Test only the case of 2 matrices.
-    # The Square test uses either 1 or 2, so we have tested the case of 1 matrix
-    # sufficiently.
-    num_operators = 2
 
     # Create 2 matrices/operators, A1, A2, which becomes A = A1 A2.
     # Use inner dimension of 2.
@@ -177,6 +186,7 @@ class NonSquareLinearOperatorCompositionTest(
 
     return operator, mat
 
+  @test_util.run_deprecated_v1
   def test_static_shapes(self):
     operators = [
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 4)),
@@ -185,6 +195,7 @@ class NonSquareLinearOperatorCompositionTest(
     operator = linalg.LinearOperatorComposition(operators)
     self.assertAllEqual((2, 3, 5), operator.shape)
 
+  @test_util.run_deprecated_v1
   def test_shape_tensors_when_statically_available(self):
     operators = [
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 4)),
@@ -194,6 +205,7 @@ class NonSquareLinearOperatorCompositionTest(
     with self.cached_session():
       self.assertAllEqual((2, 3, 5), operator.shape_tensor().eval())
 
+  @test_util.run_deprecated_v1
   def test_shape_tensors_when_only_dynamically_available(self):
     mat_1 = rng.rand(1, 2, 3, 4)
     mat_2 = rng.rand(1, 2, 4, 5)
@@ -212,4 +224,6 @@ class NonSquareLinearOperatorCompositionTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(SquareLinearOperatorCompositionTest)
+  linear_operator_test_util.add_tests(NonSquareLinearOperatorCompositionTest)
   test.main()

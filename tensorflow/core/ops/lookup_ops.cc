@@ -214,6 +214,19 @@ REGISTER_OP("LookupTableInsertV2")
       return Status::OK();
     });
 
+REGISTER_OP("LookupTableRemoveV2")
+    .Input("table_handle: resource")
+    .Input("keys: Tin")
+    .Attr("Tin: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &handle));
+
+      // TODO(turboale): Validate keys shape.
+      return Status::OK();
+    });
+
 REGISTER_OP("LookupTableSize")
     .Input("table_handle: Ref(string)")
     .Output("size: int64")
@@ -407,6 +420,7 @@ REGISTER_OP("MutableDenseHashTable")
 
 REGISTER_OP("MutableDenseHashTableV2")
     .Input("empty_key: key_dtype")
+    .Input("deleted_key: key_dtype")
     .Output("table_handle: resource")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")

@@ -29,12 +29,23 @@ Follow either of the two links above to access the appropriate CLA and instructi
 ### Contributing code
 
 If you have improvements to TensorFlow, send us your pull requests! For those
-just getting started, Github has a [howto](https://help.github.com/articles/using-pull-requests/).
+just getting started, Github has a
+[how to](https://help.github.com/articles/using-pull-requests/).
 
-TensorFlow team members will be assigned to review your pull requests. Once the pull requests are approved and pass continuous integration checks, we will merge the pull requests.
-For some pull requests, we will apply the patch for each pull request to our internal version control system first, and export the change out as a new commit later, at which point the original pull request will be closed. The commits in the pull request will be squashed into a single commit with the pull request creator as the author. These pull requests will be labeled as pending merge internally.
+TensorFlow team members will be assigned to review your pull requests. Once the
+pull requests are approved and pass continuous integration checks, a TensorFlow
+team member will apply `ready to pull` label to your change. This means we are
+working on getting your pull request submitted to our internal repository. After
+the change has been submitted internally, your pull request will be merged
+automatically on GitHub.
 
-If you want to contribute but you're not sure where to start, take a look at the
+If you want to contribute, start working through the TensorFlow codebase,
+navigate to the
+[Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
+looking through interesting issues. If you are not sure of where to start, then
+start by trying one of the smaller/easier issues here i.e.
+[issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)
+and then take a look at the
 [issues with the "contributions welcome" label](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
 These are issues that we believe are particularly well suited for outside
 contributions, often because we probably won't get to them right now. If you
@@ -51,24 +62,32 @@ TensorFlow coding style.
 
 #### General guidelines and philosophy for contribution
 
-* Include unit tests when you contribute new features, as they help to
-  a) prove that your code works correctly, and b) guard against future breaking
-  changes to lower the maintenance cost.
-* Bug fixes also generally require unit tests, because the presence of bugs
-  usually indicates insufficient test coverage.
-* Keep API compatibility in mind when you change code in core TensorFlow,
-  e.g., code in [tensorflow/core](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core) and  [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
-  TensorFlow has reached version 1 and hence cannot make
-  non-backward-compatible API changes without a major release. Reviewers of your
-  pull request will comment on any API compatibility issues.
-* When you contribute a new feature to TensorFlow, the maintenance burden is (by
-  default) transferred to the TensorFlow team. This means that benefit of the
-  contribution must be compared against the cost of maintaining the feature.
-* Full new features (e.g., a new op implementing a cutting-edge algorithm)
-  typically will live in
-  [tensorflow/contrib](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib)
-  to get some airtime before decision is made regarding whether they are to be
-  migrated to the core.
+*   Include unit tests when you contribute new features, as they help to a)
+    prove that your code works correctly, and b) guard against future breaking
+    changes to lower the maintenance cost.
+*   Bug fixes also generally require unit tests, because the presence of bugs
+    usually indicates insufficient test coverage.
+*   Keep API compatibility in mind when you change code in core TensorFlow,
+    e.g., code in
+    [tensorflow/core](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core)
+    and
+    [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
+    TensorFlow has passed version 1.0 and hence cannot make
+    non-backward-compatible API changes without a major release. Reviewers of
+    your pull request will comment on any API compatibility issues.
+*   When you contribute a new feature to TensorFlow, the maintenance burden is
+    (by default) transferred to the TensorFlow team. This means that the benefit
+    of the contribution must be compared against the cost of maintaining the
+    feature.
+*   Full new features (e.g., a new op implementing a cutting-edge algorithm)
+    typically will live in
+    [tensorflow/addons](https://github.com/tensorflow/addons) to get some
+    airtime before a decision is made regarding whether they are to be migrated
+    to the core.
+*   As every PR requires several CPU/GPU hours of CI testing, we discourage
+    submitting PRs to fix one typo, one warning,etc. We recommend fixing the
+    same issue at the file level at least (e.g.: fix all typos in a file, fix
+    all compiler warning in a file, etc.)
 
 #### License
 
@@ -109,19 +128,16 @@ diff <my_cc_file> /tmp/my_cc_file.cc
 Changes to TensorFlow Python code should conform to
 [Google Python Style Guide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md)
 
-Use `pylint` to check your Python changes. To install `pylint` and
-retrieve TensorFlow's custom style definition:
+Use `pylint` to check your Python changes. To install `pylint` and check a file
+with `pylint` against TensorFlow's custom style definition:
 
 ```bash
 pip install pylint
-wget -O /tmp/pylintrc https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/tools/ci_build/pylintrc
+pylint --rcfile=tensorflow/tools/ci_build/pylintrc myfile.py
 ```
 
-To check a file with `pylint`:
-
-```bash
-pylint --rcfile=/tmp/pylintrc myfile.py
-```
+Note `pylint --rcfile=tensorflow/tools/ci_build/pylintrc` should run from the
+top level tensorflow directory.
 
 #### Coding style for other languages
 
@@ -146,41 +162,45 @@ may exist in your changes.
 
 There are two ways to run TensorFlow unit tests.
 
-1. Using tools and libraries installed directly on your system.
+1.  Using tools and libraries installed directly on your system.
 
-   Refer to the
-   [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel) and
-   [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel-gpu)
-   for the required packages. Alternatively, use the said
-   [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
-   `tensorflow/tensorflow:nightly-devel` and `tensorflow/tensorflow:nightly-devel-gpu`
-   for development to avoid installing the packages directly on your system.
+    Refer to the
+    [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-cpu.Dockerfile)
+    and
+    [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-gpu.Dockerfile)
+    for the required packages. Alternatively, use the said
+    [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
+    `tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` for
+    development to avoid installing the packages directly on your system (in
+    which case remember to change directory from `/root` to `/tensorflow` once
+    you get into the running container so `bazel` can find the `tensorflow`
+    workspace).
 
-   Once you have the packages installed, you can run a specific unit test in
-   bazel by doing as follows:
+    Once you have the packages installed, you can run a specific unit test in
+    bazel by doing as follows:
 
-   If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
-   the `cuda` option flag
+    If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
+    the `cuda` option flag
 
-   ```bash
-   export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+    ```bash
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
 
-   export flags="--config=opt --config=cuda -k"
-   ```
+    export flags="--config=opt --config=cuda -k"
+    ```
 
-   For example, to run all tests under tensorflow/python, do:
+    For example, to run all tests under tensorflow/python, do:
 
-   ```bash
-   bazel test ${flags} //tensorflow/python/...
-   ```
+    ```bash
+    bazel test ${flags} //tensorflow/python/...
+    ```
 
-2. Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
+2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
-   ```bash
-   # Install Docker first, then this will build and run cpu tests
-   tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
-   ```
+    ```bash
+    # Install Docker first, then this will build and run cpu tests
+    tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
+    ```
 
-   See
-   [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build) for details.
-
+    See
+    [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build)
+    for details.

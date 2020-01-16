@@ -1,18 +1,16 @@
 # Description:
 # Platform-specific build configurations.
 
+load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
+load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
+
 package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
-load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
-load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
 cc_library(
     name = "gtest",
@@ -32,16 +30,29 @@ cc_library(
 
 tf_cuda_library(
     name = "stream_executor",
+    cuda_deps = [
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+    ],
     deps = [
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
     ] + select({
-        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor:cuda_platform"],
-        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor:cuda_platform"],
-        "//tensorflow:using_cuda_clang_with_dynamic_build": [],
-        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
+        "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }) + select({
-        "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor/cuda:all_runtime"],
+        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
+        "//tensorflow:using_cuda_clang_with_dynamic_build": [],
+        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
+        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor/rocm:all_runtime"],
         "//conditions:default": [],
     }),
 )
@@ -49,11 +60,27 @@ tf_cuda_library(
 cc_library(
     name = "stream_executor_cuda",
     deps = [
-        "//tensorflow/stream_executor",
-    ] + if_static(
-        ["//tensorflow/stream_executor:cuda_platform"],
-    ) + select({
+        ":stream_executor_no_cuda",
+    ] + select({
+        "//tensorflow:oss": ["//tensorflow/stream_executor/cuda:cudart_stub"],
+        "//conditions:default": [
+            "//tensorflow/stream_executor/cuda:all_runtime",
+            ":cuda",
+        ],
+    }) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "stream_executor_rocm",
+    deps = [
+        ":stream_executor_no_cuda",
+        ":rocm",
+    ] + if_static(
+        ["//tensorflow/stream_executor/rocm:all_runtime"],
+    ) + select({
         "//conditions:default": [],
     }),
 )
@@ -62,6 +89,15 @@ cc_library(
     name = "stream_executor_no_cuda",
     deps = [
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor/host:host_platform",
+        "//tensorflow/stream_executor/host:host_platform_id",
+        "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
     ],
 )
 
@@ -93,15 +129,8 @@ cc_library(
     name = "proto_parsing",
     copts = tf_copts(),
     deps = [
-        "//tensorflow/core:protos_cc",
+        "//tensorflow/core:protos_all_cc",
     ],
-)
-
-# Minimal lib so that tools used for mobile compilation
-# don't have to depend on platformlib.
-cc_library(
-    name = "logging",
-    copts = tf_copts(),
 )
 
 # Minimal lib to be used by tensorflow/core:framework_lite.
@@ -114,48 +143,12 @@ cc_library(
 )
 
 cc_library(
-    name = "base",
-    srcs = [],
-    copts = tf_copts(),
-)
-
-cc_library(
-    name = "port",
-    srcs = [],
-    copts = tf_copts(),
-)
-
-cc_library(
-    name = "protobuf",
-    srcs = [],
-    copts = tf_copts(),
-)
-
-cc_library(
-    name = "env",
-    srcs = [],
-    copts = tf_copts(),
-)
-
-cc_library(
-    name = "other",
-    srcs = [],
-    copts = tf_copts(),
-    deps = [
-        "@com_googlesource_code_re2//:re2",
-        "@farmhash_archive//:farmhash",
-        "@fft2d",
-        "@highwayhash//:sip_hash",
-    ],
-)
-
-cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
         ":gif",
         ":jpeg",
-        "//tensorflow/core:protos_cc",
+        "//tensorflow/core:protos_all_cc",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
         "@fft2d",
@@ -165,15 +158,10 @@ cc_library(
 )
 
 cc_library(
-    name = "stacktrace",
-    srcs = [],
-)
-
-cc_library(
     name = "gif",
     copts = tf_copts(),
     deps = [
-        "@gif_archive//:gif",
+        "@gif",
     ],
 )
 
@@ -181,7 +169,7 @@ cc_library(
     name = "jpeg",
     copts = tf_copts(),
     deps = [
-        "@jpeg",
+        "@libjpeg_turbo//:jpeg",
     ],
 )
 
@@ -189,32 +177,9 @@ cc_library(
     name = "png",
     copts = tf_copts(),
     deps = [
-        "@png_archive//:png",
+        "@png",
         "@zlib_archive//:zlib",
     ],
-)
-
-cc_library(
-    name = "protos_cc_impl",
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:protos_all_cc_impl",
-    ],
-)
-
-cc_library(
-    name = "protos_cc",
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "test_lite_main",
-    testonly = 1,
-    linkstatic = 1,
-    deps = [],
 )
 
 cc_library(
@@ -222,12 +187,6 @@ cc_library(
     testonly = 1,
     linkstatic = 1,
     deps = [],
-)
-
-filegroup(
-    name = "android_proto_lib_portable_proto",
-    srcs = [],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -251,6 +210,17 @@ cc_library(
 )
 
 cc_library(
+    name = "rocm",
+    data = [],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
+        ],
+    }),
+    deps = [],
+)
+
+cc_library(
     name = "sycl",
     data = if_ccpp([
         "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
@@ -262,16 +232,4 @@ cc_library(
         ["@local_config_sycl//sycl:syclrt"],
         ["@local_config_sycl//sycl:sycl_headers"],
     ),
-)
-
-filegroup(
-    name = "mobile_srcs",
-    srcs = glob(["*.h"]),
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//visibility:public"],
 )

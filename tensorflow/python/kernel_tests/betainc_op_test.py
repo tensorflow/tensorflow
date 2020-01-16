@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -48,50 +49,52 @@ class BetaincTest(test.TestCase):
       tf_x_s = constant_op.constant(x_s, dtype=dtype)
       tf_out_t = math_ops.betainc(tf_a_s, tf_b_s, tf_x_s)
       with self.cached_session():
-        tf_out = tf_out_t.eval()
-      scipy_out = special.betainc(a_s, b_s, x_s).astype(np_dt)
+        tf_out = self.evaluate(tf_out_t)
+      scipy_out = special.betainc(a_s, b_s, x_s, dtype=np_dt)
 
       # the scipy version of betainc uses a double-only implementation.
       # TODO(ebrevdo): identify reasons for (sometime) precision loss
       # with doubles
-      tol = 1e-4 if dtype == dtypes.float32 else 5e-5
-      self.assertAllCloseAccordingToType(scipy_out, tf_out, rtol=tol, atol=0)
+      rtol = 1e-4 if dtype == dtypes.float32 else 5e-5
+      atol = 9e-6 if dtype == dtypes.float32 else 3e-6
+      self.assertAllCloseAccordingToType(
+          scipy_out, tf_out, rtol=rtol, atol=atol)
 
       # Test out-of-range values (most should return nan output)
       combinations = list(itertools.product([-1, 0, 0.5, 1.0, 1.5], repeat=3))
       a_comb, b_comb, x_comb = np.asarray(list(zip(*combinations)), dtype=np_dt)
       with self.cached_session():
         tf_comb = math_ops.betainc(a_comb, b_comb, x_comb).eval()
-      scipy_comb = special.betainc(a_comb, b_comb, x_comb).astype(np_dt)
+      scipy_comb = special.betainc(a_comb, b_comb, x_comb, dtype=np_dt)
       self.assertAllCloseAccordingToType(scipy_comb, tf_comb)
 
       # Test broadcasting between scalars and other shapes
       with self.cached_session():
         self.assertAllCloseAccordingToType(
-            special.betainc(0.1, b_s, x_s).astype(np_dt),
+            special.betainc(0.1, b_s, x_s, dtype=np_dt),
             math_ops.betainc(0.1, b_s, x_s).eval(),
-            rtol=tol,
-            atol=0)
+            rtol=rtol,
+            atol=atol)
         self.assertAllCloseAccordingToType(
-            special.betainc(a_s, 0.1, x_s).astype(np_dt),
+            special.betainc(a_s, 0.1, x_s, dtype=np_dt),
             math_ops.betainc(a_s, 0.1, x_s).eval(),
-            rtol=tol,
-            atol=0)
+            rtol=rtol,
+            atol=atol)
         self.assertAllCloseAccordingToType(
-            special.betainc(a_s, b_s, 0.1).astype(np_dt),
+            special.betainc(a_s, b_s, 0.1, dtype=np_dt),
             math_ops.betainc(a_s, b_s, 0.1).eval(),
-            rtol=tol,
-            atol=0)
+            rtol=rtol,
+            atol=atol)
         self.assertAllCloseAccordingToType(
-            special.betainc(0.1, b_s, 0.1).astype(np_dt),
+            special.betainc(0.1, b_s, 0.1, dtype=np_dt),
             math_ops.betainc(0.1, b_s, 0.1).eval(),
-            rtol=tol,
-            atol=0)
+            rtol=rtol,
+            atol=atol)
         self.assertAllCloseAccordingToType(
-            special.betainc(0.1, 0.1, 0.1).astype(np_dt),
+            special.betainc(0.1, 0.1, 0.1, dtype=np_dt),
             math_ops.betainc(0.1, 0.1, 0.1).eval(),
-            rtol=tol,
-            atol=0)
+            rtol=rtol,
+            atol=atol)
 
       with self.assertRaisesRegexp(ValueError, "must be equal"):
         math_ops.betainc(0.5, [0.5], [[0.5]])
@@ -109,36 +112,42 @@ class BetaincTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
+  @test_util.run_deprecated_v1
   def testBetaIncFloat(self):
     a_s = np.abs(np.random.randn(10, 10) * 30)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 30)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float32)
 
+  @test_util.run_deprecated_v1
   def testBetaIncDouble(self):
     a_s = np.abs(np.random.randn(10, 10) * 30)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 30)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
+  @test_util.run_deprecated_v1
   def testBetaIncDoubleVeryLargeValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e15)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e15)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
+  @test_util.run_deprecated_v1
   def testBetaIncDoubleVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
+  @test_util.run_deprecated_v1
   def testBetaIncFloatVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)
     x_s = np.random.rand(10, 10)  # in (0, 1)
     self._testBetaInc(a_s, b_s, x_s, dtypes.float32)
 
+  @test_util.run_deprecated_v1
   def testBetaIncFpropAndBpropAreNeverNAN(self):
     with self.cached_session() as sess:
       space = np.logspace(-8, 5).tolist()
@@ -159,6 +168,7 @@ class BetaincTest(test.TestCase):
       self.assertAllEqual(np.zeros_like(grads_x).astype(np.bool),
                           np.isnan(grads_x))
 
+  @test_util.run_deprecated_v1
   def testBetaIncGrads(self):
     err_tolerance = 1e-3
     with self.cached_session():

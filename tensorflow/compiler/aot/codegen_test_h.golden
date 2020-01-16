@@ -19,10 +19,10 @@ namespace xla { class ExecutableRunOptions; }
 
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void entry_point(
-    void* result, const xla::ExecutableRunOptions* run_options,
+    void* result, const ::xla::ExecutableRunOptions* run_options,
     const void** args, void** temps, tensorflow::int64* profile_counters);
 
-extern "C" char __tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[];
+extern "C" char __tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[];
 
 
 namespace foo {
@@ -52,14 +52,14 @@ namespace bar {
 //   is guaranteed that no thread may call a non-const method.
 //
 // The logical function signature is:
-//   ((unknown): f32[1,2], (unknown): s64[3,4]) -> (u32[5,6])
+//   ((unknown): f32[1,2], (unknown): s64[3,4], (unknown): f32[1], (unknown): f32[1], (unknown): s32[5]) -> (u32[5,6], f32[1], s32[5])
 //
 // Memory stats:
 //   arg bytes total:    104
 //   arg bytes aligned:  192
 //   temp bytes total:   126
 //   temp bytes aligned: 320
-class MyClass : public tensorflow::XlaCompiledCpuFunction {
+class MyClass final : public tensorflow::XlaCompiledCpuFunction {
  public:
   // Number of input arguments for the compiled computation.
   static constexpr size_t kNumArgs = 2;
@@ -74,23 +74,25 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
     static XlaCompiledCpuFunction::StaticData* kStaticData = [](){
       XlaCompiledCpuFunction::StaticData* data =
         new XlaCompiledCpuFunction::StaticData;
-      data->set_raw_function(entry_point);
-      data->set_buffer_infos(BufferInfos());
-      data->set_num_buffers(kNumBuffers);
-      data->set_arg_index_table(ArgIndexToBufferIndex());
-      data->set_num_args(kNumArgs);
-      data->set_result_index(kResultIndex);
-      data->set_arg_names(StaticArgNames());
-      data->set_result_names(StaticResultNames());
-      data->set_program_shape(StaticProgramShape());
-      data->set_hlo_profile_printer_data(StaticHloProfilePrinterData());
+      set_static_data_raw_function(data, entry_point);
+      set_static_data_buffer_infos(data, BufferInfos());
+      set_static_data_num_buffers(data, kNumBuffers);
+      set_static_data_arg_index_table(data, ArgIndexToBufferIndex());
+      set_static_data_num_args(data, kNumArgs);
+      set_static_data_result_index(data, kResultIndex);
+      set_static_data_arg_names(data, StaticArgNames());
+      set_static_data_result_names(data, StaticResultNames());
+      set_static_data_program_shape(data, StaticProgramShape());
+      set_static_data_hlo_profile_printer_data(
+          data, StaticHloProfilePrinterData());
 
       return data;
     }();
     return *kStaticData;
   }
 
-  MyClass(AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS)
+  MyClass(AllocMode alloc_mode =
+            AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS)
       : XlaCompiledCpuFunction(StaticData(), alloc_mode) {}
 
   MyClass(const MyClass&) = delete;
@@ -114,7 +116,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   //   with dim indices specifying which value. No bounds checking is performed
   //   on dim indices.
 
-  void set_arg0_data(void* data) {
+  void set_arg0_data(const void* data) {
     set_arg_data(0, data);
   }
   float* arg0_data() {
@@ -132,7 +134,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         arg_data(0)))[dim0][dim1];
   }
 
-  void set_arg_myfeed_data(void* data) {
+  void set_arg_myfeed_data(const void* data) {
     set_arg_data(0, data);
   }
   float* arg_myfeed_data() {
@@ -150,7 +152,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         arg_data(0)))[dim0][dim1];
   }
 
-  void set_arg1_data(void* data) {
+  void set_arg1_data(const void* data) {
     set_arg_data(1, data);
   }
   tensorflow::int64* arg1_data() {
@@ -213,19 +215,97 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         result_data(0)))[dim0][dim1];
   }
 
+  // Methods for managing variable buffers. Buffers are in row-major order.
+  //
+  // For read-write variables we generate the following methods:
+  //
+  // void set_var_X_data(T* data)
+  //   Sets the buffer for variable X.  Must be called before Run if the
+  //   allocation mode is RESULTS_PROFILES_AND_TEMPS_ONLY.
+  //
+  // T* var_X_data()
+  //   Returns the buffer of type T for variable X.  If the allocation mode is
+  //   RESULTS_PROFILES_AND_TEMPS_ONLY then this buffer is the same as the
+  //   buffer passed to set_var_X_data.
+  //
+  // T& var_X(...dim indices...)
+  //   Returns a reference to the value of type T for variable X,
+  //   with dim indices specifying which value. No bounds checking is performed
+  //   on dim indices.
+  //
+  // For readonly variables we generate the same set of methods, except that we
+  // use `const T` instead of `T`.  We use `const T` to avoid erasing the
+  // constness of the buffer passed to `set_var_X_data` but the underlying
+  // buffer is not const (and thus the const can be safely const-cast'ed away)
+  // unless `set_var_X_data` is called with a pointer to constant storage.
+
+  void set_var_myvar_readonly_data(const float* data) {
+    set_arg_data(2, data);
+  }
+  const float* var_myvar_readonly_data() {
+    return static_cast<const float*>(arg_data(2));
+  }
+  const float& var_myvar_readonly() {
+    return (*static_cast<const float(*)[1]>(
+        arg_data(2)))[0];
+  }
+  const float* var_myvar_readonly_data() const {
+    return static_cast<const float*>(arg_data(2));
+  }
+  const float& var_myvar_readonly() const {
+    return (*static_cast<const float(*)[1]>(
+        arg_data(2)))[0];
+  }
+
+  void set_var_myvar_data(float* data) {
+    set_arg_data(3, data);
+  }
+  float* var_myvar_data() {
+    return static_cast<float*>(arg_data(3));
+  }
+  float& var_myvar() {
+    return (*static_cast<float(*)[1]>(
+        arg_data(3)))[0];
+  }
+  const float* var_myvar_data() const {
+    return static_cast<const float*>(arg_data(3));
+  }
+  const float& var_myvar() const {
+    return (*static_cast<const float(*)[1]>(
+        arg_data(3)))[0];
+  }
+
+  void set_var_myvar2_data(tensorflow::int32* data) {
+    set_arg_data(4, data);
+  }
+  tensorflow::int32* var_myvar2_data() {
+    return static_cast<tensorflow::int32*>(arg_data(4));
+  }
+  tensorflow::int32& var_myvar2(size_t dim0) {
+    return (*static_cast<tensorflow::int32(*)[5]>(
+        arg_data(4)))[dim0];
+  }
+  const tensorflow::int32* var_myvar2_data() const {
+    return static_cast<const tensorflow::int32*>(arg_data(4));
+  }
+  const tensorflow::int32& var_myvar2(size_t dim0) const {
+    return (*static_cast<const tensorflow::int32(*)[5]>(
+        arg_data(4)))[dim0];
+  }
+
  private:
   // Number of buffers for the compiled computation.
   static constexpr size_t kNumBuffers = 6;
 
-  static const ::tensorflow::cpu_function_runtime::BufferInfo* BufferInfos() {
-    static const ::tensorflow::cpu_function_runtime::BufferInfo
+  static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
+    static const ::xla::cpu_function_runtime::BufferInfo
       kBufferInfos[kNumBuffers] = {
-::tensorflow::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({9ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({13ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
+::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
+::xla::cpu_function_runtime::BufferInfo({9ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
+::xla::cpu_function_runtime::BufferInfo({13ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
       };
     return kBufferInfos;
   }
@@ -253,18 +333,18 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   }
 
   // Shape of the args and results.
-  static const xla::ProgramShape* StaticProgramShape() {
-    static const xla::ProgramShape* kShape = []() {
-    xla::ProgramShape* proto = new xla::ProgramShape;
-    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[0], 52);
+  static const ::xla::ProgramShapeProto* StaticProgramShape() {
+    static const ::xla::ProgramShapeProto* kShape = []() {
+    ::xla::ProgramShapeProto* proto = new ::xla::ProgramShapeProto;
+    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 149);
     return proto;
   }();
     return kShape;
   }
 
   // Metadata that can be used to pretty-print profile counters.
-  static const xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
-    static const xla::HloProfilePrinterData* kHloProfilePrinterData =
+  static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
+    static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
       nullptr;
     return kHloProfilePrinterData;
   }

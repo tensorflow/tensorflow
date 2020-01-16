@@ -63,7 +63,6 @@ TEST_F(TFProfTensorTest, Basics) {
                "", {});
   const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 
-  GraphNodeProto expected;
   EXPECT_EQ(root.children(0).name(), "DW");
   EXPECT_GT(root.children(0).tensor_value().value_double_size(), 10);
   EXPECT_EQ(root.children(1).name(), "DW2");

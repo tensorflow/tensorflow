@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -42,6 +43,17 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
     const NodeDef& node,
     const std::unordered_map<string, const CostGraphDef::Node*>& name_to_cost,
     const std::unordered_map<string, const NodeDef*>& name_to_node);
+
+// Returns the size of tensor (unit: bytes). For tensor shape with unknown rank,
+// it assumes the tensor to be scalar. For any unknown dimension, it assumes
+// size one.
+int64 CalculateTensorSize(const OpInfo::TensorProperties& prop);
+
+// Returns the size of output at port_num (unit: bytes). A special case is
+// port_num -1, which is for control dependency and assumed to be 4 bytes.
+int64 CalculateOutputSize(
+    const std::vector<OpInfo::TensorProperties>& output_properties,
+    int port_num);
 
 // Returns the DeviceProperties of the device on which 'node' runs.
 DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
@@ -107,6 +119,12 @@ string GetDeviceClass(const string& device_name);
 // Get stats in string format from RunMetadata.
 string GetStatsStringFromRunMetadata(const RunMetadata& run_metadata,
                                      bool verbosity);
+
+// This method calculates the execution time depending on whether IO can
+// overlap with computation. It assumes the memory and the compute times have
+// already been calculated.
+void CombineCostsAndUpdateExecutionTime(bool compute_memory_overlap,
+                                        Costs* costs);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

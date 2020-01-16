@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/function.h"
+
 #include <vector>
+
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -149,6 +152,48 @@ ControlDep(x:int32) -> (y:int32) {
   a = Identity[T=int32](x)
   o = NoOp() @ a
   y = Identity[T=int32](a) @ o
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_INT32}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_INT32}));
+  EXPECT_EQ(DebugString(result.nodes), e2);
+}
+
+TEST(TFunc, ControlRet) {
+  auto fdef = FDH::Create(
+      // Name
+      "ControlRet",
+      // Inputs
+      {"x: int32"},
+      // Outputs
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {
+          {{"a"}, "Identity", {"x"}, {{"T", DT_INT32}}},
+      },
+      // Returns
+      {{"y", "a:output:0"}},
+      // Control returns
+      {{"must_execute", "a"}});
+
+  const char* e = R"P(
+ControlRet(x:int32) -> (y:int32) {
+  a = Identity[T=int32](x)
+  @return must_execute = a
+  return y = a:output:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  // Instantiate one with T=float
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result));
+  const char* e2 = R"P(
+(x:int32) -> (a:int32) {
+  a = Identity[T=int32](x)
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_INT32}));
@@ -495,8 +540,26 @@ MySelect(x:float) -> (z:float) {
   EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
+TEST(TFunc, IntsOnDeviceArgNotSet) {
+  auto fdef = test::function::XTimesTwoInt32();
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
+  EXPECT_EQ(5, result.nodes.size());
+  EXPECT_EQ("_Retval", result.nodes[4].op());
+}
+
+TEST(TFunc, IntsOnDeviceArgSet) {
+  auto fdef = test::function::XTimesTwoInt32();
+  (*fdef.mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr].set_b(
+      true);
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
+  EXPECT_EQ(5, result.nodes.size());
+  EXPECT_EQ("_DeviceRetval", result.nodes[4].op());
+}
+
 static void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << ">>" << s << "<<, expected substring >>" << substr << "<<";
 }
 
@@ -906,33 +969,31 @@ TEST(Canonicalize, Basic) {
             "MatMul[T=double,transpose_a=false,transpose_b=true]");
 }
 
+TEST(FunctionLibraryDefinitionTest, Contains) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+
+  EXPECT_FALSE(lib_def.Contains("XTimes16"));
+  EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
+}
+
 TEST(FunctionLibraryDefinitionTest, Find) {
-  FunctionDefLibrary proto;
-  *proto.add_function() = test::function::XTimesTwo();
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   EXPECT_EQ(lib_def.Find("XTimes16"), nullptr);
 
-  auto expect = R"P(
-XTimesTwo[T:{float, double, int32, int64}](x:T) -> (y:T) {
-  two = Const[dtype=int64, value=Tensor<type: int64 shape: [] values: 2>]()
-  scale = Cast[DstT=$T, SrcT=int64](two:output:0)
-  y = Mul[T=$T](x, scale:y:0)
-  return y = y:z:0
-}
-)P";
   auto found = lib_def.Find("XTimesTwo");
   ASSERT_NE(found, nullptr);
-  EXPECT_EQ(expect, DebugString(*found));
+  EXPECT_EQ(test::function::XTimesTwo().DebugString(), found->DebugString());
 }
 
 TEST(FunctionLibraryDefinitionTest, LookUp) {
-  FunctionDefLibrary proto;
-  *proto.add_function() = test::function::XTimesTwo();
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   const OpDef* op_def;
-  EXPECT_TRUE(!lib_def.LookUpOpDef("XTimes16", &op_def).ok());
+  EXPECT_FALSE(lib_def.LookUpOpDef("XTimes16", &op_def).ok());
 
   TF_EXPECT_OK(lib_def.LookUpOpDef("XTimesTwo", &op_def));
   ASSERT_NE(op_def, nullptr);
@@ -947,29 +1008,17 @@ TEST(FunctionLibraryDefinitionTest, LookUp) {
 }
 
 TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
-  // Add one function to the proto lib before constructing 'lib_def'.
-  FunctionDefLibrary proto;
-  *proto.add_function() = test::function::XTimesTwo();
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
-  // Add a new function def to the library.
-  TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::WXPlusB()));
-
-  // Test lookup of first function.
-  const OpDef* first;
-  TF_EXPECT_OK(lib_def.LookUpOpDef("XTimesTwo", &first));
-  ASSERT_NE(first, nullptr);
-  EXPECT_EQ(first->DebugString(),
+  // Test lookup of existing function.
+  const OpDef* op_def;
+  TF_EXPECT_OK(lib_def.LookUpOpDef("XTimesTwo", &op_def));
+  ASSERT_NE(op_def, nullptr);
+  EXPECT_EQ(op_def->DebugString(),
             test::function::XTimesTwo().signature().DebugString());
 
-  // Test lookup of second function.
-  const OpDef* second;
-  TF_EXPECT_OK(lib_def.LookUpOpDef("WXPlusB", &second));
-  ASSERT_NE(second, nullptr);
-  EXPECT_EQ(second->DebugString(),
-            test::function::WXPlusB().signature().DebugString());
-
-  // Can't add function with same name as existing op
+  // Test that adding a function with same name as existing op fails.
   FunctionDef fdef = test::function::XTimesTwo();
   fdef.mutable_signature()->set_name("Add");
   Status s = lib_def.AddFunctionDef(fdef);
@@ -978,9 +1027,8 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
             "Cannot add function 'Add' because an op with the same name "
             "already exists.");
 
-  // Already-added functions don't produce error
+  // Test that adding the same functions again does not produce an error.
   TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
-  TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::WXPlusB()));
 }
 
 TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
@@ -1004,6 +1052,20 @@ TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
   EXPECT_EQ(s.error_message(),
             "Cannot assign gradient function 'XTimes16' to 'XTimesTwo' because "
             "it already has gradient function 'XTimesFour'");
+}
+
+TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+
+  Status s = lib_def.RemoveFunction("XTimes16");
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Tried to remove non-existent function 'XTimes16'.");
+
+  EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
+  TF_EXPECT_OK(lib_def.RemoveFunction("XTimesTwo"));
+  EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
 }
 
 TEST(FunctionLibraryDefinitionTest, AddLibrary) {
@@ -1172,28 +1234,33 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_GradConflict) {
 }
 
 TEST(FunctionLibraryDefinitionTest, ToProto) {
-  FunctionDefLibrary proto1;
-  *proto1.add_function() = test::function::XTimesTwo();
-  *proto1.add_function() = test::function::WXPlusB();
-  FunctionLibraryDefinition lib_def1(OpRegistry::Global(), proto1);
+  FunctionLibraryDefinition lib_def1(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def1.AddFunctionDef(test::function::XTimesTwo()));
+  TF_CHECK_OK(lib_def1.AddFunctionDef(test::function::WXPlusB()));
 
-  // Call 'ToProto' and make sure both protos have the same function lib size.
-  FunctionDefLibrary proto2 = lib_def1.ToProto();
-  EXPECT_EQ(proto1.function_size(), proto2.function_size());
+  FunctionDefLibrary proto = lib_def1.ToProto();
+  EXPECT_EQ(proto.function_size(), 2);
 
   // Initialize 'lib_def2' with proto returned by 'ToProto' call.
-  FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto2);
+  FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto);
 
-  // Test that the first function exists in both libraries.
-  const OpDef *f1, *f2, *f3, *f4;
-  TF_EXPECT_OK(lib_def1.LookUpOpDef("XTimesTwo", &f1));
-  TF_EXPECT_OK(lib_def2.LookUpOpDef("XTimesTwo", &f2));
-  EXPECT_EQ(f1->DebugString(), f2->DebugString());
+  // Test that the functions exists in both libraries.
+  for (auto name : {"XTimesTwo", "WXPlusB"}) {
+    const OpDef *f1, *f2;
+    TF_EXPECT_OK(lib_def1.LookUpOpDef(name, &f1));
+    TF_EXPECT_OK(lib_def2.LookUpOpDef(name, &f2));
+    EXPECT_EQ(f1->DebugString(), f2->DebugString());
+  }
+}
 
-  // Test that the second function exists in both libraries.
-  TF_EXPECT_OK(lib_def1.LookUpOpDef("WXPlusB", &f3));
-  TF_EXPECT_OK(lib_def2.LookUpOpDef("WXPlusB", &f4));
-  EXPECT_EQ(f3->DebugString(), f4->DebugString());
+TEST(FunctionLibraryDefinitionTest, ListFunctionNames) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::WXPlusB()));
+
+  const std::vector<string> function_names = lib_def.ListFunctionNames();
+  const std::vector<string> expected = {"XTimesTwo", "WXPlusB"};
+  EXPECT_EQ(function_names, expected);
 }
 
 TEST(FunctionLibraryDefinitionTest, GetAttr_FuncNoAttr) {
@@ -1276,6 +1343,79 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_Gradient) {
   EXPECT_EQ(annotation, false);  // WXPlusB has no custom gradient.
 }
 
+TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
+  using ::tensorflow::test::function::GDef;
+  using ::tensorflow::test::function::NDef;
+  using FDH = ::tensorflow::FunctionDefHelper;
+
+  const auto make_simple_fdef = [](const string& name,
+                                   const string& interface_name) {
+    auto func_def = FDH::Create(
+        name, {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+        {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+        /* Mapping between function returns and function node outputs. */
+        {{"z", "output:z:0"}});
+
+    if (!interface_name.empty()) {
+      auto* attr = func_def.mutable_attr();
+      (*attr)["api_implements"].set_s(interface_name);
+    }
+    return func_def;
+  };
+
+  FunctionDef func_1 = make_simple_fdef("Func1", "");
+  FunctionDef func_2 = make_simple_fdef("Func2", "");
+  FunctionDef func_3 = make_simple_fdef("Func3", "");
+  FunctionDef func_4 = make_simple_fdef("Func4", "api_1");
+  FunctionDef func_5 = make_simple_fdef("Func5", "api_1");
+  FunctionDef func_6 = make_simple_fdef("Func6", "api_2");
+
+  FunctionDef func_2_grad = make_simple_fdef("Func2_grad", "");
+
+  constexpr char kDevice[] = "/device:CPU:0";
+
+  GraphDef graph = GDef(
+      {
+          NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+          NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+          NDef("x", "Func1", {"a", "b"}, {{"T", DT_FLOAT}}, kDevice),
+          NDef("y", "PartitionedCall", {"a", "b"},
+               {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+                {"Tout", DataTypeSlice{DT_FLOAT}},
+                {"f", FDH::FunctionRef("Func2", {{"T", DT_FLOAT}})}},
+               kDevice),
+          NDef("z", "Func4", {"a", "b"}, {{"T", DT_FLOAT}}, kDevice),
+      },
+      // FunctionLib
+      {func_1, func_2, func_3, func_2_grad, func_4, func_5, func_6});
+
+  // Register custom function gradient after the graph was constructed.
+  GradientDef* func3_grad_def = graph.mutable_library()->add_gradient();
+  func3_grad_def->set_function_name("Func2");
+  func3_grad_def->set_gradient_func("Func2_grad");
+
+  FunctionLibraryDefinition flib(OpRegistry::Global(), graph.library());
+
+  // - 'Func1' is called directly from the graph.
+  // - 'Func2' is called indirectly via a PartitionedCall attribute, and it also
+  //   has a custom gradient ('Func2_grad') that must remain in the library.
+  // - 'Func3' is unreachable and has to be removed from the library
+  // - 'Func4' is called directly from the graph
+  // - 'Func5' is not called directly, but it implements same interface as Func4
+  //   which is directly called.
+  // - 'Func6' is not called directly, and the interface it implements has not
+  //   not been called by another nodes in the graph.
+  FunctionLibraryDefinition reachable_flib = flib.ReachableDefinitions(graph);
+  EXPECT_EQ(reachable_flib.num_functions(), 5);
+  EXPECT_TRUE(reachable_flib.Contains("Func1"));
+  EXPECT_TRUE(reachable_flib.Contains("Func2"));
+  EXPECT_TRUE(reachable_flib.Contains("Func2_grad"));
+  EXPECT_FALSE(reachable_flib.Contains("Func3"));
+  EXPECT_TRUE(reachable_flib.Contains("Func4"));
+  EXPECT_TRUE(reachable_flib.Contains("Func5"));
+  EXPECT_FALSE(reachable_flib.Contains("Func6"));
+}
+
 // TODO(skyewm): this could be more thorough
 TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   // Equal functions
@@ -1333,6 +1473,60 @@ TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   SetAttrValue(&fdef3, "Baz", "abc");
   EXPECT_TRUE(FunctionDefsEqual(fdef2, fdef3));
   EXPECT_EQ(FunctionDefHash(fdef2), FunctionDefHash(fdef3));
+}
+
+TEST(InstantiateFunctionTest, ArgAttrs) {
+  auto fdef = FDH::Create(
+      // Name
+      "Func",
+      // Inputs
+      {"x: int32"},
+      // Outputs
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = Identity<int32>(x)
+       {{"a"}, "Identity", {"x"}, {{"T", DT_INT32}}},
+       // o = NoOp(^a)
+       {{"o"}, "NoOp", {"^a"}, {}},
+       // y = Identity<int32>(a, ^o)
+       {{"y"}, "Identity", {"a:output:0", "^o"}, {{"T", DT_INT32}}}},
+      // Returns
+      {{"y", "y:output:0"}});
+  AttrValue shape_attr;
+  TensorShapeProto* shape_proto = shape_attr.mutable_list()->add_shape();
+  shape_proto->add_dim()->set_size(2);
+  shape_proto->add_dim()->set_size(4);
+  shape_proto->add_dim()->set_size(6);
+  shape_proto->add_dim()->set_size(8);
+  FunctionDef::ArgAttrs arg_attrs;
+  (*arg_attrs.mutable_attr())["_output_shapes"] = std::move(shape_attr);
+  (*fdef.mutable_arg_attr())[0] = std::move(arg_attrs);
+
+  // Instantiate one with T=float
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result));
+  bool found = false;
+  for (const auto& node : result.nodes) {
+    if (node.name() != "x") {
+      continue;
+    }
+    found = true;
+    auto it = node.attr().find("_output_shapes");
+    ASSERT_TRUE(it != node.attr().end());
+    const auto& attr = it->second;
+    ASSERT_EQ(attr.list().shape_size(), 1);
+    const auto& shape_attr = attr.list().shape(0);
+    ASSERT_FALSE(shape_attr.unknown_rank());
+    ASSERT_EQ(shape_attr.dim_size(), 4);
+    EXPECT_EQ(shape_attr.dim(0).size(), 2);
+    EXPECT_EQ(shape_attr.dim(1).size(), 4);
+    EXPECT_EQ(shape_attr.dim(2).size(), 6);
+    EXPECT_EQ(shape_attr.dim(3).size(), 8);
+  }
+  EXPECT_TRUE(found);
 }
 
 }  // end namespace

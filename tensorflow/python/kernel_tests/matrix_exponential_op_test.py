@@ -25,11 +25,13 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -49,7 +51,7 @@ class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):
     inp = x.astype(np_type)
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       tf_ans = linalg_impl.matrix_exponential(inp)
       if x.size == 0:
         np_ans = np.empty(x.shape, dtype=np_type)
@@ -60,8 +62,8 @@ class ExponentialOpTest(test.TestCase):
             np_ans[i] = np_expm(inp[i])
         else:
           np_ans = np_expm(inp)
-      out = tf_ans.eval()
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
+      out = self.evaluate(tf_ans)
+      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
 
   def _verifyExponentialReal(self, x):
     for np_type in [np.float32, np.float64]:
@@ -87,7 +89,10 @@ class ExponentialOpTest(test.TestCase):
     # A multidimensional batch of 2x2 matrices
     self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_deprecated_v1
   def testNonsymmetricComplex(self):
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.array([[1., 2.], [3., 4.]])
     matrix2 = np.array([[1., 3.], [3., 5.]])
     matrix1 = matrix1.astype(np.complex64)
@@ -109,6 +114,8 @@ class ExponentialOpTest(test.TestCase):
     self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
 
   def testSymmetricPositiveDefiniteComplex(self):
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.array([[2., 1.], [1., 2.]])
     matrix2 = np.array([[3., -1.], [-1., 3.]])
     matrix1 = matrix1.astype(np.complex64)
@@ -120,12 +127,14 @@ class ExponentialOpTest(test.TestCase):
     # Complex batch
     self._verifyExponentialComplex(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_deprecated_v1
   def testNonSquareMatrix(self):
     # When the exponential of a non-square matrix is attempted we should return
     # an error
     with self.assertRaises(ValueError):
       linalg_impl.matrix_exponential(np.array([[1., 2., 3.], [3., 4., 5.]]))
 
+  @test_util.run_deprecated_v1
   def testWrongDimensions(self):
     # The input to the exponential should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.])
@@ -136,20 +145,22 @@ class ExponentialOpTest(test.TestCase):
     self._verifyExponentialReal(np.empty([0, 2, 2]))
     self._verifyExponentialReal(np.empty([2, 0, 0]))
 
+  @test_util.run_deprecated_v1
   def testDynamic(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       inp = array_ops.placeholder(ops.dtypes.float32)
       expm = linalg_impl.matrix_exponential(inp)
       matrix = np.array([[1., 2.], [3., 4.]])
       sess.run(expm, feed_dict={inp: matrix})
 
+  @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       expm1 = linalg_impl.matrix_exponential(matrix1)
       expm2 = linalg_impl.matrix_exponential(matrix2)
-      expm = sess.run([expm1, expm2])
+      expm = self.evaluate([expm1, expm2])
       self.assertAllEqual(expm[0], expm[1])
 
 
@@ -181,7 +192,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
   def benchmarkMatrixExponentialOp(self):
     for shape in self.shapes:
       with ops.Graph().as_default(), \
-          session.Session() as sess, \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         expm = linalg_impl.matrix_exponential(matrix)
@@ -195,7 +206,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
 
       if test.is_gpu_available(True):
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/gpu:0"):
           matrix = self._GenerateMatrix(shape)
           expm = linalg_impl.matrix_exponential(matrix)

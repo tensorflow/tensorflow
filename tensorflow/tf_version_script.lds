@@ -1,11 +1,13 @@
 tensorflow {
   global:
     *tensorflow*;
+    *toco*;
     *perftools*gputools*;
     *TF_*;
+    *Eager*;
     *TFE_*;
     *nsync_*;
-    *pywrap_xla*;
+    *stream_executor*;
   local:
     *;
 };

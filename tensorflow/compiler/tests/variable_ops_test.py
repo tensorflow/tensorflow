@@ -40,12 +40,25 @@ from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 class VariableOpsTest(xla_test.XLATestCase):
   """Test cases for resource variable operators."""
 
+  def testWriteEmptyShape(self):
+    # Verifies that we can pass an uninitialized variable with an empty shape,
+    # assign it a value, and successfully return it.
+    for dtype in self.numeric_types:
+      with self.session() as sess, self.test_scope():
+        zeros = np.zeros([3, 0], dtype=dtype)
+        v = resource_variable_ops.ResourceVariable(zeros)
+        p = array_ops.placeholder(dtype)
+        x = v.assign(p)
+        with ops.control_dependencies([x]):
+          y = v.read_value()
+        self.assertAllClose(zeros, sess.run(y, {p: zeros}))
+
   def testOneWriteOneOutput(self):
     # Regression test for a bug where computations with one non-constant
     # output and one variable update were mishandled.
     for dtype in self.numeric_types:
       init = np.array([[1, 2j], [3, 4]]).astype(dtype)
-      with self.test_session() as sess, self.test_scope():
+      with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable(init)
         sess.run(variables.variables_initializer([v]))
         p = array_ops.placeholder(dtype)
@@ -59,57 +72,57 @@ class VariableOpsTest(xla_test.XLATestCase):
     for dtype in self.numeric_types:
       init = np.array([[0, 1, 2, 3], [4, 5, 6, 7], [8j, 9, 10,
                                                     11]]).astype(dtype)
-      with self.test_session() as sess, self.test_scope():
+      with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable(init)
         sess.run(variables.variables_initializer([v]))
         x = v.sparse_read(2)
         self.assertAllClose(
-            np.array([8j, 9, 10, 11]).astype(dtype), sess.run(x))
+            np.array([8j, 9, 10, 11]).astype(dtype), self.evaluate(x))
 
   def testSparseRead1DIndices(self):
     for dtype in self.numeric_types:
       init = np.array([[0, 1, 2, 3], [4, 5, 6j, 7], [8, 9, 10,
                                                      11]]).astype(dtype)
-      with self.test_session() as sess, self.test_scope():
+      with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable(init)
         sess.run(variables.variables_initializer([v]))
         x = v.sparse_read([2, 1])
         self.assertAllClose(
             np.array([[8, 9, 10, 11], [4, 5, 6j, 7]]).astype(dtype),
-            sess.run(x))
+            self.evaluate(x))
 
   def testSparseRead2DIndices(self):
     for dtype in self.numeric_types:
       init = np.array([[0, 1, 2j, 3], [4, 5, 6, 7], [8, 9, 10,
                                                      11]]).astype(dtype)
-      with self.test_session() as sess, self.test_scope():
+      with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable(init)
         sess.run(variables.variables_initializer([v]))
         x = v.sparse_read([[2, 1], [0, 2]])
         self.assertAllClose(
             np.array([[[8, 9, 10, 11], [4, 5, 6, 7]],
                       [[0, 1, 2j, 3], [8, 9, 10, 11]]]).astype(dtype),
-            sess.run(x))
+            self.evaluate(x))
 
   def testSparseRead2DIndices3DTensor(self):
     for dtype in self.numeric_types:
       init = np.array([[[0, 1, 2], [3, 4, 5]], [[10, 11, 12], [13, 14, 15]],
                        [[20, 21, 22], [23, 24j, 25]],
                        [[30, 31, 32], [33, 34, 35]]]).astype(dtype)
-      with self.test_session() as sess, self.test_scope():
+      with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable(init)
         sess.run(variables.variables_initializer([v]))
         x = v.sparse_read([[2, 1], [3, 0]])
         self.assertAllClose(
             np.array(
-                [[[[20, 21, 22], [23, 24j, 25]], [[10, 11, 12], [13, 14, 15]]
-                 ], [[[30, 31, 32], [33, 34, 35]], [[0, 1, 2], [3, 4, 5]]]
-                ],).astype(dtype), sess.run(x))
+                [[[[20, 21, 22], [23, 24j, 25]], [[10, 11, 12], [13, 14, 15]]],
+                 [[[30, 31, 32], [33, 34, 35]], [[0, 1, 2], [3, 4, 5]]]
+                ],).astype(dtype), self.evaluate(x))
 
   def testShape(self):
     for dtype in self.numeric_types:
       init = np.ones([2, 3]).astype(dtype)
-      with self.test_session() as session, self.test_scope():
+      with self.session() as session, self.test_scope():
         v = resource_variable_ops.ResourceVariable(init)
         session.run(variables.variables_initializer([v]))
         h = v.handle
@@ -125,7 +138,7 @@ class VariableOpsTest(xla_test.XLATestCase):
   def testReadWrite(self):
     """Tests initialization, reading, and writing a resource variable."""
     for dtype in self.numeric_types:
-      with self.test_session() as session:
+      with self.session() as session:
         with self.test_scope():
           with variable_scope.variable_scope("ascope", use_resource=True):
             x = variable_scope.get_variable(
@@ -153,7 +166,7 @@ class VariableOpsTest(xla_test.XLATestCase):
 
   def testTraining(self):
     """Tests a gradient descent step for a simple model."""
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         with variable_scope.variable_scope("ascope", use_resource=True):
           w = variable_scope.get_variable(
@@ -190,7 +203,7 @@ class VariableOpsTest(xla_test.XLATestCase):
     for dtype in self.numeric_types:
       init = np.array([[1, 2j], [3, 4]]).astype(dtype)
       update = np.array([[7, 1j], [2, 11]]).astype(dtype)
-      with self.test_session() as sess, self.test_scope():
+      with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable(init)
         sess.run(variables.variables_initializer([v]))
         p = array_ops.placeholder(dtype)
@@ -206,7 +219,7 @@ class VariableOpsTest(xla_test.XLATestCase):
         self.assertAllClose(update, result[2])
 
   def testScatterAdd(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[2, 1])
       sess.run(
@@ -216,10 +229,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_add(
               handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertAllEqual(sess.run(read), [[3], [7]])
+      self.assertAllEqual(self.evaluate(read), [[3], [7]])
 
   def testScatterSub(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[2, 1])
       sess.run(
@@ -229,10 +242,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_sub(
               handle, [1], constant_op.constant([[2]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertAllEqual(sess.run(read), [[4], [-1]])
+      self.assertAllEqual(self.evaluate(read), [[4], [-1]])
 
   def testScatterMul(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -242,10 +255,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_mul(
               handle, [0], constant_op.constant([[5]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[5]])
+      self.assertEqual(self.evaluate(read), [[5]])
 
   def testScatterDiv(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -255,10 +268,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_div(
               handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertAllEqual(sess.run(read), [[2]])
+      self.assertAllEqual(self.evaluate(read), [[2]])
 
   def testScatterMin(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -268,10 +281,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_min(
               handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[3]])
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterMax(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -281,10 +294,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_max(
               handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[6]])
+      self.assertEqual(self.evaluate(read), [[6]])
 
   def testScatterUpdate(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -294,10 +307,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_update(
               handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[3]])
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterAddScalar(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -307,10 +320,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_add(
               handle, [0], constant_op.constant(2, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[3]])
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterSubScalar(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -320,10 +333,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_sub(
               handle, [0], constant_op.constant(2, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[-1]])
+      self.assertEqual(self.evaluate(read), [[-1]])
 
   def testScatterMulScalar(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -333,10 +346,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_mul(
               handle, [0], constant_op.constant(5, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[5]])
+      self.assertEqual(self.evaluate(read), [[5]])
 
   def testScatterDivScalar(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -346,10 +359,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_div(
               handle, [0], constant_op.constant(3, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[2]])
+      self.assertEqual(self.evaluate(read), [[2]])
 
   def testScatterMinScalar(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -359,10 +372,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_min(
               handle, [0], constant_op.constant(3, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[3]])
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterMaxScalar(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       sess.run(
@@ -372,10 +385,10 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_max(
               handle, [0], constant_op.constant(3, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[6]])
+      self.assertEqual(self.evaluate(read), [[6]])
 
   def testScatterNdAddOps(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.float32, shape=[8])
       sess.run(
@@ -387,10 +400,10 @@ class VariableOpsTest(xla_test.XLATestCase):
       sess.run(gen_state_ops.resource_scatter_nd_add(handle, indices, updates))
       read = resource_variable_ops.read_variable_op(
           handle, dtype=dtypes.float32)
-      self.assertAllClose(expected, sess.run(read))
+      self.assertAllClose(expected, self.evaluate(read))
 
   def testScatterNdUpdateAddOps(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.float32, shape=[8])
       sess.run(
@@ -403,7 +416,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           gen_state_ops.resource_scatter_nd_update(handle, indices, updates))
       read = resource_variable_ops.read_variable_op(
           handle, dtype=dtypes.float32)
-      self.assertAllClose(expected, sess.run(read))
+      self.assertAllClose(expected, self.evaluate(read))
 
 
 class StridedSliceAssignChecker(object):
@@ -420,7 +433,7 @@ class StridedSliceAssignChecker(object):
     self.which_mode = 1 - self.which_mode
     value = np.array(value).astype(self.dtype)
 
-    with self.test.test_session() as sess, self.test.test_scope():
+    with self.test.session() as sess, self.test.test_scope():
       x = constant_op.constant(self.x_np, dtype=self.dtype)
       var = resource_variable_ops.ResourceVariable(x)
       sess.run(variables.variables_initializer([var]))
@@ -472,9 +485,9 @@ class SliceAssignTest(xla_test.XLATestCase):
       checker2[None] = [6]  # new axis
 
   def testUninitialized(self):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+    with self.assertRaisesRegexp(errors.FailedPreconditionError,
                                  "uninitialized variable"):
-      with self.test_session() as sess, self.test_scope():
+      with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable([1, 2])
         sess.run(v[:].assign([1, 2]))
 

@@ -43,6 +43,33 @@ enum class BranchType {
   kNeither = 3,
 };
 
+// When we keep track of which switch/merge node's feed into a node, we record
+// 1) predicate for non-dead switch node,
+// 2) the switch node itself for dead switch node,
+// 3) the merge node itself for merge node.
+// Case 1) is an optimization. With this optimization, if there are nodes from
+// different switch nodes but those switch nodes have the same predicate, the
+// nodes will still have same AncestorState, and they will be clustered into a
+// single "If".
+struct AncestorNode {
+  enum class AncestorNodeType {
+    kPred = 0,
+    kSwitch = 1,
+    kMerge = 2,
+  };
+
+  OutputTensor output_tensor;
+  AncestorNodeType type;
+
+  // Compare two AncestorNodes by (node id, index, type).
+  bool operator<(const AncestorNode& other) const;
+  bool operator==(const AncestorNode& other) const;
+
+  struct Hash {
+    size_t operator()(const AncestorNode&) const;
+  };
+};
+
 // StateMap is responsible for mapping from each graph Node to
 // * a CondState, where each CondState is a map from predicate to branch (i,e.,
 //   what predicates have to hold or not hold).
@@ -68,7 +95,7 @@ class StateMap {
   using CondId = const CondState*;
 
   // Keep track of which switch/merge node's feed into a node's values.
-  using AncestorState = std::set<Node*>;
+  using AncestorState = std::set<AncestorNode>;
 
   // Every unique ID is mapped to a AncestorState.
   using AncestorId = const AncestorState*;
@@ -166,6 +193,9 @@ class FunctionalizeCond {
   // Dump graph with the CondState annotated.
   void DumpGraphWithCondState(const string& name);
 
+  // Adds `switch_id` to the list of Switch node ids.
+  void AddSwitchId(int switch_id);
+
  private:
   FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library);
 
@@ -183,7 +213,7 @@ class FunctionalizeCond {
   // This populates the state_map_.
   Status DetermineStates(std::vector<Node*> rev_topo_order);
 
-  // Determine the CondState for a given node using the incomming edges
+  // Determine the CondState for a given node using the incoming edges
   // to the node. Note: it is expected that this node's CondState is only
   // determined once its input's CondState is.
   Status DetermineCondState(Node* dst) {
@@ -219,8 +249,7 @@ class FunctionalizeCond {
 
   // Deletes all nodes in/consumers reachable from switch/merge nodes that were
   // extracted.
-  void DeleteReachableAndDeadNodes(const std::vector<int>& switch_ids,
-                                   const std::vector<Node*>& merge_order);
+  void DeleteReachableAndDeadNodes(const std::vector<Node*>& merge_order);
 
   // Member used to unique the CondState to a unique CondId (AncestorState to a
   // unique AncestorId) and keep track of CondState/CondId
@@ -230,10 +259,15 @@ class FunctionalizeCond {
   // Mapping from merge nodes to predicate.
   std::unordered_map<Node*, OutputTensor> merge_to_predicate_;
 
+  // Mapping from merge nodes to corresponding If node outputs.
+  std::unordered_map<Node*, OutputTensor> merge_to_replacement_;
+
   FunctionLibraryDefinition* library_;
   Graph* graph_;
 
   friend class FunctionalizeCondTest;
+
+  std::vector<int> switch_ids_;
 };
 
 }  // namespace functionalize_cond

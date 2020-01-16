@@ -91,7 +91,7 @@ def _pick_scalar_condition(pred, cond_true, cond_false):
   # tf.select even though we use tf.select to implement it.
   pred_ = _static_value(pred)
   if pred_ is None:
-    return array_ops.where(pred, cond_true, cond_false)
+    return array_ops.where_v2(pred, cond_true, cond_false)
   return cond_true if pred_ else cond_false
 
 
@@ -167,7 +167,7 @@ class TransformedDistribution(distribution_lib.Distribution):
   distribution:
 
   ```python
-  ds = tf.contrib.distributions
+  ds = tfp.distributions
   log_normal = ds.TransformedDistribution(
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Exp(),
@@ -177,21 +177,21 @@ class TransformedDistribution(distribution_lib.Distribution):
   A `LogNormal` made from callables:
 
   ```python
-  ds = tf.contrib.distributions
+  ds = tfp.distributions
   log_normal = ds.TransformedDistribution(
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Inline(
       forward_fn=tf.exp,
-      inverse_fn=tf.log,
+      inverse_fn=tf.math.log,
       inverse_log_det_jacobian_fn=(
-        lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
+        lambda y: -tf.reduce_sum(tf.math.log(y), axis=-1)),
     name="LogNormalTransformedDistribution")
   ```
 
   Another example constructing a Normal from a StandardNormal:
 
   ```python
-  ds = tf.contrib.distributions
+  ds = tfp.distributions
   normal = ds.TransformedDistribution(
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Affine(
@@ -209,7 +209,7 @@ class TransformedDistribution(distribution_lib.Distribution):
   multivariate Normal as a `TransformedDistribution`.
 
   ```python
-  ds = tf.contrib.distributions
+  ds = tfp.distributions
   # We will create two MVNs with batch_shape = event_shape = 2.
   mean = [[-1., 0],      # batch:0
           [0., 1]]       # batch:1

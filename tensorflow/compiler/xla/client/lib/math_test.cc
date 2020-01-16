@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
+
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -30,6 +33,194 @@ class MathTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.0001};
 };
 
+// Write TYPED_TESTs within the class definition so that we don't have to litter
+// "this->" everywhere.
+template <typename T>
+class MathTypedTest : public MathTest {
+ public:
+  void TestLogEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    Log(AddParam(LiteralUtil::CreateR1<T>({T{0.0}, T{-0.0}}), &b));
+    ComputeAndCompareR1<T>(&b,
+                           {-std::numeric_limits<T>::infinity(),
+                            -std::numeric_limits<T>::infinity()},
+                           {}, error_spec_);
+  }
+
+  void TestLog1pEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    Log1p(AddParam(LiteralUtil::CreateR1<T>({T{0.0}, T{-0.0}, T{-1.0}}), &b));
+    ComputeAndCompareR1<T>(
+        &b, {T{0.0}, T{-0.0}, -std::numeric_limits<T>::infinity()}, {},
+        error_spec_);
+  }
+
+  void TestIsInfOrNan() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    auto x =
+        ConstantR1<T>(&b, {
+                              T{0},
+                              T{100},
+                              T{-1000},
+                              T{std::numeric_limits<T>::max()},
+                              T{std::numeric_limits<T>::lowest()},
+                              T{std::numeric_limits<float>::infinity()},
+                              T{-std::numeric_limits<float>::infinity()},
+                              T{std::numeric_limits<float>::quiet_NaN()},
+                              T{std::numeric_limits<float>::signaling_NaN()},
+                          });
+    Tuple(&b, {IsFinite(x), IsInf(x), IsPosInf(x), IsNegInf(x), IsNan(x)});
+
+    auto expected = LiteralUtil::MakeTupleOwned(
+        LiteralUtil::CreateR1<bool>(
+            {true, true, true, true, true, false, false, false, false}),
+        LiteralUtil::CreateR1<bool>(
+            {false, false, false, false, false, true, true, false, false}),
+        LiteralUtil::CreateR1<bool>(
+            {false, false, false, false, false, true, false, false, false}),
+        LiteralUtil::CreateR1<bool>(
+            {false, false, false, false, false, false, true, false, false}),
+        LiteralUtil::CreateR1<bool>(
+            {false, false, false, false, false, false, false, true, true}));
+    ComputeAndCompareLiteral(&b, expected, {});
+  }
+
+  void TestIsNegZero() {
+    SetFastMathDisabled(true);
+    XlaBuilder b(TestName());
+    T inf(std::numeric_limits<float>::infinity());
+    T nan(std::numeric_limits<float>::quiet_NaN());
+    IsNegZero(AddParam(
+        LiteralUtil::CreateR1<T>({T{-0.0}, T{0}, T{1}, T{-1}, inf, -inf, nan}),
+        &b));
+
+    ComputeAndCompareLiteral(
+        &b,
+        LiteralUtil::CreateR1<bool>(
+            {true, false, false, false, false, false, false}),
+        {}, error_spec_);
+  }
+
+  // sqrt(x) == pow(x, 0.5) except that
+  //
+  //   pow(-inf, 0.5) == inf, while
+  //   sqrt(-inf)     == nan.
+  //
+  // Check that none of our backends are incorrectly assuming that sqrt(x) ==
+  // pow(x, 0.5) without checking this edge case.
+  //
+  // For good measure, we also check pow with an exponent other than 0.5.
+  void TestSqrtPowInequivalence() {
+    // TODO(b/145798892): test fails on GPU for double values.
+    if (std::is_same<T, double>::value) {
+      return;
+    }
+    SetFastMathDisabled(true);
+
+    // Tests disable constant folding by default, but this test needs it
+    // enabled, otherwise we don't tickle the bug we're trying to catch.
+    // Specifically, without constant folding, the constants we pass to Pow
+    // below are hidden behind a reshape that's never folded away!
+    mutable_debug_options()->clear_xla_disable_hlo_passes();
+
+    const T inf(std::numeric_limits<float>::infinity());
+    const T nan(std::numeric_limits<float>::quiet_NaN());
+
+    XlaBuilder b(TestName());
+    auto x = AddParam(LiteralUtil::CreateR1<T>({-inf}), &b);
+    ConcatInDim(
+        &b, {Sqrt(x), Pow(x, ScalarLike(x, 0.5)), Pow(x, ScalarLike(x, 0.3))},
+        0);
+    std::vector<T> expected = {nan, inf, inf};
+    ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
+  }
+
+  void TestErfEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    auto x = AddParam(LiteralUtil::CreateR1<T>({T{-1}, T{1}, T{0}}), &b);
+    ErfInv(x);
+
+    const T inf(std::numeric_limits<float>::infinity());
+    std::vector<T> expected = {-inf, inf, T{0}};
+
+    ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
+  }
+};
+
+// TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
+using TestTypes = ::testing::Types<float
+#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
+                                   ,
+                                   Eigen::half
+#endif
+#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
+                                   ,
+                                   double
+#endif
+                                   >;
+
+TYPED_TEST_CASE(MathTypedTest, TestTypes);
+
+XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
+XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
+XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
+XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
+XLA_TYPED_TEST(MathTypedTest, SqrtPowInequivalence) {
+  this->TestSqrtPowInequivalence();
+}
+XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfEdgeCases(); }
+
+// Check that certain ops only support real, floating-point inputs.
+//
+// TODO(jlebar): Expand this test to cover more ops.
+XLA_TEST_F(MathTest, RealFpOnlyOps) {
+  for (int64 i = PrimitiveType_MIN; i <= PrimitiveType_MAX; ++i) {
+    auto ty = static_cast<PrimitiveType>(i);
+    SCOPED_TRACE(PrimitiveType_Name(ty));
+    Shape shape;
+    if (primitive_util::IsArrayType(ty)) {
+      shape = ShapeUtil::MakeShape(ty, {42});
+    } else if (ty == PrimitiveType::TUPLE) {
+      shape = ShapeUtil::MakeTupleShape({});
+    } else if (ty == PrimitiveType::OPAQUE_TYPE) {
+      shape = ShapeUtil::MakeOpaqueShape();
+    } else if (ty == PrimitiveType::TOKEN) {
+      shape = ShapeUtil::MakeTokenShape();
+    } else {
+      continue;
+    }
+
+    for (const auto& test :
+         std::vector<std::pair<std::function<XlaOp(XlaOp)>, string>>({
+             {IsFinite, "is_finite"},
+             {IsInf, "is_inf"},
+             {IsPosInf, "is_pos_inf"},
+             {IsNegInf, "is_neg_inf"},
+             {IsNan, "is_nan"},
+             {Erf, "erf"},
+             {Erfc, "erfc"},
+             {Lgamma, "lgamma"},
+             {Digamma, "digamma"},
+             {RoundToEven, "round_to_even"},
+         })) {
+      SCOPED_TRACE(test.second);
+      XlaBuilder b(TestName());
+      XlaOp p = Parameter(&b, 0, shape, "p0");
+      test.first(p);
+
+      EXPECT_EQ(b.first_error().ok(), primitive_util::IsFloatingPointType(ty));
+    }
+  }
+}
+
 XLA_TEST_F(MathTest, SqrtF32) {
   XlaBuilder builder(TestName());
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
@@ -42,6 +233,28 @@ XLA_TEST_F(MathTest, SqrtF32) {
 
   ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
 }
+
+#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
+XLA_TEST_F(MathTest, ErfInvF64) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<double>(
+      &builder, {-0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1,
+                 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9});
+  ErfInv(x);
+
+  std::vector<double> expected = {-1.163087153676674,   -0.9061938024368231,
+                                  -0.732869077959217,   -0.5951160814499948,
+                                  -0.4769362762044698,  -0.37080715859355795,
+                                  -0.27246271472675443, -0.1791434546212916,
+                                  -0.08885599049425767, 0.,
+                                  0.08885599049425777,  0.1791434546212916,
+                                  0.27246271472675443,  0.37080715859355784,
+                                  0.4769362762044698,   0.5951160814499948,
+                                  0.732869077959217,    0.9061938024368231,
+                                  1.1630871536766736};
+  ComputeAndCompareR1<double>(&builder, expected, {}, ErrorSpec{1e-15});
+}
+#endif
 
 XLA_TEST_F(MathTest, SquareTenValues) {
   XlaBuilder builder(TestName());
@@ -106,6 +319,29 @@ XLA_TEST_F(MathTest, Lgamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
+XLA_TEST_F(MathTest, LgammaF16) {
+  SetFastMathDisabled(true);
+
+  XlaBuilder b(TestName());
+
+  // These seemingly arbitrary inputs came from debugging the lgamma
+  // implementation against a test which tried all possible f16 values.
+  auto x = ConstantR1<half>(&b, {
+                                    half(-7360.0),
+                                    half(-4066.0),
+                                    half(-5.9605e-08),
+                                });
+  Lgamma(x);
+  std::vector<half> expected = {
+      std::numeric_limits<half>::infinity(),
+      std::numeric_limits<half>::infinity(),
+      half(16.64),
+  };
+  ComputeAndCompareR1<half>(&b, expected, {}, ErrorSpec{0.1});
+}
+#endif
+
 XLA_TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 0.5, 1 / 3.0, 0.25, 1 / 6.0, 0.125,
@@ -134,6 +370,185 @@ XLA_TEST_F(MathTest, Digamma) {
       static_cast<float>(363 / 140.0 - euler_mascheroni),
       static_cast<float>(761 / 280.0 - euler_mascheroni)};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, RoundToEven) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {-1.4, -1.5, -2.5, -0.5, 0, 0.5, 1.5, 2.5, 3.5, 4.5});
+  RoundToEven(x);
+
+  std::vector<float> expected = {-1.0, -2.0, -2.0, -0.0, 0,
+                                 0.0,  2.0,  2.0,  4.0,  4.0};
+
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, ErfRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Erf(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, ErfcRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Erfc(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, LgammaRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Lgamma(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, DigammaRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Digamma(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, RoundToEvenRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  RoundToEven(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, BesselI0eFloat) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder,
+      {-20.0, -18.0, -16.0, -14.0, -12.0, -10.0, -8.0, -6.0, -4.0, -2.0, 0.0,
+       2.0,   4.0,   6.0,   8.0,   10.0,  12.0,  14.0, 16.0, 18.0, 20.0});
+  BesselI0e(x);
+
+  // Values were generated through scipy via scipy.special.i0e.
+  std::vector<float> expected = {0.0897803118848,
+                                 0.0947062952128,
+                                 0.100544127361,
+                                 0.107615251671,
+                                 0.116426221213,
+                                 0.127833337163,
+                                 0.143431781857,
+                                 0.16665743264,
+                                 0.207001921224,
+                                 0.308508322554,
+                                 1.0,
+                                 0.308508322554,
+                                 0.207001921224,
+                                 0.16665743264,
+                                 0.143431781857,
+                                 0.127833337163,
+                                 0.116426221213,
+                                 0.107615251671,
+                                 0.100544127361,
+                                 0.0947062952128,
+                                 0.0897803118848};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, BesselI0eDouble) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<double>(
+      &builder,
+      {-20.0, -18.0, -16.0, -14.0, -12.0, -10.0, -8.0, -6.0, -4.0, -2.0, 0.0,
+       2.0,   4.0,   6.0,   8.0,   10.0,  12.0,  14.0, 16.0, 18.0, 20.0});
+  BesselI0e(x);
+
+  // Values were generated through scipy via scipy.special.i0e.
+  std::vector<double> expected = {0.0897803118848,
+                                  0.0947062952128,
+                                  0.100544127361,
+                                  0.107615251671,
+                                  0.116426221213,
+                                  0.127833337163,
+                                  0.143431781857,
+                                  0.16665743264,
+                                  0.207001921224,
+                                  0.308508322554,
+                                  1.0,
+                                  0.308508322554,
+                                  0.207001921224,
+                                  0.16665743264,
+                                  0.143431781857,
+                                  0.127833337163,
+                                  0.116426221213,
+                                  0.107615251671,
+                                  0.100544127361,
+                                  0.0947062952128,
+                                  0.0897803118848};
+  ComputeAndCompareR1<double>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, BesselI1eFloat) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder,
+      {-20.0, -18.0, -16.0, -14.0, -12.0, -10.0, -8.0, -6.0, -4.0, -2.0, 0.0,
+       2.0,   4.0,   6.0,   8.0,   10.0,  12.0,  14.0, 16.0, 18.0, 20.0});
+  BesselI1e(x);
+
+  // Values were generated through scipy via scipy.special.i1e.
+  std::vector<float> expected = {-0.0875062221833,
+                                 -0.092036796872,
+                                 -0.0973496147565,
+                                 -0.103697667463,
+                                 -0.11146429929,
+                                 -0.121262681384,
+                                 -0.134142493293,
+                                 -0.152051459309,
+                                 -0.178750839502,
+                                 -0.215269289249,
+                                 0.0,
+                                 0.215269289249,
+                                 0.178750839502,
+                                 0.152051459309,
+                                 0.134142493293,
+                                 0.121262681384,
+                                 0.11146429929,
+                                 0.103697667463,
+                                 0.0973496147565,
+                                 0.092036796872,
+                                 0.0875062221833};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, BesselI1eDouble) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<double>(
+      &builder,
+      {-20.0, -18.0, -16.0, -14.0, -12.0, -10.0, -8.0, -6.0, -4.0, -2.0, 0.0,
+       2.0,   4.0,   6.0,   8.0,   10.0,  12.0,  14.0, 16.0, 18.0, 20.0});
+  BesselI1e(x);
+
+  // Values were generated through scipy via scipy.special.i1e.
+  std::vector<double> expected = {-0.0875062221833,
+                                  -0.092036796872,
+                                  -0.0973496147565,
+                                  -0.103697667463,
+                                  -0.11146429929,
+                                  -0.121262681384,
+                                  -0.134142493293,
+                                  -0.152051459309,
+                                  -0.178750839502,
+                                  -0.215269289249,
+                                  0.0,
+                                  0.215269289249,
+                                  0.178750839502,
+                                  0.152051459309,
+                                  0.134142493293,
+                                  0.121262681384,
+                                  0.11146429929,
+                                  0.103697667463,
+                                  0.0973496147565,
+                                  0.092036796872,
+                                  0.0875062221833};
+  ComputeAndCompareR1<double>(&builder, expected, {}, error_spec_);
 }
 
 }  // namespace

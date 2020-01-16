@@ -18,14 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 class Pooling1D(Layer):
@@ -34,23 +37,25 @@ class Pooling1D(Layer):
   This class only exists for code reuse. It will never be an exposed API.
 
   Arguments:
-    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool`.
+    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool2d`.
     pool_size: An integer or tuple/list of a single integer,
       representing the size of the pooling window.
     strides: An integer or tuple/list of a single integer, specifying the
       strides of the pooling operation.
     padding: A string. The padding method, either 'valid' or 'same'.
       Case-insensitive.
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, length, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, length)`.
+      `(batch, steps, features)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, features, steps)`.
     name: A string, the name of the layer.
   """
 
   def __init__(self, pool_function, pool_size, strides,
-               padding='valid', data_format=None,
+               padding='valid', data_format='channels_last',
                name=None, **kwargs):
     super(Pooling1D, self).__init__(name=name, **kwargs)
     if data_format is None:
@@ -65,73 +70,128 @@ class Pooling1D(Layer):
     self.input_spec = InputSpec(ndim=3)
 
   def call(self, inputs):
-    # There is no TF op for 1D pooling, hence we make the inputs 4D.
-    if self.data_format == 'channels_last':
-      # input is NWC, make it NHWC
-      inputs = array_ops.expand_dims(inputs, 1)
-      # pool on the W dim
-      pool_shape = (1, 1) + self.pool_size + (1,)
-      strides = (1, 1) + self.strides + (1,)
-      data_format = 'NHWC'
-    else:
-      # input is NCW, make it NCHW
-      inputs = array_ops.expand_dims(inputs, 2)
-      # pool on the W dim
-      pool_shape = (1, 1, 1) + self.pool_size
-      strides = (1, 1, 1) + self.strides
-      data_format = 'NCHW'
-
+    pad_axis = 2 if self.data_format == 'channels_last' else 3
+    inputs = array_ops.expand_dims(inputs, pad_axis)
     outputs = self.pool_function(
         inputs,
-        ksize=pool_shape,
-        strides=strides,
-        padding=self.padding.upper(),
-        data_format=data_format)
-
-    if self.data_format == 'channels_last':
-      return array_ops.squeeze(outputs, 1)
-    else:
-      return array_ops.squeeze(outputs, 2)
+        self.pool_size + (1,),
+        strides=self.strides + (1,),
+        padding=self.padding,
+        data_format=self.data_format)
+    return array_ops.squeeze(outputs, pad_axis)
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    length = conv_utils.conv_output_length(input_shape[1], self.pool_size[0],
-                                           self.padding, self.strides[0])
-    return tensor_shape.TensorShape([input_shape[0], length, input_shape[2]])
+    if self.data_format == 'channels_first':
+      steps = input_shape[2]
+      features = input_shape[1]
+    else:
+      steps = input_shape[1]
+      features = input_shape[2]
+    length = conv_utils.conv_output_length(steps,
+                                           self.pool_size[0],
+                                           self.padding,
+                                           self.strides[0])
+    if self.data_format == 'channels_first':
+      return tensor_shape.TensorShape([input_shape[0], features, length])
+    else:
+      return tensor_shape.TensorShape([input_shape[0], length, features])
 
   def get_config(self):
     config = {
         'strides': self.strides,
         'pool_size': self.pool_size,
-        'padding': self.padding
+        'padding': self.padding,
+        'data_format': self.data_format,
     }
     base_config = super(Pooling1D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.MaxPool1D', 'keras.layers.MaxPooling1D')
+@keras_export('keras.layers.MaxPool1D', 'keras.layers.MaxPooling1D')
 class MaxPooling1D(Pooling1D):
-  """Max pooling operation for temporal data.
+  """Max pooling operation for 1D temporal data.
+
+  Downsamples the input representation by taking the maximum value over the
+  window defined by `pool_size`. The window is shifted by `strides`.  The
+  resulting output when using "valid" padding option has a shape of:
+  `output_shape = (input_shape - pool_size + 1) / strides)`
+
+  The resulting output shape when using the "same" padding option is:
+  `output_shape = input_shape / strides`
+
+  For example, for strides=1 and padding="valid":
+
+  >>> x = tf.constant([1., 2., 3., 4., 5.])
+  >>> x = tf.reshape(x, [1, 5, 1])
+  >>> max_pool_1d = tf.keras.layers.MaxPooling1D(pool_size=2,
+  ...    strides=1, padding='valid')
+  >>> max_pool_1d(x)
+  <tf.Tensor: shape=(1, 4, 1), dtype=float32, numpy=
+  array([[[2.],
+          [3.],
+          [4.],
+          [5.]]], dtype=float32)>
+
+  For example, for strides=2 and padding="valid":
+
+  >>> x = tf.constant([1., 2., 3., 4., 5.])
+  >>> x = tf.reshape(x, [1, 5, 1])
+  >>> max_pool_1d = tf.keras.layers.MaxPooling1D(pool_size=2,
+  ...    strides=2, padding='valid')
+  >>> max_pool_1d(x)
+  <tf.Tensor: shape=(1, 2, 1), dtype=float32, numpy=
+  array([[[2.],
+          [4.]]], dtype=float32)>
+
+  For example, for strides=1 and padding="same":
+
+  >>> x = tf.constant([1., 2., 3., 4., 5.])
+  >>> x = tf.reshape(x, [1, 5, 1])
+  >>> max_pool_1d = tf.keras.layers.MaxPooling1D(pool_size=2,
+  ...    strides=1, padding='same')
+  >>> max_pool_1d(x)
+  <tf.Tensor: shape=(1, 5, 1), dtype=float32, numpy=
+  array([[[2.],
+          [3.],
+          [4.],
+          [5.],
+          [5.]]], dtype=float32)>
 
   Arguments:
-      pool_size: Integer, size of the max pooling windows.
-      strides: Integer, or None. Factor by which to downscale.
-          E.g. 2 will halve the input.
-          If None, it will default to `pool_size`.
-      padding: One of `"valid"` or `"same"` (case-insensitive).
+    pool_size: Integer, size of the max pooling window.
+    strides: Integer, or None. Specifies how much the pooling window moves
+      for each pooling step.
+      If None, it will default to `pool_size`.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+      "valid" adds no padding.  "same" adds padding such that if the stride
+      is 1, the output shape is the same as the input shape.
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, steps, features)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, features, steps)`.
 
   Input shape:
-      3D tensor with shape: `(batch_size, steps, features)`.
+    - If `data_format='channels_last'`:
+      3D tensor with shape `(batch_size, steps, features)`.
+    - If `data_format='channels_first'`:
+      3D tensor with shape `(batch_size, features, steps)`.
 
   Output shape:
-      3D tensor with shape: `(batch_size, downsampled_steps, features)`.
+    - If `data_format='channels_last'`:
+      3D tensor with shape `(batch_size, downsampled_steps, features)`.
+    - If `data_format='channels_first'`:
+      3D tensor with shape `(batch_size, features, downsampled_steps)`.
   """
 
   def __init__(self, pool_size=2, strides=None,
-               padding='valid', data_format=None, **kwargs):
+               padding='valid', data_format='channels_last', **kwargs):
 
     super(MaxPooling1D, self).__init__(
-        nn.max_pool,
+        functools.partial(backend.pool2d, pool_mode='max'),
         pool_size=pool_size,
         strides=strides,
         padding=padding,
@@ -139,28 +199,41 @@ class MaxPooling1D(Pooling1D):
         **kwargs)
 
 
-@tf_export('keras.layers.AveragePooling1D', 'keras.layers.AvgPool1D')
+@keras_export('keras.layers.AveragePooling1D', 'keras.layers.AvgPool1D')
 class AveragePooling1D(Pooling1D):
   """Average pooling for temporal data.
 
   Arguments:
-      pool_size: Integer, size of the max pooling windows.
-      strides: Integer, or None. Factor by which to downscale.
-          E.g. 2 will halve the input.
-          If None, it will default to `pool_size`.
-      padding: One of `"valid"` or `"same"` (case-insensitive).
+    pool_size: Integer, size of the average pooling windows.
+    strides: Integer, or None. Factor by which to downscale.
+      E.g. 2 will halve the input.
+      If None, it will default to `pool_size`.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, steps, features)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, features, steps)`.
 
   Input shape:
-      3D tensor with shape: `(batch_size, steps, features)`.
+    - If `data_format='channels_last'`:
+      3D tensor with shape `(batch_size, steps, features)`.
+    - If `data_format='channels_first'`:
+      3D tensor with shape `(batch_size, features, steps)`.
 
   Output shape:
-      3D tensor with shape: `(batch_size, downsampled_steps, features)`.
+    - If `data_format='channels_last'`:
+      3D tensor with shape `(batch_size, downsampled_steps, features)`.
+    - If `data_format='channels_first'`:
+      3D tensor with shape `(batch_size, features, downsampled_steps)`.
   """
 
   def __init__(self, pool_size=2, strides=None,
-               padding='valid', data_format=None, **kwargs):
+               padding='valid', data_format='channels_last', **kwargs):
     super(AveragePooling1D, self).__init__(
-        nn.avg_pool,
+        functools.partial(backend.pool2d, pool_mode='avg'),
         pool_size=pool_size,
         strides=strides,
         padding=padding,
@@ -174,7 +247,7 @@ class Pooling2D(Layer):
   This class only exists for code reuse. It will never be an exposed API.
 
   Arguments:
-    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool`.
+    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool2d`.
     pool_size: An integer or tuple/list of 2 integers: (pool_height, pool_width)
       specifying the size of the pooling window.
       Can be a single integer to specify the same value for
@@ -253,46 +326,109 @@ class Pooling2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.MaxPool2D', 'keras.layers.MaxPooling2D')
+@keras_export('keras.layers.MaxPool2D', 'keras.layers.MaxPooling2D')
 class MaxPooling2D(Pooling2D):
-  """Max pooling operation for spatial data.
+  """Max pooling operation for 2D spatial data.
+
+  Downsamples the input representation by taking the maximum value over the
+  window defined by `pool_size` for each dimension along the features axis.
+  The window is shifted by `strides` in each dimension.  The resulting output
+  when using "valid" padding option has a shape(number of rows or columns) of:
+  `output_shape = (input_shape - pool_size + 1) / strides)`
+
+  The resulting output shape when using the "same" padding option is:
+  `output_shape = input_shape / strides`
+
+  For example, for stride=(1,1) and padding="valid":
+
+  >>> x = tf.constant([[1., 2., 3.],
+  ...                  [4., 5., 6.],
+  ...                  [7., 8., 9.]])
+  >>> x = tf.reshape(x, [1, 3, 3, 1])
+  >>> max_pool_2d = tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
+  ...    strides=(1, 1), padding='valid')
+  >>> max_pool_2d(x)
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
+    array([[[[5.],
+             [6.]],
+            [[8.],
+             [9.]]]], dtype=float32)>
+
+  For example, for stride=(2,2) and padding="valid":
+
+  >>> x = tf.constant([[1., 2., 3., 4.],
+  ...                  [5., 6., 7., 8.],
+  ...                  [9., 10., 11., 12.]])
+  >>> x = tf.reshape(x, [1, 3, 4, 1])
+  >>> max_pool_2d = tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
+  ...    strides=(1, 1), padding='valid')
+  >>> max_pool_2d(x)
+  <tf.Tensor: shape=(1, 2, 3, 1), dtype=float32, numpy=
+    array([[[[ 6.],
+             [ 7.],
+             [ 8.]],
+            [[10.],
+             [11.],
+             [12.]]]], dtype=float32)>
+
+  For example, for stride=(1,1) and padding="same":
+
+  >>> x = tf.constant([[1., 2., 3.],
+  ...                  [4., 5., 6.],
+  ...                  [7., 8., 9.]])
+  >>> x = tf.reshape(x, [1, 3, 3, 1])
+  >>> max_pool_2d = tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
+  ...    strides=(1, 1), padding='same')
+  >>> max_pool_2d(x)
+  <tf.Tensor: shape=(1, 3, 3, 1), dtype=float32, numpy=
+    array([[[[5.],
+             [6.],
+             [6.]],
+            [[8.],
+             [9.],
+             [9.]],
+            [[8.],
+             [9.],
+             [9.]]]], dtype=float32)>
 
   Arguments:
-      pool_size: integer or tuple of 2 integers,
-          factors by which to downscale (vertical, horizontal).
-          (2, 2) will halve the input in both spatial dimension.
-          If only one integer is specified, the same window length
-          will be used for both dimensions.
-      strides: Integer, tuple of 2 integers, or None.
-          Strides values.
-          If None, it will default to `pool_size`.
-      padding: One of `"valid"` or `"same"` (case-insensitive).
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, height, width, channels)` while `channels_first`
-          corresponds to inputs with shape
-          `(batch, channels, height, width)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    pool_size: integer or tuple of 2 integers,
+      window size over which to take the maximum.
+      `(2, 2)` will take the max value over a 2x2 pooling window.
+      If only one integer is specified, the same window length
+      will be used for both dimensions.
+    strides: Integer, tuple of 2 integers, or None.
+      Strides values.  Specifies how far the pooling window moves
+      for each pooling step. If None, it will default to `pool_size`.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+      "valid" adds no zero padding.  "same" adds padding such that if the stride
+      is 1, the output shape is the same as input shape.
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, height, width)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
 
   Input shape:
-      - If `data_format='channels_last'`:
-          4D tensor with shape:
-          `(batch_size, rows, cols, channels)`
-      - If `data_format='channels_first'`:
-          4D tensor with shape:
-          `(batch_size, channels, rows, cols)`
+    - If `data_format='channels_last'`:
+      4D tensor with shape `(batch_size, rows, cols, channels)`.
+    - If `data_format='channels_first'`:
+      4D tensor with shape `(batch_size, channels, rows, cols)`.
 
   Output shape:
-      - If `data_format='channels_last'`:
-          4D tensor with shape:
-          `(batch_size, pooled_rows, pooled_cols, channels)`
-      - If `data_format='channels_first'`:
-          4D tensor with shape:
-          `(batch_size, channels, pooled_rows, pooled_cols)`
+    - If `data_format='channels_last'`:
+      4D tensor with shape `(batch_size, pooled_rows, pooled_cols, channels)`.
+    - If `data_format='channels_first'`:
+      4D tensor with shape `(batch_size, channels, pooled_rows, pooled_cols)`.
+
+  Returns:
+    A tensor of rank 4 representing the maximum pooled values.  See above for
+    output shape.
   """
 
   def __init__(self,
@@ -307,46 +443,42 @@ class MaxPooling2D(Pooling2D):
         padding=padding, data_format=data_format, **kwargs)
 
 
-@tf_export('keras.layers.AveragePooling2D', 'keras.layers.AvgPool2D')
+@keras_export('keras.layers.AveragePooling2D', 'keras.layers.AvgPool2D')
 class AveragePooling2D(Pooling2D):
   """Average pooling operation for spatial data.
 
   Arguments:
-      pool_size: integer or tuple of 2 integers,
-          factors by which to downscale (vertical, horizontal).
-          (2, 2) will halve the input in both spatial dimension.
-          If only one integer is specified, the same window length
-          will be used for both dimensions.
-      strides: Integer, tuple of 2 integers, or None.
-          Strides values.
-          If None, it will default to `pool_size`.
-      padding: One of `"valid"` or `"same"` (case-insensitive).
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, height, width, channels)` while `channels_first`
-          corresponds to inputs with shape
-          `(batch, channels, height, width)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    pool_size: integer or tuple of 2 integers,
+      factors by which to downscale (vertical, horizontal).
+      `(2, 2)` will halve the input in both spatial dimension.
+      If only one integer is specified, the same window length
+      will be used for both dimensions.
+    strides: Integer, tuple of 2 integers, or None.
+      Strides values.
+      If None, it will default to `pool_size`.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, height, width)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
 
   Input shape:
-      - If `data_format='channels_last'`:
-          4D tensor with shape:
-          `(batch_size, rows, cols, channels)`
-      - If `data_format='channels_first'`:
-          4D tensor with shape:
-          `(batch_size, channels, rows, cols)`
+    - If `data_format='channels_last'`:
+      4D tensor with shape `(batch_size, rows, cols, channels)`.
+    - If `data_format='channels_first'`:
+      4D tensor with shape `(batch_size, channels, rows, cols)`.
 
   Output shape:
-      - If `data_format='channels_last'`:
-          4D tensor with shape:
-          `(batch_size, pooled_rows, pooled_cols, channels)`
-      - If `data_format='channels_first'`:
-          4D tensor with shape:
-          `(batch_size, channels, pooled_rows, pooled_cols)`
+    - If `data_format='channels_last'`:
+      4D tensor with shape `(batch_size, pooled_rows, pooled_cols, channels)`.
+    - If `data_format='channels_first'`:
+      4D tensor with shape `(batch_size, channels, pooled_rows, pooled_cols)`.
   """
 
   def __init__(self,
@@ -367,7 +499,7 @@ class Pooling3D(Layer):
   This class only exists for code reuse. It will never be an exposed API.
 
   Arguments:
-    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool`.
+    pool_function: The pooling function to apply, e.g. `tf.nn.max_pool2d`.
     pool_size: An integer or tuple/list of 3 integers:
       (pool_depth, pool_height, pool_width)
       specifying the size of the pooling window.
@@ -457,42 +589,42 @@ class Pooling3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.MaxPool3D', 'keras.layers.MaxPooling3D')
+@keras_export('keras.layers.MaxPool3D', 'keras.layers.MaxPooling3D')
 class MaxPooling3D(Pooling3D):
   """Max pooling operation for 3D data (spatial or spatio-temporal).
 
   Arguments:
-      pool_size: tuple of 3 integers,
-          factors by which to downscale (dim1, dim2, dim3).
-          (2, 2, 2) will halve the size of the 3D input in each dimension.
-      strides: tuple of 3 integers, or None. Strides values.
-      padding: One of `"valid"` or `"same"` (case-insensitive).
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
-          while `channels_first` corresponds to inputs with shape
-          `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    pool_size: Tuple of 3 integers,
+      factors by which to downscale (dim1, dim2, dim3).
+      `(2, 2, 2)` will halve the size of the 3D input in each dimension.
+    strides: tuple of 3 integers, or None. Strides values.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      while `channels_first` corresponds to inputs with shape
+      `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
 
   Input shape:
-      - If `data_format='channels_last'`:
-          5D tensor with shape:
-          `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
-      - If `data_format='channels_first'`:
-          5D tensor with shape:
-          `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
+    - If `data_format='channels_last'`:
+      5D tensor with shape:
+      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+    - If `data_format='channels_first'`:
+      5D tensor with shape:
+      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
 
   Output shape:
-      - If `data_format='channels_last'`:
-          5D tensor with shape:
-          `(batch_size, pooled_dim1, pooled_dim2, pooled_dim3, channels)`
-      - If `data_format='channels_first'`:
-          5D tensor with shape:
-          `(batch_size, channels, pooled_dim1, pooled_dim2, pooled_dim3)`
+    - If `data_format='channels_last'`:
+      5D tensor with shape:
+      `(batch_size, pooled_dim1, pooled_dim2, pooled_dim3, channels)`
+    - If `data_format='channels_first'`:
+      5D tensor with shape:
+      `(batch_size, channels, pooled_dim1, pooled_dim2, pooled_dim3)`
   """
 
   def __init__(self,
@@ -507,42 +639,42 @@ class MaxPooling3D(Pooling3D):
         padding=padding, data_format=data_format, **kwargs)
 
 
-@tf_export('keras.layers.AveragePooling3D', 'keras.layers.AvgPool3D')
+@keras_export('keras.layers.AveragePooling3D', 'keras.layers.AvgPool3D')
 class AveragePooling3D(Pooling3D):
   """Average pooling operation for 3D data (spatial or spatio-temporal).
 
   Arguments:
-      pool_size: tuple of 3 integers,
-          factors by which to downscale (dim1, dim2, dim3).
-          (2, 2, 2) will halve the size of the 3D input in each dimension.
-      strides: tuple of 3 integers, or None. Strides values.
-      padding: One of `"valid"` or `"same"` (case-insensitive).
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
-          while `channels_first` corresponds to inputs with shape
-          `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    pool_size: tuple of 3 integers,
+      factors by which to downscale (dim1, dim2, dim3).
+      `(2, 2, 2)` will halve the size of the 3D input in each dimension.
+    strides: tuple of 3 integers, or None. Strides values.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      while `channels_first` corresponds to inputs with shape
+      `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
 
   Input shape:
-      - If `data_format='channels_last'`:
-          5D tensor with shape:
-          `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
-      - If `data_format='channels_first'`:
-          5D tensor with shape:
-          `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
+    - If `data_format='channels_last'`:
+      5D tensor with shape:
+      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+    - If `data_format='channels_first'`:
+      5D tensor with shape:
+      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
 
   Output shape:
-      - If `data_format='channels_last'`:
-          5D tensor with shape:
-          `(batch_size, pooled_dim1, pooled_dim2, pooled_dim3, channels)`
-      - If `data_format='channels_first'`:
-          5D tensor with shape:
-          `(batch_size, channels, pooled_dim1, pooled_dim2, pooled_dim3)`
+    - If `data_format='channels_last'`:
+      5D tensor with shape:
+      `(batch_size, pooled_dim1, pooled_dim2, pooled_dim3, channels)`
+    - If `data_format='channels_first'`:
+      5D tensor with shape:
+      `(batch_size, channels, pooled_dim1, pooled_dim2, pooled_dim3)`
   """
 
   def __init__(self,
@@ -558,52 +690,110 @@ class AveragePooling3D(Pooling3D):
 
 
 class GlobalPooling1D(Layer):
-  """Abstract class for different global pooling 1D layers.
-  """
+  """Abstract class for different global pooling 1D layers."""
 
-  def __init__(self, **kwargs):
+  def __init__(self, data_format='channels_last', **kwargs):
     super(GlobalPooling1D, self).__init__(**kwargs)
     self.input_spec = InputSpec(ndim=3)
+    self.data_format = conv_utils.normalize_data_format(data_format)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    return tensor_shape.TensorShape([input_shape[0], input_shape[2]])
+    if self.data_format == 'channels_first':
+      return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
+    else:
+      return tensor_shape.TensorShape([input_shape[0], input_shape[2]])
 
   def call(self, inputs):
     raise NotImplementedError
 
+  def get_config(self):
+    config = {'data_format': self.data_format}
+    base_config = super(GlobalPooling1D, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
-@tf_export('keras.layers.GlobalAveragePooling1D',
-           'keras.layers.GlobalAvgPool1D')
+
+@keras_export('keras.layers.GlobalAveragePooling1D',
+              'keras.layers.GlobalAvgPool1D')
 class GlobalAveragePooling1D(GlobalPooling1D):
   """Global average pooling operation for temporal data.
 
+  Arguments:
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, steps, features)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, features, steps)`.
+
+  Call arguments:
+    inputs: A 3D tensor.
+    mask: Binary tensor of shape `(batch_size, steps)` indicating whether
+      a given step should be masked (excluded from the average).
+
   Input shape:
-      3D tensor with shape: `(batch_size, steps, features)`.
+    - If `data_format='channels_last'`:
+      3D tensor with shape:
+      `(batch_size, steps, features)`
+    - If `data_format='channels_first'`:
+      3D tensor with shape:
+      `(batch_size, features, steps)`
 
   Output shape:
-      2D tensor with shape:
-      `(batch_size, features)`
+    2D tensor with shape `(batch_size, features)`.
   """
 
-  def call(self, inputs):
-    return backend.mean(inputs, axis=1)
+  def __init__(self, data_format='channels_last', **kwargs):
+    super(GlobalAveragePooling1D, self).__init__(data_format=data_format,
+                                                 **kwargs)
+    self.supports_masking = True
+
+  def call(self, inputs, mask=None):
+    steps_axis = 1 if self.data_format == 'channels_last' else 2
+    if mask is not None:
+      mask = math_ops.cast(mask, backend.floatx())
+      mask = array_ops.expand_dims(
+          mask, 2 if self.data_format == 'channels_last' else 1)
+      inputs *= mask
+      return backend.sum(inputs, axis=steps_axis) / math_ops.reduce_sum(
+          mask, axis=steps_axis)
+    else:
+      return backend.mean(inputs, axis=steps_axis)
+
+  def compute_mask(self, inputs, mask=None):
+    return None
 
 
-@tf_export('keras.layers.GlobalMaxPool1D', 'keras.layers.GlobalMaxPooling1D')
+@keras_export('keras.layers.GlobalMaxPool1D', 'keras.layers.GlobalMaxPooling1D')
 class GlobalMaxPooling1D(GlobalPooling1D):
   """Global max pooling operation for temporal data.
 
+  Arguments:
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, steps, features)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, features, steps)`.
+
   Input shape:
-      3D tensor with shape: `(batch_size, steps, features)`.
+    - If `data_format='channels_last'`:
+      3D tensor with shape:
+      `(batch_size, steps, features)`
+    - If `data_format='channels_first'`:
+      3D tensor with shape:
+      `(batch_size, features, steps)`
 
   Output shape:
-      2D tensor with shape:
-      `(batch_size, features)`
+    2D tensor with shape `(batch_size, features)`.
   """
 
   def call(self, inputs):
-    return backend.max(inputs, axis=1)
+    steps_axis = 1 if self.data_format == 'channels_last' else 2
+    return backend.max(inputs, axis=steps_axis)
 
 
 class GlobalPooling2D(Layer):
@@ -614,6 +804,7 @@ class GlobalPooling2D(Layer):
     super(GlobalPooling2D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -631,34 +822,31 @@ class GlobalPooling2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.GlobalAveragePooling2D',
-           'keras.layers.GlobalAvgPool2D')
+@keras_export('keras.layers.GlobalAveragePooling2D',
+              'keras.layers.GlobalAvgPool2D')
 class GlobalAveragePooling2D(GlobalPooling2D):
   """Global average pooling operation for spatial data.
 
   Arguments:
       data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, height, width, channels)` while `channels_first`
-          corresponds to inputs with shape
-          `(batch, channels, height, width)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+        one of `channels_last` (default) or `channels_first`.
+        The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape
+        `(batch, height, width, channels)` while `channels_first`
+        corresponds to inputs with shape
+        `(batch, channels, height, width)`.
+        It defaults to the `image_data_format` value found in your
+        Keras config file at `~/.keras/keras.json`.
+        If you never set it, then it will be "channels_last".
 
   Input shape:
-      - If `data_format='channels_last'`:
-          4D tensor with shape:
-          `(batch_size, rows, cols, channels)`
-      - If `data_format='channels_first'`:
-          4D tensor with shape:
-          `(batch_size, channels, rows, cols)`
+    - If `data_format='channels_last'`:
+      4D tensor with shape `(batch_size, rows, cols, channels)`.
+    - If `data_format='channels_first'`:
+      4D tensor with shape `(batch_size, channels, rows, cols)`.
 
   Output shape:
-      2D tensor with shape:
-      `(batch_size, channels)`
+    2D tensor with shape `(batch_size, channels)`.
   """
 
   def call(self, inputs):
@@ -668,33 +856,30 @@ class GlobalAveragePooling2D(GlobalPooling2D):
       return backend.mean(inputs, axis=[2, 3])
 
 
-@tf_export('keras.layers.GlobalMaxPool2D', 'keras.layers.GlobalMaxPooling2D')
+@keras_export('keras.layers.GlobalMaxPool2D', 'keras.layers.GlobalMaxPooling2D')
 class GlobalMaxPooling2D(GlobalPooling2D):
   """Global max pooling operation for spatial data.
 
   Arguments:
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, height, width, channels)` while `channels_first`
-          corresponds to inputs with shape
-          `(batch, channels, height, width)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, height, width)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
 
   Input shape:
-      - If `data_format='channels_last'`:
-          4D tensor with shape:
-          `(batch_size, rows, cols, channels)`
-      - If `data_format='channels_first'`:
-          4D tensor with shape:
-          `(batch_size, channels, rows, cols)`
+    - If `data_format='channels_last'`:
+      4D tensor with shape `(batch_size, rows, cols, channels)`.
+    - If `data_format='channels_first'`:
+      4D tensor with shape `(batch_size, channels, rows, cols)`.
 
   Output shape:
-      2D tensor with shape:
-      `(batch_size, channels)`
+    2D tensor with shape `(batch_size, channels)`.
   """
 
   def call(self, inputs):
@@ -705,13 +890,13 @@ class GlobalMaxPooling2D(GlobalPooling2D):
 
 
 class GlobalPooling3D(Layer):
-  """Abstract class for different global pooling 3D layers.
-  """
+  """Abstract class for different global pooling 3D layers."""
 
   def __init__(self, data_format=None, **kwargs):
     super(GlobalPooling3D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -729,34 +914,33 @@ class GlobalPooling3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.GlobalAveragePooling3D',
-           'keras.layers.GlobalAvgPool3D')
+@keras_export('keras.layers.GlobalAveragePooling3D',
+              'keras.layers.GlobalAvgPool3D')
 class GlobalAveragePooling3D(GlobalPooling3D):
   """Global Average pooling operation for 3D data.
 
   Arguments:
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
-          while `channels_first` corresponds to inputs with shape
-          `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      while `channels_first` corresponds to inputs with shape
+      `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
 
   Input shape:
-      - If `data_format='channels_last'`:
-          5D tensor with shape:
-          `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
-      - If `data_format='channels_first'`:
-          5D tensor with shape:
-          `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
+    - If `data_format='channels_last'`:
+      5D tensor with shape:
+      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+    - If `data_format='channels_first'`:
+      5D tensor with shape:
+      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
 
   Output shape:
-      2D tensor with shape:
-      `(batch_size, channels)`
+    2D tensor with shape `(batch_size, channels)`.
   """
 
   def call(self, inputs):
@@ -766,33 +950,32 @@ class GlobalAveragePooling3D(GlobalPooling3D):
       return backend.mean(inputs, axis=[2, 3, 4])
 
 
-@tf_export('keras.layers.GlobalMaxPool3D', 'keras.layers.GlobalMaxPooling3D')
+@keras_export('keras.layers.GlobalMaxPool3D', 'keras.layers.GlobalMaxPooling3D')
 class GlobalMaxPooling3D(GlobalPooling3D):
   """Global Max pooling operation for 3D data.
 
   Arguments:
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
-          while `channels_first` corresponds to inputs with shape
-          `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      while `channels_first` corresponds to inputs with shape
+      `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
 
   Input shape:
-      - If `data_format='channels_last'`:
-          5D tensor with shape:
-          `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
-      - If `data_format='channels_first'`:
-          5D tensor with shape:
-          `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
+    - If `data_format='channels_last'`:
+      5D tensor with shape:
+      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+    - If `data_format='channels_first'`:
+      5D tensor with shape:
+      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
 
   Output shape:
-      2D tensor with shape:
-      `(batch_size, channels)`
+    2D tensor with shape `(batch_size, channels)`.
   """
 
   def call(self, inputs):

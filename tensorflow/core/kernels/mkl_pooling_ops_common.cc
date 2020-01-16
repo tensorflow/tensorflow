@@ -16,16 +16,15 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
+
 #include <limits>
 #include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
-
-#ifndef INTEL_MKL_ML_ONLY
-
 using mkldnn::pooling_avg;
 using mkldnn::pooling_avg_exclude_padding;
 using mkldnn::pooling_avg_include_padding;
@@ -41,28 +40,33 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
       << "Pooling algorithm kind is not supported";
 
   context_.alg_kind = fwdParams.alg_kind;
+  context_.prop_kind = fwdParams.prop_kind;
+
   // create memory desc
   // FIXME: Pooling doesn't expose to get the src_primitive_desc,
   //        so src format is currently hard-coded.
   //        A utility function is used to do this,
   //        which may be broken with future CPU architectures
   bool is_2d = (fwdParams.src_dims.size() == 4);
-  context_.src_md.reset(
-      new memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
-                       get_desired_format(fwdParams.src_dims[1], is_2d)));
+  if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value)
+    context_.src_fmt = is_2d ? memory::format::nhwc : memory::format::ndhwc;
+  else
+    context_.src_fmt = fwdParams.src_format;
+
+  context_.src_md.reset(new memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
+                                         context_.src_fmt));
   context_.dst_md.reset(new memory::desc({fwdParams.dst_dims}, MklDnnType<T>(),
                                          memory::format::any));
 
   // create a pooling descriptor
   context_.fwd_desc.reset(new pooling_forward::desc(
-      prop_kind::forward_training, fwdParams.alg_kind, *context_.src_md,
+      fwdParams.prop_kind, fwdParams.alg_kind, *context_.src_md,
       *context_.dst_md, fwdParams.strides, fwdParams.filter_dims,
       fwdParams.padding_left, fwdParams.padding_right, padding_kind::zero));
   context_.fwd_pd.reset(
       new pooling_forward::primitive_desc(*context_.fwd_desc, cpu_engine_));
 
   // store expected primitive format
-  context_.src_fmt = get_desired_format(fwdParams.src_dims[1], is_2d);
   context_.dst_fmt = static_cast<mkldnn::memory::format>(
       context_.fwd_pd.get()->dst_primitive_desc().desc().data.format);
 
@@ -74,7 +78,8 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
       new memory(context_.fwd_pd.get()->dst_primitive_desc(), DummyData));
 
   // for max pooling, need to return workspace(ws) for backward computing
-  if (fwdParams.alg_kind == pooling_max) {
+  if (fwdParams.alg_kind == pooling_max &&
+      fwdParams.prop_kind == prop_kind::forward_training) {
     auto ws_pd = context_.fwd_pd.get()->workspace_primitive_desc().desc().data;
     // store workspace's dims and format to create workspace tensor
     context_.ws_fmt = static_cast<mkldnn::memory::format>(ws_pd.format);
@@ -101,7 +106,9 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   context_.src_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(src_data)));
   context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-  if (context_.alg_kind == pooling_max) {  // max pooling must have ws
+  if (context_.alg_kind == pooling_max &&
+      context_.prop_kind ==
+          prop_kind::forward_training) {  // max pooling must have ws
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(ws_data);
   }
@@ -110,13 +117,18 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   // set back data handle
   context_.src_mem->set_data_handle(DummyData);
   context_.dst_mem->set_data_handle(DummyData);
-  if (context_.alg_kind == pooling_max) {  // max pooling must have ws
+  if (context_.alg_kind == pooling_max &&
+      context_.prop_kind ==
+          prop_kind::forward_training) {  // max pooling must have ws
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(DummyData);
   }
 }
 
 template class MklPoolingFwdPrimitive<float>;
+template class MklPoolingFwdPrimitive<quint8>;
+template class MklPoolingFwdPrimitive<qint8>;
+template class MklPoolingFwdPrimitive<bfloat16>;
 
 template <typename T>
 void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
@@ -132,9 +144,8 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   // Create memory desc
   context_.diff_src_md.reset(new memory::desc(
       {bwdParams.src_dims}, MklDnnType<T>(), memory::format::any));
-  context_.diff_dst_md.reset(
-      new memory::desc({bwdParams.dst_dims}, MklDnnType<T>(),
-                       get_desired_format(bwdParams.dst_dims[1], is_2d)));
+  context_.diff_dst_md.reset(new memory::desc(
+      {bwdParams.dst_dims}, MklDnnType<T>(), bwdParams.src_format));
   context_.bwd_desc.reset(new pooling_backward::desc(
       bwdParams.alg_kind, *context_.diff_src_md, *context_.diff_dst_md,
       bwdParams.strides, bwdParams.filter_dims, bwdParams.padding_left,
@@ -143,7 +154,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   // create a forward primitive,
   // which will be used as a hint for creating backward primitive
   context_.fwd_desc.reset(new pooling_forward::desc(
-      prop_kind::forward_training, bwdParams.alg_kind, *context_.diff_src_md,
+      bwdParams.prop_kind, bwdParams.alg_kind, *context_.diff_src_md,
       *context_.diff_dst_md, bwdParams.strides, bwdParams.filter_dims,
       bwdParams.padding_left, bwdParams.padding_right, padding_kind::zero));
   context_.fwd_pd.reset(
@@ -154,7 +165,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   // store expected primitive format
   context_.diff_src_fmt = static_cast<mkldnn::memory::format>(
       context_.bwd_pd.get()->diff_src_primitive_desc().desc().data.format);
-  context_.diff_dst_fmt = get_desired_format(bwdParams.dst_dims[1], is_2d);
+  context_.diff_dst_fmt = bwdParams.src_format;
 
   // create MKL-DNN internal memory object with dummy data
   context_.diff_src_mem.reset(
@@ -168,7 +179,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   if (bwdParams.alg_kind == pooling_max) {
     auto ws_pd = context_.fwd_pd.get()->workspace_primitive_desc().desc().data;
     context_.ws_dims.assign(ws_pd.dims, ws_pd.dims + ws_pd.ndims);
-    context_.ws_fmt = get_desired_format(context_.ws_dims[1], is_2d);
+    context_.ws_fmt = static_cast<memory::format>(ws_pd.format);
     context_.ws_dt = static_cast<mkldnn::memory::data_type>(ws_pd.data_type);
     context_.ws_mem.reset(new memory(
         {{{context_.ws_dims}, context_.ws_dt, context_.ws_fmt}, cpu_engine},
@@ -205,8 +216,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
 }
 
 template class MklPoolingBwdPrimitive<float>;
-
-#endif
+template class MklPoolingBwdPrimitive<bfloat16>;
 
 // Initialization for TensorFlow format
 void MklPoolParameters::Init(OpKernelContext* context,
@@ -235,22 +245,6 @@ void MklPoolParameters::Init(OpKernelContext* context,
   Init(context, ksize, stride, padding, data_format);
 }
 
-#ifdef INTEL_MKL_ML_ONLY
-// Initialization for MKL format
-void MklPoolParameters::Init(OpKernelContext* context,
-                             const std::vector<int32>& ksize,
-                             const std::vector<int32>& stride, Padding padding,
-                             TensorFormat data_format,
-                             const MklShape* mklInputShape) {
-  // Get the input sizes
-  depth = mklInputShape->GetSizes()[2];
-  tensor_in_cols = mklInputShape->GetSizes()[0];
-  tensor_in_rows = mklInputShape->GetSizes()[1];
-  tensor_in_batch = mklInputShape->GetSizes()[3];
-
-  Init(context, ksize, stride, padding, data_format);
-}
-#else
 // Initialization for MKL format
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -275,7 +269,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
 
   Init(context, ksize, stride, padding, data_format);
 }
-#endif  // INTEL_MKL_ML_ONLY
+
 // Common Initialization for TensorFlow and MKL formats
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -343,7 +337,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
                                 tensor_in_cols, window_cols, col_stride,
                                 padding, &out_width, &pad_left, &pad_right));
-#ifndef INTEL_MKL_ML_ONLY
+
     // TF can work with int64, but mkldnn only supports int32
     // Fail if the depth, height or width are greater than MAX_INT
     // We check depth only for 3D pooling case
@@ -361,7 +355,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     OP_REQUIRES(context,
                 FastBoundsCheck(out_width, std::numeric_limits<int>::max()),
                 errors::InvalidArgument("output width is too large"));
-#endif
+
     out_depth = depth;  // output will have the same depth as the input
   } else {              // we are pooling in the depth dimension
     // Our current version of depthwise max pooling does not support

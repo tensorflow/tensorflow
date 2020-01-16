@@ -35,7 +35,7 @@ class TestKernel : public OpKernel {
     Tensor* out_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output("ndef", TensorShape({}),
                                                      &out_tensor));
-    out_tensor->scalar<string>()() = SummarizeNodeDef(def());
+    out_tensor->scalar<tstring>()() = SummarizeNodeDef(def());
   }
 };
 
@@ -87,7 +87,7 @@ class OpCompatibilityTest : public OpsTestBase {
     TF_ASSERT_OK(RunOpKernel());
   }
 
-  string Result() { return GetOutput(0)->scalar<string>()(); }
+  string Result() { return GetOutput(0)->scalar<tstring>()(); }
 
   void ExpectIncompatible(const OpDef& old_op_def, const OpDef& new_op_def,
                           const string& error) {
@@ -97,7 +97,7 @@ class OpCompatibilityTest : public OpsTestBase {
       ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
                     << SummarizeOpDef(new_op_def);
     } else {
-      EXPECT_TRUE(str_util::StrContains(status.error_message(), error))
+      EXPECT_TRUE(absl::StrContains(status.error_message(), error))
           << status << " does not contain " << error;
     }
   }
@@ -118,8 +118,7 @@ class OpCompatibilityTest : public OpsTestBase {
     if (status.ok()) {
       ADD_FAILURE() << SummarizeNodeDef(*node_def());
     } else {
-      EXPECT_TRUE(
-          str_util::StrContains(status.error_message(), validation_error))
+      EXPECT_TRUE(absl::StrContains(status.error_message(), validation_error))
           << status << " does not contain " << validation_error;
     }
 
@@ -180,7 +179,7 @@ class OpCompatibilityTest : public OpsTestBase {
                     << SummarizeOpDef(*new_op_def);
     } else {
       EXPECT_TRUE(
-          str_util::StrContains(status.error_message(), compatibility_error))
+          absl::StrContains(status.error_message(), compatibility_error))
           << status << " does not contain " << compatibility_error;
     }
   }
@@ -1052,7 +1051,7 @@ TEST_F(OpCompatibilityTest, RenameOutputListFails) {
                       "Output signature mismatch 'old:T' vs. 'new:T'");
 }
 
-// Should not be able to add a default to an attr.
+// It's ok to add a default to an attr if it doesn't already have one.
 REGISTER_OP("AddDefault").Output("ndef: string").Attr("a: int = 1234");
 REGISTER_KERNEL_BUILDER(Name("AddDefault").Device(DEVICE_CPU), TestKernel);
 
@@ -1065,9 +1064,8 @@ TEST_F(OpCompatibilityTest, AddDefault) {
   TF_ASSERT_OK(NodeDefBuilder("add_default", &old_op.op_def)
                    .Attr("a", 765)
                    .Finalize(node_def()));
-  ExpectDefaultChangeFailure(
-      old_op.op_def,
-      "Attr 'a' has added/removed it's default; from no default to 1234");
+  ExpectSuccess(old_op.op_def);
+  EXPECT_EQ("{{node add_default}} = AddDefault[a=765]()", Result());
 }
 
 // Should not be able to remove a default from an attr.
@@ -1084,7 +1082,7 @@ TEST_F(OpCompatibilityTest, RemoveDefault) {
       NodeDefBuilder("remove_default", &old_op.op_def).Finalize(node_def()));
   ExpectDefaultChangeFailure(
       old_op.op_def,
-      "Attr 'a' has added/removed it's default; from 91 to no default");
+      "Attr 'a' has removed it's default; from 91 to no default");
 }
 
 // Should not be able to change a default for an attr.

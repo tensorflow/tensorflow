@@ -13,12 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/platform/s3/s3_file_system.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/file_system_helper.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/s3/aws_crypto.h"
-#include "tensorflow/core/platform/s3/aws_logging.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/config/AWSProfileConfigLoader.h>
@@ -37,6 +31,13 @@ limitations under the License.
 #include <aws/s3/model/PutObjectRequest.h>
 
 #include <cstdlib>
+
+#include "tensorflow/core/platform/file_system_helper.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/s3/aws_crypto.h"
+#include "tensorflow/core/platform/s3/aws_logging.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 
@@ -69,7 +70,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
       // is set with a truthy value.
       const char* load_config_env = getenv("AWS_SDK_LOAD_CONFIG");
       string load_config =
-          load_config_env ? str_util::Lowercase(load_config_env) : "";
+          load_config_env ? absl::AsciiStrToLower(load_config_env) : "";
       if (load_config == "true" || load_config == "1") {
         Aws::String config_file;
         // If AWS_CONFIG_FILE is set then use it, otherwise use ~/.aws/config.
@@ -155,7 +156,7 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("S3 path doesn't contain a bucket name: ",
                                    fname);
   }
-  str_util::ConsumePrefix(&objectp, "/");
+  absl::ConsumePrefix(&objectp, "/");
   *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("S3 path doesn't contain an object name: ",
@@ -169,6 +170,10 @@ class S3RandomAccessFile : public RandomAccessFile {
   S3RandomAccessFile(const string& bucket, const string& object,
                      std::shared_ptr<Aws::S3::S3Client> s3_client)
       : bucket_(bucket), object_(object), s3_client_(s3_client) {}
+
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("S3RandomAccessFile does not support Name()");
+  }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
@@ -234,6 +239,10 @@ class S3WritableFile : public WritableFile {
   }
 
   Status Flush() override { return Sync(); }
+
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("S3WritableFile does not support Name()");
+  }
 
   Status Sync() override {
     if (!outfile_) {
@@ -349,10 +358,10 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
     status = reader->Read(offset, kS3ReadAppendableFileBufferSize, &read_chunk,
                           buffer.get());
     if (status.ok()) {
-      (*result)->Append(read_chunk);
+      (void)(*result)->Append(read_chunk);
       offset += kS3ReadAppendableFileBufferSize;
     } else if (status.code() == error::OUT_OF_RANGE) {
-      (*result)->Append(read_chunk);
+      (void)(*result)->Append(read_chunk);
       break;
     } else {
       (*result).reset();

@@ -25,6 +25,7 @@ import os
 import sys
 import threading
 import time
+
 import six
 
 _portpicker_import_error = None
@@ -39,6 +40,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator
 from tensorflow.python.distribute import distribute_coordinator_context
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -46,7 +48,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
+from tensorflow.python.training import session_manager
 
 
 CHIEF = distribute_coordinator._TaskType.CHIEF
@@ -78,6 +82,19 @@ def _strip_protocol(target):
     return target
 
 
+class MockExtended(object):
+
+  def __init__(self,
+               between_graph=False,
+               should_init=None,
+               should_checkpoint=None,
+               should_save_summary=None):
+    self.experimental_between_graph = between_graph
+    self.experimental_should_init = should_init
+    self.should_checkpoint = should_checkpoint
+    self.should_save_summary = should_save_summary
+
+
 class MockStrategy(object):
 
   def __init__(self,
@@ -85,39 +102,33 @@ class MockStrategy(object):
                should_init=None,
                should_checkpoint=None,
                should_save_summary=None):
-    self._between_graph = between_graph
-    self._should_init = should_init
-    self._should_checkpoint = should_checkpoint
-    self._should_save_summary = should_save_summary
-
-  @property
-  def between_graph(self):
-    return self._between_graph
+    self.extended = MockExtended(between_graph, should_init, should_checkpoint,
+                                 should_save_summary)
 
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
                 task_type=None,
                 task_id=None):
-    if self._should_init is None:
+    if self.extended.experimental_should_init is None:
       if task_id == 0:
-        self._should_init = True
+        self.extended.experimental_should_init = True
       else:
-        self._should_init = False
-    if self._should_checkpoint is None:
+        self.extended.experimental_should_init = False
+    if self.extended.should_checkpoint is None:
       if task_id == 0:
-        self._should_checkpoint = True
+        self.extended.should_checkpoint = True
       else:
-        self._should_checkpoint = False
-    if self._should_save_summary is None:
+        self.extended.should_checkpoint = False
+    if self.extended.should_save_summary is None:
       if task_id == 0:
-        self._should_save_summary = True
+        self.extended.should_save_summary = True
       else:
-        self._should_save_summary = False
+        self.extended.should_save_summary = False
 
     if session_config:
       if (cluster_spec and task_type and task_id is not None and
-          self._between_graph):
+          self.extended.experimental_between_graph):
         session_config.intra_op_parallelism_threads += 1
         if task_type in ["chief", "worker"]:
           session_config.device_filters.extend(
@@ -125,18 +136,6 @@ class MockStrategy(object):
       else:
         session_config.inter_op_parallelism_threads += 1
         session_config.device_filters.append("/job:somejob")
-
-  @property
-  def should_init(self):
-    return self._should_init
-
-  @property
-  def should_checkpoint(self):
-    return self._should_checkpoint
-
-  @property
-  def should_save_summary(self):
-    return self._should_save_summary
 
 
 class MockServer(object):
@@ -185,6 +184,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
     self._strategy_property = {}
     self._std_servers = {}
     self._barrier = distribute_coordinator._Barrier(NUM_WORKERS)
+    self._coord = coordinator.Coordinator()
 
   @contextlib.contextmanager
   def _test_session(self, target):
@@ -234,16 +234,22 @@ class DistributeCoordinatorTestBase(test.TestCase):
       with ops.device("/job:worker/task:0"):
         result = math_ops.add_n(xs)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       result_value = sess.run(result)
     self.assertEqual(result_value, expected)
     if result_value == expected:
       self._result_correct += 1
 
+  def _wrapped_worker_fn(self, worker_fn):
+    def wrapped(*args, **kwargs):
+      with self._coord.stop_on_exception():
+        return worker_fn(*args, **kwargs)
+    return wrapped
+
   def _run_coordinator_in_thread(self, worker_fn, strategy, **kwargs):
     t = threading.Thread(
         target=distribute_coordinator.run_distribute_coordinator,
-        args=(worker_fn, strategy),
+        args=(self._wrapped_worker_fn(worker_fn), strategy),
         kwargs=kwargs)
     t.start()
     return t
@@ -264,6 +270,15 @@ class DistributeCoordinatorTestBase(test.TestCase):
         threads[task_type].append(t)
     return threads
 
+  def _join_threads(self, threads):
+    try:
+      self._coord.join(threads)
+    except errors.UnknownError as e:
+      if "Could not start gRPC server" in e.message:
+        self.skipTest("Cannot start std servers.")
+      else:
+        raise
+
   def _between_graph_worker_fn(self, strategy):
     context = distribute_coordinator_context.get_current_worker_context()
     self.assertTrue(context is not None)
@@ -282,7 +297,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
       train_op = control_flow_ops.group([x_add, y_sub])
 
       if context.is_chief:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       # Synchronize workers after initializaton.
       if context.has_barrier:
@@ -317,9 +332,9 @@ class DistributeCoordinatorTestBase(test.TestCase):
     with ops.device("/job:ps/task:0"):
       # TODO(yuefengz): investigate why not using resource variable will make
       # the test flaky.
-      x = variable_scope.get_variable("x", initializer=10.0, use_resource=True)
+      x = variable_scope.get_variable("xx", initializer=10.0, use_resource=True)
     with ops.device("/job:ps/task:1"):
-      y = variable_scope.get_variable("y", initializer=20.0, use_resource=True)
+      y = variable_scope.get_variable("yy", initializer=20.0, use_resource=True)
 
     x_add = x.assign_add(2.0)
     y_sub = y.assign_sub(2.0)
@@ -372,9 +387,12 @@ class DistributeCoordinatorTestBase(test.TestCase):
     context = distribute_coordinator_context.get_current_worker_context()
     self.assertTrue(context is not None)
 
-    self.assertEqual(context._strategy.should_init, strategy.should_init)
-    self.assertEqual(context.should_checkpoint, strategy.should_checkpoint)
-    self.assertEqual(context.should_save_summary, strategy.should_save_summary)
+    self.assertEqual(context._strategy.extended.experimental_should_init,
+                     strategy.extended.experimental_should_init)
+    self.assertEqual(context.should_checkpoint,
+                     strategy.extended.should_checkpoint)
+    self.assertEqual(context.should_save_summary,
+                     strategy.extended.should_save_summary)
 
     task_type = str(context.task_type)
     task_id = context.task_id or 0
@@ -384,7 +402,8 @@ class DistributeCoordinatorTestBase(test.TestCase):
       while len(self._strategy_property[task_type]) <= task_id:
         self._strategy_property[task_type].append(None)
       self._strategy_property[task_type][task_id] = (
-          context._strategy.should_init, context.should_checkpoint,
+          context._strategy.extended.experimental_should_init,
+          context.should_checkpoint,
           context.should_save_summary)
 
   def _run_mock_std_server(self,
@@ -427,6 +446,7 @@ class DistributeCoordinatorTestStandaloneMode(DistributeCoordinatorTestBase):
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
+  @test_util.run_v1_only("MonitoredSession removed from v2")
   def testBetweenGraphWithMonitoredSession(self):
     """Test monitored session in standalone client mode."""
     distribute_coordinator.run_distribute_coordinator(
@@ -583,7 +603,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
         MockStrategy(between_graph=False),
         cluster_spec,
         mode=INDEPENDENT_WORKER)
-    threads[WORKER][0].join()
+    self._join_threads([threads[WORKER][0]])
     self.assertEqual(self._result_correct, 1)
 
   def testBetweenGraph(self):
@@ -594,12 +614,12 @@ class DistributeCoordinatorTestInpendentWorkerMode(
         MockStrategy(between_graph=True),
         cluster_spec,
         mode=INDEPENDENT_WORKER)
-    for task_id in range(NUM_WORKERS):
-      threads[WORKER][task_id].join()
+    self._join_threads(threads[WORKER])
 
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
+  @test_util.run_v1_only("MonitoredSession removed from v2")
   def testBetweenGraphWithMonitoredSession(self):
     cluster_spec = self._create_cluster_spec(
         num_workers=NUM_WORKERS, num_ps=NUM_PS)
@@ -608,8 +628,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
         MockStrategy(between_graph=True),
         cluster_spec,
         mode=INDEPENDENT_WORKER)
-    for task_id in range(NUM_WORKERS):
-      threads[WORKER][task_id].join()
+    self._join_threads(threads[WORKER])
 
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
@@ -625,8 +644,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
           cluster_spec,
           mode=INDEPENDENT_WORKER,
           rpc_layer=None)
-      for task_id in range(NUM_WORKERS):
-        threads[WORKER][task_id].join()
+      self._join_threads(threads[WORKER])
 
     # There is only one type of task and three such tasks.
     self.assertEqual(len(self._worker_context), 1)
@@ -664,8 +682,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
           cluster_spec,
           mode=INDEPENDENT_WORKER,
           rpc_layer=None)
-      for task_id in range(NUM_WORKERS):
-        threads[WORKER][task_id].join()
+      self._join_threads(threads[WORKER])
 
     # There is only one type of task and there three such tasks.
     self.assertEqual(len(self._strategy_property), 1)
@@ -689,8 +706,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
           cluster_spec,
           mode=INDEPENDENT_WORKER,
           rpc_layer=None)
-      for task_id in range(NUM_WORKERS):
-        threads[WORKER][task_id].join()
+      self._join_threads(threads[WORKER])
 
     # There is only a "None" task in the dumped task context.
     self.assertEqual(len(self._worker_context), 1)
@@ -725,9 +741,8 @@ class DistributeCoordinatorTestInpendentWorkerMode(
           cluster_spec,
           mode=INDEPENDENT_WORKER,
           rpc_layer=None)
-      for task_id in range(NUM_WORKERS):
-        threads[WORKER][task_id].join()
-      threads[EVALUATOR][0].join()
+      self._join_threads(threads[WORKER])
+      self._join_threads([threads[EVALUATOR][0]])
 
     # There are one "None" task and one EVALUATOR task.
     self.assertEqual(len(self._worker_context), 2)
@@ -862,6 +877,9 @@ class StrategyConfigureTest(test.TestCase):
     cluster_spec = {"worker": ["localhost:0"]}
     tf_config = {"cluster": cluster_spec}
 
+    # Reset the saved Server state.
+    distribute_coordinator._thread_local = threading.local()  # pylint: disable=protected-access
+
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(tf_config)}):
       distribute_coordinator.run_distribute_coordinator(
@@ -930,4 +948,14 @@ class RunStandardTensorflowServerTest(test.TestCase):
 if __name__ == "__main__":
   # TODO(yuefengz): find a smart way to terminite std server threads.
   with test.mock.patch.object(sys, "exit", os._exit):
+    # Reduce `recovery_wait_secs` from 30 seconds so the test completes quickly.
+    orig_init = session_manager.SessionManager.__init__
+
+    def new_init(*args, **kwargs):
+      kwargs.pop("recovery_wait_secs", None)
+      kwargs["recovery_wait_secs"] = 0.5
+      orig_init(*args, **kwargs)
+
+    session_manager.SessionManager.__init__ = new_init
+
     test.main()

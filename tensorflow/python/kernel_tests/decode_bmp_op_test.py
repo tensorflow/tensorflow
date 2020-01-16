@@ -61,7 +61,7 @@ class DecodeBmpOpTest(test.TestCase):
     decode = array_ops.squeeze(image_ops.decode_bmp(img_in))
 
     with self.cached_session():
-      decoded = decode.eval()
+      decoded = self.evaluate(decode)
       self.assertAllEqual(decoded, img_bytes)
 
   def testGrayscale(self):
@@ -136,7 +136,7 @@ class DecodeBmpOpTest(test.TestCase):
     decode = image_ops.decode_bmp(img_in)
 
     with self.cached_session():
-      decoded = decode.eval()
+      decoded = self.evaluate(decode)
       self.assertAllEqual(decoded, img_bytes)
 
 

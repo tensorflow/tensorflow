@@ -19,7 +19,7 @@ limitations under the License.
 //
 //  tensorflow::Node* node = ...;
 //  EXPECT_THAT(node, NodeWith(Name("name"), Op("op"),
-//                             Inputs(NodeWith(Name("input")))))
+//                             Inputs(Out(3, NodeWith(Name("input"))))))
 //
 // Matchable node properties (the expressions that go inside NodeWith(...))
 // are:
@@ -32,7 +32,8 @@ limitations under the License.
 //  - AssignedDevice(string): matches the assigned device exactly.
 //
 //  - Inputs(<ordered list>): matches the list of non-control inputs to the node
-//    exactly (i.e. does not match a suffix or a prefix).
+//    exactly (i.e. does not match a suffix or a prefix) where each element
+//    matches an output of a node (see Out(idx, node) below).
 //
 //  - CtrlDeps(<unordered list>): matches the list of control dependences on the
 //    node exactly but in any order.
@@ -40,10 +41,16 @@ limitations under the License.
 //  - ConstantValue(tensorflow::Input::Initializer init): matches a Const node
 //    with the constant value `init`.  Implies Op("Const").
 //
-// Node properties may not be repeated in a single NodeWith(...)  matcher.
-// E.g. NodeWith(Op("Foo"), Op("Bar")) will CHECK-fail.  Since ConstantValue
-// implies Op("Const"), a single NodeWith matcher can't have both
-// ConstantValue(...) and Op(...).
+//  - Attr(name, value): Matches a single attribute with name `name` and value
+//    `value`.  Right now only boolean values are supported.
+//
+// Overlapping node properties may not be repeated in a single NodeWith(...)
+// matcher.  E.g. NodeWith(Op("Foo"), Op("Bar")) will CHECK-fail.  Since
+// ConstantValue implies Op("Const"), a single NodeWith matcher can't have both
+// ConstantValue(...) and Op(...).  Multiple Attr() values can be combined as
+// long as the attribute names are different.
+//
+// Out(idx, node) matches the `idx`'th output of a node that matches `node`.
 
 #ifndef TENSORFLOW_COMPILER_JIT_NODE_MATCHERS_H_
 #define TENSORFLOW_COMPILER_JIT_NODE_MATCHERS_H_
@@ -66,6 +73,8 @@ namespace matchers {
 
 namespace impl {
 
+using OutEdge = std::pair<const Node*, int>;
+
 // -----------------------------------------------------------------------------
 // Implementation details.
 
@@ -74,6 +83,8 @@ namespace impl {
 class NodeMatcherProperties {
  public:
   using NodeSeqMatcher = std::vector<::testing::Matcher<const Node*>>;
+  using InputSeqMatcher = std::vector<::testing::Matcher<OutEdge>>;
+  using AttrKeyValuePair = std::pair<string, absl::optional<AttrValue>>;
 
   const absl::optional<string>& name() const { return name_; }
   const absl::optional<string>& op() const { return op_; }
@@ -83,12 +94,13 @@ class NodeMatcherProperties {
   const absl::optional<Tensor>& constant_value() const {
     return constant_value_;
   }
-  const absl::optional<NodeSeqMatcher>& input_nodes() const {
-    return input_nodes_;
+  const absl::optional<InputSeqMatcher>& inputs() const {
+    return input_matchers_;
   }
   const absl::optional<NodeSeqMatcher>& control_deps() const {
     return control_deps_;
   }
+  const absl::optional<AttrKeyValuePair>& attr() const { return attr_; }
 
   void set_name(string name) {
     DCHECK(IsEmpty());
@@ -111,9 +123,9 @@ class NodeMatcherProperties {
     op_ = "Const";
   }
 
-  void set_input_nodes(NodeSeqMatcher input_nodes) {
+  void set_inputs(InputSeqMatcher inputs) {
     DCHECK(IsEmpty());
-    input_nodes_ = std::move(input_nodes);
+    input_matchers_ = std::move(inputs);
   }
 
   void set_control_deps(NodeSeqMatcher control_deps) {
@@ -121,9 +133,14 @@ class NodeMatcherProperties {
     control_deps_ = std::move(control_deps);
   }
 
+  void set_attr(AttrKeyValuePair attr) {
+    DCHECK(IsEmpty());
+    attr_ = std::move(attr);
+  }
+
   bool IsEmpty() const {
-    return !name().has_value() && !op().has_value() &&
-           !input_nodes().has_value() && !control_deps().has_value();
+    return !name().has_value() && !op().has_value() && !inputs().has_value() &&
+           !control_deps().has_value() && !attr().has_value();
   }
 
  private:
@@ -131,18 +148,31 @@ class NodeMatcherProperties {
   absl::optional<string> op_;
   absl::optional<string> assigned_device_;
   absl::optional<Tensor> constant_value_;
-  absl::optional<NodeSeqMatcher> input_nodes_;
+  absl::optional<InputSeqMatcher> input_matchers_;
   absl::optional<NodeSeqMatcher> control_deps_;
+  absl::optional<AttrKeyValuePair> attr_;
 };
 
 ::testing::Matcher<const Node*> NodeWith(
     absl::Span<const NodeMatcherProperties> props);
 
 impl::NodeMatcherProperties Inputs(
-    absl::Span<const ::testing::Matcher<const Node*>> inputs);
+    absl::Span<const ::testing::Matcher<OutEdge>> inputs);
 
 impl::NodeMatcherProperties CtrlDeps(
     absl::Span<const ::testing::Matcher<const Node*>> control_deps);
+
+impl::NodeMatcherProperties Attr(std::pair<string, AttrValue> attrs);
+impl::NodeMatcherProperties Attr(string name);
+
+std::pair<string, AttrValue> AttrLiteralHelper(
+    const std::pair<string, bool>& bool_attr);
+
+std::pair<string, AttrValue> AttrLiteralHelper(
+    const std::pair<string, absl::Span<const int>>& int_list_attr);
+
+std::pair<string, AttrValue> AttrLiteralHelper(
+    const std::pair<string, absl::Span<const string>>& string_list_attr);
 }  // namespace impl
 
 // -----------------------------------------------------------------------------
@@ -157,12 +187,33 @@ impl::NodeMatcherProperties Op(string op);
 // Matches a node with assigned device `assigned_device`.
 impl::NodeMatcherProperties AssignedDevice(string assigned_device);
 
+// Matches a node with a boolean typed attribute named `name` and with value
+// `value`.
+template <typename ValueTy>
+impl::NodeMatcherProperties Attr(const string& name, ValueTy value) {
+  return impl::Attr({impl::AttrLiteralHelper({name, value})});
+}
+
+inline impl::NodeMatcherProperties Attr(const string& name) {
+  return impl::Attr(name);
+}
+
 // Matches a node with inputs `inputs`.
 //
 // `inputs` are ordered; `inputs`[i] must match input i.
 template <typename... Ts>
 impl::NodeMatcherProperties Inputs(Ts... inputs) {
   return impl::Inputs({inputs...});
+}
+
+// Matches the `idx`'th output of a node that matches `node`.
+::testing::Matcher<impl::OutEdge> Out(int oidx,
+                                      ::testing::Matcher<const Node*> node);
+
+// Matches the first output of a node that matches `node`.
+inline ::testing::Matcher<impl::OutEdge> Out(
+    ::testing::Matcher<const Node*> node) {
+  return Out(0, node);
 }
 
 // Matches a node with control dependences `control_deps`.
@@ -185,13 +236,16 @@ template <typename... Ts>
   return impl::NodeWith(array);
 }
 
-::testing::Matcher<const Node*> Const(
+::testing::Matcher<impl::OutEdge> Const(
     const ::tensorflow::Input::Initializer& val);
 }  // namespace matchers
 
 // If `g` has a node named `name` returns it, otherwise returns null.
 Node* FindNodeByName(Graph* g, absl::string_view name);
 }  // namespace testing
+
+void PrintTo(const Node* n, ::std::ostream* os);
+void PrintTo(Node* n, ::std::ostream* os);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_NODE_MATCHERS_H_

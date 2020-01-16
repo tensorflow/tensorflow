@@ -33,9 +33,9 @@ Typical usage:
 
 ```python
 ...
-builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
+builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(export_dir)
 
-with tf.Session(graph=tf.Graph()) as sess:
+with tf.compat.v1.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph_and_variables(sess,
                                        ["foo-tag"],
@@ -43,7 +43,7 @@ with tf.Session(graph=tf.Graph()) as sess:
                                        assets_collection=foo_assets)
 ...
 
-with tf.Session(graph=tf.Graph()) as sess:
+with tf.compat.v1.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph(["bar-tag", "baz-tag"],
                          assets_collection=bar_baz_assets)
@@ -52,8 +52,8 @@ with tf.Session(graph=tf.Graph()) as sess:
 builder.save()
 
 ...
-with tf.Session(graph=tf.Graph()) as sess:
-  tf.saved_model.loader.load(sess, ["foo-tag"], export_dir)
+with tf.compat.v1.Session(graph=tf.Graph()) as sess:
+  tf.compat.v1.saved_model.loader.load(sess, ["foo-tag"], export_dir)
   ...
 
 ```

@@ -19,6 +19,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -102,11 +103,23 @@ class DfsHloVisitorBase {
   virtual Status HandlePower(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
+  virtual Status HandleSqrt(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleRsqrt(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
-  virtual Status HandleCrossReplicaSum(HloInstructionPtr hlo) = 0;
+  virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllReduce(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
+  virtual Status HandlePartitionId(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSetDimensionSize(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -188,6 +201,9 @@ class DfsHloVisitorBase {
   virtual Status HandleXor(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
+  virtual Status HandlePopulationCount(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleShiftLeft(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -209,6 +225,7 @@ class DfsHloVisitorBase {
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
   virtual Status HandleConstant(HloInstructionPtr hlo) = 0;
@@ -237,6 +254,9 @@ class DfsHloVisitorBase {
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
+  virtual Status HandleCopyStart(HloInstructionPtr copy_start) = 0;
+  virtual Status HandleCopyDone(HloInstructionPtr copy_done) = 0;
+
   virtual Status HandleSend(HloInstructionPtr send) = 0;
   virtual Status HandleSendDone(HloInstructionPtr send_done) = 0;
 
@@ -249,6 +269,7 @@ class DfsHloVisitorBase {
 
   virtual Status HandleBatchNormGrad(HloInstructionPtr hlo) = 0;
 
+  virtual Status HandleAddDependency(HloInstructionPtr add_dependency) = 0;
   virtual Status HandleAfterAll(HloInstructionPtr token) = 0;
 
   // Invoked to inform the visitor that the traversal has completed, and that
@@ -263,21 +284,37 @@ class DfsHloVisitorBase {
     kVisited = 2,
   };
 
-  VisitState GetVisitState(int id) { return visit_state_.GetState(id); }
+  VisitState GetVisitState(int id) {
+    auto iter = visit_state_.find(id);
+    if (iter == visit_state_.end()) {
+      return VisitState::kNotVisited;
+    }
+    return iter->second;
+  }
   VisitState GetVisitState(const HloInstruction& instruction);
 
   // Resize internal state if necessary to hold state for ids <= num.
   // This call is purely a performance hint and can be omitted without
   // affecting correctness.
-  void ReserveVisitStates(int num) { visit_state_.Reserve(num); }
+  void ReserveVisitStates(int num) { visit_state_.reserve(num); }
+  size_t VisitStateCapacity() const { return visit_state_.capacity(); }
 
   // Useful when we want to visit the same computation more than once with the
   // same visitor.
-  void ResetVisitStates() { visit_state_.Reset(); }
-
-  void SetVisitState(int id, VisitState state) {
-    visit_state_.SetState(id, state);
+  void ResetVisitStates() {
+    // Clear the map, but don't resize the capacity across uses -- Calculating
+    // and reserving space could be expensive, and we always use the same
+    // module->instruction_count() as the capacity.
+    visit_state_.erase(visit_state_.begin(), visit_state_.end());
   }
+
+  // Useful when we want to free up the memory used by the visit state without
+  // destroying the actual visitor subclass.
+  void DestroyVisitState() {
+    visit_state_ = absl::flat_hash_map<int, VisitState>{};
+  }
+
+  void SetVisitState(int id, VisitState state) { visit_state_[id] = state; }
 
   // Sets the visitation state of the given instruction as kVisiting.
   //
@@ -326,47 +363,14 @@ class DfsHloVisitorBase {
   virtual Status Postprocess(HloInstructionPtr hlo);
 
  private:
-  class DFSVisitStates {
-   public:
-    DFSVisitStates() {}
-    void Reserve(uint64 num) {
-      states_.reserve((num + kStatesPerWord - 1) / kStatesPerWord);
-    }
-    VisitState GetState(uint64 id) {
-      uint64 word_index = id / kStatesPerWord;
-      if (word_index >= states_.size()) {
-        return VisitState::kNotVisited;
-      }
-      static_assert(static_cast<int>(VisitState::kVisited) < 3,
-                    "VisitState must fit in two bits");
-      uint64 w = states_[word_index];
-      uint32 shift = 2 * (id % kStatesPerWord);  // 2 bits per state
-      return static_cast<VisitState>((w >> shift) & 0x3);
-    }
-    void SetState(uint64 id, VisitState state) {
-      uint64 word_index = id / kStatesPerWord;
-      if (word_index >= states_.size()) {
-        states_.resize(word_index + 1, 0);
-      }
-      uint64* w = &states_[word_index];
-      uint32 shift = 2 * (id % kStatesPerWord);  // 2 bits per state
-      uint64 mask = 0x3ull << shift;
-      *w = (*w & ~mask) | (static_cast<uint64>(state) << shift);
-      DCHECK_EQ(GetState(id), state);
-    }
-    void Reset() { states_.clear(); }
-
-   private:
-    static const uint32 kStatesPerWord = sizeof(uint64) / 2 /*bits per entry*/;
-    // Map from id to two-bit states.  We store 32 such states per 64-bit
-    // value
-    std::vector<uint64> states_;
-  };
-
-  DFSVisitStates visit_state_;
+  absl::flat_hash_map<int, VisitState> visit_state_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorBase);
 };
+
+// Explicit instantiations in dfs_hlo_visitor.cc.
+extern template class DfsHloVisitorBase<HloInstruction*>;
+extern template class DfsHloVisitorBase<const HloInstruction*>;
 
 // Users should use one of these two type aliases, which are the only two valid
 // instantiations of DfsHloVisitorBase.

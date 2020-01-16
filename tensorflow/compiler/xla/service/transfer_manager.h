@@ -52,16 +52,38 @@ class TransferManager {
     return host_shape;
   }
 
+  // Base class for specifying platform specific transfer metadata that can be
+  // used to tell the underlying implementation to perform specific optimization
+  // to a transfer. Actual metadata passed to supported transfer methods should
+  // subclass this class.
+  class TransferMetadata {
+   public:
+    virtual ~TransferMetadata() = 0;
+  };
   // Returns a literal containing the data held in the given ShapedBuffer
   // using the provided executor. This operation is performed synchronously
   // without waiting for any other operation on a stream to complete.
   //
   // This function should be avoided in favor of the asynchronous version below.
+  //
+  // Optionally caller can specify platform-specific transfer metadata that
+  // tells the actual implementation to do something special.
   virtual StatusOr<Literal> TransferLiteralFromDevice(
-      se::Stream* stream, const ShapedBuffer& device_buffer);
+      se::Stream* stream, const ShapedBuffer& device_buffer,
+      const TransferMetadata* transfer_metadata);
+  StatusOr<Literal> TransferLiteralFromDevice(
+      se::Stream* stream, const ShapedBuffer& device_buffer) {
+    return TransferLiteralFromDevice(stream, device_buffer, nullptr);
+  }
   virtual Status TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
-      const MutableBorrowingLiteral& literal);
+      const MutableBorrowingLiteral& literal,
+      const TransferMetadata* transfer_metadata);
+  Status TransferLiteralFromDevice(se::Stream* stream,
+                                   const ShapedBuffer& device_buffer,
+                                   const MutableBorrowingLiteral& literal) {
+    return TransferLiteralFromDevice(stream, device_buffer, literal, nullptr);
+  }
 
   // Begins transferring a literal containing the data held in the given
   // ShapedBuffer using the provided executor.
@@ -72,10 +94,20 @@ class TransferManager {
   //
   // device_buffer is copied by reference and must live at least until done() is
   // invoked.
-  virtual void TransferLiteralFromDevice(se::Stream* stream,
-                                         const ShapedBuffer& device_buffer,
-                                         MutableBorrowingLiteral literal,
-                                         std::function<void(Status)> done) = 0;
+  //
+  // Optionally caller can specify platform-specific transfer metadata that
+  // tells the actual implementation to do something special.
+  virtual void TransferLiteralFromDevice(
+      se::Stream* stream, const ShapedBuffer& device_buffer,
+      MutableBorrowingLiteral literal, std::function<void(Status)> done,
+      const TransferMetadata* transfer_metadata) = 0;
+  void TransferLiteralFromDevice(se::Stream* stream,
+                                 const ShapedBuffer& device_buffer,
+                                 MutableBorrowingLiteral literal,
+                                 std::function<void(Status)> done) {
+    return TransferLiteralFromDevice(stream, device_buffer, literal, done,
+                                     nullptr);
+  }
 
   // Transfers the given literal into the previously allocated device memory
   // represented by the given ShapedBuffer using the given executor. The shape
@@ -85,19 +117,18 @@ class TransferManager {
   // This operation is performed synchronously without waiting for any other
   // operation on a stream to complete. This function should be avoided in favor
   // of the asynchronous version below.
-  virtual Status TransferLiteralToDevice(se::Stream* stream,
-                                         const LiteralSlice& literal,
-                                         const ShapedBuffer& device_buffer);
-
-  // Hint type given to TransferLiteralToDeviceAsync.
-  enum TransferToDeviceHint {
-    // No hint available.
-    kNoHint,
-
-    // The destination buffer is undefined on the device, meaning it can be
-    // transferred to eagerly rather than waiting for Stream ordering.
-    kBufferUndefined,
-  };
+  //
+  // Optionally caller can specify platform-specific transfer metadata that
+  // tells the actual implementation to do something special.
+  virtual Status TransferLiteralToDevice(
+      se::Stream* stream, const LiteralSlice& literal,
+      const ShapedBuffer& device_buffer,
+      const TransferMetadata* transfer_metadata);
+  Status TransferLiteralToDevice(se::Stream* stream,
+                                 const LiteralSlice& literal,
+                                 const ShapedBuffer& device_buffer) {
+    return TransferLiteralToDevice(stream, literal, device_buffer, nullptr);
+  }
 
   // Transfers the given literal into the previously allocated device memory
   // represented by the given ShapedBuffer using the given executor. The shape
@@ -105,31 +136,51 @@ class TransferManager {
   // but need not have the same layout.
   //
   // This operation is performed asynchronously on the given stream. It returns
-  // once the transfer is enqueued.
+  // once the transfer is enqueued, and may return before the transfer has
+  // completed.
   //
-  // The optional hint can allow implementations to optimize transfers. It is
-  // not mandatory for an implementation to obey the hint.
+  // The caller may free the data structures 'literal' and 'device_buffer'
+  // immediately after this function returns, however their constituent buffers
+  // on both host and device must remain valid until the enqueued transfer has
+  // completed on 'stream'.
+  //
+  // Optionally caller can specify platform-specific transfer metadata that
+  // tells the actual implementation to do something special.
   virtual Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer,
-      TransferToDeviceHint hint = kNoHint) = 0;
+      const TransferMetadata* transfer_metadata) = 0;
+  Status TransferLiteralToDeviceAsync(se::Stream* stream,
+                                      const LiteralSlice& literal,
+                                      const ShapedBuffer& device_buffer) {
+    return TransferLiteralToDeviceAsync(stream, literal, device_buffer,
+                                        nullptr);
+  }
 
   // Convenience methods for transferring an array to or from the device at a
   // known address. This avoids having to construct a ShapedBuffer just to
   // transfer an array at a known address.
-  Status TransferArrayToDevice(se::Stream* stream, const LiteralSlice& literal,
-                               const se::DeviceMemoryBase& dest);
-  void TransferArrayFromDevice(se::Stream* stream, const Shape& shape,
-                               const se::DeviceMemoryBase& source,
-                               const MutableBorrowingLiteral& literal,
-                               std::function<void(Status)> done);
+  //
+  // Optionally caller can specify platform-specific transfer metadata that
+  // tells the actual implementation to do something special.
+  Status TransferArrayToDevice(
+      se::Stream* stream, const LiteralSlice& literal,
+      const se::DeviceMemoryBase& dest,
+      const TransferMetadata* transfer_metadata = nullptr);
+  void TransferArrayFromDevice(
+      se::Stream* stream, const Shape& shape,
+      const se::DeviceMemoryBase& source,
+      const MutableBorrowingLiteral& literal, std::function<void(Status)> done,
+      const TransferMetadata* transfer_metadata = nullptr);
 
-  Status TransferArrayToDeviceAsync(se::Stream* stream,
-                                    const LiteralSlice& literal,
-                                    const se::DeviceMemoryBase& dest);
-  StatusOr<Literal> TransferArrayFromDevice(se::Stream* stream,
-                                            const Shape& shape,
-                                            const se::DeviceMemoryBase& source);
+  Status TransferArrayToDeviceAsync(
+      se::Stream* stream, const LiteralSlice& literal,
+      const se::DeviceMemoryBase& dest,
+      const TransferMetadata* transfer_metadata = nullptr);
+  StatusOr<Literal> TransferArrayFromDevice(
+      se::Stream* stream, const Shape& shape,
+      const se::DeviceMemoryBase& source,
+      const TransferMetadata* transfer_metadata = nullptr);
 
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
@@ -154,16 +205,31 @@ class TransferManager {
   Status WriteTupleIndexTablesAsync(se::Stream* stream,
                                     const ShapedBuffer& device_buffer);
 
+  // Writes a tuple index buffer for the root of 'device_buffer', which must
+  // be a tuple. Unlike WriteTupleIndexTables, only writes the root buffer,
+  // rather than writing all subbuffers. This method is always asynchronous.
+  Status WriteRootTupleIndexTable(se::Stream* stream,
+                                  const ShapedBuffer& device_buffer);
+
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.
   virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
 
+  // Chooses a compact layout for 'shape', ignoring any existing layout on
+  // 'shape'. What "reasonable" means is left up to the backend. The
+  // intended use case is to choose a layout that avoids excessive padding on
+  // devices that have tiled memory architectures.
+  // The default implementation always picks a default (major-to-minor) layout.
+  // Fails if 'shape' cannot be represented by the device.
+  virtual StatusOr<Shape> ChooseCompactLayoutForShape(
+      const Shape& host_shape) const;
+
   // Allocates a ScopedShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
   StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
-      const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
+      const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
       int device_ordinal);
 
   // The given ShapedBuffer holds a handle to allocated memory, but it is not
@@ -204,6 +270,13 @@ class TransferManager {
   static StatusOr<TransferManager*> GetForPlatform(
       const se::Platform* platform);
 
+  // Writes the given device-memory pointers in 'elements' to the given region
+  // to construct a tuple index table in the platform-specific tuple
+  // representation.
+  virtual Status WriteSingleTupleIndexTable(
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
+      const Shape& shape, se::DeviceMemoryBase* region) = 0;
+
  protected:
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
@@ -220,13 +293,6 @@ class TransferManager {
   virtual Status TransferBufferToDevice(se::Stream* stream, int64 size,
                                         const void* source,
                                         se::DeviceMemoryBase* destination);
-
-  // Writes the given device-memory pointers in 'elements' to the given region
-  // to construct a tuple index table in the platform-specific tuple
-  // representation.
-  virtual Status WriteSingleTupleIndexTable(
-      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
-      const Shape& shape, se::DeviceMemoryBase* region) = 0;
 
  private:
   // The mutex that guards the platform-to-transfer manager map.

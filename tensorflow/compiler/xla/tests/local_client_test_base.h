@@ -20,34 +20,38 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
-class TestAllocator : public StreamExecutorMemoryAllocator {
+class TestAllocator : public se::StreamExecutorMemoryAllocator {
  public:
   explicit TestAllocator(se::Platform* platform)
-      : StreamExecutorMemoryAllocator(
+      : se::StreamExecutorMemoryAllocator(
             platform, PlatformUtil::GetStreamExecutors(platform).ValueOrDie()) {
   }
 
-  StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
-                                        bool retry_on_failure) override;
+  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                            bool retry_on_failure,
+                                            int64 memory_space) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
@@ -107,6 +111,12 @@ class LocalClientTestBase : public ::testing::Test {
       absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableBuildOptions& build_options,
       const ExecutableRunOptions& run_options);
+
+  // Parses the given string and returns module as a VerifiedHloModule.
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text);
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config);
 
   // Returns a default set of execute options.
   ExecutableBuildOptions DefaultExecutableBuildOptions() const;

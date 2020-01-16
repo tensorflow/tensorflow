@@ -16,44 +16,54 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
-#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
 
-struct WorkerSession;
+class WorkerSession;
 
 // ClusterFunctionLibraryRuntime contains methods to Instantiate and Run
 // functions across processes by making RPCs.
 class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
  public:
   ClusterFunctionLibraryRuntime(WorkerSession* worker_session,
-                                bool create_worker_session_called)
+                                bool create_worker_session_called,
+                                DeviceMgr* remote_device_mgr)
       : worker_session_(worker_session),
-        create_worker_session_called_(create_worker_session_called) {}
+        create_worker_session_called_(create_worker_session_called),
+        remote_device_mgr_(remote_device_mgr) {}
 
   ~ClusterFunctionLibraryRuntime() override;
 
-  Status Instantiate(const string& function_name,
-                     const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* handle) override;
+  void Instantiate(const string& function_name,
+                   const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+                   const FunctionLibraryRuntime::InstantiateOptions& options,
+                   FunctionLibraryRuntime::LocalHandle* handle,
+                   FunctionLibraryRuntime::DoneCallback done) override;
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
+  void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+               FunctionLibraryRuntime::DoneCallback done) override;
+
+  DeviceMgr* remote_device_mgr() const override { return remote_device_mgr_; }
+
  private:
   static Status ConstructFunctionGraph(
       const OpDef& sig, AttrSlice attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options, GraphDef* g,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      const FunctionLibraryDefinition& flib_def, GraphDef* g,
       std::vector<string>* send_keys, std::vector<string>* recv_keys);
   friend class ClusterFunctionLibraryRuntimeTest;
 
   mutable mutex mu_;
   WorkerSession* const worker_session_ = nullptr;  // not owned.
   const bool create_worker_session_called_;
+
+  DeviceMgr* remote_device_mgr_;  // not owned.
 
   struct FunctionData {
     const string graph_handle;

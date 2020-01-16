@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -63,6 +64,8 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 // readable form. This differs from base's ElapsedTimer primarily in that it
 // spits out the human-readable duration form.
 //
+// Keeps track of global maximum and cumulative times across all invocations.
+//
 // By default, the timing traces are only printed at VLOG(1) and above:
 //
 //   XLA_SCOPED_LOGGING_TIMER("fooing bar");  // nop if !VLOG_IS_ON(1).
@@ -84,21 +87,45 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 
 // Helper for macros above.  Don't use directly.
 #define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
+  static ::xla::TimerStats XLA_TimerStats##counter;                  \
   ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
-      label, VLOG_IS_ON(level))
+      label, /*enabled=*/VLOG_IS_ON(level), __FILE__, __LINE__,      \
+      &XLA_TimerStats##counter);
+
+struct TimerStats {
+  tensorflow::mutex stats_mutex;
+  double cumulative_secs GUARDED_BY(stats_mutex) = 0;
+  double max_secs GUARDED_BY(stats_mutex) = 0;
+  uint64 times_called GUARDED_BY(stats_mutex) = 0;
+};
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
 // macros above.  Recommended usage is via the macros so you don't have to give
 // the timer a name or worry about calling VLOG_IS_ON yourself.
-struct ScopedLoggingTimer {
-  // The timer does nothing if enabled is false.  This lets you pass in your
-  // file's VLOG_IS_ON value.
-  ScopedLoggingTimer(const string& label, bool enabled);
+class ScopedLoggingTimer {
+ public:
+  // label: Label to display for logging.
+  // enabled: Whether this timer should do anything at all.
+  // file: Filename to display in logging.
+  // line: Line number to display in logging.
+  // `timer_stats`: unowned non-null pointer which is used to populate the
+  // global timer statistics.
+  ScopedLoggingTimer(const std::string& label, bool enabled, const char* file,
+                     int line, TimerStats* timer_stats);
+
+  // Stop the timer and log the tracked time. Timer is disabled after this
+  // function is called.
+  void StopAndLog();
+
   ~ScopedLoggingTimer();
 
-  bool enabled;
-  string label;
-  uint64 start_micros;
+ private:
+  bool enabled_;
+  const char* file_;
+  int line_;
+  string label_;
+  uint64 start_micros_;
+  TimerStats* timer_stats_;
 };
 
 // Given a vector<T>, returns a Span<char> that points at its
@@ -150,6 +177,13 @@ static inline absl::Span<const int64> AsInt64Slice(
   absl::Span<const tensorflow::protobuf_int64> slice(v);
   return absl::Span<const int64>(reinterpret_cast<const int64*>(slice.data()),
                                  slice.size());
+}
+
+// TODO(b/29771030): This nop overload was added to simplify the migration of
+// Shape from a proto to a C++ class. Remove after class has been migrated.
+static inline absl::Span<const int64> AsInt64Slice(
+    absl::Span<const int64> slice) {
+  return slice;
 }
 
 // As above, but for uint64 types.
@@ -253,6 +287,16 @@ Status Unavailable(const absl::FormatSpec<Args...>& format,
   return WithLogBacktrace(
       tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
 }
+template <typename... Args>
+Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unknown(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+}
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
@@ -317,8 +361,7 @@ bool IsIdentityPermutation(absl::Span<const int64> permutation);
 
 template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
-  return std::distance(container.begin(),
-                       std::find(container.begin(), container.end(), value));
+  return std::distance(container.begin(), absl::c_find(container, value));
 }
 
 // Formats the container as a comma-separated string. StrAppend must support
@@ -360,6 +403,18 @@ template <typename T = int>
 string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
+
+// Returns a string which can losslessly round trip to a bfloat.
+string RoundTripFpToString(tensorflow::bfloat16 value);
+
+// Returns a string which can losslessly round trip to a fp16.
+string RoundTripFpToString(Eigen::half value);
+
+// Returns a string which can losslessly round trip to a float.
+string RoundTripFpToString(float value);
+
+// Returns a string which can losslessly round trip to a double.
+string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
@@ -447,8 +502,8 @@ int64 Product(absl::Span<const int64> xs);
 //
 // If the given shapes have non-zero size, returns the bounds of the shortest
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
-std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
-                                                   absl::Span<const int64> b);
+absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
+    absl::Span<const int64> a, absl::Span<const int64> b);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
@@ -470,7 +525,7 @@ void EraseAt(C* c, int64 index) {
 }
 
 template <typename T>
-std::vector<T> ArraySliceToVector(absl::Span<const T> slice) {
+std::vector<T> SpanToVector(absl::Span<const T> slice) {
   return std::vector<T>(slice.begin(), slice.end());
 }
 
@@ -498,6 +553,88 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   container->erase(it);
   return Status::OK();
 }
+
+// Utility function which splits a double-precision float (F64) into a pair of
+// single-precision floating point numbers. The most significant 49 bits (out of
+// the total 53 available) in the mantissa of the F64 is represented as the
+// unevaluated sum of two non-overlapping single-precision F32s; the 'high' part
+// contains 24 bits in its mantissa, and the 'low' part contains 25 bits in its
+// sign bit and its mantissa.
+// Note: The resulting representation can still only represent 8-bit exponent
+// range that is available in F32s (out of a total of 11 exponent bits in F64s).
+std::pair<float, float> SplitF64ToF32(double x);
+
+// MakeCleanup(f) returns an RAII cleanup object that calls 'f' in its
+// destructor. The easiest way to use MakeCleanup is with a lambda argument,
+// capturing the return value in an 'auto' local variable. Most users will not
+// need more sophisticated syntax than that.
+//
+// Example:
+//   void func() {
+//     auto resource = acquire_resource();
+//     auto cleanup = MakeCleanup([&] { release_resource(resource); });
+//     TF_RETURN_IF_ERROR(...);  // phew, calls release_resource!
+//   }
+//
+// You can use Cleanup<F> directly, instead of using MakeCleanup and auto,
+// but there's rarely a reason to do that.
+//
+// You can call 'release()' on a Cleanup object to cancel the cleanup
+//
+// You probably do not want to capture by reference in the cleanup lambda a
+// variable that is returned by the function.  This can lead to disabling of RVO
+// at best, and undefined behavior at worst.
+template <typename F>
+class Cleanup {
+ public:
+  Cleanup() : released_(true), f_() {}
+
+  template <typename G>
+  explicit Cleanup(G&& f) : f_(std::forward<G>(f)) {}
+
+  Cleanup(Cleanup&& src) : released_(src.is_released()), f_(src.release()) {}
+
+  // Implicitly move-constructible from any compatible Cleanup<G>. The source
+  // will be released as if src.release() were called. A moved-from Cleanup can
+  // be safely destroyed or reassigned.
+  template <typename G>
+  Cleanup(Cleanup<G>&& src) : released_(src.is_released()), f_(src.release()) {}
+
+  // Assignment to a Cleanup object behaves like destroying it and making a new
+  // one in its place, analogous to unique_ptr semantics.
+  Cleanup& operator=(Cleanup&& src) {
+    if (!released_) std::move(f_)();
+    released_ = src.released_;
+    f_ = src.release();
+    return *this;
+  }
+
+  ~Cleanup() {
+    if (!released_) std::move(f_)();
+  }
+
+  // Releases the cleanup function instead of running it. Hint: use
+  // c.release()() to run early.
+  F release() {
+    released_ = true;
+    return std::move(f_);
+  }
+
+  bool is_released() const { return released_; }
+
+ private:
+  static_assert(!std::is_reference<F>::value, "F must not be a reference");
+
+  bool released_ = false;
+  F f_;
+};
+
+template <int&... ExplicitParameterBarrier, typename F,
+          typename DecayF = typename std::decay<F>::type>
+ABSL_MUST_USE_RESULT Cleanup<DecayF> MakeCleanup(F&& f) {
+  return Cleanup<DecayF>(std::forward<F>(f));
+}
+
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \

@@ -14,19 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/vectorization/vectorizer_registry.h"
-#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace grappler {
-namespace vectorization_utils {
 
 class TestVectorizer : public Vectorizer {
  public:
   Status Vectorize(const Node& node, Graph* outer_scope,
-                   std::vector<Port>* inputs,
-                   std::vector<Port>* outputs) override {
+                   VectorizerInput&& inputs,
+                   VectorizerOutput* outputs) override {
     return Status::OK();
   }
 };
@@ -43,10 +41,10 @@ TEST(TestVectorizer, TestTestVectorizer) {
   NodeDef node_def;
   Status s;
   Node* node = g.AddNode(node_def, &s);
-  std::vector<Port> inputs, outputs;
-  EXPECT_TRUE(vectorizer->Vectorize(*node, &g, &inputs, &outputs).ok());
+  std::vector<WrappedTensor> inputs, outputs;
+  EXPECT_TRUE(
+      vectorizer->Vectorize(*node, &g, std::move(inputs), &outputs).ok());
 }
 
-}  // namespace vectorization_utils
 }  // namespace grappler
 }  // namespace tensorflow

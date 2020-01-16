@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -40,7 +40,7 @@ namespace {
 
 // Tests for call inlining that are most tractable at the HLO level (vs
 // ComputationBuilder API in call_test.cc).
-using CallInlinerTest = HloVerifiedTestBase;
+using CallInlinerTest = HloTestBase;
 
 TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   // "inner" computation just has a control dependency from the "zero" value to
@@ -51,7 +51,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   HloInstruction* one = inner.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   TF_ASSERT_OK(zero->AddControlDependencyTo(one));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* inner_computation =
       module->AddEmbeddedComputation(inner.Build());
 
@@ -64,7 +64,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   auto computation = module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
   EXPECT_THAT(computation->root_instruction(), op::Constant());
   EXPECT_EQ(computation->root_instruction()->literal().GetFirstElement<float>(),
@@ -79,7 +79,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
 // returns false should be identical to just returning false).
 TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
   const Shape pred = ShapeUtil::MakeShape(PRED, {});
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   // Create a lambda that calls a function that returns the false predicate.
   // Note we also use this lambda twice by reference, just to make the test a
@@ -107,7 +107,7 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
   auto computation = module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
   EXPECT_THAT(
       computation->root_instruction()->while_condition()->root_instruction(),
@@ -120,7 +120,7 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
 // whole pass.
 TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
   const Shape pred = ShapeUtil::MakeShape(PRED, {});
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder just_false(TestName() + ".false");
   auto* true_constant = just_false.AddInstruction(
@@ -142,9 +142,49 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
               ElementsAre(op::Constant()));
 }
 
+// Test that inlining can work with computations with dead parameter.
+TEST_F(CallInlinerTest, InlineWithEmptyComputation) {
+  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  auto module = CreateNewVerifiedModule();
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  HloComputation::Builder empty(TestName() + ".empty");
+  empty.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "A"));
+  empty.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  HloComputation* empty_computation =
+      module->AddEmbeddedComputation(empty.Build());
+
+  HloComputation::Builder empty2(TestName() + ".empty");
+  empty2.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "A"));
+  empty2.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  HloComputation* empty2_computation =
+      module->AddEmbeddedComputation(empty2.Build());
+
+  HloComputation::Builder entry("entry");
+  auto zero = entry.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  // The order of the call chain are crafted to test a specific pattern such
+  // that the third call instruction will be flattened before the second one
+  // (which makes the second call instruction dead before it is flattened).
+  entry.AddInstruction(
+      HloInstruction::CreateCall(r0s32, {zero}, empty_computation));
+  HloInstruction* call1 = entry.AddInstruction(
+      HloInstruction::CreateCall(r0s32, {zero}, empty2_computation));
+  entry.AddInstruction(
+      HloInstruction::CreateCall(r0s32, {call1}, empty_computation));
+  auto computation = module->AddEntryComputation(entry.Build());
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  EXPECT_THAT(computation->root_instruction(), op::Constant());
+}
+
 TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   const Shape f32 = ShapeUtil::MakeShape(F32, {});
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder outfeeder(TestName() + ".outfeeder");
   auto value = outfeeder.AddInstruction(
@@ -163,7 +203,7 @@ TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
 }
 

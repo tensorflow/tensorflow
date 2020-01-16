@@ -29,6 +29,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 
 #include <memory>
 
+#include "absl/base/casts.h"
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -40,7 +41,6 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -132,7 +132,7 @@ static void LoadImage(std::vector<float>* img_floats_ptr) {
   const int64 pixel_count = WIDTH * HEIGHT * DEPTH;
   CHECK(fsize >= 22 /* pos of height */ + sizeof(int));
   CHECK(bmp.data() != nullptr);
-  uint8* const img_bytes = bit_cast<uint8*>(bmp.data());
+  uint8* const img_bytes = absl::bit_cast<uint8*>(bmp.data());
   const int header_size = *(reinterpret_cast<int*>(img_bytes + 10));
   LOG(INFO) << "header size = " << header_size;
   const int size = *(reinterpret_cast<int*>(img_bytes + 14));
@@ -548,7 +548,6 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info0;
   GraphTransferer gt0;
   gt0.EnableStrictCheckMode(false);
   ClockCycleProfiler prof0;
@@ -568,7 +567,6 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   LOG(INFO) << "(0) node count: " << gfi0.node_info_size() << ", "
             << gfi0.const_node_info_size();
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info1;
   GraphTransferer gt1;
   gt1.EnableStrictCheckMode(true);
   ClockCycleProfiler prof1;

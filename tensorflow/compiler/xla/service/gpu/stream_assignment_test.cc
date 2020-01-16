@@ -21,16 +21,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace gpu {
 
-class StreamAssignmentTest : public HloVerifiedTestBase {
+class StreamAssignmentTest : public HloTestBase {
  protected:
-  std::unique_ptr<HloModule> CreateNewModule() {
+  std::unique_ptr<HloModule> CreateNewVerifiedModule() {
     HloModuleConfig config;
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
@@ -55,7 +55,7 @@ TEST_F(StreamAssignmentTest, SequentialMatMul) {
   HloInstruction* dot2 =
       builder.AddInstruction(CreateCanonicalDot(f32_2x2_, dot1, z));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(dot2));
 
   std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
@@ -76,7 +76,7 @@ TEST_F(StreamAssignmentTest, ConcurrentMatMul) {
   HloInstruction* add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, dot1, dot2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(add));
 
   std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
@@ -120,7 +120,7 @@ TEST_F(StreamAssignmentTest, LatticeMatMul) {
   HloInstruction* d40 =
       builder.AddInstruction(CreateCanonicalDot(f32_2x2_, d30, d31));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(d40));
 
   std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);

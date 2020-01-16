@@ -107,8 +107,7 @@ class GenerateTest(googletest.TestCase):
 
     output_dir = googletest.GetTempDir()
 
-    generate_lib.write_docs(output_dir, parser_config, yaml_toc=True,
-                            site_api_path='api_docs/python')
+    generate_lib.write_docs(output_dir, parser_config, yaml_toc=True)
 
     # Check redirects
     redirects_file = os.path.join(output_dir, '_redirects.yaml')

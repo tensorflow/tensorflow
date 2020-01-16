@@ -18,51 +18,47 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
-
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
-class Convolution1DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class Conv1DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs, arg, values):
+  def _run_test(self, kwargs, expected_output_shape):
     num_samples = 2
     stack_size = 3
     length = 7
 
-    test_kwargs = copy.copy(kwargs)
-    for value in values:
-      test_kwargs[arg] = value
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.Conv1D,
-            kwargs=test_kwargs,
-            input_shape=(num_samples, length, stack_size))
+    with self.cached_session(use_gpu=True):
+      testing_utils.layer_test(
+          keras.layers.Conv1D,
+          kwargs=kwargs,
+          input_shape=(num_samples, length, stack_size),
+          expected_output_shape=expected_output_shape)
 
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_conv1d(self):
-    kwargs = {
-        'filters': 2,
-        'kernel_size': 3,
-    }
-
-    self._run_test(kwargs, 'padding', ['valid', 'same', 'causal'])
-    self._run_test(kwargs, 'strides', [2])
-    self._run_test(kwargs, 'dilation_rate', [2])
-
-    kwargs = {
-        'filters': 2,
-        'kernel_size': 3,
-        'padding': 'same',
-    }
-    self._run_test(kwargs, 'dilation_rate', [2])
-    self._run_test(kwargs, 'dilation_rate', [3])
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'}, (None, 5, 2)),
+      ('padding_same', {'padding': 'same'}, (None, 7, 2)),
+      ('padding_same_dilation_2', {'padding': 'same', 'dilation_rate': 2},
+       (None, 7, 2)),
+      ('padding_same_dilation_3', {'padding': 'same', 'dilation_rate': 3},
+       (None, 7, 2)),
+      ('padding_causal', {'padding': 'causal'}, (None, 7, 2)),
+      ('strides', {'strides': 2}, (None, 3, 2)),
+      ('dilation_rate', {'dilation_rate': 2}, (None, 3, 2)),
+  )
+  def test_conv1d(self, kwargs, expected_output_shape):
+    kwargs['filters'] = 2
+    kwargs['kernel_size'] = 3
+    self._run_test(kwargs, expected_output_shape)
 
   def test_conv1d_regularizers(self):
     kwargs = {
@@ -74,7 +70,7 @@ class Convolution1DTest(test.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -93,51 +89,45 @@ class Convolution1DTest(test.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-class Conv2DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class Conv2DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs, arg, values):
+  def _run_test(self, kwargs, expected_output_shape):
     num_samples = 2
     stack_size = 3
     num_row = 7
     num_col = 6
 
-    test_kwargs = copy.copy(kwargs)
-    for value in values:
-      test_kwargs[arg] = value
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.Conv2D,
-            kwargs=test_kwargs,
-            input_shape=(num_samples, num_row, num_col, stack_size))
+    with self.cached_session(use_gpu=True):
+      testing_utils.layer_test(
+          keras.layers.Conv2D,
+          kwargs=kwargs,
+          input_shape=(num_samples, num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape)
 
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_conv2d(self):
-    kwargs = {
-        'filters': 2,
-        'kernel_size': (3, 3),
-    }
-
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
-    self._run_test(kwargs, 'strides', [(2, 2)])
-    if test.is_gpu_available(cuda_only=True):
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'}, (None, 5, 4, 2)),
+      ('padding_same', {'padding': 'same'}, (None, 7, 6, 2)),
+      ('padding_same_dilation_2', {'padding': 'same', 'dilation_rate': 2},
+       (None, 7, 6, 2)),
+      ('strides', {'strides': (2, 2)}, (None, 3, 2, 2)),
+      ('dilation_rate', {'dilation_rate': (2, 2)}, (None, 3, 2, 2)),
       # Only runs on GPU with CUDA, channels_first is not supported on CPU.
       # TODO(b/62340061): Support channels_first on CPU.
-      self._run_test(kwargs, 'data_format', ['channels_first'])
-    self._run_test(kwargs, 'dilation_rate', [(2, 2)])
-
-    kwargs = {
-        'filters': 2,
-        'kernel_size': 3,
-        'padding': 'same',
-    }
-    self._run_test(kwargs, 'dilation_rate', [2])
+      ('data_format', {'data_format': 'channels_first'}),
+  )
+  def test_conv2d(self, kwargs, expected_output_shape=None):
+    kwargs['filters'] = 2
+    kwargs['kernel_size'] = (3, 3)
+    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs, expected_output_shape)
 
   def test_conv2d_regularizers(self):
     kwargs = {
@@ -149,7 +139,7 @@ class Conv2DTest(test.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -168,327 +158,44 @@ class Conv2DTest(test.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-class Conv2DTransposeTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class Conv3DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs, arg, values):
-    num_samples = 2
-    stack_size = 3
-    num_row = 7
-    num_col = 6
-
-    test_kwargs = copy.copy(kwargs)
-    for value in values:
-      test_kwargs[arg] = value
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.Conv2DTranspose,
-            kwargs=test_kwargs,
-            input_shape=(num_samples, num_row, num_col, stack_size))
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_conv2dtranspose(self):
-    kwargs = {
-        'filters': 2,
-        'kernel_size': (3, 3),
-    }
-
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
-    self._run_test(kwargs, 'strides', [(2, 2)])
-    if test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, 'data_format', ['channels_first'])
-
-  def test_conv2dtranspose_regularizers(self):
-    kwargs = {
-        'filters': 3,
-        'kernel_size': 3,
-        'padding': 'valid',
-        'kernel_regularizer': 'l2',
-        'bias_regularizer': 'l2',
-        'activity_regularizer': 'l2',
-        'strides': 1
-    }
-    with self.test_session(use_gpu=True):
-      layer = keras.layers.Conv2DTranspose(**kwargs)
-      layer.build((None, 5, 5, 2))
-      self.assertEqual(len(layer.losses), 2)
-      layer(keras.backend.variable(np.ones((1, 5, 5, 2))))
-      self.assertEqual(len(layer.losses), 3)
-
-  def test_conv2dtranspose_constraints(self):
-    k_constraint = lambda x: x
-    b_constraint = lambda x: x
-
-    kwargs = {
-        'filters': 3,
-        'kernel_size': 3,
-        'padding': 'valid',
-        'kernel_constraint': k_constraint,
-        'bias_constraint': b_constraint,
-        'strides': 1
-    }
-    with self.test_session(use_gpu=True):
-      layer = keras.layers.Conv2DTranspose(**kwargs)
-      layer.build((None, 5, 5, 2))
-      self.assertEqual(layer.kernel.constraint, k_constraint)
-      self.assertEqual(layer.bias.constraint, b_constraint)
-
-
-class Conv3DTransposeTest(test.TestCase):
-
-  def _run_test(self, kwargs, arg, values):
+  def _run_test(self, kwargs, expected_output_shape):
     num_samples = 2
     stack_size = 3
     num_row = 7
     num_col = 6
     depth = 5
 
-    test_kwargs = copy.copy(kwargs)
-    for value in values:
-      test_kwargs[arg] = value
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.Conv3DTranspose,
-            kwargs=test_kwargs,
-            input_shape=(num_samples, depth, num_row, num_col, stack_size))
+    with self.cached_session(use_gpu=True):
+      testing_utils.layer_test(
+          keras.layers.Conv3D,
+          kwargs=kwargs,
+          input_shape=(num_samples, depth, num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape)
 
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_conv3dtranspose(self):
-    kwargs = {
-        'filters': 2,
-        'kernel_size': (3, 3, 3),
-    }
-
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
-    self._run_test(kwargs, 'strides', [(2, 2, 2)])
-    if test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, 'data_format', ['channels_first'])
-
-  def test_conv3dtranspose_regularizers(self):
-    kwargs = {
-        'filters': 3,
-        'kernel_size': 3,
-        'padding': 'valid',
-        'kernel_regularizer': 'l2',
-        'bias_regularizer': 'l2',
-        'activity_regularizer': 'l2',
-        'strides': 1
-    }
-    with self.test_session(use_gpu=True):
-      layer = keras.layers.Conv3DTranspose(**kwargs)
-      layer.build((None, 5, 5, 5, 2))
-      self.assertEqual(len(layer.losses), 2)
-      layer(keras.backend.variable(np.ones((1, 5, 5, 5, 2))))
-      self.assertEqual(len(layer.losses), 3)
-
-  def test_conv3dtranspose_constraints(self):
-    k_constraint = lambda x: x
-    b_constraint = lambda x: x
-
-    kwargs = {
-        'filters': 3,
-        'kernel_size': 3,
-        'padding': 'valid',
-        'kernel_constraint': k_constraint,
-        'bias_constraint': b_constraint,
-        'strides': 1
-    }
-    with self.test_session(use_gpu=True):
-      layer = keras.layers.Conv3DTranspose(**kwargs)
-      layer.build((None, 5, 5, 5, 2))
-      self.assertEqual(layer.kernel.constraint, k_constraint)
-      self.assertEqual(layer.bias.constraint, b_constraint)
-
-
-class SeparableConv1DTest(test.TestCase):
-
-  def _run_test(self, kwargs, arg, values):
-    num_samples = 2
-    stack_size = 3
-    length = 7
-
-    test_kwargs = copy.copy(kwargs)
-    for value in values:
-      test_kwargs[arg] = value
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.SeparableConv1D,
-            kwargs=test_kwargs,
-            input_shape=(num_samples, length, stack_size))
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_separable_conv1d(self):
-    kwargs = {
-        'filters': 2,
-        'kernel_size': 3,
-    }
-
-    self._run_test(kwargs, 'padding', ['valid', 'same', 'causal'])
-    self._run_test(kwargs, 'strides', [2])
-    self._run_test(kwargs, 'dilation_rate', [2])
-    self._run_test(kwargs, 'depth_multiplier', [2])
-
-    kwargs = {
-        'filters': 2,
-        'kernel_size': 3,
-        'padding': 'same',
-    }
-    self._run_test(kwargs, 'dilation_rate', [2])
-
-  def test_separable_conv1d_regularizers(self):
-    kwargs = {
-        'filters': 3,
-        'kernel_size': 3,
-        'padding': 'valid',
-        'depthwise_regularizer': 'l2',
-        'pointwise_regularizer': 'l2',
-        'bias_regularizer': 'l2',
-        'activity_regularizer': 'l2',
-        'strides': 1
-    }
-    with self.test_session(use_gpu=True):
-      layer = keras.layers.SeparableConv1D(**kwargs)
-      layer.build((None, 5, 2))
-      self.assertEqual(len(layer.losses), 3)
-      layer(keras.backend.variable(np.ones((1, 5, 2))))
-      self.assertEqual(len(layer.losses), 4)
-
-  def test_separable_conv1d_constraints(self):
-    d_constraint = lambda x: x
-    p_constraint = lambda x: x
-    b_constraint = lambda x: x
-
-    kwargs = {
-        'filters': 3,
-        'kernel_size': 3,
-        'padding': 'valid',
-        'pointwise_constraint': p_constraint,
-        'depthwise_constraint': d_constraint,
-        'bias_constraint': b_constraint,
-        'strides': 1
-    }
-    with self.test_session(use_gpu=True):
-      layer = keras.layers.SeparableConv1D(**kwargs)
-      layer.build((None, 5, 2))
-      self.assertEqual(layer.depthwise_kernel.constraint, d_constraint)
-      self.assertEqual(layer.pointwise_kernel.constraint, p_constraint)
-      self.assertEqual(layer.bias.constraint, b_constraint)
-
-
-class SeparableConv2DTest(test.TestCase):
-
-  def _run_test(self, kwargs, arg, values):
-    num_samples = 2
-    stack_size = 3
-    num_row = 7
-    num_col = 6
-
-    test_kwargs = copy.copy(kwargs)
-    for value in values:
-      test_kwargs[arg] = value
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.SeparableConv2D,
-            kwargs=test_kwargs,
-            input_shape=(num_samples, num_row, num_col, stack_size))
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_separable_conv2d(self):
-    kwargs = {
-        'filters': 2,
-        'kernel_size': 3,
-    }
-
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
-    self._run_test(kwargs, 'strides', [2])
-    if test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, 'data_format', ['channels_first'])
-    self._run_test(kwargs, 'dilation_rate', [2])
-    self._run_test(kwargs, 'depth_multiplier', [2])
-
-    kwargs = {
-        'filters': 2,
-        'kernel_size': 3,
-        'padding': 'same',
-    }
-    self._run_test(kwargs, 'dilation_rate', [2])
-
-  def test_separable_conv2d_regularizers(self):
-    kwargs = {
-        'filters': 3,
-        'kernel_size': 3,
-        'padding': 'valid',
-        'depthwise_regularizer': 'l2',
-        'pointwise_regularizer': 'l2',
-        'bias_regularizer': 'l2',
-        'activity_regularizer': 'l2',
-        'strides': 1
-    }
-    with self.test_session(use_gpu=True):
-      layer = keras.layers.SeparableConv2D(**kwargs)
-      layer.build((None, 5, 5, 2))
-      self.assertEqual(len(layer.losses), 3)
-      layer(keras.backend.variable(np.ones((1, 5, 5, 2))))
-      self.assertEqual(len(layer.losses), 4)
-
-  def test_separable_conv2d_constraints(self):
-    d_constraint = lambda x: x
-    p_constraint = lambda x: x
-    b_constraint = lambda x: x
-
-    kwargs = {
-        'filters': 3,
-        'kernel_size': 3,
-        'padding': 'valid',
-        'pointwise_constraint': p_constraint,
-        'depthwise_constraint': d_constraint,
-        'bias_constraint': b_constraint,
-        'strides': 1
-    }
-    with self.test_session(use_gpu=True):
-      layer = keras.layers.SeparableConv2D(**kwargs)
-      layer.build((None, 5, 5, 2))
-      self.assertEqual(layer.depthwise_kernel.constraint, d_constraint)
-      self.assertEqual(layer.pointwise_kernel.constraint, p_constraint)
-      self.assertEqual(layer.bias.constraint, b_constraint)
-
-
-class Conv3DTest(test.TestCase):
-
-  def _run_test(self, kwargs, arg, values):
-    num_samples = 2
-    stack_size = 3
-    num_row = 7
-    num_col = 6
-    depth = 5
-
-    test_kwargs = copy.copy(kwargs)
-    for value in values:
-      test_kwargs[arg] = value
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.Conv3D,
-            kwargs=test_kwargs,
-            input_shape=(num_samples, depth, num_row, num_col, stack_size))
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_conv3d(self):
-    kwargs = {
-        'filters': 2,
-        'kernel_size': (3, 3, 3),
-    }
-
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
-    self._run_test(kwargs, 'strides', [(2, 2, 2)])
-    self._run_test(kwargs, 'dilation_rate', [(2, 2, 2)])
-    if test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, 'data_format', ['channels_first'])
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'}, (None, 3, 5, 4, 2)),
+      ('padding_same', {'padding': 'same'}, (None, 5, 7, 6, 2)),
+      ('strides', {'strides': (2, 2, 2)}, (None, 2, 3, 2, 2)),
+      ('dilation_rate', {'dilation_rate': (2, 2, 2)}, (None, 1, 3, 2, 2)),
+      # Only runs on GPU with CUDA, channels_first is not supported on CPU.
+      # TODO(b/62340061): Support channels_first on CPU.
+      ('data_format', {'data_format': 'channels_first'}),
+  )
+  def test_conv3d(self, kwargs, expected_output_shape=None):
+    kwargs['filters'] = 2
+    kwargs['kernel_size'] = (3, 3, 3)
+    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs, expected_output_shape)
 
   def test_conv3d_regularizers(self):
     kwargs = {
@@ -500,7 +207,7 @@ class Conv3DTest(test.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -520,16 +227,100 @@ class Conv3DTest(test.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_conv3d_dynamic_shape(self):
+    input_data = np.random.random((1, 3, 3, 3, 3)).astype(np.float32)
+    with self.cached_session(use_gpu=True):
+      # Won't raise error here.
+      testing_utils.layer_test(
+          keras.layers.Conv3D,
+          kwargs={
+              'data_format': 'channels_last',
+              'filters': 3,
+              'kernel_size': 3
+          },
+          input_shape=(None, None, None, None, 3),
+          input_data=input_data)
+      if test.is_gpu_available(cuda_only=True):
+        testing_utils.layer_test(
+            keras.layers.Conv3D,
+            kwargs={
+                'data_format': 'channels_first',
+                'filters': 3,
+                'kernel_size': 3
+            },
+            input_shape=(None, 3, None, None, None),
+            input_data=input_data)
 
-class ZeroPaddingTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
+@keras_parameterized.run_all_keras_modes
+class ConvSequentialTest(keras_parameterized.TestCase):
+
+  def _run_test(self, conv_layer_cls, kwargs, input_shape1, input_shape2,
+                expected_output_shape1, expected_output_shape2):
+    kwargs['filters'] = 1
+    kwargs['kernel_size'] = 3
+    kwargs['dilation_rate'] = 2
+    with self.cached_session(use_gpu=True):
+      layer = conv_layer_cls(**kwargs)
+      output1 = layer(np.zeros(input_shape1))
+      self.assertEqual(output1.shape, expected_output_shape1)
+      output2 = layer(np.zeros(input_shape2))
+      self.assertEqual(output2.shape, expected_output_shape2)
+
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'},
+       (1, 8, 2), (1, 5, 2), (1, 4, 1), (1, 1, 1)),
+      ('padding_same', {'padding': 'same'},
+       (1, 8, 2), (1, 5, 2), (1, 8, 1), (1, 5, 1)),
+      ('padding_causal', {'padding': 'causal'},
+       (1, 8, 2), (1, 5, 2), (1, 8, 1), (1, 5, 1)),
+  )
+  def test_conv1d(self, kwargs, input_shape1, input_shape2,
+                  expected_output_shape1, expected_output_shape2):
+    self._run_test(keras.layers.Conv1D, kwargs, input_shape1, input_shape2,
+                   expected_output_shape1, expected_output_shape2)
+
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'},
+       (1, 7, 6, 2), (1, 6, 5, 2), (1, 3, 2, 1), (1, 2, 1, 1)),
+      ('padding_same', {'padding': 'same'},
+       (1, 7, 6, 2), (1, 6, 5, 2), (1, 7, 6, 1), (1, 6, 5, 1)),
+  )
+  def test_conv2d(self, kwargs, input_shape1, input_shape2,
+                  expected_output_shape1, expected_output_shape2):
+    self._run_test(keras.layers.Conv2D, kwargs, input_shape1, input_shape2,
+                   expected_output_shape1, expected_output_shape2)
+
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'},
+       (1, 5, 7, 6, 2), (1, 8, 6, 5, 2), (1, 1, 3, 2, 1), (1, 4, 2, 1, 1)),
+      ('padding_same', {'padding': 'same'},
+       (1, 5, 7, 6, 2), (1, 8, 6, 5, 2), (1, 5, 7, 6, 1), (1, 8, 6, 5, 1)),
+  )
+  def test_conv3d(self, kwargs, input_shape1, input_shape2,
+                  expected_output_shape1, expected_output_shape2):
+    self._run_test(keras.layers.Conv3D, kwargs, input_shape1, input_shape2,
+                   expected_output_shape1, expected_output_shape2)
+
+  def test_dynamic_shape(self):
+    with self.cached_session(use_gpu=True):
+      layer = keras.layers.Conv3D(2, 3)
+      input_shape = (5, None, None, 2)
+      inputs = keras.Input(shape=input_shape)
+      x = layer(inputs)
+      # Won't raise error here with None values in input shape (b/144282043).
+      layer(x)
+
+
+@keras_parameterized.run_all_keras_modes
+class ZeroPaddingTest(keras_parameterized.TestCase):
+
   def test_zero_padding_1d(self):
     num_samples = 2
     input_dim = 2
@@ -537,8 +328,8 @@ class ZeroPaddingTest(test.TestCase):
     shape = (num_samples, num_steps, input_dim)
     inputs = np.ones(shape)
 
-    # basic test
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
+      # basic test
       testing_utils.layer_test(
           keras.layers.ZeroPadding1D,
           kwargs={'padding': 2},
@@ -548,8 +339,7 @@ class ZeroPaddingTest(test.TestCase):
           kwargs={'padding': (1, 2)},
           input_shape=inputs.shape)
 
-    # correctness test
-    with self.test_session(use_gpu=True):
+      # correctness test
       layer = keras.layers.ZeroPadding1D(padding=2)
       layer.build(shape)
       output = layer(keras.backend.variable(inputs))
@@ -581,7 +371,6 @@ class ZeroPaddingTest(test.TestCase):
     with self.assertRaises(ValueError):
       keras.layers.ZeroPadding1D(padding=None)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_zero_padding_2d(self):
     num_samples = 2
     stack_size = 2
@@ -592,7 +381,7 @@ class ZeroPaddingTest(test.TestCase):
       inputs = np.ones((num_samples, stack_size, input_num_row, input_num_col))
 
       # basic test
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         testing_utils.layer_test(
             keras.layers.ZeroPadding2D,
             kwargs={'padding': (2, 2),
@@ -605,7 +394,7 @@ class ZeroPaddingTest(test.TestCase):
             input_shape=inputs.shape)
 
       # correctness test
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         layer = keras.layers.ZeroPadding2D(
             padding=(2, 2), data_format=data_format)
         layer.build(inputs.shape)
@@ -660,7 +449,6 @@ class ZeroPaddingTest(test.TestCase):
       with self.assertRaises(ValueError):
         keras.layers.ZeroPadding2D(padding=None)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_zero_padding_3d(self):
     num_samples = 2
     stack_size = 2
@@ -671,15 +459,14 @@ class ZeroPaddingTest(test.TestCase):
     inputs = np.ones((num_samples, input_len_dim1, input_len_dim2,
                       input_len_dim3, stack_size))
 
-    # basic test
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
+      # basic test
       testing_utils.layer_test(
           keras.layers.ZeroPadding3D,
           kwargs={'padding': (2, 2, 2)},
           input_shape=inputs.shape)
 
-    # correctness test
-    with self.test_session(use_gpu=True):
+      # correctness test
       layer = keras.layers.ZeroPadding3D(padding=(2, 2, 2))
       layer.build(inputs.shape)
       output = layer(keras.backend.variable(inputs))
@@ -700,15 +487,16 @@ class ZeroPaddingTest(test.TestCase):
       keras.layers.ZeroPadding3D(padding=None)
 
 
-class UpSamplingTest(test.TestCase):
+@test_util.for_all_test_methods(test_util.disable_xla,
+                                'align_corners=False not supported by XLA')
+@keras_parameterized.run_all_keras_modes
+class UpSamplingTest(keras_parameterized.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_upsampling_1d(self):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.UpSampling1D, kwargs={'size': 2}, input_shape=(3, 5, 4))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_upsampling_2d(self):
     num_samples = 2
     stack_size = 2
@@ -724,7 +512,7 @@ class UpSamplingTest(test.TestCase):
                                 stack_size)
 
       # basic test
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         testing_utils.layer_test(
             keras.layers.UpSampling2D,
             kwargs={'size': (2, 2),
@@ -758,7 +546,41 @@ class UpSamplingTest(test.TestCase):
 
             np.testing.assert_allclose(np_output, expected_out)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  def test_upsampling_2d_bilinear(self):
+    num_samples = 2
+    stack_size = 2
+    input_num_row = 11
+    input_num_col = 12
+    for data_format in ['channels_first', 'channels_last']:
+      if data_format == 'channels_first':
+        inputs = np.random.rand(num_samples, stack_size, input_num_row,
+                                input_num_col)
+      else:
+        inputs = np.random.rand(num_samples, input_num_row, input_num_col,
+                                stack_size)
+
+      testing_utils.layer_test(keras.layers.UpSampling2D,
+                               kwargs={'size': (2, 2),
+                                       'data_format': data_format,
+                                       'interpolation': 'bilinear'},
+                               input_shape=inputs.shape)
+
+      if not context.executing_eagerly():
+        for length_row in [2]:
+          for length_col in [2, 3]:
+            layer = keras.layers.UpSampling2D(
+                size=(length_row, length_col),
+                data_format=data_format)
+            layer.build(inputs.shape)
+            outputs = layer(keras.backend.variable(inputs))
+            np_output = keras.backend.eval(outputs)
+            if data_format == 'channels_first':
+              self.assertEqual(np_output.shape[2], length_row * input_num_row)
+              self.assertEqual(np_output.shape[3], length_col * input_num_col)
+            else:
+              self.assertEqual(np_output.shape[1], length_row * input_num_row)
+              self.assertEqual(np_output.shape[2], length_col * input_num_col)
+
   def test_upsampling_3d(self):
     num_samples = 2
     stack_size = 2
@@ -775,7 +597,7 @@ class UpSamplingTest(test.TestCase):
                                 input_len_dim3, stack_size)
 
       # basic test
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         testing_utils.layer_test(
             keras.layers.UpSampling3D,
             kwargs={'size': (2, 2, 2),
@@ -816,16 +638,16 @@ class UpSamplingTest(test.TestCase):
               np.testing.assert_allclose(np_output, expected_out)
 
 
-class CroppingTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class CroppingTest(keras_parameterized.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_cropping_1d(self):
     num_samples = 2
     time_length = 4
     input_len_dim1 = 2
     inputs = np.random.rand(num_samples, time_length, input_len_dim1)
 
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.Cropping1D,
           kwargs={'cropping': (2, 2)},
@@ -837,7 +659,6 @@ class CroppingTest(test.TestCase):
     with self.assertRaises(ValueError):
       keras.layers.Cropping1D(cropping=None)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_cropping_2d(self):
     num_samples = 2
     stack_size = 2
@@ -852,15 +673,14 @@ class CroppingTest(test.TestCase):
       else:
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 stack_size)
-      # basic test
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
+        # basic test
         testing_utils.layer_test(
             keras.layers.Cropping2D,
             kwargs={'cropping': cropping,
                     'data_format': data_format},
             input_shape=inputs.shape)
-      # correctness test
-      with self.test_session(use_gpu=True):
+        # correctness test
         layer = keras.layers.Cropping2D(
             cropping=cropping, data_format=data_format)
         layer.build(inputs.shape)
@@ -886,7 +706,7 @@ class CroppingTest(test.TestCase):
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 stack_size)
       # another correctness test (no cropping)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         cropping = ((0, 0), (0, 0))
         layer = keras.layers.Cropping2D(
             cropping=cropping, data_format=data_format)
@@ -905,7 +725,6 @@ class CroppingTest(test.TestCase):
     with self.assertRaises(ValueError):
       keras.layers.Cropping2D(cropping=None)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_cropping_3d(self):
     num_samples = 2
     stack_size = 2
@@ -923,7 +742,7 @@ class CroppingTest(test.TestCase):
           inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                   input_len_dim3, stack_size)
         # basic test
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           testing_utils.layer_test(
               keras.layers.Cropping3D,
               kwargs={'cropping': cropping,
@@ -932,7 +751,7 @@ class CroppingTest(test.TestCase):
 
         if len(croppings) == 3 and len(croppings[0]) == 2:
           # correctness test
-          with self.test_session(use_gpu=True):
+          with self.cached_session(use_gpu=True):
             layer = keras.layers.Cropping3D(
                 cropping=cropping, data_format=data_format)
             layer.build(inputs.shape)
@@ -961,44 +780,51 @@ class CroppingTest(test.TestCase):
       keras.layers.Cropping3D(cropping=None)
 
 
-class DepthwiseConv2DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class DepthwiseConv2DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs, arg, values):
+  def _run_test(self, kwargs):
     num_samples = 2
     stack_size = 3
     num_row = 7
     num_col = 6
 
-    test_kwargs = copy.copy(kwargs)
-    for value in values:
-      test_kwargs[arg] = value
-      with self.test_session(use_gpu=True):
-        testing_utils.layer_test(
-            keras.layers.DepthwiseConv2D,
-            kwargs=test_kwargs,
-            input_shape=(num_samples, num_row, num_col, stack_size))
+    with self.cached_session(use_gpu=True):
+      testing_utils.layer_test(
+          keras.layers.DepthwiseConv2D,
+          kwargs=kwargs,
+          input_shape=(num_samples, num_row, num_col, stack_size))
 
-  def test_depthwise_conv2d(self):
-    kwargs = {'kernel_size': (3, 3)}
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'}),
+      ('padding_same', {'padding': 'same'}),
+      ('strides', {'strides': (2, 2)}),
+      # Only runs on GPU with CUDA, channels_first is not supported on CPU.
+      # TODO(b/62340061): Support channels_first on CPU.
+      ('data_format', {'data_format': 'channels_first'}),
+      ('depth_multiplier_1', {'depth_multiplier': 1}),
+      ('depth_multiplier_2', {'depth_multiplier': 2}),
+  )
+  def test_depthwise_conv2d(self, kwargs):
+    kwargs['kernel_size'] = (3, 3)
+    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs)
 
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
-    self._run_test(kwargs, 'strides', [(2, 2)])
-    if test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, 'data_format', ['channels_first'])
-    self._run_test(kwargs, 'depth_multiplier', [1, 2])
-
-    kwargs = {'kernel_size': 3,
-              'padding': 'valid',
-              'data_format': 'channels_first',
-              'activation': None,
-              'depthwise_regularizer': 'l2',
-              'bias_regularizer': 'l2',
-              'activity_regularizer': 'l2',
-              'depthwise_constraint': 'unit_norm',
-              'use_bias': True,
-              'strides': (2, 2),
-             }
-    self._run_test(kwargs, 'depth_multiplier', [1])
+  def test_depthwise_conv2d_full(self):
+    kwargs = {
+        'kernel_size': 3,
+        'padding': 'valid',
+        'data_format': 'channels_last',
+        'activation': None,
+        'depthwise_regularizer': 'l2',
+        'bias_regularizer': 'l2',
+        'activity_regularizer': 'l2',
+        'depthwise_constraint': 'unit_norm',
+        'use_bias': True,
+        'strides': (2, 2),
+        'depth_multiplier': 1,
+    }
+    self._run_test(kwargs)
 
 if __name__ == '__main__':
   test.main()

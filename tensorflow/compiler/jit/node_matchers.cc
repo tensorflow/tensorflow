@@ -16,11 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/jit/node_matchers.h"
 
 #include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 
 namespace tensorflow {
 namespace testing {
@@ -28,6 +33,7 @@ namespace matchers {
 namespace {
 
 using impl::NodeMatcherProperties;
+using impl::OutEdge;
 
 string IndentAllButFirstLine(absl::string_view text) {
   std::vector<std::string> lines = absl::StrSplit(text, '\n');
@@ -73,6 +79,8 @@ bool MatchAndExplainTensor(const Tensor& tensor, const Tensor& expected_tensor,
   }
 
   switch (tensor.dtype()) {
+    case DT_HALF:
+      return CompareTensor<Eigen::half>(tensor, expected_tensor, listener);
     case DT_FLOAT:
       return CompareTensor<float>(tensor, expected_tensor, listener);
     case DT_DOUBLE:
@@ -98,8 +106,6 @@ bool MatchAndExplainTensor(const Tensor& tensor, const Tensor& expected_tensor,
                  << DataType_Name(tensor.dtype());
   }
 }
-
-using Input = std::pair<const Node*, int>;
 
 struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
   bool MatchAndExplain(
@@ -131,7 +137,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
 
     if (constant_value) {
       const TensorProto* proto = nullptr;
-      if (!GetNodeAttr(node->def(), "value", &proto).ok()) {
+      if (!TryGetNodeAttr(node->def(), "value", &proto)) {
         if (listener->IsInterested()) {
           *listener << "\ncould not find \"value\" attribute in node";
         }
@@ -191,6 +197,30 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
       }
       return false;
     }
+
+    const AttrValueMap attr_value_map = node->def().attr();
+    for (const auto& attr_kv_pair : attrs) {
+      auto it = attr_value_map.find(attr_kv_pair.first);
+      if (it == attr_value_map.end()) {
+        if (listener->IsInterested()) {
+          *listener << "did not find attribute named \"" << attr_kv_pair.first
+                    << "\" in node";
+        }
+        return false;
+      }
+      if (attr_kv_pair.second &&
+          !AreAttrValuesEqual(it->second, *attr_kv_pair.second)) {
+        if (listener->IsInterested()) {
+          *listener << "attribute named " << attr_kv_pair.first
+                    << " does not match value; expected: \""
+                    << SummarizeAttrValue(*attr_kv_pair.second)
+                    << "\", found: \"" << SummarizeAttrValue(it->second)
+                    << "\"";
+        }
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -232,7 +262,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
         *os << "matching " << ss.str();
       } else {
         int edge_idx = 0;
-        for (const ::testing::Matcher<Input>& matcher : (*input_matchers)) {
+        for (const ::testing::Matcher<OutEdge>& matcher : (*input_matchers)) {
           *os << "\n  [" << edge_idx << "] matching (";
           ::std::stringstream ss;
           matcher.DescribeTo(&ss);
@@ -248,6 +278,21 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
       printed_something = true;
       *os << " and control deps ";
       control_dep_set->DescribeTo(os);
+    }
+
+    if (!attrs.empty()) {
+      printed_something = true;
+      std::vector<string> attrs_str;
+      absl::c_transform(
+          attrs, std::back_inserter(attrs_str),
+          [](const std::pair<string, absl::optional<AttrValue>>& attr_kv_pair) {
+            return absl::StrCat(attr_kv_pair.first, "->",
+                                attr_kv_pair.second
+                                    ? SummarizeAttrValue(*attr_kv_pair.second)
+                                    : "*");
+          });
+      *os << " and attr values matching [" << absl::StrJoin(attrs_str, ", ")
+          << "]";
     }
 
     if (!printed_something) {
@@ -266,7 +311,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
     }
 
     ::testing::StringMatchResultListener inner_listener;
-    Input input = {edge->src(), edge->src_output()};
+    OutEdge input = {edge->src(), edge->src_output()};
     if ((*input_matchers)[input_idx].MatchAndExplain(input, &inner_listener)) {
       return true;
     }
@@ -286,22 +331,24 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
   absl::optional<string> name;
   absl::optional<string> assigned_device;
   absl::optional<Tensor> constant_value;
-  absl::optional<std::vector<::testing::Matcher<Input>>> input_matchers;
+  absl::optional<std::vector<::testing::Matcher<OutEdge>>> input_matchers;
   absl::optional<::testing::Matcher<absl::Span<const Node* const>>>
       control_dep_set;
+  std::map<string, absl::optional<AttrValue>> attrs;
 };
 
 // Matches a dst and dst_output on an input edge.  Today we only use this with
 // dst_output=0 but we will eventually need to support multi-output operations.
-class InputMatcher : public ::testing::MatcherInterface<Input> {
+class OutEdgeMatcher : public ::testing::MatcherInterface<OutEdge> {
  public:
-  InputMatcher(::testing::Matcher<const Node*> src_matcher, int src_output)
-      : src_matcher_(std::move(src_matcher)), src_output_(src_output) {}
+  OutEdgeMatcher(::testing::Matcher<const Node*> src_matcher, int src_oidx)
+      : src_matcher_(std::move(src_matcher)), src_oidx_(src_oidx) {}
 
   bool MatchAndExplain(
-      Input input, ::testing::MatchResultListener* listener) const override {
+      OutEdge out_edge,
+      ::testing::MatchResultListener* listener) const override {
     ::testing::StringMatchResultListener inner_listener;
-    if (!src_matcher_.MatchAndExplain(input.first, &inner_listener)) {
+    if (!src_matcher_.MatchAndExplain(out_edge.first, &inner_listener)) {
       if (listener->IsInterested()) {
         *listener << "\nsource does not match expected ";
         src_matcher_.DescribeTo(listener->stream());
@@ -312,10 +359,10 @@ class InputMatcher : public ::testing::MatcherInterface<Input> {
       }
       return false;
     }
-    if (input.second != src_output_) {
+    if (out_edge.second != src_oidx_) {
       if (listener->IsInterested()) {
-        *listener << "\nexpected output slot to be " << src_output_
-                  << " but found " << input.second;
+        *listener << "\nexpected output slot to be " << src_oidx_
+                  << " but found " << out_edge.second;
       }
       return false;
     }
@@ -324,31 +371,21 @@ class InputMatcher : public ::testing::MatcherInterface<Input> {
   }
 
   void DescribeTo(::std::ostream* os) const override {
-    if (src_output_) {
-      *os << "output slot: " << src_output_ << ", source: (";
+    if (src_oidx_) {
+      *os << "output slot: " << src_oidx_ << ", source: (";
     }
 
     src_matcher_.DescribeTo(os);
 
-    if (src_output_) {
+    if (src_oidx_) {
       *os << ")";
     }
   }
 
  private:
   ::testing::Matcher<const Node*> src_matcher_;
-  int src_output_;
+  int src_oidx_;
 };
-
-std::vector<::testing::Matcher<Input>> NodeMatchersToInputMatchers(
-    absl::Span<const ::testing::Matcher<const Node*>> node_matchers) {
-  std::vector<::testing::Matcher<Input>> result;
-  absl::c_transform(node_matchers, std::back_inserter(result),
-                    [](::testing::Matcher<const Node*> n) {
-                      return ::testing::MakeMatcher(new InputMatcher(n, 0));
-                    });
-  return result;
-}
 }  // namespace
 
 ::testing::Matcher<const Node*> impl::NodeWith(
@@ -375,16 +412,20 @@ std::vector<::testing::Matcher<Input>> NodeMatchersToInputMatchers(
       matcher->assigned_device = prop.assigned_device();
     }
 
-    if (prop.input_nodes()) {
+    if (prop.inputs()) {
       DCHECK(!matcher->input_matchers);
-      matcher->input_matchers =
-          NodeMatchersToInputMatchers(*prop.input_nodes());
+      matcher->input_matchers = *prop.inputs();
     }
 
     if (prop.control_deps()) {
       DCHECK(!matcher->control_dep_set);
       matcher->control_dep_set =
           ::testing::UnorderedElementsAreArray(*prop.control_deps());
+    }
+
+    if (prop.attr()) {
+      auto insert_result = matcher->attrs.insert(*prop.attr());
+      DCHECK(insert_result.second);
     }
   }
 
@@ -412,12 +453,12 @@ impl::NodeMatcherProperties AssignedDevice(string assigned_device) {
 }
 
 impl::NodeMatcherProperties impl::Inputs(
-    absl::Span<const ::testing::Matcher<const Node*>> inputs) {
-  std::vector<::testing::Matcher<const Node*>> inputs_vector;
+    absl::Span<const ::testing::Matcher<OutEdge>> inputs) {
+  std::vector<::testing::Matcher<OutEdge>> inputs_vector;
   absl::c_copy(inputs, std::back_inserter(inputs_vector));
 
   impl::NodeMatcherProperties props;
-  props.set_input_nodes(std::move(inputs_vector));
+  props.set_inputs(std::move(inputs_vector));
   return props;
 }
 
@@ -431,6 +472,45 @@ impl::NodeMatcherProperties impl::CtrlDeps(
   return props;
 }
 
+std::pair<string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<string, bool>& bool_attr) {
+  AttrValue attr_value;
+  attr_value.set_b(bool_attr.second);
+  return {bool_attr.first, attr_value};
+}
+
+std::pair<string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<string, absl::Span<const int>>& int_list_attr) {
+  AttrValue attr_value;
+  AttrValue::ListValue* list = attr_value.mutable_list();
+  for (int i : int_list_attr.second) {
+    list->add_i(i);
+  }
+  return {int_list_attr.first, attr_value};
+}
+
+std::pair<string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<string, absl::Span<const string>>& string_list_attr) {
+  AttrValue attr_value;
+  AttrValue::ListValue* list = attr_value.mutable_list();
+  for (string s : string_list_attr.second) {
+    list->add_s(s);
+  }
+  return {string_list_attr.first, attr_value};
+}
+
+impl::NodeMatcherProperties impl::Attr(std::pair<string, AttrValue> attr) {
+  impl::NodeMatcherProperties props;
+  props.set_attr(std::move(attr));
+  return props;
+}
+
+impl::NodeMatcherProperties impl::Attr(string name) {
+  impl::NodeMatcherProperties props;
+  props.set_attr({std::move(name), absl::nullopt});
+  return props;
+}
+
 NodeMatcherProperties ConstantValue(
     const ::tensorflow::Input::Initializer& val) {
   TF_CHECK_OK(val.status);
@@ -439,9 +519,13 @@ NodeMatcherProperties ConstantValue(
   return props;
 }
 
-::testing::Matcher<const Node*> Const(
+::testing::Matcher<impl::OutEdge> Const(
     const ::tensorflow::Input::Initializer& val) {
-  return NodeWith(ConstantValue(val));
+  return Out(NodeWith(ConstantValue(val)));
+}
+::testing::Matcher<impl::OutEdge> Out(
+    int oidx, ::testing::Matcher<const Node*> node_matcher) {
+  return ::testing::MakeMatcher(new OutEdgeMatcher(node_matcher, oidx));
 }
 }  // namespace matchers
 
@@ -455,4 +539,7 @@ Node* FindNodeByName(Graph* g, absl::string_view name) {
   return nullptr;
 }
 }  // namespace testing
+
+void PrintTo(const Node* n, ::std::ostream* os) { *os << SummarizeNode(*n); }
+void PrintTo(Node* n, ::std::ostream* os) { *os << SummarizeNode(*n); }
 }  // namespace tensorflow

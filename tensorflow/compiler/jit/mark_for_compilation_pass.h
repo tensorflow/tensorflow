@@ -20,6 +20,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_
 #define TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
@@ -32,8 +34,9 @@ extern const char* const kXlaClusterAttr;
 // compilation by the encapsulate subgraphs pass.
 extern const char* const kXlaOutsideCompilationAttr;
 
-// Pass that marks a subset of operators in the graph with attribute
-// _XlaCluster so they are compiled by the EncapsulateSubgraphsPass.
+// Marks a subset of nodes in the graph which are to be clustered
+// with an attribute _XlaCluster=<cluster id> so they are picked up by the
+// EncapsulateSubgraphsPass.
 class MarkForCompilationPass : public GraphOptimizationPass {
  public:
   MarkForCompilationPass() = default;
@@ -41,17 +44,31 @@ class MarkForCompilationPass : public GraphOptimizationPass {
   Status Run(const GraphOptimizationPassOptions& options) override;
 
  private:
-  Status RunImpl(const GraphOptimizationPassOptions& options,
-                 const std::function<bool(const Node*, const DeviceType&)>&
-                     is_compilable_fn = {});
+  Status RunForTest(const GraphOptimizationPassOptions& options,
+                    bool disable_deadness_analysis);
 
   friend class MarkForCompilationPassTestHelper;
 };
 
 // Returns true iff 'ndef' is a call to a function that is compilable.  A
 // function is compilable iff every operator in the function body is
-// compilable.
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef);
+// compilable. If 'ndef' is not compilable and 'uncompilable_node_info' is not
+// null, we will populate 'uncompilable_node_info' with uncompilable node info.
+bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
+                  RecursiveCompilabilityChecker::UncompilableNodesMap*
+                      uncompilable_node_info = nullptr);
+
+absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable();
+
+namespace testing {
+// DO NOT USE IN PRODUCTION.
+//
+// Resets some internal state to let us write reliable unit tests.
+void ResetClusterSequenceNumber();
+
+// Return a list of operation that we choose not to put into the whitelist.
+absl::flat_hash_set<string> GetKnownXLAWhitelistOp();
+}  // namespace testing
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_

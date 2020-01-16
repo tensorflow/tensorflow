@@ -99,7 +99,7 @@ std::vector<PassThrough> LocatePassThroughDomainLinks(
         << "Instruction is not a kDomain: " << instruction->ToString();
     for (HloInstruction* user : instruction->users()) {
       if (user->opcode() == HloOpcode::kDomain &&
-          domain.exit_domains.count(user) != 0) {
+          domain.exit_domains.contains(user)) {
         pass_through.emplace_back(user, instruction);
         VLOG(2) << "Found passthrough domain link:";
         VLOG(2) << "  " << user->ToString();
@@ -169,14 +169,14 @@ Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
 // If user is a tuple instruction, return the tuple subsharding corresponding to
 // the operand matching the instruction argument, because that is the
 // subsharding corresponding to instruction.
-ShapeTree<HloSharding> GetShardingTreeFromUser(
+StatusOr<ShapeTree<HloSharding>> GetShardingTreeFromUser(
     const HloInstruction& instruction, const HloInstruction& user) {
   if (user.opcode() == HloOpcode::kTuple) {
     return user.sharding()
         .GetSubSharding(user.shape(), {user.operand_index(&instruction)})
-        .GetAsShapeTree(instruction.shape());
+        .AsShapeTree(instruction.shape());
   }
-  return user.sharding().GetAsShapeTree(user.shape());
+  return user.sharding().AsShapeTree(user.shape());
 }
 
 // Assign rhs to lhs. If rhs is unassigned (assigned to kUnassignedDevice)
@@ -234,7 +234,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
   if (instruction->users().empty()) {
     // No sharding from users, use domain_sharding, after checking
     // compatibility.
-    TF_RET_CHECK(ShapeUtil::IsTuple(instruction->shape()) &&
+    TF_RET_CHECK(instruction->shape().IsTuple() &&
                  ShapeUtil::GetLeafCount(instruction->shape()) ==
                      domain_sharding.tuple_elements().size());
     instruction->set_sharding(domain_sharding);
@@ -253,7 +253,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
       instruction->shape(), HloSharding::AssignDevice(kUnassignedDevice));
   for (HloInstruction* user : instruction->users()) {
     if (user->opcode() == HloOpcode::kDomain &&
-        domain.exit_domains.count(const_cast<HloInstruction*>(user)) > 0) {
+        domain.exit_domains.contains(user)) {
       // If a user is a domain and it is registered in the domain exits, then
       // the instruction sharding is taken directly from the domain, and no
       // further users need to be visited.
@@ -264,9 +264,9 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
       continue;
     }
     AssignmentKind sub_assigned = AssignmentKind::kUnassigned;
-    ShapeTree<HloSharding> user_sharding_tree =
-        GetShardingTreeFromUser(*instruction, *user);
-    if (ShapeUtil::IsTuple(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(ShapeTree<HloSharding> user_sharding_tree,
+                        GetShardingTreeFromUser(*instruction, *user));
+    if (instruction->shape().IsTuple()) {
       // For tuple-shaped instructions collect individual tuple subshardings
       // from the uses, and then combine them into the tuple sharding.
       // If the user is a GTE its sharding concerns only the subtree of
@@ -298,7 +298,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
   }
 
   if (assigned == AssignmentKind::kAssigned) {
-    if (ShapeUtil::IsTuple(instruction->shape())) {
+    if (instruction->shape().IsTuple()) {
       instruction->set_sharding(HloSharding::Tuple(sharding_tree));
     } else {
       TF_RET_CHECK(sharding_tree.leaf_count() == 1);
@@ -310,7 +310,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
 }
 
 // Tries to propagate the sharding information into the instructions that are
-// part of the domain, in a reverse post order manner (users propoagate to
+// part of the domain, in a reverse post order manner (users propagate to
 // instruction).
 StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
                                         const HloSharding& domain_sharding) {
@@ -361,7 +361,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
       // kUnassignedDevice. Indeed in case of doubt it is better to leave the
       // entire tuple unassigned, and let the device placer decide for it.
       if (instruction->sharding().UsesDevice(kUnassignedDevice)) {
-        TF_RET_CHECK(ShapeUtil::IsTuple(instruction->shape()))
+        TF_RET_CHECK(instruction->shape().IsTuple())
             << "Only tuples can have kUnassignedDevice sub shardings";
         instruction->clear_sharding();
       }

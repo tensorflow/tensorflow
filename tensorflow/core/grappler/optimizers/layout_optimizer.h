@@ -30,6 +30,8 @@ class LayoutOptimizer : public GraphOptimizer {
 
   string name() const override { return "layout"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   struct TuningConfig {
     // If true, do not use the NHWC GEMM implementation. When filter size is
     // one or filter size is equal to input image size,

@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TESTS_GPU_CODEGEN_TEST_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TESTS_GPU_CODEGEN_TEST_H_
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/compiler/xla/tests/llvm_irgen_test_base.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 
 namespace xla {
 namespace gpu {
@@ -26,14 +28,14 @@ namespace gpu {
 // Tests that verify IR or PTX emitted by the GPU backend is as expected.
 class GpuCodegenTest : public LlvmIrGenTestBase {
  protected:
-  // Like HloTestBase::CreateNewModule(), with a flag for configuring the ftz
-  // option.
-  std::unique_ptr<HloModule> CreateNewModuleWithFTZ(bool ftz);
+  // Like HloTestBase::CreateNewVerifiedModule(), with a flag for configuring
+  // the ftz option.
+  std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModuleWithFTZ(bool ftz);
 
   // Compiles the given HLO module to PTX and verifies the PTX matches the given
   // FileCheck pattern.  (See http://llvm.org/docs/CommandGuide/FileCheck.html).
-  void CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
-                           const string& pattern);
+  void CompileAndVerifyPtx(std::unique_ptr<VerifiedHloModule> hlo_module,
+                           absl::string_view pattern);
 };
 
 }  // namespace gpu

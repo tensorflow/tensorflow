@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -69,11 +70,41 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
     case tensorflow::DT_COMPLEX64:
       *type = xla::C64;
       return Status::OK();
+    case tensorflow::DT_COMPLEX128:
+      *type = xla::C128;
+      return Status::OK();
     default:
       return errors::InvalidArgument(
-          "Unsupported type in DataTypeToPrimitiveType ",
-          DataTypeString(data_type));
+          "Unsupported type in DataTypeToPrimitiveType: '",
+          DataTypeString(data_type), "'");
   }
+}
+
+xla::StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type) {
+  static const absl::flat_hash_map<xla::PrimitiveType, DataType>&
+      data_type_map = *new absl::flat_hash_map<xla::PrimitiveType, DataType>({
+          {xla::PRED, DT_BOOL},
+          {xla::BF16, DT_BFLOAT16},
+          {xla::F16, DT_HALF},
+          {xla::F32, DT_FLOAT},
+          {xla::F64, DT_DOUBLE},
+          {xla::C64, DT_COMPLEX64},
+          {xla::S8, DT_INT8},
+          {xla::S16, DT_INT16},
+          {xla::S32, DT_INT32},
+          {xla::S64, DT_INT64},
+          {xla::U8, DT_UINT8},
+          {xla::U16, DT_UINT16},
+          {xla::U32, DT_UINT32},
+          {xla::U64, DT_UINT64},
+      });
+
+  auto it = data_type_map.find(type);
+  if (it == data_type_map.end()) {
+    return errors::InvalidArgument(
+        "Unsupported type in PrimitiveTypeToDataType ", type);
+  }
+  return it->second;
 }
 
 }  // namespace tensorflow

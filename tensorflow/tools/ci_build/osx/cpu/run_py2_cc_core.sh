@@ -32,7 +32,8 @@ export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python2)
 yes "" | $PYTHON_BIN_PATH configure.py
 which bazel
-bazel test --test_tag_filters=-no_oss,-gpu,-benchmark-test,-nomac,-no_mac \
+# TODO(b/122370901): Fix nomac, no_mac inconsistency.
+bazel test --test_tag_filters=-no_oss,-gpu,-tpu,-benchmark-test,-nomac,-no_mac \
     --test_timeout 300,450,1200,3600 --config=opt \
     --announce_rc \
     --test_size_filters=small,medium \

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -26,27 +27,25 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
-
-// TODO(zhifengc): We need to consolidate (full/partial) device name
-// parsing into one place.
-//
-// Parses and returns the local device part (e.g., cpu:0, gpu:4).
-string GetLocalDeviceName(StringPiece fullname) {
-  auto pos = fullname.rfind('/');
-  CHECK_NE(pos, StringPiece::npos);
-  fullname.remove_prefix(pos + 1);
-  return string(fullname);
-}
 
 class RemoteDevice : public Device {
  public:
   RemoteDevice(Env* env, const DeviceAttributes& da)
-      : Device(env, da), local_dev_name_(GetLocalDeviceName(da.name())) {}
+      : Device(env, da),
+        local_dev_name_(DeviceNameUtils::LocalName(da.name())) {}
 
   Status Sync() override { return Status::OK(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
+
+  ResourceMgr* resource_manager() override {
+    LOG(FATAL) << "Accessing the resource manager of a remote device is not "
+               << "supported.";
+  }
+
+  bool IsLocal() const override { return false; }
 
  private:
   const string local_dev_name_;
@@ -54,9 +53,27 @@ class RemoteDevice : public Device {
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteDevice);
 };
 
+void AsRemoteDevices(
+    Env* env,
+    const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
+    LookupLocalDevice lookup_local_device,
+    std::vector<std::unique_ptr<Device>>* remote_devices) {
+  for (const auto& da : device_attributes) {
+    Device* local_device;
+    if (lookup_local_device != nullptr &&
+        lookup_local_device(da.name(), &local_device).ok()) {
+      remote_devices->emplace_back(RenamedDevice::NewRenamedDevice(
+          local_device->name(), local_device, false, false));
+    } else {
+      auto d = new RemoteDevice(env, da);
+      remote_devices->emplace_back(d);
+    }
+  }
+}
+
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
                       const string& worker_name, NewRemoteDevicesDone done) {
-  WorkerInterface* wi = worker_cache->CreateWorker(worker_name);
+  WorkerInterface* wi = worker_cache->GetOrCreateWorker(worker_name);
   if (wi == nullptr) {
     std::vector<Device*> empty;
     done(errors::NotFound("Device ", worker_name, " is not found."), &empty);
@@ -112,7 +129,7 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
       }
     }
   };
-  wi->GetStatusAsync(&call->req, &call->resp, cb);
+  wi->GetStatusAsync(&call->req, &call->resp, /*fail_fast=*/false, cb);
 }
 
 }  // namespace tensorflow

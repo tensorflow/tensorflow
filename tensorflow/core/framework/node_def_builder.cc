@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -37,7 +38,8 @@ void NodeDefBuilder::NodeOut::Reset(StringPiece n, int i, DataType dt) {
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
-                               const OpRegistryInterface* op_registry) {
+                               const OpRegistryInterface* op_registry,
+                               const NodeDebugInfo* debug) {
   node_def_.set_name(string(name));
   const Status status = op_registry->LookUpOpDef(string(op_name), &op_def_);
   if (status.ok()) {
@@ -46,6 +48,13 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
     errors_.push_back(status.error_message());
     inputs_specified_ = 0;
   }
+  if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
+}
+
+NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
+                               const NodeDebugInfo& debug)
+    : NodeDefBuilder(name, op_name) {
+  MergeDebugInfo(debug, &node_def_);
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, const OpDef* op_def)
@@ -202,7 +211,7 @@ NodeDefBuilder& NodeDefBuilder::Device(StringPiece device_spec) {
   return *this;
 }
 
-Status NodeDefBuilder::Finalize(NodeDef* node_def) const {
+Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
   const std::vector<string>* errors_ptr = &errors_;
   std::vector<string> errors_storage;
   if (op_def_ != nullptr && inputs_specified_ < op_def_->input_arg_size()) {
@@ -229,12 +238,16 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def) const {
       return errors::InvalidArgument(
           errors_ptr->size(), " errors while building NodeDef '",
           node_def_.name(), "' using ", SummarizeOpDef(*op_def_), ":\n",
-          str_util::Join(*errors_ptr, "\n"));
+          absl::StrJoin(*errors_ptr, "\n"));
     }
   } else {
     NodeDef node_def_backup;
     if (node_def == nullptr) node_def = &node_def_backup;
-    *node_def = node_def_;
+    if (consume) {
+      *node_def = std::move(node_def_);
+    } else {
+      *node_def = node_def_;
+    }
 
     // Add control inputs after the regular inputs.
     for (const auto& control_input : control_inputs_) {
@@ -248,15 +261,29 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def) const {
   }
 }
 
-NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, const AttrValue& value) {
+bool NodeDefBuilder::AttrValueAlreadyPresent(StringPiece name,
+                                             const AttrValue& value) {
   if (const AttrValue* found = AttrSlice(node_def_).Find(name)) {
     if (!AreAttrValuesEqual(*found, value)) {
       errors_.push_back(strings::StrCat("Inconsistent values for attr '", name,
                                         "' ", SummarizeAttrValue(*found),
                                         " vs. ", SummarizeAttrValue(value)));
     }
-  } else {
+    return true;
+  }
+  return false;
+}
+
+NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, const AttrValue& value) {
+  if (!AttrValueAlreadyPresent(name, value)) {
     AddNodeAttr(name, value, &node_def_);
+  }
+  return *this;
+}
+
+NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, AttrValue&& value) {
+  if (!AttrValueAlreadyPresent(name, value)) {
+    AddNodeAttr(name, std::move(value), &node_def_);
   }
   return *this;
 }
@@ -282,6 +309,9 @@ ATTR(const NameAttrList&)
 ATTR(gtl::ArraySlice<StringPiece>)
 ATTR(gtl::ArraySlice<const char*>)
 ATTR(gtl::ArraySlice<string>)
+#ifdef USE_TSTRING
+ATTR(gtl::ArraySlice<tstring>)
+#endif
 ATTR(gtl::ArraySlice<int32>)
 ATTR(gtl::ArraySlice<int64>)
 ATTR(gtl::ArraySlice<float>)

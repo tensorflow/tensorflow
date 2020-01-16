@@ -19,14 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 
@@ -48,8 +54,8 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   Args:
     op: An operation.
-    grad: `Tensor` or `IndexedSlices` representing the gradients with respect
-      to each output of the op.
+    grad: `Tensor` or `IndexedSlices` representing the gradients with respect to
+      each output of the op.
     start_value_index: An integer index of the first value in the op.inputs.
     end_value_index: An integer index of the last value in the op.inputs.
     dim_index: An interger index of concat_dim or axis parameter in op.inputs.
@@ -104,14 +110,14 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   out_grads = []
   if isinstance(grad, ops.Tensor):
-    if context.executing_eagerly():
+    if context.executing_eagerly() or isinstance(concat_dim, ops.EagerTensor):
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
       non_neg_concat_dim = (
           concat_dim._numpy().item(0) % input_values[0]._rank())  # pylint: disable=protected-access
       # All inputs are guaranteed to be EagerTensors in eager mode
-      sizes = pywrap_tensorflow.TFE_Py_TensorShapeSlice(input_values,
-                                                        non_neg_concat_dim)
+      sizes = pywrap_tfe.TFE_Py_TensorShapeSlice(input_values,
+                                                 non_neg_concat_dim)
       out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
     else:
       if constant_op.is_constant(concat_dim):
@@ -202,8 +208,8 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
   else:
     raise TypeError("Expected Tensor or IndexedSlices, got %s" % type(grad))
 
-  return (out_grads + [None]
-          if end_value_index <= dim_index else [None] + out_grads)
+  return (out_grads + [None] if end_value_index <= dim_index else [None] +
+          out_grads)
 
 
 @ops.RegisterGradient("Concat")
@@ -328,6 +334,18 @@ def _MatrixDiagGrad(_, grad):
   return array_ops.matrix_diag_part(grad)
 
 
+@ops.RegisterGradient("MatrixDiagV2")
+def _MatrixDiagV2Grad(op, grad):
+  return array_ops.matrix_diag_part(
+      grad, k=op.inputs[1]), None, None, None, None
+
+
+@ops.RegisterGradient("MatrixDiagV3")
+def _MatrixDiagV3Grad(op, grad):
+  return array_ops.matrix_diag_part(
+      grad, k=op.inputs[1], align=op.get_attr("align")), None, None, None, None
+
+
 @ops.RegisterGradient("MatrixDiagPart")
 def _MatrixDiagPartGrad(op, grad):
   matrix_shape = op.inputs[0].get_shape()[-2:]
@@ -335,6 +353,39 @@ def _MatrixDiagPartGrad(op, grad):
     return array_ops.matrix_diag(grad)
   else:
     return array_ops.matrix_set_diag(array_ops.zeros_like(op.inputs[0]), grad)
+
+
+@ops.RegisterGradient("MatrixDiagPartV2")
+def _MatrixDiagPartV2Grad(op, grad):
+  """Gradient for MatrixDiagPartV2."""
+  matrix_shape = op.inputs[0].get_shape()[-2:]
+  if matrix_shape.is_fully_defined():
+    return array_ops.matrix_diag(
+        grad,
+        k=op.inputs[1],
+        num_rows=matrix_shape[0],
+        num_cols=matrix_shape[1]), None, None
+  else:
+    return array_ops.matrix_set_diag(
+        array_ops.zeros_like(op.inputs[0]), grad, k=op.inputs[1]), None, None
+
+
+@ops.RegisterGradient("MatrixDiagPartV3")
+def _MatrixDiagPartV3Grad(op, grad):
+  """Gradient for MatrixDiagPartV3."""
+  matrix_shape = op.inputs[0].get_shape()[-2:]
+  align = op.get_attr("align")
+  if matrix_shape.is_fully_defined():
+    return array_ops.matrix_diag(
+        grad,
+        k=op.inputs[1],
+        num_rows=matrix_shape[0],
+        num_cols=matrix_shape[1],
+        align=align), None, None
+  else:
+    return array_ops.matrix_set_diag(
+        array_ops.zeros_like(op.inputs[0]), grad, k=op.inputs[1],
+        align=align), None, None
 
 
 @ops.RegisterGradient("MatrixSetDiag")
@@ -354,11 +405,86 @@ def _MatrixSetDiagGrad(op, grad):
       matrix_shape = array_ops.slice(grad_shape, [grad_rank - 2], [2])
       min_dim = math_ops.reduce_min(matrix_shape)
       diag_shape = array_ops.concat([batch_shape, [min_dim]], 0)
-  grad_input = array_ops.matrix_set_diag(grad,
-                                         array_ops.zeros(
-                                             diag_shape, dtype=grad.dtype))
+  grad_input = array_ops.matrix_set_diag(
+      grad, array_ops.zeros(diag_shape, dtype=grad.dtype))
   grad_diag = array_ops.matrix_diag_part(grad)
   return (grad_input, grad_diag)
+
+
+@ops.RegisterGradient("MatrixSetDiagV2")
+def _MatrixSetDiagGradV2(op, grad):
+  """Gradient for MatrixSetDiagV2."""
+  diag_shape = op.inputs[1].get_shape()
+  if not diag_shape.is_fully_defined():
+    # Need to know the values of `d_lower` and `d_upper` to infer diag_shape.
+    grad_shape = array_ops.shape(grad)
+    batch_shape = grad_shape[:-2]
+    matrix_shape = grad_shape[-2:]
+    diag_index = array_ops.reshape(op.inputs[2], [-1])  # Converts to vector.
+    d_lower = diag_index[0]
+    d_upper = diag_index[-1]  # Works both when len(diag_index) is 1 and 2.
+    y_offset = control_flow_ops.cond(
+        math_ops.less(d_upper, 0), lambda: d_upper, lambda: 0)
+    x_offset = control_flow_ops.cond(
+        math_ops.greater(d_lower, 0), lambda: -d_lower, lambda: 0)
+
+    max_diag_len = math_ops.minimum(matrix_shape[0] + y_offset,
+                                    matrix_shape[1] + x_offset)
+    # pylint: disable=g-long-lambda
+    # pyformat: disable
+    postfix = control_flow_ops.cond(
+        math_ops.equal(d_lower, d_upper),
+        lambda: ops.convert_to_tensor([max_diag_len]),
+        lambda: ops.convert_to_tensor([d_upper - d_lower + 1,
+                                       max_diag_len]))
+    # pyformat: enable
+    # pylint: enable=g-long-lambda
+    diag_shape = array_ops.concat([batch_shape, postfix], 0)
+
+  grad_input = array_ops.matrix_set_diag(
+      grad, array_ops.zeros(diag_shape, dtype=grad.dtype), k=op.inputs[2])
+  grad_diag = array_ops.matrix_diag_part(grad, k=op.inputs[2])
+  return (grad_input, grad_diag, None)
+
+
+@ops.RegisterGradient("MatrixSetDiagV3")
+def _MatrixSetDiagGradV3(op, grad):
+  """Gradient for MatrixSetDiagV3."""
+  diag_shape = op.inputs[1].get_shape()
+  align = op.get_attr("align")
+  if not diag_shape.is_fully_defined():
+    # Need to know the values of `d_lower` and `d_upper` to infer diag_shape.
+    grad_shape = array_ops.shape(grad)
+    batch_shape = grad_shape[:-2]
+    matrix_shape = grad_shape[-2:]
+    diag_index = array_ops.reshape(op.inputs[2], [-1])  # Converts to vector.
+    d_lower = diag_index[0]
+    d_upper = diag_index[-1]  # Works both when len(diag_index) is 1 and 2.
+    y_offset = control_flow_ops.cond(
+        math_ops.less(d_upper, 0), lambda: d_upper, lambda: 0)
+    x_offset = control_flow_ops.cond(
+        math_ops.greater(d_lower, 0), lambda: -d_lower, lambda: 0)
+
+    max_diag_len = math_ops.minimum(matrix_shape[0] + y_offset,
+                                    matrix_shape[1] + x_offset)
+    # pylint: disable=g-long-lambda
+    # pyformat: disable
+    postfix = control_flow_ops.cond(
+        math_ops.equal(d_lower, d_upper),
+        lambda: ops.convert_to_tensor([max_diag_len]),
+        lambda: ops.convert_to_tensor([d_upper - d_lower + 1,
+                                       max_diag_len]))
+    # pyformat: enable
+    # pylint: enable=g-long-lambda
+    diag_shape = array_ops.concat([batch_shape, postfix], 0)
+
+  grad_input = array_ops.matrix_set_diag(
+      grad,
+      array_ops.zeros(diag_shape, dtype=grad.dtype),
+      k=op.inputs[2],
+      align=align)
+  grad_diag = array_ops.matrix_diag_part(grad, k=op.inputs[2], align=align)
+  return (grad_input, grad_diag, None)
 
 
 @ops.RegisterGradient("MatrixBandPart")
@@ -383,8 +509,22 @@ ops.NotDifferentiable("OnesLike")
 
 @ops.RegisterGradient("PreventGradient")
 def _PreventGradientGrad(op, _):
-  raise LookupError(
-      "Gradient explicitly disabled. Reason: %s" % op.get_attr("message"))
+  raise LookupError("Gradient explicitly disabled. Reason: %s" %
+                    op.get_attr("message"))
+
+
+def _IndexedSlicesToTensorNoWarning(indexed_slices):
+  """Converts an IndexedSlices to a Tensor without sparse->dense warnings."""
+  if not isinstance(indexed_slices, ops.IndexedSlices):
+    # If it is not IndexedSlices, it's better be a tensor.
+    return indexed_slices
+  if indexed_slices.dense_shape is None:
+    raise ValueError(
+        "Tensor conversion requested for IndexedSlices without dense_shape: %s"
+        % str(indexed_slices))
+  return math_ops.unsorted_segment_sum(indexed_slices.values,
+                                       indexed_slices.indices,
+                                       indexed_slices.dense_shape[0])
 
 
 @ops.RegisterGradient("Gather")
@@ -399,15 +539,67 @@ def _GatherGrad(op, grad):
   params = op.inputs[0]
   with ops.colocate_with(params):
     params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.to_int32(params_shape)
+    params_shape = math_ops.cast(params_shape, dtypes.int32)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
   size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
-  values = array_ops.reshape(grad, values_shape)
+  values = array_ops.reshape(
+      _IndexedSlicesToTensorNoWarning(grad), values_shape)
   indices = array_ops.reshape(indices, size)
   return [ops.IndexedSlices(values, indices, params_shape), None]
+
+
+def _GetBatchIndices(params_shape, indices, batch_dims):
+  """Addds the batch offsets to the given indices and returns the results."""
+  batch_indices = indices
+  indices_ndims = indices.shape.ndims
+  indices_dtype = indices.dtype.base_dtype
+  casted_params_shape = math_ops.cast(params_shape, indices_dtype)
+  accum_dim_value = array_ops.ones((), dtype=indices_dtype)
+  for dim in range(batch_dims, 0, -1):
+    dim_value = casted_params_shape[dim - 1]
+    accum_dim_value *= casted_params_shape[dim]
+    start = array_ops.zeros((), dtype=indices_dtype)
+    step = array_ops.ones((), dtype=indices_dtype)
+    dim_indices = math_ops.range(start, dim_value, step)
+    dim_indices *= accum_dim_value
+    dim_shape = array_ops.stack(
+        [1] * (dim - 1) + [dim_value] + [1] * (indices_ndims - dim), axis=0)
+    batch_indices += array_ops.reshape(dim_indices, dim_shape)
+
+  return batch_indices
+
+
+def _BatchGatherGrad(params_shape, values, indices, batch_dims,
+                     gather_dim_size):
+  """Returns the gradient of GatherV2 with batch dimensions."""
+
+  # Axis is the first non-batch dimension.
+  indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
+  if batch_dims:
+    values_shape = array_ops.shape(values)
+    # Add the batch offsets to indices and flatten the batch dimensions.
+    outer_shape = values_shape[:batch_dims]
+    inner_shape = values_shape[batch_dims:][1:]
+    batch_size = gen_math_ops.prod(outer_shape, [0], False)
+    flat_values_shape = array_ops.concat([[-1], inner_shape], 0)
+    gather_dim_size *= batch_size
+
+    indices = _GetBatchIndices(params_shape, indices, batch_dims)
+    values = array_ops.reshape(
+        _IndexedSlicesToTensorNoWarning(values), flat_values_shape)
+
+  indices = array_ops.reshape(indices, indices_size)
+  params_grad = math_ops.unsorted_segment_sum(values, indices, gather_dim_size)
+
+  if batch_dims:
+    # Put back the batch dimensions.
+    params_grad = array_ops.reshape(
+        params_grad, array_ops.concat([outer_shape, flat_values_shape], 0))
+
+  return params_grad
 
 
 @ops.RegisterGradient("GatherV2")
@@ -422,12 +614,16 @@ def _GatherV2Grad(op, grad):
   params = op.inputs[0]
   with ops.colocate_with(params):
     params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.to_int32(params_shape)
+    params_shape = math_ops.cast(params_shape, dtypes.int32)
 
   indices = op.inputs[1]
   indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
   axis = op.inputs[2]
   axis_static = tensor_util.constant_value(axis)
+  batch_dims = int(op.get_attr("batch_dims"))
+
+  if batch_dims < 0:
+    batch_dims += indices.shape.ndims
 
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
@@ -436,42 +632,45 @@ def _GatherV2Grad(op, grad):
     else:
       params_tail_shape = params_shape[1:]
     values_shape = array_ops.concat([indices_size, params_tail_shape], 0)
-    values = array_ops.reshape(grad, values_shape)
+    values = array_ops.reshape(
+        _IndexedSlicesToTensorNoWarning(grad), values_shape)
     indices = array_ops.reshape(indices, indices_size)
-    return [ops.IndexedSlices(values, indices, params_shape), None, None]
+    params_grad = ops.IndexedSlices(values, indices, params_shape)
+  else:
+    # Handle axis by transposing the axis dimension to be the first non-batch
+    # dimension, compute the gradiend and transpose the result back.
+    outer_shape = params_shape[:axis]
+    inner_shape = params_shape[axis:][1:]
+    values_shape = array_ops.concat([outer_shape, [-1], inner_shape], 0)
 
-  outer_shape = params_shape[:axis]
-  outer_dims = array_ops.size(outer_shape)
-  inner_shape = params_shape[axis:][1:]
-  inner_dims = array_ops.size(inner_shape)
+    values_dims = array_ops.size(values_shape)
+    axis_dims = array_ops.size(outer_shape)
 
-  outer_axes_indices = math_ops.range(outer_dims)
-  inner_axes_indices = math_ops.range(outer_dims + 1,
-                                      outer_dims + 1 + inner_dims)
+    outer_batches_indices = math_ops.range(batch_dims)
+    batch_axis_indices = math_ops.range(batch_dims, axis_dims)
+    inner_axes_indices = math_ops.range(axis_dims + 1, values_dims)
 
-  values_shape = array_ops.concat([outer_shape, indices_size, inner_shape], 0)
-  values = array_ops.reshape(grad, values_shape)
-  indices = array_ops.reshape(indices, indices_size)
+    values = array_ops.reshape(
+        _IndexedSlicesToTensorNoWarning(grad), values_shape)
 
-  # We need to sum up every slice `values[..., i, ....]` corresponding to
-  # `params[..., indices[i], ...]`. Since `unsorted_segment_sum` does not
-  # support an axis parameter, we transpose the gather dimension to the front,
-  # then use `unsorted_segment_sum` to build a
-  # [gather_axis, outer_axes, inner_axes] tensor with all the gradients
-  # affecting each index in `gather_axis` summed up.
-  transpose_dims = array_ops.concat(
-      [[outer_dims], outer_axes_indices, inner_axes_indices], 0)
-  values_transpose = array_ops.transpose(values, transpose_dims)
-  num_segments = params_shape[axis]
+    # Move values[axis] up to values[batch_dims]
+    transpose_dims = array_ops.concat([
+        outer_batches_indices, [axis_dims], batch_axis_indices,
+        inner_axes_indices
+    ], 0)
+    values_transpose = array_ops.transpose(values, transpose_dims)
 
-  params_grad = math_ops.unsorted_segment_sum(values_transpose, indices,
-                                              num_segments)
+    params_grad = _BatchGatherGrad(params_shape, values_transpose, indices,
+                                   batch_dims, params_shape[axis])
 
-  # Inverts the above transpose by moving dimension 0 back to its original
-  # position.
-  invert_transpose_dims = array_ops.concat(
-      [outer_axes_indices + 1, [0], inner_axes_indices], 0)
-  params_grad = array_ops.transpose(params_grad, invert_transpose_dims)
+    # Inverts the above transpose by moving dimension batch_dims back to its
+    # original position.
+    invert_transpose_dims = array_ops.concat([
+        outer_batches_indices, batch_axis_indices + 1, [batch_dims],
+        inner_axes_indices
+    ], 0)
+    params_grad = array_ops.transpose(params_grad, invert_transpose_dims)
+
   return [params_grad, None, None]
 
 
@@ -480,7 +679,20 @@ def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
   indices = op.inputs[1]
   ref_shape = array_ops.shape(ref, out_type=indices.dtype)
-  if indices.shape.ndims == 2 and indices.shape[-1].value == 1:
+  if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
+    ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
+                                 ref_shape)
+  else:
+    ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
+  return [ref_grad, None]
+
+
+@ops.RegisterGradient("ResourceGatherNd")
+def _ResourceGatherNdGrad(op, grad):  # pylint: disable=missing-docstring
+  ref = op.inputs[0]
+  indices = op.inputs[1]
+  ref_shape = gen_resource_variable_ops.variable_shape(ref, indices.dtype)
+  if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
     ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
                                  ref_shape)
   else:
@@ -489,10 +701,21 @@ def _GatherNdGrad(op, grad):
 
 
 @ops.RegisterGradient("CheckNumerics")
-def _CheckNumericsGrad(_, grad):
+def _CheckNumericsGrad(op, grad):
   """Gradient for check_numerics op."""
   return array_ops.check_numerics(
-      grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
+      grad,
+      "Not a number (NaN) or infinity (Inf) values detected in gradient. %s" %
+      op.get_attr("message"))
+
+
+@ops.RegisterGradient("CheckNumericsV2")
+def _CheckNumericsV2Grad(op, grad):
+  """Gradient for check_numerics op."""
+  return array_ops.check_numerics_v2(
+      grad,
+      "Not a number (NaN) or infinity (Inf) values detected in gradient. %s" %
+      op.get_attr("message"))
 
 
 @ops.RegisterGradient("PlaceholderWithDefault")
@@ -516,7 +739,11 @@ ops.NotDifferentiable("StopGradient")
 
 @ops.RegisterGradient("Reshape")
 def _ReshapeGrad(op, grad):
-  return [array_ops.reshape(grad, array_ops.shape(op.inputs[0])), None]
+  return [
+      array_ops.reshape(
+          _IndexedSlicesToTensorNoWarning(grad), array_ops.shape(op.inputs[0])),
+      None
+  ]
 
 
 ops.NotDifferentiable("InvertPermutation")
@@ -524,7 +751,8 @@ ops.NotDifferentiable("InvertPermutation")
 
 def _ReshapeToInput(op, grad):
   """Reshapes the gradient to the shape of the original input."""
-  return array_ops.reshape(grad, array_ops.shape(op.inputs[0]))
+  return array_ops.reshape(
+      _IndexedSlicesToTensorNoWarning(grad), array_ops.shape(op.inputs[0]))
 
 
 @ops.RegisterGradient("ExpandDims")
@@ -566,7 +794,7 @@ ops.NotDifferentiable("Size")
 @ops.RegisterGradient("Tile")
 def _TileGrad(op, grad):
   """Sum reduces grad along the tiled dimensions."""
-  input_shape = array_ops.shape(op.inputs[0])
+  input_shape = array_ops.shape(op.inputs[0], out_type=op.inputs[1].dtype)
   # We interleave multiples and input_shape to get split_shape,
   # reshape grad to split_shape, and reduce along all even
   # dimensions (the tiled dimensions) to get the result
@@ -580,10 +808,9 @@ def _TileGrad(op, grad):
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
   # Sum reduces grad along the first dimension for IndexedSlices
   if isinstance(grad, ops.IndexedSlices):
+    input_shape_0 = math_ops.cast(input_shape[0], grad.indices.dtype)
     grad = math_ops.unsorted_segment_sum(
-        grad.values,
-        math_ops.mod(grad.indices, input_shape[0]),
-        input_shape[0])
+        grad.values, math_ops.mod(grad.indices, input_shape_0), input_shape_0)
     split_shape = array_ops.concat([[1], split_shape[1:]], axis=0)
   input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
   # Fix shape inference
@@ -732,56 +959,50 @@ def _QuantizeAndDequantizeV3Grad(_, grad):
 
 @ops.RegisterGradient("ExtractImagePatches")
 def _ExtractImagePatchesGrad(op, grad):
-  batch_size, rows_in, cols_in, channels = [
-      dim.value for dim in op.inputs[0].get_shape()
-  ]
-  input_bhwc = array_ops.shape(op.inputs[0])
-  batch_size = input_bhwc[0]
-  channels = input_bhwc[3]
+  input_bhwc = array_ops.shape(op.inputs[0], out_type=dtypes.int64)
+  batch_size, rows_in, cols_in, channels = input_bhwc[0], input_bhwc[1], \
+                                           input_bhwc[2], input_bhwc[3]
 
   # Create indices matrix for input tensor.
   # Note that 0 is preserved for padding location,
   # so indices for input start from 1 to 1 + rows_in * cols_in.
   input_indices_num = 1 + rows_in * cols_in
-  input_idx = array_ops.reshape(math_ops.range(1, input_indices_num,
-                                               dtype=ops.dtypes.int64),
-                                (1, rows_in, cols_in, 1))
+  input_idx = array_ops.reshape(
+      math_ops.range(1, input_indices_num, dtype=ops.dtypes.int64),
+      (1, rows_in, cols_in, 1))
   input_idx_patched = gen_array_ops.extract_image_patches(
-      input_idx,
-      op.get_attr("ksizes"),
-      op.get_attr("strides"),
-      op.get_attr("rates"),
-      op.get_attr("padding"))
+      input_idx, op.get_attr("ksizes"), op.get_attr("strides"),
+      op.get_attr("rates"), op.get_attr("padding"))
 
   # Create indices matrix for output tensor.
-  _, rows_out, cols_out, _ = [dim.value for dim in op.outputs[0].get_shape()]
+  output_bhwc = array_ops.shape(op.outputs[0], out_type=dtypes.int64)
+  rows_out, cols_out = output_bhwc[1], output_bhwc[2]
   _, ksize_r, ksize_c, _ = op.get_attr("ksizes")
   # Indices for output start from 0.
   output_indices_num = rows_out * cols_out * ksize_r * ksize_c
-  output_idx = array_ops.reshape(math_ops.range(output_indices_num,
-                                                dtype=ops.dtypes.int64),
-                                 (1, rows_out, cols_out, ksize_r * ksize_c))
+  output_idx = array_ops.reshape(
+      math_ops.range(output_indices_num, dtype=ops.dtypes.int64),
+      (1, rows_out, cols_out, ksize_r * ksize_c))
 
   # Construct mapping table for indices: (input -> output).
-  idx_matrix = array_ops.concat(
-      [array_ops.expand_dims(input_idx_patched, axis=-1),
-       array_ops.expand_dims(output_idx, axis=-1)],
-      axis=-1)
+  idx_matrix = array_ops.concat([
+      array_ops.expand_dims(input_idx_patched, axis=-1),
+      array_ops.expand_dims(output_idx, axis=-1)
+  ],
+                                axis=-1)
   idx_map = array_ops.reshape(idx_matrix, (-1, 2))
 
   sp_shape = (input_indices_num, output_indices_num)
   sp_mat_full = sparse_tensor.SparseTensor(
-      idx_map,
-      array_ops.ones([output_indices_num], dtype=grad.dtype),
-      sp_shape)
+      idx_map, array_ops.ones([output_indices_num], dtype=grad.dtype), sp_shape)
   # Remove all padding locations [0, :].
-  sp_mat = sparse_ops.sparse_slice(sp_mat_full,
-                                   (1, 0),
+  sp_mat = sparse_ops.sparse_slice(sp_mat_full, (1, 0),
                                    (input_indices_num - 1, output_indices_num))
 
   grad_expanded = array_ops.transpose(
       array_ops.reshape(
-          grad, (batch_size, rows_out, cols_out, ksize_r, ksize_c, channels)),
+          _IndexedSlicesToTensorNoWarning(grad),
+          (batch_size, rows_out, cols_out, ksize_r, ksize_c, channels)),
       (1, 2, 3, 4, 0, 5))
   grad_flat = array_ops.reshape(grad_expanded, (-1, batch_size * channels))
 
@@ -793,11 +1014,100 @@ def _ExtractImagePatchesGrad(op, grad):
   return [grad_out]
 
 
+@ops.RegisterGradient("ExtractVolumePatches")
+def _ExtractVolumePatchesGrad(op, grad):
+  batch_size, planes_in, rows_in, cols_in, channels = [
+      dim.value for dim in op.inputs[0].shape.dims
+  ]
+  input_bphwc = array_ops.shape(op.inputs[0])
+  batch_size = input_bphwc[0]
+  channels = input_bphwc[4]
+
+  # Create indices matrix for input tensor.
+  # Note that 0 is preserved for padding location,
+  # so indices for input start from 1 to 1 + rows_in * cols_in.
+  input_indices_num = 1 + planes_in * rows_in * cols_in
+  input_idx = array_ops.reshape(
+      math_ops.range(1, input_indices_num, dtype=ops.dtypes.int64),
+      (1, planes_in, rows_in, cols_in, 1))
+  input_idx_patched = gen_array_ops.extract_volume_patches(
+      input_idx, op.get_attr("ksizes"), op.get_attr("strides"),
+      op.get_attr("padding"))
+
+  # Create indices matrix for output tensor.
+  _, planes_out, rows_out, cols_out, _ = [
+      dim.value for dim in op.outputs[0].shape.dims
+  ]
+  _, ksize_p, ksize_r, ksize_c, _ = op.get_attr("ksizes")
+  # Indices for output start from 0.
+  prc_indices_num = planes_out * rows_out * cols_out
+  output_indices_num = prc_indices_num * ksize_p * ksize_r * ksize_c
+  output_idx = array_ops.reshape(
+      math_ops.range(output_indices_num, dtype=ops.dtypes.int64),
+      (1, planes_out, rows_out, cols_out, ksize_p * ksize_r * ksize_c))
+
+  # Construct mapping table for indices: (input -> output).
+  idx_matrix = array_ops.concat([
+      array_ops.expand_dims(input_idx_patched, axis=-1),
+      array_ops.expand_dims(output_idx, axis=-1)
+  ],
+                                axis=-1)
+  idx_map = array_ops.reshape(idx_matrix, (-1, 2))
+
+  sp_shape = (input_indices_num, output_indices_num)
+  sp_mat_full = sparse_tensor.SparseTensor(
+      idx_map, array_ops.ones([output_indices_num], dtype=grad.dtype), sp_shape)
+  # Remove all padding locations [0, :].
+  sp_mat = sparse_ops.sparse_slice(sp_mat_full, (1, 0),
+                                   (input_indices_num - 1, output_indices_num))
+
+  grad_expanded = array_ops.transpose(
+      array_ops.reshape(
+          _IndexedSlicesToTensorNoWarning(grad),
+          (batch_size, planes_out, rows_out, cols_out, ksize_p, ksize_r,
+           ksize_c, channels)), (1, 2, 3, 4, 5, 6, 0, 7))
+  grad_flat = array_ops.reshape(grad_expanded, (-1, batch_size * channels))
+
+  jac = sparse_ops.sparse_tensor_dense_matmul(sp_mat, grad_flat)
+
+  grad_out = array_ops.reshape(
+      jac, (planes_in, rows_in, cols_in, batch_size, channels))
+  grad_out = array_ops.transpose(grad_out, (3, 0, 1, 2, 4))
+
+  return [grad_out]
+
+
 @ops.RegisterGradient("ScatterNd")
 def _ScatterNdGrad(op, grad):
   indices = op.inputs[0]
   updates_grad = array_ops.gather_nd(grad, indices)
   return [None, updates_grad, None]
+
+
+@ops.RegisterGradient("TensorScatterUpdate")
+def _TensorScatterUpdateGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.tensor_scatter_update(
+      array_ops.identity(grad), indices,
+      array_ops.zeros_like(op.inputs[2], dtype=grad.dtype))
+  return [tensor_grad, None, updates_grad]
+
+
+@ops.RegisterGradient("TensorScatterAdd")
+def _TensorScatterAddGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.identity(grad)
+  return [tensor_grad, None, updates_grad]
+
+
+@ops.RegisterGradient("TensorScatterSub")
+def _TensorScatterSubGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.identity(grad)
+  return [tensor_grad, None, -updates_grad]
 
 
 @ops.RegisterGradient("ScatterNdNonAliasingAdd")
@@ -811,16 +1121,17 @@ def _ScatterNdNonAliasingAddGrad(op, grad):
 def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
-  # Assign ids for each position in input_value.
   input_value_shape = array_ops.shape(input_value)
-  input_value_size = array_ops.size(input_value)
-  ids = array_ops.reshape(math_ops.range(input_value_size), input_value_shape)
-  broadcast_ids = array_ops.broadcast_to(ids, broadcast_shape)
-  # Group by ids and sum its gradients.
-  grad_flatten = array_ops.reshape(grad, [-1])
-  broadcast_ids_flatten = array_ops.reshape(broadcast_ids, [-1])
-  updates_grad_flatten = math_ops.unsorted_segment_sum(grad_flatten,
-                                                       broadcast_ids_flatten,
-                                                       input_value_size)
-  updates_grad = array_ops.reshape(updates_grad_flatten, input_value_shape)
+  if not context.executing_eagerly():
+    broadcast_shape_static = tensor_shape.TensorShape(
+        pywrap_tensorflow.TF_TryEvaluateConstant_wrapper(
+            broadcast_shape.graph._c_graph, broadcast_shape._as_tf_output()))  # pylint: disable=protected-access
+    if broadcast_shape_static.is_fully_defined():
+      broadcast_shape = constant_op.constant(
+          broadcast_shape_static.as_list(), dtype=dtypes.int32)
+  _, reduction_axes = gen_array_ops.broadcast_gradient_args(
+      broadcast_shape, input_value_shape)
+  updates_grad_reshaped = math_ops.reduce_sum(
+      grad, axis=reduction_axes, keepdims=True)
+  updates_grad = array_ops.reshape(updates_grad_reshaped, input_value_shape)
   return [updates_grad, None]

@@ -39,17 +39,26 @@ struct AllocStats {
   int64 total_bytes = 0;
   int64 total_nodes = 0;
 };
+
+bool IsRecv(const NodeDef* node) {
+  return node->op() == "_Recv" || node->op() == "_HostRecv";
+}
+
+bool IsSend(const NodeDef* node) {
+  return node->op() == "_Send" || node->op() == "_HostSend";
+}
+
 }  // namespace
 
 NodeExecStatsWrapper::NodeExecStatsWrapper(
-    const Node* node, StepStatsCollector* step_stats_collector)
+    const NodeDef* node, StepStatsCollector* step_stats_collector)
     : NodeExecStatsWrapper(MakeUnique<NodeExecStats>(), node,
                            step_stats_collector) {
   stats_->set_node_name(node->name());
 }
 
 NodeExecStatsWrapper::NodeExecStatsWrapper(
-    std::unique_ptr<NodeExecStats> stats, const Node* node,
+    std::unique_ptr<NodeExecStats> stats, const NodeDef* node,
     StepStatsCollector* step_stats_collector)
     : stats_(std::move(stats)),
       node_(node),
@@ -75,26 +84,25 @@ void NodeExecStatsWrapper::Done(const string& device) {
       }
     }
   }
-  const AttrSlice attrs = node_->attrs();
+  const AttrSlice attrs(*node_);
   string text;
   if (IsSend(node_)) {
     string tensor_name;
     TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
     string recv_device;
     TF_CHECK_OK(GetNodeAttr(attrs, "recv_device", &recv_device));
-    text = strings::StrCat(memory, node_->name(), " = ", node_->type_string(),
-                           "(", tensor_name, " @", recv_device);
+    text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
+                           tensor_name, " @", recv_device, ")");
   } else if (IsRecv(node_)) {
     string tensor_name;
     TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
     string send_device;
     TF_CHECK_OK(GetNodeAttr(attrs, "send_device", &send_device));
-    text = strings::StrCat(memory, node_->name(), " = ", node_->type_string(),
-                           "(", tensor_name, " @", send_device);
+    text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
+                           tensor_name, " @", send_device, ")");
   } else {
-    text =
-        strings::StrCat(memory, node_->name(), " = ", node_->type_string(), "(",
-                        str_util::Join(node_->requested_inputs(), ", "), ")");
+    text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
+                           absl::StrJoin(node_->input(), ", "), ")");
   }
   stats_->set_timeline_label(text);
   step_stats_collector_->Save(device, this);
@@ -139,7 +147,7 @@ void NodeExecStatsWrapper::SetScheduled(int64 nanos) {
 }
 
 void NodeExecStatsWrapper::SetMemory(OpKernelContext* ctx) {
-  for (const auto& allocator_pair : ctx->wrapped_allocators()) {
+  for (const auto& allocator_pair : ctx->ConsumeWrappedAllocators()) {
     AddAllocation(allocator_pair.first, allocator_pair.second);
   }
   auto* ms = stats_->mutable_memory_stats();
@@ -176,9 +184,10 @@ void NodeExecStatsWrapper::AddAllocation(
   memory->set_peak_bytes(std::get<1>(sizes));
   memory->set_live_bytes(std::get<2>(sizes));
 
-  AllocatorStats stats;
-  allocator->GetStats(&stats);
-  memory->set_allocator_bytes_in_use(stats.bytes_in_use);
+  absl::optional<AllocatorStats> stats = allocator->GetStats();
+  if (stats) {
+    memory->set_allocator_bytes_in_use(stats->bytes_in_use);
+  }
   allocations_.push_back(std::make_pair(memory, tracking_allocator));
 }
 
@@ -409,8 +418,23 @@ void StepStatsCollector::Save(const string& device,
   }
 }
 
+void StepStatsCollector::SaveThreadName(const string& device,
+                                        const uint32 thread_id,
+                                        const string& thread_name) {
+  VLOG(1) << "Save dev " << device << " thread id " << thread_id << " name "
+          << thread_name;
+  {
+    mutex_lock l(mu_);
+    if (finalized_) {
+      LOG(WARNING) << "thread_name saved after finalize will not be collected.";
+    }
+    auto& thread_names_map = thread_names_[device];
+    thread_names_map[thread_id] = thread_name;
+  }
+}
+
 NodeExecStatsInterface* StepStatsCollector::CreateNodeExecStats(
-    const Node* node) {
+    const NodeDef* node) {
   // Only collect statistics for non-transfer nodes.
   if (IsSend(node) || IsRecv(node)) {
     return nullptr;
@@ -529,6 +553,16 @@ void StepStatsCollector::FinalizeInternal() {
     for (auto& stats : dev_stat.second) {
       stats->Finalize();
       stats->stats()->Swap(dss->add_node_stats());
+    }
+  }
+  for (const auto& device_thread : thread_names_) {
+    if (dev_stats_pb.find(device_thread.first) == dev_stats_pb.end()) {
+      // skip device without DeviceStepStats.
+      continue;
+    }
+    DeviceStepStats* dss = dev_stats_pb.at(device_thread.first);
+    for (const auto& thread_name : device_thread.second) {
+      (*dss->mutable_thread_names())[thread_name.first] = thread_name.second;
     }
   }
 }

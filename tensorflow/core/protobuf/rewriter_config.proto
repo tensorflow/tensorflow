@@ -1,13 +1,16 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 
 import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/protobuf/verifier_config.proto";
 
 message AutoParallelOptions {
   bool enable = 1;
@@ -38,7 +41,7 @@ message RewriterConfig {
   }
 
   // Enum controlling the number of times to run optimizers. The default is to
-  // run them once.
+  // run them twice.
   enum NumIterationsType {
     DEFAULT_NUM_ITERS = 0;
     ONE = 1;
@@ -77,6 +80,14 @@ message RewriterConfig {
   Toggle scoped_allocator_optimization = 15;
   // Force small ops onto the CPU (default is OFF).
   Toggle pin_to_host_optimization = 18;
+  // Enable the swap of kernel implementations based on the device placement
+  // (default is ON).
+  Toggle implementation_selector = 22;
+  // Optimize data types (default is OFF).
+  // e.g., This will try to use float16 on GPU which is faster.
+  // Note that this can change the numerical stability of the graph and may
+  // require the use of loss scaling to maintain model convergence.
+  Toggle auto_mixed_precision = 23;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
 
@@ -128,10 +139,19 @@ message RewriterConfig {
   // "gradients/", the default, it will match node name "gradients/foo",
   // "foo/gradients/bar", but not "foo_gradients/"
   string memory_optimizer_target_node_name_scope = 6;
+  // Maximum number of milliseconds to spend optimizing a single graph before
+  // timing out. If equal to 0 the system picks a default (currently 5 minutes).
+  // If less than 0 the optimizer will never time out.
+  int64 meta_optimizer_timeout_ms = 20;
 
   // Configures AutoParallel optimization passes either through the
   // meta-optimizer or when manually specified through the optimizers field.
   AutoParallelOptions auto_parallel = 5;
+
+  // If true, any optimization pass failing will cause the MetaOptimizer to
+  // stop with an error. By default - or when set to false, failing passes are
+  // skipped silently.
+  bool fail_on_optimizer_errors = 21;
 
   ScopedAllocatorOptions scoped_allocator_opts = 16;
 
@@ -157,4 +177,11 @@ message RewriterConfig {
 
   // list of CustomGraphOptimizers to apply.
   repeated CustomGraphOptimizer custom_optimizers = 200;
+
+  // VerifierConfig specifying the verifiers to be run after every optimizer.
+  VerifierConfig inter_optimizer_verifier_config = 300;
+
+  // VerifierConfig specifying the verifiers to be run at the end, after all
+  // optimizers have run.
+  VerifierConfig post_optimization_verifier_config = 301;
 }

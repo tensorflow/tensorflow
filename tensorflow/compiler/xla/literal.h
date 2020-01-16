@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/sparse_index_array.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -77,11 +76,6 @@ class LiteralBase {
   template <typename NativeT>
   absl::Span<const NativeT> data(const ShapeIndex& shape_index = {}) const;
 
-  // Returns a const pointer to the sparse index array. Returns nullptr if the
-  // literal is not a sparse array.
-  const SparseIndexArray* sparse_indices(
-      const ShapeIndex& shape_index = {}) const;
-
   // Returns a const pointer to (or size of) the underlying buffer holding the
   // array at the given shape index. CHECKs if the subshape of the literal at
   // the given ShapeIndex is not array.
@@ -92,9 +86,20 @@ class LiteralBase {
   // array.
   string GetR1U8AsString() const;
 
-  // Returns a string representation of the literal value.
-  // Warning: this function can take minutes for multi-million element Literals.
-  string ToString(bool print_layout = false) const;
+  // Returns a string representation of the literal value. The Shape of the
+  // literal is a prefix of the literal value in the string.
+
+  // Warning: this function can take minutes for multi-million
+  // element Literals.
+  string ToString() const;
+
+  // Returns a string representation of the literal value which does *not*
+  // include the shape string.
+  string ToStringWithoutShape() const;
+
+  // Returns a string representation of the literal value which includes the
+  // shape string with its layout.does *not* include the shape string.
+  string ToStringWithLayout() const;
 
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
@@ -115,28 +120,47 @@ class LiteralBase {
   // into text.
   string GetAsString(absl::Span<const int64> multi_index,
                      const ShapeIndex& shape_index = {}) const;
-  // As GetSparseElement(), but determines the correct type and converts the
-  // value into text.
-  string GetSparseElementAsString(int64 sparse_element_number,
-                                  const ShapeIndex& shape_index = {}) const;
+
+  // Return whether the value at the specified index is equal to the provided
+  // generic `value` (T must be an arithmetic type).
+  //
+  // Precondition: must be an array.
+  template <typename T>
+  typename std::enable_if<(std::is_arithmetic<T>::value ||
+                           std::is_same<T, Eigen::half>::value ||
+                           std::is_same<T, bfloat16>::value),
+                          bool>::type
+  IsEqualAt(absl::Span<const int64> multi_index, T value) const {
+    if (auto as_s64 = GetIntegralAsS64(multi_index)) {
+      return *as_s64 == value;
+    }
+    complex128 as_complex128 = *GetAsComplex128(multi_index);
+    return as_complex128.imag() == 0 && as_complex128.real() == value;
+  }
+
+  bool IsEqualAt(absl::Span<const int64> multi_index, complex128 value) const {
+    if (auto as_s64 = GetIntegralAsS64(multi_index)) {
+      return *as_s64 == value.real() && value.imag() == 0;
+    }
+    auto as_complex128 = GetAsComplex128(multi_index);
+    return *as_complex128 == value;
+  }
+
   // As Get(), but determines the correct type and converts the value into
   // int64.  This literal must be an array.
-  StatusOr<int64> GetIntegralAsS64(absl::Span<const int64> multi_index) const;
+  absl::optional<int64> GetIntegralAsS64(
+      absl::Span<const int64> multi_index) const;
 
-  // Returns the multi-index of the element in a sparse literal at the given
-  // sparse element number.  The sparse element number is the position with in
-  // the sparse array's list of (index, value) pairs, and is checked against the
-  // total number of (index, value) pairs in the sparse array.
-  absl::Span<const int64> GetSparseIndex(
-      int64 sparse_element_number, const ShapeIndex& shape_index = {}) const;
+  // As Get(), but determines the correct type, and converts the value into
+  // double. This literal must be an array.
+  absl::optional<double> GetAsDouble(absl::Span<const int64> multi_index) const;
 
-  // Returns the value of the element in a sparse literal at the given sparse
-  // element number.  The sparse element number is the position with in the
-  // sparse array's list of (index, value) pairs, and is checked against the
-  // total number of (index, value) pairs in the sparse array.
-  template <typename NativeT>
-  NativeT GetSparseElement(int64 sparse_element_number,
-                           const ShapeIndex& shape_index = {}) const;
+  // As Get(), but determines the correct type, and converts the value into
+  // complex128. All floating point types can be converted into complex128.
+  //
+  // This literal must be an array.
+  absl::optional<complex128> GetAsComplex128(
+      absl::Span<const int64> multi_index) const;
 
   // Invokes the "per cell" callback for each element in the provided
   // literal with the element's indices and a string representation of
@@ -210,13 +234,7 @@ class LiteralBase {
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
-  // Returns the count of the elements in the sparse array at the given shape
-  // index in this literal, which will be no larger than
-  // LayoutUtil::MaxSparseElements(SetSubshape(shape(), index).layout()).
-  int64 sparse_element_count() const;
-
-  // Compute a hash for this literal.  This literal must not be a sparse tensor
-  // or a tuple containing a sparse tensor.
+  // Compute a hash for this literal.
   size_t Hash() const;
 
   // Converts this literal to the given shape. Returns an error is the
@@ -301,7 +319,7 @@ class LiteralBase {
   //
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
-  // initialization, then reinitialization. Conside if a call to
+  // initialization, then reinitialization. Consider if a call to
   // absl::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);
@@ -336,14 +354,6 @@ class LiteralBase {
     char* buffer() const { return buffer_; }
     void set_buffer(char* buffer) { buffer_ = buffer; }
 
-    // The array of multi-indices that provide the locations of non-zero
-    // elements in a sparse array.  Only used if
-    // LayoutUtil::IsSparseArray(shape()) is true.
-    SparseIndexArray* sparse_indices() const { return sparse_indices_; }
-    void set_sparse_indices(SparseIndexArray* sparse_indices) {
-      sparse_indices_ = sparse_indices;
-    }
-
     // Gets or sets the subshape of this piece. This reference points to a
     // subshape within the shape in the containing Literal (Literal::shape_).
     const Shape& subshape() const { return *subshape_; }
@@ -353,13 +363,7 @@ class LiteralBase {
     int64 size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
 
     // Returns the number of elements in this piece's array.
-    int64 element_count() const {
-      // If this is a sparse array, use the number of elements represented by
-      // the indices in the associated SparseIndexArray.
-      return LayoutUtil::IsSparseArray(subshape())
-                 ? sparse_indices()->index_count()
-                 : ShapeUtil::ElementsIn(subshape());
-    }
+    int64 element_count() const { return ShapeUtil::ElementsIn(subshape()); }
 
     // Returns the child piece at 'index' of this piece.
     Piece& child(int64 index) { return children_[index]; }
@@ -440,9 +444,6 @@ class LiteralBase {
     // piece must be equal (not just compatible) to the shape of the proto.
     Status CopyFromProto(const LiteralProto& proto);
 
-    // Sorts the elements in a sparse array.
-    void SortSparseElements();
-
    private:
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
@@ -492,16 +493,8 @@ class LiteralBase {
     bool EqualElementsInternal(const Piece& other,
                                std::vector<int64>* multi_index) const;
 
-    // Helper for SortSparseElements that has the element type as a template
-    // parameter.
-    template <typename NativeT>
-    void SortSparseElementsInternal();
-
     // For array-shaped pieces, this is the buffer holding the literal data.
     char* buffer_ = nullptr;
-
-    // For sparse arrays, this is the array of indices.
-    SparseIndexArray* sparse_indices_ = nullptr;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -549,10 +542,6 @@ class MutableLiteralBase : public LiteralBase {
   // Unhide const method from parent class.
   using LiteralBase::data;
 
-  // Returns a pointer to the sparse index array. Returns nullptr if the literal
-  // is not a sparse array.
-  SparseIndexArray* sparse_indices(const ShapeIndex& shape_index = {});
-
   // TODO(b/67651157): Remove this accessor. Literal users should not be able to
   // mutate the shape as this can produce malformed Literals.
   Shape* mutable_shape_do_not_use() { return shape_.get(); }
@@ -563,16 +552,6 @@ class MutableLiteralBase : public LiteralBase {
   void* untyped_data(const ShapeIndex& shape_index = {});
   // Unhide const method from parent class.
   using LiteralBase::untyped_data;
-
-  // Populates a literal with a sparse layout with the given indices and values.
-  // Each index in the indices array is CHECKed against the dimensions in the
-  // literal's shape.  If sort is true, then the indices and values will be
-  // sorted.  If sort is false, then the indices and values are assumed to
-  // already be in sorted order.  See CreateSparse for an example of how data
-  // are populated.
-  template <typename NativeT>
-  void PopulateSparse(SparseIndexArray indices,
-                      absl::Span<const NativeT> values, bool sort = true);
 
   // Copy values from 'src_literal' rooted at 'src_shape_index' into this
   // literal rooted at 'dest_shape_index'. The subshape of this literal rooted
@@ -612,19 +591,13 @@ class MutableLiteralBase : public LiteralBase {
   template <typename NativeT>
   void Set(absl::Span<const int64> multi_index, NativeT value);
 
-  // Appends the given element to the literal.  If the elements are not appended
-  // in sorted order, then SortSparseElements should be called before calling
-  // other methods.  This literal must have a sparse layout.
-  template <typename NativeT>
-  void AppendSparseElement(absl::Span<const int64> multi_index, NativeT value,
-                           const ShapeIndex& shape_index = {});
-
-  // Sorts the elements in a sparse array.
-  void SortSparseElements(const ShapeIndex& shape_index = {});
-
   // As Set(), but truncates `value` to the literal element type before storing.
   // This literal must be an array.
   Status SetIntegralAsS64(absl::Span<const int64> multi_index, int64 value);
+
+  // As Set(), but truncates `value` to the literal element type before storing.
+  // This literal must be an array.
+  Status SetFromDouble(absl::Span<const int64> multi_index, double value);
 
   // Populate this literal with the given values. Examples:
   //
@@ -679,7 +652,8 @@ class MutableLiteralBase : public LiteralBase {
   static Literal MoveIntoTuple(absl::Span<Literal> elements);
 
   // Serialize from a proto.
-  static StatusOr<Literal> CreateFromProto(const LiteralProto& proto);
+  static StatusOr<Literal> CreateFromProto(const LiteralProto& proto,
+                                           bool prohibit_empty_literal = true);
 
  protected:
   // Returns the piece at the given ShapeIndex.
@@ -756,7 +730,7 @@ class Literal : public MutableLiteralBase {
   Literal(const Shape& shape, bool allocate_arrays);
   Literal& operator=(Literal&& other);
 
-  // Similar to CopyFrom, but with move semantincs. The subshape of this literal
+  // Similar to CopyFrom, but with move semantics. The subshape of this literal
   // rooted at 'dest_shape_index' must be *equal* to the shape 'src_literal'
   // (layouts and shapes must match), but need not be arrays. The memory
   // allocated in this literal for the subshape at dest_shape_index is
@@ -793,7 +767,6 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral& operator=(const MutableBorrowingLiteral& literal);
 
   // Implicit conversion constructors.
-  MutableBorrowingLiteral(const MutableLiteralBase& literal);
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
@@ -830,7 +803,7 @@ class BorrowingLiteral : public LiteralBase {
   BorrowingLiteral() : LiteralBase() {}
 
   // 'src_buf_ptr' is not owned by this class and must outlive the
-  // lifetime of this class. It points to an appropirately sized buffer with
+  // lifetime of this class. It points to an appropriately sized buffer with
   // data interpretered as indicated by 'shape'.
   // This constructor is only used for array shapes.
   BorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
@@ -856,7 +829,7 @@ class BorrowingLiteral : public LiteralBase {
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
   DCHECK_EQ(subshape().element_type(),
             primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
@@ -869,7 +842,7 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
   DCHECK_EQ(subshape().element_type(),
             primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
@@ -936,37 +909,13 @@ NativeT LiteralBase::GetFirstElement() const {
 }
 
 template <typename NativeT>
-NativeT LiteralBase::GetSparseElement(int64 sparse_element_number,
-                                      const ShapeIndex& shape_index) const {
-  CHECK(
-      LayoutUtil::IsSparseArray(ShapeUtil::GetSubshape(shape(), shape_index)));
-  return data<NativeT>(shape_index)[sparse_element_number];
-}
-
-template <typename NativeT>
-void MutableLiteralBase::AppendSparseElement(
-    absl::Span<const int64> multi_index, NativeT value,
-    const ShapeIndex& shape_index) {
-  Piece& p = piece(shape_index);
-  const Shape& subshape = p.subshape();
-  CHECK(LayoutUtil::IsSparseArray(subshape));
-  int64 rank = ShapeUtil::Rank(subshape);
-  CHECK_EQ(multi_index.size(), rank);
-  int64 last_element = p.sparse_indices()->index_count();
-  CHECK_LT(last_element, LayoutUtil::MaxSparseElements(subshape.layout()));
-  p.sparse_indices()->Append(multi_index);
-  CHECK_LT(last_element, p.data<NativeT>().size());
-  p.data<NativeT>()[last_element] = value;
-}
-
-template <typename NativeT>
 void LiteralBase::EachCell(
     std::function<void(absl::Span<const int64> indices, NativeT value)>
         per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
-  std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);
+  std::vector<int64> indices(shape().rank(), 0);
   do {
     per_cell(indices, Get<NativeT>(indices));
   } while (IndexUtil::BumpIndices(shape(), absl::MakeSpan(indices)));
@@ -974,21 +923,20 @@ void LiteralBase::EachCell(
 
 template <typename NativeT>
 inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
-  CHECK(ShapeUtil::IsArray(shape()));
-  CHECK_EQ(ShapeUtil::Rank(shape()), 1);
+  CHECK(shape().IsArray());
+  CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
-  for (int64 i = 0; i < values.size(); ++i) {
-    Set({i}, values[i]);
-  }
+  auto data_span = data<NativeT>();
+  std::copy(values.begin(), values.end(), data_span.begin());
 }
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  CHECK(ShapeUtil::IsArray(shape()));
-  CHECK_EQ(ShapeUtil::Rank(shape()), 2);
+  CHECK(shape().IsArray());
+  CHECK_EQ(shape().rank(), 2);
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
 
@@ -1011,10 +959,10 @@ void MutableLiteralBase::PopulateR2(
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
-  CHECK_EQ(ShapeUtil::Rank(shape()), values.num_dimensions());
+  CHECK_EQ(shape().rank(), values.num_dimensions());
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
     CHECK_EQ(values.dim(dim), shape().dimensions(dim));
   }
@@ -1038,36 +986,11 @@ void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateFromArray(values);
 }
 
-template <typename NativeT>
-void MutableLiteralBase::PopulateSparse(SparseIndexArray indices,
-                                        absl::Span<const NativeT> values,
-                                        bool sort) {
-  CHECK(LayoutUtil::IsSparseArray(shape()));
-  int rank = ShapeUtil::Rank(shape());
-  CHECK_EQ(indices.rank(), rank);
-  int64 max_elements = LayoutUtil::MaxSparseElements(shape().layout());
-  CHECK_LE(indices.max_indices(), max_elements);
-  int64 num_elements = values.size();
-  CHECK_LE(num_elements, max_elements);
-  CHECK_EQ(num_elements, indices.index_count());
-  auto root_data = root_piece().data<NativeT>();
-  // Piece::data() returns a Span of size equal to the number of indices
-  // in the SparseIndexArray. So there is no need to adjust the size of the data
-  // here. It is enough to just copy the incoming values into the data buffer.
-  std::copy(values.begin(), values.end(), root_data.begin());
-  *this->root_piece().sparse_indices() = std::move(indices);
-  if (sort) {
-    auto root_data = this->root_piece().data<NativeT>();
-    this->root_piece().sparse_indices()->SortWithValues(root_data);
-  }
-  DCHECK(this->root_piece().sparse_indices()->Validate(shape()));
-}
-
 template <typename NativeT, typename FnType>
 Status MutableLiteralBase::PopulateInternal(const FnType& generator,
                                             bool parallel) {
   const Shape& this_shape = shape();
-  const int64 rank = ShapeUtil::Rank(this_shape);
+  const int64 rank = this_shape.rank();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1119,7 +1042,7 @@ Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateWithValue(NativeT value) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   for (NativeT& element : data<NativeT>()) {

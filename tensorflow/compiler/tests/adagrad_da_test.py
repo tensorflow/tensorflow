@@ -33,7 +33,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
 
   def testAdagradDAWithoutRegularizationBasic1(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
         var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
@@ -50,26 +50,26 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
         variables.global_variables_initializer().run()
 
-        self.assertAllClose([0.0, 0.0], var0.eval())
-        self.assertAllClose([0.0, 0.0], var1.eval())
+        self.assertAllClose([0.0, 0.0], self.evaluate(var0))
+        self.assertAllClose([0.0, 0.0], self.evaluate(var1))
 
         # Run a step of AdagradDA
         update.run()
 
-        # Let g to be gradient accumulator, gg to be gradient squared
-        # accumulator, T be the global step, lr is the learning rate, and k the
-        # initial gradient squared accumulator value.
+        # Let g be the gradient accumulator, gg be the gradient squared
+        # accumulator, T be the global step, lr be the learning rate,
+        # and k the initial gradient squared accumulator value.
         # w = \dfrac{sign(-g)*lr*|g - l1*T|_{+}}{l2*T*lr + \sqrt{k+gg})}
         # For -0.1*3.0*(0.1 - 0)/(0 + sqrt(0.1 + 0.1*0.1)) = -0.904534
         # similarly for others.
         self.assertAllCloseAccordingToType(
-            np.array([-0.904534, -1.603567]), var0.eval())
+            np.array([-0.904534, -1.603567]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([-0.094821, -0.189358]), var1.eval())
+            np.array([-0.094821, -0.189358]), self.evaluate(var1))
 
   def testAdagradDAwithoutRegularizationBasic2(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
@@ -87,20 +87,20 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
         variables.global_variables_initializer().run()
 
-        self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
-        self.assertAllCloseAccordingToType([4.0, 3.0], var1.eval())
+        self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
+        self.assertAllCloseAccordingToType([4.0, 3.0], self.evaluate(var1))
 
         # Run a step of AdagradDA
         update.run()
 
         self.assertAllCloseAccordingToType(
-            np.array([-0.904534, -1.603567]), var0.eval())
+            np.array([-0.904534, -1.603567]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([-0.094821, -0.189358]), var1.eval())
+            np.array([-0.094821, -0.189358]), self.evaluate(var1))
 
   def testAdagradDAWithL1(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
@@ -118,20 +118,20 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
         variables.global_variables_initializer().run()
 
-        self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
-        self.assertAllCloseAccordingToType([4.0, 3.0], var1.eval())
+        self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
+        self.assertAllCloseAccordingToType([4.0, 3.0], self.evaluate(var1))
 
         # Run a step of AdagradDA
         update.run()
 
         self.assertAllCloseAccordingToType(
-            np.array([-0.895489, -1.59555]), var0.eval())
+            np.array([-0.895489, -1.59555]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([-0.085339, -0.17989]), var1.eval())
+            np.array([-0.085339, -0.17989]), self.evaluate(var1))
 
   def testAdagradDAWithL1_L2(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
@@ -149,16 +149,16 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
         variables.global_variables_initializer().run()
 
-        self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
-        self.assertAllCloseAccordingToType([4.0, 3.0], var1.eval())
+        self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
+        self.assertAllCloseAccordingToType([4.0, 3.0], self.evaluate(var1))
 
         # Run a step of AdagradDA
         update.run()
 
         self.assertAllCloseAccordingToType(
-            np.array([-0.046907, -0.093659]), var0.eval())
+            np.array([-0.046907, -0.093659]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([-0.004275, -0.009023]), var1.eval())
+            np.array([-0.004275, -0.009023]), self.evaluate(var1))
 
 
 if __name__ == "__main__":

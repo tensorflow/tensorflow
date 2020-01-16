@@ -20,11 +20,16 @@ from __future__ import print_function
 
 import copy
 
+import numpy as np
+
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer as keras_base_layer
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
@@ -60,6 +65,29 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.name, 'my_layer')
 
   @test_util.run_in_graph_and_eager_modes
+  def testKerasStyleAddWeight(self):
+    keras_layer = keras_base_layer.Layer(name='keras_layer')
+    with ops.name_scope('foo', skip_on_eager=False):
+      keras_variable = keras_layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(keras_variable.name, 'foo/my_var:0')
+
+    with ops.name_scope('baz', skip_on_eager=False):
+      old_style_layer = base_layers.Layer(name='my_layer')
+      # Test basic variable creation.
+      variable = old_style_layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(variable.name, 'my_layer/my_var:0')
+
+    with base_layers.keras_style_scope():
+      layer = base_layers.Layer(name='my_layer')
+    # Test basic variable creation.
+    with ops.name_scope('bar', skip_on_eager=False):
+      variable = layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(variable.name, 'bar/my_var:0')
+
+  @test_util.run_in_graph_and_eager_modes
   def testAddWeight(self):
     layer = base_layers.Layer(name='my_layer')
 
@@ -84,17 +112,19 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.variables, [variable, variable_2])
     self.assertEqual(layer.trainable_variables, [variable])
     self.assertEqual(layer.non_trainable_variables, [variable_2])
+
     if not context.executing_eagerly():
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
 
-      # regularizers only supported in GRAPH mode.
-      regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
-      _ = layer.add_variable(
-          'reg_var', [2, 2],
-          initializer=init_ops.zeros_initializer(),
-          regularizer=regularizer)
-      self.assertEqual(len(layer.losses), 1)
+    regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
+    _ = layer.add_variable(
+        'reg_var', [2, 2],
+        initializer=init_ops.zeros_initializer(),
+        regularizer=regularizer)
+    self.assertEqual(len(layer.losses), 1)
+
+    added_variable = [False]
 
     # Test that sync `ON_READ` variables are defaulted to be non-trainable.
     variable_3 = layer.add_variable(
@@ -103,6 +133,18 @@ class BaseLayerTest(test.TestCase):
         synchronization=variable_scope.VariableSynchronization.ON_READ,
         aggregation=variable_scope.VariableAggregation.SUM)
     self.assertEqual(layer.non_trainable_variables, [variable_2, variable_3])
+
+    @def_function.function
+    def function_adds_weight():
+      if not added_variable[0]:
+        layer.add_variable(
+            'reg_var_from_function', [2, 2],
+            initializer=init_ops.zeros_initializer(),
+            regularizer=regularizer)
+        added_variable[0] = True
+
+    function_adds_weight()
+    self.assertEqual(len(layer.losses), 2)
 
   def testInvalidTrainableSynchronizationCombination(self):
     layer = base_layers.Layer(name='my_layer')
@@ -118,6 +160,7 @@ class BaseLayerTest(test.TestCase):
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           trainable=True)
 
+  @test_util.run_deprecated_v1
   def testReusePartitionedVaraiblesAndRegularizers(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     partitioner = partitioned_variables.fixed_size_partitioner(3)
@@ -132,11 +175,6 @@ class BaseLayerTest(test.TestCase):
             regularizer=regularizer)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
-
-  def testNoEagerActivityRegularizer(self):
-    with context.eager_mode():
-      with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
-        core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
 
   @test_util.run_in_graph_and_eager_modes
   def testCall(self):
@@ -174,7 +212,6 @@ class BaseLayerTest(test.TestCase):
     layer_copy = copy.deepcopy(layer)
     self.assertEqual(layer_copy.name, layer.name)
     self.assertEqual(layer_copy._scope.name, layer._scope.name)
-    self.assertEqual(layer_copy._graph, layer._graph)
     self.assertEqual(layer_copy._private_tensor, layer._private_tensor)
 
   @test_util.run_in_graph_and_eager_modes
@@ -232,7 +269,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(ndim=2)
+        self.input_spec = input_spec.InputSpec(ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -259,7 +296,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(min_ndim=2)
+        self.input_spec = input_spec.InputSpec(min_ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -287,7 +324,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(max_ndim=2)
+        self.input_spec = input_spec.InputSpec(max_ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -315,7 +352,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(dtype='float32')
+        self.input_spec = input_spec.InputSpec(dtype='float32')
 
       def call(self, inputs):
         return inputs
@@ -335,7 +372,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(axes={-1: 2})
+        self.input_spec = input_spec.InputSpec(axes={-1: 2})
 
       def call(self, inputs):
         return inputs
@@ -357,7 +394,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(shape=(None, 3))
+        self.input_spec = input_spec.InputSpec(shape=(None, 3))
 
       def call(self, inputs):
         return inputs
@@ -425,6 +462,7 @@ class BaseLayerTest(test.TestCase):
       self.assertTrue(isinstance(result, dict))
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
 
+  @test_util.run_deprecated_v1
   def testActivityRegularizer(self):
     regularizer = math_ops.reduce_sum
     layer = base_layers.Layer(activity_regularizer=regularizer)
@@ -513,6 +551,7 @@ class BaseLayerTest(test.TestCase):
         self.assertEqual(len(layer.trainable_variables), 1)
         self.assertEqual(layer.variables[0].graph, outer_graph)
 
+  @test_util.run_deprecated_v1
   def testGetUpdateFor(self):
 
     class MyLayer(base_layers.Layer):
@@ -557,6 +596,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_updates_for([outputs])), 0)
 
+  @test_util.run_deprecated_v1
   def testGetLossesFor(self):
 
     class MyLayer(base_layers.Layer):
@@ -600,16 +640,69 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_losses_for([outputs])), 0)
 
-  def testLayerGraphSetInFirstApply(self):
-    with ops.Graph().as_default():
-      # Graph at construction time is ignored
-      layer = core_layers.Dense(1)
-    with ops.Graph().as_default():
-      layer.apply(constant_op.constant([[1.]]))
-      # layer is now bound to second Graph
-    with ops.Graph().as_default(), self.assertRaisesRegexp(
-        ValueError, 'Input graph and Layer graph are not the same'):
-      layer.apply(constant_op.constant([[1.]]))
+
+class IdentityLayer(base_layers.Layer):
+  """A layer returns the identity of it's input."""
+
+  def call(self, inputs):
+    return inputs
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class DTypeTest(test.TestCase):
+
+  def _const(self, dtype):
+    return array_ops.constant(1, dtype=dtype)
+
+  def test_dtype_inferred_from_input(self):
+    # Test with Tensor input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('float64'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test with Numpy input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(np.array(1., dtype='float64'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test with integer input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('int32'))
+    self.assertEqual(layer.dtype, 'int32')
+
+    # Test layer dtype doesn't change when passed a new dtype
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('float64'))
+    self.assertEqual(layer.dtype, 'float64')
+    layer(self._const('float16'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test layer dtype inferred from first input
+    layer = IdentityLayer()
+    layer([self._const('float32'), self._const('float64')])
+    self.assertEqual(layer.dtype, 'float32')
+
+  def test_passing_dtype_to_constructor(self):
+    layer = IdentityLayer(dtype='float64')
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    layer = IdentityLayer(dtype='int32')
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'int32')
+
+    layer = IdentityLayer(dtype=dtypes.float64)
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'float64')
+
+  def test_inputs_not_casted(self):
+    layer = IdentityLayer(dtype='float32')
+    self.assertEqual(layer(self._const('float64')).dtype, 'float64')
+
 
 if __name__ == '__main__':
   test.main()

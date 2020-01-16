@@ -167,11 +167,11 @@ TEST_F(DebugIdentityOpTest, Int32Success_2_3) {
 
 TEST_F(DebugIdentityOpTest, StringSuccess) {
   TF_ASSERT_OK(Init(DT_STRING));
-  AddInputFromArray<string>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({6}));
-  test::FillValues<string>(&expected, {"A", "b", "C", "d", "E", "f"});
-  test::ExpectTensorEqual<string>(expected, *GetOutput(0));
+  test::FillValues<tstring>(&expected, {"A", "b", "C", "d", "E", "f"});
+  test::ExpectTensorEqual<tstring>(expected, *GetOutput(0));
 }
 
 // Tests for DebugNanCountOp
@@ -364,7 +364,7 @@ TEST_F(DebugNumericSummaryOpTest, Float_only_valid_values) {
        7.33333333333,  // variance of non-inf and non-nan elements.
        static_cast<double>(DT_FLOAT),  // dtype
        2.0,                            // Number of dimensions.
-       2.0, 3.0});                     // Dimensoin sizes.
+       2.0, 3.0});                     // Dimension sizes.
 
   test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
 }

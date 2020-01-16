@@ -131,4 +131,4 @@ def AppendBoolArrayToTensorProto(tensor_proto, nparray):
   cdef long i, n
   n = nparray.size
   for i in range(n):
-    tensor_proto.bool_val.append(np.asscalar(nparray[i]))
+    tensor_proto.bool_val.append(nparray.item(i))

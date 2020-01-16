@@ -25,21 +25,62 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 using xla::StatusOr;
 
 namespace tensorflow {
 namespace functionalize_cond {
+
+bool AncestorNode::operator<(const AncestorNode& other) const {
+  return (output_tensor.node->id() < other.output_tensor.node->id()) ||
+         (output_tensor.node->id() == other.output_tensor.node->id() &&
+          output_tensor.index < other.output_tensor.index) ||
+         (output_tensor.node->id() == other.output_tensor.node->id() &&
+          output_tensor.index == other.output_tensor.index &&
+          type < other.type);
+}
+
+bool AncestorNode::operator==(const AncestorNode& other) const {
+  return output_tensor.node->id() == other.output_tensor.node->id() &&
+         output_tensor.index == other.output_tensor.index && type == other.type;
+}
+
+size_t AncestorNode::Hash::operator()(const AncestorNode& ancestor) const {
+  size_t h = std::hash<int>()(ancestor.output_tensor.node->id());
+  h = Hash64Combine(h, std::hash<int>()(ancestor.output_tensor.index));
+  return Hash64Combine(h, std::hash<int>()(static_cast<int>(ancestor.type)));
+}
+
+typedef std::tuple<StateMap::CondId, StateMap::AncestorId, OutputTensor>
+    ClusterTuple;
+
+struct ClusterTupleLessThan {
+  bool operator()(const ClusterTuple& a, const ClusterTuple& b) const {
+    if (std::tie(std::get<0>(a), std::get<1>(a)) <
+        std::tie(std::get<0>(b), std::get<1>(b))) {
+      return true;
+    } else if (std::tie(std::get<0>(a), std::get<1>(a)) ==
+               std::tie(std::get<0>(b), std::get<1>(b))) {
+      return StateMap::OutputTensorLess()(std::get<2>(a), std::get<2>(b));
+    } else {
+      return false;
+    }
+  }
+};
 
 // TODO(jpienaar): Move to OutputTensor.
 string DebugString(const OutputTensor& tensor) {
@@ -145,10 +186,10 @@ size_t StateMap::Hash::operator()(const StateMap::AncestorState& map) const {
   if (map.empty()) return 0;
   // Compute hash of the front element.
   auto it = map.begin();
-  size_t h = hash<Node*>()(*it);
+  size_t h = AncestorNode::Hash()(*it);
   for (++it; it != map.end(); ++it) {
     // Combine the has with the different elements in the map.
-    h = Hash64Combine(h, hash<Node*>()(*it));
+    h = Hash64Combine(h, AncestorNode::Hash()(*it));
   }
   return h;
 }
@@ -229,7 +270,17 @@ string StateMap::CondStateToString(StateMap::CondId id) const {
 }
 
 string StateMap::AncestorStateToString(const Node* node) const {
-  if (auto id = LookupAncestorId(node)) return NodesToString(*id);
+  if (auto id = LookupAncestorId(node)) {
+    return absl::StrCat(
+        "{",
+        absl::StrJoin(*id, ",",
+                      [](string* output, const AncestorNode& ancestor) {
+                        absl::StrAppend(output,
+                                        ancestor.output_tensor.node->name(),
+                                        ":", ancestor.output_tensor.index);
+                      }),
+        "}");
+  }
   return "{}";
 }
 
@@ -241,13 +292,15 @@ FunctionalizeCond::FunctionalizeCond(Graph* graph,
 class Conditional {
  public:
   Conditional(OutputTensor predicate, FunctionalizeCond* parent,
-              StateMap* cond_state_map);
+              StateMap* cond_state_map, const ShapeRefiner& refiner);
 
   // Adds merge node that is part of this conditional.
   Status AddMerge(Node* m);
 
   // Constructs an If node from the merge nodes.
-  Status BuildAndReplace(Graph* graph, FunctionLibraryDefinition* library);
+  Status BuildAndReplace(
+      Graph* graph, FunctionLibraryDefinition* library,
+      std::unordered_map<Node*, OutputTensor>* merge_to_replacement);
 
  private:
   // Extracts the then/else bodies: creates new graphs with the nodes
@@ -262,10 +315,15 @@ class Conditional {
   Status BuildIfNode(Graph* graph, FunctionLibraryDefinition* library);
 
   // Adds input edges to If node.
-  Status AddInputEdges(Graph* graph);
+  Status AddInputEdges(
+      Graph* graph,
+      const std::unordered_map<Node*, OutputTensor>& merge_to_replacement);
 
   // Adds output edges from If node.
-  Status AddOutputEdges(Graph* graph);
+  // Record new output tensor for all Merge nodes in 'merge_to_replacement'.
+  Status AddOutputEdges(
+      Graph* graph,
+      std::unordered_map<Node*, OutputTensor>* merge_to_replacement);
 
   // Adds switch node that is part of this conditional.
   Status AddSwitch(Node* s);
@@ -286,6 +344,9 @@ class Conditional {
 
   // The predicate of the conditional.
   OutputTensor predicate_;
+
+  // Shape refiner of ops in the graph.
+  const ShapeRefiner& refiner_;
 
   // The predicate of the switches of the conditional. This may be different
   // than predicate (which is initialized from the original graph) as the
@@ -319,8 +380,11 @@ class Conditional {
 };
 
 Conditional::Conditional(OutputTensor predicate, FunctionalizeCond* parent,
-                         StateMap* cond_state_map)
-    : parent_(parent), state_map_(cond_state_map), predicate_(predicate) {}
+                         StateMap* cond_state_map, const ShapeRefiner& refiner)
+    : parent_(parent),
+      state_map_(cond_state_map),
+      predicate_(predicate),
+      refiner_(refiner) {}
 
 Status Conditional::AddMerge(Node* m) {
   merges_.insert(m);
@@ -339,6 +403,7 @@ Status Conditional::AddSwitch(Node* s) {
         DebugString(switch_predicate_), " vs ", DebugString(predicate), ").");
   }
   switches_.insert(s);
+  parent_->AddSwitchId(s->id());
   return Status::OK();
 }
 
@@ -507,7 +572,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
       if (visited.at(n->id())) continue;
       visited[n->id()] = true;
 
-      // Verify output edges and record control edges exitting scope.
+      // Verify output edges and record control edges exiting scope.
       for (const Edge* e : n->out_edges()) {
         Node* dst = e->dst();
         if (IsMerge(dst)) continue;
@@ -537,10 +602,18 @@ Status Conditional::ExtractBodies(Graph* graph) {
         }
       }
 
-      // Copying incomming edges to dst node. Iterate over a copy of the edges
+      // Copying incoming edges to dst node. Iterate over a copy of the edges
       // as they could be mutated during iteration.
       std::vector<const Edge*> in_edges(n->in_edges().begin(),
                                         n->in_edges().end());
+      // Sort in_edges to make sure nodes are copied in a deterministic order.
+      std::sort(
+          in_edges.begin(), in_edges.end(), [](const Edge* a, const Edge* b) {
+            int a_src_output = a->src_output(), b_src_output = b->src_output();
+            StringPiece a_name(a->src()->name()), b_name(b->src()->name());
+            return std::tie(a_src_output, a_name) <
+                   std::tie(b_src_output, b_name);
+          });
       for (const Edge* e : in_edges) {
         Node* src = e->src();
         // Skip src/dst node.
@@ -563,14 +636,43 @@ Status Conditional::ExtractBodies(Graph* graph) {
             stack.push_back(src);
           }
         } else if (e->IsControlEdge()) {
-          external_control_inputs_.push_back(src);
+          // Here we have a control flow edge between src and dst that are not
+          // in the same context. This is an external control dependency except
+          // for one case: where the only difference between CondId of e->src()
+          // and CondId of e->dst() is that e->src() has {PRED, kNeither} and
+          // e->dst() has {PRED, kThenBranch/kElseBranch}. This happens in
+          // gradients code for tf.cond(), where e->src() is a control pivot
+          // node for a branch and e->dst() is a data node in that branch.
+          bool is_external_control_input = true;
+          if (!state_map_->IsEmpty(src_id) && !state_map_->IsEmpty(dst_id)) {
+            std::vector<StateMap::CondState::value_type> diff;
+            std::set_symmetric_difference(
+                src_id->begin(), src_id->end(), dst_id->begin(), dst_id->end(),
+                std::back_inserter(diff), CondStateLess());
+            if (diff.size() == 2 && diff[0].first == diff[1].first &&
+                (diff[0].second == BranchType::kNeither ||
+                 diff[1].second == BranchType::kNeither)) {
+              auto src_branch = src_id->find(diff[0].first);
+              if (src_branch != src_id->end() &&
+                  src_branch->second == BranchType::kNeither) {
+                is_external_control_input = false;
+              }
+            }
+          }
+          if (is_external_control_input) {
+            external_control_inputs_.push_back(src);
+          }
         } else {
           // This shouldn't happen, this means we have an external data input
           // not entering via a switch node. Work around this by for
           // * constant nodes copy them;
           // * non-constant nodes, insert a switch along the edge;
           if (IsConstant(src)) {
-            node_map.at(src->id()) = output->CopyNode(src);
+            // Check if constant node was added already. It is possible to have
+            // multiple uses of a constant node.
+            if (node_map.at(src->id()) == nullptr) {
+              node_map.at(src->id()) = output->CopyNode(src);
+            }
           } else {
             StateMap::CondState state = *dst_id;
             state.erase(predicate_);
@@ -617,7 +719,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
     ++index;
 
     // Connect the input to the merge_ with the retval, except if it is a
-    // Swich node, which is handled separately.
+    // Switch node, which is handled separately.
     for (auto e : m->in_edges()) {
       if (e->IsControlEdge()) continue;
       int branch_index = static_cast<int>(find_branch(e));
@@ -639,20 +741,19 @@ Status Conditional::ExtractBodies(Graph* graph) {
 Status Conditional::BuildIfNode(Graph* graph,
                                 FunctionLibraryDefinition* library) {
   VLOG(2) << "Build cond function for " << name();
-  NodeDefBuilder builder(name(), "If", library);
+  NodeDebugInfo debug_info((*merges_.begin())->def());
+  NodeDefBuilder builder(name(), "If", library, &debug_info);
   const string branch_name[] = {"else_branch", "then_branch"};
   for (auto branch : {BranchType::kElseBranch, BranchType::kThenBranch}) {
     int branch_index = static_cast<int>(branch);
-    static std::atomic<int64> sequence_num(0LL);
-    int64 id = ++sequence_num;
 
     NameAttrList body_name;
-    body_name.set_name(
-        absl::StrCat("_functionalize_if_", branch_name[branch_index], "_", id));
+    body_name.set_name(library->UniqueFunctionName(
+        absl::StrCat("_functionalize_if_", branch_name[branch_index], "_")));
 
     VLOG(3) << "FunctionalizeControlFlow (" << branch_name[branch_index]
             << "): "
-            << dump_graph::DumpGraphToFile(
+            << DumpGraphToFile(
                    "functionalize_cond_body_" + branch_name[branch_index],
                    *bodies_[branch_index], nullptr);
 
@@ -687,19 +788,36 @@ Status Conditional::BuildIfNode(Graph* graph,
   builder.Attr("Tin", in_arg_types);
 
   DataTypeVector out_type;
+  std::vector<PartialTensorShape> output_shapes;
+  output_shapes.reserve(merges_.size());
   for (const Node* merge : merges_) {
     DataType dtype = merge->output_type(0);
+    TensorShapeProto shape;
+    if (auto* shape_ctx = refiner_.GetContext(merge)) {
+      shape_inference::ShapeHandle handle;
+      shape_ctx->ShapeHandleToProto(shape_ctx->output(0), &shape);
+    }
     out_type.push_back(dtype);
+    output_shapes.push_back(shape);
   }
   builder.Attr("Tout", out_type);
   VLOG(3) << "Build output type: " << DataTypeVectorString(out_type);
+  builder.Attr("output_shapes", output_shapes);
+  VLOG(3) << "Build output shapes: "
+          << PartialTensorShapeUtils::PartialShapeListString(output_shapes);
 
   builder.Attr("Tcond", DT_BOOL);
+  string outside_compilation;
+  if (GetNodeAttr(predicate_.node->def(), kXlaOutsideCompilationAttrName,
+                  &outside_compilation)
+          .ok()) {
+    builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  }
   builder.Device(predicate_.node->assigned_device_name());
   // Conditional should be the first input ...
-  builder.Input(NodeDefBuilder::NodeOut(predicate_.node->name(),
-                                        predicate_.index,
-                                        predicate_.node->output_type(0)));
+  builder.Input(
+      NodeDefBuilder::NodeOut(predicate_.node->name(), predicate_.index,
+                              predicate_.node->output_type(predicate_.index)));
   // ... followed by the other inputs.
   builder.Input(inputs);
 
@@ -712,12 +830,29 @@ Status Conditional::BuildIfNode(Graph* graph,
   return Status::OK();
 }
 
-Status Conditional::AddInputEdges(Graph* graph) {
+Status Conditional::AddInputEdges(
+    Graph* graph,
+    const std::unordered_map<Node*, OutputTensor>& merge_to_replacement) {
   VLOG(2) << "AddInputEdges for " << if_node_->name();
   int index = 0;
   // Add predicate input.
-  graph->AddEdge(const_cast<Node*>(predicate_.node), predicate_.index, if_node_,
-                 index++);
+  if (predicate_.node->IsMerge()) {
+    // If the predicate is a Merge node, we should not use Merge output as
+    // predicate. Instead, we should use the corresponding If output in
+    // 'merge_to_replacement'. Otherwise, this Conditional's If node is still
+    // connected to the predicate Merge node; and when we call
+    // DeleteReachableAndDeadNodes(), the predicate Merge node and this
+    // Conditional's If node will be removed.
+    auto iter = merge_to_replacement.find(predicate_.node);
+    if (iter == merge_to_replacement.end()) {
+      return errors::Internal("Cannot find replacement for Merge node ",
+                              predicate_.node->name());
+    }
+    graph->AddEdge(iter->second.node, iter->second.index, if_node_, index++);
+  } else {
+    graph->AddEdge(const_cast<Node*>(predicate_.node), predicate_.index,
+                   if_node_, index++);
+  }
   // Add function body inputs.
   for (auto& arg : cond_arg_nodes_) {
     if (arg.src_output == Graph::kControlSlot) {
@@ -732,7 +867,9 @@ Status Conditional::AddInputEdges(Graph* graph) {
   return Status::OK();
 }
 
-Status Conditional::AddOutputEdges(Graph* graph) {
+Status Conditional::AddOutputEdges(
+    Graph* graph,
+    std::unordered_map<Node*, OutputTensor>* merge_to_replacement) {
   VLOG(2) << "AddOutputEdges for " << if_node_->name();
   int i = 0;
   for (Node* node : merges_) {
@@ -756,6 +893,10 @@ Status Conditional::AddOutputEdges(Graph* graph) {
         graph->AddEdge(if_node_, i, dst, dst_input);
       }
     }
+
+    // Record corresponding output tensor in 'merge_to_replacement'.
+    (*merge_to_replacement)[node] = OutputTensor{if_node_, i};
+
     ++i;
   }
   for (Node* n : external_control_outputs_) {
@@ -765,8 +906,9 @@ Status Conditional::AddOutputEdges(Graph* graph) {
   return Status::OK();
 }
 
-Status Conditional::BuildAndReplace(Graph* graph,
-                                    FunctionLibraryDefinition* library) {
+Status Conditional::BuildAndReplace(
+    Graph* graph, FunctionLibraryDefinition* library,
+    std::unordered_map<Node*, OutputTensor>* merge_to_replacement) {
   VLOG(1) << "Build If and replace merge nodes "
           << NodesToString(this->merges_);
   if (replaced_) return Status::OK();
@@ -785,8 +927,8 @@ Status Conditional::BuildAndReplace(Graph* graph,
   }
 
   TF_RETURN_IF_ERROR(BuildIfNode(graph, library));
-  TF_RETURN_IF_ERROR(AddInputEdges(graph));
-  TF_RETURN_IF_ERROR(AddOutputEdges(graph));
+  TF_RETURN_IF_ERROR(AddInputEdges(graph, *merge_to_replacement));
+  TF_RETURN_IF_ERROR(AddOutputEdges(graph, merge_to_replacement));
   TF_RETURN_IF_ERROR(parent_->PropagateUpdatedState(if_node_));
 
   // Check that the if_node doesn't feed into itself.
@@ -805,10 +947,16 @@ string Conditional::name() const {
 
 Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
                                           int port) {
+  NodeBuilder id_builder(replacee->name(), "Identity");
+  id_builder.Input(if_node, port);
+  string outside_compilation;
+  if (GetNodeAttr(if_node->def(), kXlaOutsideCompilationAttrName,
+                  &outside_compilation)
+          .ok()) {
+    id_builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  }
   Node* id;
-  TF_RETURN_IF_ERROR(NodeBuilder(replacee->name(), "Identity")
-                         .Input(if_node, port)
-                         .Finalize(graph_, &id));
+  TF_RETURN_IF_ERROR(id_builder.Finalize(graph_, &id));
   state_map_.ResetCondId(id, state_map_.LookupCondId(if_node));
   state_map_.ResetAncestorId(id, state_map_.LookupAncestorId(if_node));
   return Status::OK();
@@ -905,10 +1053,18 @@ StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesNonMerge(
       both.insert(kv);
     } else {
       if (it->second != kv.second) {
-        return errors::InvalidArgument(
-            "Graph contains node with inputs predicated on incompatible "
-            "predicates: ",
-            DebugString(src), " and ", DebugString(dst));
+        if (it->second == BranchType::kNeither) {
+          // BranchType for 'src' is kNeither. Use the BranchType in 'dst'.
+          it->second = kv.second;
+        } else if (kv.second == BranchType::kNeither) {
+          // BranchType for 'dst' is kNeither. Use the BranchType in 'src'.
+          // No need to change it->second.
+        } else {
+          return errors::InvalidArgument(
+              "Graph contains node with inputs predicated on incompatible "
+              "predicates: ",
+              DebugString(src), " and ", DebugString(dst));
+        }
       }
     }
   }
@@ -928,6 +1084,10 @@ StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesMerge(
   VLOG(4) << "Joining (for merge) " << DebugString(src) << " and "
           << DebugString(dst);
   if (state_map_.IsEmpty(dst)) return src;
+  if (state_map_.IsEmpty(src)) {
+    return errors::Internal("Merge node ", merge->name(),
+                            " has input that's not in any CondContext.");
+  }
 
   if (state_map_.IsDead(src)) return src;
   if (state_map_.IsDead(dst)) return dst;
@@ -973,7 +1133,17 @@ StateMap::CondId FunctionalizeCond::StateAlongEdge(const Edge* e) {
     if (id != nullptr) state = *id;
     OutputTensor predicate;
     TF_CHECK_OK(GetSwitchPredicate(*src, &predicate));
-    if (!e->IsControlEdge()) {
+    if (e->IsControlEdge()) {
+      // In gradients of tf.cond(), in each branch, we have a NoOp node as
+      // control pivot. These NoOp nodes have control dependency from Switch
+      // node. If we don't record this into CondState, branches might have
+      // incorrect CondState (e.g. if the branch only has a Const data node).
+      // We set it to kNeither because there is no way to tell whether it's
+      // for true branch or false branch. This node's descendents might have
+      // other incoming edges with defined BranchType, and we correctly handle
+      // merging kNeither with other defined BranchType in StateAlongEdge().
+      state[predicate] = BranchType::kNeither;
+    } else {
       state[predicate] = BranchType(e->src_output());
     }
     return state_map_.GetCondId(state);
@@ -1162,8 +1332,17 @@ Status FunctionalizeCond::DetermineAncestorState(Node* dst) {
     if (other_id != id && other_id != nullptr) {
       state.insert(other_id->begin(), other_id->end());
     }
-    if (IsSwitch(src) || IsMerge(src)) {
-      state.insert(src);
+    if (IsMerge(src)) {
+      state.insert({{src, 0}, AncestorNode::AncestorNodeType::kMerge});
+    } else if (IsSwitch(src)) {
+      OutputTensor pred;
+      // For dead switch nodes, GetSwitchPredicate() will fail, and we use
+      // the switch node directly as ancestor.
+      if (GetSwitchPredicate(*src, &pred).ok()) {
+        state.insert({pred, AncestorNode::AncestorNodeType::kPred});
+      } else {
+        state.insert({{src, 0}, AncestorNode::AncestorNodeType::kSwitch});
+      }
     }
     return state_map_.GetAncestorId(state);
   };
@@ -1179,7 +1358,7 @@ Status FunctionalizeCond::DetermineAncestorState(Node* dst) {
 }
 
 void FunctionalizeCond::DeleteReachableAndDeadNodes(
-    const std::vector<int>& switch_ids, const std::vector<Node*>& merge_order) {
+    const std::vector<Node*>& merge_order) {
   // Delete all nodes that have been extracted or are reachable from
   // deleted/dead nodes. The input and outgoing edges should have already been
   // removed.
@@ -1191,7 +1370,7 @@ void FunctionalizeCond::DeleteReachableAndDeadNodes(
 
   // All remaining Switch nodes are not reachable from a Merge node and
   // removed. This is to account for dead Switch nodes.
-  for (int s_id : switch_ids) {
+  for (int s_id : switch_ids_) {
     Node* s = graph_->FindNodeId(s_id);
     if (s == nullptr) continue;
     for (const Edge* e : s->out_edges()) {
@@ -1282,11 +1461,10 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   //   reverse topological sorting);
   // * Record reverse topological for merge and switch nodes;
   std::vector<Node*> rev_topo_order;
-  std::vector<int> switch_ids;
   std::vector<Node*> merge_order;
   DFS(*graph_, nullptr, [&](Node* n) {
     if (IsSwitch(n)) {
-      switch_ids.push_back(n->id());
+      AddSwitchId(n->id());
     }
     if (IsMerge(n)) {
       merge_order.push_back(n);
@@ -1300,28 +1478,51 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   if (merge_order.empty()) {
     // No merges mean no switch values consumed (as only considering values
     // fetchable as output of merge);
-    for (auto it = switch_ids.begin(); it != switch_ids.end(); ++it) {
-      graph_->RemoveNode(graph_->FindNodeId(*it));
-    }
+    DeleteReachableAndDeadNodes(merge_order);
     return Status::OK();
   }
 
   TF_RETURN_IF_ERROR(DetermineStates(std::move(rev_topo_order)));
   if (VLOG_IS_ON(4)) DumpGraphWithCondState("id");
 
+  // Determine the shapes of the ops in the graph.
+  ShapeRefiner shape_refiner{graph_->versions().producer(),
+                             graph_->op_registry()};
+  std::vector<Node*> nodes;
+  GetReversePostOrder(*graph_, &nodes);
+  for (auto node : nodes) {
+    if (!shape_refiner.AddNode(node).ok()) {
+      LOG(WARNING) << "Couldn't deduce shape for " << node->name();
+    }
+  }
+
   // Sort the merge nodes from innermost outwards.
   SortMergeNodes(&merge_order);
 
-  // Cluster merge nodes by CondId and AncestorId in order of nesting.
-  using ClusterPair = std::pair<StateMap::CondId, StateMap::AncestorId>;
+  // Cluster merge nodes by (CondId, AncestorId, predicate) in order of
+  // nesting. (CondId, AncestorId) is not enough, e.g.
+  //   pred1 = array_ops.placeholder(dtypes.bool, name='pred1')
+  //   pred2 = array_ops.placeholder(dtypes.bool, name='pred2')
+  //   cond1 = control_flow_ops.cond(pred1, ...)
+  //   cond2 = control_flow_ops.cond(pred2, ...)
+  //   cond3 = control_flow_ops.cond(pred1, use cond1 and cond2)
+  //   cond4 = control_flow_ops.cond(pred2, use cond1 and cond2)
+  // cond3 and cond4 have the same (CondId, AncestorId), but they should not
+  // be merged into one "If" node (because they have different predicates).
   std::deque<std::vector<Node*>> merge_clusters;
-  std::map<ClusterPair, int> merge_cluster_index;
+  std::map<ClusterTuple, int, ClusterTupleLessThan> merge_cluster_index;
   for (Node* merge : merge_order) {
     auto cond_id = state_map_.LookupCondId(merge);
     if (state_map_.IsDead(cond_id)) continue;
 
-    ClusterPair key =
-        std::make_pair(cond_id, state_map_.LookupAncestorId(merge));
+    auto predicate = merge_to_predicate_.find(merge);
+    if (predicate == merge_to_predicate_.end()) {
+      return errors::Internal("Cannot find predicate for Merge node ",
+                              merge->name());
+    }
+
+    ClusterTuple key = std::make_tuple(
+        cond_id, state_map_.LookupAncestorId(merge), predicate->second);
     auto idx = merge_cluster_index.find(key);
     if (idx == merge_cluster_index.end()) {
       merge_cluster_index[key] = merge_clusters.size();
@@ -1337,15 +1538,16 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   // nodes seen.
   for (const auto& cluster : merge_clusters) {
     // Construct a Conditional with the predicate of the merge.
-    Conditional cond(merge_to_predicate_.at(cluster.front()), this,
-                     &state_map_);
+    Conditional cond(merge_to_predicate_.at(cluster.front()), this, &state_map_,
+                     shape_refiner);
     for (Node* merge : cluster) TF_RETURN_IF_ERROR(cond.AddMerge(merge));
-    TF_RETURN_IF_ERROR(cond.BuildAndReplace(graph_, library_));
+    TF_RETURN_IF_ERROR(
+        cond.BuildAndReplace(graph_, library_, &merge_to_replacement_));
 
     if (VLOG_IS_ON(4)) DumpGraphWithCondState("after_extract");
   }
 
-  DeleteReachableAndDeadNodes(switch_ids, merge_order);
+  DeleteReachableAndDeadNodes(merge_order);
 
   return Status::OK();
 }
@@ -1360,9 +1562,12 @@ void FunctionalizeCond::DumpGraphWithCondState(const string& name) {
                             state_map_.AncestorStateToString(n)));
   }
   LOG(INFO) << "FunctionalizeControlFlow (" << name << "): "
-            << dump_graph::DumpGraphToFile(
-                   absl::StrCat("functionalize_cond_", name), *graph_,
-                   library_);
+            << DumpGraphToFile(absl::StrCat("functionalize_cond_", name),
+                               *graph_, library_);
+}
+
+void FunctionalizeCond::AddSwitchId(int switch_id) {
+  switch_ids_.push_back(switch_id);
 }
 
 Status FunctionalizeCond::Functionalize(Graph* graph,

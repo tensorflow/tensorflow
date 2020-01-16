@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -43,6 +44,8 @@ class ArithmeticOptimizer : public GraphOptimizer {
 
   string name() const override { return "arithmetic_optimizer"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
@@ -60,6 +63,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool fold_conjugate_into_transpose = true;
     bool fold_multiply_into_conv = true;
     bool fold_transpose_into_matmul = true;
+    bool fuse_squared_diff = true;
     bool hoist_common_factor_out_of_aggregation = true;
     bool hoist_cwise_unary_chains = true;
     bool minimize_broadcasts = true;
@@ -72,13 +76,15 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
     bool remove_redundant_reshape = true;
-    bool reorder_cast_and_transpose = true;
+    bool reorder_cast_like_and_value_preserving = true;
     bool replace_mul_with_square = true;
     bool simplify_aggregation = true;
     bool convert_pow = true;
     bool convert_log1p = true;
+    bool convert_log_softmax = true;
     bool convert_expm1 = true;
     bool unary_ops_composition = true;
+    bool remove_stack_strided_slice_same_axis = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
@@ -128,6 +134,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   std::unique_ptr<NodeMap> node_map_;
   std::unique_ptr<GraphProperties> graph_properties_;
   GraphDef* optimized_graph_ = nullptr;  // Not owned.
+  gtl::FlatSet<string> feed_nodes_;
 };
 
 }  // end namespace grappler

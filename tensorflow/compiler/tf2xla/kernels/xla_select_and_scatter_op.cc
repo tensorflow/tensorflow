@@ -60,7 +60,6 @@ class XlaSelectAndScatterOp : public XlaOpKernel {
 
     XlaCompiler::CompileOptions compile_options;
     compile_options.use_tuple_arg = false;
-    compile_options.resolve_compile_time_constants = false;
     compile_options.is_entry_computation = false;
     compile_options.always_return_tuple = false;
 
@@ -138,9 +137,9 @@ class XlaSelectAndScatterOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("XlaSelectAndScatter")
-                    .CompileTimeConstInput("window_dimensions")
-                    .CompileTimeConstInput("window_strides")
-                    .CompileTimeConstInput("padding"),
+                    .CompileTimeConstantInput("window_dimensions")
+                    .CompileTimeConstantInput("window_strides")
+                    .CompileTimeConstantInput("padding"),
                 XlaSelectAndScatterOp);
 
 }  // namespace

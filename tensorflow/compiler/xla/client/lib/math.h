@@ -20,21 +20,28 @@ limitations under the License.
 
 namespace xla {
 
-// Computes the square root of 'operand'.
-XlaOp Sqrt(XlaOp operand);
+// Determines whether operand is +/-inf or nan.
+//
+// Raises an error if called on integral or complex values.
+XlaOp IsPosInf(XlaOp operand);
+XlaOp IsNegInf(XlaOp operand);
+XlaOp IsInf(XlaOp operand);
+XlaOp IsNan(XlaOp operand);
 
-// Computes the reciprocal of the square root of 'operand'.
-XlaOp Rsqrt(XlaOp operand);
+// Determines whether operand is equal to -0.
+//
+// Raises an error for integral or complex values.
+XlaOp IsNegZero(XlaOp operand);
+
+// Returns the next number after 'from' in the direction of 'to' the same way
+// std::nextafter(from, to) would.
+XlaOp NextAfter(XlaOp from, XlaOp to);
 
 // Computes the square of 'operand'.
 XlaOp Square(XlaOp operand);
 
 // Computes the reciprocal of 'operand'.
 XlaOp Reciprocal(XlaOp operand);
-
-// Evaluates a polynomial given coefficients and `x`.
-// N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients);
 
 // Computes an approximation of the error function complement (1 - erf(x)).
 XlaOp Erfc(XlaOp x);
@@ -50,6 +57,10 @@ XlaOp Lgamma(XlaOp input);
 
 // Computes an approximation of the digamma function.
 XlaOp Digamma(XlaOp input);
+
+// Rounds the given number to even when the number is equidistant between two
+// integers.
+XlaOp RoundToEven(XlaOp x);
 
 // Trigonometric functions
 
@@ -81,6 +92,24 @@ XlaOp Cosh(XlaOp x);
 
 // Computes the hyperbolic sine of 'x'.
 XlaOp Sinh(XlaOp x);
+
+// Applies a complex conjugation operation if 'a' is complex and 'conjugate'
+// is true, otherwise returns its argument.
+xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate);
+
+// Computes the logistic function: logistic(x) = 0.5 + 0.5 * tanh(0.5 * x).
+XlaOp Logistic(XlaOp x);
+
+// Computes the Modified Bessel function of the first kind of the zeroth order
+// at x.
+XlaOp BesselI0e(XlaOp x);
+
+// Computes the Modified Bessel function of the first kind of the first order
+// at x.
+XlaOp BesselI1e(XlaOp x);
+
+// Computes the Regularized Incomplete Beta function.
+XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x);
 
 }  // namespace xla
 

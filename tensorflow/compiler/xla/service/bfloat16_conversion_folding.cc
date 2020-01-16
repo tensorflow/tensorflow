@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_conversion_folding.h"
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -29,17 +30,22 @@ namespace xla {
 class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
  public:
   explicit BFloat16ConversionFoldingVisitor(
-      HloComputation* computation, const BFloat16Support* bfloat16_support)
-      : computation_(computation), bfloat16_support_(bfloat16_support) {}
+      HloComputation* computation, const BFloat16Support* bfloat16_support,
+      BFloat16ConversionFolding* bfloat16_conversion_folding)
+      : computation_(computation),
+        bfloat16_support_(bfloat16_support),
+        bfloat16_conversion_folding_(bfloat16_conversion_folding) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
 
-  // Special handling for cross-replica-sum which can have a tuple output.
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  // Special handling for all-reduce which can have a tuple output.
+  Status HandleAllReduce(HloInstruction* crs) override;
 
   static bool Run(HloComputation* computation,
-                  const BFloat16Support* bfloat16_support) {
-    BFloat16ConversionFoldingVisitor visitor(computation, bfloat16_support);
+                  const BFloat16Support* bfloat16_support,
+                  BFloat16ConversionFolding* bfloat16_conversion_folding) {
+    BFloat16ConversionFoldingVisitor visitor(computation, bfloat16_support,
+                                             bfloat16_conversion_folding);
     TF_CHECK_OK(computation->Accept(&visitor));
     return visitor.changed_;
   }
@@ -61,6 +67,7 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
 
   HloComputation* computation_;
   const BFloat16Support* bfloat16_support_;
+  BFloat16ConversionFolding* bfloat16_conversion_folding_;
   bool changed_ = false;
 };
 
@@ -68,6 +75,7 @@ Status BFloat16ConversionFoldingVisitor::FoldOutputConversions(
     HloInstruction* hlo) {
   std::vector<HloInstruction*> materialized_users = hlo->users();
   hlo->mutable_shape()->set_element_type(BF16);
+  bfloat16_conversion_folding_->UpdateLayout(hlo->mutable_shape());
   for (auto user : materialized_users) {
     CHECK_EQ(user->opcode(), HloOpcode::kConvert);
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
@@ -151,23 +159,20 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
 
 Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
   // Do not fold BF16 conversions for instructions related to tuples, entry and
-  // exit of a computation, fusion, convert, and control flow.
+  // exit of a computation, fusion, convert, side-effecting instructions and
+  // control flow.
   if (hlo->opcode() == HloOpcode::kTuple ||            //
       hlo->opcode() == HloOpcode::kGetTupleElement ||  //
-      hlo->opcode() == HloOpcode::kInfeed ||           //
-      hlo->opcode() == HloOpcode::kOutfeed ||          //
-      hlo->opcode() == HloOpcode::kSend ||             //
-      hlo->opcode() == HloOpcode::kSendDone ||         //
-      hlo->opcode() == HloOpcode::kRecv ||             //
-      hlo->opcode() == HloOpcode::kRecvDone ||         //
       hlo->opcode() == HloOpcode::kConstant ||         //
       hlo->opcode() == HloOpcode::kParameter ||        //
       hlo->opcode() == HloOpcode::kFusion ||           //
+      hlo->opcode() == HloOpcode::kBitcastConvert ||   //
       hlo->opcode() == HloOpcode::kConvert ||          //
       hlo->opcode() == HloOpcode::kCall ||             //
       hlo->opcode() == HloOpcode::kCustomCall ||       //
       hlo->opcode() == HloOpcode::kWhile ||            //
-      hlo->opcode() == HloOpcode::kConditional) {
+      hlo->opcode() == HloOpcode::kConditional ||      //
+      hlo->HasSideEffectNoRecurse()) {
     return Status::OK();
   }
   if (hlo == computation_->root_instruction() &&
@@ -180,8 +185,11 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
   return TryFoldBF16Conversions(hlo);
 }
 
-Status BFloat16ConversionFoldingVisitor::HandleCrossReplicaSum(
-    HloInstruction* crs) {
+Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
+  if (crs->IsCrossModuleAllReduce()) {
+    // Cross-module all-reduce has side effect.
+    return Status::OK();
+  }
   // First use DefaultAction() to handle the operands. It can't handle
   // tuple-shaped output.
   TF_RETURN_IF_ERROR(DefaultAction(crs));
@@ -191,7 +199,7 @@ Status BFloat16ConversionFoldingVisitor::HandleCrossReplicaSum(
   }
 
   // If the output is not a tuple, we don't need special handling.
-  if (!ShapeUtil::IsTuple(crs->shape())) {
+  if (!crs->shape().IsTuple()) {
     return Status::OK();
   }
 
@@ -229,6 +237,8 @@ Status BFloat16ConversionFoldingVisitor::HandleCrossReplicaSum(
 
     ShapeUtil::GetMutableSubshape(crs->mutable_shape(), {i})
         ->set_element_type(BF16);
+    bfloat16_conversion_folding_->UpdateLayout(
+        ShapeUtil::GetMutableSubshape(crs->mutable_shape(), {i}));
     for (auto gte : per_tuple_element_gtes[i]) {
       TF_RETURN_IF_ERROR(FoldOutputConversions(gte));
     }
@@ -242,7 +252,7 @@ StatusOr<bool> BFloat16ConversionFolding::Run(HloModule* module) {
       2, "BFloat16ConversionFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (BFloat16ConversionFoldingVisitor::Run(comp, bfloat16_support_)) {
+    if (BFloat16ConversionFoldingVisitor::Run(comp, bfloat16_support_, this)) {
       changed = true;
     }
   }

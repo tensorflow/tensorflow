@@ -32,6 +32,10 @@ slices within a tensor (initially zero for numeric, empty for string) of
 the given `shape` according to indices.  This operator is the inverse of the
 `tf.gather_nd` operator which extracts values or slices from a given tensor.
 
+This operation is similar to tensor_scatter_add, except that the tensor is
+zero-initialized. Calling `tf.scatter_nd(indices, values, shape)` is identical
+to `tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`
+
 If `indices` contains duplicates, then their updates are accumulated (summed).
 
 **WARNING**: The order in which updates are applied is nondeterministic, so the
@@ -66,8 +70,7 @@ In Python, this scatter operation would look like this:
     updates = tf.constant([9, 10, 11, 12])
     shape = tf.constant([8])
     scatter = tf.scatter_nd(indices, updates, shape)
-    with tf.Session() as sess:
-      print(sess.run(scatter))
+    print(scatter)
 ```
 
 The resulting tensor would look like this:
@@ -92,8 +95,7 @@ In Python, this scatter operation would look like this:
                             [7, 7, 7, 7], [8, 8, 8, 8]]])
     shape = tf.constant([4, 4, 4])
     scatter = tf.scatter_nd(indices, updates, shape)
-    with tf.Session() as sess:
-      print(sess.run(scatter))
+    print(scatter)
 ```
 
 The resulting tensor would look like this:

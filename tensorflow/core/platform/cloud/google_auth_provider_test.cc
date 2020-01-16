@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+
 #include <stdlib.h>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -30,7 +32,7 @@ class FakeEnv : public EnvWrapper {
  public:
   FakeEnv() : EnvWrapper(Env::Default()) {}
 
-  uint64 NowSeconds() override { return now; }
+  uint64 NowSeconds() const override { return now; }
   uint64 now = 10000;
 };
 
@@ -69,9 +71,10 @@ class GoogleAuthProviderTest : public ::testing::Test {
   void TearDown() override { ClearEnvVars(); }
 
   void ClearEnvVars() {
-    unsetenv("GOOGLE_APPLICATION_CREDENTIALS");
     unsetenv("CLOUDSDK_CONFIG");
+    unsetenv("GOOGLE_APPLICATION_CREDENTIALS");
     unsetenv("GOOGLE_AUTH_TOKEN_FOR_TESTING");
+    unsetenv("NO_GCE_CHECK");
   }
 };
 
@@ -236,6 +239,33 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
   string token;
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("", token);
+}
+
+TEST_F(GoogleAuthProviderTest, NoGceCheckEnvironmentVariable) {
+  setenv("NO_GCE_CHECK", "True", 1);
+  auto oauth_client = new FakeOAuthClient;
+
+  FakeEnv env;
+  // If the env var above isn't respected, attempting to fetch a token
+  // from GCE will segfault (as the metadata client is null).
+  GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
+                              nullptr, &env);
+
+  string token;
+  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_EQ("", token);
+
+  // We confirm that our env var is case insensitive.
+  setenv("NO_GCE_CHECK", "true", 1);
+  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_EQ("", token);
+
+  // We also want to confirm that our empty token has a short expiration set: we
+  // now set a testing token, and confirm that it's returned instead of our
+  // empty token.
+  setenv("GOOGLE_AUTH_TOKEN_FOR_TESTING", "newToken", 1);
+  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_EQ("newToken", token);
 }
 
 }  // namespace tensorflow

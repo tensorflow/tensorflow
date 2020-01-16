@@ -21,6 +21,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.platform import test
@@ -28,14 +29,10 @@ from tensorflow.python.platform import test
 
 class TransformerTest(test.TestCase):
 
-  def _simple_source_info(self):
-    return transformer.EntityInfo(
-        source_code=None,
-        source_file=None,
-        namespace=None,
-        arg_values=None,
-        arg_types=None,
-        owner_type=None)
+  def _simple_context(self):
+    entity_info = transformer.EntityInfo(
+        source_code=None, source_file=None, future_features=(), namespace=None)
+    return transformer.Context(entity_info)
 
   def test_entity_scope_tracking(self):
 
@@ -52,7 +49,7 @@ class TransformerTest(test.TestCase):
         anno.setanno(node, 'enclosing_entities', self.enclosing_entities)
         return self.generic_visit(node)
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     def test_function():
       a = 0
@@ -68,10 +65,10 @@ class TransformerTest(test.TestCase):
           return b, inner_function
       return a, TestClass
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
-    test_function_node = node.body[0]
+    test_function_node = node
     test_class = test_function_node.body[1]
     test_method = test_class.body[0]
     inner_function = test_method.body[1]
@@ -126,7 +123,7 @@ class TransformerTest(test.TestCase):
         self.state[CondState].exit()
         return node
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     def test_function(a):
       a = 1
@@ -141,10 +138,10 @@ class TransformerTest(test.TestCase):
           while True:
             raise '1'
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
-    fn_body = node.body[0].body
+    fn_body = node.body
     outer_while_body = fn_body[1].body
     self.assertSameAnno(fn_body[0], outer_while_body[0], 'cond_state')
     self.assertDifferentAnno(fn_body[0], outer_while_body[0], 'loop_state')
@@ -170,13 +167,50 @@ class TransformerTest(test.TestCase):
     self.assertDifferentAnno(first_inner_while_body[0],
                              second_inner_while_body[0], 'loop_state')
 
+  def test_state_tracking_context_manager(self):
+
+    class CondState(object):
+      pass
+
+    class TestTransformer(transformer.Base):
+
+      def visit(self, node):
+        anno.setanno(node, 'cond_state', self.state[CondState].value)
+        return super(TestTransformer, self).visit(node)
+
+      def visit_If(self, node):
+        with self.state[CondState]:
+          return self.generic_visit(node)
+
+    tr = TestTransformer(self._simple_context())
+
+    def test_function(a):
+      a = 1
+      if a > 2:
+        _ = 'b'
+        if a < 5:
+          _ = 'c'
+        _ = 'd'
+
+    node, _ = parser.parse_entity(test_function, future_features=())
+    node = tr.visit(node)
+
+    fn_body = node.body
+    outer_if_body = fn_body[1].body
+    self.assertDifferentAnno(fn_body[0], outer_if_body[0], 'cond_state')
+    self.assertSameAnno(outer_if_body[0], outer_if_body[2], 'cond_state')
+
+    inner_if_body = outer_if_body[1].body
+    self.assertDifferentAnno(inner_if_body[0], outer_if_body[0], 'cond_state')
+
   def test_local_scope_info_stack(self):
 
     class TestTransformer(transformer.Base):
 
       # Extract all string constants from the block.
-      def visit_Str(self, node):
-        self.set_local('string', self.get_local('string', default='') + node.s)
+      def visit_Constant(self, node):
+        self.set_local(
+            'string', self.get_local('string', default='') + str(node.value))
         return self.generic_visit(node)
 
       def _annotate_result(self, node):
@@ -192,7 +226,7 @@ class TransformerTest(test.TestCase):
       def visit_For(self, node):
         return self._annotate_result(node)
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     def test_function(a):
       """Docstring."""
@@ -203,20 +237,20 @@ class TransformerTest(test.TestCase):
           return 'b'
         else:
           _ = 'c'
-          while True:
+          while 4:
             raise '1'
       return 'nor this'
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
-    for_node = node.body[0].body[2]
+    for_node = node.body[2]
     while_node = for_node.body[1].orelse[1]
 
     self.assertFalse(anno.hasanno(for_node, 'string'))
-    self.assertEqual('abc', anno.getanno(for_node, 'test'))
+    self.assertEqual('3a2bc', anno.getanno(for_node, 'test'))
     self.assertFalse(anno.hasanno(while_node, 'string'))
-    self.assertEqual('1', anno.getanno(while_node, 'test'))
+    self.assertEqual('41', anno.getanno(while_node, 'test'))
 
   def test_local_scope_info_stack_checks_integrity(self):
 
@@ -231,14 +265,14 @@ class TransformerTest(test.TestCase):
         self.exit_local_scope()
         return node
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     def no_exit(a):
       if a > 0:
         print(a)
       return None
 
-    node, _ = parser.parse_entity(no_exit)
+    node, _ = parser.parse_entity(no_exit, future_features=())
     with self.assertRaises(AssertionError):
       tr.visit(node)
 
@@ -246,7 +280,7 @@ class TransformerTest(test.TestCase):
       for _ in a:
         print(a)
 
-    node, _ = parser.parse_entity(no_entry)
+    node, _ = parser.parse_entity(no_entry, future_features=())
     with self.assertRaises(AssertionError):
       tr.visit(node)
 
@@ -256,7 +290,10 @@ class TransformerTest(test.TestCase):
 
       def _process_body_item(self, node):
         if isinstance(node, gast.Assign) and (node.value.id == 'y'):
-          if_node = gast.If(gast.Name('x', gast.Load(), None), [node], [])
+          if_node = gast.If(
+              gast.Name(
+                  'x', ctx=gast.Load(), annotation=None, type_comment=None),
+              [node], [])
           return if_node, if_node.body
         return node, None
 
@@ -270,11 +307,10 @@ class TransformerTest(test.TestCase):
       z = y
       return z
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
-    node = node.body[0]
 
     self.assertEqual(len(node.body), 2)
     self.assertTrue(isinstance(node.body[0], gast.Assign))
@@ -301,23 +337,14 @@ class TransformerTest(test.TestCase):
       if x > 0:
         return x
 
-    tr = BrokenTransformer(self._simple_source_info())
+    tr = BrokenTransformer(self._simple_context())
 
-    node, _ = parser.parse_entity(test_function)
-    with self.assertRaises(transformer.AutographParseError) as cm:
+    node, _ = parser.parse_entity(test_function, future_features=())
+    with self.assertRaises(ValueError) as cm:
       node = tr.visit(node)
     obtained_message = str(cm.exception)
     expected_message = r'expected "ast.AST", got "\<(type|class) \'list\'\>"'
     self.assertRegexpMatches(obtained_message, expected_message)
-    # The exception should point at the if statement, not any place else.  Could
-    # also check the stack trace.
-    self.assertTrue(
-        'Occurred at node:\nIf' in obtained_message, obtained_message)
-    self.assertTrue(
-        'Occurred at node:\nFunctionDef' not in obtained_message,
-        obtained_message)
-    self.assertTrue(
-        'Occurred at node:\nReturn' not in obtained_message, obtained_message)
 
   def test_robust_error_on_ast_corruption(self):
     # A child class should not be able to be so broken that it causes the error
@@ -341,29 +368,69 @@ class TransformerTest(test.TestCase):
       if x > 0:
         return x
 
-    tr = BrokenTransformer(self._simple_source_info())
+    tr = BrokenTransformer(self._simple_context())
 
-    node, _ = parser.parse_entity(test_function)
-    with self.assertRaises(transformer.AutographParseError) as cm:
+    node, _ = parser.parse_entity(test_function, future_features=())
+    with self.assertRaises(ValueError) as cm:
       node = tr.visit(node)
     obtained_message = str(cm.exception)
     # The message should reference the exception actually raised, not anything
     # from the exception handler.
     expected_substring = 'I blew up'
     self.assertTrue(expected_substring in obtained_message, obtained_message)
-    # Expect the exception to have failed to parse the corrupted AST
-    self.assertTrue(
-        '<could not convert AST to source>' in obtained_message,
-        obtained_message)
-    # The exception should point at the if statement, not any place else.  Could
-    # also check the stack trace.
-    self.assertTrue(
-        'Occurred at node:\nIf' in obtained_message, obtained_message)
-    self.assertTrue(
-        'Occurred at node:\nFunctionDef' not in obtained_message,
-        obtained_message)
-    self.assertTrue(
-        'Occurred at node:\nReturn' not in obtained_message, obtained_message)
+
+  def test_origin_info_propagated_to_new_nodes(self):
+
+    class TestTransformer(transformer.Base):
+
+      def visit_If(self, node):
+        return gast.Pass()
+
+    tr = TestTransformer(self._simple_context())
+
+    def test_fn():
+      x = 1
+      if x > 0:
+        x = 1
+      return x
+
+    node, source = parser.parse_entity(test_fn, future_features=())
+    origin_info.resolve(node, source, 'test_file', 100, 0)
+    node = tr.visit(node)
+
+    created_pass_node = node.body[1]
+    # Takes the line number of the if statement.
+    self.assertEqual(
+        anno.getanno(created_pass_node, anno.Basic.ORIGIN).loc.lineno, 102)
+
+  def test_origin_info_preserved_in_moved_nodes(self):
+
+    class TestTransformer(transformer.Base):
+
+      def visit_If(self, node):
+        return node.body
+
+    tr = TestTransformer(self._simple_context())
+
+    def test_fn():
+      x = 1
+      if x > 0:
+        x = 1
+        x += 3
+      return x
+
+    node, source = parser.parse_entity(test_fn, future_features=())
+    origin_info.resolve(node, source, 'test_file', 100, 0)
+    node = tr.visit(node)
+
+    assign_node = node.body[1]
+    aug_assign_node = node.body[2]
+    # Keep their original line numbers.
+    self.assertEqual(
+        anno.getanno(assign_node, anno.Basic.ORIGIN).loc.lineno, 103)
+    self.assertEqual(
+        anno.getanno(aug_assign_node, anno.Basic.ORIGIN).loc.lineno, 104)
+
 
 if __name__ == '__main__':
   test.main()

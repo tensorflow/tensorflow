@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CheckpointManager"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CheckpointSaverHook"
     mtype: "<type \'type\'>"
   }
@@ -237,12 +241,16 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "queue_runner"
     mtype: "<type \'module\'>"
   }
   member_method {
     name: "MonitoredTrainingSession"
-    argspec: "args=[\'master\', \'is_chief\', \'checkpoint_dir\', \'scaffold\', \'hooks\', \'chief_only_hooks\', \'save_checkpoint_secs\', \'save_summaries_steps\', \'save_summaries_secs\', \'config\', \'stop_grace_period_secs\', \'log_step_count_steps\', \'max_wait_secs\', \'save_checkpoint_steps\', \'summary_dir\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\', \'None\', \'None\', \'None\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'None\', \'120\', \'100\', \'7200\', \'<object object instance>\', \'None\'], "
+    argspec: "args=[\'master\', \'is_chief\', \'checkpoint_dir\', \'scaffold\', \'hooks\', \'chief_only_hooks\', \'save_checkpoint_secs\', \'save_summaries_steps\', \'save_summaries_secs\', \'config\', \'stop_grace_period_secs\', \'log_step_count_steps\', \'max_wait_secs\', \'save_checkpoint_steps\', \'summary_dir\', \'save_graph_def\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\', \'None\', \'None\', \'None\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'None\', \'120\', \'100\', \'7200\', \'<object object instance>\', \'None\', \'True\'], "
   }
   member_method {
     name: "NewCheckpointReader"
@@ -273,8 +281,8 @@ tf_module {
     argspec: "args=[\'checkpoint_prefix\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "confusion_matrix"
-    argspec: "args=[\'labels\', \'predictions\', \'num_classes\', \'dtype\', \'name\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int32\'>\", \'None\', \'None\'], "
+    name: "checkpoints_iterator"
+    argspec: "args=[\'checkpoint_dir\', \'min_interval_secs\', \'timeout\', \'timeout_fn\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
   }
   member_method {
     name: "cosine_decay"
@@ -298,7 +306,7 @@ tf_module {
   }
   member_method {
     name: "export_meta_graph"
-    argspec: "args=[\'filename\', \'meta_info_def\', \'graph_def\', \'saver_def\', \'collection_list\', \'as_text\', \'graph\', \'export_scope\', \'clear_devices\', \'clear_extraneous_savers\', \'strip_default_attrs\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\', \'False\', \'False\', \'False\'], "
+    argspec: "args=[\'filename\', \'meta_info_def\', \'graph_def\', \'saver_def\', \'collection_list\', \'as_text\', \'graph\', \'export_scope\', \'clear_devices\', \'clear_extraneous_savers\', \'strip_default_attrs\', \'save_debug_info\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\', \'False\', \'False\', \'False\', \'False\'], "
   }
   member_method {
     name: "generate_checkpoint_state_proto"
@@ -394,6 +402,10 @@ tf_module {
   }
   member_method {
     name: "piecewise_constant"
+    argspec: "args=[\'x\', \'boundaries\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "piecewise_constant_decay"
     argspec: "args=[\'x\', \'boundaries\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

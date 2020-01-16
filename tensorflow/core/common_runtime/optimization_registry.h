@@ -35,6 +35,7 @@ struct SessionOptions;
 // as a key into a state dictionary if it wants to keep state across
 // calls.
 struct GraphOptimizationPassOptions {
+  // Filled in by DirectSession for PRE_PLACEMENT optimizations. Can be empty.
   string session_handle;
   const SessionOptions* session_options = nullptr;
   const CostModel* cost_model = nullptr;
@@ -93,6 +94,10 @@ class OptimizationPassRegistry {
   // Add an optimization pass to the registry.
   void Register(Grouping grouping, int phase,
                 std::unique_ptr<GraphOptimizationPass> pass);
+
+  const std::map<Grouping, GraphOptimizationPasses>& groups() {
+    return groups_;
+  }
 
   // Run all passes in grouping, ordered by phase, with the same
   // options.

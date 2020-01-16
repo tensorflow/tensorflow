@@ -19,16 +19,23 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import opt_einsum
+import six
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -39,24 +46,26 @@ class LBetaTest(test.TestCase):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one))))
       self.assertAllClose(
           0.5, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual([], special_math_ops.lbeta(x_one).get_shape())
 
+  @test_util.run_deprecated_v1
   def test_one_dimensional_arg_dynamic(self):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose(1, beta_ph.eval(feed_dict={ph: x_one}))
       self.assertAllClose(0.5,
                           beta_ph.eval(feed_dict={ph: x_one_half}))
 
+  @test_util.run_deprecated_v1
   def test_four_dimensional_arg_with_partial_shape_dynamic(self):
     x_ = np.ones((3, 2, 3, 4))
     # Gamma(1) = 0! = 1
@@ -65,7 +74,7 @@ class LBetaTest(test.TestCase):
     #     = Gamma(1) * Gamma(1) * Gamma(1) * Gamma(1) / Gamma(1 + 1 + 1 + 1)
     #     = 1 / 6
     expected_beta_x = 1 / 6 * np.ones((3, 2, 3))
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x_ph = array_ops.placeholder(dtypes.float32, [3, 2, 3, None])
       beta_ph = math_ops.exp(special_math_ops.lbeta(x_ph))
       self.assertAllClose(expected_beta_x,
@@ -75,16 +84,17 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_arg(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(
           [0.5, 0.5],
           self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual((2,), special_math_ops.lbeta(x_one_half).get_shape())
 
+  @test_util.run_deprecated_v1
   def test_two_dimensional_arg_dynamic(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose([0.5, 0.5],
@@ -94,7 +104,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_proper_shape(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(
           [0.5, 0.5],
           self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
@@ -107,7 +117,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_complicated_shape(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = ops.convert_to_tensor(np.random.rand(3, 2, 2))
       self.assertAllEqual(
           (3, 2), self.evaluate(array_ops.shape(special_math_ops.lbeta(x))))
@@ -121,16 +131,18 @@ class LBetaTest(test.TestCase):
     # as the answer, always.
     x_a = [5.5]
     x_b = [0.1]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(
-          1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))))
+          1,
+          self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))),
+          rtol=3e-6)
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_b))))
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank1_returns_negative_infinity(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = constant_op.constant([], shape=[0])
       lbeta_x = special_math_ops.lbeta(x)
       expected_result = constant_op.constant(-np.inf, shape=())
@@ -141,7 +153,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank2_with_zero_last_dim_returns_negative_infinity(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       event_size = 0
       for batch_size in [0, 1, 2]:
         x = constant_op.constant([], shape=[batch_size, event_size])
@@ -154,7 +166,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank2_with_zero_batch_dim_returns_empty(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       batch_size = 0
       for event_size in [0, 1, 2]:
         x = constant_op.constant([], shape=[batch_size, event_size])
@@ -196,219 +208,509 @@ class BesselTest(test.TestCase):
       tf_logging.warn('Cannot test special functions: %s' % str(e))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class EinsumTest(test.TestCase):
 
-  simple_cases = [
-      'ij,jk->ik',
-      'ijk,jklm->il',
-      'ij,jk,kl->il',
-      'ijk->i',
-      'ijk->kji',
-      'ji,kj->ik',
-      'ikl,kji->kl',
-      'klj,lki->ij',
-      'ijk,ilj->kli',
-      'kij,mkb->ijmb',
-      'ijk,ijl,ikl->i',
-      'i,ijk,j->k',
-      'ij,ij,jk,kl->il',
-      'ij,kj,il,jm->ml',
-      'a,ab,abc->abc',
-      'a,b,ab->ab',
-      'ab,ab,c->',
-      'ab,ab,c->c',
-      'ab,ab,cd,cd->',
-      'ab,ab,cd,cd->ac',
-      'ab,ab,cd,cd->cd',
-      'ab,ab,cd,cd,ef,ef->',
-      'ab,cd,ef->abcdef',
-      'ab,cd,ef->acdf',
-      'ab,cd,de->abcde',
-      'ab,cd,de->be',
-      'ab,bcd,cd->abcd',
-      'ab,bcd,cd->abd',
-      'eb,cb,fb->cef',
-      'abcd,ad',
-      'bd,db,eac->ace',
-      'ba,ac,da->bcd',
-      'ab,ab',
-      'ab,ba',
-      'abc,abc',
-      'abc,bac',
-      'abc,cba',
-      'dba,ead,cad->bce',
-      'aef,fbc,dca->bde',
-      'iJ,Jk->ik',
-      'iJ,Ki->JK',
-      'iJk,Jklm->Jk'
-      'ij, jk, kl -> il',
-      'a, ab, abc -> abc',
-      'ab, ab, cd, cd, ef, ef -> ',
-      'abc, bac',
-      'iJ, Ki -> JK',
-      'iJk, Jklm -> Jk'
-  ]
-
-  long_cases = [
-      'bca,cdb,dbf,afc->',
-      'efc,dbc,acf,fd->abe',
-      'ea,fb,gc,hd,abcd->efgh',
-      'ea,fb,abcd,gc,hd->efgh',
-      'abhe,hidj,jgba,hiab,gab',
-      'efc, dbc, acf, fd -> abe',
-      'abhe, hidj, jgba, hiab, gab',
-  ]
-
-  invalid_cases = [
-      # bad formats
-      '',
-      'ijk ijk',
-      'ij.jk->ik',
-      'ij...,jk...->ik...',
-      'ij,k ->kji',
-      'ij,k-> kji',
-
-      # axis in output that does not exist
-      'ij,jk->im',
-
-      # incorrect number of dimensions
-      'ij,jkl->kl',
-
-      # this is allowed in numpy but not implemented here yet
-      'iij,jk'
-  ]
-
-  dim_mismatch_cases = [('ijk,jkl->il', [(2, 3, 4), (3, 5, 6)])]
-
-  def disabled_test_simple(self):
-    for case in self.simple_cases:
-      self.run_test(case)
-
-  def test_long(self):
-    for case in self.long_cases:
-      self.run_test(case)
-
-  def test_invalid(self):
-    for axes in self.invalid_cases:
-      inputs = [
-          array_ops.placeholder(dtypes.float32, shape=(3, 4)),
-          array_ops.placeholder(dtypes.float32, shape=(3, 4)),
-      ]
-      with self.assertRaises(ValueError):
-        _ = special_math_ops.einsum(axes, *inputs)
+  def _check(self, s, *input_shapes, **kwargs):
+    dtype = kwargs.pop('dtype', np.float32)
+    r = np.random.RandomState(0)
+    inputs = []
+    for shape in input_shapes:
+      arr = np.array(r.randn(*shape)).astype(dtype)
+      if dtype == np.complex64 or dtype == np.complex128:
+        arr += 1j * np.array(r.randn(*shape)).astype(dtype)
+      inputs.append(arr)
+    input_tensors = [constant_op.constant(x, shape=x.shape) for x in inputs]
+    a = np.einsum(s, *inputs)
+    b = self.evaluate(special_math_ops.einsum(s, *input_tensors))
+    self.assertAllClose(a, b, atol=1e-4, rtol=1e-4)
 
   def test_invalid_keyword_arguments(self):
-    m0 = array_ops.placeholder(dtypes.int32, shape=(1, None))
-    m1 = array_ops.placeholder(dtypes.int32, shape=(None, 1))
-    with self.assertRaisesRegexp(
-        TypeError,
-        'invalid keyword arguments for this function: invalid1, invalid2'):
+    r = np.random.RandomState(0)
+    a = array_ops.placeholder_with_default(r.randn(2, 3), shape=(2, 3))
+    b = array_ops.placeholder_with_default(r.randn(3, 4), shape=(3, 4))
+    with self.assertRaises(TypeError):
       _ = special_math_ops.einsum(
-          'ij,jk->ik',
-          m0,
-          m1,
-          name='name',
-          invalid1='value1',
-          invalid2='value2')
+          'ij,jk->ik', a, b, name='name', invalid1='value1', invalid2='value2')
 
-  def test_dim_mismatch(self):
-    for axes, input_shapes in self.dim_mismatch_cases:
-      inputs = [
-          array_ops.placeholder(dtypes.float32, shape=shape)
-          for shape in input_shapes
+  def test_unary(self):
+    self._check('a', (3,))
+    self._check('aa', (3, 3))
+    self._check('ab->', (3, 3))
+    self._check('ab->ab', (3, 3))
+    self._check('abc->b', (3, 4, 5))
+    self._check('abc->ca', (3, 4, 5))
+    self._check('abc->cab', (3, 4, 5))
+
+    # Empty cases.
+    self._check('', ())
+    self._check('->', ())
+
+    # Repeated indices cases.
+    self._check('aa->', (3, 3))
+    self._check('aa->a', (3, 3))
+    self._check('aaa->', (3, 3, 3))
+    self._check('aaa->a', (3, 3, 3))
+    self._check('aab->a', (3, 3, 4))
+    self._check('aabcc->a', (3, 3, 5, 4, 4))
+    self._check('aabcc->ac', (3, 3, 5, 4, 4))
+    self._check('aabcd->ad', (3, 3, 5, 4, 4))
+
+  def test_unary_ellipsis(self):
+    self._check('...->', ())
+    self._check('...ijk->...ki', (3, 4, 5))
+    self._check('...ijk->...ki', (1, 3, 4, 5))
+    self._check('...ijk->...ki', (2, 2, 3, 4, 5))
+    self._check('...ij->...ji', (5, 2, 3))  # batch matrix transpose
+    self._check('...ij->...', (5, 2, 3))  # batch sum
+
+    self._check('...->...', ())
+    self._check('->...', ())
+
+    # Repeated indices.
+    self._check('i...ii->...i', (3, 2, 3, 3))
+    self._check('i...i->i...', (2, 2))
+    self._check('i...i->', (2, 2))
+    self._check('i...i->...', (2, 5, 1, 2))
+    self._check('i...i->i...', (2, 1, 2))
+    self._check('i...i->i...', (2, 3, 4, 5, 2))
+
+  def test_binary_simple(self):
+    # Binary cases in XLA mode must have either (a) each index appearing exactly
+    # once in both the inputs (batch or contraction index), or (b) appearing
+    # exactly once in an input and in the output (free index).
+    self._check(',->', (), ())
+    self._check('a,a->', (3,), (3,))
+    self._check('a,a->a', (3,), (3,))
+    self._check('ab,b->a', (3, 4), (4,))
+    self._check('ab,ab->', (3, 4), (3, 4))
+    self._check('ab,bc->ac', (3, 4), (4, 5))
+    self._check('nij,jk->nik', (5, 2, 3), (3, 4))
+    self._check('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
+    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    self._check('sa,shb->shab', (2, 1), (2, 3, 4))
+    # Infer the output subscripts.
+    self._check('ab,b', (3, 4), (4,))
+    self._check('cab,b', (1, 3, 4), (4,))
+
+  def test_reduced_indices(self):
+    self._check('ba,b->', (3, 2), (3,))
+    self._check('ab,ab->', (3, 4), (3, 4))
+
+  def test_repeated_indices(self):
+    # Repeated indices.
+    self._check('ijj,k->ik', (2, 3, 3), (4,))
+    self._check('aba,a->b', (3, 4, 3), (3,))
+    # From https://github.com/dask/dask/pull/3412#discussion_r182413444
+    self._check('aab,bc->ac', (2, 2, 3), (3, 4))
+    self._check('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
+
+  def test_binary_ellipsis(self):
+    # Batch matmul with ellipsis but without broadcasting.
+    self._check('...mk,...kn->...mn', (5, 1, 2, 3), (5, 1, 3, 4))
+    # Empty batch dimensions.
+    self._check('...mk,...kn->...mn', (2, 3), (3, 4))
+    # Tensor contraction with transpose.
+    self._check('...ija,aijb...->ba...ij', (1, 2, 2, 3, 1), (1, 2, 3, 4, 1, 2))
+    # Output subscripts may omit ellipsis when batch shape is empty.
+    self._check('...mk,...kn->mn', (2, 3), (3, 4))
+    self._check('...mk,kn->mn', (2, 3), (3, 4))
+    self._check('mk,...kn->mn', (2, 3), (3, 4))
+    self._check('...,...->...', (2, 3), (2, 3))  # hadamard product
+    self._check('...i,...j->...ij', (5, 2), (5, 3))  # outer product
+
+  def test_broadcasting(self):
+    # Batch matmul with broadcasting.
+    self._check('...ij,...jk->...ik', (1, 2, 3), (3, 5))
+    self._check('...ij,...jk->...ik', (2, 3), (1, 3, 5))
+    self._check('...ij,...jk->...ik', (5, 2, 3), (3, 5))
+    self._check('...ij,...jk->...ik', (2, 3), (5, 3, 5))
+    self._check('...ij,...jk->...ik', (3, 1, 2, 3), (1, 1, 7, 3, 5))
+    self._check('i...j,j...k->...ik', (2, 1, 3, 1, 3), (3, 1, 7, 5))
+
+    # Broadcasting with repeated indices.
+    self._check('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
+    self._check('ij,jk...k->...i', (3, 2), (2, 4, 5, 4))
+    self._check('ijj,jk...k->i...', (3, 2, 2), (2, 4, 1, 4))
+    self._check('i...jj,jk...k->i...', (3, 3, 1, 2, 2), (2, 4, 1, 5, 4))
+    # Following 2 from https://stackoverflow.com/a/19203475/1611416
+    self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
+    self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
+
+  def test_dtypes(self):
+    dtypes = []
+    if test.is_built_with_rocm():
+      # This test triggers the BLAS op calls on the GPU
+      # ROCm does not support BLAS operations for complex types
+      dtypes = [np.float64, np.float32]
+    else:
+      dtypes = [np.float64, np.float32, np.complex64, np.complex128]
+    for dtype in dtypes:
+      self._check('ij,jk->ik', (2, 2), (2, 2), dtype=dtype)
+      self._check('ji,jk->ik', (2, 2), (2, 2), dtype=dtype)
+      self._check('ji,kj->ik', (2, 2), (2, 2), dtype=dtype)
+      self._check('ij,jk->ki', (2, 2), (2, 2), dtype=dtype)
+      self._check('ji,kj->ki', (2, 2), (2, 2), dtype=dtype)
+
+  def test_multiple_inputs(self):
+    self._check('ijk,ijl,ikl->i', (1, 2, 3), (1, 2, 4), (1, 3, 4))
+    self._check('i,ijk,j->k', (1,), (1, 2, 4), (2,))
+    self._check('ij,ij,jk,kl->il', (1, 2), (1, 2), (2, 3), (3, 4))
+    # Tests from dask.
+    self._check('a,b,c', (5,), (7,), (9,))
+    self._check('ab,ab,c->c', (5, 6), (5, 6), (2,))
+
+  @test_util.disable_xla('b/131919749')
+  def test_placeholder(self):
+
+    def check(equation, *input_and_placeholder_shapes):
+      r = np.random.RandomState(0)
+      inputs = []
+      input_placeholders = []
+      for actual_shape, placeholder_shape in input_and_placeholder_shapes:
+        input_np = np.array(r.randn(*actual_shape))
+        inputs.append(input_np)
+        input_placeholders.append(
+            array_ops.placeholder_with_default(input_np, placeholder_shape))
+
+      a = np.einsum(equation, *inputs)
+      b = self.evaluate(special_math_ops.einsum(equation, *input_placeholders))
+      self.assertAllClose(a, b, atol=1e-4, rtol=1e-4)
+
+    check('bijl,bjkm->bik', ((9, 2, 3, 5), (None, None, None, 5)),
+          ((9, 3, 4, 7), (None, None, 4, None)))
+    check('...ij,...->...i', ((4, 3, 1, 2), (None, 3, None, 2)),
+          ((4, 3), (None, 3)))
+
+    # Ellipsis with unknown rank.
+    check('bijl,bjkm->bik', ((9, 2, 3, 5), None), ((9, 3, 4, 7), None))
+    check('...ij,...jk->...ik', ((3, 1, 2, 3), None), ((1, 7, 3, 4), None))
+
+  def test_numpy_input(self):
+    # In addition to Tensors, we also support raw numpy arrays as inputs.
+    r = np.random.RandomState(0)
+    s = 'ijk,ijl,ikl->i'
+    x = r.randn(1, 2, 3)
+    y = r.randn(1, 2, 4)
+    z = r.randn(1, 3, 4)
+
+    a = np.einsum(s, x, y, z)
+    b = self.evaluate(special_math_ops.einsum(s, x, y, z))
+    self.assertAllClose(a, b, atol=1e-4, rtol=1e-4)
+
+  def test_long_cases(self):
+    cases = [
+        'efc,dbc,acf,fd->abe',
+        'ea,fb,gc,hd,abcd->efgh',
+        'abhe,hidj,jgba,hiab,gab->ed',
+        # Cases with whitespace.
+        'efc, dbc, acf, fd -> abe',
+        'abhe, hidj, jgba, hiab, gab',
+        # Repeated equations for cache hit on the opt_einsum call.
+        'ea,fb,abcd,gc,hd->efgh',
+        'ea,fb,abcd,gc,hd->efgh',
+    ]
+    dimension_map = dict((c, ord(c) - ord('a') + 1) for c in 'abcdefghij')
+    for equation in cases:
+      inputs = equation.split('->')[0].replace(' ', '')
+      input_shapes = []
+      for input_str in inputs.split(','):
+        input_shapes.append(tuple([dimension_map[c] for c in input_str]))
+      self._check(equation, *input_shapes)
+
+  def test_opt_einsum_cached(self):
+    # Checks call_count to opt_einsum which are only reflected in eager mode.
+    if not context.executing_eagerly():
+      return
+
+    input_1 = ('ijk,ijl,ikl->i', (1, 2, 3), (1, 2, 4), (1, 3, 4))
+    input_2 = ('ij,ij,jk,kl->il', (1, 2), (1, 2), (2, 3), (3, 4))
+
+    with test.mock.patch.object(
+        opt_einsum, 'contract_path',
+        wraps=opt_einsum.contract_path) as mock_contract_path:
+
+      # explicitly clear the lru_cache contents for the method
+      #   special_math_ops.get_opt_einsum_contract_path
+      # We need to do this because other tests in this file invoke that method
+      # with the same input args (as input_1 and input_2 above), and if
+      # those tests run before this test, then the call_count for the method
+      # mock_contract_path will not increment.
+      if not six.PY2:
+        special_math_ops._get_opt_einsum_contract_path.cache_clear()
+
+      self.assertEqual(mock_contract_path.call_count, 0)
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 1)
+      # The same input results in no extra call if we're caching the
+      # opt_einsum.contract_path call. We only cache in Python3.
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 2 if six.PY2 else 1)
+      # New input results in another call to opt_einsum.
+      self._check(*input_2)
+      self.assertEqual(mock_contract_path.call_count, 3 if six.PY2 else 2)
+      # No more extra calls as the inputs should be cached.
+      self._check(*input_1)
+      self._check(*input_2)
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 6 if six.PY2 else 2)
+
+  @test_util.disable_xla('b/131919749')
+  def test_long_cases_with_repeated_labels(self):
+    cases = [
+        # Tests from dask.
+        'fdf,cdd,ccd,afe->ae',
+        'fff,fae,bef,def->abd',
+    ]
+    dimension_map = dict((c, ord(c) - ord('a') + 1) for c in 'abcdefghij')
+    for equation in cases:
+      inputs = equation.split('->')[0].replace(' ', '')
+      input_shapes = []
+      for input_str in inputs.split(','):
+        input_shapes.append(tuple([dimension_map[c] for c in input_str]))
+      self._check(equation, *input_shapes)
+
+  @test_util.disable_xla('b/131919749')
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_equation(self):
+    r = np.random.RandomState(0)
+    cases = [
+        # invalid equation format.
+        ('a0->a', r.randn(5, 3)),
+        ('a->a,a', r.randn(5)),
+        ('a->a->a', r.randn(5)),
+        ('ijk ijk', r.randn(1, 2, 3), r.randn(1, 2, 3)),
+        ('ij.jk->ik', r.randn(2, 3), r.randn(3, 4)),
+        # output label not present in input.
+        ('a->b', r.randn(5)),
+        ('ij,jk->im', r.randn(2, 3), r.randn(3, 4)),
+        # wrong shape.
+        ('ij,jk->ik', r.randn(1, 2, 3), r.randn(3, 4)),
+        # inconsistent dimensions.
+        ('ij,jk->ik', r.randn(2, 3), r.randn(4, 4)),
+        # output has repeated subscripts.
+        ('ij,jk->iik', r.randn(2, 3), r.randn(3, 4)),
+        # too many ellipses
+        ('...ij...,jk...->ik...', r.randn(2, 3), r.randn(3, 4)),
+        ('...ij,jk...->...ik...', r.randn(2, 3), r.randn(3, 4)),
+        # invalid broadcast dimensions.
+        ('...ij,...jk->...ik', r.randn(5, 2, 3), r.randn(7, 3, 4)),
+        # output should have ellipsis when broadcasting shape is non-empty.
+        ('...ij,...jk->ik', r.randn(2, 2, 3), r.randn(3, 4)),
+    ]
+    for args in cases:
+      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+        _ = special_math_ops.einsum(*args)
+
+      placeholders = [
+          array_ops.placeholder_with_default(x, shape=None) for x in args[1:]
       ]
-      with self.assertRaises(ValueError):
-        _ = special_math_ops.einsum(axes, *inputs)
+      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+        _ = self.evaluate(special_math_ops.einsum(args[0], *placeholders))
 
-  def run_test(self, axes):
-    all_axes = {ax: np.random.randint(4, 12) for ax in axes if ax.isalpha()}
+  @test_util.disable_xla('b/131919749')
+  def test_empty(self):
 
-    input_vals = []
-    input_axes, _, _ = axes.partition('->')
+    def check(equation, input_shapes, output_shape):
+      # All these cases result in an output filled with zeros, so we don't call
+      # np.einsum. Also np.einsum doesn't support generalized diagonals which
+      # are needed for EinsumOp gradients.
+      r = np.random.RandomState(0)
+      inputs = [np.array(r.randn(*shape)) for shape in input_shapes]
+      input_tensors = [constant_op.constant(x, shape=x.shape) for x in inputs]
+      output = self.evaluate(special_math_ops.einsum(equation, *input_tensors))
+      self.assertAllClose(output, np.zeros(output_shape), atol=1e-4, rtol=1e-4)
 
-    for idx in input_axes.split(','):
-      shape = [all_axes[ax] for ax in idx if ax.isalpha()]
-      input_vals.append(np.random.random(shape))
+    # Contractions along zero-sized dimensons.
+    check('ab,bc->ac', [(0, 10), (10, 10)], (0, 10))
+    # From transformer xl.
+    check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))
 
-    input_tensors = [constant_op.constant(val) for val in input_vals]
-    output_tensor = special_math_ops.einsum(axes, *input_tensors)
+    # Generalized traces with zero-sized dimensions.
+    check('aab,bc->ac', [(0, 0, 10), (10, 10)], (0, 10))
+    check('aaab,bc->c', [(0, 0, 0, 3), (3, 4)], (4,))
 
-    with self.test_session(use_gpu=True):
-      output_value = self.evaluate(output_tensor)
 
-    correct_value = np.einsum(axes, *input_vals)
+@test_util.run_all_in_graph_and_eager_modes
+class EinsumGradTest(test.TestCase):
 
-    err = np.abs(correct_value - output_value).max()
-    # print(axes, err)
-    self.assertLess(err, 1e-8)
+  def _check_gradient(self, s, *input_shapes):
+    with self.cached_session():
+      r = np.random.RandomState(0)
+      inputs = [np.array(r.randn(*shape)) for shape in input_shapes]
+      input_tensors = [constant_op.constant(x, shape=x.shape) for x in inputs]
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          lambda *xs: special_math_ops.einsum(s, *xs), input_tensors)
+      self.assertLess(
+          gradient_checker_v2.max_error(analytical, numerical), 1e-4)
 
-  def test_input_is_placeholder(self):
-    with ops.Graph().as_default():
-      m0 = array_ops.placeholder(dtypes.int32, shape=(1, None))
-      m1 = array_ops.placeholder(dtypes.int32, shape=(None, 1))
-      out = special_math_ops.einsum('ij,jk->ik', m0, m1)
-      with session.Session() as sess:
-        feed_dict = {
-            m0: [[1, 2, 3]],
-            m1: [[2], [1], [1]],
-        }
-        self.assertAllClose([[7]], sess.run(out, feed_dict=feed_dict))
+  @test_util.disable_xla('b/131919749')
+  def test_unary(self):
+    self._check_gradient('->', ())
+    self._check_gradient('aaa->a', (3, 3, 3))
+    self._check_gradient('aabcd->ad', (3, 3, 5, 4, 4))
+    self._check_gradient('abcd->da', (3, 5, 4, 2))
 
-    with ops.Graph().as_default():
-      m0 = array_ops.placeholder(dtypes.int32, shape=(None, 3))
-      m1 = array_ops.placeholder(dtypes.int32, shape=(3,))
-      out = special_math_ops.einsum('ij,j->i', m0, m1)
-      with session.Session() as sess:
-        feed_dict = {
-            m0: [[1, 2, 3]],
-            m1: [2, 1, 1],
-        }
-        self.assertAllClose([7], sess.run(out, feed_dict=feed_dict))
+  @test_util.disable_xla('b/131919749')
+  def test_unary_ellipsis(self):
+    self._check_gradient('...->...', ())
+    self._check_gradient('...->', ())
+    self._check_gradient('->...', ())
 
-    # Tests for placeholders which have two or more None values
-    with ops.Graph().as_default():
-      m0 = array_ops.placeholder(dtypes.int32, shape=(None, None, 2))
-      m1 = array_ops.placeholder(dtypes.int32, shape=(2, 1))
-      out = special_math_ops.einsum('ijk,kl->ijl', m0, m1)
-      with session.Session() as sess:
-        feed_dict = {
-            m0: [[[1, 2]]],
-            m1: [[3], [2]],
-        }
-        self.assertAllClose([[[7]]], sess.run(out, feed_dict=feed_dict))
+    # Tests from dask
+    self._check_gradient('a...a->a...', (2, 2))
+    self._check_gradient('a...a->', (2, 2))
+    self._check_gradient('a...a->...', (2, 5, 1, 2))
+    self._check_gradient('a...a->a...', (2, 1, 2))
+    self._check_gradient('a...a->a...', (2, 3, 4, 5, 2))
 
-    with ops.Graph().as_default():
-      m0 = array_ops.placeholder(dtypes.int32, shape=(2, 1))
-      m1 = array_ops.placeholder(dtypes.int32, shape=(None, None, 2))
-      out = special_math_ops.einsum('kl,ijk->ijl', m0, m1)
-      with session.Session() as sess:
-        feed_dict = {
-            m0: [[3], [2]],
-            m1: [[[1, 2]]],
-        }
-        self.assertAllClose([[[7]]], sess.run(out, feed_dict=feed_dict))
+    self._check_gradient('...ijk->...ki', (3, 4, 5))
+    self._check_gradient('...ijk->...ki', (1, 3, 4, 5))
+    self._check_gradient('...ijk->...ki', (2, 2, 3, 4, 5))
+    self._check_gradient('ab...cd->da...', (3, 5, 2, 3, 4, 2))
 
-    with ops.Graph().as_default():
-      m0 = array_ops.placeholder(dtypes.int32, shape=(None, None, 2))
-      m1 = array_ops.placeholder(dtypes.int32, shape=(2,))
-      out = special_math_ops.einsum('ijk,k->ij', m0, m1)
-      with session.Session() as sess:
-        feed_dict = {
-            m0: [[[1, 2]]],
-            m1: [3, 2],
-        }
-        self.assertAllClose([[7]], sess.run(out, feed_dict=feed_dict))
+  def test_binary_simple(self):
+    # Binary cases in XLA mode must have either (a) each index appearing
+    # exactly once in both the inputs (batch or contraction index), or
+    # (b) appearing exactly once in an input and in the output (free index).
+    self._check_gradient(',->', (), ())
+    self._check_gradient('a,a->', (3,), (3,))
+    self._check_gradient('a,a->a', (3,), (3,))
+    self._check_gradient('ab,b->a', (3, 4), (4,))
+    self._check_gradient('ab,ab->', (3, 4), (3, 4))
+    self._check_gradient('ab,bc->ac', (3, 4), (4, 5))
+    self._check_gradient('nij,jk->nik', (5, 2, 3), (3, 4))
+    self._check_gradient('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
+    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    self._check_gradient('sa,shb->shab', (2, 1), (2, 3, 4))
 
-    with ops.Graph().as_default():
-      m0 = array_ops.placeholder(dtypes.int32, shape=(None, 2, None, 2))
-      m1 = array_ops.placeholder(dtypes.int32, shape=(None, 2))
-      out = special_math_ops.einsum('ijkl,ij->ikl', m0, m1)
-      with session.Session() as sess:
-        feed_dict = {
-            m0: [[[[1, 2]], [[2, 1]]]],
-            m1: [[3, 2]],
-        }
-        self.assertAllClose([[[7, 8]]], sess.run(out, feed_dict=feed_dict))
+  def test_empty(self):
+    # From Transformer XL.
+    self._check_gradient('ibnd,ijbn->jnd', (1, 0, 5, 10), (1, 1, 0, 5))
+
+  @test_util.disable_xla('b/131919749')
+  def test_reduced_indices(self):
+    self._check_gradient('ba,b->', (3, 2), (3,))
+    self._check_gradient('ab,ab->', (3, 4), (3, 4))
+    self._check_gradient('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
+
+  @test_util.disable_xla('b/131919749')
+  def test_repeated_indices(self):
+    # Repeated indices.
+    self._check_gradient('aba,a->b', (3, 4, 3), (3,))
+    self._check_gradient('ijj,k->ik', (2, 3, 3), (4,))
+    self._check_gradient('ill,k->ik', (2, 3, 3), (4,))
+    # From https://github.com/dask/dask/pull/3412#discussion_r182413444
+    self._check_gradient('aab,bc->ac', (1, 1, 3), (3, 4))
+    self._check_gradient('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
+
+  @test_util.disable_xla('b/131919749')
+  def test_empty_with_repeated_indices(self):
+    self._check_gradient('aab,bc->ac', (0, 0, 10), (10, 10))
+    self._check_gradient('aab,bc->ac', (1, 1, 0), (0, 10))
+    self._check_gradient('aaab,bc->c', (0, 0, 0, 3), (3, 4))
+
+  @test_util.disable_xla('b/131919749')
+  def test_broadcasting(self):
+    self._check_gradient('...ij,...jk->...ik', (3, 2), (2, 4))
+    self._check_gradient('ij...,jk...->ik...', (3, 2, 1), (2, 4))
+    self._check_gradient('...ij,...jk->...ik', (3, 1, 3, 2), (1, 5, 2, 4))
+    self._check_gradient('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
+    self._check_gradient('aab,b...c->a...c', (1, 1, 3), (3, 1, 1, 4))
+    # Tests from dask.
+    self._check_gradient('...i,...j,...k->...ijk', (1, 4, 1, 2), (5, 1, 1, 3),
+                         (1, 1, 1, 1, 9))
+    self._check_gradient('...i,...j,...k->...ijk', (1,), (1,), (1,))
+
+  def test_long_cases(self):
+    cases = [
+        'abhe,hidj,jgba,hiab,gab->ed',
+        # Tests from dask.
+        'ea,fb,abcd,gc,hd->efgh',
+    ]
+    dimension_map = dict(
+        (c, ((ord(c) - ord('a')) % 3) + 1) for c in 'abcdefghij')
+    for equation in cases:
+      inputs = equation.split('->')[0].replace(' ', '')
+      input_shapes = []
+      for input_str in inputs.split(','):
+        input_shapes.append(tuple([dimension_map[c] for c in input_str]))
+      self._check_gradient(equation, *input_shapes)
+
+  @test_util.disable_xla('b/131919749')
+  def test_long_cases_with_repeated_labels(self):
+    cases = [
+        # Tests from dask.
+        'fdf,cdd,ccd,afe->ae',
+        'fff,fae,bef,def->abd',
+    ]
+    dimension_map = dict(
+        (c, ((ord(c) - ord('a')) % 3) + 1) for c in 'abcdefghij')
+    for equation in cases:
+      inputs = equation.split('->')[0].replace(' ', '')
+      input_shapes = []
+      for input_str in inputs.split(','):
+        input_shapes.append(tuple([dimension_map[c] for c in input_str]))
+      self._check_gradient(equation, *input_shapes)
+
+
+class EinsumBenchmark(test.Benchmark):
+  cases = [
+      # Unary cases.
+      ['ijk->i', 100],
+      ['ijk->kji', 100],
+      # Regular matmul or batch matmul.
+      ['ij,jk->ik', 500],
+      ['ji,kj->ik', 500],
+      ['bij,bjk->bik', 100],
+      ['bji,bjk->bki', 100],
+      ['ikl,kji->kl', 100],
+      ['klj,lki->ij', 100],
+      ['ijk,ilj->kli', 100],
+      ['ijk,jklm->il', 50],
+      # Larger binary contractions.
+      ['efabc,eabcd->efd', 20],
+      ['fabec,abcde->fde', 20],
+      ['efabc,edabc->efd', 20],
+      ['eadbf,dfebc->ecfad', 20],
+      ['abcdef,bcdfg->abcdeg', 20],
+      # Chain matmul.
+      ['ij,jk,kl->il', 1000],
+      # Long cases. Path optimization should kick in.
+      ['ea,fb,abcd,gc,hd->efgh', 10],
+      ['bca,cdb,dbf,afc->', 10],
+      ['efc,dbc,acf,fd->abe', 10],
+      ['abhe,hidj,jgba,hiab,gab->ed', 10],
+  ]
+
+  def benchmark_einsum(self):
+    for equation, dim in self.cases:
+      with ops.Graph().as_default(), \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
+          ops.device('/cpu:0'):
+        r = np.random.RandomState(0)
+        input_subscripts = equation.split('->')[0].split(',')
+        input_vars = []
+        for subscript in input_subscripts:
+          input_shape = (dim,) * len(subscript)
+          input_vars.append(
+              variables.Variable(np.array(r.randn(*input_shape), np.float32)))
+        variables.global_variables_initializer().run()
+
+        if len(input_vars) <= 2:
+          self.run_op_benchmark(
+              sess,
+              special_math_ops.einsum(equation, *input_vars),
+              min_iters=50,
+              name='einsum_cpu_({})_{}'.format(equation, dim))
+        else:
+          for optimize in ['greedy', 'auto']:
+            self.run_op_benchmark(
+                sess,
+                special_math_ops.einsum(
+                    equation, *input_vars, optimize=optimize),
+                min_iters=50,
+                name='einsum_cpu_({})_{}_{}'.format(equation, optimize, dim))
 
 
 if __name__ == '__main__':

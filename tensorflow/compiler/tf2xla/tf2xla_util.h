@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -54,7 +56,7 @@ string TensorIdToString(const tf2xla::TensorId& id);
 Status SetNodeShardingFromNeighbors(Node* n, bool out_edges);
 
 // Add an allowed data type to the AttrConstraint with the given name.
-void AddDtypeToKernalDefConstraint(absl::string_view name, DataType dtype,
+void AddDtypeToKernelDefConstraint(absl::string_view name, DataType dtype,
                                    KernelDef* kdef);
 
 // Returns the next random seed to use for seeding xla rng.
@@ -120,7 +122,7 @@ class AssociatedFunctionInfo {
 
 // Returns if the NodeDef has associated function.
 bool HasAssociatedFunction(const NodeDef& node_def,
-                           FunctionLibraryRuntime* flr);
+                           const FunctionLibraryDefinition* fld);
 
 // Gets functions associated with the node. Current cases:
 // 1. For function call node, its function name;
@@ -128,7 +130,7 @@ bool HasAssociatedFunction(const NodeDef& node_def,
 //    and returned attrs will be this node's attributes;
 // 3. For nodes like XlaWhile/XlaIf, all their function attributes.
 std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
-    const Node& node, FunctionLibraryRuntime* flr);
+    const Node& node, const FunctionLibraryDefinition* fld);
 
 // Changes associated functions for the node. Current cases:
 // 1. For function call node, creates a new node with the new function name and
@@ -143,6 +145,72 @@ Status RewriteAssociatedFunction(
 
 // Attribute to mark nodes to be executed on host.
 extern const char kXlaOutsideCompilationAttrName[];
+
+// Class to act as cache for FunctionLibraryRuntime::Handle objects.
+class CachedFunctionHandles {
+ public:
+  CachedFunctionHandles(FunctionLibraryRuntime* flr) : flr_(flr) {}
+
+  // Populates `handle` for requested function and attributes. If we have
+  // instantiated the function with the same attributes before, `handle` will be
+  // cached handle; otherwise instantiate the function and populate `handle`.
+  Status GetOrInstantiate(const string& func_name, AttrSlice attrs,
+                          FunctionLibraryRuntime::Handle* handle);
+
+  // Releases all handles in the cache. Returns first non-OK status if any;
+  // returns OK otherwise.
+  Status ReleaseAllHandles();
+
+  ~CachedFunctionHandles() { ReleaseAllHandles().IgnoreError(); }
+
+ private:
+  FunctionLibraryRuntime* flr_;
+  std::map<string, FunctionLibraryRuntime::Handle> handles_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CachedFunctionHandles);
+};
+
+// Struct for node's output edge info.
+struct OutEdgeInfo {
+  Node* dst;
+  int src_output, dst_input;
+};
+
+// Replaces node `n` with a new node whose NodeDef is `node_def`.
+xla::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
+
+// Helper function that builds an Identity node.
+xla::StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
+                                       DataType dtype, const Node* input,
+                                       absl::optional<string> requested_device);
+
+// For "If"/"While" nodes, if some of their inputs are Const nodes, rewrite
+// body functions to use the Const nodes instead of original _Arg nodes.
+//
+// For example, say we have the following computation:
+//     shape = constant_op.constant([1])
+//     return tf.cond(pred, lambda: tf.ones(shape), lambda: tf.zeros(shape))
+// If we do not rewrite then/else function, they will use _Arg node as shape
+// input for tf.ones/tf.zeros. But XLA requires that shape input to be compile
+// time constant, so XLA compilation will fail. This rewriting process will
+// change the shape input to Const node.
+Status PropagateConstIntoFunctionalNodes(
+    Graph* g, const FunctionLibraryDefinition* lookup_fld,
+    FunctionLibraryDefinition* fld);
+
+// Prunes unreachable FunctionDefs from FunctionLibraryDefinition.
+Status PruneUnreachableFunctionsFromGraph(const Graph& g,
+                                          FunctionLibraryDefinition* fld);
+
+// Finds the following pattern in the graph:
+// 1) EmptyTensorList -> forward While op -> backward While op,
+// 2) in forward While op, a Const node is pushed,
+// 3) in backward While op, data is popped from the tensor list.
+// And rewrites backward While op to use Const node instead of TensorListPopBack
+// result.
+// TODO(b/128633174) remove the TensorList and related TensorList ops.
+Status RewriteTensorListWithConstElement(Graph* g,
+                                         FunctionLibraryDefinition* fld);
 
 }  // namespace tensorflow
 

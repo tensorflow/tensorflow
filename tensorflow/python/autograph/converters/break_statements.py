@@ -42,7 +42,7 @@ class BreakTransformer(converter.Base):
     var_name = self.state[_Break].control_var_name
     # TODO(mdan): This will fail when expanded inside a top-level else block.
     template = """
-      var_name = tf.constant(True)
+      var_name = True
       continue
     """
     return templates.replace(template, var_name=var_name)
@@ -53,7 +53,7 @@ class BreakTransformer(converter.Base):
       return block
 
     template = """
-        if not var_name:
+        if ag__.not_(var_name):
           block
       """
     node = templates.replace(
@@ -85,8 +85,8 @@ class BreakTransformer(converter.Base):
       guarded_orelse = self._guard_if_present(node.orelse, break_var)
 
       template = """
-        var_name = tf.constant(False)
-        while test and not var_name:
+        var_name = False
+        while ag__.and_(lambda: test, lambda: ag__.not_(var_name)):
           body
         else:
           orelse
@@ -115,14 +115,14 @@ class BreakTransformer(converter.Base):
       # break did not trigger).
       guarded_orelse = self._guard_if_present(node.orelse, break_var)
       extra_test = templates.replace_as_expression(
-          'not var_name', var_name=break_var)
+          'ag__.not_(var_name)', var_name=break_var)
 
       # The extra test is hidden in the AST, which will confuse the static
       # analysis. To mitigate that, we insert a no-op statement that ensures
       # the control variable is marked as used.
       # TODO(mdan): Use a marker instead, e.g. ag__.condition_loop_on(var_name)
       template = """
-        var_name = tf.constant(False)
+        var_name = False
         for target in iter_:
           (var_name,)
           body
@@ -143,4 +143,6 @@ class BreakTransformer(converter.Base):
 
 
 def transform(node, ctx):
-  return BreakTransformer(ctx).visit(node)
+  transformer = BreakTransformer(ctx)
+  node = transformer.visit(node)
+  return node

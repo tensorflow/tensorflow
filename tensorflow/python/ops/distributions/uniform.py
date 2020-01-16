@@ -33,7 +33,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distributions.Uniform")
+@tf_export(v1=["distributions.Uniform"])
 class Uniform(distribution.Distribution):
   """Uniform distribution with `low` and `high` parameters.
 
@@ -165,7 +165,7 @@ class Uniform(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
@@ -177,10 +177,9 @@ class Uniform(distribution.Distribution):
   def _prob(self, x):
     broadcasted_x = x * array_ops.ones(
         self.batch_shape_tensor(), dtype=x.dtype)
-    return array_ops.where(
-        math_ops.is_nan(broadcasted_x),
-        broadcasted_x,
-        array_ops.where(
+    return array_ops.where_v2(
+        math_ops.is_nan(broadcasted_x), broadcasted_x,
+        array_ops.where_v2(
             math_ops.logical_or(broadcasted_x < self.low,
                                 broadcasted_x >= self.high),
             array_ops.zeros_like(broadcasted_x),
@@ -192,9 +191,9 @@ class Uniform(distribution.Distribution):
     zeros = array_ops.zeros(broadcast_shape, dtype=self.dtype)
     ones = array_ops.ones(broadcast_shape, dtype=self.dtype)
     broadcasted_x = x * ones
-    result_if_not_big = array_ops.where(
+    result_if_not_big = array_ops.where_v2(
         x < self.low, zeros, (broadcasted_x - self.low) / self.range())
-    return array_ops.where(x >= self.high, ones, result_if_not_big)
+    return array_ops.where_v2(x >= self.high, ones, result_if_not_big)
 
   def _entropy(self):
     return math_ops.log(self.range())

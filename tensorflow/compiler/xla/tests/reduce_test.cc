@@ -27,11 +27,13 @@ limitations under the License.
 
 #include <stdlib.h>
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -454,7 +457,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   for (int64 colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64 rowno = 0; rowno < rows; ++rowno) {
-      column_sum += log(input_data(rowno, colno));
+      column_sum += std::log(input_data(rowno, colno));
     }
     expected.push_back(column_sum);
   }
@@ -485,7 +488,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
   for (int64 colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64 rowno = 0; rowno < rows; ++rowno) {
-      column_sum += log(input_data(rowno, colno));
+      column_sum += std::log(input_data(rowno, colno));
     }
     expected.push_back(column_sum);
   }
@@ -532,7 +535,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
     for (int64 colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;
       for (int64 rowno = 0; rowno < rows; ++rowno) {
-        column_sum += tanh(input_data(rowno, major, colno));
+        column_sum += std::tanh(input_data(rowno, major, colno));
       }
       expected.push_back(column_sum);
     }
@@ -978,6 +981,214 @@ XLA_TEST_F(ReduceTest, OrReduceU64) {
   std::vector<uint64> expected = {0X3BFDFF7ABEFEFEF0LL, 0XFFFFFFFFFFFFFFF7LL,
                                   0xCAFEBEEFABABABABLL};
   ComputeAndCompareR1<uint64>(&builder, expected, {});
+}
+
+XLA_TEST_F(ReduceTest, R0ReduceInDisguise) {
+  XlaBuilder builder(TestName());
+  XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
+  constexpr int element_count = 127;
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {element_count, 1});
+  auto input = Parameter(&builder, 0, input_shape, "input");
+  auto zero = ConstantR0<float>(&builder, 0.0);
+  Reduce(input, zero, add_f32, /*dimensions_to_reduce=*/{0});
+
+  Array2D<float> input_data(element_count, 1);
+  input_data.FillRandom(3.0f);
+  Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+
+  float expected = absl::c_accumulate(input_data, 0.0f);
+  ComputeAndCompareR1<float>(&builder, {expected}, {input_global_data.get()},
+                             ErrorSpec(0.001));
+}
+
+class ReduceHloTest : public HloTestBase {};
+
+XLA_TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
+  absl::string_view hlo_string = R"(
+  HloModule HandleReductionToVectorAndOtherReduction
+
+  add {
+    acc = f32[] parameter(1)
+    op = f32[] parameter(0)
+    ROOT out = f32[] add(acc, op)
+  }
+
+  ENTRY main {
+    iota.3 = s32[2,2]{1,0} iota(), iota_dimension=0
+    iota.2 = s32[2,2]{1,0} iota(), iota_dimension=1
+    compare.0 = pred[2,2]{1,0} compare(iota.3, iota.2), direction=EQ
+    broadcast = pred[2,2,2,2]{3,2,1,0} broadcast(compare.0), dimensions={2,3}
+    param_0.16 = f32[2,2,2,2]{3,2,1,0} parameter(0)
+    constant_4 = f32[] constant(0)
+    broadcast.9 = f32[2,2,2,2]{3,2,1,0} broadcast(constant_4), dimensions={}
+    select.0 = f32[2,2,2,2]{3,2,1,0} select(broadcast, param_0.16, broadcast.9)
+    reduce.1 = f32[2,2,2]{2,1,0} reduce(select.0, constant_4), dimensions={2},
+               to_apply=add
+    abs.0 = f32[2,2,2]{2,1,0} abs(reduce.1)
+    log.0 = f32[2,2,2]{2,1,0} log(abs.0)
+    reduce.0 = f32[2,2]{1,0} reduce(log.0, constant_4), dimensions={2},
+               to_apply=add
+    ROOT tuple = (f32[2,2]{1,0}, f64[2,2,2]{2,1,0}) tuple(reduce.0, reduce.1)
+  }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+class VariadicReduceTest : public HloTestBase {};
+
+XLA_TEST_F(VariadicReduceTest, Reduce_R3x2_to_R2x2_simple) {
+  absl::string_view hlo_string = R"(
+  HloModule Reduce_R3x2_to_R1x2_simple
+
+  add {
+    op1 = f32[] parameter(0)
+    op2 = f32[] parameter(1)
+    acc1 = f32[] parameter(2)
+    acc2 = f32[] parameter(3)
+    out1 = f32[] add(acc1, op1)
+    out2 = f32[] add(acc2, op2)
+    ROOT result = (f32[], f32[]) tuple(out1, out2)
+  }
+
+  ENTRY main {
+    inp1 = f32[3,4,5] parameter(0)
+    inp2 = f32[3,4,5] parameter(1)
+    zero = f32[] constant(0)
+
+    ROOT out = (f32[3,5], f32[3,5]) reduce(inp1, inp2, zero, zero),
+      dimensions={1},
+      to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, Reduce_R3x2_to_R1x2_simple) {
+  absl::string_view hlo_string = R"(
+  HloModule Reduce_R3x2_to_R1x2_simple
+
+  add {
+    op1 = f32[] parameter(0)
+    op2 = f32[] parameter(1)
+    acc1 = f32[] parameter(2)
+    acc2 = f32[] parameter(3)
+    out1 = f32[] add(acc1, op1)
+    out2 = f32[] add(acc2, op2)
+    ROOT result = (f32[], f32[]) tuple(out1, out2)
+  }
+
+  ENTRY main {
+    inp1 = f32[10,20,3] parameter(0)
+    inp2 = f32[10,20,3] parameter(1)
+    zero = f32[] constant(0)
+
+    ROOT out = (f32[10], f32[10]) reduce(inp1, inp2, zero, zero),
+      dimensions={1,2},
+      to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_simple) {
+  absl::string_view hlo_string = R"(
+  HloModule Reduce_R1x2_to_R0x2_simple
+
+  add {
+    op1 = f32[] parameter(0)
+    op2 = f32[] parameter(1)
+    acc1 = f32[] parameter(2)
+    acc2 = f32[] parameter(3)
+    out1 = f32[] add(acc1, op1)
+    out2 = f32[] add(acc2, op2)
+    ROOT result = (f32[], f32[]) tuple(out1, out2)
+  }
+
+  ENTRY main {
+    inp1 = f32[100] parameter(0)
+    inp2 = f32[100] parameter(1)
+    zero = f32[] constant(0)
+
+    ROOT out = (f32[], f32[]) reduce(inp1, inp2, zero, zero),
+      dimensions={0},
+      to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax) {
+  absl::string_view hlo_string = R"(
+    HloModule Reduce_R1x2_to_R0x2_argmax
+
+    argmax {
+      running_max = f32[] parameter(0)
+      running_max_idx = u32[] parameter(1)
+      current_value = f32[] parameter(2)
+      current_value_idx = u32[] parameter(3)
+
+      current = (f32[], u32[]) tuple(running_max, running_max_idx)
+      potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+      cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+      new_max = f32[] select(cmp_code, current_value, running_max)
+      new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+      ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+    }
+
+    ENTRY main {
+      input = f32[100] parameter(0)
+      idxs = u32[100]{0} iota(), iota_dimension=0
+      zero = f32[] constant(0)
+      zero_idx = u32[] constant(0)
+
+      ROOT out = (f32[], u32[]) reduce(
+        input, idxs, zero, zero_idx),
+        dimensions={0},
+        to_apply=%argmax
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
+  absl::string_view hlo_string = R"(
+    HloModule VariadicReduceMultiOutput
+
+    VariadicAnd {
+      value = pred[] parameter(0)
+      value_idx = u32[] parameter(1)
+      current_value = pred[] parameter(2)
+      current_value_idx = u32[] parameter(3)
+      ROOT out = (pred[], u32[]) tuple(value, value_idx)
+    }
+
+    ENTRY CheckBuffer {
+      test_value = f32[] parameter(0)
+      buffer = f32[100] parameter(1)
+      value_broadcast = f32[100] broadcast(test_value), dimensions={}
+      comparison_result = pred[100] compare(buffer, value_broadcast), direction=EQ
+      true_constant = pred[] constant(true)
+
+      zero_idx = u32[] constant(0)
+      idxs = u32[100]{0} iota(), iota_dimension=0
+      out = (pred[], u32[]) reduce(
+         comparison_result, idxs, true_constant, zero_idx
+      ), dimensions={0}, to_apply=VariadicAnd
+
+      ROOT returned = u32[] get-tuple-element(out), index=1
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace

@@ -1,18 +1,21 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "MetaGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "google/protobuf/any.proto";
-
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/op_def.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/protobuf/saved_object_graph.proto";
 import "tensorflow/core/protobuf/saver.proto";
+import "tensorflow/core/protobuf/struct.proto";
 
 // NOTE: This protocol buffer is evolving, and will go through revisions in the
 // coming months.
@@ -65,6 +68,9 @@ message MetaGraphDef {
     // A flag to denote whether default-valued attrs have been stripped from
     // the nodes in this graph_def.
     bool stripped_default_attrs = 7;
+
+    // FunctionDef name to aliases mapping.
+    map<string, string> function_aliases = 8;
   }
   MetaInfoDef meta_info_def = 1;
 
@@ -84,6 +90,9 @@ message MetaGraphDef {
 
   // Asset file def to be used with the defined graph.
   repeated AssetFileDef asset_file_def = 6;
+
+  // Extra information about the structure of functions and stateful objects.
+  SavedObjectGraph object_graph_def = 7;
 }
 
 // CollectionDef should cover most collections.
@@ -221,6 +230,15 @@ message TensorInfo {
     string dense_shape_tensor_name = 3;
   }
 
+  // Generic encoding for composite tensors.
+  message CompositeTensor {
+    // The serialized TypeSpec for the composite tensor.
+    TypeSpecProto type_spec = 1;
+
+    // A TensorInfo for each flattened component tensor.
+    repeated TensorInfo components = 2;
+  }
+
   oneof encoding {
     // For dense `Tensor`s, the name of the tensor in the graph.
     string name = 1;
@@ -229,6 +247,8 @@ message TensorInfo {
     // uses only the COO encoding.  This is supported and documented in the
     // SparseTensor Python class.
     CooSparse coo_sparse = 4;
+    // Generic encoding for CompositeTensors.
+    CompositeTensor composite_tensor = 5;
   }
   DataType dtype = 2;
   // The static shape should be recorded here, to the extent that it can

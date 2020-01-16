@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -41,9 +41,9 @@ ConvolutionThunk::ConvolutionThunk(
       scratch_buffer_(scratch_slice),
       tuple_result_buffer_(tuple_result_slice) {}
 
-Status ConvolutionThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
+  const auto& buffer_allocations = *params.buffer_allocations;
+
   std::vector<se::DeviceMemoryBase> operand_se_buffers;
   for (const auto& buffer : operand_buffers_) {
     operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
@@ -55,17 +55,21 @@ Status ConvolutionThunk::ExecuteOnStream(
   se::DeviceMemoryBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  TF_RETURN_IF_ERROR(RunCudnnConvolution(cudnn_call_,
-                                         absl::MakeSpan(operand_se_buffers),
-                                         result_buffer, scratch, stream));
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  TF_RETURN_IF_ERROR(RunGpuConv(cudnn_call_, absl::MakeSpan(operand_se_buffers),
+                                result_buffer, scratch, params.stream));
 
-  void* ptrs[] = {result_buffer.opaque(), scratch.opaque()};
+  // Write the output tuple.
+  const int kNumOutputs = 2;
+  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
+  ptrs[0] = result_buffer.opaque();
+  ptrs[1] = scratch.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(tuple_result_buffer_));
-  stream->ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, params.stream);
 
-  if (!stream->ok()) {
+  if (!params.stream->ok()) {
     return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
   }
   return Status::OK();

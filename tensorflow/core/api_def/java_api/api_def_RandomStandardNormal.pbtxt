@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "RandomStandardNormal"
+  endpoint {
+    name: "random.RandomStandardNormal"
+  }
+}

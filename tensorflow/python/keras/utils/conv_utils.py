@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities used by convolution layers.
-"""
+"""Utilities used by convolution layers."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import itertools
+
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 
@@ -52,8 +52,8 @@ def normalize_tuple(value, n, name):
   """Transforms a single integer or iterable of integers into an integer tuple.
 
   Arguments:
-    value: The value to validate and convert. Could an int, or any iterable
-      of ints.
+    value: The value to validate and convert. Could an int, or any iterable of
+      ints.
     n: The size of the tuple to be returned.
     name: The name of the argument being validated, e.g. "strides" or
       "kernel_size". This is only used to format error messages.
@@ -137,26 +137,53 @@ def conv_input_length(output_length, filter_size, padding, stride):
   return (output_length - 1) * stride - 2 * pad + filter_size
 
 
-def deconv_output_length(input_length, filter_size, padding, stride):
+def deconv_output_length(input_length,
+                         filter_size,
+                         padding,
+                         output_padding=None,
+                         stride=0,
+                         dilation=1):
   """Determines output length of a transposed convolution given input length.
 
   Arguments:
-      input_length: integer.
-      filter_size: integer.
-      padding: one of "same", "valid", "full".
-      stride: integer.
+      input_length: Integer.
+      filter_size: Integer.
+      padding: one of `"same"`, `"valid"`, `"full"`.
+      output_padding: Integer, amount of padding along the output dimension. Can
+        be set to `None` in which case the output length is inferred.
+      stride: Integer.
+      dilation: Integer.
 
   Returns:
       The output length (integer).
   """
+  assert padding in {'same', 'valid', 'full'}
   if input_length is None:
     return None
-  input_length *= stride
-  if padding == 'valid':
-    input_length += max(filter_size - stride, 0)
-  elif padding == 'full':
-    input_length -= (stride + filter_size - 2)
-  return input_length
+
+  # Get the dilated kernel size
+  filter_size = filter_size + (filter_size - 1) * (dilation - 1)
+
+  # Infer length if output padding is None, else compute the exact length
+  if output_padding is None:
+    if padding == 'valid':
+      length = input_length * stride + max(filter_size - stride, 0)
+    elif padding == 'full':
+      length = input_length * stride - (stride + filter_size - 2)
+    elif padding == 'same':
+      length = input_length * stride
+
+  else:
+    if padding == 'same':
+      pad = filter_size // 2
+    elif padding == 'valid':
+      pad = 0
+    elif padding == 'full':
+      pad = filter_size - 1
+
+    length = ((input_length - 1) * stride + filter_size - 2 * pad +
+              output_padding)
+  return length
 
 
 def normalize_data_format(value):
@@ -171,9 +198,11 @@ def normalize_data_format(value):
 
 
 def normalize_padding(value):
+  if isinstance(value, (list, tuple)):
+    return value
   padding = value.lower()
   if padding not in {'valid', 'same', 'causal'}:
-    raise ValueError('The `padding` argument must be one of '
+    raise ValueError('The `padding` argument must be a list/tuple or one of '
                      '"valid", "same" (or "causal", only for `Conv1D). '
                      'Received: ' + str(padding))
   return padding
@@ -212,25 +241,25 @@ def conv_kernel_mask(input_shape, kernel_shape, strides, padding):
   indicating pairs of input and output locations that are connected by a weight.
 
   Example:
-    ```python
-        >>> input_shape = (4,)
-        >>> kernel_shape = (2,)
-        >>> strides = (1,)
-        >>> padding = "valid"
-        >>> conv_kernel_mask(input_shape, kernel_shape, strides, padding)
-        array([[ True, False, False],
-               [ True,  True, False],
-               [False,  True,  True],
-               [False, False,  True]], dtype=bool)
-    ```
+
+    >>> input_shape = (4,)
+    >>> kernel_shape = (2,)
+    >>> strides = (1,)
+    >>> padding = "valid"
+    >>> conv_kernel_mask(input_shape, kernel_shape, strides, padding)
+    array([[ True, False, False],
+           [ True,  True, False],
+           [False,  True,  True],
+           [False, False,  True]])
+
     where rows and columns correspond to inputs and outputs respectively.
 
 
   Args:
-    input_shape: tuple of size N: `(d_in1, ..., d_inN)`,
-                 spatial shape of the input.
-    kernel_shape: tuple of size N, spatial shape of the convolutional kernel
-                  / receptive field.
+    input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
+      input.
+    kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
+      receptive field.
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
 
@@ -270,21 +299,106 @@ def conv_kernel_mask(input_shape, kernel_shape, strides, padding):
 
   output_axes_ticks = [range(dim) for dim in output_shape]
   for output_position in itertools.product(*output_axes_ticks):
-    input_axes_ticks = conv_connected_inputs(input_shape,
-                                             kernel_shape,
-                                             output_position,
-                                             strides,
-                                             padding)
+    input_axes_ticks = conv_connected_inputs(input_shape, kernel_shape,
+                                             output_position, strides, padding)
     for input_position in itertools.product(*input_axes_ticks):
       mask[input_position + output_position] = True
 
   return mask
 
 
-def conv_connected_inputs(input_shape,
-                          kernel_shape,
-                          output_position,
-                          strides,
+def conv_kernel_idxs(input_shape, kernel_shape, strides, padding, filters_in,
+                     filters_out, data_format):
+  """Yields output-input tuples of indices in a CNN layer.
+
+  The generator iterates over all `(output_idx, input_idx)` tuples, where
+    `output_idx` is an integer index in a flattened tensor representing a single
+    output image of a convolutional layer that is connected (via the layer
+    weights) to the respective single input image at `input_idx`
+
+  Example:
+
+    >>> input_shape = (2, 2)
+    >>> kernel_shape = (2, 1)
+    >>> strides = (1, 1)
+    >>> padding = "valid"
+    >>> filters_in = 1
+    >>> filters_out = 1
+    >>> data_format = "channels_last"
+    >>> list(conv_kernel_idxs(input_shape, kernel_shape, strides, padding,
+    ...                       filters_in, filters_out, data_format))
+    [(0, 0), (0, 2), (1, 1), (1, 3)]
+
+  Args:
+    input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
+      input.
+    kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
+      receptive field.
+    strides: tuple of size N, strides along each spatial dimension.
+    padding: type of padding, string `"same"` or `"valid"`.
+    filters_in: `int`, number if filters in the input to the layer.
+    filters_out: `int', number if filters in the output of the layer.
+    data_format: string, "channels_first" or "channels_last".
+
+  Yields:
+    The next tuple `(output_idx, input_idx)`, where
+    `output_idx` is an integer index in a flattened tensor representing a single
+    output image of a convolutional layer that is connected (via the layer
+    weights) to the respective single input image at `input_idx`.
+
+  Raises:
+      ValueError: if `data_format` is neither
+      `"channels_last"` nor `"channels_first"`, or if number of strides, input,
+      and kernel number of dimensions do not match.
+
+      NotImplementedError: if `padding` is neither `"same"` nor `"valid"`.
+  """
+  if padding not in ('same', 'valid'):
+    raise NotImplementedError('Padding type %s not supported. '
+                              'Only "valid" and "same" '
+                              'are implemented.' % padding)
+
+  in_dims = len(input_shape)
+  if isinstance(kernel_shape, int):
+    kernel_shape = (kernel_shape,) * in_dims
+  if isinstance(strides, int):
+    strides = (strides,) * in_dims
+
+  kernel_dims = len(kernel_shape)
+  stride_dims = len(strides)
+  if kernel_dims != in_dims or stride_dims != in_dims:
+    raise ValueError('Number of strides, input and kernel dimensions must all '
+                     'match. Received: %d, %d, %d.' %
+                     (stride_dims, in_dims, kernel_dims))
+
+  output_shape = conv_output_shape(input_shape, kernel_shape, strides, padding)
+  output_axes_ticks = [range(dim) for dim in output_shape]
+
+  if data_format == 'channels_first':
+    concat_idxs = lambda spatial_idx, filter_idx: (filter_idx,) + spatial_idx
+  elif data_format == 'channels_last':
+    concat_idxs = lambda spatial_idx, filter_idx: spatial_idx + (filter_idx,)
+  else:
+    raise ValueError('Data format %s not recignized.'
+                     '`data_format` must be "channels_first" or '
+                     '"channels_last".' % data_format)
+
+  for output_position in itertools.product(*output_axes_ticks):
+    input_axes_ticks = conv_connected_inputs(input_shape, kernel_shape,
+                                             output_position, strides, padding)
+    for input_position in itertools.product(*input_axes_ticks):
+      for f_in in range(filters_in):
+        for f_out in range(filters_out):
+          out_idx = np.ravel_multi_index(
+              multi_index=concat_idxs(output_position, f_out),
+              dims=concat_idxs(output_shape, filters_out))
+          in_idx = np.ravel_multi_index(
+              multi_index=concat_idxs(input_position, f_in),
+              dims=concat_idxs(input_shape, filters_in))
+          yield (out_idx, in_idx)
+
+
+def conv_connected_inputs(input_shape, kernel_shape, output_position, strides,
                           padding):
   """Return locations of the input connected to an output position.
 
@@ -295,23 +409,23 @@ def conv_connected_inputs(input_shape,
   `output_position = (p_out1, ..., p_outN)`.
 
   Example:
-    ```python
-        >>> input_shape = (4, 4)
-        >>> kernel_shape = (2, 1)
-        >>> output_position = (1, 1)
-        >>> strides = (1, 1)
-        >>> padding = "valid"
-        >>> conv_connected_inputs(input_shape, kernel_shape, output_position,
-        >>>                       strides, padding)
-        [xrange(1, 3), xrange(1, 2)]
-    ```
+
+    >>> input_shape = (4, 4)
+    >>> kernel_shape = (2, 1)
+    >>> output_position = (1, 1)
+    >>> strides = (1, 1)
+    >>> padding = "valid"
+    >>> conv_connected_inputs(input_shape, kernel_shape, output_position,
+    ...                       strides, padding)
+    [range(1, 3), range(1, 2)]
+
   Args:
-    input_shape: tuple of size N: `(d_in1, ..., d_inN)`,
-                 spatial shape of the input.
-    kernel_shape: tuple of size N, spatial shape of the convolutional kernel
-                  / receptive field.
-    output_position: tuple of size N: `(p_out1, ..., p_outN)`,
-                     a single position in the output of the convolution.
+    input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
+      input.
+    kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
+      receptive field.
+    output_position: tuple of size N: `(p_out1, ..., p_outN)`, a single position
+      in the output of the convolution.
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
 
@@ -346,10 +460,10 @@ def conv_output_shape(input_shape, kernel_shape, strides, padding):
   Forces dimensions where input is empty (size 0) to remain empty.
 
   Args:
-    input_shape: tuple of size N: `(d_in1, ..., d_inN)`,
-                 spatial shape of the input.
-    kernel_shape: tuple of size N, spatial shape of the convolutional kernel
-                  / receptive field.
+    input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
+      input.
+    kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
+      receptive field.
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
 
@@ -357,11 +471,10 @@ def conv_output_shape(input_shape, kernel_shape, strides, padding):
     tuple of size N: `(d_out1, ..., d_outN)`, spatial shape of the output.
   """
   dims = range(len(kernel_shape))
-  output_shape = [conv_output_length(input_shape[d],
-                                     kernel_shape[d],
-                                     padding,
-                                     strides[d])
-                  for d in dims]
-  output_shape = tuple([0 if input_shape[d] == 0 else output_shape[d]
-                        for d in dims])
+  output_shape = [
+      conv_output_length(input_shape[d], kernel_shape[d], padding, strides[d])
+      for d in dims
+  ]
+  output_shape = tuple(
+      [0 if input_shape[d] == 0 else output_shape[d] for d in dims])
   return output_shape

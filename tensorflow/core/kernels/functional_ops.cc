@@ -15,7 +15,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #endif
@@ -23,7 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
@@ -37,21 +40,6 @@ namespace {
 Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
                    FunctionLibraryRuntime::Handle* handle) {
   return lib->Instantiate(func.name(), AttrSlice(&func.attr()), handle);
-}
-
-template <typename To, typename From>  // use like this: down_cast<T*>(foo);
-inline To down_cast(From* f) {         // so we only accept pointers
-  static_assert(
-      (std::is_base_of<From, typename std::remove_pointer<To>::type>::value),
-      "target type not derived from source type");
-
-  // We skip the assert and hence the dynamic_cast if RTTI is disabled.
-#if !defined(__GNUC__) || defined(__GXX_RTTI)
-  // Uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
-  assert(f == nullptr || dynamic_cast<To>(f) != nullptr);
-#endif  // !defined(__GNUC__) || defined(__GXX_RTTI)
-
-  return static_cast<To>(f);
 }
 
 // If "t" is a scalar of a supported type, returns t != 0 in "*v".
@@ -80,7 +68,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
         *v = t[0].scalar<bool>()();
         break;
       case DT_STRING:
-        *v = !t[0].scalar<string>()().empty();
+        *v = !t[0].scalar<tstring>()().empty();
         break;
       default:
         return errors::InvalidArgument(DataTypeString(t[0].dtype()),
@@ -113,13 +101,13 @@ Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
 
 void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
                    bool always_collect_stats) {
-  opts->step_id = ctx->step_id();
   opts->rendezvous = ctx->rendezvous();
   opts->cancellation_manager = ctx->cancellation_manager();
   if (always_collect_stats) {
     opts->stats_collector = ctx->stats_collector();
   }
   opts->runner = ctx->runner();
+  opts->step_container = ctx->step_container();
 }
 
 class IfOp : public AsyncOpKernel {
@@ -181,6 +169,12 @@ class IfOp : public AsyncOpKernel {
     void Start() {
       FHandle handle = cond_ ? then_handle_ : else_handle_;
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("IfOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate one of the branch.
           opts_, handle, args_, &rets_,
@@ -210,6 +204,104 @@ class IfOp : public AsyncOpKernel {
   };
 };
 
+class CaseOp : public AsyncOpKernel {
+ public:
+  explicit CaseOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+    auto lib = ctx->function_library();
+    OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &branch_funcs_));
+  }
+
+  ~CaseOp() override {}
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    auto lib = ctx->function_library();
+    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
+                      errors::Internal("No function library"), done);
+
+    // TODO(b/37549631): Because this op has `SetIsStateful()` in its op
+    // registration, this kernel may be shared by multiple subgraphs, which have
+    // different associated `FunctionLibraryRuntime` objects and hence different
+    // `FHandle` namespaces. So we must call Instantiate() to make sure we get
+    // the correct function handles with respect to `lib`. Note the underlying
+    // `lib->Instantiate()` caches the created function handles, so calling
+    // `Instantiate()` repeatedly on the same `lib` and function is cheap.
+    std::vector<FHandle> branch_handles(branch_funcs_.size());
+    for (int i = 0; i < branch_funcs_.size(); i++) {
+      OP_REQUIRES_OK_ASYNC(
+          ctx, Instantiate(lib, branch_funcs_[i], &branch_handles[i]), done);
+    }
+
+    const Tensor& branch_index = ctx->input(0);
+    OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(branch_index.shape()),
+                      errors::InvalidArgument("branch_index must be scalar"),
+                      done);
+    int32 branch = branch_index.scalar<int32>()();
+    (new State(this, ctx, branch, branch_handles, done))->Start();
+  }
+
+ private:
+  std::vector<NameAttrList> branch_funcs_;
+
+  class State {
+   public:
+    State(CaseOp* kernel, OpKernelContext* ctx, int branch,
+          std::vector<FHandle> branch_handles, DoneCallback done)
+        : kernel_(kernel),
+          ctx_(ctx),
+          branch_(branch),
+          branch_handles_(branch_handles),
+          done_(std::move(done)),
+          lib_(CHECK_NOTNULL(ctx_->function_library())) {
+      SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
+      for (int i = 1; i < ctx_->num_inputs(); ++i) {
+        args_.push_back(ctx_->input(i));
+      }
+    }
+
+    ~State() {}
+
+    void Start() {
+      int branch = branch_;
+      // The last branch is the default branch.
+      if (branch < 0 || branch >= branch_handles_.size()) {
+        branch = branch_handles_.size() - 1;
+      }
+      rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("CaseOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
+      lib_->Run(
+          // Evaluate one of the branch.
+          opts_, branch_handles_[branch], args_, &rets_,
+          // Done callback
+          [this](Status s) {
+            if (s.ok()) {
+              s = SetOutputs(kernel_, ctx_, rets_);
+            }
+            ctx_->SetStatus(s);
+            DoneCallback captured_done(std::move(done_));
+            delete this;
+            captured_done();
+          });
+    }
+
+   private:
+    CaseOp* const kernel_;
+    OpKernelContext* const ctx_;
+    const int branch_;
+    std::vector<FHandle> branch_handles_;
+    DoneCallback done_;
+    FunctionLibraryRuntime* const lib_;
+    FunctionLibraryRuntime::Options opts_;
+    TensorVec args_;
+    TensorVec rets_;
+  };
+};
+
 // TODO(drpng): remove this.
 REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_CPU), IfOp);
 REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_GPU).HostMemory("cond"),
@@ -217,6 +309,10 @@ REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_GPU).HostMemory("cond"),
 
 REGISTER_KERNEL_BUILDER(Name("If").Device(DEVICE_CPU), IfOp);
 REGISTER_KERNEL_BUILDER(Name("If").Device(DEVICE_GPU).HostMemory("cond"), IfOp);
+
+REGISTER_KERNEL_BUILDER(Name("Case").Device(DEVICE_CPU), CaseOp);
+REGISTER_KERNEL_BUILDER(
+    Name("Case").Device(DEVICE_GPU).HostMemory("branch_index"), CaseOp);
 
 REGISTER_KERNEL_BUILDER(Name("StatelessIf").Device(DEVICE_CPU), IfOp);
 REGISTER_KERNEL_BUILDER(
@@ -286,6 +382,13 @@ class WhileOp : public AsyncOpKernel {
     TensorVec rets_;
 
     void EvalCond() {
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat(
+                "WhileOp-EvalCond #parent_step_id=", ctx_->step_id(),
+                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate the condition.
           opts_, cond_handle_, args_, &rets_,
@@ -307,7 +410,7 @@ class WhileOp : public AsyncOpKernel {
         return Finish(s);
       }
       Tensor cond_t;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       const DeviceBase::GpuDeviceInfo* gpu_device_info =
           ctx_->device()->tensorflow_gpu_device_info();
       const bool is_hostmem_dtype =
@@ -346,6 +449,13 @@ class WhileOp : public AsyncOpKernel {
         return Finish(Status::OK());
       }
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat(
+                "WhileOp-StartBody #parent_step_id=", ctx_->step_id(),
+                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate the body.
           opts_, body_handle_, args_, &rets_,
@@ -496,6 +606,12 @@ class ForOp : public AsyncOpKernel {
         args_[1 + i] = std::move(rets_[i]);
       }
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("ForOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(opts_, kernel_->body_handle_, args_, &rets_,
                 [this](const Status& s) {
                   if (s.ok()) {
@@ -526,21 +642,40 @@ REGISTER_KERNEL_BUILDER(Name("For")
                             .HostMemory("delta"),
                         ForOp);
 
+// FakeParamOp allocates a tensor with a shape conforming to the expected
+// output. This is necessary if the value will be stored in a while_loop's
+// TensorList. The output is otherwise not expected to be consumed by anything
+// else.
 class FakeParamOp : public OpKernel {
  public:
   explicit FakeParamOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    DataType dtype;
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype));
+
+    // Set shape to the specified shape, setting unknown dimensions to empty.
+    // If the specified shape is unknown, leave as an empty shape.
+    TensorShape shape;
+    PartialTensorShape partial_shape;
+    OP_REQUIRES_OK(context, context->GetAttr("shape", &partial_shape));
+    if (!partial_shape.unknown_rank()) {
+      for (int64 d : partial_shape.dim_sizes()) {
+        shape.AddDim(d == -1 ? 0 : d);
+      }
+    }
+
+    // Create a persistent tensor that we can repeatedly return to save memory.
+    // TODO(b/119612758): add optimization to prevent sending this across
+    // devices on each Compute() call.
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                dtype, shape, &value_handle_, nullptr));
   }
 
   void Compute(OpKernelContext* context) override {
-    // We must produce something (only Switch and Recvs are allowed to output
-    // dead tensors). This output is not expected to be consumed by anything.
-    Tensor output_tensor(dtype_, TensorShape({}));
-    context->set_output(0, output_tensor);
+    context->set_output(0, *value_handle_.AccessTensor(context));
   }
 
  private:
-  DataType dtype_;
+  PersistentTensor value_handle_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);

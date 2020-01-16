@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -46,6 +48,7 @@ class BigReductionTest(BaseReductionTest):
   def _tf_reduce_sum(self, x, reduction_axes, keepdims):
     return math_ops.reduce_sum(x, reduction_axes, keepdims)
 
+  @test_util.run_deprecated_v1
   def testFloat32Sum(self):
     # make sure we test all possible kernel invocations
     # logic is the same for all ops, test just float32 for brevity
@@ -64,11 +67,13 @@ class BigReductionTest(BaseReductionTest):
         full_sum = np.ones([], dtype=np.float32) * size_x * size_y
 
         with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-          tf_row_sum = self._tf_reduce_sum(arr, 1, False)
-          tf_col_sum = self._tf_reduce_sum(arr, 0, False)
-          tf_full_sum = self._tf_reduce_sum(arr, [0, 1], False)
+          arr_placeholder = array_ops.placeholder(dtype=np.float32,
+                                                  shape=(size_x, size_y))
+          tf_row_sum = self._tf_reduce_sum(arr_placeholder, 1, False)
+          tf_col_sum = self._tf_reduce_sum(arr_placeholder, 0, False)
+          tf_full_sum = self._tf_reduce_sum(arr_placeholder, [0, 1], False)
           tf_out_row, tf_out_col, tf_out_full = sess.run(
-              [tf_row_sum, tf_col_sum, tf_full_sum])
+              [tf_row_sum, tf_col_sum, tf_full_sum], {arr_placeholder: arr})
         self.assertAllClose(col_sum, tf_out_col)
         self.assertAllClose(row_sum, tf_out_row)
         self.assertAllClose(full_sum, tf_out_full)
@@ -82,12 +87,16 @@ class BigReductionTest(BaseReductionTest):
           sum_xz = np.ones([size_y], dtype=np.float32)
 
           with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-            tf_sum_xz = self._tf_reduce_mean(arr, [0, 2], False)
-            tf_sum_y = self._tf_reduce_mean(arr, 1, False)
-            tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])
+            arr_placeholder = array_ops.placeholder(
+                dtype=np.float32, shape=(size_x, size_y, size_z))
+            tf_sum_xz = self._tf_reduce_mean(arr_placeholder, [0, 2], False)
+            tf_sum_y = self._tf_reduce_mean(arr_placeholder, 1, False)
+            tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y],
+                                                   {arr_placeholder: arr})
           self.assertAllClose(sum_y, tf_out_sum_y)
           self.assertAllClose(sum_xz, tf_out_sum_xz)
 
+  @test_util.run_deprecated_v1
   def testFloat32Max(self):
     # make sure we test all possible kernel invocations
     # logic is the same for all ops, test just float32 for brevity
@@ -107,11 +116,13 @@ class BigReductionTest(BaseReductionTest):
         full_max = np.max(col_max)
 
         with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-          tf_row_max = self._tf_reduce_max(arr, 1, False)
-          tf_col_max = self._tf_reduce_max(arr, 0, False)
-          tf_full_max = self._tf_reduce_max(arr, [0, 1], False)
+          arr_placeholder = array_ops.placeholder(dtype=np.float32,
+                                                  shape=(size_x, size_y))
+          tf_row_max = self._tf_reduce_max(arr_placeholder, 1, False)
+          tf_col_max = self._tf_reduce_max(arr_placeholder, 0, False)
+          tf_full_max = self._tf_reduce_max(arr_placeholder, [0, 1], False)
           tf_out_row, tf_out_col, tf_out_full = sess.run(
-              [tf_row_max, tf_col_max, tf_full_max])
+              [tf_row_max, tf_col_max, tf_full_max], {arr_placeholder: arr})
         self.assertAllClose(col_max, tf_out_col)
         self.assertAllClose(row_max, tf_out_row)
         self.assertAllClose(full_max, tf_out_full)
@@ -126,12 +137,16 @@ class BigReductionTest(BaseReductionTest):
           sum_xz = np.max(arr, axis=(0, 2))
 
           with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-            tf_sum_xz = self._tf_reduce_max(arr, [0, 2], False)
-            tf_sum_y = self._tf_reduce_max(arr, 1, False)
-            tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])
+            arr_placeholder = array_ops.placeholder(
+                dtype=np.float32, shape=(size_x, size_y, size_z))
+            tf_sum_xz = self._tf_reduce_max(arr_placeholder, [0, 2], False)
+            tf_sum_y = self._tf_reduce_max(arr_placeholder, 1, False)
+            tf_out_sum_xz, tf_out_sum_y = sess.run(
+                [tf_sum_xz, tf_sum_y], {arr_placeholder: arr})
           self.assertAllClose(sum_y, tf_out_sum_y)
           self.assertAllClose(sum_xz, tf_out_sum_xz)
 
+  @test_util.run_deprecated_v1
   def testBooleanAll(self):
     # make sure we test all possible kernel invocations
     # test operation where T(0) is not the identity
@@ -150,11 +165,13 @@ class BigReductionTest(BaseReductionTest):
         full_sum = np.ones([1], dtype=np.bool).reshape([])
 
         with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-          tf_row_sum = self._tf_reduce_all(arr, 1, False)
-          tf_col_sum = self._tf_reduce_all(arr, 0, False)
-          tf_full_sum = self._tf_reduce_all(arr, [0, 1], False)
+          arr_placeholder = array_ops.placeholder(dtype=np.bool,
+                                                  shape=(size_x, size_y))
+          tf_row_sum = self._tf_reduce_all(arr_placeholder, 1, False)
+          tf_col_sum = self._tf_reduce_all(arr_placeholder, 0, False)
+          tf_full_sum = self._tf_reduce_all(arr_placeholder, [0, 1], False)
           tf_out_row, tf_out_col, tf_out_full = sess.run(
-              [tf_row_sum, tf_col_sum, tf_full_sum])
+              [tf_row_sum, tf_col_sum, tf_full_sum], {arr_placeholder: arr})
         self.assertAllClose(col_sum, tf_out_col)
         self.assertAllClose(row_sum, tf_out_row)
         self.assertAllClose(full_sum, tf_out_full)
@@ -168,9 +185,12 @@ class BigReductionTest(BaseReductionTest):
           sum_xz = np.ones([size_y], dtype=np.bool)
 
           with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-            tf_sum_xz = self._tf_reduce_all(arr, [0, 2], False)
-            tf_sum_y = self._tf_reduce_all(arr, 1, False)
-            tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])
+            arr_placeholder = array_ops.placeholder(
+                dtype=np.bool, shape=(size_x, size_y, size_z))
+            tf_sum_xz = self._tf_reduce_all(arr_placeholder, [0, 2], False)
+            tf_sum_y = self._tf_reduce_all(arr_placeholder, 1, False)
+            tf_out_sum_xz, tf_out_sum_y = sess.run(
+                [tf_sum_xz, tf_sum_y], {arr_placeholder: arr})
           self.assertAllClose(sum_y, tf_out_sum_y)
           self.assertAllClose(sum_xz, tf_out_sum_xz)
 

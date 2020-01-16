@@ -26,7 +26,8 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
+StatusOr<bool> RunFileCheck(const std::string& input,
+                            absl::string_view pattern) {
   using tensorflow::io::JoinPath;
 
   // Generate an input file for the FileCheck pattern.
@@ -38,7 +39,8 @@ StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
   TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(env, pattern_path, pattern));
 
   // Invoke FileCheck to check whether input matches `pattern`.
-  const char* file_check_path_suffix = "org_tensorflow/external/llvm/FileCheck";
+  const char* file_check_path_suffix =
+      "org_tensorflow/external/llvm-project/llvm/FileCheck";
   string file_check_path;
   if (const char* test_srcdir = getenv("TEST_SRCDIR")) {
     file_check_path = JoinPath(test_srcdir, file_check_path_suffix);
@@ -47,8 +49,9 @@ StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
   }
 
   tensorflow::SubProcess file_check_process;
-  file_check_process.SetProgram(file_check_path,
-                                {file_check_path, pattern_path});
+  file_check_process.SetProgram(
+      file_check_path,
+      {file_check_path, "-v", "-dump-input=fail", pattern_path});
   file_check_process.SetChannelAction(tensorflow::CHAN_STDIN,
                                       tensorflow::ACTION_PIPE);
   file_check_process.SetChannelAction(tensorflow::CHAN_STDERR,
@@ -71,9 +74,7 @@ StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
       LOG(WARNING) << "NOTE: FileCheck binary does not exist!";
     }
 
-    LOG(WARNING) << "FileCheck error: " << standard_error;
-    LOG(WARNING) << "FileCheck input was:";
-    XLA_LOG_LINES(tensorflow::WARNING, input);
+    LOG(WARNING) << "FileCheck error:\n" << standard_error;
     LOG(WARNING) << "FileCheck pattern was:";
     XLA_LOG_LINES(tensorflow::WARNING, pattern);
   } else if (!standard_error.empty()) {

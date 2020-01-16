@@ -15,11 +15,30 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 
+#include <stdlib.h>
+
+#include <string>
+
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+
+namespace {
+
+int64 get_uid() {
+  uint64 unsigned_rand = random::New64() & INT64_MAX;
+  return static_cast<int64>(unsigned_rand);
+}
+
+int64 GetCompilationCacheSizeFromEnv() {
+  const char* env = getenv("TF_XRT_COMPILATION_CACHE_SIZE");
+  return env == nullptr ? 1024 : std::stol(env);
+}
+
+}  // namespace
 
 const char* kXRTCompilationCacheResourceName = "xrt_compilation_cache";
 
@@ -46,12 +65,17 @@ XRTCompilationCache::XRTCompilationCache(int max_number_of_entries)
 
 XRTCompilationCache::~XRTCompilationCache() {
   VLOG(1) << "XRTCompilationCache::~XRTCompilationCache()";
+  // A buggy client may be holding onto a reference, or a client might have
+  // crashed while holding onto a reference. In either case, discard all
+  // outstanding client references to avoid leaking storage.
+  for (const auto& entry : entries_by_uid_) {
+    while (!entry.second->RefCountIsOne()) {
+      entry.second->Unref();
+    }
+  }
   while (!entries_by_last_use_.empty()) {
     MarkOldestEntryForEviction();
   }
-  // By the time the cache is deleted all reference holders should have already
-  // been deleted, since they were holding references to the cache. So all
-  // entries should be gone at this point.
   CHECK_EQ(cache_.size(), 0);
   CHECK_EQ(entries_by_uid_.size(), 0);
   CHECK_EQ(cache_entries_, 0);
@@ -148,7 +172,7 @@ XRTCompilationCache::CompiledSubgraph* XRTCompilationCache::InitializeEntry(
   CompiledSubgraph* entry = new CompiledSubgraph();
   entry->parent = this;
   entry->key = key;
-  entry->uid = next_uid_++;
+  entry->uid = get_uid();
   // Add the entry to the cache. Once the computation has been compiled,
   // UpdateEntryAfterCompilation will be called to potentially mark old entries
   // that don't fit any more for eviction.
@@ -258,6 +282,23 @@ Status XRTCompilationCache::Lookup(
   return Status::OK();
 }
 
-string XRTCompilationCache::DebugString() { return "XRTCompilationCache"; }
+string XRTCompilationCache::DebugString() const {
+  return "XRTCompilationCache";
+}
+
+xla::StatusOr<RefPtr<XRTCompilationCache>> GetOrCreateCompilationCache(
+    ResourceMgr* rm, int64 max_number_of_entries) {
+  if (max_number_of_entries == 0) {
+    max_number_of_entries = GetCompilationCacheSizeFromEnv();
+  }
+  XRTCompilationCache* cache;
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<XRTCompilationCache>(
+      rm->default_container(), kXRTCompilationCacheResourceName, &cache,
+      [&](XRTCompilationCache** new_cache) {
+        *new_cache = new XRTCompilationCache(max_number_of_entries);
+        return Status::OK();
+      }));
+  return RefPtr<XRTCompilationCache>(cache);
+}
 
 }  // namespace tensorflow

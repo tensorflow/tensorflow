@@ -40,15 +40,15 @@ class GenericTransferManager : public TransferManager {
 
   se::Platform::Id PlatformId() const override;
 
-  void TransferLiteralFromDevice(se::Stream* stream,
-                                 const ShapedBuffer& device_buffer,
-                                 MutableBorrowingLiteral literal,
-                                 std::function<void(Status)> done) override;
+  void TransferLiteralFromDevice(
+      se::Stream* stream, const ShapedBuffer& device_buffer,
+      MutableBorrowingLiteral literal, std::function<void(Status)> done,
+      const TransferMetadata* transfer_metadata) override;
 
-  Status TransferLiteralToDeviceAsync(se::Stream* stream,
-                                      const LiteralSlice& literal,
-                                      const ShapedBuffer& device_buffer,
-                                      TransferToDeviceHint hint) override;
+  Status TransferLiteralToDeviceAsync(
+      se::Stream* stream, const LiteralSlice& literal,
+      const ShapedBuffer& device_buffer,
+      const TransferMetadata* transfer_metadata) override;
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
@@ -60,16 +60,11 @@ class GenericTransferManager : public TransferManager {
 
   int64 GetByteSizeRequirement(const Shape& shape) const override;
 
- protected:
   Status WriteSingleTupleIndexTable(
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) override;
 
  private:
-  Status TransferLiteralFromDeviceInternal(se::StreamExecutor* executor,
-                                           const ShapedBuffer& device_buffer,
-                                           MutableBorrowingLiteral literal);
-
   // The platform this transfer manager targets.
   const se::Platform::Id platform_id_;
 

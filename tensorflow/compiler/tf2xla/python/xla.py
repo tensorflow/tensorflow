@@ -81,7 +81,8 @@ ceil = _unary_op(math_ops.ceil)
 digamma = _unary_op(math_ops.digamma)
 erf = _unary_op(math_ops.erf)
 erfc = _unary_op(math_ops.erfc)
-# TODO(phawkins): implement erfinv
+erfinv = _unary_op(math_ops.erfinv)
+ndtri = _unary_op(math_ops.ndtri)
 exp = _unary_op(math_ops.exp)
 expm1 = _unary_op(math_ops.expm1)
 floor = _unary_op(math_ops.floor)
@@ -99,6 +100,10 @@ round = _unary_op(math_ops.round)
 sin = _unary_op(math_ops.sin)
 sign = _unary_op(math_ops.sign)
 tanh = _unary_op(math_ops.tanh)
+
+# Bessel
+bessel_i0e = _unary_op(math_ops.bessel_i0e)
+bessel_i1e = _unary_op(math_ops.bessel_i1e)
 
 # Binary operators
 
@@ -212,9 +217,9 @@ bitcast_convert_type = array_ops.bitcast
 
 def broadcast(x, dims, name=None):
   x = ops.convert_to_tensor(x)
-  shape = array_ops.concat(
-      [constant_op.constant(dims),
-       array_ops.shape(x)], axis=0)
+  shape = array_ops.concat([constant_op.constant(dims),
+                            array_ops.shape(x)],
+                           axis=0)
   return array_ops.broadcast_to(x, shape, name=name)
 
 
@@ -250,7 +255,7 @@ def conv(lhs,
     rhs_dilation: dilation to apply between kernel elements
     dimension_numbers: a `ConvolutionDimensionNumbers` proto.
     feature_group_count: number of feature groups for grouped convolution.
-    precision_config: a `PrecisionConfigProto` proto.
+    precision_config: a `xla.PrecisionConfig` proto.
     name: an optional name for the operator
 
   Returns:
@@ -291,8 +296,20 @@ def dot_general(lhs, rhs, dimension_numbers, precision_config=None, name=None):
       name=name)
 
 
+def self_adjoint_eig(a, lower, max_iter, epsilon):
+  return gen_xla_ops.xla_self_adjoint_eig(a, lower, max_iter, epsilon)
+
+
+def svd(a, max_iter, epsilon, precision_config=None):
+  precision_config_proto = ""
+  if precision_config:
+    precision_config_proto = precision_config.SerializeToString()
+  return gen_xla_ops.xla_svd(a, max_iter, epsilon, precision_config_proto)
+
+
 dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
+einsum = gen_xla_ops.xla_einsum
 
 # TODO(phawkins): generalize tf.pad to support interior padding, and then remove
 # the XLA-specific pad operator.
@@ -320,6 +337,8 @@ def reduce_window(operand,
                   reducer,
                   window_dimensions,
                   window_strides=None,
+                  base_dilations=None,
+                  window_dilations=None,
                   padding=None,
                   name=None):
   """Wraps the XLA ReduceWindow operator.
@@ -332,25 +351,33 @@ def reduce_window(operand,
     init: a scalar tensor representing the initial value for the reduction
     reducer: a reduction function that combines a pair of scalars.
     window_dimensions: shape of the window, as a list of integers
-    window_strides: inter-window strides, as a list of integers. Optional;
-      if omitted, defaults to strides of 1.
+    window_strides: inter-window strides, as a list of integers. Optional; if
+      omitted, defaults to strides of 1.
     padding: padding to apply to 'operand'. List of (low, high) pairs of
       integers that specify the padding to apply before and after each
       dimension. Optional; if omitted, defaults to no padding.
     name: the operator name, or None.
+
   Returns:
     A tensor that represents the output of the reduce_window operator.
   """
   window_strides = window_strides or [1] * len(window_dimensions)
+  base_dilations = base_dilations or [1] * len(window_dimensions)
+  window_dilations = window_dilations or [1] * len(window_dimensions)
   padding = padding or [(0, 0)] * len(window_dimensions)
   return gen_xla_ops.xla_reduce_window(
       input=operand,
       init_value=init,
       window_dimensions=window_dimensions,
       window_strides=window_strides,
+      base_dilations=base_dilations,
+      window_dilations=window_dilations,
       padding=padding,
       computation=reducer,
       name=name)
+
+
+replica_id = gen_xla_ops.xla_replica_id
 
 
 def reshape(x, new_sizes, dimensions=None, name=None):
@@ -376,5 +403,40 @@ def slice(x, start_dims, limit_dims, strides):
   return x[tuple(spec)]
 
 
+sharding = gen_xla_ops.xla_sharding
+
+
+@ops.RegisterGradient("XlaSharding")
+def _sharding_grad(op, grad):
+  del op  # Unused
+  return [grad]
+
+
 sort = gen_xla_ops.xla_sort
+key_value_sort = gen_xla_ops.xla_key_value_sort
 while_loop = gen_xla_ops.xla_while
+dequantize = gen_xla_ops.xla_dequantize
+
+
+def gather(operand, start_indices, dimension_numbers, slice_sizes,
+           indices_are_sorted=False, name=None):
+  return gen_xla_ops.xla_gather(
+      operand,
+      start_indices,
+      slice_sizes=slice_sizes,
+      dimension_numbers=dimension_numbers.SerializeToString(),
+      indices_are_sorted=indices_are_sorted,
+      name=name)
+
+
+def scatter(operand, scatter_indices, updates, update_computation,
+            dimension_numbers, indices_are_sorted=False, name=None):
+  return gen_xla_ops.xla_scatter(
+      operand,
+      scatter_indices,
+      updates,
+      update_computation=update_computation,
+      dimension_numbers=dimension_numbers.SerializeToString(),
+      indices_are_sorted=indices_are_sorted,
+      name=name)
+

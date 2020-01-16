@@ -29,7 +29,7 @@ namespace {
 
 // Tests of all the error paths in log_reader.cc follow:
 static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(str_util::StrContains(s, expected))
+  EXPECT_TRUE(absl::StrContains(s, expected))
       << s << " does not contain " << expected;
 }
 

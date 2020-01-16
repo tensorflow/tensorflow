@@ -51,8 +51,6 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
   def _testFreezeGraph(self, saver_write_version):
 
     checkpoint_prefix = os.path.join(self.get_temp_dir(), "saved_checkpoint")
-    checkpoint_meta_graph_file = os.path.join(self.get_temp_dir(),
-                                              "saved_checkpoint.meta")
     checkpoint_state_name = "checkpoint_state"
     input_graph_name = "input_graph.pb"
     output_graph_name = "output_graph.pb"
@@ -85,7 +83,6 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     filename_tensor_name = "save/Const:0"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
     clear_devices = False
-    input_meta_graph = checkpoint_meta_graph_file
 
     freeze_graph.freeze_graph(
         input_graph_path,
@@ -99,7 +96,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
         clear_devices,
         "",
         "",
-        input_meta_graph,
+        "",
         checkpoint_version=saver_write_version)
 
     # Now we make sure the variable is now a constant, and that the graph still
@@ -161,9 +158,11 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
             },)
         builder.save(as_text=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testFreezeGraphV1(self):
     self._testFreezeGraph(saver_pb2.SaverDef.V1)
 
+  @test_util.run_v1_only("b/120545219")
   def testFreezeGraphV2(self):
     self._testFreezeGraph(saver_pb2.SaverDef.V2)
 
@@ -253,7 +252,11 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
         output_graph_def.ParseFromString(f.read())
         _ = importer.import_graph_def(output_graph_def, name="")
 
-      self.assertEqual(8, len(output_graph_def.node))
+      if any(u"ParseExampleV2" in node.name for node in output_graph_def.node):
+        expected_node_count = 10
+      else:
+        expected_node_count = 8
+      self.assertEqual(expected_node_count, len(output_graph_def.node))
       for node in output_graph_def.node:
         self.assertNotEqual("VariableV2", node.op)
         self.assertNotEqual("Variable", node.op)
@@ -317,17 +320,17 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     output_node_names = "save/restore_all"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
 
-    return_value = freeze_graph.freeze_graph_with_def_protos(
-        input_graph_def=sess.graph_def,
-        input_saver_def=None,
-        input_checkpoint=checkpoint_path,
-        output_node_names=output_node_names,
-        restore_op_name="save/restore_all",  # default value
-        filename_tensor_name="save/Const:0",  # default value
-        output_graph=output_graph_path,
-        clear_devices=False,
-        initializer_nodes="")
-    self.assertTrue(return_value, -1)
+    with self.assertRaises(ValueError):
+      freeze_graph.freeze_graph_with_def_protos(
+          input_graph_def=sess.graph_def,
+          input_saver_def=None,
+          input_checkpoint=checkpoint_path,
+          output_node_names=output_node_names,
+          restore_op_name="save/restore_all",  # default value
+          filename_tensor_name="save/Const:0",  # default value
+          output_graph=output_graph_path,
+          clear_devices=False,
+          initializer_nodes="")
 
 
 if __name__ == "__main__":

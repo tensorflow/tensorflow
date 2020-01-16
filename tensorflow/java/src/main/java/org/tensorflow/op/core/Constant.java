@@ -523,7 +523,7 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    */
   public static Constant<String> create(Scope scope, String data, Charset charset) {
     try (Tensor<String> value = Tensor.create(data.getBytes(charset), String.class)) {
-      return createWithTensor(scope, Tensor.create(data.getBytes(charset), String.class));
+      return createWithTensor(scope, value);
     }
   }
 
@@ -640,7 +640,7 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
   private static <T> Constant<T> createWithTensor(Scope scope, Tensor<T> value) {
     return new Constant<T>(
         scope
-            .graph()
+            .env()
             .opBuilder("Const", scope.makeOpName("Const"))
             .setAttr("value", value)
             .setAttr("dtype", value.dataType())

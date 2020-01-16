@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for lists module."""
+"""Tests for converter module."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,12 +21,40 @@ from __future__ import print_function
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.platform import test
 
 
 class TestConverter(converter.Base):
   pass
+
+
+class ConversionOptionsTest(converter_testing.TestCase):
+
+  def test_to_ast(self):
+    opts = converter.ConversionOptions()
+    opts_ast = opts.to_ast()
+
+    template = '''
+    def test_fn():
+      return opts_ast
+    '''
+    opts_packed = templates.replace(template, opts_ast=opts_ast)
+
+    reparsed, _, _ = loader.load_ast(opts_packed)
+    reparsed.__dict__['ag__'] = self.make_fake_mod(
+        'fake_ag', converter.ConversionOptions, converter.Feature)
+
+    reparsed_opts = reparsed.test_fn()
+
+    self.assertEqual(opts.recursive, reparsed_opts.recursive)
+    self.assertEqual(opts.user_requested, False)
+    self.assertEqual(
+        opts.internal_convert_user_code,
+        reparsed_opts.internal_convert_user_code)
+    self.assertEqual(opts.optional_features, reparsed_opts.optional_features)
 
 
 class ConverterBaseTest(converter_testing.TestCase):

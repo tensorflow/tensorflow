@@ -43,7 +43,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Gamma")
+@tf_export(v1=["distributions.Gamma"])
 class Gamma(distribution.Distribution):
   """Gamma distribution.
 
@@ -90,13 +90,11 @@ class Gamma(distribution.Distribution):
   the samples that are smaller than `np.finfo(dtype).tiny` are rounded
   to this value, so it appears more often than it should.
   This should only be noticeable when the `concentration` is very small, or the
-  `rate` is very large. See note in `tf.random_gamma` docstring.
+  `rate` is very large. See note in `tf.random.gamma` docstring.
 
   Samples of this distribution are reparameterized (pathwise differentiable).
-  The derivatives are computed using the approach described in the paper
-
-  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
-  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+  The derivatives are computed using the approach described in
+  (Figurnov et al., 2018).
 
   #### Examples
 
@@ -120,6 +118,11 @@ class Gamma(distribution.Distribution):
   grads = tf.gradients(loss, [concentration, rate])
   ```
 
+  References:
+    Implicit Reparameterization Gradients:
+      [Figurnov et al., 2018]
+      (http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients)
+      ([pdf](http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients.pdf))
   """
 
   @deprecation.deprecated(
@@ -210,10 +213,10 @@ class Gamma(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   @distribution_util.AppendDocstring(
-      """Note: See `tf.random_gamma` docstring for sampling details and
+      """Note: See `tf.random.gamma` docstring for sampling details and
       caveats.""")
   def _sample_n(self, n, seed=None):
     return random_ops.random_gamma(
@@ -267,7 +270,7 @@ class Gamma(distribution.Distribution):
           self.batch_shape_tensor(),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(self.concentration > 1., mode, nan)
+      return array_ops.where_v2(self.concentration > 1., mode, nan)
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(

@@ -128,6 +128,11 @@ class Cluster {
                      const std::vector<string>& fetch,
                      RunMetadata* metadata) = 0;
 
+  // Run the specified GrapplerItem and return the corresponding metadata.
+  virtual Status Run(const GrapplerItem& item, RunMetadata* metadata) {
+    return Run(item.graph, item.feed, item.fetch, metadata);
+  }
+
  protected:
   std::unordered_map<string, DeviceProperties> devices_;
   const int timeout_s_;

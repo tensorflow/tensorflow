@@ -22,6 +22,7 @@ import math
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
@@ -29,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -76,7 +78,7 @@ class UnaryOpTest(test.TestCase):
     if grad_atol is None:
       grad_atol = _default_tolerance(x.dtype)
     np_ans = np_func(x)
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
       if x.dtype in (np.float32, np.float64,
                      dtypes_lib.bfloat16.as_numpy_dtype):
@@ -84,7 +86,7 @@ class UnaryOpTest(test.TestCase):
         np_ans *= 1.1
       else:
         y = tf_func(inx)
-      tf_cpu = y.eval()
+      tf_cpu = self.evaluate(y)
       self.assertShapeEqual(np_ans, y)
       if x.dtype == np.float16:
         self.assertAllClose(np_ans, tf_cpu, rtol=1e-3, atol=1e-3)
@@ -121,26 +123,24 @@ class UnaryOpTest(test.TestCase):
   def _check(self, result_tensor, result_np, input_sp_t, tol):
     self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
     self.assertTrue(isinstance(input_sp_t, sparse_tensor.SparseTensor))
-    self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
-    self.assertAllEqual(input_sp_t.dense_shape.eval(),
-                        result_tensor.dense_shape.eval())
+    self.assertAllEqual(input_sp_t.indices, result_tensor.indices)
+    self.assertAllEqual(input_sp_t.dense_shape, result_tensor.dense_shape)
     if tol is None:
-      self.assertAllClose(result_np, result_tensor.values.eval())
+      self.assertAllClose(result_np, result_tensor.values)
     else:
-      self.assertAllClose(
-          result_np, result_tensor.values.eval(), rtol=tol, atol=tol)
+      self.assertAllClose(result_np, result_tensor.values, rtol=tol, atol=tol)
 
   def _compareSparseCpu(self, x, np_func, tf_func, tol):
     x_sp, x_sp_vals = _sparsify(x)
     res_np = np_func(x_sp_vals)
-    with self.test_session(use_gpu=False):
+    with test_util.force_cpu():
       self._check(tf_func(x_sp), res_np, x_sp, tol)
 
   def _compareGpu(self, x, np_func, tf_func):
     np_ans = np_func(x)
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       result = tf_func(ops.convert_to_tensor(x))
-      tf_gpu = result.eval()
+      tf_gpu = self.evaluate(result)
     if x.dtype == np.float16:
       self.assertAllClose(np_ans, tf_gpu, rtol=1e-3, atol=1e-3)
     else:
@@ -150,7 +150,7 @@ class UnaryOpTest(test.TestCase):
   def _compareSparseGpu(self, x, np_func, tf_func, tol):
     x_sp, x_sp_vals = _sparsify(x)
     res_np = np_func(x_sp_vals)
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       self._check(tf_func(x_sp), res_np, x_sp, tol)
 
   def _compareBoth(self, x, np_func, tf_func):
@@ -186,6 +186,7 @@ class UnaryOpTest(test.TestCase):
 
     return func
 
+  @test_util.run_deprecated_v1
   def testFloatBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
     w = x - x.min() + 1.02  # all greater than 1
@@ -240,12 +241,14 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf)
 
+  @test_util.run_deprecated_v1
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     x = np.arange(-40, -40 + 6).reshape(6).astype(np.float32)
     self._compareBoth(x, np.tanh, math_ops.tanh)
 
+  @test_util.run_deprecated_v1
   def testFloatEmpty(self):
     x = np.empty((2, 0, 5), dtype=np.float32)
     self._compareBoth(x, np.abs, math_ops.abs)
@@ -291,6 +294,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(x, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.sign, math_ops.erf)
 
+  @test_util.run_deprecated_v1
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
     w = x - x.min() + 1.02  # all greater than 1
@@ -344,6 +348,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf)
 
+  @test_util.run_deprecated_v1
   def testHalfBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float16)
     y = (x + .5).astype(np.float16)  # no zero
@@ -385,6 +390,22 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf, tol=1e-3)
 
+  def testBFloat16Basic(self):
+    x = np.arange(-6, 6,
+                  2).reshape(1, 3, 2).astype(dtypes_lib.bfloat16.as_numpy_dtype)
+    self._compareCpu(x, np.abs, math_ops.abs)
+    self._compareCpu(x, np.abs, _ABS)
+
+  def testInt8Basic(self):
+    x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
+    self._compareCpu(x, np.abs, math_ops.abs)
+    self._compareCpu(x, np.abs, _ABS)
+
+  def testInt16Basic(self):
+    x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
+    self._compareCpu(x, np.abs, math_ops.abs)
+    self._compareCpu(x, np.abs, _ABS)
+
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
     self._compareCpu(x, np.abs, math_ops.abs)
@@ -416,6 +437,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.square, math_ops.square)
 
+  @test_util.run_deprecated_v1
   def testComplex64Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
         np.complex64)
@@ -460,6 +482,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(y, complex_sign, math_ops.sign)
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
+  @test_util.run_deprecated_v1
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
         np.complex128)
@@ -499,6 +522,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(y, complex_sign, math_ops.sign)
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
+  @test_util.run_deprecated_v1
   def testGradGrad(self):
     np.random.seed(7)
     shape = (5,)
@@ -535,6 +559,24 @@ class UnaryOpTest(test.TestCase):
             grads = [grads]
           for analytical, numerical in grads:
             self.assertAllClose(analytical, numerical, rtol=tol, atol=tol)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComplexAbsGradGrad(self):
+
+    def f(x):
+      real = math_ops.cos(x)
+      imag = ops.convert_to_tensor(1.)
+      return math_ops.abs(math_ops.complex(real, imag))
+
+    def g(x):
+      with backprop.GradientTape() as t:
+        t.watch(x)
+        y = f(x)
+      return t.gradient(y, x)
+
+    err = gradient_checker_v2.max_error(
+        *gradient_checker_v2.compute_gradient(g, [ops.convert_to_tensor(2.0)]))
+    self.assertLess(err, 1e-3)
 
 
 if __name__ == "__main__":

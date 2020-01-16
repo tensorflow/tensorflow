@@ -1,0 +1,29 @@
+op {
+  name: "QueueDequeueUpToV2"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "n"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+}

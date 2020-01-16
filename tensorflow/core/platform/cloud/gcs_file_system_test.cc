@@ -14,11 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
+
 #include <fstream>
+
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
+
+// Undef DeleteFile macro defined in wndows.h.
+#ifdef PLATFORM_WINDOWS
+#undef DeleteFile
+#endif
 
 namespace tensorflow {
 namespace {
@@ -78,6 +87,10 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache) {
   std::unique_ptr<RandomAccessFile> file;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
   char scratch[6];
   StringPiece result;
 
@@ -90,6 +103,238 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache) {
       errors::Code::OUT_OF_RANGE,
       file->Read(sizeof(scratch), sizeof(scratch), &result, scratch).code());
   EXPECT_EQ("6789", result);
+}
+
+TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered) {
+  std::vector<HttpRequest*> requests({
+      new FakeHttpRequest(
+          "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+          "Auth Token: fake_token\n"
+          "Range: 0-9\n"
+          "Timeouts: 5 1 20\n",
+          "0123456789"),
+      new FakeHttpRequest(
+          "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+          "Auth Token: fake_token\n"
+          "Range: 10-19\n"
+          "Timeouts: 5 1 20\n",
+          ""),
+  });
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 10 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
+  char scratch[6];
+  StringPiece result;
+
+  // Read the first chunk.
+  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("012345", result);
+
+  // Read the second chunk.
+  EXPECT_EQ(
+      errors::Code::OUT_OF_RANGE,
+      file->Read(sizeof(scratch), sizeof(scratch), &result, scratch).code());
+  EXPECT_EQ("6789", result);
+}
+
+TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Errors) {
+  std::vector<HttpRequest*> requests({
+      new FakeHttpRequest(
+          "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+          "Auth Token: fake_token\n"
+          "Range: 0-9\n"
+          "Timeouts: 5 1 20\n",
+          "Server Not", errors::Unavailable("important HTTP error 308"),
+          nullptr, {}, 308),
+      new FakeHttpRequest(
+          "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+          "Auth Token: fake_token\n"
+          "Range: 6-15\n"
+          "Timeouts: 5 1 20\n",
+          "123"),
+  });
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 10 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
+  char scratch[6];
+  StringPiece result;
+
+  // Read the first chunk.
+  EXPECT_EQ(errors::Code::UNAVAILABLE,
+            file->Read(0, sizeof(scratch), &result, scratch).code());
+  EXPECT_EQ("", result);
+
+  // Read the second chunk.
+  EXPECT_EQ(
+      errors::Code::OUT_OF_RANGE,
+      file->Read(sizeof(scratch), sizeof(scratch), &result, scratch).code());
+  EXPECT_EQ("123", result);
+}
+
+TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadAtEOF) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-9\n"
+           "Timeouts: 5 1 20\n",
+           "0123456789"),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 10-19\n"
+           "Timeouts: 5 1 20\n",
+           "")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 10 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
+  char scratch[10];
+  StringPiece result;
+
+  // Read the first chunk.
+  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("0123456789", result);
+
+  // Read the second chunk.
+  EXPECT_EQ(
+      errors::Code::OUT_OF_RANGE,
+      file->Read(sizeof(scratch), sizeof(scratch), &result, scratch).code());
+  EXPECT_EQ("", result);
+}
+
+TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Growing) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-9\n"
+           "Timeouts: 5 1 20\n",
+           "012345678"),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 9-18\n"
+           "Timeouts: 5 1 20\n",
+           "9")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 10 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
+  char scratch[10];
+  StringPiece result;
+
+  // Read the first chunk.
+  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+            file->Read(0, sizeof(scratch), &result, scratch).code());
+  EXPECT_EQ("012345678", result);
+
+  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("0123456789", result);
+}
+
+TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadBackwards) {
+  // Go backwards in the file. It should trigger a new read.
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 5-14\n"
+           "Timeouts: 5 1 20\n",
+           "56789"),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-9\n"
+           "Timeouts: 5 1 20\n",
+           "0123456789")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 10 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
+  char scratch[10];
+  StringPiece result;
+
+  // Read the first chunk.
+  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+            file->Read(5, sizeof(scratch), &result, scratch).code());
+  EXPECT_EQ("56789", result);
+
+  // Go back and read from the beginning of the file.
+  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("0123456789", result);
 }
 
 TEST(GcsFileSystemTest,
@@ -638,6 +883,9 @@ TEST(GcsFileSystemTest, NewWritableFile) {
   std::unique_ptr<WritableFile> wfile;
   TF_EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable", &wfile));
   TF_EXPECT_OK(wfile->Append("content1,"));
+  int64 pos;
+  TF_EXPECT_OK(wfile->Tell(&pos));
+  EXPECT_EQ(9, pos);
   TF_EXPECT_OK(wfile->Append("content2"));
   TF_EXPECT_OK(wfile->Flush());
   // Re-reading the file should trigger another HTTP request to GCS.
@@ -881,9 +1129,9 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
   const auto& status = file->Close();
   EXPECT_EQ(errors::Code::ABORTED, status.code());
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(),
-                            "All 10 retry attempts failed. The last failure: "
-                            "Unavailable: important HTTP error 503"))
+      absl::StrContains(status.error_message(),
+                        "All 10 retry attempts failed. The last failure: "
+                        "Unavailable: important HTTP error 503"))
       << status;
 }
 
@@ -939,11 +1187,11 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
   const auto& status = file->Close();
   EXPECT_EQ(errors::Code::UNAVAILABLE, status.code());
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(),
-                            "Upload to gs://bucket/path/writeable.txt failed, "
-                            "caused by: Not found: important HTTP error 410"))
+      absl::StrContains(status.error_message(),
+                        "Upload to gs://bucket/path/writeable.txt failed, "
+                        "caused by: Not found: important HTTP error 410"))
       << status;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       status.error_message(), "when uploading gs://bucket/path/writeable.txt"))
       << status;
 }
@@ -975,6 +1223,12 @@ TEST(GcsFileSystemTest, NewAppendableFile) {
            "Timeouts: 5 1 10\n",
            strings::StrCat("{\"size\": \"8\",\"generation\": \"1\","
                            "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/path%2Fappendable\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-1048575\n"
+           "Timeouts: 5 1 20\n",
+           "content1,"),
        new FakeHttpRequest(
            "Uri: https://storage.googleapis.com/bucket/path%2Fappendable\n"
            "Auth Token: fake_token\n"
@@ -2789,6 +3043,12 @@ TEST(GcsFileSystemTest, IsDirectory_BucketNotFound) {
 TEST(GcsFileSystemTest, CreateDir_Folder) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "subpath%2F?fields=size%2Cgeneration%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "{}"),
+       new FakeHttpRequest(
            "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
            "uploadType=resumable&name=subpath%2F\n"
            "Auth Token: fake_token\n"
@@ -2802,18 +3062,12 @@ TEST(GcsFileSystemTest, CreateDir_Folder) {
                            "Put body: \n",
                            ""),
        new FakeHttpRequest(
-           "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
-           "uploadType=resumable&name=subpath%2F\n"
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "subpath%2F?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
-           "Header X-Upload-Content-Length: 0\n"
-           "Post: yes\n"
            "Timeouts: 5 1 10\n",
-           "", {{"Location", "https://custom/upload/location"}}),
-       new FakeHttpRequest("Uri: https://custom/upload/location\n"
-                           "Auth Token: fake_token\n"
-                           "Timeouts: 5 1 30\n"
-                           "Put body: \n",
-                           "")});
+           strings::StrCat("{\"size\": \"1010\",\"generation\": \"1\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
@@ -2826,7 +3080,8 @@ TEST(GcsFileSystemTest, CreateDir_Folder) {
                    nullptr /* gcs additional header */);
 
   TF_EXPECT_OK(fs.CreateDir("gs://bucket/subpath"));
-  TF_EXPECT_OK(fs.CreateDir("gs://bucket/subpath/"));
+  EXPECT_EQ(errors::AlreadyExists("gs://bucket/subpath/"),
+            fs.CreateDir("gs://bucket/subpath/"));
 }
 
 TEST(GcsFileSystemTest, CreateDir_Bucket) {
@@ -3145,9 +3400,11 @@ TEST(GcsFileSystemTest, AdditionalRequestHeaderTest) {
 
 TEST(GcsFileSystemTest, OverrideCacheParameters) {
   // Verify defaults are propagated correctly.
+  setenv("GCS_READ_CACHE_BLOCK_SIZE_MB", "16", 1);
+  setenv("GCS_READ_CACHE_MAX_SIZE_MB", "128", 1);
   GcsFileSystem fs1;
-  EXPECT_EQ(128 * 1024 * 1024, fs1.block_size());
-  EXPECT_EQ(2 * fs1.block_size(), fs1.max_bytes());
+  EXPECT_EQ(16 * 1024 * 1024, fs1.block_size());
+  EXPECT_EQ(128 * 1024 * 1024, fs1.max_bytes());
   EXPECT_EQ(0, fs1.max_staleness());
   EXPECT_EQ(120, fs1.timeouts().connect);
   EXPECT_EQ(60, fs1.timeouts().idle);
@@ -3156,6 +3413,7 @@ TEST(GcsFileSystemTest, OverrideCacheParameters) {
   EXPECT_EQ(3600, fs1.timeouts().write);
 
   // Verify legacy readahead buffer override sets block size.
+  unsetenv("GCS_READ_CACHE_BLOCK_SIZE_MB");
   setenv("GCS_READAHEAD_BUFFER_SIZE_BYTES", "123456789", 1);
   GcsFileSystem fs2;
   EXPECT_EQ(123456789L, fs2.block_size());

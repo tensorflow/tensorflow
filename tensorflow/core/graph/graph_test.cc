@@ -16,16 +16,17 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <set>
+#include <unordered_map>
 #include <vector>
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -409,7 +410,7 @@ TEST_F(GraphTest, NewName) {
   EXPECT_NE(a1, a2);
   EXPECT_NE(a1, b1);
   EXPECT_NE(a2, b1);
-  EXPECT_TRUE(str_util::StartsWith(a1, "A")) << a1;
+  EXPECT_TRUE(absl::StartsWith(a1, "A")) << a1;
 }
 
 TEST_F(GraphTest, IsValidNode) {
@@ -643,32 +644,34 @@ TEST_F(GraphTest, AddFunctionLibrary) {
             "because it already has gradient function 'Undefined'");
 }
 
-REGISTER_OP("Input").Output("o: float");
-REGISTER_OP("In2Out1").Input("a: float").Input("b: float").Output("o: float");
+TEST_F(GraphTest, BuildNodeNameIndex) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } ");
 
-static void BM_InEdgeIteration(int iters, int num_nodes) {
+  auto node_name_index = graph_.BuildNodeNameIndex();
+  EXPECT_EQ(node_name_index.size(), 5);
+
+  std::vector<string> node_names{"_SOURCE", "_SINK", "A", "B", "C"};
+  for (const string& node_name : node_names) {
+    EXPECT_NE(node_name_index.find(node_name), node_name_index.end());
+    EXPECT_EQ(node_name_index[node_name], FindNode(node_name));
+  }
+}
+
+static void BM_InEdgeIteration(int iters, int num_nodes,
+                               int num_edges_per_node) {
   testing::StopTiming();
-  string s;
-  for (int in = 0; in < 10; in++) {
-    s += strings::Printf("node { name: 'in%04d' op: 'Input' }", in);
-  }
-  random::PhiloxRandom philox(301, 17);
-  random::SimplePhilox rnd(&philox);
-  for (int op = 0; op < num_nodes; op++) {
-    s += strings::Printf(
-        "node { name: 'op%04d' op: 'In2Out1' input: ['in%04d', 'in%04d' ] }",
-        op, rnd.Uniform(10), rnd.Uniform(10));
-  }
-
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
   Graph graph(OpRegistry::Global());
-  GraphDef graph_def;
-  CHECK(protobuf::TextFormat::ParseFromString(s, &graph_def));
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
 
   int64 sum = 0;
   testing::StartTiming();
-  for (int i = 0; i < iters; i += graph.num_node_ids()) {
+  for (int i = 0; i < iters; ++i) {
     for (const Node* node : graph.nodes()) {
       for (auto e : node->in_edges()) {
         sum += e->id();
@@ -676,8 +679,145 @@ static void BM_InEdgeIteration(int iters, int num_nodes) {
     }
   }
   VLOG(1) << sum;
+  testing::StopTiming();
 }
-BENCHMARK(BM_InEdgeIteration)->Range(10, 100000);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(10, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(10, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(10, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(10, 16);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_InEdgeIteration)->ArgPair(1 << 15, 16);
+
+static void BM_GraphCreation(int iters, int num_nodes, int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  // Warmup step.
+  Graph graph(registry);
+  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  int64 sum = 0;
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    Graph graph(registry);
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+    sum += graph.num_node_ids();
+  }
+  VLOG(1) << sum;
+  testing::StopTiming();
+}
+BENCHMARK(BM_GraphCreation)->ArgPair(10, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_GraphCreation)->ArgPair(10, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_GraphCreation)->ArgPair(10, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_GraphCreation)->ArgPair(10, 16);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 16);
+
+static void BM_ToGraphDef(int iters, int num_nodes, int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  // Warmup step.
+  Graph graph(registry);
+  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  int64 sum = 0;
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    GraphDef graph_def;
+    graph.ToGraphDef(&graph_def);
+    sum += graph_def.node_size();
+  }
+  VLOG(1) << sum;
+  testing::StopTiming();
+}
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 16);
+
+static void BM_RemoveNode(int iters, int num_nodes, int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  for (int i = 0; i < iters; ++i) {
+    Graph graph(registry);
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+    testing::StartTiming();
+    for (Node* n : graph.op_nodes()) {
+      graph.RemoveNode(n);
+    }
+    testing::StopTiming();
+  }
+}
+BENCHMARK(BM_RemoveNode)->ArgPair(10, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(10, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(10, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(10, 16);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 15, 16);
 
 }  // namespace
 }  // namespace tensorflow

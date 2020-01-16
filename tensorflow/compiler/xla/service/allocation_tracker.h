@@ -65,19 +65,19 @@ class AllocationTracker {
   // replica, or provide an error status to say whether any of those buffers
   // were not found (or found, but found deallocated).
   StatusOr<std::vector<const ShapedBuffer*>> Resolve(
-      const GlobalDataHandle& data);
+      const GlobalDataHandle& data) const;
 
   // Resolves a handle from an XLA client and replica id to a shaped buffer, or
   // provide an error status to say whether it was not found (or found, but
   // found deallocated).
   StatusOr<const ShapedBuffer*> ResolveForReplica(const GlobalDataHandle& data,
-                                                  int replica_id);
+                                                  int replica_id) const;
 
  private:
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    OwningDeviceMemory device_memory;
+    se::OwningDeviceMemory device_memory;
 
     // This is the number of times this memory allocation is referred to by
     // registered data handles.
@@ -87,7 +87,7 @@ class AllocationTracker {
   // Internal helper which resolves the given GlobalDataHandle to a
   // list of ScopedShapedBuffers.
   StatusOr<std::vector<const ShapedBuffer*>> ResolveInternal(
-      const GlobalDataHandle& data) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      const GlobalDataHandle& data) const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Internal helper which registers a vector of shaped buffers, one per
   // replica.  ShapedBufferTy is either ScopedShapedBuffer or ShapedBuffer.  If
@@ -113,7 +113,7 @@ class AllocationTracker {
   // maintained per device ordinal.
   using AllocationMap = absl::flat_hash_map<const void*, Allocation>;
 
-  tensorflow::mutex mutex_;
+  mutable tensorflow::mutex mutex_;
 
   // Backend to use with this tracker. The backend supplies the memory allocator
   // to use when deallocating memory.

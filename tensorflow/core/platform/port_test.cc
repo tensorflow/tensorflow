@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <condition_variable>
-#include "tensorflow/core/lib/core/threadpool.h"
+
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace port {
@@ -31,6 +33,15 @@ TEST(Port, AlignedMalloc) {
     EXPECT_EQ(pval % alignment, 0);
     AlignedFree(p);
   }
+}
+
+TEST(Port, GetCurrentCPU) {
+  const int cpu = GetCurrentCPU();
+#if !defined(__APPLE__)
+  // GetCurrentCPU does not currently work on MacOS.
+  EXPECT_GE(cpu, 0);
+  EXPECT_LT(cpu, NumTotalCPUs());
+#endif
 }
 
 TEST(ConditionVariable, WaitForMilliseconds_Timeout) {
@@ -65,6 +76,106 @@ TEST(ConditionVariable, WaitForMilliseconds_Signalled) {
   EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), kCond_MaybeNotified);
   time_t finish = time(nullptr);
   EXPECT_LT(finish - start, 3);
+}
+
+TEST(ConditionalCriticalSections, AwaitWithDeadline_Timeout) {
+  bool always_false = false;
+  mutex m;
+  m.lock();
+  time_t start = time(nullptr);
+  bool result =
+      m.AwaitWithDeadline(Condition(&always_false),
+                          EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos);
+  time_t finish = time(nullptr);
+  m.unlock();
+  EXPECT_EQ(result, false);
+  EXPECT_GE(finish - start, 3);
+}
+
+TEST(ConditionalCriticalSections, AwaitWithDeadline_Woken) {
+  thread::ThreadPool pool(Env::Default(), "test", 1);
+  bool woken = false;
+  mutex m;
+  m.lock();
+  time_t start = time(nullptr);
+  // Sleep for just 1 second then set the boolean.  We have a timeout of 3
+  // secs, so the mutex implementation will notice the boolean state change
+  // before the timeout.
+  pool.Schedule([&m, &woken]() {
+    Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
+    m.lock();
+    woken = true;
+    m.unlock();
+  });
+  bool result = m.AwaitWithDeadline(
+      Condition(&woken), EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos);
+  time_t finish = time(nullptr);
+  m.unlock();
+  EXPECT_EQ(result, true);
+  EXPECT_LT(finish - start, 3);
+}
+
+// Return the negation of *b.  Used as an Await() predicate.
+static bool Invert(bool* b) { return !*b; }
+
+// The Value() method inverts the value of the boolean specified in
+// the constructor.
+class InvertClass {
+ public:
+  explicit InvertClass(bool* value) : value_(value) {}
+  bool Value() { return !*this->value_; }
+
+ private:
+  InvertClass();
+  bool* value_;
+};
+
+TEST(ConditionalCriticalSections, Await_PingPong) {
+  thread::ThreadPool pool(Env::Default(), "test", 1);
+  bool ping_pong = false;
+  bool done = false;
+  mutex m;
+  pool.Schedule([&m, &ping_pong, &done]() {
+    m.lock();
+    for (int i = 0; i != 1000; i++) {
+      m.Await(Condition(&ping_pong));
+      ping_pong = false;
+    }
+    done = true;
+    m.unlock();
+  });
+  m.lock();
+  InvertClass invert(&ping_pong);
+  for (int i = 0; i != 1000; i++) {
+    m.Await(Condition(&Invert, &ping_pong));
+    ping_pong = true;
+  }
+  m.Await(Condition(&done));
+  m.unlock();
+}
+
+TEST(ConditionalCriticalSections, Await_PingPongMethod) {
+  thread::ThreadPool pool(Env::Default(), "test", 1);
+  bool ping_pong = false;
+  bool done = false;
+  mutex m;
+  pool.Schedule([&m, &ping_pong, &done]() {
+    m.lock();
+    for (int i = 0; i != 1000; i++) {
+      m.Await(Condition(&ping_pong));
+      ping_pong = false;
+    }
+    done = true;
+    m.unlock();
+  });
+  m.lock();
+  InvertClass invert(&ping_pong);
+  for (int i = 0; i != 1000; i++) {
+    m.Await(Condition(&invert, &InvertClass::Value));
+    ping_pong = true;
+  }
+  m.Await(Condition(&done));
+  m.unlock();
 }
 
 TEST(TestCPUFeature, TestFeature) {

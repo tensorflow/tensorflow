@@ -23,16 +23,20 @@ limitations under the License.
 bool EagerTensor_CheckExact(const PyObject* o);
 tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor);
 tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor);
-tensorflow::int64 PyEagerTensor_NumElements(const PyObject* tensor);
+tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor);
 
 namespace tensorflow {
-TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype);
 
-// TODO(nareshmodi): Move EagerCast and ReadVariableOp (which use the C API to
-// execute TFE Ops) to a separate common library.
-TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
-                            TF_DataType src_type_enum,
-                            TF_DataType dst_type_enum, TF_Status* out_status);
-}
+// Converts a value to a TFE_TensorHandle of a given dtype. The handle is
+// first allocated on CPU and then copied to a device identified by
+// device_name, unless it is nullptr.
+//
+// Note that an DT_INT32 handle is always kept on CPU regardless of the
+// device_name argument.
+TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
+                                       DataType dtype,
+                                       const char* device_name = nullptr);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TENSOR_H_

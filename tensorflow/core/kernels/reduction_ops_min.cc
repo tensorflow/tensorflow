@@ -33,7 +33,7 @@ namespace tensorflow {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU_KERNELS(type)                                             \
   REGISTER_KERNEL_BUILDER(                                                     \

@@ -34,7 +34,7 @@ class StringLengthOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
 
-    auto src = input.flat<string>();
+    auto src = input.flat<tstring>();
     auto dst = output->flat<int32>();
 
     switch (unit_) {

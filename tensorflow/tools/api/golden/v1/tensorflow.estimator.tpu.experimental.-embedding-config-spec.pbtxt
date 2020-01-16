@@ -1,0 +1,47 @@
+path: "tensorflow.estimator.tpu.experimental.EmbeddingConfigSpec"
+tf_class {
+  is_instance: "<class \'tensorflow_estimator.python.estimator.tpu._tpu_estimator_embedding.EmbeddingConfigSpec\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.tpu._tpu_estimator_embedding.EmbeddingConfigSpec\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "clipping_limit"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_gradient_multiplier_fn"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "feature_columns"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "feature_to_config_dict"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "optimization_parameters"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "partition_strategy"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "pipeline_execution_with_tensor_core"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "table_to_config_dict"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

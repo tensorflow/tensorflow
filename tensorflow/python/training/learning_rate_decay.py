@@ -17,8 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.python.eager import context
-from tensorflow.python.training import learning_rate_decay_v2
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -53,24 +58,25 @@ def exponential_decay(learning_rate,
   ...
   global_step = tf.Variable(0, trainable=False)
   starter_learning_rate = 0.1
-  learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
+  learning_rate = tf.compat.v1.train.exponential_decay(starter_learning_rate,
+  global_step,
                                              100000, 0.96, staircase=True)
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.train.GradientDescentOptimizer(learning_rate)
+      tf.compat.v1.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
 
   Args:
-    learning_rate: A scalar `float32` or `float64` `Tensor` or a
-      Python number.  The initial learning rate.
-    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Global step to use for the decay computation.  Must not be negative.
-    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Must be positive.  See the decay computation above.
-    decay_rate: A scalar `float32` or `float64` `Tensor` or a
-      Python number.  The decay rate.
+    learning_rate: A scalar `float32` or `float64` `Tensor` or a Python number.
+      The initial learning rate.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number. Global
+      step to use for the decay computation.  Must not be negative.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number. Must
+      be positive.  See the decay computation above.
+    decay_rate: A scalar `float32` or `float64` `Tensor` or a Python number.
+      The decay rate.
     staircase: Boolean.  If `True` decay the learning rate at discrete intervals
     name: String.  Optional name of the operation.  Defaults to
       'ExponentialDecay'.
@@ -88,19 +94,16 @@ def exponential_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.exponential_decay(learning_rate,
-                                                        global_step,
-                                                        decay_steps,
-                                                        decay_rate,
-                                                        staircase=staircase,
-                                                        name=name)
+  decayed_lr = learning_rate_schedule.ExponentialDecay(
+      learning_rate, decay_steps, decay_rate, staircase=staircase, name=name)
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
-@tf_export(v1=["train.piecewise_constant"])
+@tf_export(v1=["train.piecewise_constant_decay", "train.piecewise_constant"])
 def piecewise_constant(x, boundaries, values, name=None):
   """Piecewise constant from boundaries and interval values.
 
@@ -111,7 +114,8 @@ def piecewise_constant(x, boundaries, values, name=None):
   global_step = tf.Variable(0, trainable=False)
   boundaries = [100000, 110000]
   values = [1.0, 0.5, 0.1]
-  learning_rate = tf.train.piecewise_constant(global_step, boundaries, values)
+  learning_rate = tf.compat.v1.train.piecewise_constant(global_step, boundaries,
+  values)
 
   # Later, whenever we perform an optimization step, we increment global_step.
   ```
@@ -143,11 +147,35 @@ def piecewise_constant(x, boundaries, values, name=None):
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.piecewise_constant(x, boundaries, values,
-                                                         name=name)
+  boundaries = ops.convert_n_to_tensor(boundaries)
+  values = ops.convert_n_to_tensor(values)
+  x_recomp = ops.convert_to_tensor(x)
+  # Avoid explicit conversion to x's dtype. This could result in faulty
+  # comparisons, for example if floats are converted to integers.
+  for i, b in enumerate(boundaries):
+    if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
+      # We can promote int32 boundaries to int64 without loss of precision.
+      # This covers the most common case where the user passes in boundaries
+      # as an array of Python integers.
+      if (b.dtype.base_dtype == dtypes.int32 and
+          x_recomp.dtype.base_dtype == dtypes.int64):
+        b = math_ops.cast(b, x_recomp.dtype.base_dtype)
+        boundaries[i] = b
+      else:
+        raise ValueError(
+            "Boundaries (%s) must have the same dtype as x (%s)." %
+            (b.dtype.base_dtype, x_recomp.dtype.base_dtype))
+  for v in values[1:]:
+    if v.dtype.base_dtype != values[0].dtype.base_dtype:
+      raise ValueError(
+          "Values must have elements all with the same dtype (%s vs %s)." %
+          (values[0].dtype.base_dtype, v.dtype.base_dtype))
+  decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
+      boundaries, values, name=name)
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(x)
+  else:
+    decayed_lr = functools.partial(decayed_lr, x)
   return decayed_lr
 
 
@@ -198,27 +226,28 @@ def polynomial_decay(learning_rate,
   starter_learning_rate = 0.1
   end_learning_rate = 0.01
   decay_steps = 10000
-  learning_rate = tf.train.polynomial_decay(starter_learning_rate, global_step,
+  learning_rate = tf.compat.v1.train.polynomial_decay(starter_learning_rate,
+  global_step,
                                             decay_steps, end_learning_rate,
                                             power=0.5)
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.train.GradientDescentOptimizer(learning_rate)
+      tf.compat.v1.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
 
   Args:
-    learning_rate: A scalar `float32` or `float64` `Tensor` or a
-      Python number.  The initial learning rate.
-    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Global step to use for the decay computation.  Must not be negative.
-    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Must be positive.  See the decay computation above.
-    end_learning_rate: A scalar `float32` or `float64` `Tensor` or a
-      Python number.  The minimal end learning rate.
-    power: A scalar `float32` or `float64` `Tensor` or a
-      Python number.  The power of the polynomial. Defaults to linear, 1.0.
+    learning_rate: A scalar `float32` or `float64` `Tensor` or a Python number.
+      The initial learning rate.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number. Global
+      step to use for the decay computation.  Must not be negative.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number. Must
+      be positive.  See the decay computation above.
+    end_learning_rate: A scalar `float32` or `float64` `Tensor` or a Python
+      number.  The minimal end learning rate.
+    power: A scalar `float32` or `float64` `Tensor` or a Python number.  The
+      power of the polynomial. Defaults to linear, 1.0.
     cycle: A boolean, whether or not it should cycle beyond decay_steps.
     name: String.  Optional name of the operation. Defaults to
       'PolynomialDecay'.
@@ -236,9 +265,8 @@ def polynomial_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.polynomial_decay(
+  decayed_lr = learning_rate_schedule.PolynomialDecay(
       learning_rate,
-      global_step,
       decay_steps,
       end_learning_rate=end_learning_rate,
       power=power,
@@ -246,8 +274,9 @@ def polynomial_decay(learning_rate,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -288,21 +317,22 @@ def natural_exp_decay(learning_rate,
   learning_rate = 0.1
   decay_steps = 5
   k = 0.5
-  learning_rate = tf.train.natural_exp_decay(learning_rate, global_step,
+  learning_rate = tf.compat.v1.train.natural_exp_decay(learning_rate,
+  global_step,
                                              decay_steps, k)
 
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.train.GradientDescentOptimizer(learning_rate)
+      tf.compat.v1.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
 
   Args:
-    learning_rate: A scalar `float32` or `float64` `Tensor` or a
-      Python number.  The initial learning rate.
-    global_step: A Python number.
-      Global step to use for the decay computation.  Must not be negative.
+    learning_rate: A scalar `float32` or `float64` `Tensor` or a Python number.
+      The initial learning rate.
+    global_step: A Python number. Global step to use for the decay computation.
+      Must not be negative.
     decay_steps: How often to apply decay.
     decay_rate: A Python number.  The decay rate.
     staircase: Whether to apply decay in a discrete staircase, as opposed to
@@ -323,13 +353,18 @@ def natural_exp_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.natural_exp_decay(
-      learning_rate, global_step, decay_steps, decay_rate, staircase=staircase,
+  natural_exp_rate = math_ops.exp(math_ops.negative(decay_rate))
+  decayed_lr = learning_rate_schedule.ExponentialDecay(
+      learning_rate,
+      decay_steps,
+      natural_exp_rate,
+      staircase=staircase,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -370,21 +405,22 @@ def inverse_time_decay(learning_rate,
   learning_rate = 0.1
   decay_steps = 1.0
   decay_rate = 0.5
-  learning_rate = tf.train.inverse_time_decay(learning_rate, global_step,
+  learning_rate = tf.compat.v1.train.inverse_time_decay(learning_rate,
+  global_step,
   decay_steps, decay_rate)
 
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.train.GradientDescentOptimizer(learning_rate)
+      tf.compat.v1.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
 
   Args:
-    learning_rate: A scalar `float32` or `float64` `Tensor` or a
-      Python number.  The initial learning rate.
-    global_step: A Python number.
-      Global step to use for the decay computation.  Must not be negative.
+    learning_rate: A scalar `float32` or `float64` `Tensor` or a Python number.
+      The initial learning rate.
+    global_step: A Python number. Global step to use for the decay computation.
+      Must not be negative.
     decay_steps: How often to apply decay.
     decay_rate: A Python number.  The decay rate.
     staircase: Whether to apply decay in a discrete staircase, as opposed to
@@ -405,26 +441,19 @@ def inverse_time_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.inverse_time_decay(
-      learning_rate,
-      global_step,
-      decay_steps,
-      decay_rate,
-      staircase=staircase,
-      name=name)
+  decayed_lr = learning_rate_schedule.InverseTimeDecay(
+      learning_rate, decay_steps, decay_rate, staircase=staircase, name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
 @tf_export(v1=["train.cosine_decay"])
 def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
   """Applies cosine decay to the learning rate.
-
-  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses.  This function applies a cosine decay function
@@ -449,18 +478,25 @@ def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
   Args:
     learning_rate: A scalar `float32` or `float64` Tensor or a Python number.
       The initial learning rate.
-    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Global step to use for the decay computation.
-    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Number of steps to decay over.
-    alpha: A scalar `float32` or `float64` Tensor or a Python number.
-      Minimum learning rate value as a fraction of learning_rate.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number. Global
+      step to use for the decay computation.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number. Number
+      of steps to decay over.
+    alpha: A scalar `float32` or `float64` Tensor or a Python number. Minimum
+      learning rate value as a fraction of learning_rate.
     name: String. Optional name of the operation.  Defaults to 'CosineDecay'.
+
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
+
+  References:
+    Stochastic Gradient Descent with Warm Restarts:
+      [Loshchilov et al., 2017]
+      (https://openreview.net/forum?id=Skq89Scxx&noteId=Skq89Scxx)
+      ([pdf](https://openreview.net/pdf?id=Skq89Scxx))
 
   @compatibility(eager)
   When eager execution is enabled, this function returns a function which in
@@ -468,12 +504,13 @@ def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.cosine_decay(
-      learning_rate, global_step, decay_steps, alpha=alpha, name=name)
+  decayed_lr = learning_rate_schedule.CosineDecay(
+      learning_rate, decay_steps, alpha=alpha, name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -486,9 +523,6 @@ def cosine_decay_restarts(learning_rate,
                           alpha=0.0,
                           name=None):
   """Applies cosine decay with restarts to the learning rate.
-
-  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses.  This function applies a cosine decay function with
@@ -512,22 +546,29 @@ def cosine_decay_restarts(learning_rate,
   Args:
     learning_rate: A scalar `float32` or `float64` Tensor or a Python number.
       The initial learning rate.
-    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Global step to use for the decay computation.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number. Global
+      step to use for the decay computation.
     first_decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
       Number of steps to decay over.
-    t_mul: A scalar `float32` or `float64` `Tensor` or a Python number.
-      Used to derive the number of iterations in the i-th period
+    t_mul: A scalar `float32` or `float64` `Tensor` or a Python number. Used to
+      derive the number of iterations in the i-th period
     m_mul: A scalar `float32` or `float64` `Tensor` or a Python number.
       Used to derive the initial learning rate of the i-th period:
-    alpha: A scalar `float32` or `float64` Tensor or a Python number.
-      Minimum learning rate value as a fraction of the learning_rate.
+    alpha: A scalar `float32` or `float64` Tensor or a Python number. Minimum
+      learning rate value as a fraction of the learning_rate.
     name: String. Optional name of the operation.  Defaults to 'SGDRDecay'.
+
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
+
+  References:
+    Stochastic Gradient Descent with Warm Restarts:
+      [Loshchilov et al., 2017]
+      (https://openreview.net/forum?id=Skq89Scxx&noteId=Skq89Scxx)
+      ([pdf](https://openreview.net/pdf?id=Skq89Scxx))
 
   @compatibility(eager)
   When eager execution is enabled, this function returns a function which in
@@ -535,9 +576,8 @@ def cosine_decay_restarts(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.cosine_decay_restarts(
+  decayed_lr = learning_rate_schedule.CosineDecayRestarts(
       learning_rate,
-      global_step,
       first_decay_steps,
       t_mul=t_mul,
       m_mul=m_mul,
@@ -545,8 +585,9 @@ def cosine_decay_restarts(learning_rate,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -559,13 +600,6 @@ def linear_cosine_decay(learning_rate,
                         beta=0.001,
                         name=None):
   """Applies linear cosine decay to the learning rate.
-
-  See [Bello et al., ICML2017] Neural Optimizer Search with RL.
-  https://arxiv.org/abs/1709.07417
-
-  For the idea of warm starts here controlled by `num_periods`,
-  see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   Note that linear cosine decay is more aggressive than cosine decay and
   larger initial learning rates can typically be used.
@@ -595,21 +629,31 @@ def linear_cosine_decay(learning_rate,
   Args:
     learning_rate: A scalar `float32` or `float64` Tensor or a Python number.
       The initial learning rate.
-    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Global step to use for the decay computation.
-    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Number of steps to decay over.
-    num_periods: Number of periods in the cosine part of the decay.
-      See computation above.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number. Global
+      step to use for the decay computation.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number. Number
+      of steps to decay over.
+    num_periods: Number of periods in the cosine part of the decay. See
+      computation above.
     alpha: See computation above.
     beta: See computation above.
     name: String.  Optional name of the operation.  Defaults to
       'LinearCosineDecay'.
+
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
+
+  References:
+    Neural Optimizer Search with Reinforcement Learning:
+      [Bello et al., 2017](http://proceedings.mlr.press/v70/bello17a.html)
+      ([pdf](http://proceedings.mlr.press/v70/bello17a/bello17a.pdf))
+    Stochastic Gradient Descent with Warm Restarts:
+      [Loshchilov et al., 2017]
+      (https://openreview.net/forum?id=Skq89Scxx&noteId=Skq89Scxx)
+      ([pdf](https://openreview.net/pdf?id=Skq89Scxx))
 
   @compatibility(eager)
   When eager execution is enabled, this function returns a function which in
@@ -617,9 +661,8 @@ def linear_cosine_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.linear_cosine_decay(
+  decayed_lr = learning_rate_schedule.LinearCosineDecay(
       learning_rate,
-      global_step,
       decay_steps,
       num_periods=num_periods,
       alpha=alpha,
@@ -627,8 +670,9 @@ def linear_cosine_decay(learning_rate,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -643,13 +687,6 @@ def noisy_linear_cosine_decay(learning_rate,
                               beta=0.001,
                               name=None):
   """Applies noisy linear cosine decay to the learning rate.
-
-  See [Bello et al., ICML2017] Neural Optimizer Search with RL.
-  https://arxiv.org/abs/1709.07417
-
-  For the idea of warm starts here controlled by `num_periods`,
-  see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
-  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   Note that linear cosine decay is more aggressive than cosine decay and
   larger initial learning rates can typically be used.
@@ -683,23 +720,33 @@ def noisy_linear_cosine_decay(learning_rate,
   Args:
     learning_rate: A scalar `float32` or `float64` Tensor or a Python number.
       The initial learning rate.
-    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Global step to use for the decay computation.
-    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
-      Number of steps to decay over.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number. Global
+      step to use for the decay computation.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number. Number
+      of steps to decay over.
     initial_variance: initial variance for the noise. See computation above.
     variance_decay: decay for the noise's variance. See computation above.
-    num_periods: Number of periods in the cosine part of the decay.
-      See computation above.
+    num_periods: Number of periods in the cosine part of the decay. See
+      computation above.
     alpha: See computation above.
     beta: See computation above.
     name: String.  Optional name of the operation.  Defaults to
       'NoisyLinearCosineDecay'.
+
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
+
+  References:
+    Neural Optimizer Search with Reinforcement Learning:
+      [Bello et al., 2017](http://proceedings.mlr.press/v70/bello17a.html)
+      ([pdf](http://proceedings.mlr.press/v70/bello17a/bello17a.pdf))
+    Stochastic Gradient Descent with Warm Restarts:
+      [Loshchilov et al., 2017]
+      (https://openreview.net/forum?id=Skq89Scxx&noteId=Skq89Scxx)
+      ([pdf](https://openreview.net/pdf?id=Skq89Scxx))
 
   @compatibility(eager)
   When eager execution is enabled, this function returns a function which in
@@ -707,8 +754,8 @@ def noisy_linear_cosine_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.noisy_linear_cosine_decay(
-      learning_rate, global_step,
+  decayed_lr = learning_rate_schedule.NoisyLinearCosineDecay(
+      learning_rate,
       decay_steps,
       initial_variance=initial_variance,
       variance_decay=variance_decay,
@@ -718,6 +765,7 @@ def noisy_linear_cosine_decay(learning_rate,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr

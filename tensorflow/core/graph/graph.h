@@ -40,7 +40,9 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/edgeset.h"
@@ -59,12 +61,13 @@ class EdgeSetTest;
 class Graph;
 class GraphDef;
 class Node;
+struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;    // Declared below
-class NodeIter;        // Declared below
-class NodeProperties;  // Defined in .cc
+class NeighborIter;     // Declared below
+class NodeIter;         // Declared below
+struct NodeProperties;  // Defined in .cc
 
 class Node {
  public:
@@ -119,6 +122,10 @@ class Node {
   int assigned_device_name_index() const { return assigned_device_name_index_; }
   void set_assigned_device_name_index(int index);
 
+  // Sets 'original_node_names' field of this node's DebugInfo proto to
+  // 'names'.
+  void set_original_node_names(const std::vector<string>& names);
+
   // Read only access to attributes
   AttrSlice attrs() const;
 
@@ -167,10 +174,34 @@ class Node {
   bool IsCollective() const { return class_ == NC_COLLECTIVE; }
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
+  bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
+  bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
+
+  // Returns true if this node is any kind of function call node.
+  //
+  // NOTE: "function call nodes" include partitioned call ops, symbolic gradient
+  // ops, and ops whose type_string is the name of a function ("function ops").
+  bool IsFunctionCall() const {
+    return class_ == NC_PARTITIONED_CALL || class_ == NC_FUNCTION_OP ||
+           class_ == NC_SYMBOLIC_GRADIENT;
+  }
+
+  bool IsIfNode() const { return class_ == NC_IF; }
+  bool IsWhileNode() const { return class_ == NC_WHILE; }
+  // Is this node a function input
+  bool IsArg() const { return class_ == NC_ARG; }
+  // Is this node a function output
+  bool IsRetval() const { return class_ == NC_RETVAL; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
+    UpdateProperties();
+  }
+
+  void AddAttr(const string& name, std::vector<string>&& val) {
+    MoveAttrValue(std::move(val), AddAttrHelper(name));
+    UpdateProperties();
   }
 
   void ClearAttr(const string& name);
@@ -187,6 +218,10 @@ class Node {
   Status input_node(int idx, const Node** n) const;
   Status input_node(int idx, Node** n) const;
 
+  // Returns into '*t' the idx-th input tensor of this node, represented as the
+  // output tensor of input_node(idx).
+  Status input_tensor(int idx, OutputTensor* t) const;
+
   WhileContext* while_ctx() const { return while_ctx_; }
   void set_while_ctx(WhileContext* while_ctx) {
     DCHECK(IsExit());
@@ -200,7 +235,8 @@ class Node {
 
   NodeProperties* properties() const { return props_.get(); }
 
-  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props);
+  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
+                  bool is_function_op);
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
@@ -210,6 +246,10 @@ class Node {
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
+
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
 
   AttrValue* AddAttrHelper(const string& name);
 
@@ -238,6 +278,14 @@ class Node {
     NC_METADATA,
     NC_SCOPED_ALLOCATOR,
     NC_COLLECTIVE,
+    NC_FAKE_PARAM,
+    NC_PARTITIONED_CALL,
+    NC_FUNCTION_OP,
+    NC_SYMBOLIC_GRADIENT,
+    NC_IF,
+    NC_WHILE,
+    NC_ARG,
+    NC_RETVAL,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -278,12 +326,23 @@ class Node {
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
 };
 
+// Stores debug information associated with the Node.
+struct NodeDebugInfo {
+  const string name;
+  std::vector<string> original_node_names;
+
+  NodeDebugInfo(const Node& n);
+  NodeDebugInfo(const NodeDef& ndef);
+  NodeDebugInfo(StringPiece node_name, bool has_experimental_debug_info,
+                const NodeDef_ExperimentalDebugInfo& experimental_debug_info);
+};
+
 // Represents an input of a node, i.e., the `index`-th input to `node`.
 struct InputTensor {
-  const Node* node;
+  Node* node;
   int index;
 
-  InputTensor(const Node* n, int i) : node(n), index(i) {}
+  InputTensor(Node* n, int i) : node(n), index(i) {}
   InputTensor() : node(nullptr), index(0) {}
 
   // Returns true if this InputTensor is identical to 'other'. Nodes are
@@ -301,10 +360,10 @@ struct InputTensor {
 // that a single `OutputTensor` can correspond to multiple `Edge`s if the output
 // is consumed by multiple destination nodes.
 struct OutputTensor {
-  const Node* node;
+  Node* node;
   int index;
 
-  OutputTensor(const Node* n, int i) : node(n), index(i) {}
+  OutputTensor(Node* n, int i) : node(n), index(i) {}
   OutputTensor() : node(nullptr), index(0) {}
 
   // Returns true if this OutputTensor is identical to 'other'. Nodes are
@@ -418,9 +477,9 @@ class Graph {
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
   //
-  // The graph can hold ops found in registry. `registry`s lifetime must be at
+  // The graph can hold ops found in the registry. `ops`s lifetime must be at
   // least that of the constructed graph's.
-  explicit Graph(const OpRegistryInterface* registry);
+  explicit Graph(const OpRegistryInterface* ops);
 
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
@@ -443,7 +502,7 @@ class Graph {
   // Adds a new node to this graph, and returns it. Infers the Op and
   // input/output types for the node. *this owns the returned instance.
   // Returns nullptr and sets *status on error.
-  Node* AddNode(const NodeDef& node_def, Status* status);
+  Node* AddNode(NodeDef node_def, Status* status);
 
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
@@ -481,10 +540,16 @@ class Graph {
   // the corresponding NodeDef to reflect the change.
   // REQUIRES: The control edge must exist.
   void RemoveControlEdge(const Edge* e);
+
   // Updates the input to a node.  The existing edge to `dst` is removed and an
   // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`
   // is also updated.
   Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
+
+  // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
+  // "While" op during gradient construction, see AddInputWhileHack in
+  // python_api.h for more details.
+  Status AddWhileInputHack(Node* new_src, int new_src_index, Node* dst);
 
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
@@ -609,6 +674,9 @@ class Graph {
                          std::vector<OutputTensor> body_outputs,
                          WhileContext** result);
 
+  // Builds a node name to node pointer index for all nodes in the graph.
+  std::unordered_map<string, Node*> BuildNodeNameIndex() const;
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -618,9 +686,10 @@ class Graph {
   //
   // Ownership of the returned Node is not transferred to caller.
   Node* AllocateNode(std::shared_ptr<NodeProperties> props,
-                     const Node* cost_node);
+                     const Node* cost_node, bool is_function_op);
   void ReleaseNode(Node* node);
-
+  // Insert edge in free_edges_ for possible reuse.
+  void RecycleEdge(const Edge* edge);
   // Registry of all known ops, including functions.
   FunctionLibraryDefinition ops_;
 
@@ -723,15 +792,20 @@ inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
 }
 
+// NOTE: We declare Reference type of NodeIter and NeighborIter as Node* (see
+// https://en.cppreference.com/w/cpp/iterator/iterator).
+
 // Iterator for stepping through the nodes of a graph.
-class NodeIter {
+class NodeIter
+    : public std::iterator<std::forward_iterator_tag, Node, std::ptrdiff_t,
+                           /*Pointer*/ Node*, /*Reference*/ Node*> {
  public:
   NodeIter(const Graph* graph, int id);
-  bool operator==(const NodeIter& rhs);
-  bool operator!=(const NodeIter& rhs);
+  bool operator==(const NodeIter& rhs) const;
+  bool operator!=(const NodeIter& rhs) const;
   void operator++();
-  Node* operator*();
-  Node* operator->();
+  reference operator*() const;
+  pointer operator->() const;
 
  private:
   // Invariant: id_ == graph_->num_node_ids() || graph_->FindId(id_) != nullptr
@@ -740,14 +814,16 @@ class NodeIter {
 };
 
 // Iterator for stepping through the neighbors of a node.
-class NeighborIter {
+class NeighborIter
+    : public std::iterator<std::forward_iterator_tag, Node, std::ptrdiff_t,
+                           /*Pointer*/ Node*, /*Reference*/ Node*> {
  public:
   NeighborIter(EdgeSet::const_iterator iter, bool incoming);
-  bool operator==(const NeighborIter& rhs);
-  bool operator!=(const NeighborIter& rhs);
+  bool operator==(const NeighborIter& rhs) const;
+  bool operator!=(const NeighborIter& rhs) const;
   void operator++();
-  Node* operator*();
-  Node* operator->();
+  reference operator*() const;
+  pointer operator->() const;
 
  private:
   EdgeSet::const_iterator iter_;
@@ -759,12 +835,12 @@ class NeighborIter {
 inline NodeIter::NodeIter(const Graph* graph, int id)
     : graph_(graph), id_(id) {}
 
-inline bool NodeIter::operator==(const NodeIter& rhs) {
+inline bool NodeIter::operator==(const NodeIter& rhs) const {
   DCHECK(graph_ == rhs.graph_);
   return id_ == rhs.id_;
 }
 
-inline bool NodeIter::operator!=(const NodeIter& rhs) {
+inline bool NodeIter::operator!=(const NodeIter& rhs) const {
   return !(*this == rhs);
 }
 
@@ -778,29 +854,29 @@ inline void NodeIter::operator++() {
   }
 }
 
-inline Node* NodeIter::operator*() { return graph_->FindNodeId(id_); }
+inline Node* NodeIter::operator*() const { return graph_->FindNodeId(id_); }
 
-inline Node* NodeIter::operator->() { return graph_->FindNodeId(id_); }
+inline Node* NodeIter::operator->() const { return graph_->FindNodeId(id_); }
 
 inline NeighborIter::NeighborIter(EdgeSet::const_iterator iter, bool incoming)
     : iter_(iter), incoming_(incoming) {}
 
-inline bool NeighborIter::operator==(const NeighborIter& rhs) {
+inline bool NeighborIter::operator==(const NeighborIter& rhs) const {
   return iter_ == rhs.iter_ && incoming_ == rhs.incoming_;
 }
 
-inline bool NeighborIter::operator!=(const NeighborIter& rhs) {
+inline bool NeighborIter::operator!=(const NeighborIter& rhs) const {
   return !(*this == rhs);
 }
 
 inline void NeighborIter::operator++() { ++iter_; }
 
-inline Node* NeighborIter::operator*() {
+inline Node* NeighborIter::operator*() const {
   const Edge* e = *iter_;
   return incoming_ ? e->src() : e->dst();
 }
 
-inline Node* NeighborIter::operator->() {
+inline Node* NeighborIter::operator->() const {
   const Edge* e = *iter_;
   return incoming_ ? e->src() : e->dst();
 }

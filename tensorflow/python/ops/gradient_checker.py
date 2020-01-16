@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -157,7 +158,8 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta,
   # as delta. Convert to float32 here. Since numeric_jacobian is expected to
   # be the groundtruth to compare against, it shouldn't lose any information.
   if x.dtype == dtypes.bfloat16:
-    x = math_ops.cast(x, dtypes.float32)
+    x = math_ops.cast(x, dtypes.float32)  # TODO(wangpeng): Now that the new x
+            # is an output of the old x, isn't feeding to the new x a mistake?
   if y.dtype == dtypes.bfloat16:
     y = math_ops.cast(y, dtypes.float32)
   if x_data.dtype == dtypes.bfloat16.as_numpy_dtype:
@@ -258,6 +260,7 @@ def _compute_gradient_list(x,
       init.run()
   if x_init_value is None:
     x_init_value = [None] * len(x)
+  # pylint: disable=g-complex-comprehension
   ret = [_compute_gradient(xi, x_shapei, dxi, y, y_shape, dyi, x_init_valuei,
                            delta, extra_feed_dict=extra_feed_dict)
          for xi, x_shapei, dxi, dyi, x_init_valuei in zip(x, x_shape, dx, dy,
@@ -265,7 +268,12 @@ def _compute_gradient_list(x,
   return ret
 
 
-@tf_export("test.compute_gradient")
+@tf_export(v1=["test.compute_gradient"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.test.compute_gradient in 2.0, which has better "
+    "support for functions. Note that the two versions have different usage, "
+    "so code change is needed.")
 def compute_gradient(x,
                      x_shape,
                      y,
@@ -283,10 +291,10 @@ def compute_gradient(x,
   numbers.  For example, if `x` is complex with shape `[m]` and `y` is complex
   with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
 
-      J[::2, ::2] = d(Re y)/d(Re x)
-      J[::2, 1::2] = d(Im y)/d(Re x)
-      J[1::2, ::2] = d(Re y)/d(Im x)
-      J[1::2, 1::2] = d(Im y)/d(Im x)
+      J[:m, :n] = d(Re y)/d(Re x)
+      J[:m, n:] = d(Im y)/d(Re x)
+      J[m:, :n] = d(Re y)/d(Im x)
+      J[m:, n:] = d(Im y)/d(Im x)
 
   Args:
     x: a tensor or list of tensors
@@ -300,7 +308,6 @@ def compute_gradient(x,
       as the initial value.
     delta: (optional) the amount of perturbation.
     init_targets: list of targets to run to initialize model params.
-      TODO(mrry): remove this argument.
     extra_feed_dict: dict that allows fixing specified tensor values
       during the Jacobian calculation.
 
@@ -310,6 +317,7 @@ def compute_gradient(x,
     where "x_size" is the number of elements in x and "y_size" is the
     number of elements in y. If x is a list, returns a list of two numpy arrays.
   """
+  # TODO(mrry): remove argument `init_targets`
   if extra_feed_dict is None:
     extra_feed_dict = {}
 
@@ -327,7 +335,22 @@ def compute_gradient(x,
     return ret
 
 
-@tf_export("test.compute_gradient_error")
+def _compute_error(grad):
+  if isinstance(grad, tuple):
+    grad = [grad]
+  error = 0
+  for j_t, j_n in grad:
+    if j_t.size or j_n.size:  # Handle zero size tensors correctly
+      error = np.maximum(error, np.fabs(j_t - j_n).max())
+  return error
+
+
+@tf_export(v1=["test.compute_gradient_error"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.test.compute_gradient in 2.0, which has better "
+    "support for functions. Note that the two versions have different usage, "
+    "so code change is needed.")
 def compute_gradient_error(x,
                            x_shape,
                            y,
@@ -369,10 +392,4 @@ def compute_gradient_error(x,
   """
   grad = compute_gradient(x, x_shape, y, y_shape, x_init_value, delta,
                           init_targets, extra_feed_dict=extra_feed_dict)
-  if isinstance(grad, tuple):
-    grad = [grad]
-  error = 0
-  for j_t, j_n in grad:
-    if j_t.size or j_n.size:  # Handle zero size tensors correctly
-      error = np.maximum(error, np.fabs(j_t - j_n).max())
-  return error
+  return _compute_error(grad)

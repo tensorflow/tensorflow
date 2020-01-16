@@ -21,12 +21,13 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm-c/Target.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -64,6 +65,24 @@ Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
 }
 
 Status Main(const MainFlags& flags) {
+  // Initialize all LLVM targets so we can cross compile.
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmPrinter();
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmPrinter();
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmPrinter();
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmPrinter();
+
   // Process config.
   tf2xla::Config config;
   if (flags.config.empty()) {
@@ -103,7 +122,7 @@ Status Main(const MainFlags& flags) {
     return errors::InvalidArgument("Must specify --cpp_class");
   }
   codegen_opts.gen_hlo_profile_printer_data =
-      xla::legacy_flags::GetDebugOptionsFromFlags().xla_hlo_profile();
+      xla::GetDebugOptionsFromFlags().xla_hlo_profile();
   TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
                                    &codegen_opts.namespaces));
 
@@ -132,10 +151,14 @@ int main(int argc, char** argv) {
 
   std::vector<tensorflow::Flag> flag_list;
   AppendMainFlags(&flag_list, &flags);
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::AppendDebugOptionsFlags(&flag_list);
 
   tensorflow::string usage = tensorflow::tfcompile::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
+  if (argc > 1 && absl::string_view(argv[1]) == "--help") {
+    std::cerr << usage << "\n";
+    return 0;
+  }
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   QCHECK(parsed_flags_ok) << "\n" << usage;
 

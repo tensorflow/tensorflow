@@ -23,10 +23,11 @@ elements from `input_dataset` in parallel.
 END
   }
   in_arg {
-    name: "num_parallel_batches"
+    name: "num_parallel_calls"
     description: <<END
-A scalar representing the number of batches to create in parallel. Processing
-multiple batches in parallel benefits workloads prone to stragglers.
+A scalar representing the maximum number of parallel invocations of the `map_fn`
+function. Applying the `map_fn` on consecutive input elements in parallel has
+the potential to improve input pipeline throughput.
 END
   }
   in_arg {

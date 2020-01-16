@@ -11,7 +11,7 @@ import "tensorflow/core/framework/attr_value.proto";
 message NodeDef {
   // The name given to this operator. Used for naming inputs,
   // logging, visualization, etc.  Unique within a single GraphDef.
-  // Must match the regexp "[A-Za-z0-9.][A-Za-z0-9_./]*".
+  // Must match the regexp "[A-Za-z0-9.][A-Za-z0-9_>./]*".
   string name = 1;
 
   // The operation name.  There may be custom parameters in attrs.
@@ -60,4 +60,27 @@ message NodeDef {
   // attr's type field.
   // TODO(josh11b): Add some examples here showing best practices.
   map<string, AttrValue> attr = 5;
+
+  message ExperimentalDebugInfo {
+    // Opaque string inserted into error messages created by the runtime.
+    //
+    // This is intended to store the list of names of the nodes from the
+    // original graph that this node was derived. For example if this node, say
+    // C, was result of a fusion of 2 nodes A and B, then 'original_node' would
+    // be {A, B}. This information can be used to map errors originating at the
+    // current node to some top level source code.
+    repeated string original_node_names = 1;
+
+    // This is intended to store the list of names of the functions from the
+    // original graph that this node was derived. For example if this node, say
+    // C, was result of a fusion of node A in function FA and node B in function
+    // FB, then `original_funcs` would be {FA, FB}. If the node is in the top
+    // level graph, the `original_func` is empty. This information, with the
+    // `original_node_names` can be used to map errors originating at the
+    // current ndoe to some top level source code.
+    repeated string original_func_names = 2;
+  };
+
+  // This stores debug information associated with the node.
+  ExperimentalDebugInfo experimental_debug_info = 6;
 };

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/lib/data_format.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -30,11 +31,6 @@ class SpaceToDepthOp : public XlaOpKernel {
     OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
 
-    OP_REQUIRES(ctx, data_format_ == FORMAT_NCHW || data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("Unsupported data format ",
-                                        ToString(data_format_),
-                                        "; expected formats NHWC or NCHW"));
-
     OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
     OP_REQUIRES(
         ctx, block_size_ > 1,
@@ -42,19 +38,36 @@ class SpaceToDepthOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_tensor_shape = ctx->InputShape(0);
-    int input_rank = input_tensor_shape.dims();
+    xla::XlaOp input = ctx->Input(0);
+
+    TensorFormat data_format = data_format_;
+    // If the data is in a vectorized format, reformat it into a non-vectorized
+    // version first. We'll undo the transformation later.
+    if (data_format == FORMAT_NCHW_VECT_C) {
+      data_format = FORMAT_NCHW;
+      auto input_reshaped = NCHW_VECT_CToNCHW(input);
+      OP_REQUIRES_OK(ctx, input_reshaped.status());
+      input = input_reshaped.ValueOrDie();
+    }
+
+    OP_REQUIRES(ctx, data_format == FORMAT_NCHW || data_format == FORMAT_NHWC,
+                errors::InvalidArgument("Unsupported data format ",
+                                        ToString(data_format_)));
+
+    xla::XlaBuilder* builder = input.builder();
+    auto input_xla_shape = builder->GetShape(input);
+    OP_REQUIRES_OK(ctx, input_xla_shape.status());
+    absl::Span<const int64> input_shape =
+        input_xla_shape.ValueOrDie().dimensions();
+    int input_rank = input_shape.size();
+
     static const int kRequiredDims = 4;
     OP_REQUIRES(ctx, kRequiredDims == input_rank,
                 errors::InvalidArgument("Input rank should be ", kRequiredDims,
                                         "; got ", input_rank));
-    const absl::InlinedVector<int64, 4> input_shape =
-        input_tensor_shape.dim_sizes();
 
-    xla::XlaOp input = ctx->Input(0);
-
-    int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format_);
-    int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format_);
+    int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format);
+    int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format);
 
     std::vector<int64> reshaped_shape;
     std::vector<int64> transpose_order;
@@ -62,7 +75,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     reshaped_shape.reserve(input_rank);
     transpose_order.reserve(input_rank);
     output_shape.reserve(input_rank);
-    if (data_format_ == FORMAT_NHWC) {
+    if (data_format == FORMAT_NHWC) {
       int64 block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         OP_REQUIRES(ctx, input_shape[1 + i] % block_size_ == 0,
@@ -156,6 +169,14 @@ class SpaceToDepthOp : public XlaOpKernel {
     //       block_size_ * block_size_ * depth]
     //
     xla::XlaOp output = xla::Reshape(permuted_reshaped, output_shape);
+
+    // If this used to be a vectorized format turn it back now.
+    if (data_format != data_format_) {
+      DCHECK(data_format == FORMAT_NCHW && data_format_ == FORMAT_NCHW_VECT_C);
+      auto output_reshaped = NCHWToNCHW_VECT_C(output);
+      OP_REQUIRES_OK(ctx, output_reshaped.status());
+      output = output_reshaped.ValueOrDie();
+    }
 
     ctx->SetOutput(0, output);
   }

@@ -42,8 +42,9 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
     WorkerCacheInterface* worker_cache = nullptr;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices_));
-    device_mgr_.reset(new DeviceMgr(devices_));
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     std::unique_ptr<DeviceResolverDistributed> dr(new DeviceResolverDistributed(
         device_mgr_.get(), worker_cache, task_name));
     std::unique_ptr<CollectiveParamResolverDistributed> cpr(
@@ -57,7 +58,6 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
   }
 
   std::unique_ptr<RpcCollectiveExecutorMgr> cme_;
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
 };
 

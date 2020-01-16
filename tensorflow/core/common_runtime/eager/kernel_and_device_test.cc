@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -26,10 +28,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -37,22 +42,31 @@ namespace {
 class TestEnv {
  public:
   TestEnv() : flib_def_(OpRegistry::Global(), {}) {
-    Device* device =
-        DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
-    device_mgr_.reset(new DeviceMgr({device}));
-    flib_runtime_ = NewFunctionLibraryRuntime(device_mgr_.get(), Env::Default(),
-                                              device, TF_GRAPH_DEF_VERSION,
-                                              &flib_def_, nullptr, {}, nullptr);
+    std::vector<std::unique_ptr<Device>> devices;
+    devices.push_back(
+        DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
+    cpu_device_ = devices.back().get();
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    OptimizerOptions opts;
+    pflr_ = tensorflow::MakeUnique<ProcessFunctionLibraryRuntime>(
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, &flib_def_, opts,
+        /*default_thread_pool=*/nullptr);
+
+    flr_ = pflr_->GetFLR("/job:a/replica:0/task:0/device:CPU:0");
+    CHECK(flr_ != nullptr);
   }
 
-  FunctionLibraryRuntime* function_library_runtime() const {
-    return flib_runtime_.get();
-  }
+  FunctionLibraryRuntime* function_library_runtime() const { return flr_; }
+  ProcessFunctionLibraryRuntime* pflr() const { return pflr_.get(); }
+  Device* cpu_device() { return cpu_device_; }
 
  private:
   FunctionLibraryDefinition flib_def_;
   std::unique_ptr<DeviceMgr> device_mgr_;
-  std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
+  FunctionLibraryRuntime* flr_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  Device* cpu_device_;
 };
 
 void BM_CreateGraph(int iters) {
@@ -104,11 +118,11 @@ void BM_KernelAndDeviceInit(int iters) {
                    .NumInputs(2)
                    .BuildNodeDef());
   TestEnv env;
-  KernelAndDevice k(nullptr, false);
+  KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
+                      nullptr, env.cpu_device());
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(KernelAndDevice::Init(ndef, env.function_library_runtime(),
-                                      nullptr, &k));
+    TF_CHECK_OK(k.Init(ndef, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceInit);
@@ -116,9 +130,9 @@ BENCHMARK(BM_KernelAndDeviceInit);
 void BM_KernelAndDeviceRun(int iters) {
   tensorflow::testing::StopTiming();
   Tensor t(Input({{1.0f, 2.0f}, {3.0f, 4.0f}}).tensor());
-  std::vector<Tensor> inputs;
-  inputs.push_back(t);
-  inputs.push_back(t);
+  gtl::InlinedVector<TensorValue, 4> inputs;
+  inputs.push_back(TensorValue(&t));
+  inputs.push_back(TensorValue(&t));
   std::vector<Tensor> outputs;
   NodeDef ndef(AttrBuilder("MatMul")
                    .Set("T", DT_FLOAT)
@@ -127,12 +141,13 @@ void BM_KernelAndDeviceRun(int iters) {
                    .NumInputs(inputs.size())
                    .BuildNodeDef());
   TestEnv env;
-  KernelAndDevice kernel(nullptr, false);
-  TF_CHECK_OK(KernelAndDevice::Init(ndef, env.function_library_runtime(),
-                                    nullptr, &kernel));
+  KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
+                      nullptr, env.cpu_device());
+  TF_CHECK_OK(k.Init(ndef, nullptr));
+  const EagerKernelArgs args(std::move(inputs));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr));
+    TF_CHECK_OK(k.Run(args, &outputs, nullptr, absl::nullopt));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

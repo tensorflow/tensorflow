@@ -91,6 +91,38 @@ struct Relu6Grad {
   }
 };
 
+// Functor used by LeakyReluOp to do the computations.
+template <typename Device, typename T>
+struct LeakyRelu {
+  // Computes LeakyRelu activation.
+  //
+  // features: any shape.
+  // activations: same shape as "features".
+  void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
+                  T alpha, typename TTypes<T>::Tensor activations) {
+    // Note that alpha might be > 1 or < 0, so we don't use cwiseMax here.
+    activations.device(d) =
+        (features > static_cast<T>(0)).select(features, features * alpha);
+  }
+};
+
+// Functor used by LeakyReluGradOp to do the computations.
+template <typename Device, typename T>
+struct LeakyReluGrad {
+  // Computes LeakyReluGrad backprops.
+  //
+  // gradients: gradients backpropagated to the LeakyRelu op.
+  // features: either the inputs that were passed to the LeakyRelu or, or its
+  //           outputs (using either one yields the same result here).
+  // backprops: gradients to backpropagate to the LeakyRelu inputs.
+  void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
+                  typename TTypes<T>::ConstTensor features, T alpha,
+                  typename TTypes<T>::Tensor backprops) {
+    backprops.device(d) =
+        (features > static_cast<T>(0)).select(gradients, gradients * alpha);
+  }
+};
+
 // Functor used by EluOp to do the computations.
 template <typename Device, typename T>
 struct Elu {

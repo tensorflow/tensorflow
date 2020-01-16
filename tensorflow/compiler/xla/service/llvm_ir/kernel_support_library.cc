@@ -18,28 +18,29 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
-Status KernelSupportLibrary::For(
+Status KernelSupportLibrary::ForWithStatus(
     absl::string_view name, llvm::Value* start, llvm::Value* end,
     llvm::Value* step,
     const std::function<Status(llvm::Value*, bool)>& for_body_generator) {
-  return If(b_->CreateICmpSLT(start, end), [&]() -> Status {
+  return IfWithStatus(b_->CreateICmpSLT(start, end), [&]() -> Status {
     TF_RETURN_IF_ERROR(for_body_generator(start, /*is_first_iteration=*/true));
-    return For(name, b_->CreateAdd(start, step), end, step,
-               [&](llvm::Value* iv) { return for_body_generator(iv, false); });
+    return ForWithStatus(
+        name, b_->CreateAdd(start, step), end, step,
+        [&](llvm::Value* iv) { return for_body_generator(iv, false); });
   });
 }
 
-Status KernelSupportLibrary::For(
+Status KernelSupportLibrary::ForWithStatus(
     absl::string_view name, llvm::Value* start, llvm::Value* end,
     llvm::Value* step, bool peel_first_iteration,
     const std::function<Status(llvm::Value*, llvm::Value*)>&
         for_body_generator) {
   if (peel_first_iteration) {
-    return For(name, start, end, step, true,
-               [&](llvm::Value* indvar, bool is_first_iteration) -> Status {
-                 return for_body_generator(indvar,
-                                           b_->getInt1(is_first_iteration));
-               });
+    return ForWithStatus(
+        name, start, end, step, true,
+        [&](llvm::Value* indvar, bool is_first_iteration) -> Status {
+          return for_body_generator(indvar, b_->getInt1(is_first_iteration));
+        });
   } else {
     std::unique_ptr<llvm_ir::ForLoop> loop = llvm_ir::ForLoop::EmitForLoop(
         name, start, end, step, b_,
@@ -55,7 +56,7 @@ Status KernelSupportLibrary::For(
   }
 }
 
-Status KernelSupportLibrary::If(
+Status KernelSupportLibrary::IfWithStatus(
     absl::string_view name, llvm::Value* condition,
     const std::function<Status()>& true_block_generator,
     const std::function<Status()>& false_block_generator) {
@@ -69,7 +70,7 @@ Status KernelSupportLibrary::If(
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
-    bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
+    const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
     absl::string_view kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
@@ -100,10 +101,9 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
     auto* function_type =
         llvm::FunctionType::get(b->getVoidTy(), arg_types, /*isVarArg=*/false);
 
-    function = llvm_ir::CreateFunction(
-        function_type, llvm::GlobalValue::InternalLinkage,
-        /*enable_fast_math=*/enable_fast_math,
-        /*optimize_for_size=*/optimize_for_size, kernel_name, module);
+    function = llvm_ir::CreateCpuFunction(function_type,
+                                          llvm::GlobalValue::InternalLinkage,
+                                          module_config, kernel_name, module);
 
     llvm::IRBuilder<>::InsertPointGuard guard(*b);
 

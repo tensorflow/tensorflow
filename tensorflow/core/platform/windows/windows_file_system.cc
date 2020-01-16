@@ -25,15 +25,14 @@ limitations under the License.
 #include <sys/types.h>
 #include <time.h>
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/posix/error.h"
-#include "tensorflow/core/platform/windows/error.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
 #undef DeleteFile
@@ -112,12 +111,23 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     }
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
     char* dst = scratch;
     while (n > 0 && s.ok()) {
-      SSIZE_T r = pread(hfile_, dst, n, offset);
+      size_t requested_read_length;
+      if (n > std::numeric_limits<DWORD>::max()) {
+        requested_read_length = std::numeric_limits<DWORD>::max();
+      } else {
+        requested_read_length = n;
+      }
+      SSIZE_T r = pread(hfile_, dst, requested_read_length, offset);
       if (r > 0) {
         offset += r;
         dst += r;
@@ -186,6 +196,11 @@ class WindowsWritableFile : public WritableFile {
       return IOErrorFromWindowsError(
           "FlushFileBuffers failed for: " + filename_, ::GetLastError());
     }
+    return Status::OK();
+  }
+
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
     return Status::OK();
   }
 
@@ -439,6 +454,9 @@ Status WindowsFileSystem::DeleteFile(const string& fname) {
 Status WindowsFileSystem::CreateDir(const string& name) {
   Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
+  if (ws_name.empty()) {
+    return errors::AlreadyExists(name);
+  }
   if (_wmkdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to create a directory: " + name, errno);
   }
@@ -470,6 +488,15 @@ Status WindowsFileSystem::GetFileSize(const string& fname, uint64* size) {
     result = IOErrorFromWindowsError(context, ::GetLastError());
   }
   return result;
+}
+
+Status WindowsFileSystem::IsDirectory(const string& fname) {
+  TF_RETURN_IF_ERROR(FileExists(fname));
+  std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
+  if (PathIsDirectoryW(ws_translated_fname.c_str())) {
+    return Status::OK();
+  }
+  return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
 }
 
 Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
@@ -513,7 +540,7 @@ Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   } else {
     stat->mtime_nsec = sbuf.st_mtime * 1e9;
     stat->length = sbuf.st_size;
-    stat->is_directory = PathIsDirectoryW(ws_translated_fname.c_str());
+    stat->is_directory = IsDirectory(fname).ok();
   }
   return result;
 }

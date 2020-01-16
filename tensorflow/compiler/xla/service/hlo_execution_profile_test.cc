@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -29,7 +28,7 @@ using ::testing::ContainsRegex;
 class HloExecutionProfileTest : public HloTestBase {};
 
 TEST_F(HloExecutionProfileTest, Basic) {
-  auto hlo_module = ParseHloString(R"(
+  auto hlo_module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY entry_computation {
     lhs = f32[30,30]{1,0} parameter(0)
@@ -45,7 +44,7 @@ TEST_F(HloExecutionProfileTest, Basic) {
 
   auto shape_size_function = [&](const Shape& shape) {
     const int64 pointer_size = 8;
-    if (ShapeUtil::IsOpaque(shape)) {
+    if (shape.IsOpaque()) {
       return pointer_size;
     }
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
@@ -54,7 +53,8 @@ TEST_F(HloExecutionProfileTest, Basic) {
   HloCostAnalysis cost_analysis(shape_size_function);
   HloProfileIndexMap profile_index_map(*hlo_module);
   std::unique_ptr<HloProfilePrinterData> profile_printer =
-      CreateHloProfilePrinterData(profile_index_map, cost_analysis);
+      CreateHloProfilePrinterData(profile_index_map, cost_analysis,
+                                  hlo_module->entry_computation()->name());
   HloExecutionProfile execution_profile(profile_printer.get(),
                                         &profile_index_map);
 

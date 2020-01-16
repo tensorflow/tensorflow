@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -25,7 +27,12 @@ from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import map_fn
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -43,7 +50,7 @@ class WhileTest(xla_test.XLATestCase):
     def loop_cond(step):
       return step < 10
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       with self.test_scope():
         loop_outputs = xla.while_loop([init_index], loop_cond, loop_body)
@@ -65,7 +72,7 @@ class WhileTest(xla_test.XLATestCase):
       del rsum
       return step < 10
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       init_sum = array_ops.placeholder(dtypes.float32, [])
       with self.test_scope():
@@ -91,7 +98,7 @@ class WhileTest(xla_test.XLATestCase):
       del rsum
       return step < 10
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       init_sum = array_ops.placeholder(dtypes.complex64, [])
       with self.test_scope():
@@ -117,7 +124,7 @@ class WhileTest(xla_test.XLATestCase):
       del x
       return step < 10
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       with self.test_scope():
         loop_outputs = xla.while_loop([init_index, 42], loop_cond, loop_body)
@@ -125,6 +132,121 @@ class WhileTest(xla_test.XLATestCase):
       result = sess.run(loop_outputs, {init_index: 0})
       self.assertAllClose(result, [10, 7], rtol=1e-3)
 
+  def _testMaxItersSimple(self):
+    if is_compile_on_demand():
+      self.skipTest("list_ops are not supported in cpu_ondemand")
+    with self.session() as sess, self.test_scope():
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      xla_context.Enter()
+      v = constant_op.constant(1.0)
+      p = array_ops.placeholder(dtype=dtypes.int32)
 
-if __name__ == '__main__':
+      def create_while_loop():
+        iterations = array_ops.size(p, name="iterations")
+        r = control_flow_ops.while_loop(
+            lambda *_: True,
+            lambda i, x: (i + 1, v * x), (0, 1.0),
+            maximum_iterations=iterations,
+            name="outer")
+        return array_ops.identity(r[1])
+
+      output = create_while_loop()
+      output = gradients_impl.gradients(output, v)[0]
+
+      result = sess.run(output, feed_dict={p: [0, 0, 0]})
+      print(result)
+      xla_context.Exit()
+
+  def testMaxItersSimple(self):
+    self.skipTest("Fails with v1 control flow")
+    # This fails with old control.
+    # self._testMaxItersSimple()
+
+  @test_util.enable_control_flow_v2
+  def testMaxItersSimpleV2(self):
+    self._testMaxItersSimple()
+
+  def _testNestedWhileLoopWithMaxItersFromOuterContext(self):
+    if is_compile_on_demand():
+      self.skipTest("list_ops are not supported in cpu_ondemand")
+    with self.session() as sess, self.test_scope():
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      xla_context.Enter()
+      v = constant_op.constant(1.0)
+      p = array_ops.placeholder(dtype=dtypes.int32)
+
+      def mid_body_builder(iterations):
+
+        def mid_body(i, x):
+          r = control_flow_ops.while_loop(
+              lambda *_: True,
+              lambda i, x: (i + 1, v * x), (0, x),
+              maximum_iterations=iterations,
+              name="inner")
+          return (i + 1, gradients_impl.gradients(x + r[1], v)[0])
+
+        return mid_body
+
+      def outer_body(i, x):
+        iterations = array_ops.size(p, name="iterations")
+        return (i + 1, x + control_flow_ops.while_loop(
+            lambda *_: True,
+            mid_body_builder(iterations), (0, x),
+            maximum_iterations=iterations,
+            name="mid")[1])
+
+      def create_while_loop():
+        r = control_flow_ops.while_loop(
+            lambda *_: True,
+            outer_body, (0, 1.0),
+            maximum_iterations=5,
+            name="outer")
+        return array_ops.identity(r[1])
+
+      # p:placeholder
+      # j = 0
+      # i, x = 0, 1.
+      # while j++ < 5:
+      #   i1, x1 = 0, x
+      #   while i1++ < len(p):
+      #     i2, x2 = 0, x1
+      #     while i2++ < len(p):
+      #       x2 = v * x2
+      #     x1 = grad(x1 + x2, v)
+      #   x = x1
+      # output = x
+      output = create_while_loop()
+      sess.run(output, feed_dict={p: [0, 0, 0]})
+      xla_context.Exit()
+
+  def testNestedWhileLoopWithMaxItersFromOuterContext(self):
+    self._testNestedWhileLoopWithMaxItersFromOuterContext()
+
+  @test_util.enable_control_flow_v2
+  def testNestedWhileLoopWithMaxItersFromOuterContextV2(self):
+    self._testNestedWhileLoopWithMaxItersFromOuterContext()
+
+  @test_util.enable_control_flow_v2
+  def testMap(self):
+    if is_compile_on_demand():
+      self.skipTest("list_ops are not supported in cpu_ondemand")
+    with self.session(), self.test_scope():
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      xla_context.Enter()
+      nums = [1, 2, 3, 4, 5, 6]
+      elems = constant_op.constant(nums, name="data")
+      r = map_fn.map_fn(lambda x: math_ops.multiply(math_ops.add(x, 3), 2),
+                        elems)
+      self.assertAllEqual(r, np.array([(x + 3) * 2 for x in nums]))
+      xla_context.Exit()
+
+
+def is_compile_on_demand():
+  return ("TF_XLA_FLAGS" in os.environ and
+          "tf_xla_compile_on_demand" in os.environ["TF_XLA_FLAGS"])
+
+
+if __name__ == "__main__":
+  os.environ["TF_XLA_FLAGS"] = ("--tf_xla_min_cluster_size=2 " +
+                                os.environ.get("TF_XLA_FLAGS", ""))
   test.main()

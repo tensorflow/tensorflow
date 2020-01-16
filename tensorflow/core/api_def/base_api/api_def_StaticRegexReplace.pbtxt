@@ -14,7 +14,7 @@ op {
   }
   attr {
     name: "rewrite"
-    description: "The rewrite to be applied to the matched expresion."
+    description: "The rewrite to be applied to the matched expression."
   }
   attr {
     name: "replace_global"

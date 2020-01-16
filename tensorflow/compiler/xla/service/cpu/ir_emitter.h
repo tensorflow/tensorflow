@@ -59,6 +59,9 @@ namespace cpu {
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
  public:
+  using GeneratorForOperandIrArrays =
+      std::function<std::vector<llvm_ir::IrArray>()>;
+
   // Create a new LLVM IR emitter.
   //
   // hlo_module: the HLO module we are emitting IR for.
@@ -69,13 +72,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //              index in the profiling array.
   // computation_to_profile_idx: the mapping from HLO computations to their
   //              index in the profiling array.
+  // emit_code_for_msan: whether emitted code should be compatible with msan.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
             std::unordered_map<const HloInstruction*, int64>
                 instruction_to_profile_idx,
             std::unordered_map<const HloComputation*, int64>
                 computation_to_profile_idx,
-            const TargetMachineFeatures* target_machine);
+            const TargetMachineFeatures* target_machine,
+            bool emit_code_for_msan);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -98,7 +103,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const string& function_name_prefix,
       bool is_top_level_computation,
-      const std::vector<const HloInstruction*>* instruction_order);
+      absl::Span<HloInstruction* const> instruction_order);
 
   llvm::IRBuilder<>* b() { return &b_; }
 
@@ -113,6 +118,23 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const HloMapInstruction& map_instr,
       absl::Span<llvm::Value* const> elemental_operands,
       absl::string_view name);
+  // Emit code to emit the element at `index` for a reduce window instruction.
+  StatusOr<llvm::Value*> EmitElementalReduceWindow(
+      const HloReduceWindowInstruction* reduce_window,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::IrArray::Index& index);
+  // Emit code to emit the element at `index` for a convolution instruction.
+  StatusOr<llvm::Value*> EmitElementalConvolution(
+      const HloConvolutionInstruction* convolution,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::ElementGenerator& kernel_generator,
+      const llvm_ir::IrArray::Index& index);
+  // Emit code to emit the element at `index` for a reduce instruction.
+  StatusOr<llvm::Value*> EmitElementalReduce(
+      const HloReduceInstruction* reduce,
+      std::vector<llvm_ir::ElementGenerator> input_generators,
+      std::vector<llvm_ir::ElementGenerator> initial_value_generator,
+      const llvm_ir::IrArray::Index& index);
 
  protected:
   //
@@ -122,6 +144,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* hlo) override;
 
+  Status HandleAllToAll(HloInstruction* instruction) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleCopy(HloInstruction* copy) override;
@@ -131,7 +154,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSort(HloInstruction* sort) override;
@@ -156,8 +179,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleConcatenate(HloInstruction* concatenate) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleAfterAll(HloInstruction* gen_token) override;
+  Status HandleAfterAll(HloInstruction* after_all) override;
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
+  Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleRng(HloInstruction* rng) override;
+  Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -170,26 +196,31 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
  private:
+  Status HandleAllReduceSingleReplica(HloInstruction* crs);
+  Status HandleAllReduceMultipleReplica(HloInstruction* crs);
+
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);
 
-  template <typename T>
-  llvm::Value* GetProfileCounterCommon(
-      const T& hlo,
-      const std::unordered_map<const T*, int64>& profile_index_map);
+  // Emits the copying epilogue for the function,
+  // where it copies the returned value to the reserved alloca.
+  // This is only necessary for thread-local functions.
+  // Note that since the call graph is flattened, if the same function is
+  // called in both thread-local and non-thread-local it would be codegen'd
+  // twice, and we would know whether it's thread-local at codegen time.
+  void EmitThreadLocalFunctionEpilogue(HloComputation* computation);
 
   // Convenience functions to generate a GEP into the profile counter parameter
   // which would correspond to the index for a given HLO instruction or
   // computation.
-  llvm::Value* GetProfileCounterFor(const HloInstruction& instruction) {
-    return GetProfileCounterCommon<HloInstruction>(instruction,
-                                                   instruction_to_profile_idx_);
-  }
+  llvm::Value* GetProfileCounterFor(const HloInstruction& instruction);
+  llvm::Value* GetProfileCounterFor(const HloComputation& computation);
 
-  llvm::Value* GetProfileCounterFor(const HloComputation& computation) {
-    return GetProfileCounterCommon<HloComputation>(computation,
-                                                   computation_to_profile_idx_);
-  }
+  // Helper function template for the implementation of the above two functions.
+  template <typename T>
+  llvm::Value* GetProfileCounterCommon(
+      const T& hlo,
+      const std::unordered_map<const T*, int64>& profile_index_map);
 
   // Gets the IR Value emitted previously for the given hlo.
   //
@@ -207,6 +238,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Gets a list of IrArrays, one for each of hlo's operands.
   std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
       const HloInstruction* hlo);
+
+  GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
+      HloInstruction* unnested_hlo) {
+    return [=]() { return GetIrArraysForOperandsOf(unnested_hlo); };
+  }
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
@@ -241,26 +277,24 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::Value* EmitBufferPointer(const BufferAllocation::Slice& slice,
                                  const Shape& target_shape);
 
-  // Emits a function into the current module. This can be used for
-  // computations embedded inside other computations, such as the
-  // function that a map operation applies.
-  StatusOr<llvm::Function*> EmitFunction(
-      HloComputation* function,  // The function to emit.
-      absl::string_view
-          function_name_suffix);  // Used for LLVM IR register names.
-
   // Emits a call to a thread local function (e.g. to the computation nested
   // within a reduce or a map).  Thread local callees (by definition) only write
   // to and read from thread local allocations.
+  // Supports only functions returning scalars or tuples of scalars.
   //
   // `parameters` holds the *scalar values* that need to be passed to the
   // callee.  The return value is the scalar returned by the callee.
-  llvm::Value* EmitThreadLocalCall(const HloComputation& callee,
-                                   absl::Span<llvm::Value* const> parameters,
-                                   absl::string_view name);
+  std::vector<llvm::Value*> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name);
+
+  // Similar to EmitThreadLocal, yet assumes that the function returns a scalar.
+  llvm::Value* EmitScalarReturningThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name);
 
   // Emits a call to a "global" function (e.g. to the computation nested within
-  // a kWhile or a kCall).  Buffer assignment unabiguously assignes buffers to
+  // a kWhile or a kCall).  Buffer assignment unabiguously assigns buffers to
   // the parameters and return values for these computations so there is no need
   // to explicitly pass parameters or return results.
   void EmitGlobalCall(const HloComputation& callee, absl::string_view name);
@@ -332,7 +366,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // without generating IR with illegal (e.g. excessively large or
   // non-power-of-two) vector types.  We do this by introducing a layer of
   // abstraction: we introduce a high level vector-like concept called a
-  // "sharded vector" that models data paralleism, and is mapped to a sequence
+  // "sharded vector" that models data parallelism, and is mapped to a sequence
   // scalar and vector llvm::Value s.
   //
   // For example, we can represent 29 f32 elements by a sharded vector mapped to
@@ -439,7 +473,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       computation_to_profile_idx_;
 
   // Maps HLOs to Values emitted for them.
-  std::unordered_map<const HloInstruction*, llvm::Value*> emitted_value_;
+  absl::flat_hash_map<const HloInstruction*, llvm::Value*> emitted_value_;
 
   llvm_ir::AliasAnalysis alias_analysis_;
 
@@ -459,9 +493,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // profiling a computation.
   class ProfilingState {
    public:
-    ProfilingState() : use_rdtscp_(false), prof_counters_(nullptr) {}
-    ProfilingState(bool use_rdtscp, llvm::Value* prof_counters)
-        : use_rdtscp_(use_rdtscp), prof_counters_(prof_counters) {}
+    ProfilingState() : use_rdtscp_(false) {}
+    explicit ProfilingState(bool use_rdtscp) : use_rdtscp_(use_rdtscp) {}
 
     // Record the cycle counter before an HLO executes.
     void RecordCycleStart(llvm::IRBuilder<>* b, HloInstruction* hlo);
@@ -486,18 +519,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     // intrinsic?
     bool use_rdtscp_;
 
-    // The argument which corresponds to the profile counter buffer.
-    llvm::Value* prof_counters_;
-
     // The first read cycle counter in the program.
     llvm::Value* first_read_cycle_start_ = nullptr;
 
     // The last read cycle counter in the program.
     llvm::Value* last_read_cycle_end_ = nullptr;
-
-    // An alloca used to hold the output of the aux value returned by the rdtscp
-    // intrinsic.
-    llvm::Value* aux_i8ptr_ = nullptr;
 
     // Maps HLOs to the value the cycle counter contained right before the HLO
     // began to execute.
@@ -505,6 +531,22 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   };
 
   ProfilingState profiling_state_;
+
+  class TracingState {
+   public:
+    TracingState() : enabled_(false) {}
+    void set_enabled(bool value) { enabled_ = value; }
+    void EmitTracingStart(llvm::IRBuilder<>* b, HloInstruction* hlo,
+                          llvm::Value* run_options);
+    void EmitTracingEnd(llvm::IRBuilder<>* b, HloInstruction* hlo,
+                        llvm::Value* run_options);
+
+   private:
+    bool enabled_;
+    // Maps from HLO to the activity id returned by xprof::TraceMe.
+    std::unordered_map<const HloInstruction*, llvm::Value*> activity_ids_;
+  };
+  TracingState tracing_state_;
 
   // Given a load instruction and a shape or buffer size, annotate the load's
   // result with the alignment required by the shape or size.
@@ -526,17 +568,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
-
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForMap(
-      HloMapInstruction* map, const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduceWindow(
-      HloReduceWindowInstruction* reduce_window,
-      const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForConvolution(
-      HloConvolutionInstruction* convolution,
-      const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduce(
-      HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index);
 
   enum class XfeedKind {
     kInfeed,
@@ -576,6 +607,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   std::vector<const HloComputation*> thread_local_computations_;
   std::vector<const HloComputation*> global_computations_;
+
+  bool emit_code_for_msan_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

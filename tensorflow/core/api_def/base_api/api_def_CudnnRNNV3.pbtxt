@@ -1,0 +1,45 @@
+op {
+  graph_op_name: "CudnnRNNV3"
+  visibility: HIDDEN
+  summary: "A RNN backed by cuDNN."
+  description: <<END
+Computes the RNN from the input and initial states, with respect to the params
+buffer. Accepts one extra input "sequence_lengths" than CudnnRNN.
+
+rnn_mode: Indicates the type of the RNN model.
+input_mode: Indicates whether there is a linear projection between the input and
+  the actual computation before the first layer. 'skip_input' is only allowed
+  when input_size == num_units; 'auto_select' implies 'skip_input' when
+  input_size == num_units; otherwise, it implies 'linear_input'.
+direction: Indicates whether a bidirectional model will be used. Should be
+  "unidirectional" or "bidirectional".
+dropout: Dropout probability. When set to 0., dropout is disabled.
+seed: The 1st part of a seed to initialize dropout.
+seed2: The 2nd part of a seed to initialize dropout.
+input: If time_major is true, this is a 3-D tensor with the shape of
+    [seq_length, batch_size, input_size]. If time_major is false, the shape is
+    [batch_size, seq_length, input_size].
+input_h: If time_major is true, this is a 3-D tensor with the shape of
+    [num_layer * dir, batch_size, num_units]. If time_major is false, the shape
+    is [batch_size, num_layer * dir, num_units].
+input_c: For LSTM, a 3-D tensor with the shape of
+    [num_layer * dir, batch, num_units]. For other models, it is ignored.
+params: A 1-D tensor that contains the weights and biases in an opaque layout.
+    The size must be created through CudnnRNNParamsSize, and initialized
+    separately. Note that they might not be compatible across different
+    generations. So it is a good idea to save and restore
+sequence_lengths: a vector of lengths of each input sequence.
+output: If time_major is true, this is a 3-D tensor with the shape of
+    [seq_length, batch_size, dir * num_units]. If time_major is false, the
+    shape is [batch_size, seq_length, dir * num_units].
+output_h: The same shape has input_h.
+output_c: The same shape as input_c for LSTM. An empty tensor for other models.
+is_training: Indicates whether this operation is used for inferenece or
+  training.
+time_major: Indicates whether the input/output format is time major or batch
+    major.
+reserve_space: An opaque tensor that can be used in backprop calculation. It
+  is only produced if is_training is true.
+END
+}
+

@@ -1,16 +1,1276 @@
+# Release 2.1.0
+
+TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support [officially ends an January 1, 2020](https://www.python.org/dev/peps/pep-0373/#update). [As announced earlier](https://groups.google.com/a/tensorflow.org/d/msg/announce/gVwS5RC8mds/dCt1ka2XAAAJ), TensorFlow will also stop supporting Python 2 starting January 1, 2020, and no more releases are expected in 2019.
+
+## Major Features and Improvements
+* The `tensorflow` pip package now includes GPU support by default (same as `tensorflow-gpu`) for both Linux and Windows. This runs on machines with and without NVIDIA GPUs. `tensorflow-gpu` is still available, and CPU-only packages can be downloaded at `tensorflow-cpu` for users who are concerned about package size.
+* **Windows users:** Officially-released `tensorflow` Pip packages are now built with Visual Studio 2019 version 16.4 in order to take advantage of the new `/d2ReducedOptimizeHugeFunctions` compiler flag. To use these new packages, you must install "Microsoft Visual C++ Redistributable for Visual Studio 2015, 2017 and 2019", available from Microsoft's website [here](https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads).
+  * This does not change the minimum required version for building TensorFlow from source on Windows, but builds enabling `EIGEN_STRONG_INLINE` can take over 48 hours to compile without this flag. Refer to `configure.py` for more information about `EIGEN_STRONG_INLINE` and `/d2ReducedOptimizeHugeFunctions`.
+  * If either of the required DLLs, `msvcp140.dll` (old) or `msvcp140_1.dll` (new), are missing on your machine, `import tensorflow` will print a warning message.
+* The `tensorflow` pip package is built with CUDA 10.1 and cuDNN 7.6.
+* `tf.keras`
+  * Experimental support for mixed precision is available on GPUs and Cloud TPUs. See [usage guide](https://www.tensorflow.org/guide/keras/mixed_precision).
+  * Introduced the `TextVectorization` layer, which takes as input raw strings and takes care of text standardization, tokenization, n-gram generation, and vocabulary indexing. See this [end-to-end text classification example](https://colab.research.google.com/drive/1RvCnR7h0_l4Ekn5vINWToI9TNJdpUZB3).
+  * Keras `.compile` `.fit` `.evaluate` and `.predict` are allowed to be outside of the DistributionStrategy scope, as long as the model was constructed inside of a scope.
+  * Experimental support for Keras `.compile`, `.fit`, `.evaluate`, and `.predict` is available for Cloud TPUs, Cloud TPU, for all types of Keras models (sequential, functional and subclassing models).
+  * Automatic outside compilation is now enabled for Cloud TPUs. This allows `tf.summary` to be used more conveniently with Cloud TPUs.
+  * Dynamic batch sizes with DistributionStrategy and Keras are supported on Cloud TPUs.
+  * Support for `.fit`, `.evaluate`, `.predict` on TPU using numpy data, in addition to `tf.data.Dataset`.
+  * Keras reference implementations for many popular models are available in the TensorFlow [Model Garden](https://github.com/tensorflow/models/tree/master/official).
+* `tf.data`
+  * Changes rebatching for `tf.data datasets` + DistributionStrategy for better performance. Note that the dataset also behaves slightly differently, in that the rebatched dataset cardinality will always be a multiple of the number of replicas.
+  * `tf.data.Dataset` now supports automatic data distribution and sharding in distributed environments, including on TPU pods.
+  * Distribution policies for `tf.data.Dataset` can now be tuned with 1. `tf.data.experimental.AutoShardPolicy(OFF, AUTO, FILE, DATA)` 2. `tf.data.experimental.ExternalStatePolicy(WARN, IGNORE, FAIL)`
+* `tf.debugging`
+  * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to help debugging the root causes of issues involving infinities and `NaN`s.
+* `tf.distribute`
+  * Custom training loop support on TPUs and TPU pods is avaiable through `strategy.experimental_distribute_dataset`, `strategy.experimental_distribute_datasets_from_function`, `strategy.experimental_run_v2`, `strategy.reduce`.
+  * Support for a global distribution strategy through `tf.distribute.experimental_set_strategy(),` in addition to `strategy.scope()`.
+* `TensorRT`
+  * [TensorRT 6.0](https://developer.nvidia.com/tensorrt#tensorrt-whats-new) is now supported and enabled by default. This adds support for more TensorFlow ops including Conv3D, Conv3DBackpropInputV2, AvgPool3D, MaxPool3D, ResizeBilinear, and ResizeNearestNeighbor. In addition, the TensorFlow-TensorRT python conversion API is exported as `tf.experimental.tensorrt.Converter`.
+* Environment variable `TF_DETERMINISTIC_OPS` has been added. When set to "true" or "1", this environment variable makes `tf.nn.bias_add` operate deterministically (i.e. reproducibly), but currently only when XLA JIT compilation is *not* enabled. Setting `TF_DETERMINISTIC_OPS` to "true" or "1" also makes cuDNN convolution and max-pooling operate deterministically. This makes Keras Conv\*D and MaxPool\*D layers operate deterministically in both the forward and backward directions when running on a CUDA-enabled GPU.
+
+## Breaking Changes
+* Deletes `Operation.traceback_with_start_lines` for which we know of no usages.
+* Removed `id` from `tf.Tensor.__repr__()` as `id` is not useful other than internal debugging.
+* Some `tf.assert_*` methods now raise assertions at operation creation time if the input tensors' values are known at that time, not during the `session.run()`. This only changes behavior when the graph execution would have resulted in an error. When this happens, a noop is returned and the input tensors are marked non-feedable. In other words, if they are used as keys in `feed_dict` argument to `session.run()`, an error will be raised. Also, because some assert ops don't make it into the graph, the graph structure changes. A different graph can result in different per-op random seeds when they are not given explicitly (most often).
+* The following APIs are not longer experimental: `tf.config.list_logical_devices`, `tf.config.list_physical_devices`, `tf.config.get_visible_devices`, `tf.config.set_visible_devices`, `tf.config.get_logical_device_configuration`, `tf.config.set_logical_device_configuration`.
+* `tf.config.experimentalVirtualDeviceConfiguration` has been renamed to `tf.config.LogicalDeviceConfiguration`.
+* `tf.config.experimental_list_devices` has been removed, please use
+`tf.config.list_logical_devices`.
+
+## Bug Fixes and Other Changes
+* `tf.data`
+  * Fixes concurrency issue with `tf.data.experimental.parallel_interleave` with `sloppy=True`.
+  * Add `tf.data.experimental.dense_to_ragged_batch()`.
+  * Extend `tf.data` parsing ops to support `RaggedTensors`.
+* `tf.distribute`
+  * Fix issue where GRU would crash or give incorrect output when a `tf.distribute.Strategy` was used.
+* `tf.estimator`
+  * Added option in `tf.estimator.CheckpointSaverHook` to not save the `GraphDef`.
+  * Moving the checkpoint reader from swig to pybind11.
+* `tf.keras`
+  * Export `depthwise_conv2d` in `tf.keras.backend`.
+  * In Keras Layers and Models, Variables in `trainable_weights`, `non_trainable_weights`, and `weights` are explicitly deduplicated.
+  * Keras `model.load_weights` now accepts `skip_mismatch` as an argument. This was available in external Keras, and has now been copied over to `tf.keras`.
+  * Fix the input shape caching behavior of Keras convolutional layers.
+  * `Model.fit_generator`, `Model.evaluate_generator`, `Model.predict_generator`, `Model.train_on_batch`, `Model.test_on_batch`, and `Model.predict_on_batch` methods now respect the `run_eagerly` property, and will correctly run using `tf.function` by default. Note that `Model.fit_generator`, `Model.evaluate_generator`, and `Model.predict_generator` are deprecated endpoints. They are subsumed by `Model.fit`, `Model.evaluate`, and `Model.predict` which now support generators and Sequences.
+* `tf.lite`
+  * Legalization for `NMS` ops in TFLite.
+  * add `narrow_range` and `axis` to `quantize_v2` and `dequantize` ops.
+  * Added support for `FusedBatchNormV3` in converter.
+  * Add an `errno`-like field to `NNAPI` delegate for detecting `NNAPI` errors for fallback behaviour.
+  * Refactors `NNAPI` Delegate to support detailed reason why an operation is not accelerated.
+  * Converts hardswish subgraphs into atomic ops.
+* Other
+  * Critical stability updates for TPUs, especially in cases where the XLA compiler produces compilation errors.
+  * TPUs can now be re-initialized multiple times, using `tf.tpu.experimental.initialize_tpu_system`.
+  * Add `RaggedTensor.merge_dims()`.
+  * Added new `uniform_row_length` row-partitioning tensor to `RaggedTensor`.
+  * Add `shape` arg to `RaggedTensor.to_tensor`; Improve speed of `RaggedTensor.to_tensor`.
+  * `tf.io.parse_sequence_example` and `tf.io.parse_single_sequence_example` now support ragged features.
+  * Fix `while_v2` with variables in custom gradient.
+  * Support taking gradients of V2 `tf.cond` and `tf.while_loop` using `LookupTable`.
+  * Fix bug where `vectorized_map` failed on inputs with unknown static shape.
+  * Add preliminary support for sparse CSR matrices.
+  * Tensor equality with `None` now behaves as expected.
+  * Make calls to `tf.function(f)()`, `tf.function(f).get_concrete_function` and `tf.function(f).get_initialization_function` thread-safe.
+  * Extend `tf.identity` to work with CompositeTensors (such as SparseTensor)
+  * Added more `dtypes` and zero-sized inputs to `Einsum` Op and improved its performance
+  * Enable multi-worker `NCCL` `all-reduce` inside functions executing eagerly.
+  * Added complex128 support to `RFFT`, `RFFT2D`, `RFFT3D`, `IRFFT`, `IRFFT2D`, and `IRFFT3D`.
+  * Add `pfor` converter for `SelfAdjointEigV2`.
+  * Add `tf.math.ndtri` and `tf.math.erfinv`.
+  * Add `tf.config.experimental.enable_mlir_bridge` to allow using MLIR compiler bridge in eager model.
+  * Added support for MatrixSolve on Cloud TPU / XLA.
+  * Added `tf.autodiff.ForwardAccumulator` for forward-mode autodiff
+  * Add `LinearOperatorPermutation`.
+  * A few performance optimizations on `tf.reduce_logsumexp`.
+  * Added multilabel handling to `AUC` metric
+  * Optimization on `zeros_like`.
+  * Dimension constructor now requires `None` or types with an `__index__` method.
+  * Add `tf.random.uniform` microbenchmark.
+  * Use `_protogen` suffix for proto library targets instead of `_cc_protogen` suffix.
+  * Moving the checkpoint reader from `swig` to `pybind11`.
+  * `tf.device` & `MirroredStrategy` now supports passing in a `tf.config.LogicalDevice`
+  * If you're building Tensorflow from source, consider using [bazelisk](https://github.com/bazelbuild/bazelisk) to automatically download and use the correct Bazel version. Bazelisk reads the `.bazelversion` file at the root of the project directory.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+8bitmp3, Aaron Ma, AbdüLhamit Yilmaz, Abhai Kollara, aflc, Ag Ramesh, Albert Z. Guo, Alex Torres, amoitra, Andrii Prymostka, angeliand, Anshuman Tripathy, Anthony Barbier, Anton Kachatkou, Anubh-V, Anuja Jakhade, Artem Ryabov, autoih, Bairen Yi, Bas Aarts, Basit Ayantunde, Ben Barsdell, Bhavani Subramanian, Brett Koonce, candy.dc, Captain-Pool, caster, cathy, Chong Yan, Choong Yin Thong, Clayne Robison, Colle, Dan Ganea, David Norman, David Refaeli, dengziming, Diego Caballero, Divyanshu, djshen, Douman, Duncan Riach, EFanZh, Elena Zhelezina, Eric Schweitz, Evgenii Zheltonozhskii, Fei Hu, fo40225, Fred Reiss, Frederic Bastien, Fredrik Knutsson, fsx950223, fwcore, George Grzegorz Pawelczak, George Sterpu, Gian Marco Iodice, Giorgio Arena, giuros01, Gomathi Ramamurthy, Guozhong Zhuang, Haifeng Jin, Haoyu Wu, HarikrishnanBalagopal, HJYOO, Huang Chen-Yi, Ilham Firdausi Putra, Imran Salam, Jared Nielsen, Jason Zaman, Jasper Vicenti, Jeff Daily, Jeff Poznanovic, Jens Elofsson, Jerry Shih, jerryyin, Jesper Dramsch, jim.meyer, Jongwon Lee, Jun Wan, Junyuan Xie, Kaixi Hou, kamalkraj, Kan Chen, Karthik Muthuraman, Keiji Ariyama, Kevin Rose, Kevin Wang, Koan-Sin Tan, kstuedem, Kwabena W. Agyeman, Lakshay Tokas, latyas, Leslie-Fang-Intel, Li, Guizi, Luciano Resende, Lukas Folle, Lukas Geiger, Mahmoud Abuzaina, Manuel Freiberger, Mark Ryan, Martin Mlostek, Masaki Kozuki, Matthew Bentham, Matthew Denton, mbhuiyan, mdfaijul, Muhwan Kim, Nagy Mostafa, nammbash, Nathan Luehr, Nathan Wells, Niranjan Hasabnis, Oleksii Volkovskyi, Olivier Moindrot, olramde, Ouyang Jin, OverLordGoldDragon, Pallavi G, Paul Andrey, Paul Wais, pkanwar23, Pooya Davoodi, Prabindh Sundareson, Rajeshwar Reddy T, Ralovich, Kristof, Refraction-Ray, Richard Barnes, richardbrks, Robert Herbig, Romeo Kienzler, Ryan Mccormick, saishruthi, Saket Khandelwal, Sami Kama, Sana Damani, Satoshi Tanaka, Sergey Mironov, Sergii Khomenko, Shahid, Shawn Presser, ShengYang1, Siddhartha Bagaria, Simon Plovyt, skeydan, srinivasan.narayanamoorthy, Stephen Mugisha, sunway513, Takeshi Watanabe, Taylor Jakobson, TengLu, TheMindVirus, ThisIsIsaac, Tim Gates, Timothy Liu, Tomer Gafner, Trent Lo, Trevor Hickey, Trevor Morris, vcarpani, Wei Wang, Wen-Heng (Jack) Chung, wenshuai, Wenshuai-Xiaomi, wenxizhu, william, William D. Irons, Xinan Jiang, Yannic, Yasir Modak, Yasuhiro Matsumoto, Yong Tang, Yongfeng Gu, Youwei Song, Zaccharie Ramzi, Zhang, Zhenyu Guo, 王振华 (Zhenhua Wang), 韩董, 이중건 Isaac Lee
+
+# Release 1.15.0
+This is the last 1.x release for TensorFlow. We do not expect to update the 1.x branch with features, although we will issue patch releases to fix vulnerabilities for at least one year. 
+
+## Major Features and Improvements
+* As [announced](https://groups.google.com/a/tensorflow.org/forum/#!topic/developers/iRCt5m4qUz0), `tensorflow` pip package will by default include GPU support (same as `tensorflow-gpu` now) for the platforms we currently have GPU support (Linux and Windows). It will work on machines with and without Nvidia GPUs. `tensorflow-gpu` will still be available, and CPU-only packages can be downloaded at `tensorflow-cpu` for users who are concerned about package size.
+* TensorFlow 1.15 contains a complete implementation of the 2.0 API in its `compat.v2` module. It contains a copy of the 1.15 main module (without `contrib`) in the `compat.v1` module. TensorFlow 1.15 is able to emulate 2.0 behavior using the `enable_v2_behavior()` function.
+This enables writing forward compatible code: by explicitly importing either `tensorflow.compat.v1` or `tensorflow.compat.v2`, you can ensure that your code works without modifications against an installation of 1.15 or 2.0.
+* EagerTensor now supports numpy buffer interface for tensors.
+* Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
+* Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
+* AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with `tf.data`, `tf.distribute` and `tf.keras` APIS.
+* Adds `enable_tensor_equality()`, which switches the behavior such that: 
+  * Tensors are no longer hashable.
+  * Tensors can be compared with `==` and `!=`, yielding a Boolean Tensor with element-wise comparison results. This will be the default behavior in 2.0.
+
+## Breaking Changes
+* Tensorflow code now produces 2 different pip packages: `tensorflow_core` containing all the code (in the future it will contain only the private implementation) and `tensorflow` which is a virtual pip package doing forwarding to `tensorflow_core` (and in the future will contain only the public API of tensorflow). We don't expect this to be breaking, unless you were importing directly from the implementation.
+* TensorFlow 1.15 is built using devtoolset7 (GCC7) on Ubuntu 16. This may lead to ABI incompatibilities with extensions built against earlier versions of TensorFlow.
+* Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
+* `tf.keras`:
+  * `OMP_NUM_THREADS` is no longer used by the default Keras config. To configure the number of threads, use `tf.config.threading` APIs.
+  * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel.
+  * `keras.backend.resize_images` (and consequently, `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing implementation was fixed.
+  * Layers now default to `float32`, and automatically cast their inputs to the layer's dtype. If you had a model that used `float64`, it will probably silently use `float32` in TensorFlow2, and a warning will be issued that starts with Layer "layer-name" is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
+  * Some `tf.assert_*` methods now raise assertions at operation creation time (i.e. when this Python line executes) if the input tensors' values are known at that time, not during the session.run(). When this happens, a noop is returned and the input tensors are marked non-feedable. In other words, if they are used as keys in `feed_dict` argument to `session.run()`, an error will be raised. Also, because some assert ops don't make it into the graph, the graph structure changes. A different graph can result in different per-op random seeds when they are not given explicitly (most often).
+
+## Bug Fixes and Other Changes
+* `tf.estimator`:
+  * `tf.keras.estimator.model_to_estimator` now supports exporting to `tf.train.Checkpoint` format, which allows the saved checkpoints to be compatible with `model.load_weights`.
+  * Fix tests in canned estimators.
+  * Expose Head as public API.
+  * Fixes critical bugs that help with `DenseFeatures` usability in TF2
+* `tf.data`:
+  * Promoting `unbatch` from experimental to core API.
+  * Adding support for datasets as inputs to `from_tensors` and `from_tensor_slices` and batching and unbatching of nested datasets.
+* `tf.keras`:
+  * `tf.keras.estimator.model_to_estimator` now supports exporting to tf.train.Checkpoint format, which allows the saved checkpoints to be compatible with `model.load_weights`.
+  * Saving a Keras Model using `tf.saved_model.save` now saves the list of variables, trainable variables, regularization losses, and the call function.
+  * Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
+  * Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D` layers using `tf.SparseTensor` to store weights,  allowing a dramatic speedup for large sparse models.
+  * Enable the Keras compile API `experimental_run_tf_function` flag by default. This flag enables single training/eval/predict execution path. With this 1. All input types are converted to `Dataset`. 2. When distribution strategy is not specified this goes through the no-op distribution strategy path. 3. Execution is wrapped in tf.function unless `run_eagerly=True` is set in compile.
+  * Raise error if `batch_size` argument is used when input is dataset/generator/keras sequence.
+* `tf.lite`
+  * Add `GATHER` support to NN API delegate.
+  * tflite object detection script has a debug mode.
+  * Add delegate support for `QUANTIZE`.
+  * Added evaluation script for COCO minival.
+  * Add delegate support for `QUANTIZED_16BIT_LSTM`.
+  * Converts hardswish subgraphs into atomic ops.
+* Add support for defaulting the value of `cycle_length` argument of `tf.data.Dataset.interleave` to the number of schedulable CPU cores.
+* `parallel_for`: Add converter for `MatrixDiag`.
+* Add `narrow_range` attribute to `QuantizeAndDequantizeV2` and V3.
+* Added new op: `tf.strings.unsorted_segment_join`.
+* Add HW acceleration support for `topK_v2`.
+* Add new `TypeSpec` classes.
+* CloudBigtable version updated to v0.10.0.
+* Expose `Head` as public API.
+* Update docstring for gather to properly describe the non-empty `batch_dims` case.
+* Added `tf.sparse.from_dense` utility function.
+* Improved ragged tensor support in `TensorFlowTestCase`.
+* Makes the a-normal form transformation in Pyct configurable as to which nodes are converted to variables and which are not.
+* `ResizeInputTensor` now works for all delegates.
+* Add `EXPAND_DIMS` support to NN API delegate TEST:  expand_dims_test
+* `tf.cond` emits a StatelessIf op if the branch functions are stateless and do not touch any resources.
+* `tf.cond`, `tf.while` and `if` and `while` in AutoGraph now accept a nonscalar predicate if has a single element. This does not affect non-V2 control flow.
+* `tf.while_loop` emits a StatelessWhile op if the cond and body functions are stateless and do not touch any resources.
+* Refactors code in Quant8 LSTM support to reduce TFLite binary size.
+* Add support of local soft device placement for eager op.
+* Add HW acceleration support for `LogSoftMax`.
+* Added a function `nested_value_rowids` for ragged tensors.
+* Add guard to avoid acceleration of L2 Normalization with input rank != 4
+* Add `tf.math.cumulative_logsumexp operation`.
+* Add `tf.ragged.stack`.
+* Fix memory allocation problem when calling `AddNewInputConstantTensor`.
+* Delegate application failure leaves interpreter in valid state.
+* Add check for correct memory alignment to `MemoryAllocation::MemoryAllocation()`.
+* Extracts `NNAPIDelegateKernel` from nnapi_delegate.cc
+* Added support for `FusedBatchNormV3` in converter.
+* A ragged to dense op for directly calculating tensors.
+* Fix accidental quadratic graph construction cost in graph-mode `tf.gradients()`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+a6802739, Aaron Ma, Abdullah Selek, Abolfazl Shahbazi, Ag Ramesh, Albert Z. Guo, Albin Joy, Alex Itkes, Alex Sergeev, Alexander Pivovarov, Alexey Romanov, alhkad, Amit Srivastava, amoitra, Andrew Lihonosov, Andrii Prymostka, Anuj Rawat, Astropeak, Ayush Agrawal, Bairen Yi, Bas Aarts, Bastian Eichenberger, Ben Barsdell, Benjamin Peterson, bhack, Bharat Raghunathan, Bhavani Subramanian, Bryan Cutler, candy.dc, Cao Zongyan, Captain-Pool, Casper Da Costa-Luis, Chen Guoyin, Cheng Chang, chengchingwen, Chong Yan, Choong Yin Thong, Christopher Yeh, Clayne Robison, Coady, Patrick, Dan Ganea, David Norman, Denis Khalikov, Deven Desai, Diego Caballero, Duncan Dean, Duncan Riach, Dwight J Lyle, Eamon Ito-Fisher, eashtian3, EFanZh, ejot, Elroy Ashtian Jr, Eric Schweitz, Fangjun Kuang, Fei Hu, fo40225, formath, Fred Reiss, Frederic Bastien, Fredrik Knutsson, G. Hussain Chinoy, Gabriel, gehring, George Grzegorz Pawelczak, Gianluca Varisco, Gleb Popov, Greg Peatfield, Guillaume Klein, Gurpreet Singh, Gustavo Lima Chaves, haison, Haraldur TóMas HallgríMsson, HarikrishnanBalagopal, HåKon Sandsmark, I-Hong, Ilham Firdausi Putra, Imran Salam, Jason Zaman, Jason Zavaglia, jayhpark530, jefby, Jeff Daily, Jeffrey Poznanovic, Jekyll Lai, Jeroen BéDorf, Jerry Shih, jerryyin, jiakai, JiangXIAO, Joe Bowser, Joel Shapiro, Johan Gunnarsson, Jojimon Varghese, Joon, Josh Beal, Julian Niedermeier, Jun Wan, Junqin Zhang, Junyuan Xie, Justin Tunis, Kaixi Hou, Karl Lessard, Karthik Muthuraman, Kbhute-Ibm, khanhlvg, Koock Yoon, kstuedem, Kyuwon Kim, Lakshay Tokas, leike666666, leonard951, Leslie-Fang, Leslie-Fang-Intel, Li, Guizi, Lukas Folle, Lukas Geiger, Mahmoud Abuzaina, Manraj Singh Grover, Margaret Maynard-Reid, Mark Ryan, Matt Conley, Matthew Bentham, Matthew Denton, mbhuiyan, mdfaijul, Mei Jie, merturl, MichaelKonobeev, Michal W. Tarnowski, minds, mpppk, musikisomorphie, Nagy Mostafa, Nayana Thorat, Neil, Niels Ole Salscheider, Niklas SilfverströM, Niranjan Hasabnis, ocjosen, olramde, Pariksheet Pinjari, Patrick J. Lopresti, Patrik Gustavsson, per1234, PeterLee, Phan Van Nguyen Duc, Phillip Kravtsov, Pooya Davoodi, Pranav Marathe, Putra Manggala, Qingqing Cao, Rajeshwar Reddy T, Ramon ViñAs, Rasmus Diederichsen, Reuben Morais, richardbrks, robert, RonLek, Ryan Jiang, saishruthi, Saket Khandelwal, Saleem Abdulrasool, Sami Kama, Sana-Damani, Sergii Khomenko, Severen Redwood, Shubham Goyal, Sigrid Keydana, Siju Samuel, sleighsoft, smilu97, Son Tran, Srini511, srinivasan.narayanamoorthy, Sumesh Udayakumaran, Sungmann Cho, Tae-Hwan Jung, Taehoon Lee, Takeshi Watanabe, TengLu, terryky, TheMindVirus, ThisIsIsaac, Till Hoffmann, Timothy Liu, Tomer Gafner, Tongxuan Liu, Trent Lo, Trevor Morris, Uday Bondhugula, Vasileios Lioutas, vbvg2008, Vishnuvardhan Janapati, Vivek Suryamurthy, Wei Wang, Wen-Heng (Jack) Chung, wenxizhu, William D. Irons, winstonq, wyzhao, Xiaoming (Jason) Cui, Xinan Jiang, Xinping Wang, Yann-Yy, Yasir Modak, Yong Tang, Yongfeng Gu, Yuchen Ying, Yuxin Wu, zyeric, 王振华 (Zhenhua Wang)
+
+# Release 2.0.0
+
+## Major Features and Improvements
+
+TensorFlow 2.0 focuses on **simplicity** and **ease of use**, featuring updates like:
+
+* Easy model building with Keras and eager execution.
+* Robust model deployment in production on any platform.
+* Powerful experimentation for research.
+* API simplification by reducing duplication and removing deprecated endpoints.
+
+For details on best practices with 2.0, see [the Effective 2.0 guide](https://www.tensorflow.org/beta/guide/effective_tf2)
+
+
+For information on upgrading your existing TensorFlow 1.x models, please refer to our [Upgrade](https://medium.com/tensorflow/upgrading-your-code-to-tensorflow-2-0-f72c3a4d83b5) and [Migration](https://www.tensorflow.org/beta/guide/migration_guide) guides. We have also released a collection of [tutorials and getting started guides](https://www.tensorflow.org/beta).
+
+## Highlights
+
+*   TF 2.0 delivers Keras as the central high level API used to build and train
+    models. Keras provides several model-building APIs such as Sequential,
+    Functional, and Subclassing along with eager execution, for immediate
+    iteration and intuitive debugging, and `tf.data`, for building scalable
+    input pipelines. Checkout
+    [guide](https://www.tensorflow.org/beta/guide/keras/overview) for additional
+    details.
+*   Distribution Strategy: TF 2.0 users will be able to use the
+    [`tf.distribute.Strategy`](https://www.tensorflow.org/beta/guide/distribute_strategy)
+    API to distribute training with minimal code changes, yielding great
+    out-of-the-box performance. It supports distributed training with Keras
+    model.fit, as well as with custom training loops. Multi-GPU support is
+    available, along with experimental support for multi worker and Cloud TPUs.
+    Check out the
+    [guide](https://www.tensorflow.org/beta/guide/distribute_strategy) for more
+    details.
+*   Functions, not Sessions. The traditional declarative programming model of
+    building a graph and executing it via a `tf.Session` is discouraged, and
+    replaced with by writing regular Python functions. Using the `tf.function`
+    decorator, such functions can be turned into graphs which can be executed
+    remotely, serialized, and optimized for performance.
+*   Unification of `tf.train.Optimizers` and `tf.keras.Optimizers`. Use
+    `tf.keras.Optimizers` for TF2.0. `compute_gradients` is removed as public
+    API, use `GradientTape` to compute gradients.
+*   AutoGraph translates Python control flow into TensorFlow expressions,
+    allowing users to write regular Python inside `tf.function`-decorated
+    functions. AutoGraph is also applied in functions used with tf.data,
+    tf.distribute and tf.keras APIs.
+*   Unification of exchange formats to SavedModel. All TensorFlow ecosystem
+    projects (TensorFlow Lite, TensorFlow JS, TensorFlow Serving, TensorFlow
+    Hub) accept SavedModels. Model state should be saved to and restored from
+    SavedModels.
+*   API Changes: Many API symbols have been renamed or removed, and argument
+    names have changed. Many of these changes are motivated by consistency and
+    clarity. The 1.x API remains available in the compat.v1 module. A list of
+    all symbol changes can be found
+    [here](https://docs.google.com/spreadsheets/d/1FLFJLzg7WNP6JHODX5q8BDgptKafq_slHpnHVbJIteQ/edit#gid=0).
+    *   API clean-up, included removing `tf.app`, `tf.flags`, and `tf.logging`
+        in favor of [absl-py](https://github.com/abseil/abseil-py).
+*   No more global variables with helper methods like
+    `tf.global_variables_initializer` and `tf.get_global_step`.
+*   Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()`
+    for enabling/disabling v2 control flow.
+*   Enable v2 control flow as part of `tf.enable_v2_behavior()` and
+    `TF2_BEHAVIOR=1`.
+*   Fixes autocomplete for most TensorFlow API references by switching to use
+    relative imports in API `__init__.py` files.
+*   Auto Mixed-Precision graph optimizer simplifies converting models to
+    `float16` for acceleration on Volta and Turing Tensor Cores. This feature
+    can be enabled by wrapping an optimizer class with
+    `tf.train.experimental.enable_mixed_precision_graph_rewrite()`.
+*   Add environment variable `TF_CUDNN_DETERMINISTIC`. Setting to "true" or "1"
+    forces the selection of deterministic cuDNN convolution and max-pooling
+    algorithms. When this is enabled, the algorithm selection procedure itself
+    is also deterministic.
+
+## Breaking Changes
+* Many backwards incompatible API changes have been made to clean up the APIs and make them more consistent.
+* Toolchains:
+  * TensorFlow 2.0.0 is built using devtoolset7 (GCC7) on Ubuntu 16. This may lead to ABI incompatibilities with extensions built against earlier versions of TensorFlow.
+  * Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow). We don't expect this to be breaking, unless you were importing directly from the implementation.
+  Removed the `freeze_graph` command line tool; `SavedModel` should be used in place of frozen graphs.
+  
+* `tf.contrib`:
+  * `tf.contrib` has been deprecated, and functionality has been either migrated to the core TensorFlow API, to an ecosystem project such as [tensorflow/addons](https://www.github.com/tensorflow/addons) or [tensorflow/io](https://www.github.com/tensorflow/io), or removed entirely.
+  * Remove `tf.contrib.timeseries` dependency on TF distributions.
+  * Replace contrib references with `tf.estimator.experimental.*` for apis in `early_stopping.py`.
+  
+* `tf.estimator`:
+  * Premade estimators in the tf.estimator.DNN/Linear/DNNLinearCombined family have been updated to use `tf.keras.optimizers` instead of the `tf.compat.v1.train.Optimizer`s. If you do not pass in an `optimizer=` arg or if you use a string, the premade estimator will use the Keras optimizer. This is checkpoint breaking, as the optimizers have separate variables. A checkpoint converter tool for converting optimizers is included with the release,  but if you want to avoid any change, switch to the v1 version of the estimator:  `tf.compat.v1.estimator.DNN/Linear/DNNLinearCombined*`.
+  * Default aggregation for canned Estimators is now `SUM_OVER_BATCH_SIZE`. To maintain previous default behavior, please pass `SUM` as the loss aggregation method.
+  * Canned Estimators don’t support `input_layer_partitioner` arg in the API. If you have this arg, you will have to switch to `tf.compat.v1 canned Estimators`.
+  * `Estimator.export_savedmodel` has been renamed to `export_saved_model`.
+  * When saving to SavedModel, Estimators will strip default op attributes. This is almost always the correct behavior, as it is more forwards compatible, but if you require that default attributes to be saved with the model, please use `tf.compat.v1.Estimator`.
+  * Feature Columns have been upgraded to be more Eager-friendly and to work with Keras. As a result, `tf.feature_column.input_layer` has been deprecated in favor of `tf.keras.layers.DenseFeatures`. v1 feature columns have direct analogues in v2 except for `shared_embedding_columns`, which are not cross-compatible with v1 and v2. Use `tf.feature_column.shared_embeddings` instead.
+  
+* `tf.keras`:
+  * `OMP_NUM_THREADS` is no longer used by the default Keras config.  To configure the number of threads, use `tf.config.threading` APIs.
+  * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel. HDF5 files are still supported.
+  * Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
+  * Layers now default to float32, and automatically cast their inputs to the layer's dtype. If you had a model that used float64, it will probably silently use float32 in TensorFlow 2, and a warning will be issued that starts with `Layer <layer-name>` is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
+ 
+* `tf.lite`:
+  * Removed `lite.OpHint`, `lite.experimental`, and `lite.constant` from 2.0 API.
+* Tensors are no longer hashable, but instead compare element-wise with `==` and `!=`. Use `tf.compat.v1.disable_tensor_equality()` to return to the previous behavior.
+* Performing equality operations on Tensors or Variables with incompatible shapes an exception is no longer thrown. Instead `__eq__` returns False and `__ne__` returns True.
+* Removed `tf.string_split` from v2 API.
+* Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
+* Add `UnifiedGRU` as the new GRU implementation for tf2.0. Change the default recurrent activation function for GRU from `hard_sigmoid` to `sigmoid`, and `reset_after` to True in 2.0. Historically recurrent activation is `hard_sigmoid` since it is fast than 'sigmoid'. With new unified backend between CPU and GPU mode, since the CuDNN kernel is using sigmoid, we change the default for CPU mode to sigmoid as well. With that, the default GRU will be compatible with both CPU and GPU kernel. This will enable user with GPU to use CuDNN kernel by default and get a 10x performance boost in training. Note that this is checkpoint breaking change. If user want to use their 1.x pre-trained checkpoint, please construct the layer with GRU(recurrent_activation='hard_sigmoid', reset_after=False) to fallback to 1.x behavior.
+* `CUDNN_INSTALL_PATH`, `TENSORRT_INSTALL_PATH`, `NCCL_INSTALL_PATH`, `NCCL_HDR_PATH` are deprecated. Use `TF_CUDA_PATHS` instead which supports a comma-separated list of base paths that are searched to find CUDA libraries and headers.
+
+Refer to our [public project status tracker](https://github.com/orgs/tensorflow/projects/4) and [issues tagged with `2.0`](https://github.com/tensorflow/tensorflow/issues?q=is%3Aopen+is%3Aissue+label%3A2.0) on GitHub for insight into recent issues and development progress.
+
+If you experience any snags when using TF 2.0, please let us know at the [TF 2.0 Testing User Group](https://groups.google.com/a/tensorflow.org/forum/?utm_medium=email&utm_source=footer#!forum/testing). We have a support mailing list as well as weekly testing meetings, and would love to hear your migration feedback and questions.
+
+
+## Bug Fixes and Other Changes
+
+*   `tf.contrib`:
+
+    *   Expose `tf.contrib.proto.*` ops in `tf.io` (they will exist in TF2)
+
+*   `tf.data`:
+
+    *   Add support for TensorArrays to `tf.data Dataset`.
+    *   Integrate Ragged Tensors with `tf.data`.
+    *   All core and experimental tf.data transformations that input
+        user-defined functions can span multiple devices now.
+    *   Extending the TF 2.0 support for `shuffle(...,
+        reshuffle_each_iteration=True)` and `cache()` to work across different
+        Python iterators for the same dataset.
+    *   Removing the `experimental_numa_aware` option from `tf.data.Options`.
+    *   Add `num_parallel_reads` and passing in a Dataset containing filenames
+        into `TextLineDataset` and `FixedLengthRecordDataset`.
+    *   Add support for defaulting the value of `cycle_length` argument of
+        `tf.data.Dataset.interleave` to the number of schedulable CPU cores.
+    *   Promoting `tf.data.experimental.enumerate_dataset` to core as
+        `tf.data.Dataset.enumerate`.
+    *   Promoting `tf.data.experimental.unbatch` to core as
+        `tf.data.Dataset.unbatch`.
+    *   Adds option for introducing slack in the pipeline to reduce CPU
+        contention, via `tf.data.Options().experimental_slack = True`
+    *   Added experimental support for parallel batching to `batch()` and
+        `padded_batch()`. This functionality can be enabled through
+        `tf.data.Options()`.
+    *   Support cancellation of long-running `reduce`.
+    *   Now we use `dataset` node name as prefix instead of the op name, to
+        identify the component correctly in metrics, for pipelines with repeated
+        components.
+    *   Improve the performance of datasets using `from_tensors()`.
+    *   Promoting `unbatch` from experimental to core API.
+    *   Adding support for datasets as inputs to `from_tensors` and
+        `from_tensor_slices` and batching and unbatching of nested datasets.
+
+*   `tf.distribute`:
+
+    *   Enable `tf.distribute.experimental.MultiWorkerMirroredStrategy` working
+        in eager mode.
+    *   Callbacks are supported in `MultiWorkerMirroredStrategy`.
+    *   Disable `run_eagerly` and distribution strategy if there are symbolic
+        tensors added to the model using `add_metric` or `add_loss`.
+    *   Loss and gradients should now more reliably be correctly scaled w.r.t.
+        the global batch size when using a `tf.distribute.Strategy`.
+    *   Set default loss reduction as `AUTO` for improving reliability of loss
+        scaling with distribution strategy and custom training loops. `AUTO`
+        indicates that the reduction option will be determined by the usage
+        context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`.
+        When used in distribution strategy scope, outside of built-in training
+        loops such as `tf.keras` `compile` and `fit`, we expect reduction value
+        to be 'None' or 'SUM'. Using other values will raise an error.
+    *   Support for multi-host `ncclAllReduce` in Distribution Strategy.
+
+*   `tf.estimator`:
+
+    *   Replace `tf.contrib.estimator.add_metrics` with
+        `tf.estimator.add_metrics`
+    *   Use `tf.compat.v1.estimator.inputs` instead of `tf.estimator.inputs`
+    *   Replace contrib references with `tf.estimator.experimental.*` for apis
+        in early_s in Estimator
+    *   Canned Estimators will now use keras optimizers by default. An error
+        will be raised if tf.train.Optimizers are used, and you will have to
+        switch to tf.keras.optimizers or tf.compat.v1 canned Estimators.
+    *   A checkpoint converter for canned Estimators has been provided to
+        transition canned Estimators that are warm started from
+        `tf.train.Optimizers` to `tf.keras.optimizers`.
+    *   Losses are scaled in canned estimator v2 and not in the optimizers
+        anymore. If you are using Estimator + distribution strategy + optimikzer
+        v1 then the behavior does not change. This implies that if you are using
+        custom estimator with optimizer v2, you have to scale losses. We have
+        new utilities to help scale losses `tf.nn.compute_average_loss`,
+        `tf.nn.scale_regularization_loss`.
+
+*   `tf.keras`:
+
+    *   Premade models (including Linear and WideDeep) have been introduced for
+        the purpose of replacing Premade estimators.
+    *   Model saving changes
+    *   `model.save` and `tf.saved_model.save` may now save to the TensorFlow
+        SavedModel format. The model can be restored using
+        `tf.keras.models.load_model`. HDF5 files are still supported, and may be
+        used by specifying `save_format="h5"` when saving.
+    *   Raw TensorFlow functions can now be used in conjunction with the Keras
+        Functional API during model creation. This obviates the need for users
+        to create Lambda layers in most cases when using the Functional API.
+        Like Lambda layers, TensorFlow functions that result in Variable
+        creation or assign ops are not supported.
+    *   Add support for passing list of lists to the `metrics` argument in Keras
+        `compile`.
+    *   Add `tf.keras.layers.AbstractRNNCell` as the preferred implementation
+        for RNN cells in TF v2. User can use it to implement RNN cells with
+        custom behavior.
+    *   Keras training and validation curves are shown on the same plot when
+        using the TensorBoard callback.
+    *   Switched Keras `fit/evaluate/predict` execution to use only a single
+        unified path by default unless eager execution has been explicitly
+        disabled, regardless of input type. This unified path places an
+        eager-friendly training step inside of a `tf.function`. With this
+    *   All input types are converted to `Dataset`.
+    *   The path assumes there is always a distribution strategy. when
+        distribution strategy is not specified the path uses a no-op
+        distribution strategy.
+    *   The training step is wrapped in `tf.function` unless `run_eagerly=True`
+        is set in compile. The single path execution code does not yet support
+        all use cases. We fallback to the existing v1 execution paths if your
+        model contains the following:
+        1.  `sample_weight_mode` in compile
+        2.  `weighted_metrics` in compile
+        3.  v1 optimizer
+        4.  target tensors in compile If you are experiencing any issues because
+            of this change, please inform us (file an issue) about your use case
+            and you can unblock yourself by setting
+            `experimental_run_tf_function=False` in compile meanwhile. We have
+            seen couple of use cases where the model usage pattern is not as
+            expected and would not work with this change.
+    *   output tensors of one layer is used in the constructor of another.
+    *   symbolic tensors outside the scope of the model are used in custom loss
+        functions. The flag can be disabled for these cases and ideally the
+        usage pattern will need to be fixed.
+    *   Mark Keras `set_session` as `compat.v1` only.
+    *   `tf.keras.estimator.model_to_estimator` now supports exporting to
+        `tf.train.Checkpoint format`, which allows the saved checkpoints to be
+        compatible with `model.load_weights`.
+    *   `keras.backend.resize_images` (and consequently,
+        `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing
+        implementation was fixed.
+    *   Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D`
+        and `tf.keras.layers.LocallyConnected1D` layers using `tf.SparseTensor`
+        to store weights, allowing a dramatic speedup for large sparse models.
+    *   Raise error if `batch_size` argument is used when input is
+        dataset/generator/keras sequence.
+    *   Update TF 2.0 `keras.backend.name_scope` to use TF 2.0 `name_scope`.
+    *   Add v2 module aliases for losses, metrics, initializers and optimizers:
+        `tf.losses = tf.keras.losses` & `tf.metrics = tf.keras.metrics` &
+        `tf.initializers = tf.keras.initializers` & `tf.optimizers =
+        tf.keras.optimizers`.
+    *   Updates binary cross entropy logic in Keras when input is probabilities.
+        Instead of converting probabilities to logits, we are using the cross
+        entropy formula for probabilities.
+    *   Added public APIs for `cumsum` and `cumprod` keras backend functions.
+    *   Add support for temporal sample weight mode in subclassed models.
+    *   Raise `ValueError` if an integer is passed to the training APIs.
+    *   Added fault-tolerance support for training Keras model via `model.fit()`
+        with `MultiWorkerMirroredStrategy`, tutorial available.
+    *   Custom Callback tutorial is now available.
+    *   To train with `tf.distribute`, Keras API is recommended over estimator.
+    *   `steps_per_epoch` and `steps` arguments are supported with numpy arrays.
+    *   New error message when unexpected keys are used in
+        sample_weight/class_weight dictionaries
+    *   Losses are scaled in Keras compile/fit and not in the optimizers
+        anymore. If you are using custom training loop, we have new utilities to
+        help scale losses `tf.nn.compute_average_loss`,
+        `tf.nn.scale_regularization_loss`.
+    *   `Layer` apply and add_variable APIs are deprecated.
+    *   Added support for channels first data format in cross entropy losses
+        with logits and support for tensors with unknown ranks.
+    *   Error messages will be raised if `add_update`, `add_metric`, `add_loss`,
+        activity regularizers are used inside of a control flow branch.
+    *   New loss reduction types:
+    *   `AUTO`: Indicates that the reduction option will be determined by the
+        usage context. For almost all cases this defaults to
+        `SUM_OVER_BATCH_SIZE`. When used with `tf.distribute.Strategy`, outside
+        of built-in training loops such as `tf.keras` `compile` and `fit`, we
+        expect reduction value to be `SUM` or `NONE`. Using `AUTO` in that case
+        will raise an error.
+    *   `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis
+        specified by loss function). When this reduction type used with built-in
+        Keras training loops like `fit`/`evaluate`, the unreduced vector loss is
+        passed to the optimizer but the reported loss will be a scalar value.
+    *   `SUM`: Scalar sum of weighted losses. 4. `SUM_OVER_BATCH_SIZE`: Scalar
+        `SUM` divided by number of elements in losses. This reduction type is
+        not supported when used with `tf.distribute.Strategy` outside of
+        built-in training loops like `tf.keras` `compile`/`fit`.
+    *   Wraps losses passed to the `compile` API (strings and v1 losses) which
+        are not instances of v2 `Loss` class in `LossWrapper` class. => All
+        losses will now use `SUM_OVER_BATCH_SIZE` reduction as default.
+    *   `model.add_loss(symbolic_tensor)` should work in ambient eager.
+    *   Update metric name to always reflect what the user has given in compile.
+        Affects following cases
+    *   When name is given as 'accuracy'/'crossentropy'
+    *   When an aliased function name is used eg. 'mse'
+    *   Removing the `weighted` prefix from weighted metric names.
+    *   Allow non-Tensors through v2 losses.
+    *   Add v2 sparse categorical crossentropy metric.
+    *   Add v2 APIs for `AUCCurve` and `AUCSummationMethod` enums.
+    *   `add_update` can now be passed a zero-arg callable in order to support
+        turning off the update when setting `trainable=False` on a Layer of a
+        Model compiled with `run_eagerly=True`.
+    *   Standardize the LayerNormalization API by replacing the args `norm_axis`
+        and `params_axis` with `axis`.
+    *   Fixed critical bugs that help with DenseFeatures usability in TF2
+
+*   `tf.lite`:
+
+    *   Added evaluation script for `COCO` minival
+    *   Add delegate support for `QUANTIZE`.
+    *   Add `GATHER` support to NN API delegate.
+    *   Added support for TFLiteConverter Python API in 2.0. Contains functions
+        from_saved_model, from_keras_file, and from_concrete_functions.
+    *   Add `EXPAND_DIMS` support to NN API delegate TEST.
+    *   Add `narrow_range` attribute to QuantizeAndDequantizeV2 and V3.
+    *   Added support for `tflite_convert` command line tool in 2.0.
+    *   Post-training quantization tool supports quantizing weights shared by
+        multiple operations. The models made with versions of this tool will use
+        INT8 types for weights and will only be executable interpreters from
+        this version onwards.
+    *   Post-training quantization tool supports fp16 weights and GPU delegate
+        acceleration for fp16.
+    *   Add delegate support for `QUANTIZED_16BIT_LSTM`.
+    *   Extracts `NNAPIDelegateKernel` from nnapi_delegate.cc
+
+*   TensorRT
+
+    *   Add TensorFlow 2.0-compatible `TrtGraphConverterV2` API for TensorRT
+        conversion. TensorRT initialization arguments are now passed wrapped in
+        a named-tuple, `TrtConversionParams`, rather than as separate arguments
+        as in `TrtGraphConverter`.
+    *   Changed API to optimize TensorRT enginges during graph optimization.
+        This is now done by calling `converter.build()` where previously
+        `is_dynamic_op=False` would be set.
+    *   `converter.convert()` no longer returns a `tf.function`. Now the
+        function must be accessed from the saved model.
+    *   The `converter.calibrate()` method has been removed. To trigger
+        calibration, a `calibration_input_fn` should be provided to
+        `converter.convert()`.
+
+*   Other:
+
+    *   Fix accidental quadratic graph construction cost in graph-mode
+        `tf.gradients()`.
+    *   ResourceVariable's gather op supports batch dimensions.
+    *   ResourceVariable support for `gather_nd`.
+    *   `ResourceVariable` and `Variable` no longer accepts `constraint` in the
+        constructor, nor expose it as a @property.
+    *   Added gradient for `SparseToDense` op.
+    *   Expose a flag that allows the number of threads to vary across Python
+        benchmarks.
+    *   `image.resize` in 2.0 now supports gradients for the new resize kernels.
+    *   `image.resize` now considers proper pixel centers and has new kernels
+        (incl. anti-aliasing).
+    *   Renamed `tf.image` functions to remove duplicate "image" where it is
+        redundant.
+    *   Variadic reduce is supported on CPU Variadic reduce is supported on CPU
+    *   Remove unused `StringViewVariantWrapper`.
+    *   Delete unused `Fingerprint64Map` op registration
+    *   Add broadcasting support to `tf.matmul`.
+    *   Add C++ Gradient for `BatchMatMulV2`.
+    *   Add `tf.math.cumulative_logsumexp` operation.
+    *   Add ellipsis (...) support for `tf.einsum()`.
+    *   Add expand_composites argument to all `nest.*` methods.
+    *   Added `strings.byte_split`.
+    *   Add a new "result_type" parameter to `tf.strings.split`.
+    *   Add name argument to `tf.string_split` and `tf.strings_split`.
+    *   Extend `tf.strings.split` to support inputs with any rank.
+    *   Added `tf.random.binomial`.
+    *   Added `key` and `skip` methods to `random.experimental.Generator`.
+    *   Extend `tf.function` with basic support for CompositeTensors arguments
+        (such as `SparseTensor` and `RaggedTensor`).
+    *   `parallel_for.pfor`: add converters for Softmax, LogSoftmax, IsNaN, All,
+        Any, and MatrixSetDiag.
+    *   `parallel_for`: add converters for LowerTriangularSolve and Cholesky.
+    *   `parallel_for`: add converters for `LogMatrixDeterminant` and
+        `MatrixBandPart`.
+    *   `parallel_for`: Add converter for `MatrixDiag`.
+    *   `parallel_for`: Add converters for `OneHot`, `LowerBound`, `UpperBound`.
+    *   `parallel_for`: add converter for `BroadcastTo`.
+    *   Add `pfor` converter for `Squeeze`.
+    *   Add `RaggedTensor.placeholder()`.
+    *   Add ragged tensor support to `tf.squeeze`.
+    *   Update RaggedTensors to support int32 row_splits.
+    *   Allow `LinearOperator.solve` to take a `LinearOperator`.
+    *   Allow all dtypes for `LinearOperatorCirculant`.
+    *   Introduce MaxParallelism method
+    *   Add `LinearOperatorHouseholder`.
+    *   Adds Philox support to new stateful RNG's XLA path.
+    *   Added `TensorSpec` support for CompositeTensors.
+    *   Added `tf.linalg.tridiagonal_solve` op.
+    *   Added partial_pivoting input parameter to `tf.linalg.tridiagonal_solve`.
+    *   Added gradient to `tf.linalg.tridiagonal_solve`.
+    *   Added `tf.linalg.tridiagonal_mul op`.
+    *   Added GPU implementation of `tf.linalg.tridiagonal_matmul`.
+    *   Added `LinearOperatorToeplitz`.
+    *   Upgraded LIBXSMM to version 1.11.
+    *   Uniform processing of quantized embeddings by Gather and EmbeddingLookup
+        Ops.
+    *   Correct a misstatement in the documentation of the sparse softmax cross
+        entropy logit parameter.
+    *   Add `tf.ragged.boolean_mask`.
+    *   `tf.switch_case` added, which selects a branch_fn based on a
+        branch_index.
+    *   The C++ kernel of gather op supports batch dimensions.
+    *   Fixed default value and documentation for `trainable` arg of
+        tf.Variable.
+    *   `EagerTensor` now supports numpy buffer interface for tensors.
+    *   This change bumps the version number of the `FullyConnected` Op to 5.
+    *   Added new op: `tf.strings.unsorted_segment_join`.
+    *   Added HW acceleration support for `topK_v2`.
+    *   CloudBigtable version updated to v0.10.0 BEGIN_PUBLIC CloudBigtable
+        version updated to v0.10.0.
+    *   Expose `Head` as public API.
+    *   Added `tf.sparse.from_dense` utility function.
+    *   Improved ragged tensor support in `TensorFlowTestCase`.
+    *   Added a function `nested_value_rowids` for ragged tensors.
+    *   Added `tf.ragged.stack`.
+    *   Makes the a-normal form transformation in Pyct configurable as to which
+        nodes are converted to variables and which are not.
+    *   `ResizeInputTensor` now works for all delegates.
+    *   `tf.cond` emits a StatelessIf op if the branch functions are stateless
+        and do not touch any resources.
+    *   Add support of local soft device placement for eager op.
+    *   Pass partial_pivoting to the `_TridiagonalSolveGrad`.
+    *   Add HW acceleration support for `LogSoftMax`.
+    *   Add guard to avoid acceleration of L2 Normalization with input rank != 4
+    *   Fix memory allocation problem when calling `AddNewInputConstantTensor`.
+    *   Delegate application failure leaves interpreter in valid state
+    *   `tf.while_loop` emits a StatelessWhile op if the cond and body functions
+        are stateless and do not touch any resources.
+    *   `tf.cond`, `tf.while` and if and while in AutoGraph now accept a
+        nonscalar predicate if has a single element. This does not affect non-V2
+        control flow.
+    *   Fix potential security vulnerability where decoding variant tensors from
+        proto could result in heap out of bounds memory access.
+    *   Only create a GCS directory object if the object does not already exist.
+    *   Introduce `dynamic` constructor argument in Layer and Model, which
+        should be set to `True` when using imperative control flow in the `call`
+        method.
+    *   Begin adding Go wrapper for C Eager API.
+    *   XLA HLO graphs can be inspected with interactive_graphviz tool now.
+    *   Add dataset ops to the graph (or create kernels in Eager execution)
+        during the python Dataset object creation instead doing it during
+        Iterator creation time.
+    *   Add `batch_dims` argument to `tf.gather`.
+    *   The behavior of `tf.gather` is now correct when `axis=None` and
+        `batch_dims<0`.
+    *   Update docstring for gather to properly describe the non-empty
+        `batch_dims` case.
+    *   Removing of dtype in the constructor of initializers and partition_info
+        in call.
+    *   Add `tf.math.nextafter` op.
+    *   Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically
+        dispatches the best kernel implementation based on CPU vector
+        architecture. To disable them, build with
+        `--define=tensorflow_mkldnn_contraction_kernel=0`.
+    *   `tf.linspace(start, stop, num)` now always uses "stop" as last value
+        (for num > 1)
+    *   Added top-k to precision and recall to keras metrics.
+    *   Add a ragged size op and register it to the op dispatcher
+    *   Transitive dependencies on :`pooling_ops` were removed. Some users may
+        need to add explicit dependencies on :`pooling_ops` if they reference
+        the operators from that library.
+    *   Add `CompositeTensor` base class.
+    *   Malformed gif images could result in an access out of bounds in the
+        color palette of the frame. This has been fixed now
+    *   Add templates and interfaces for creating lookup tables
+    *   `Tensor::UnsafeCopyFromInternal` deprecated in favor
+        `Tensor::BitcastFrom`.
+    *   In `map_vectorization` optimization, reduce the degree of parallelism in
+        the vectorized map node.
+    *   Add variant wrapper for `absl::string_view`.
+    *   Add OpKernels for some stateless maps.
+    *   DType is no longer convertible to an int. Use `dtype.as_datatype_enum`
+        instead of `int(dtype)` to get the same result.
+    *   Support both binary and -1/1 label input in v2 hinge and squared hinge
+        losses.
+    *   Added `LinearOperator.adjoint` and `LinearOperator.H` (alias).
+    *   Expose CriticalSection in core as `tf.CriticalSection`.
+    *   Enhanced graphviz output.
+    *   Add opkernel templates for common table operations.
+    *   Fix callbacks do not log values in eager mode when a deferred build
+        model is used.
+    *   `SignatureDef` util functions have been deprecated.
+    *   Update `Fingerprint64Map` to use aliases
+    *   Add legacy string flat hash map op kernels.
+    *   Add support for `add_metric` in the graph function mode.
+    *   Updating cosine similarity loss - removed the negate sign from cosine
+        similarity.
+    *   Changed default for gradient accumulation for TPU embeddings to true.
+    *   Adds summary trace API for collecting graph and profile information.
+    *   The `precision_mode` argument to `TrtGraphConverter` is now case
+        insensitive.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+1e100, a6802739, 4d55397500, a6802739, Abdullah Selek, abenmao, Abolfazl Shahbazi, Adam Richter, Adam Weiss, Ag Ramesh, Alan Du, Albin Joy, Alex, Alex Itkes, Alex Sergeev, Alexander Pivovarov, Alexey Romanov, alhkad, Aman Patel, Amit, Amit Kumar Jaiswal, Amit Srivastava, amoitra, Andreas Eberle, Andrew Lihonosov, Andy Craze, Anshuman Tripathy, Anthony Hsu, Anthony Platanios, Anuj Rawat, arp95, Arpit Shah, Armen Poghosov, armenpoghosov, Astropeak, Ashwin Ramaswami, Arpit Shah, Augustina Ragwitz, Aurelien Geron, AuréLien Geron, avasid, aweers, awesomealex1, Ayush Agrawal, Bas Aarts, Bastian Eichenberger, Bairen Yi, Bayberry Z, Ben Barsdell, Benjamin Peterson, bhack, Bharat Raghunathan, Bhavani Subramanian, Bin Fan, blairhan, BléNesi Attila, Bodin-E, Brandon Carter, Bryan Cutler, candy.dc, Cao Zongyan, Casper Da Costa-Luis, Chao Liu, Chen Guoyin, chenchc, chengchingwen, chie8842, Christian Hansen, Christoph Boeddeker, Christopher Yeh, Clayne Robison, Coady, Patrick, crafet, csukuangfj, ctiijima, Dan Jarvis, Dan Lazewatsky, Daniel Ingram, Daniel Rasmussen, Daniel Salvadori, Dave Airlie, David Norman, Dayananda V, delock, Denis Khalikov, Deven Desai, Dheeraj Rajaram Reddy, Diego Caballero, dmitrievanthony, Donovan Ong, Drew Szurko, Duncan Dean, Duncan Riach, Dustin Neighly, Dwight J Lyle, Eamon Ito-Fisher, eashtian3, Edward Forgacs, EFanZh, ejot, Elroy Ashtian Jr, Eric Schweitz, Evgeniy Polyakov, Fangjun Kuang, Federico Martinez, Fei Hu, Felix Lemke, Filip Matzner, FlashTek, fo40225, formath, FrançOis Chollet, frreiss, Fred Reiss, Frederic Bastien, Fredrik Knutsson, G. Hussain Chinoy, Gabriel, Gautam, gehring, Geoffrey Irving, George Grzegorz Pawelczak, Grzegorz Pawelczak, George Sterpu, Gianluca Varisco, Gleb Popov, Greg Peatfield, Guillaume Klein, Gurpreet Singh, Gustavo Lima Chaves, Gyoung-Yoon Ryoo, haison, Hanton Yang, HanGuo97, Haraldur TóMas HallgríMsson, Hari Shankar, hehongliang, Heungsub Lee, Hoeseong Kim, Huan Li (李卓桓), HåKon Sandsmark, I-Hong, I-Hong Jhuo, Ilham Firdausi Putra, Ilango R, Imran Salam, Innovimax, Jacky Ko, Irene Dea, Ivan Habernal, Jakub Lipinski, Jacky, Jason Zaman, Jason Zavaglia, jayhpark530, jcf94, jefby, Jeff Daily, Jeff Poznanovic, Jeffrey Poznanovic, Jekyll Lai, jer, Jeroen BéDorf, jerryyin, jhalakp, jiakai, Jia Qingtong, Jiankang, JiangXIAO, Joe Bowser, Joe Q, Joe Quadrino, Joel Shapiro, Johan Gunnarsson, Jojimon Varghese, Jonas Rauber, Jonathan Kyl, Jonathan, Joon, Joppe Geluykens, Joseph Friedman, Josh Beal,  jtressle, Julian Niedermeier, Junqin Zhang, Justin Dujardin, Justin Tunis, jwu, K. Hodges, kaixih, Kaixi Hou, kjopek, Karl Lessard, Karl Weinmeister, Karthik Muthuraman, Kashif Rasul, Kay Zhu, Kbhute-Ibm, KDR, Keno Fischer, Kevin Mader, khanhlvg, Kilaru Yasaswi Sri Chandra Gandhi, Koan-Sin Tan, Koock Yoon, kouml, ktaebum, Kyuwon Kim, Lakshay Tokas, Laurent Le Brun, leike666666, leonard951, Leslie-Fang, Letian Kang, Li, Guizi, Loo Rong Jie, Lucas Hendren, Lukas Folle, Lukas Geiger, Luke Han, luxupu, lvli, Ma, Guokai, Mahmoud Abuzaina, Maksym Kysylov, Mandar Deshpande, manhyuk, Manraj Singh Grover, Marco Gaido, Marek Drozdowski, Margaret Maynard-Reid, Mark Ryan, mars20, Mateusz Chudyk, Matt Conley, mbhuiyan, mdfaijul, Mei Jie, Melissa Grueter, merturl, MichaelKonobeev, Michael KäUfl, Michal W. Tarnowski, MickaëL Schoentgen, Miguel Morin, Mihail Salnikov, Mikalai Drabovich, Mike Arpaia, Mike Holcomb, minds, monklof, Moses Marin, mpppk, Mr. Metal, Mshr-H, musikisomorphie, nammbash, Natalia Gimelshein, Nathan Luehr, Nayana-Ibm, Nayana Thorat, neargye, Neeraj Pradhan, Nehal J Wani, Neil, Nick, Nick Lewycky, Niels Ole Salscheider, Niklas SilfverströM, Niranjan Hasabnis, Nuka-137, Nutti, ocjosen, olicht, omeir1, P Sudeepam, Paige Bailey, Palmer Lao, Pan Daoxin, Pariksheet Pinjari, Pasquale Minervini, Patrick J. Lopresti, Patrik Gustavsson, Pavel Akhtyamov, Pavel Samolysov, PENGWA, per1234, PeterLee, Phan Van Nguyen Duc, Philipp Jund, Phillip Kravtsov, Pooya Davoodi, Pranav Marathe, Putra Manggala, Qingqing Cao, R S Nikhil Krishna, Rajeshwar Reddy T, Ramon ViñAs, Rasmus Diederichsen, Reuben Morais, robert, Rohit Gupta, Roland Zimmermann, Roman Soldatow, RonLek, Ruizhe, Ryan Jiang, saishruthi, Saleem Abdulrasool, Samantha Andow, Sami Kama, Sami Kama, Sana-Damani, Saurabh Deoras, sdamani, Sean Morgan, seanshpark, Sebastien Iooss, Serv-Inc, Severen Redwood, Shahzad Lone, Shashank Gupta, shashvat, Shashvat Chand Shahi, Shubham Goyal, Shashi, Sigrid Keydana, Siju, Siju Samuel, sleighsoft, smilu97, Snease-Abq, Son Tran, Spencer Schaber, sremedios, Srini511, srinivasan.narayanamoorthy, Steve Lang, Steve Nesae, Subin, Sumesh Udayakumaran, Sungmann Cho, sunway513, Supriya Rao, sxwang, Tae-Hwan Jung, Taehoon Lee, Takeo Sawada, Taylor Jakobson, Taylor Thornton, Ted Chang, TengLu, terryky, ThisIsIsaac, ThisIsPIRI, Thomas Deegan, Thomas Hagebols, tianyapiaozi, Till Hoffmann, Tim Zaman, tomguluson92, Tongxuan Liu, Trent Lo, Trevor Morris, TungJerry, Tyorden, Uday Bondhugula, v1incent, Vagif, Vasileios Lioutas, vbvg2008, vcarpani, Vijay Ravichandran, Vikram Tiwari,Viktor Gal,  Vishwak Srinivasan, Vincent, Vishnuvardhan Janapati, Vitor-Alves, Vivek Suryamurthy, wangsiyu, wateryzephyr, WeberXie, Wei Wang, WeijieSun, Wen-Heng (Jack) Chung, wenxizhu, Will Battel, William D. Irons, winstonq, wyzhao, Xiaoming (Jason) Cui, Xiaoquan Kong, Xin, Xinping Wang, Yan Facai (颜发才), Yann-Yy, Yasir Modak, Yasuhiro Matsumoto, ymodak, Yong Tang, Yongfeng Gu, Younes Khoudli, Yuan Lin, Yuan (Terry) Tang, Yuchen Ying, Yves-Noel Weweler, zhangyujing, zjjott, zyeric, 王振华 (Zhenhua Wang), 黄鑫
+
+
+# Release 1.14.0
+
+## Major Features and Improvements
+
+*   This is the first 1.x release containing the compat.v2 module. This module
+    is required to allow libraries to publish code which works in both 1.x and
+    2.x. After this release, no backwards incompatible changes are allowed in
+    the 2.0 Python API.
+*   Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically
+    dispatches the best kernel implementation based on CPU vector architecture.
+    To disable them, build with --define=tensorflow_mkldnn_contraction_kernel=0.
+
+## Behavioral changes
+
+*   Set default loss reduction as `AUTO` for improving reliability of loss
+    scaling with distribution strategy and custom training loops. `AUTO`
+    indicates that the reduction option will be determined by the usage context.
+    For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When used in
+    distribution strategy scope, outside of built-in training loops such as
+    `tf.keras` `compile` and `fit`, we expect reduction value to be 'None' or
+    'SUM'. Using other values will raise an error.
+*   Wraps losses passed to the `compile` API (strings and v1 losses) which are
+    not instances of v2 `Loss` class in `LossWrapper` class. => All losses will
+    now use `SUM_OVER_BATCH_SIZE` reduction as default.
+*   Disable `run_eagerly` and distribution strategy if there are symbolic
+    tensors added to the model using `add_metric` or `add_loss`.
+*   tf.linspace(start, stop, num) now always uses "stop" as last value (for
+    num > 1)
+*   `ResourceVariable` and `Variable` no longer accepts `constraint` in the
+    constructor, nor expose it as a @property.
+*   The behavior of tf.gather is now correct when axis=None and batch_dims<0.
+*   Only create a GCS directory object if the object does not already exist.
+*   In `map_vectorization` optimization, reduce the degree of parallelism in the
+    vectorized map node.
+*   Bug fix: loss and gradients should now more reliably be correctly scaled
+    w.r.t. the global batch size when using a tf.distribute.Strategy.
+*   Updating cosine similarity loss - removed the negate sign from cosine
+    similarity.
+*   DType is no longer convertible to an int. Use dtype.as_datatype_enum instead
+    of int(dtype) to get the same result.
+*   Changed default for gradient accumulation for TPU embeddings to true.
+*   Callbacks now log values in eager mode when a deferred build model is used.
+*   Transitive dependencies on :pooling_ops were removed. Some users may need to
+    add explicit dependencies on :pooling_ops if they reference the operators
+    from that library.
+*   tf.keras.optimizers default learning rate changes:
+    *   Adadelta: 1.000 to 0.001
+    *   Adagrad: 0.01 to 0.001
+    *   Adamax: 0.002 to 0.001
+    *   NAdam: 0.002 to 0.001
+
+## Bug Fixes and Other Changes
+
+*   Documentation
+*   Deprecations and Symbol renames.
+    *   Remove unused StringViewVariantWrapper
+    *   Delete unused Fingerprint64Map op registration
+    *   SignatureDef util functions have been deprecated.
+    *   Renamed tf.image functions to remove duplicate "image" where it is
+        redundant.
+    *   tf.keras.experimental.export renamed to
+        tf.keras.experimental.export_saved_model
+    *   Standardize the LayerNormalization API by replacing the args `norm_axis`
+        and `params_axis` with `axis`.
+    *   Tensor::UnsafeCopyFromInternal deprecated in favor Tensor::BitcastFrom
+*   Keras & Python API
+    *   Add v2 module aliases for:
+    *   tf.initializers => tf.keras.initializers
+    *   tf.losses => tf.keras.losses & tf.metrics => tf.keras.metrics
+    *   tf.optimizers => tf.keras.optimizers
+    *   Add tf.keras.layers.AbstractRNNCell as the preferred implementation of
+        RNN cell for TF v2. User can use it to implement RNN cell with custom
+        behavior.
+    *   Adding `clear_losses` API to be able to clear losses at the end of
+        forward pass in a custom training loop in eager.
+    *   Add support for passing list of lists to the `metrics` param in Keras
+        `compile`.
+    *   Added top-k to precision and recall to keras metrics.
+    *   Adding public APIs for `cumsum` and `cumprod` keras backend functions.
+    *   Fix: model.add_loss(symbolic_tensor) should work in ambient eager.
+    *   Add name argument to tf.string_split and tf.strings_split
+    *   Minor change to SavedModels exported from Keras using
+        tf.keras.experimental.export. (SignatureDef key for evaluation mode is
+        now "eval" instead of "test"). This will be reverted back to "test" in
+        the near future.
+    *   Updates binary cross entropy logic in Keras when input is probabilities.
+        Instead of converting probabilities to logits, we are using the cross
+        entropy formula for probabilities.
+    *   Raw TensorFlow functions can now be used in conjunction with the Keras
+        Functional API during model creation. This obviates the need for users
+        to create Lambda layers in most cases when using the Functional API.
+        Like Lambda layers, TensorFlow functions that result in Variable
+        creation or assign ops are not supported.
+    *   Keras training and validation curves are shown on the same plot.
+    *   Introduce `dynamic` constructor argument in Layer and Model, which
+        should be set to True when using imperative control flow in the `call`
+        method.
+    *   Removing of dtype in the constructor of initializers and partition_info
+        in call.
+*   New ops and improved op functionality
+    *   Add OpKernels for some stateless maps
+    *   Add v2 APIs for AUCCurve and AUCSummationMethod
+        enums. #tf-metrics-convergence
+    *   Add tf.math.nextafter op.
+    *   Add CompositeTensor base class.
+    *   Add tf.linalg.tridiagonal_solve op.
+    *   Add opkernel templates for common table operations.
+    *   Added support for TFLite in TensorFlow 2.0.
+    *   Adds summary trace API for collecting graph and profile information.
+    *   Add batch_dims argument to tf.gather.
+    *   Add support for `add_metric` in the graph function mode.
+    *   Add C++ Gradient for BatchMatMulV2.
+    *   Added tf.random.binomial
+    *   Added gradient for SparseToDense op.
+    *   Add legacy string flat hash map op kernels
+    *   Add a ragged size op and register it to the op dispatcher
+    *   Add broadcasting support to tf.matmul.
+    *   Add ellipsis (...) support for tf.einsum()
+    *   Added LinearOperator.adjoint and LinearOperator.H (alias).
+    *   Added GPU implementation of tf.linalg.tridiagonal_solve.
+    *   Added strings.byte_split
+    *   Add RaggedTensor.placeholder()
+    *   Add a new "result_type" parameter to tf.strings.split
+    *   `add_update` can now be passed a zero-arg callable in order to support
+        turning off the update when setting `trainable=False` on a Layer of a
+        Model compiled with `run_eagerly=True`.
+    *   Add variant wrapper for absl::string_view
+    *   Add expand_composites argument to all nest.* methods.
+    *   Add pfor converter for Squeeze.
+    *   Bug fix for tf.tile gradient
+    *   Expose CriticalSection in core as tf.CriticalSection.
+    *   Update Fingerprint64Map to use aliases
+    *   ResourceVariable support for gather_nd.
+    *   ResourceVariable's gather op supports batch dimensions.
+    *   Variadic reduce is supported on CPU
+    *   Extend tf.function with basic support for CompositeTensors arguments
+        (such as SparseTensor and RaggedTensor).
+    *   Add templates and interfaces for creating lookup tables
+    *   Post-training quantization tool supports quantizing weights shared by
+        multiple operations. The models made with versions of this tool will use
+        INT8 types for weights and will only be executable interpreters from
+        this version onwards.
+    *   Malformed gif images could result in an access out of bounds in the
+        color palette of the frame. This has been fixed now
+    *   image.resize now considers proper pixel centers and has new kernels
+        (incl. anti-aliasing).
+*   Performance
+    *   Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically
+        dispatches the best kernel implementation based on CPU vector
+        architecture. To disable them, build with
+        --define=tensorflow_mkldnn_contraction_kernel=0.
+    *   Support for multi-host ncclAllReduce in Distribution Strategy.
+    *   Expose a flag that allows the number of threads to vary across Python
+        benchmarks.
+*   TensorFlow 2.0 Development
+    *   Add v2 sparse categorical crossentropy metric.
+    *   Allow non-Tensors through v2 losses.
+    *   Add UnifiedGRU as the new GRU implementation for tf2.0. Change the
+        default recurrent activation function for GRU from 'hard_sigmoid' to
+        'sigmoid', and 'reset_after' to True in 2.0. Historically recurrent
+        activation is 'hard_sigmoid' since it is fast than 'sigmoid'. With new
+        unified backend between CPU and GPU mode, since the CuDNN kernel is
+        using sigmoid, we change the default for CPU mode to sigmoid as well.
+        With that, the default GRU will be compatible with both CPU and GPU
+        kernel. This will enable user with GPU to use CuDNN kernel by default
+        and get a 10x performance boost in training. Note that this is
+        checkpoint breaking change. If user want to use their 1.x pre-trained
+        checkpoint, please construct the layer with
+        GRU(recurrent_activation='hard_sigmoid', reset_after=False) to fallback
+        to 1.x behavior.
+    *   TF 2.0 - Update metric name to always reflect what the user has given in
+        compile. Affects following cases 1. When name is given as
+        'accuracy'/'crossentropy' 2. When an aliased function name is used eg.
+        'mse' 3. Removing the `weighted` prefix from weighted metric names.
+    *   Begin adding Go wrapper for C Eager API
+    *   image.resize in 2.0 now supports gradients for the new resize kernels.
+    *   removed tf.string_split from v2 API
+    *   Expose tf.contrib.proto.* ops in tf.io (they will exist in TF2)
+    *   "Updates the TFLiteConverter API in 2.0. Changes from_concrete_function
+        to from_concrete_functions."
+    *   Enable tf.distribute.experimental.MultiWorkerMirroredStrategy working in
+        eager mode.
+    *   Support both binary and -1/1 label input in v2 hinge and squared hinge
+        losses.
+*   TensorFlow Lite
+    *   "Adds support for tflite_convert in 2.0."
+    *   "Remove lite.OpHint, lite.experimental, and lite.constant from 2.0 API."
+*   tf.contrib
+    *   Added Neural Turing Implementation as described in
+        https://arxiv.org/abs/1807.08518.
+    *   Remove tf.contrib.timeseries dependency on TF distributions.
+*   tf.data
+    *   Add num_parallel_reads and passing in a Dataset containing filenames
+        into TextLineDataset and FixedLengthRecordDataset
+    *   Going forward we operate in TF 2.0, this change is part of the effort to
+        slowly converting XYZDataset to DatasetV2 type which is the official
+        version going to be used in TF 2.0 and motivated by some compatibility
+        issue found, _BigtableXYZDataset (of type DatasetV2) does not implement
+        the _as_variant_tensor() of DatasetV1, when moving contrib.bigtable to
+        tensorflow_io. Converting into DatasetV2 removes the overheads to
+        maintain V1 while we are moving into TF 2.0.
+    *   Add dataset ops to the graph (or create kernels in Eager execution)
+        during the python Dataset object creation instead doing it during
+        Iterator creation time.
+    *   Add support for TensorArrays to tf.data Dataset.
+    *   Switching tf.data functions to use `defun`, providing an escape hatch to
+        continue using the legacy `Defun`.
+*   Toolchains
+    *   CUDNN_INSTALL_PATH, TENSORRT_INSTALL_PATH, NCCL_INSTALL_PATH,
+        NCCL_HDR_PATH are deprecated. Use TF_CUDA_PATHS instead which supports a
+        comma-separated list of base paths that are searched to find CUDA
+        libraries and headers.
+    *   TF code now resides in `tensorflow_core` and `tensorflow` is just a
+        virtual pip package. No code changes are needed for projects using
+        TensorFlow, the change is transparent
+*   XLA
+    *   XLA HLO graphs can be inspected with interactive_graphviz tool now.
+*   Estimator
+    *   Use tf.compat.v1.estimator.inputs instead of tf.estimator.inputs
+    *   Replace contrib references with tf.estimator.experimental.* for apis in
+        early_stopping.py
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+1e100, 4d55397500, a6802739, abenmao, Adam Weiss, Ag Ramesh, Alan Du, Albin Joy,
+Alex, Aman Patel, Amit, Amit Kumar Jaiswal, Amit Srivastava, Andreas Eberle,
+Andy Craze, Anthony Platanios, Armen Poghosov, armenpoghosov, arp95, Arpit Shah,
+Ashwin Ramaswami, Aurelien Geron, AuréLien Geron, aweers, awesomealex1, Ayush
+Agrawal, Ben Barsdell, Bharat Raghunathan, Bhavani Subramanian, blairhan,
+BléNesi Attila, Brandon Carter, candy.dc, Chao Liu, chenchc, chie8842, Christian
+Hansen, Christian Sigg, Clayne Robison, crafet, csukuangfj, ctiijima, Dan
+Jarvis, Dan Lazewatsky, Daniel Ingram, Daniel Salvadori, Dave Airlie, David
+Norman, Dayananda V, Dayananda-V, delock, Denis Khalikov, Deven Desai, Dheeraj
+Rajaram Reddy, dmitrievanthony, Donovan Ong, Drew Szurko, Duncan Riach, Dustin
+Neighly, Edward Forgacs, EFanZh, Fei Hu, Felix Lemke, Filip Matzner, fo40225,
+frreiss, Gautam, gehring, Geoffrey Irving, Grzegorz George Pawelczak, Grzegorz
+Pawelczak, Gyoung-Yoon Ryoo, HanGuo97, Hanton Yang, Hari Shankar, hehongliang,
+Heungsub Lee, Hoeseong Kim, I-Hong Jhuo, Ilango R, Innovimax, Irene Dea, Jacky
+Ko, Jakub Lipinski, Jason Zaman, jcf94, Jeffrey Poznanovic, Jens Elofsson,
+Jeroen BéDorf, Jia Qingtong, Jiankang, Joe Q, Joe Quadrino, Joeran Beel, Jonas
+Rauber, Jonathan, Jonathan Kyl, Joppe Geluykens, Joseph Friedman, jtressle, jwu,
+K Yasaswi Sri Chandra Gandhi, K. Hodges, Kaixi Hou, Karl Lessard, Karl
+Weinmeister, Karthik Muthuraman, Kashif Rasul, KDR, Keno Fischer, Kevin Mader,
+kjopek, Koan-Sin Tan, kouml, ktaebum, Lakshay Tokas, Laurent Le Brun, Letian
+Kang, Li, Guizi, Loo Rong Jie, Lucas Hendren, Lukas Geiger, Luke Han, luxupu,
+Ma, Guokai, Mahmoud Abuzaina, Mandar Deshpande, manhyuk, Marco Gaido, Marek
+Drozdowski, Mark Collier, Mark Ryan, mars20, Mateusz Chudyk, Matt Conley,
+MattConley, mbhuiyan, mdfaijul, Melissa Grueter, Michael KäUfl, MickaëL
+Schoentgen, Miguel Morin, Mihail Salnikov, Mike Arpaia, Mike Holcomb, monklof,
+Moses Marin, Mshr-H, nammbash, Natalia Gimelshein, Nayana-Ibm, neargye, Neeraj
+Pradhan, Nehal J Wani, Nick, Niels Ole Salscheider, Niranjan Hasabnis, nlewycky,
+Nuka-137, Nutti, olicht, P Sudeepam, Palmer Lao, Pan Daoxin, Pariksheet Pinjari,
+Pavel Samolysov, PENGWA, Pooya Davoodi, R S Nikhil Krishna, Rohit Gupta, Roman
+Soldatow, rthadur, Ruizhe, Ryan Jiang, Samantha Andow, Sami Kama, Sana-Damani,
+Saurabh Deoras, sdamani, seanshpark, Sebastien Iooss, Serv-Inc, Shahzad Lone,
+Shashank Gupta, Shashi, shashvat, shashvatshahi1998, Siju, Siju Samuel,
+Snease-Abq, Spencer Schaber, sremedios, srinivasan.narayanamoorthy, Steve Lang,
+Steve Nesae, Sumesh Udayakumaran, Supriya Rao, Taylor Jakobson, Taylor Thornton,
+Ted Chang, ThisIsPIRI, Thomas Deegan, Thomas Hagebols, tianyapiaozi, Tim Zaman,
+tomguluson92, Tongxuan Liu, TungJerry, v1incent, Vagif, vcarpani, Vikram Tiwari,
+Vishwak Srinivasan, Vitor-Alves, wangsiyu, wateryzephyr, WeberXie, WeijieSun,
+Wen-Heng (Jack) Chung, wenxizhu, Will Battel, William D. Irons, wyzhao, Xin,
+Yasuhiro Matsumoto, ymodak, Yong Tang, Younes Khoudli, Yuan Lin, Yves-Noel
+Weweler, Zantares, zjjott, 卜居, 王振华 (Wang Zhenhua), 黄鑫
+
+# Release 1.12.3
+
+## Bug Fixes and Other Changes
+
+*   Updates `png_archive` dependency to 1.6.37 to not be affected by
+    CVE-2019-7317, CVE-2018-13785, and CVE-2018-14048.
+*   Updates `sqlite` dependency to 3.28.0 to not be affected by CVE-2018-20506,
+    CVE-2018-20346, and CVE-2018-20505.
+
+# Release 1.12.2
+
+## Bug Fixes and Other Changes
+
+*   Fixes a potential security vulnerability where carefully crafted GIF images
+    can produce a null pointer dereference during decoding.
+
+# Release 1.13.0
+
+## Major Features and Improvements
+
+* TensorFlow Lite has moved from contrib to core. This means that Python modules are under `tf.lite` and source code is now under `tensorflow/lite` rather than `tensorflow/contrib/lite`.
+* TensorFlow GPU binaries are now built against CUDA 10 and TensorRT 5.0.
+* Support for Python3.7 on all operating systems.
+* Moved NCCL to core.
+
+## Behavioral changes
+
+* Disallow conversion of python floating types to uint32/64 (matching behavior of other integer types) in `tf.constant`.
+* Make the `gain` argument of convolutional orthogonal initializers (`convolutional_delta_orthogonal`, `convolutional_orthogonal_1D`, `convolutional_orthogonal_2D`, `convolutional_orthogonal_3D`) have consistent behavior with the `tf.initializers.orthogonal` initializer, i.e. scale the output l2-norm by `gain` and NOT by `sqrt(gain)`. (Note that these functions are currently in `tf.contrib` which is not guaranteed backward compatible).
+
+## Bug Fixes and Other Changes
+
+*   Documentation
+    *   Update the doc with the details about the rounding mode used in
+        quantize_and_dequantize_v2.
+    *   Clarify that tensorflow::port::InitMain() _should_ be called before
+        using the TensorFlow library. Programs failing to do this are not
+        portable to all platforms.
+*   Deprecations and Symbol renames.
+    *   Removing deprecations for the following endpoints: `tf.acos`,
+        `tf.acosh`, `tf.add`, `tf.as_string`, `tf.asin`, `tf.asinh`, `tf.atan`,
+        `tf.atan2`, `tf.atanh`, `tf.cos`, `tf.cosh`, `tf.equal`, `tf.exp`,
+        `tf.floor`, `tf.greater`, `tf.greater_equal`, `tf.less`,
+        `tf.less_equal`, `tf.log`, `tf.logp1`, `tf.logical_and`,
+        `tf.logical_not`, `tf.logical_or`, `tf.maximum`, `tf.minimum`,
+        `tf.not_equal`, `tf.sin`, `tf.sinh`, `tf.tan`
+    *   Deprecate `tf.data.Dataset.shard`.
+    *   Deprecate `saved_model.loader.load` which is replaced by
+        `saved_model.load` and `saved_model.main_op`, which will be replaced by
+        `saved_model.main_op` in V2.
+    *   Deprecate tf.QUANTIZED_DTYPES. The official new symbol is
+        tf.dtypes.QUANTIZED_DTYPES.
+    *   Update sklearn imports for deprecated packages.
+    *   Deprecate `Variable.count_up_to` and `tf.count_up_to` in favor of
+        `Dataset.range`.
+    *   Export `confusion_matrix` op as `tf.math.confusion_matrix` instead of
+        `tf.train.confusion_matrix`.
+    *   Add `tf.dtypes.` endpoint for every constant in dtypes.py. Moving
+        endpoints in versions.py to corresponding endpoints in `tf.sysconfig.`
+        and `tf.version.`. Moving all constants under `tf.saved_model`
+        submodules to `tf.saved_model` module. New endpoints are added in V1 and
+        V2 but existing endpoint removals are only applied in V2.
+    *   Deprecates behavior where device assignment overrides collocation
+        constraints inside a collocation context manager.
+*   Keras & Python API
+    *   Add to Keras functionality analogous to
+        `tf.register_tensor_conversion_function`.
+    *   Subclassed Keras models can now be saved through
+        `tf.contrib.saved_model.save_keras_model`.
+    *   `LinearOperator.matmul` now returns a new `LinearOperator`.
+*   New ops and improved op functionality
+    *   Add a Nearest Neighbor Resize op.
+    *   Add an `ignore_unknown` argument to `parse_values` which suppresses
+        ValueError for unknown hyperparameter types. Such * Add
+        `tf.linalg.matvec` convenience function.
+    *   `tf.einsum()`raises `ValueError` for unsupported equations like
+        `"ii->"`.
+    *   Add DCT-I and IDCT-I in `tf.signal.dct` and `tf.signal.idct`.
+    *   Add LU decomposition op.
+    *   Add quantile loss to gradient boosted trees in estimator.
+    *   Add `round_mode` to `QuantizeAndDequantizeV2` op to select rounding
+        algorithm.
+    *   Add `unicode_encode`, `unicode_decode`, `unicode_decode_with_offsets`,
+        `unicode_split`, `unicode_split_with_offset`, and `unicode_transcode`
+        ops. Amongst other things, this Op adds the ability to encode, decode,
+        and transcode a variety of input text encoding formats into the main
+        Unicode encodings (UTF-8, UTF-16-BE, UTF-32-BE)
+    *   Add "unit" attribute to the substr op, which allows obtaining the
+        substring of a string containing unicode characters.
+    *   Broadcasting support for Ragged Tensors.
+    *   `SpaceToDepth` supports uint8 data type.
+    *   Support multi-label quantile regression in estimator.
+    *   We now use "div" as the default partition_strategy in
+        `tf.nn.safe_embedding_lookup_sparse`, `tf.nn.sampled_softmax` and
+        `tf.nn.nce_loss`. hyperparameter are ignored.
+*   Performance
+    *   Improve performance of GPU cumsum/cumprod by up to 300x.
+    *   Added support for weight decay in most TPU embedding optimizers,
+        including AdamW and MomentumW.
+*   TensorFlow 2.0 Development
+    *   Add a command line tool to convert to TF2.0, tf_upgrade_v2
+    *   Merge `tf.spectral` into `tf.signal` for TensorFlow 2.0.
+    *   Change the default recurrent activation function for LSTM from
+        'hard_sigmoid' to 'sigmoid' in 2.0. Historically recurrent activation is
+        'hard_sigmoid' since it is fast than 'sigmoid'. With new unified backend
+        between CPU and GPU mode, since the CuDNN kernel is using sigmoid, we
+        change the default for CPU mode to sigmoid as well. With that, the
+        default LSTM will be compatible with both CPU and GPU kernel. This will
+        enable user with GPU to use CuDNN kernel by default and get a 10x
+        performance boost in training. Note that this is checkpoint breaking
+        change. If user want to use their 1.x pre-trained checkpoint, please
+        construct the layer with LSTM(recurrent_activation='hard_sigmoid') to
+        fallback to 1.x behavior.
+*   TensorFlow Lite
+    *   Move from `tensorflow/contrib/lite` to `tensorflow/lite`.
+    *   Add experimental Java API for injecting TensorFlow Lite delegates
+    *   Add support for strings in TensorFlow Lite Java API.
+*   `tf.contrib`:
+    *   Add Apache Ignite Filesystem plugin to support accessing Apache IGFS.
+    *   Dropout now takes `rate` argument, `keep_prob` is deprecated.
+    *   Estimator occurrences references `tf.contrib.estimator` were changed to
+        `tf.estimator`:
+    *   `tf.contrib.estimator.BaselineEstimator` with
+        `tf.estimator.BaselineEstimator`
+    *   `tf.contrib.estimator.DNNLinearCombinedEstimator` with
+        `tf.estimator.DNNLinearCombinedEstimator`
+    *   `tf.contrib.estimator.DNNEstimator` with `tf.estimator.DNNEstimator`
+    *   `tf.contrib.estimator.LinearEstimator` with
+        `tf.estimator.LinearEstimator`
+    *   `tf.contrib.estimator.InMemoryEvaluatorHook` and
+        tf.estimator.experimental.InMemoryEvaluatorHook`.
+    *   `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with
+        `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`.
+    *   Expose `tf.distribute.Strategy as the new name for
+        tf.contrib.distribute.DistributionStrategy.
+    *   Migrate linear optimizer from contrib to core.
+    *   Move `tf.contrib.signal` to `tf.signal` (preserving aliases in
+        tf.contrib.signal).
+    *   Users of `tf.contrib.estimator.export_all_saved_models` and related
+        should switch to
+        `tf.estimator.Estimator.experimental_export_all_saved_models`.
+*   tf.data:
+    *   Add `tf.data.experimental.StatsOptions()`, to configure options to
+        collect statistics from `tf.data.Dataset` pipeline using
+        `StatsAggregator`. Add nested option, `experimental_stats` (which takes
+        a `tf.data.experimen tal.StatsOptions` object), to `tf.data.Options`.
+        Deprecates `tf.data.experimental.set_stats_agregator`.
+    *   Performance optimizations:
+    *   Add `tf.data.experimental.OptimizationOptions()`, to configure options
+        to enable `tf.data` performance optimizations. Add nested option,
+        `experimental_optimization` (which takes a
+        `tf.data.experimental.OptimizationOptions` object), to
+        `tf.data.Options`. Remove performance optimization options from
+        `tf.data.Options`, and add them under
+        `tf.data.experimental.OptimizationOptions` instead.
+    *   Enable `map_and_batch_fusion` and `noop_elimination` optimizations by
+        default. They can be disabled by configuring
+        `tf.data.experimental.OptimizationOptions` to set `map_and_batch =
+        False` or `noop_elimination = False` respectively. To disable all
+        default optimizations, set `apply_default_optimizations = False`.
+    *   Support parallel map in `map_and_filter_fusion`.
+    *   Disable static optimizations for input pipelines that use non-resource
+        `tf.Variable`s.
+    *   Add NUMA-aware MapAndBatch dataset.
+    *   Deprecate `tf.data.Dataset.make_one_shot_iterator()` in V1, removed it
+        from V2, and added tf.compat.v1.data.make_one_shot_iterator()`.
+    *   Deprecate `tf.data.Dataset.make_initializable_iterator()` in V1, removed
+        it from V2, and added `tf.compat.v1.data.make_initializable_iterator()`.
+    *   Enable nested dataset support in core `tf.data` transformations.
+    *   For `tf.data.Dataset` implementers: Added
+        `tf.data.Dataset._element_structured property` to replace
+        `Dataset.output_{types,shapes,classes}`.
+    *   Make `num_parallel_calls` of `tf.data.Dataset.interleave` and
+        `tf.data.Dataset.map` work in Eager mode.
+*   Toolchains
+    *   Fixed OpenSSL compatibility by avoiding `EVP_MD_CTX_destroy`.
+    *   Added bounds checking to printing deprecation warnings.
+    *   Upgraded CUDA dependency to 10.0
+    *   To build with Android NDK r14b, add "#include <linux/compiler.h>" to
+        android-ndk-r14b/platforms/android-14/arch-*/usr/include/linux/futex.h
+    *   Removed `:android_tensorflow_lib_selective_registration*` targets, use
+        `:android_tensorflow_lib_lite*` targets instead.
+*   XLA
+    *   Move `RoundToEven` function to xla/client/lib/math.h.
+    *   A new environment variable `TF_XLA_DEBUG_OPTIONS_PASSTHROUGH` set to "1"
+        or "true" allows the debug options passed within an XRTCompile op to be
+        passed directly to the XLA compilation backend. If such variable is not
+        set (service side), only a restricted set will be passed through.
+    *   Allow the XRTCompile op to return the ProgramShape resulted form the XLA
+        compilation as a second return argument.
+    *   XLA HLO graphs can now be rendered as SVG/HTML.
+*   Estimator
+    *   Replace all occurrences of `tf.contrib.estimator.BaselineEstimator` with
+        `tf.estimator.BaselineEstimator`
+    *   Replace all occurrences of
+        `tf.contrib.estimator.DNNLinearCombinedEstimator` with
+        `tf.estimator.DNNLinearCombinedEstimator`
+    *   Replace all occurrences of `tf.contrib.estimator.DNNEstimator` with
+        `tf.estimator.DNNEstimator`
+    *   Replace all occurrences of `tf.contrib.estimator.LinearEstimator` with
+        `tf.estimator.LinearEstimator`
+    *   Users of `tf.contrib.estimator.export_all_saved_models` and related
+        should switch to
+        `tf.estimator.Estimator.experimental_export_all_saved_models`.
+    *   Update `regression_head` to the new Head API for Canned Estimator V2.
+    *   Switch `multi_class_head` to Head API for Canned Estimator V2.
+    *   Replace all occurrences of `tf.contrib.estimator.InMemoryEvaluatorHook`
+        and `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with
+        `tf.estimator.experimental.InMemoryEvaluatorHook` and
+        `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`
+    *   Migrate linear optimizer from contrib to core.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Abhinav Upadhyay, Ag Ramesh, akikaaa, Alexis Louis, Anders Huss, Andreas Madsen, Andrew Banchich, Andy Craze, Anton Dmitriev, Artem Malykh, Avijit-Nervana, Balint Cristian, Benjamin Tan Wei Hao, Bhavani Subramanian, Brendan Finan, Brian Nemsick, Bryan Cutler, By Shen, Cao Zongyan, Castiel, Chris Antaki, Christian Goll, Cibifang, Clayne Robison, Codrut Grosu, Cong Xu, Dalmo Cirne, Daniel Hunter, Dougal J. Sutherland, Edvard Fagerholm, EFanZh, Erik Smistad, Evgeniy Polyakov, Feiyang Chen, franklin5, Fred Reiss, Gautam, gehring, Geoffrey Irving, George Sterpu, Gitea, Grzegorz George Pawelczak, Guozhong Zhuang, himkt, Hoeseong Kim, Huan Li (李卓桓), HuiyangFei, hyunyoung, Isaac Burbank, jackonan, Jacky Ko, Jason Furmanek, Jason Zaman, Javier Luraschi, Jiang,Zhoulong, joaak, John Lin, Jonathan Wyatt Hoech, josephyearsley, Josh Gordon, Julian Niedermeier, Karl Lessard, Keno Fischer, lanhin, Leon Graser, leondgarse, Li, Guizi, Li, Yiqiang, lxl910915, Mahmoud Abuzaina, manhyuk, Marcela Morales Quispe, margaretmz, Matt Conley, Max Pumperla, mbhuiyan, mdfaijul, Meng, Peng, Michael, Michael Gielda, mrTsjolder, Muhammad Wildan, neargye, Nehal J Wani, NEWPLAN, Niranjan Hasabnis, Nutti, olicht, Pan Daoxin, Pedro Monreal, Peng Yu, pillarpond, Pooya Davoodi, qiezi, Rholais Lii, Richard Yu, Rin Arakaki, Roger Iyengar, sahilbadyal, Sami Kama, Sandip Giri, Scott Leishman, Serge Panev, Seunghoon Park, Shafi Dayatar, shengfuintel, Shimin Guo, Siju, silent567, Stefan Dyulgerov, steven, Tao Wei, Thor Johnsen, Tingbo Lu, tomguluson92, Tongxuan Liu, Trevor Morris, Ubuntu, Vadim Borisov, vanderliang, wangsiyu, Wen Yun, Wen-Heng (Jack) Chung, wenxizhu, William D. Irons, Xiaoming (Jason) Cui, Yan Facai (颜发才), Yanbo Liang, Yaniv Blumenfeld, Yash Gaurkar, Yicheng Fan, Yong Tang, Yongjoon Lee, Yuan (Terry) Tang, Yuxin Wu, zldrobit
+
+# Release 1.12.0
+
+## Major Features and Improvements
+
+*   Keras models can now be directly exported to the SavedModel
+    format(`tf.contrib.saved_model.save_keras_model()`) and used with Tensorflow
+    Serving.
+*   Keras models now support evaluating with a `tf.data.Dataset`.
+*   TensorFlow binaries are built with XLA support linked in by default.
+*   Ignite Dataset added to contrib/ignite that allows to work with Apache
+    Ignite.
+
+## Bug Fixes and Other Changes
+
+*   tf.data:
+    *   tf.data users can now represent, get, and set options of TensorFlow
+        input pipelines using `tf.data.Options()`, `tf.data.Dataset.options()`,
+        and `tf.data.Dataset.with_options()` respectively.
+    *   New `tf.data.Dataset.reduce()` API allows users to reduce a finite
+        dataset to a single element using a user-provided reduce function.
+    *   New `tf.data.Dataset.window()` API allows users to create finite windows
+        of input dataset; when combined with the `tf.data.Dataset.reduce()` API,
+        this allows users to implement customized batching.
+    *   All C++ code moves to the `tensorflow::data` namespace.
+    *   Add support for `num_parallel_calls` to `tf.data.Dataset.interleave`.
+*   `tf.contrib`:
+    *   Remove `tf.contrib.linalg`. `tf.linalg` should be used instead.
+    *   Replace any calls to `tf.contrib.get_signature_def_by_key(metagraph_def,
+        signature_def_key)` with
+        `meta_graph_def.signature_def[signature_def_key]`. Catching a ValueError
+        exception thrown by `tf.contrib.get_signature_def_by_key` should be
+        replaced by catching a KeyError exception.
+*   `tf.contrib.data`
+    *   Deprecate, and replace by tf.data.experimental.
+*   Other:
+    *   Instead of jemalloc, revert back to using system malloc since it
+        simplifies build and has comparable performance.
+    *   Remove integer types from `tf.nn.softplus` and `tf.nn.softsign` OpDefs.
+        This is a bugfix; these ops were never meant to support integers.
+    *   Allow subslicing Tensors with a single dimension.
+    *   Add option to calculate string length in Unicode characters.
+    *   Add functionality to SubSlice a tensor.
+    *   Add searchsorted (ie lower/upper_bound) op.
+    *   Add model explainability to Boosted Trees.
+    *   Support negative positions for tf.substr.
+    *   There was previously a bug in the bijector_impl where the
+        _reduce_jacobian_det_over_event does not handle scalar ILDJ
+        implementations properly.
+    *   In tf eager execution, allow re-entering a GradientTape context.
+    *   Add tf_api_version flag. If --define=tf_api_version=2 flag is passed in,
+        then bazel will build TensorFlow API version 2.0. Note that TensorFlow
+        2.0 is under active development and has no guarantees at this point.
+    *   Add additional compression options to TfRecordWriter.
+    *   Performance improvements for regex full match operations.
+    *   Replace tf.GraphKeys.VARIABLES with `tf.GraphKeys.GLOBAL_VARIABLES`.
+    *   Remove unused dynamic learning rate support.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+(David) Siu-Kei Muk, Ag Ramesh, Anton Dmitriev, Artem Sobolev, Avijit-Nervana,
+Bairen Yi, Bruno Goncalves, By Shen, candy.dc, Cheng Chen, Clayne Robison,
+coder3101, Dao Zhang, Elms, Fei Hu, feiquan, Geoffrey Irving, Guozhong Zhuang,
+hellcom, Hoeseong Kim, imsheridan, Jason Furmanek, Jason Zaman, Jenny Sahng,
+jiefangxuanyan, Johannes Bannhofer, Jonathan Homer, Koan-Sin Tan, kouml, Loo
+Rong Jie, Lukas Geiger, manipopopo, Ming Li, Moritz KröGer, Naurril, Niranjan
+Hasabnis, Pan Daoxin, Peng Yu, pengwa, rasmi, Roger Xin, Roland Fernandez, Sami
+Kama, Samuel Matzek, Sangjung Woo, Sergei Lebedev, Sergii Khomenko, shaohua,
+Shaohua Zhang, Shujian2015, Sunitha Kambhampati, tomguluson92, ViníCius Camargo,
+wangsiyu, weidankong, Wen-Heng (Jack) Chung, William D. Irons, Xin Jin, Yan
+Facai (颜发才), Yanbo Liang, Yash Katariya, Yong Tang, 在原佐为
+
 # Release 1.11.0
 
 ## Major Features and Improvements
 
-* Nvidia GPU:
-  * Prebuilt binaries are now (as of TensorFlow 1.11) built against cuDNN 7.2 and TensorRT 4. See updated install guides: [Installing TensorFlow on Ubuntu](https://www.tensorflow.org/install/install_linux#tensorflow_gpu_support)
-* Google Cloud TPU:
-  * Experimental tf.data integration for Keras on Google Cloud TPUs.
-  * Experimental / preview support for eager execution on Google Cloud TPUs.
-* DistributionStrategy:
-  * Add multi-GPU DistributionStrategy support in tf.keras. Users can now use `fit`, `evaluate` and `predict` to distribute their model on multiple GPUs.
-  * Add multi-worker DistributionStrategy and standalone client support in Estimator. See [README] (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute) for more details.
-* Add C, C++, and Python functions for querying kernels
+*   Nvidia GPU:
+    *   Prebuilt binaries are now (as of TensorFlow 1.11) built against cuDNN
+        7.2 and TensorRT 4. See updated install guides:
+        [Installing TensorFlow on Ubuntu](https://www.tensorflow.org/install/install_linux#tensorflow_gpu_support)
+*   Google Cloud TPU:
+    *   Experimental tf.data integration for Keras on Google Cloud TPUs.
+    *   Experimental / preview support for eager execution on Google Cloud TPUs.
+*   DistributionStrategy:
+    *   Add multi-GPU DistributionStrategy support in tf.keras. Users can now
+        use `fit`, `evaluate` and `predict` to distribute their model on
+        multiple GPUs.
+    *   Add multi-worker DistributionStrategy and standalone client support in
+        Estimator. See
+        [README](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute)
+        for more details.
+*   Add C, C++, and Python functions for querying kernels.
 
 ## Breaking Changes
 
@@ -20,51 +1280,84 @@
 
 ## Bug Fixes and Other Changes
 
-* C++:
-  * Changed the signature of SessionFactory::NewSession so that it can return a meaningful error message on failure.
-* tf.data:
-  * Remove `num_parallel_parser_calls` argument from `tf.contrib.data.make_csv_dataset()`. [tf.data] Remove `num_parallel_parser_calls` argument from `tf.contrib.data.make_csv_dataset()`.
-  * `tf.data.Dataset.list_files()` raises an exception at initialization time if the argument matches no files.
-  * Renamed BigTable class to BigtableTable for clarity
-  * Document use of the Cloud Bigtable API
-  * Adding `tf.contrib.data.reduce_dataset` which can be used to reduce a dataset to a single element.
-  * Generalization of `tf.contrib.data.sliding_window_batch`.
-* INC:
-  * Runtime improvements to triangular solve.
-* `tf.contrib`:
-  * Add an `implementation` argument to `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D`. The new mode (`implementation=2`) performs forward pass as a single dense matrix multiplication, allowing dramatic speedups in certain scenarios (but worse performance in others - see docstring). The option also allows to use `padding=same`.
-  * Add documentation clarifying the differences between tf.fill and tf.constant.
-  * Add experimental IndexedDatasets.
-  * Add selective registration target using the lite proto runtime.
-  * Add simple Tensor and DataType classes to TensorFlow Lite Java
-  * Add support for bitcasting to/from uint32 and uint64.
-  * Added a subclass of Estimator that can be created from a SavedModel (SavedModelEstimator).
-  * Adds leaf index modes as an argument.
-  * Allow a different output shape from the input in tf.contrib.image.transform.
-  * Change the state_size order of the StackedRNNCell to be natural order. To keep the existing behavior, user can add reverse_state_order=True when constructing the StackedRNNCells.
-  * Deprecate self.test_session() in favor of self.session() or self.cached_session().
-  * Directly import tensor.proto.h (the transitive import will be removed from tensor.h soon)
-  * Estimator.train() now supports tf.contrib.summary.\* summaries out of the box; each call to .train() will now create a separate tfevents file rather than re-using a shared one.
-  * Fix FTRL L2-shrinkage behavior: the gradient from the L2 shrinkage term should not end up in the accumulator.
-  * Fix toco compilation/execution on Windows
-  * GoogleZoneProvider class added to detect  which Google Cloud Engine zone tensorflow is running in.
-  * It is now safe to call any of the C API's TF_Delete\* functions on nullptr
-  * Log some errors on Android to logcat
-  * Match FakeQuant numerics in TFLite to improve accuracy of TFLite quantized inference models.
-  * Optional bucket location check for the GCS Filesystem.
-  * Performance enhancements for StringSplitOp & StringSplitV2Op.
-  * Performance improvements for regex replace operations.
-  * TFRecordWriter now raises an error if .write() fails.
-  * TPU: More helpful error messages in TPUClusterResolvers.
-  * The legacy_init_op argument to SavedModelBuilder methods for adding MetaGraphs has been deprecated. Please use the equivalent main_op argument instead. As part of this, we now explicitly check for a single main_op or legacy_init_op at the time of SavedModel building, whereas the check on main_op was previously only done at load time.
-  * The protocol used for Estimator training is now configurable in RunConfig.
-  * Triangular solve performance improvements.
-  * Unify RNN cell interface between TF and Keras. Add new get_initial_state() to Keras and TF RNN cell, which will use to replace the existing zero_state() method.
-  * Update initialization of variables in Keras.
-  * Updates to "constrained_optimization" in tensorflow/contrib.
-  * boosted trees: adding pruning mode
-  * tf.train.Checkpoint does not delete old checkpoints by default.
-  * tfdbg: Limit the total disk space occupied by dumped tensor data to 100 GBytes. Add environment variable `TFDBG_DISK_BYTES_LIMIT` to allow adjustment of this upper limit.
+*   C++:
+    *   Changed the signature of SessionFactory::NewSession so that it can
+        return a meaningful error message on failure.
+*   tf.data:
+    *   Remove `num_parallel_parser_calls` argument from
+        `tf.contrib.data.make_csv_dataset()`. [tf.data] Remove
+        `num_parallel_parser_calls` argument from
+        `tf.contrib.data.make_csv_dataset()`.
+    *   `tf.data.Dataset.list_files()` raises an exception at initialization
+        time if the argument matches no files.
+    *   Renamed BigTable class to BigtableTable for clarity
+    *   Document use of the Cloud Bigtable API
+    *   Add `tf.contrib.data.reduce_dataset` which can be used to reduce a
+        dataset to a single element.
+    *   Generalization of `tf.contrib.data.sliding_window_batch`.
+*   INC:
+    *   Runtime improvements to triangular solve.
+*   `tf.contrib`:
+    *   Add an `implementation` argument to `tf.keras.layers.LocallyConnected2D`
+        and `tf.keras.layers.LocallyConnected1D`. The new mode
+        (`implementation=2`) performs forward pass as a single dense matrix
+        multiplication, allowing dramatic speedups in certain scenarios (but
+        worse performance in others - see docstring). The option also allows to
+        use `padding=same`.
+    *   Add documentation clarifying the differences between tf.fill and
+        tf.constant.
+    *   Add experimental IndexedDatasets.
+    *   Add selective registration target using the lite proto runtime.
+    *   Add simple Tensor and DataType classes to TensorFlow Lite Java
+    *   Add support for bitcasting to/from uint32 and uint64.
+    *   Added a subclass of Estimator that can be created from a SavedModel
+        (SavedModelEstimator).
+    *   Adds leaf index modes as an argument.
+    *   Allow a different output shape from the input in
+        tf.contrib.image.transform.
+    *   Change the state_size order of the StackedRNNCell to be natural order.
+        To keep the existing behavior, user can add reverse_state_order=True
+        when constructing the StackedRNNCells.
+    *   Deprecate self.test_session() in favor of self.session() or
+        self.cached_session().
+    *   Directly import tensor.proto.h (the transitive import will be removed
+        from tensor.h soon).
+    *   Estimator.train() now supports tf.contrib.summary.\* summaries out of
+        the box; each call to .train() will now create a separate tfevents file
+        rather than re-using a shared one.
+    *   Fix FTRL L2-shrinkage behavior: the gradient from the L2 shrinkage term
+        should not end up in the accumulator.
+    *   Fix toco compilation/execution on Windows.
+    *   GoogleZoneProvider class added to detect which Google Cloud Engine zone
+        tensorflow is running in.
+    *   It is now safe to call any of the C API's TF_Delete\* functions on
+        nullptr.
+    *   Log some errors on Android to logcat.
+    *   Match FakeQuant numerics in TFLite to improve accuracy of TFLite
+        quantized inference models.
+    *   Optional bucket location check for the GCS Filesystem.
+    *   Performance enhancements for StringSplitOp & StringSplitV2Op.
+    *   Performance improvements for regex replace operations.
+    *   TFRecordWriter now raises an error if .write() fails.
+    *   TPU: More helpful error messages in TPUClusterResolvers.
+    *   The legacy_init_op argument to SavedModelBuilder methods for adding
+        MetaGraphs has been deprecated. Please use the equivalent main_op
+        argument instead. As part of this, we now explicitly check for a single
+        main_op or legacy_init_op at the time of SavedModel building, whereas
+        the check on main_op was previously only done at load time.
+    *   The protocol used for Estimator training is now configurable in
+        RunConfig.
+    *   Triangular solve performance improvements.
+    *   Unify RNN cell interface between TF and Keras. Add new
+        get_initial_state() to Keras and TF RNN cell, which will use to replace
+        the existing zero_state() method.
+    *   Update initialization of variables in Keras.
+    *   Updates to "constrained_optimization" in tensorflow/contrib.
+    *   boosted trees: adding pruning mode.
+    *   tf.train.Checkpoint does not delete old checkpoints by default.
+    *   tfdbg: Limit the total disk space occupied by dumped tensor data to 100
+        GBytes. Add environment variable `TFDBG_DISK_BYTES_LIMIT` to allow
+        adjustment of this upper limit.
 
 ## Thanks to our Contributors
 
@@ -153,9 +1446,9 @@ Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, A
   and [programmers guide page](http://tensorflow.org/versions/r1.9/programmers_guide/keras).
 * Update `tf.keras` to the Keras 2.1.6 API.
 * Added [`tf.keras.layers.CuDNNGRU`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNGRU) and [`tf.keras.layers.CuDNNLSTM`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNLSTM) layers. [Try it](https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb?linkId=53292082).
-* Adding support of core [feature columns](https://www.tensorflow.org/get_started/feature_columns) and [losses](https://www.tensorflow.org/api_docs/python/tf/losses) to [gradient boosted trees estimators](https://github.com/tensorflow/models/tree/master/official/boosted_trees).
-* The [python interface](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/lite)
-  for the [TFLite Optimizing Converter](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/toco/README.md)
+* Adding support of core [feature columns](https://www.tensorflow.org/get_started/feature_columns) and [losses](https://www.tensorflow.org/api_docs/python/tf/losses) to [gradient boosted trees estimators](https://github.com/tensorflow/models/tree/master/official/r1/boosted_trees).
+* The [python interface](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/lite)
+  for the [TFLite Optimizing Converter](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/toco/README.md)
   has been expanded, and the command line interface (AKA: `toco`, `tflite_convert`) is once again
   included in the standard `pip` installation.
 * Improved data-loading and text processing with:
@@ -176,50 +1469,76 @@ Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, A
 
 ## Bug Fixes and Other Changes
 
-* `tfe.Network` is deprecated. Please inherit from `tf.keras.Model`.
-* Layered variable names have changed in the following conditions:
-  * Using `tf.keras.layers` with custom variable scopes.
-  * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See
-    [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
-* `tf.data`:
-  * `Dataset.from_generator()` now accepts an `args` list, in order to create nested generators.
-  * `Dataset.list_files()` now produces determinstic results when `shuffle=False` or a `seed` is passed.
-  * `tf.contrib.data.sample_from_datasets()` and `tf.contrib.data.choose_from_datasets()` make it easier to sample or deterministically choose elements from multiple datasets.
-  * `tf.contrib.data.make_csv_dataset()` now supports line breaks in quoted strings, and two infrequently used arguments removed.
-  * (C++) `DatasetBase::DebugString()` is now `const`.
-  * (C++) `DatasetBase::MakeIterator()` has been renamed to `DatasetBase::MakeIteratorInternal()`.
-  * (C++) `IteratorBase::Initialize()` method was added to support raising errors during iterator construction.
-* Eager Execution:
-  * Added the ability to pause recording operations for gradient computation via `tf.GradientTape.stop_recording`.
-  * Updated documentation, introductory notebooks.
-* `tf.keras`:
-  * Move Keras code out of _impl folder and remove API files.
-  * `tf.keras.Model.save_weights` now saves in TensorFlow format by default.
-  * Enable dataset iterators to be passed to `tf.keras.Model` training/eval methods.
-* TensorFlow Debugger (tfdbg) CLI: fix an issue in which the TensorBoard Debugger Plugin could not handle total source file size exceeding gRPC message size limit (4 MB).
-* `tf.contrib`:
-  * `tf.contrib.framework.zero_initializer` supports ResourceVariable.
-  * Adding "constrained_optimization" to tensorflow/contrib.
-* Other:
-  * Add GCS Configuration Ops.
-  * Changing signature of `MakeIterator` to enable propagating error status.
-  * KL divergence for two Dirichlet distributions.
-  * More consistent GcsFileSystem behavior for certain reads past EOF.
-  * Update benchmark for tf.scan to match ranges across eager and graph modes.
-  * Fixed bug in `tf.reduce_prod gradient` for complex dtypes.
-  * Allow the use of '.' in variables (e.g. "hparams.parse('a.b=1.0')"), which would previously raise an error. This will correspond to an attribute name with an embedded '.' symbol (e.g. 'a.b'), which can only be accessed indirectly (e.g. through getattr and setattr).  To set this up the user will first need to explicitly add the variable to the hparam object (e.g. "hparams.add_hparam(name='a.b', value=0.0)").
-  * Benchmark for tf.scan in graph and eager modes.
-  * Added complex128 support to FFT, FFT2D, FFT3D, IFFT, IFFT2D, and IFFT3D.
-  * Making ids unique in `nn.embedding_lookup_sparse`. This helps to reduce RPC calls for looking up the embeddings when there are repeated ids in the batch.
-  * Support indicator column in boosted trees.
-  * Prevent `tf.gradients()` from backpropagating through integer tensors.
-  * LinearOperator[1D,2D,3D]Circulant added to `tensorflow.linalg`.
-  * Conv3D, Conv3DBackpropInput, Conv3DBackpropFilter now supports arbitrary.
-  * Added `tf.train.Checkpoint` for reading/writing object-based checkpoints.
-  * Added LinearOperatorKronecker, a dense-free implementation of the Kronecker Product.
-  * Allow LinearOperator to broadcast.
-  * SavedModelBuilder will now deduplicate asset names that point to files with the same basename and the same contents. Note that this may result in new asset files included in SavedModels in cases where assets with the same name but different contents were previously overwriting each other.
-
+*   `tfe.Network` is deprecated. Please inherit from `tf.keras.Model`.
+*   Layered variable names have changed in the following conditions:
+    *   Using `tf.keras.layers` with custom variable scopes.
+    *   Using `tf.layers` in a subclassed `tf.keras.Model` class. See
+        [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers)
+        for more details
+*   `tf.data`:
+    *   `Dataset.from_generator()` now accepts an `args` list, in order to
+        create nested generators.
+    *   `Dataset.list_files()` now produces deterministic results when
+        `shuffle=False` or a `seed` is passed.
+    *   `tf.contrib.data.sample_from_datasets()` and
+        `tf.contrib.data.choose_from_datasets()` make it easier to sample or
+        deterministically choose elements from multiple datasets.
+    *   `tf.contrib.data.make_csv_dataset()` now supports line breaks in quoted
+        strings, and two infrequently used arguments removed.
+    *   (C++) `DatasetBase::DebugString()` is now `const`.
+    *   (C++) `DatasetBase::MakeIterator()` has been renamed to
+        `DatasetBase::MakeIteratorInternal()`.
+    *   (C++) `IteratorBase::Initialize()` method was added to support raising
+        errors during iterator construction.
+*   Eager Execution:
+    *   Added the ability to pause recording operations for gradient computation
+        via `tf.GradientTape.stop_recording`.
+    *   Updated documentation, introductory notebooks.
+*   `tf.keras`:
+    *   Move Keras code out of _impl folder and remove API files.
+    *   `tf.keras.Model.save_weights` now saves in TensorFlow format by default.
+    *   Enable dataset iterators to be passed to `tf.keras.Model` training/eval
+        methods.
+*   TensorFlow Debugger (tfdbg) CLI: fix an issue in which the TensorBoard
+    Debugger Plugin could not handle total source file size exceeding gRPC
+    message size limit (4 MB).
+*   `tf.contrib`:
+    *   `tf.contrib.framework.zero_initializer` supports ResourceVariable.
+    *   Adding "constrained_optimization" to tensorflow/contrib.
+*   Other:
+    *   Add GCS Configuration Ops.
+    *   Changing signature of `MakeIterator` to enable propagating error status.
+    *   KL divergence for two Dirichlet distributions.
+    *   More consistent GcsFileSystem behavior for certain reads past EOF.
+    *   Update benchmark for tf.scan to match ranges across eager and graph
+        modes.
+    *   Fixed bug in `tf.reduce_prod gradient` for complex dtypes.
+    *   Allow the use of '.' in variables (e.g. "hparams.parse('a.b=1.0')"),
+        which would previously raise an error. This will correspond to an
+        attribute name with an embedded '.' symbol (e.g. 'a.b'), which can only
+        be accessed indirectly (e.g. through getattr and setattr). To set this
+        up the user will first need to explicitly add the variable to the hparam
+        object (e.g. "hparams.add_hparam(name='a.b', value=0.0)").
+    *   Benchmark for tf.scan in graph and eager modes.
+    *   Added complex128 support to FFT, FFT2D, FFT3D, IFFT, IFFT2D, and IFFT3D.
+    *   Making ids unique in `nn.embedding_lookup_sparse`. This helps to reduce
+        RPC calls for looking up the embeddings when there are repeated ids in
+        the batch.
+    *   Support indicator column in boosted trees.
+    *   Prevent `tf.gradients()` from backpropagating through integer tensors.
+    *   LinearOperator[1D,2D,3D]Circulant added to `tensorflow.linalg`.
+    *   Conv3D, Conv3DBackpropInput, Conv3DBackpropFilter now supports
+        arbitrary.
+    *   Added `tf.train.Checkpoint` for reading/writing object-based
+        checkpoints.
+    *   Added LinearOperatorKronecker, a dense-free implementation of the
+        Kronecker Product.
+    *   Allow LinearOperator to broadcast.
+    *   SavedModelBuilder will now deduplicate asset names that point to files
+        with the same basename and the same contents. Note that this may result
+        in new asset files included in SavedModels in cases where assets with
+        the same name but different contents were previously overwriting each
+        other.
 
 ## Thanks to our Contributors
 
@@ -458,7 +1777,7 @@ Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, 田�
 ## Major Features And Improvements
 * [Eager execution](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/eager)
   preview version is now available.
-* [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
+* [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/lite)
   dev preview is now available.
 * CUDA 9.0 and cuDNN 7 support.
 * Accelerated Linear Algebra (XLA):
@@ -635,7 +1954,7 @@ answered questions, and were part of inspiring discussions.
 
 ## Major Features And Improvements
 * `tf.keras` is now part of the core TensorFlow API.
-* [`tf.data`](http://tensorflow.org/guide/datasets) is now part of
+* [`tf.data`](http://tensorflow.org/guide/data) is now part of
   the core TensorFlow API.
   * The API is now subject to backwards compatibility guarantees.
   * For a guide to migrating from the `tf.contrib.data` API, see the
@@ -717,7 +2036,7 @@ answered questions, and were part of inspiring discussions.
 * Remove `tf.contrib.data.Iterator.from_dataset()` method. Use
   `Dataset.make_initializable_iterator()` instead.
 * Remove seldom used and unnecessary `tf.contrib.data.Iterator.dispose_op()`.
-* Reorder some TFGAN loss functions in a non-backwards compatible way.
+* Reorder some TF-GAN loss functions in a non-backwards compatible way.
 
 ## Known Issues
 * In Python 3, `Dataset.from_generator()` does not support Unicode strings.
@@ -805,7 +2124,7 @@ See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/
 * Adds tf.contrib.nn.rank_sampled_softmax_loss, a sampled-softmax variant that can improve rank loss.
 * `tf.contrib.metrics`.{streaming_covariance,streaming_pearson_correlation} modified to return nan when they have seen less or equal to 1 unit of weight.
 * Adds time series models to contrib. See contrib/timeseries/README.md for details.
-* Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
+* Adds FULLY_CONNECTED Op to tensorflow/lite/schema.fbs
 
 ## Known Issues
 * Tensorflow_gpu compilation fails with Bazel 0.5.3.
@@ -842,7 +2161,7 @@ See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/
 * TensorForest multi-regression bug fix.
 * Framework now supports armv7, cocoapods.org now displays correct page.
 * Script to create iOS framework for CocoaPods.
-* Android releases of TensorFlow are now pushed to jcenter for easier integration into apps. See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md for more details.
+* Android releases of TensorFlow are now pushed to jcenter for easier integration into apps. See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/android/inference_interface/README.md for more details.
 * TensorFlow Debugger (tfdbg):
   * Fixed a bug that prevented tfdbg from functioning with multi-GPU setups.
   * Fixed a bug that prevented tfdbg from working with `tf.Session.make_callable`.
@@ -945,7 +2264,7 @@ answered questions, and were part of inspiring discussions.
 * [`SavedModel CLI`](https://www.tensorflow.org/versions/master/guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
 * Android releases of TensorFlow are now pushed to jcenter for easier
   integration into apps. See
-  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md
+  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/android/inference_interface/README.md
   for more details.
 
 ## Deprecations

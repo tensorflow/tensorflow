@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -74,12 +75,19 @@ class DeviceContext : public core::RefCounted {
   }
 
   // "cpu_tensor" is a tensor on a CPU. Copies "cpu_tensor" into
-  // "device_tensor" which is on a GPU device "device". "device_tensor"
+  // "device_tensor" which is on a non-CPU device "device". "device_tensor"
   // must be allocated to be of the same size as "cpu_tensor".
   virtual void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                                     Tensor* device_tensor,
-                                     StatusCallback done) const {
+                                     Tensor* device_tensor, StatusCallback done,
+                                     bool sync_dst_compute = true) const {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
+  }
+
+  // Copies a tensor in this device.
+  virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
+                                      Device* device, Tensor* output_tensor,
+                                      StatusCallback done) const {
+    done(errors::Unimplemented("Copy in same device not implemented."));
   }
 
   // "device_tensor" is a tensor on a non-CPU device.  Copies
@@ -134,7 +142,7 @@ class DeviceBase {
   // "stream" is used in special circumstances (such as the
   // constructors of Ops) where there is no available OpKernelContext.
   // "default_context" is used by OpKernelContext whenever a device does not
-  // supply a DeviceContext for an op in FillContextMap (e.g. when only
+  // supply a DeviceContext for an op in TryGetDeviceContext() (e.g. when only
   // using a single stream.)
   // "event_mgr" is used to delay deallocation of temporary GPU buffers.
   // TODO(pbar) Work out how to move this out of DeviceBase.
@@ -194,7 +202,9 @@ class DeviceBase {
 
   virtual ScopedAllocatorMgr* GetScopedAllocatorMgr() const { return nullptr; }
 
-  bool has_eigen_cpu_device() const { return !eigen_cpu_devices_.empty(); }
+  virtual bool has_eigen_cpu_device() const {
+    return !eigen_cpu_devices_.empty();
+  }
 
   virtual const Eigen::ThreadPoolDevice* eigen_cpu_device();
 
@@ -239,6 +249,31 @@ class DeviceBase {
     return errors::Internal("Device does not implement MakeTensorFromProto()");
   }
 
+  // Some devices (i.e. GPUs) may free device memory prior to its actual use
+  // being completed on the assumption that subsequent allocations can only be
+  // used serially with respect to pending uses.  If this function returns a
+  // non-zero value it is the value of a device-specific counter such that any
+  // device memory tagged with an earlier freed-at count is really unencumbered
+  // by pending uses.  For this to be useful the device memory allocator must
+  // be tagging deallocated memory chunks using the same counter.
+  virtual uint64 SafeAllocFrontier(uint64 old_value) { return 0; }
+
+  // Copies `input_tensor` to `output_tensor`, where both tensors are on this
+  // device. This function assumes that `output_tensor` has already been
+  // allocated with a buffer that is large enough to hold `input_tensor`'s data.
+  // Calls `done` from a device-specific thread after copy is finished, which
+  // may be the same as calling thread.
+  //
+  // NOTE(ayushd): This function is for TensorFlow internal use only.  Deep copy
+  // is discouraged and should not be used in OpKernels.
+  virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
+                                      Tensor* output_tensor,
+                                      const DeviceContext* device_context,
+                                      StatusCallback done) {
+    done(errors::Internal("Device ", name(), " does not implement ",
+                          "CopyTensorInSameDevice"));
+  }
+
  protected:
   // Does not take ownership.
   void set_tensorflow_device_thread_pool(thread::ThreadPool* thread_pool) {
@@ -256,6 +291,12 @@ class DeviceBase {
   Eigen::SyclDevice* eigen_sycl_device_ = nullptr;
 #endif
 };
+
+// Methods to create and check for Symbolic execution devices.
+// Such devices are mostly used for TF-XLA bridge. TF should not treat these as
+// normal devices.
+void AddSymbolicExecutionDevice(absl::string_view device_name);
+bool IsSymbolicExecutionDevice(absl::string_view device_name);
 
 }  // namespace tensorflow
 

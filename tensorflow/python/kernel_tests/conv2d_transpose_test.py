@@ -38,123 +38,132 @@ class Conv2DTransposeTest(test.TestCase):
 
   def testConv2DTransposeSingleStride(self):
     with self.cached_session():
-      strides = [1, 1, 1, 1]
+      for dtype in (dtypes.float32, dtypes.int32):
+        strides = [1, 1, 1, 1]
 
-      # Input, output: [batch, height, width, depth]
-      x_shape = [2, 6, 4, 3]
-      y_shape = [2, 6, 4, 2]
+        # Input, output: [batch, height, width, depth]
+        x_shape = [2, 6, 4, 3]
+        y_shape = [2, 6, 4, 2]
 
-      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
-      f_shape = [3, 3, 2, 3]
+        # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+        f_shape = [3, 3, 2, 3]
 
-      x = constant_op.constant(
-          1.0, shape=x_shape, name="x", dtype=dtypes.float32)
-      f = constant_op.constant(
-          1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
-      output = nn_ops.conv2d_transpose(
-          x, f, y_shape, strides=strides, padding="SAME")
-      value = output.eval()
+        x = constant_op.constant(1, shape=x_shape, name="x", dtype=dtype)
+        f = constant_op.constant(1, shape=f_shape, name="filter", dtype=dtype)
+        output = nn_ops.conv2d_transpose(
+            x, f, y_shape, strides=strides, padding="SAME")
+        value = self.evaluate(output)
 
-      # We count the number of cells being added at the locations in the output.
-      # At the center, #cells=kernel_height * kernel_width
-      # At the corners, #cells=ceil(kernel_height/2) * ceil(kernel_width/2)
-      # At the borders, #cells=ceil(kernel_height/2)*kernel_width or
-      #                        kernel_height * ceil(kernel_width/2)
+        # We count the number of cells being added at the locations in the
+        # output.
+        # At the center, #cells=kernel_height * kernel_width
+        # At the corners, #cells=ceil(kernel_height/2) * ceil(kernel_width/2)
+        # At the borders, #cells=ceil(kernel_height/2)*kernel_width or
+        #                        kernel_height * ceil(kernel_width/2)
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[2]):
-          for w in xrange(y_shape[2]):
-            for h in xrange(y_shape[1]):
-              target = 4 * 3.0
-              h_in = h > 0 and h < y_shape[1] - 1
-              w_in = w > 0 and w < y_shape[2] - 1
-              if h_in and w_in:
-                target += 5 * 3.0
-              elif h_in or w_in:
-                target += 2 * 3.0
-              self.assertAllClose(target, value[n, h, w, k])
+        for n in xrange(x_shape[0]):
+          for k in xrange(f_shape[2]):
+            for w in xrange(y_shape[2]):
+              for h in xrange(y_shape[1]):
+                target = 4 * 3
+                h_in = h > 0 and h < y_shape[1] - 1
+                w_in = w > 0 and w < y_shape[2] - 1
+                if h_in and w_in:
+                  target += 5 * 3
+                elif h_in or w_in:
+                  target += 2 * 3
+                if dtype.is_integer:
+                  self.assertAllEqual(target, value[n, h, w, k])
+                else:
+                  self.assertAllClose(target, value[n, h, w, k])
 
   def testConv2DTransposeSame(self):
     with self.cached_session():
-      strides = [1, 2, 2, 1]
+      for dtype in (dtypes.float32, dtypes.int32):
+        strides = [1, 2, 2, 1]
 
-      # Input, output: [batch, height, width, depth]
-      x_shape = [2, 6, 4, 3]
-      y_shape = [2, 12, 8, 2]
+        # Input, output: [batch, height, width, depth]
+        x_shape = [2, 6, 4, 3]
+        y_shape = [2, 12, 8, 2]
 
-      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
-      f_shape = [3, 3, 2, 3]
+        # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+        f_shape = [3, 3, 2, 3]
 
-      x = constant_op.constant(
-          1.0, shape=x_shape, name="x", dtype=dtypes.float32)
-      f = constant_op.constant(
-          1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
-      output = nn_ops.conv2d_transpose(
-          x, f, y_shape, strides=strides, padding="SAME")
-      value = output.eval()
+        x = constant_op.constant(1, shape=x_shape, name="x", dtype=dtype)
+        f = constant_op.constant(1, shape=f_shape, name="filter", dtype=dtype)
+        output = nn_ops.conv2d_transpose(
+            x, f, y_shape, strides=strides, padding="SAME")
+        value = self.evaluate(output)
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[2]):
-          for w in xrange(y_shape[2]):
-            for h in xrange(y_shape[1]):
-              target = 3.0
-              # We add a case for locations divisible by the stride.
-              h_in = h % strides[1] == 0 and h > 0 and h < y_shape[1] - 1
-              w_in = w % strides[2] == 0 and w > 0 and w < y_shape[2] - 1
-              if h_in and w_in:
-                target += 9.0
-              elif h_in or w_in:
-                target += 3.0
-              self.assertAllClose(target, value[n, h, w, k])
+        for n in xrange(x_shape[0]):
+          for k in xrange(f_shape[2]):
+            for w in xrange(y_shape[2]):
+              for h in xrange(y_shape[1]):
+                target = 3
+                # We add a case for locations divisible by the stride.
+                h_in = h % strides[1] == 0 and h > 0 and h < y_shape[1] - 1
+                w_in = w % strides[2] == 0 and w > 0 and w < y_shape[2] - 1
+                if h_in and w_in:
+                  target += 9
+                elif h_in or w_in:
+                  target += 3
+
+                if dtype.is_integer:
+                  self.assertAllEqual(target, value[n, h, w, k])
+                else:
+                  self.assertAllClose(target, value[n, h, w, k])
 
   def testConv2DTransposeValid(self):
     with self.cached_session():
-      strides = [1, 2, 2, 1]
+      for dtype in (dtypes.float32, dtypes.int32):
+        strides = [1, 2, 2, 1]
 
-      # Input, output: [batch, height, width, depth]
-      x_shape = [2, 6, 4, 3]
-      y_shape = [2, 13, 9, 2]
+        # Input, output: [batch, height, width, depth]
+        x_shape = [2, 6, 4, 3]
+        y_shape = [2, 13, 9, 2]
 
-      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
-      f_shape = [3, 3, 2, 3]
+        # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+        f_shape = [3, 3, 2, 3]
 
-      x = constant_op.constant(
-          1.0, shape=x_shape, name="x", dtype=dtypes.float32)
-      f = constant_op.constant(
-          1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
-      output = nn_ops.conv2d_transpose(
-          x, f, y_shape, strides=strides, padding="VALID")
-      value = output.eval()
+        x = constant_op.constant(1, shape=x_shape, name="x", dtype=dtype)
+        f = constant_op.constant(1, shape=f_shape, name="filter", dtype=dtype)
+        output = nn_ops.conv2d_transpose(
+            x, f, y_shape, strides=strides, padding="VALID")
+        value = self.evaluate(output)
 
-      cache_values = np.zeros(y_shape, dtype=np.float32)
+        cache_values = np.zeros(y_shape, dtype=np.float32)
 
-      # The amount of padding added
-      pad = 1
+        # The amount of padding added
+        pad = 1
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[2]):
-          for w in xrange(pad, y_shape[2] - pad):
-            for h in xrange(pad, y_shape[1] - pad):
-              target = 3.0
-              # We add a case for locations divisible by the stride.
-              h_in = h % strides[1] == 0 and h > pad and h < y_shape[
-                  1] - 1 - pad
-              w_in = w % strides[2] == 0 and w > pad and w < y_shape[
-                  2] - 1 - pad
-              if h_in and w_in:
-                target += 9.0
-              elif h_in or w_in:
-                target += 3.0
-              cache_values[n, h, w, k] = target
+        for n in xrange(x_shape[0]):
+          for k in xrange(f_shape[2]):
+            for w in xrange(pad, y_shape[2] - pad):
+              for h in xrange(pad, y_shape[1] - pad):
+                target = 3
+                # We add a case for locations divisible by the stride.
+                h_in = h % strides[1] == 0 and h > pad and h < y_shape[
+                    1] - 1 - pad
+                w_in = w % strides[2] == 0 and w > pad and w < y_shape[
+                    2] - 1 - pad
+                if h_in and w_in:
+                  target += 9
+                elif h_in or w_in:
+                  target += 3
+                cache_values[n, h, w, k] = target
 
-          # copy values in the border
-          cache_values[n, :, 0, k] = cache_values[n, :, 1, k]
-          cache_values[n, :, -1, k] = cache_values[n, :, -2, k]
-          cache_values[n, 0, :, k] = cache_values[n, 1, :, k]
-          cache_values[n, -1, :, k] = cache_values[n, -2, :, k]
+            # copy values in the border
+            cache_values[n, :, 0, k] = cache_values[n, :, 1, k]
+            cache_values[n, :, -1, k] = cache_values[n, :, -2, k]
+            cache_values[n, 0, :, k] = cache_values[n, 1, :, k]
+            cache_values[n, -1, :, k] = cache_values[n, -2, :, k]
 
-    self.assertAllClose(cache_values, value)
+        if dtype.is_integer:
+          self.assertAllEqual(cache_values, value)
+        else:
+          self.assertAllClose(cache_values, value)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     x_shape = [2, 6, 4, 3]
     f_shape = [3, 3, 2, 3]
@@ -177,7 +186,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeSingleStrideNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 1, 1]
 
         # Input, output: [batch, depth, height, width, depth]
@@ -195,7 +204,7 @@ class Conv2DTransposeTest(test.TestCase):
         output = nn_ops.conv2d_transpose(
             x, f, y_shape, strides=strides, padding="SAME", data_format="NCHW")
 
-        value = output.eval()
+        value = self.evaluate(output)
         for n in xrange(x_shape[0]):
           for k in xrange(f_shape[2]):
             for w in xrange(y_shape[3]):
@@ -212,7 +221,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeSameNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 2, 2]
 
         # Input, output: [batch, depth, height, width]
@@ -230,7 +239,7 @@ class Conv2DTransposeTest(test.TestCase):
         output = nn_ops.conv2d_transpose(
             x, f, y_shape, strides=strides, padding="SAME", data_format="NCHW")
 
-        value = output.eval()
+        value = self.evaluate(output)
         for n in xrange(x_shape[0]):
           for k in xrange(f_shape[2]):
             for w in xrange(y_shape[3]):
@@ -248,7 +257,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeValidNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 2, 2]
 
         # Input, output: [batch, depth, height, width]
@@ -265,7 +274,7 @@ class Conv2DTransposeTest(test.TestCase):
         output = nn_ops.conv2d_transpose(
             x, f, y_shape, strides=strides, padding="VALID", data_format="NCHW")
 
-        value = output.eval()
+        value = self.evaluate(output)
         cache_values = np.zeros(y_shape, dtype=np.float32)
         # The amount of padding added
         pad = 1
@@ -293,7 +302,6 @@ class Conv2DTransposeTest(test.TestCase):
 
         self.assertAllClose(cache_values, value)
 
-  @test_util.enable_c_shapes
   def testConv2DTransposeShapeInference(self):
     # Test case for 8972
     initializer = random_ops.truncated_normal(

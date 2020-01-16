@@ -22,6 +22,10 @@ Once built, the CFG itself is immutable, but the values it holds need not be;
 they are usually annotated with information extracted by walking the graph.
 """
 
+# TODO(mdan): The notion of 'statements' below is inaccurate.
+# They should rather be called 'block statements', because they include
+# statements that may have a body, e.g. if and while.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -31,10 +35,11 @@ import weakref
 from enum import Enum
 
 # pylint:disable=g-bad-import-order
+
 import gast
 # pylint:enable=g-bad-import-order
 
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import parser
 
 
 class Node(object):
@@ -70,9 +75,12 @@ class Node(object):
   def __repr__(self):
     if isinstance(self.ast_node, gast.FunctionDef):
       return 'def %s' % self.ast_node.name
+    elif isinstance(self.ast_node, gast.ClassDef):
+      return 'class %s' % self.ast_node.name
     elif isinstance(self.ast_node, gast.withitem):
-      return compiler.ast_to_source(self.ast_node.context_expr).strip()
-    return compiler.ast_to_source(self.ast_node).strip()
+      return parser.unparse(
+          self.ast_node.context_expr, include_encoding_marker=False).strip()
+    return parser.unparse(self.ast_node, include_encoding_marker=False).strip()
 
 
 class Graph(
@@ -111,6 +119,10 @@ class Graph(
   """
 
   def __repr__(self):
+    return self.as_dot()
+
+  def as_dot(self):
+    """Print CFG in DOT format."""
     result = 'digraph CFG {\n'
     for node in self.index.values():
       result += '  %s [label="%s"];\n' % (id(node), node)
@@ -389,6 +401,8 @@ class GraphBuilder(object):
   def _connect_jump_to_finally_sections(self, node):
     """Connects a jump node to the finally sections protecting it."""
     cursor = set((node,))
+    if node not in self.finally_sections:
+      return cursor
     for guard_section_id in self.finally_sections[node]:
       guard_begin, guard_ends = self.finally_section_subgraphs[guard_section_id]
       self._connect_nodes(cursor, guard_begin)
@@ -561,12 +575,14 @@ class GraphBuilder(object):
     # Build the statement edges.
     stmt_next = {}
     stmt_prev = {}
-    for node, _ in self.forward_edges:
+
+    for node in self.node_index.values():
       for stmt in self.owners[node]:
-        if stmt not in stmt_next:
-          stmt_next[stmt] = set()
         if stmt not in stmt_prev:
           stmt_prev[stmt] = set()
+        if stmt not in stmt_next:
+          stmt_next[stmt] = set()
+
     for first, second in self.forward_edges:
       stmts_exited = self.owners[first] - self.owners[second]
       for stmt in stmts_exited:
@@ -616,10 +632,10 @@ class AstToCfg(gast.NodeVisitor):
     leaving_node = self.lexical_scopes.pop()
     assert node == leaving_node
 
-  def _get_enclosing_scopes(self, include, stop_at):
+  def _get_enclosing_finally_scopes(self, stop_at):
     included = []
     for node in reversed(self.lexical_scopes):
-      if isinstance(node, include):
+      if isinstance(node, gast.Try) and node.finalbody:
         included.append(node)
       if isinstance(node, stop_at):
         return node, included
@@ -631,10 +647,8 @@ class AstToCfg(gast.NodeVisitor):
 
   def _process_exit_statement(self, node, *exits_nodes_of_type):
     # Note: this is safe because we process functions separately.
-    try_node, guards = self._get_enclosing_scopes(
-        include=(gast.Try,),
-        stop_at=tuple(exits_nodes_of_type),
-    )
+    try_node, guards = self._get_enclosing_finally_scopes(
+        tuple(exits_nodes_of_type))
     if try_node is None:
       raise ValueError(
           '%s that is not enclosed by any of %s' % (node, exits_nodes_of_type))
@@ -642,14 +656,40 @@ class AstToCfg(gast.NodeVisitor):
 
   def _process_continue_statement(self, node, *loops_to_nodes_of_type):
     # Note: this is safe because we process functions separately.
-    try_node, guards = self._get_enclosing_scopes(
-        include=(gast.Try,),
-        stop_at=tuple(loops_to_nodes_of_type),
-    )
+    try_node, guards = self._get_enclosing_finally_scopes(
+        tuple(loops_to_nodes_of_type))
     if try_node is None:
       raise ValueError('%s that is not enclosed by any of %s' %
                        (node, loops_to_nodes_of_type))
     self.builder.add_continue_node(node, try_node, guards)
+
+  def visit_ClassDef(self, node):
+    # We also keep the ClassDef node in the CFG, since it technically is a
+    # statement.
+    # For example, this is legal and allows executing user code:
+    #
+    #   class Foo(bar()):
+    #     pass
+    #
+    # It also has a scope:
+    #
+    #   class Bar(object):
+    #     a = 1
+    if self.builder is None:
+      self.generic_visit(node)
+      return
+
+    self.builder.add_ordinary_node(node)
+
+    self.builder_stack.append(self.builder)
+    self.builder = GraphBuilder(node)
+    self._enter_lexical_scope(node)
+
+    self._process_basic_statement(node)
+
+    self._exit_lexical_scope(node)
+    # TODO(mdan): Track the CFG local to the class definition as well?
+    self.builder = self.builder_stack.pop()
 
   def visit_FunctionDef(self, node):
     # We also keep the FunctionDef node in the CFG. This allows us to determine
@@ -675,10 +715,6 @@ class AstToCfg(gast.NodeVisitor):
     self.cfgs[node] = self.builder.build()
     self.builder = self.builder_stack.pop()
 
-  def visit_Lambda(self, node):
-    # TODO(mdan): Treat like FunctionDef? That would be a separate CFG.
-    raise NotImplementedError()
-
   def visit_Return(self, node):
     self._process_exit_statement(node, gast.FunctionDef)
 
@@ -694,14 +730,20 @@ class AstToCfg(gast.NodeVisitor):
   def visit_AugAssign(self, node):
     self._process_basic_statement(node)
 
+  def visit_Pass(self, node):
+    self._process_basic_statement(node)
+
+  def visit_Global(self, node):
+    self._process_basic_statement(node)
+
+  def visit_Nonlocal(self, node):
+    self._process_basic_statement(node)
+
   def visit_Print(self, node):
     self._process_basic_statement(node)
 
   def visit_Raise(self, node):
-    try_node, guards = self._get_enclosing_scopes(
-        include=(gast.Try,),
-        stop_at=(gast.FunctionDef,),
-    )
+    try_node, guards = self._get_enclosing_finally_scopes((gast.FunctionDef,))
     if try_node is None:
       raise ValueError('%s that is not enclosed by any FunctionDef' % node)
     self.builder.add_error_node(node, guards)
@@ -763,9 +805,9 @@ class AstToCfg(gast.NodeVisitor):
 
     self.builder.enter_section(node)
 
-    # TODO(mdan): Strictly speaking, this should be node.target + node.iter.
-    # A blind dataflow analysis would have to process both node.target and
-    # node.iter to properly process read and write access.
+    # Note: Strictly speaking, this should be node.target + node.iter.
+    # However, the activity analysis accounts for this inconsistency,
+    # so dataflow analysis produces the correct values.
     self.builder.enter_loop_section(node, node.iter)
     for stmt in node.body:
       self.visit(stmt)
@@ -788,25 +830,60 @@ class AstToCfg(gast.NodeVisitor):
   def visit_Continue(self, node):
     self._process_continue_statement(node, gast.While, gast.For)
 
-  def visit_Try(self, node):
-    self._enter_lexical_scope(node)
+  def visit_ExceptHandler(self, node):
+    self.builder.begin_statement(node)
+
+    if node.type is not None:
+      self.visit(node.type)
+    if node.name is not None:
+      self.visit(node.name)
 
     for stmt in node.body:
       self.visit(stmt)
-    # Unlike loops, the orelse is a simple continuation of the body.
-    for stmt in node.orelse:
-      self.visit(stmt)
 
-    if node.handlers:
-      # TODO(mdan): Should we still support bare try/except? Might be confusing.
-      raise NotImplementedError('exceptions are not yet supported')
+    self.builder.end_statement(node)
+
+  def visit_Try(self, node):
+    self.builder.begin_statement(node)
+    self._enter_lexical_scope(node)
+
+    # Note: the current simplification is that the try block fully executes
+    # regardless of whether an exception triggers or not. This is consistent
+    # with blocks free of try/except, which also don't account for the
+    # possibility of an exception being raised mid-block.
+
+    for stmt in node.body:
+      self.visit(stmt)
+    # The orelse is an optional continuation of the body.
+    if node.orelse:
+      block_representative = node.orelse[0]
+      self.builder.enter_cond_section(block_representative)
+      self.builder.new_cond_branch(block_representative)
+      for stmt in node.orelse:
+        self.visit(stmt)
+      self.builder.new_cond_branch(block_representative)
+      self.builder.exit_cond_section(block_representative)
 
     self._exit_lexical_scope(node)
 
-    self.builder.enter_finally_section(node)
-    for stmt in node.finalbody:
-      self.visit(stmt)
-    self.builder.exit_finally_section(node)
+    if node.handlers:
+      # Using node would be inconsistent. Using the first handler node is also
+      # inconsistent, but less so.
+      block_representative = node.handlers[0]
+      self.builder.enter_cond_section(block_representative)
+      for block in node.handlers:
+        self.builder.new_cond_branch(block_representative)
+        self.visit(block)
+      self.builder.new_cond_branch(block_representative)
+      self.builder.exit_cond_section(block_representative)
+
+    if node.finalbody:
+      self.builder.enter_finally_section(node)
+      for stmt in node.finalbody:
+        self.visit(stmt)
+      self.builder.exit_finally_section(node)
+
+    self.builder.end_statement(node)
 
   def visit_With(self, node):
     # TODO(mdan): Mark the context manager's exit call as exit guard.

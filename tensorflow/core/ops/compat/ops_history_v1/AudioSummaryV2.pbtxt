@@ -1,0 +1,28 @@
+op {
+  name: "AudioSummaryV2"
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sample_rate"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  attr {
+    name: "max_outputs"
+    type: "int"
+    default_value {
+      i: 3
+    }
+    has_minimum: true
+    minimum: 1
+  }
+}

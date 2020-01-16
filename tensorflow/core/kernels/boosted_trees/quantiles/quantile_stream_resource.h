@@ -37,15 +37,15 @@ class BoostedTreesQuantileStreamResource : public ResourceBase {
         epsilon_(epsilon),
         num_streams_(num_streams),
         max_elements_(max_elements) {
-          streams_.reserve(num_streams_);
-          boundaries_.reserve(num_streams_);
-          for (int64 idx = 0; idx < num_streams; ++idx) {
-            streams_.push_back(QuantileStream(epsilon, max_elements));
-            boundaries_.push_back(std::vector<float>());
-          }
-        }
+    streams_.reserve(num_streams_);
+    boundaries_.reserve(num_streams_);
+    for (int64 idx = 0; idx < num_streams; ++idx) {
+      streams_.push_back(QuantileStream(epsilon, max_elements));
+      boundaries_.push_back(std::vector<float>());
+    }
+  }
 
-  string DebugString() override { return "QuantileStreamResource"; }
+  string DebugString() const override { return "QuantileStreamResource"; }
 
   tensorflow::mutex* mutex() { return &mu_; }
 
@@ -65,6 +65,14 @@ class BoostedTreesQuantileStreamResource : public ResourceBase {
   bool are_buckets_ready() const { return are_buckets_ready_; }
   void set_buckets_ready(const bool are_buckets_ready) {
     are_buckets_ready_ = are_buckets_ready;
+  }
+
+  void ResetStreams() {
+    streams_.clear();
+    streams_.reserve(num_streams_);
+    for (int64 idx = 0; idx < num_streams_; ++idx) {
+      streams_.push_back(QuantileStream(epsilon_, max_elements_));
+    }
   }
 
  private:

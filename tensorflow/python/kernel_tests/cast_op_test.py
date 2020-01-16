@@ -25,6 +25,7 @@ import platform
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
@@ -54,7 +55,7 @@ class CastOpTest(test.TestCase):
       return None
 
   def _cast(self, x, dtype, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       val = constant_op.constant(x, self._toDataType(np.array([x]).dtype))
       return math_ops.cast(val, self._toDataType(dtype), name="cast").eval()
 
@@ -90,10 +91,12 @@ class CastOpTest(test.TestCase):
     if x.dtype == np.float32 or x.dtype == np.float64:
       self._testTypes(x, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     self._testAll(np.arange(-10, 10).reshape(2, 10))
     self._testAll(np.linspace(-10, 10, 17))
 
+  @test_util.run_deprecated_v1
   def testSmallValues(self):
     f4 = np.finfo(np.float32)
     f8 = np.finfo(np.float64)
@@ -105,13 +108,14 @@ class CastOpTest(test.TestCase):
 
   def testBfloat16(self):
     a = np.random.uniform(-100, 100, 100).astype(np.float32)
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
-      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
-    with self.test_session(use_gpu=True):
+      self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
+    with self.cached_session(use_gpu=True):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
-      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
+      self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
 
+  @test_util.run_deprecated_v1
   def testRandom(self):
     self._testAll(np.random.normal(0, 10, 210).reshape([2, 3, 5, 7]))
     self._testAll(np.random.normal(0, 1e6, 210).reshape([2, 3, 5, 7]))
@@ -124,6 +128,7 @@ class CastOpTest(test.TestCase):
         self._cast(
             x, dst_dtype, use_gpu=use_gpu), dst_dtype(expected))
 
+  @test_util.run_deprecated_v1
   def testIntToFloatBoundary(self):
     i4 = np.iinfo(np.int32)
     i8 = np.iinfo(np.int64)
@@ -138,6 +143,7 @@ class CastOpTest(test.TestCase):
     self._compare(i8.max, np.float64, i8.max, False)
     # NOTE: GPU does not support int32/int64 for casting.
 
+  @test_util.run_deprecated_v1
   def testInfNan(self):
     i4 = np.iinfo(np.int32)
     i8 = np.iinfo(np.int64)
@@ -151,7 +157,7 @@ class CastOpTest(test.TestCase):
       # np.float64("np.inf").astype(np.int32) is negative on x86 but positive on ppc64le
       # Numpy link to relevant discussion - https://github.com/numpy/numpy/issues/9040
       # Tensorflow link to relevant discussion - https://github.com/tensorflow/tensorflow/issues/9360
-      if platform.machine() == "ppc64le":
+      if platform.machine() == "ppc64le" or platform.machine() == "aarch64":
         self._compare(-np.inf, np.int32, i4.min, False)
         self._compare(-np.inf, np.int64, i8.min, False)
       else:
@@ -163,8 +169,13 @@ class CastOpTest(test.TestCase):
     self._compare(-np.inf, np.int64, i8.min, False)
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float32, False)), True)
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float64, False)), True)
-    self._compare(np.nan, np.int32, i4.min, False)
-    self._compare(np.nan, np.int64, i8.min, False)
+    # np.float64(np.nan).astype(np.int32) is 0 on ARM
+    if platform.machine() == "aarch64":
+      self._compare(np.nan, np.int32, 0, False)
+      self._compare(np.nan, np.int64, 0, False)
+    else:
+      self._compare(np.nan, np.int32, i4.min, False)
+      self._compare(np.nan, np.int64, i8.min, False)
 
     self._compare(np.inf, np.float32, np.inf, True)
     self._compare(np.inf, np.float64, np.inf, True)
@@ -181,14 +192,16 @@ class CastOpTest(test.TestCase):
   def testNotImplemented(self):
     self._OpError(np.arange(0, 10), dtypes.string, "Cast.*int64.*string.*")
 
+  @test_util.run_deprecated_v1
   def testCastToTypeOfVariable(self):
     with self.cached_session() as sess:
       x = variables.Variable(5, dtype=dtypes.float32)
       y = variables.Variable(True, dtype=dtypes.bool)
       cast = math_ops.cast(y, x.dtype)
       variables.global_variables_initializer().run()
-      self.assertEqual(1.0, sess.run(cast))
+      self.assertEqual(1.0, self.evaluate(cast))
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
     for src_t in t:
@@ -203,6 +216,7 @@ class CastOpTest(test.TestCase):
 
 class SparseTensorCastTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCast(self):
     indices = constant_op.constant([[0], [1], [2]], dtypes.int64)
     values = constant_op.constant(np.array([1, 2, 3], np.int64))
@@ -229,7 +243,7 @@ class SaturateCastTest(test.TestCase):
               [lo, lo + 1, lo // 2, hi // 2, hi - 1, hi], dtype=in_type)
           y = math_ops.saturate_cast(x, dtype=out_type)
           self.assertEqual(y.dtype, out_type)
-          x, y = sess.run([x, y])
+          x, y = self.evaluate([x, y])
           correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
           self.assertAllEqual(correct, y)
 

@@ -20,10 +20,6 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
 
-#if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
-#endif
-
 // Compact 16-bit encoding of floating point numbers. This representation uses
 // 1 bit for the sign, 8 bits for the exponent and 7 bits for the mantissa.  It
 // is assumed that floats are in IEEE 754 format so the representation is just

@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -57,7 +56,6 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     target_dist_t = ops.convert_to_tensor(target_dist, name="target_dist")
-    class_values_ds = dataset.map(class_func)
 
     # Get initial distribution.
     if initial_dist is not None:
@@ -72,8 +70,8 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
       prob_of_original_ds = dataset_ops.Dataset.from_tensors(
           prob_of_original).repeat()
     else:
-      initial_dist_ds = _estimate_initial_dist_ds(
-          target_dist_t, class_values_ds)
+      initial_dist_ds = _estimate_initial_dist_ds(target_dist_t,
+                                                  dataset.map(class_func))
       acceptance_and_original_prob_ds = initial_dist_ds.map(
           lambda initial: _calculate_acceptance_probs_with_mixing(  # pylint: disable=g-long-lambda
               initial, target_dist_t))
@@ -82,19 +80,26 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
       prob_of_original_ds = acceptance_and_original_prob_ds.map(
           lambda _, prob_original: prob_original)
     filtered_ds = _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds,
-                             class_values_ds, seed)
+                             class_func, seed)
     # Prefetch filtered dataset for speed.
     filtered_ds = filtered_ds.prefetch(3)
 
     prob_original_static = _get_prob_original_static(
         initial_dist_t, target_dist_t) if initial_dist is not None else None
+
+    def add_class_value(*x):
+      if len(x) == 1:
+        return class_func(*x), x[0]
+      else:
+        return class_func(*x), x
+
     if prob_original_static == 1:
-      return dataset_ops.Dataset.zip((class_values_ds, dataset))
+      return dataset.map(add_class_value)
     elif prob_original_static == 0:
       return filtered_ds
     else:
       return interleave_ops.sample_from_datasets(
-          [dataset_ops.Dataset.zip((class_values_ds, dataset)), filtered_ds],
+          [dataset.map(add_class_value), filtered_ds],
           weights=prob_of_original_ds.map(lambda prob: [(prob, 1.0 - prob)]),
           seed=seed)
 
@@ -124,8 +129,7 @@ def _get_prob_original_static(initial_dist_t, target_dist_t):
     return np.min(target_static / init_static)
 
 
-def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
-               seed):
+def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_func, seed):
   """Filters a dataset based on per-class acceptance probabilities.
 
   Args:
@@ -133,7 +137,8 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
     acceptance_dist_ds: A dataset of acceptance probabilities.
     initial_dist_ds: A dataset of the initial probability distribution, given or
         estimated.
-    class_values_ds: A dataset of the corresponding classes.
+    class_func: A function mapping an element of the input dataset to a scalar
+      `tf.int32` tensor. Values should be in `[0, num_classes)`.
     seed: (Optional.) Python integer seed for the resampler.
 
   Returns:
@@ -154,22 +159,25 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
                                                  initial_dist_ds))
                         .map(maybe_warn_on_large_rejection))
 
-  def _gather_and_copy(class_val, acceptance_prob, data):
+  def _gather_and_copy(acceptance_prob, data):
+    if isinstance(data, tuple):
+      class_val = class_func(*data)
+    else:
+      class_val = class_func(data)
     return class_val, array_ops.gather(acceptance_prob, class_val), data
 
   current_probabilities_and_class_and_data_ds = dataset_ops.Dataset.zip(
-      (class_values_ds, acceptance_dist_ds, dataset)).map(_gather_and_copy)
+      (acceptance_dist_ds, dataset)).map(_gather_and_copy)
   filtered_ds = (
-      current_probabilities_and_class_and_data_ds
-      .filter(lambda _1, p, _2: random_ops.random_uniform([], seed=seed) < p))
+      current_probabilities_and_class_and_data_ds.filter(
+          lambda _1, p, _2: random_ops.random_uniform([], seed=seed) < p))
   return filtered_ds.map(lambda class_value, _, data: (class_value, data))
 
 
 def _estimate_initial_dist_ds(
     target_dist_t, class_values_ds, dist_estimation_batch_size=32,
     smoothing_constant=10):
-  num_classes = (target_dist_t.shape[0].value or
-                 array_ops.shape(target_dist_t)[0])
+  num_classes = (target_dist_t.shape[0] or array_ops.shape(target_dist_t)[0])
   initial_examples_per_class_seen = array_ops.fill(
       [num_classes], np.int64(smoothing_constant))
 
@@ -183,7 +191,7 @@ def _estimate_initial_dist_ds(
   initial_dist_ds = (class_values_ds.batch(dist_estimation_batch_size)
                      .apply(scan_ops.scan(initial_examples_per_class_seen,
                                           update_estimate_and_tile))
-                     .apply(batching.unbatch()))
+                     .unbatch())
 
   return initial_dist_ds
 
@@ -207,7 +215,7 @@ def _estimate_data_distribution(c, num_examples_per_class_seen):
       `[num_classes]`.
     dist: The updated distribution.  Type `float32`, shape `[num_classes]`.
   """
-  num_classes = num_examples_per_class_seen.get_shape()[0].value
+  num_classes = num_examples_per_class_seen.get_shape()[0]
   # Update the class-count based on what labels are seen in batch.
   num_examples_per_class_seen = math_ops.add(
       num_examples_per_class_seen, math_ops.reduce_sum(

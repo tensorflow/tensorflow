@@ -49,10 +49,11 @@ WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Print");
 REGISTER_OP("PrintV2")
     .Input("input: string")
     .SetIsStateful()
-    .Attr(
-        "output_stream: {'stdout', 'stderr', 'log(info)', "
-        "'log(warning)', 'log(error)'} = 'stderr'")
+    .Attr("output_stream: string = 'stderr'")
+    .Attr("end: string = '\n'")
     .SetShapeFn([](InferenceContext* c) {
+      // Early exit if rank is unknown.
+      if (!c->RankKnown(c->input(0))) return Status::OK();
       // Make sure that the input is a scalar.
       if (c->Rank(c->input(0)) != 0) {
         return errors::InvalidArgument("input must be a scalar, but has rank: ",

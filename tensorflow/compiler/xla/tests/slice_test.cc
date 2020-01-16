@@ -166,6 +166,26 @@ TEST_F(SliceTest, SliceR4ThreeDimsMiddleMinor) {
   ComputeAndCompareR4(&builder, *expected, {}, ErrorSpec(0.000001));
 }
 
+TEST_F(SliceTest, SliceOfReshape) {
+  Array2D<int> values(2 * 3 * 24, 7);
+  values.FillIota(1);
+  XlaBuilder builder(TestName());
+  auto original = ConstantR2FromArray2D(&builder, values);
+  auto reshape = Reshape(original, {24, 3, 2, 7});
+  Slice(reshape, {0, 0, 0, 0}, {11, 3, 2, 7}, {1, 1, 1, 1});
+  ComputeAndCompare(&builder, {});
+}
+
+TEST_F(SliceTest, SliceOfCollapsingReshape) {
+  Array4D<int> values(2, 3, 5, 7);
+  values.FillIota(1);
+  XlaBuilder builder(TestName());
+  auto original = ConstantR4FromArray4D(&builder, values);
+  auto reshape = Reshape(original, {2 * 3 * 5, 7});
+  Slice(reshape, {0, 0}, {4, 7}, {1, 1});
+  ComputeAndCompare(&builder, {});
+}
+
 XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   Array4D<float> values(2, 4, 6, 8);
   values.FillRandom(3.14f);
@@ -239,20 +259,33 @@ XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64>(GetParam()); }
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_F32) { Run<float>(GetParam()); }
+// TODO(b/69425338): The following tests are disable on GPU because they use
+// too much GPU memory.
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F32)) {
+  Run<float>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_F64) { Run<double>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F64)) {
+  Run<double>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_U32) { Run<uint32>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U32)) {
+  Run<uint32>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_S32) { Run<int32>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S32)) {
+  Run<int32>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_U64) { Run<uint64>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U64)) {
+  Run<uint64>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_S64) { Run<int64>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S64)) {
+  Run<int64>(GetParam());
+}
 
 XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
-
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
@@ -296,8 +329,6 @@ INSTANTIATE_TEST_CASE_P(
     SliceR1TestDataToString
 );
 
-// TODO(b/69425338): This uses too much memory on GPU.
-#ifndef XLA_TEST_BACKEND_GPU
 INSTANTIATE_TEST_CASE_P(
     SliceR1TestBigSlicesInstantiation,
     SliceR1LargeTest,
@@ -311,7 +342,6 @@ INSTANTIATE_TEST_CASE_P(
     ),
     SliceR1TestDataToString
 );
-#endif
 
 INSTANTIATE_TEST_CASE_P(
     SliceStridedR1TestInstantiation,

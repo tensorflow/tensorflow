@@ -511,6 +511,7 @@ class NormalTest(test.TestCase):
     self.assertAllEqual(self.evaluate(normal.event_shape_tensor()), [])
     self.assertEqual(normal.event_shape, tensor_shape.TensorShape([]))
 
+  @test_util.run_deprecated_v1
   def testNormalShapeWithPlaceholders(self):
     mu = array_ops.placeholder(dtype=dtypes.float32)
     sigma = array_ops.placeholder(dtype=dtypes.float32)

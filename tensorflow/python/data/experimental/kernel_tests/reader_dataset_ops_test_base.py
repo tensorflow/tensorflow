@@ -26,12 +26,9 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.lib.io import python_io
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.util import compat
 
@@ -63,11 +60,11 @@ class FixedLengthRecordDatasetTestBase(test_base.DatasetTestBase):
     return filenames
 
 
-class ReadBatchFeaturesTestBase(test_base.DatasetTestBase):
-  """Base class for setting up and testing `make_batched_feature_dataset`."""
+class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
+  """Base class for setting up and testing `make_batched_features_dataset`."""
 
   def setUp(self):
-    super(ReadBatchFeaturesTestBase, self).setUp()
+    super(MakeBatchedFeaturesDatasetTestBase, self).setUp()
     self._num_files = 2
     self._num_records = 7
     self.test_filenames = self._createFiles()
@@ -150,26 +147,25 @@ class ReadBatchFeaturesTestBase(test_base.DatasetTestBase):
       writer.close()
     return filenames
 
-  def _run_actual_batch(self, outputs, sess, label_key_provided=False):
+  def _run_actual_batch(self, outputs, label_key_provided=False):
     if label_key_provided:
       # outputs would be a tuple of (feature dict, label)
-      label_op = outputs[1]
-      features_op = outputs[0]
+      features, label = self.evaluate(outputs())
     else:
-      features_op = outputs
-      label_op = features_op["label"]
-    file_op = features_op["file"]
-    keywords_indices_op = features_op["keywords"].indices
-    keywords_values_op = features_op["keywords"].values
-    keywords_dense_shape_op = features_op["keywords"].dense_shape
-    record_op = features_op["record"]
-    return sess.run([
-        file_op, keywords_indices_op, keywords_values_op,
-        keywords_dense_shape_op, record_op, label_op
+      features = self.evaluate(outputs())
+      label = features["label"]
+    file_out = features["file"]
+    keywords_indices = features["keywords"].indices
+    keywords_values = features["keywords"].values
+    keywords_dense_shape = features["keywords"].dense_shape
+    record = features["record"]
+    return ([
+        file_out, keywords_indices, keywords_values, keywords_dense_shape,
+        record, label
     ])
 
-  def _next_actual_batch(self, sess, label_key_provided=False):
-    return self._run_actual_batch(self.outputs, sess, label_key_provided)
+  def _next_actual_batch(self, label_key_provided=False):
+    return self._run_actual_batch(self.outputs, label_key_provided)
 
   def _interleave(self, iterators, cycle_length):
     pending_iterators = iterators
@@ -251,7 +247,6 @@ class ReadBatchFeaturesTestBase(test_base.DatasetTestBase):
       ]
 
   def verify_records(self,
-                     sess,
                      batch_size,
                      file_index=None,
                      num_epochs=1,
@@ -268,7 +263,7 @@ class ReadBatchFeaturesTestBase(test_base.DatasetTestBase):
         num_epochs,
         cycle_length=interleave_cycle_length):
       actual_batch = self._next_actual_batch(
-          sess, label_key_provided=label_key_provided)
+          label_key_provided=label_key_provided)
       for i in range(len(expected_batch)):
         self.assertAllEqual(expected_batch[i], actual_batch[i])
 
@@ -316,27 +311,82 @@ class TextLineDatasetTestBase(test_base.DatasetTestBase):
 class TFRecordDatasetTestBase(test_base.DatasetTestBase):
   """Base class for setting up and testing TFRecordDataset."""
 
+  def _interleave(self, iterators, cycle_length):
+    pending_iterators = iterators
+    open_iterators = []
+    num_open = 0
+    for i in range(cycle_length):
+      if pending_iterators:
+        open_iterators.append(pending_iterators.pop(0))
+        num_open += 1
+
+    while num_open:
+      for i in range(min(cycle_length, len(open_iterators))):
+        if open_iterators[i] is None:
+          continue
+        try:
+          yield next(open_iterators[i])
+        except StopIteration:
+          if pending_iterators:
+            open_iterators[i] = pending_iterators.pop(0)
+          else:
+            open_iterators[i] = None
+            num_open -= 1
+
+  def _next_expected_batch(self, file_indices, batch_size, num_epochs,
+                           cycle_length, drop_final_batch, use_parser_fn):
+
+    def _next_record(file_indices):
+      for j in file_indices:
+        for i in range(self._num_records):
+          yield j, i
+
+    def _next_record_interleaved(file_indices, cycle_length):
+      return self._interleave([_next_record([i]) for i in file_indices],
+                              cycle_length)
+
+    record_batch = []
+    batch_index = 0
+    for _ in range(num_epochs):
+      if cycle_length == 1:
+        next_records = _next_record(file_indices)
+      else:
+        next_records = _next_record_interleaved(file_indices, cycle_length)
+      for f, r in next_records:
+        record = self._record(f, r)
+        if use_parser_fn:
+          record = record[1:]
+        record_batch.append(record)
+        batch_index += 1
+        if len(record_batch) == batch_size:
+          yield record_batch
+          record_batch = []
+          batch_index = 0
+    if record_batch and not drop_final_batch:
+      yield record_batch
+
+  def _verify_records(self, outputs, batch_size, file_index, num_epochs,
+                      interleave_cycle_length, drop_final_batch, use_parser_fn):
+    if file_index is not None:
+      if isinstance(file_index, list):
+        file_indices = file_index
+      else:
+        file_indices = [file_index]
+    else:
+      file_indices = range(self._num_files)
+
+    for expected_batch in self._next_expected_batch(
+        file_indices, batch_size, num_epochs, interleave_cycle_length,
+        drop_final_batch, use_parser_fn):
+      actual_batch = self.evaluate(outputs())
+      self.assertAllEqual(expected_batch, actual_batch)
+
   def setUp(self):
     super(TFRecordDatasetTestBase, self).setUp()
     self._num_files = 2
     self._num_records = 7
 
     self.test_filenames = self._createFiles()
-
-    self.filenames = array_ops.placeholder(dtypes.string, shape=[None])
-    self.num_epochs = array_ops.placeholder_with_default(
-        constant_op.constant(1, dtypes.int64), shape=[])
-    self.compression_type = array_ops.placeholder_with_default("", shape=[])
-    self.batch_size = array_ops.placeholder(dtypes.int64, shape=[])
-
-    repeat_dataset = core_readers.TFRecordDataset(
-        self.filenames, self.compression_type).repeat(self.num_epochs)
-    batch_dataset = repeat_dataset.batch(self.batch_size)
-
-    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
-    self.init_op = iterator.make_initializer(repeat_dataset)
-    self.init_batch_op = iterator.make_initializer(batch_dataset)
-    self.get_next = iterator.get_next()
 
   def _record(self, f, r):
     return compat.as_bytes("Record %d of file %d" % (r, f))

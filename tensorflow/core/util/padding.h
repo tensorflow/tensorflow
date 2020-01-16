@@ -20,8 +20,10 @@ limitations under the License.
 // kernels.
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -34,19 +36,35 @@ class NodeDef;
 //   VALID: No padding is carried out.
 //   SAME: The pad value is computed so that the output will have the same
 //         dimensions as the input.
+//   EXPLICIT: The user specifies the pad values in the explicit_padding
+//             attribute.
 // The padded area is zero-filled.
 enum Padding {
-  VALID = 1,  // No padding.
-  SAME = 2,   // Input and output layers have the same size.
+  VALID = 1,     // No padding.
+  SAME = 2,      // Input and output layers have the same size.
+  EXPLICIT = 3,  // Padding is explicitly specified
 };
+
+// Returns an error if the padding attributes are invalid.
+Status CheckValidPadding(Padding padding_type,
+                         const std::vector<int64>& explicit_paddings,
+                         int num_dims, TensorFormat data_format);
 
 // Return the string containing the list of valid padding types, that can be
 // used as an Attr() in REGISTER_OP.
 string GetPaddingAttrString();
 
+// Like GetPaddingAttrString(), but also includes EXPLICIT.
+string GetPaddingAttrStringWithExplicit();
+
+string GetExplicitPaddingsAttrString();
+
 // Specialization to parse an attribute directly into a Padding enum.
 Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    Padding* value);
+
+// Sets padding value based on the given string padding value.
+Status GetPaddingFromString(StringPiece str_value, Padding* value);
 
 }  // end namespace tensorflow
 

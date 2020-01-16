@@ -16,55 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_INITIALIZE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_INITIALIZE_H_
 
-#include "tensorflow/stream_executor/platform/port.h"
-
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/stream_executor/platform/google/initialize.h"
-#else
-
-#undef REGISTER_MODULE_INITIALIZER
-#undef DECLARE_MODULE_INITIALIZER
-#undef REGISTER_MODULE_INITIALIZER_SEQUENCE
-
-namespace stream_executor {
-namespace port {
-
-class Initializer {
- public:
-  typedef void (*InitializerFunc)();
-  explicit Initializer(InitializerFunc func) { func(); }
-
-  struct Dependency {
-    Dependency(const char *n, Initializer *i) : name(n), initializer(i) {}
-    const char *const name;
-    Initializer *const initializer;
-  };
-
-  struct DependencyRegisterer {
-    DependencyRegisterer(const char *type, const char *name,
-                         Initializer *initializer,
-                         const Dependency &dependency);
-  };
-};
-
-}  // namespace port
-}  // namespace stream_executor
-
-#define REGISTER_INITIALIZER(type, name, body)                             \
-  static void google_init_##type##_##name() { body; }                      \
-  ::stream_executor::port::Initializer google_initializer_##type##_##name( \
-      google_init_##type##_##name)
-
-#define REGISTER_MODULE_INITIALIZER(name, body) \
-  REGISTER_INITIALIZER(module, name, body)
-
-#define DECLARE_INITIALIZER(type, name) \
-  extern ::stream_executor::port::Initializer google_initializer_##type##_##name
-
-#define DECLARE_MODULE_INITIALIZER(name) DECLARE_INITIALIZER(module, name)
-
-#define REGISTER_MODULE_INITIALIZER_SEQUENCE(name1, name2)
-
-#endif  // !defined(PLATFORM_GOOGLE)
+#include "tensorflow/stream_executor/platform/initialize.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_INITIALIZE_H_

@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package tensorflow.tpu;
+
+import "tensorflow/compiler/xla/xla.proto";
+import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/protobuf/tpu/dynamic_padding.proto";
+
+option cc_enable_arenas = true;
+
+// This is an experimental proto used in the TF/XLA bridge to store metadata to
+// a compile op (e.g. _TPUCompileMlir).
+// TODO(lyandy): Deprecate proto once generic metadata proto is created.
+message TPUCompileMetadataProto {
+  // Description of the types and shapes of the arguments to a computation.
+  message Arg {
+    enum Kind {
+      INVALID = 0;
+      PARAMETER = 1;
+      VARIABLE = 2;
+      // These are args which have been guaranteed to be constants during the
+      // session lifetime by the use of the GuaranteeConstOp (or ConstantOp).
+      GUARANTEED_CONSTANT = 3;
+    }
+    DataType dtype = 1;
+    TensorShapeProto shape = 2;
+    Kind kind = 3;
+
+    // The cross-core sharding of this input within each replica, e.g.,
+    // assigning to one core, or replicate across all cores.
+    xla.OpSharding sharding = 4;
+
+    // Whether this argument will receive the same data across all replicas.
+    bool is_same_data_across_replicas = 5;
+
+    enum EnableXlaSharding {
+      DISALLOWED = 0;
+      // Sharding is allowed if host training loop exists.
+      TENTATIVE = 1;
+      ALLOWED = 2;
+    }
+    // Whether to allow XLA to produce separate programs to shard/unshard this
+    // argument. Requires this arg to be an on-device Kind::VARIABLE, or a
+    // Kind::PARAMETER. For Kind::PARAMETER, it represents the initial value of
+    // a variable, and retval_index_for_sharding must be specified for the
+    // corresponding updated value.
+    EnableXlaSharding enable_xla_sharding = 6;
+
+    // If XLA sharding is allowed on a Kind::PARAMETER, this field is used to
+    // specify the corresponding updated value in the return values. Use -1 for
+    // variables that are not updated.
+    int32 retval_index_for_sharding = 8;
+
+    // Whether this argument is placed on fast memory or not.
+    bool fast_mem = 7;
+  }
+  repeated Arg args = 1;
+
+  // Description of the return values from a computation.
+  message Retval {
+    // The cross-core sharding of this return value within each replica, e.g.,
+    // assigning to one core, or replicate across all cores.
+    xla.OpSharding sharding = 1;
+  }
+  repeated Retval retvals = 2;
+
+  // Number of replicas of the computation and number of cores in each replica.
+  // TODO(b/140721404): it may not be necessary to state the number of cores per
+  // replica here. Reconsider when replicated model-parallelism is implemented
+  // in XLA.
+  int32 num_replicas = 3;
+  int32 num_cores_per_replica = 4;
+
+  reserved 5;  // was device_names
+  reserved 7;  // was replica_device_assignment
+
+  xla.DeviceAssignmentProto device_assignment = 8;
+
+  // A fingerprint of the function library. Ensures that any functions called
+  // by the computation have matching definitions.
+  uint64 function_library_fingerprint = 6;
+
+  // Unique session identifier. Can be empty.
+  string session_handle = 9;
+
+  // Fingerprint of guaranteed_const value. The fingerprint computation inside
+  // tpu_compile_op may be slow. The compuation can be avoided by setting the
+  // fingerprint value here.
+  string guaranteed_const_fingerprint = 10;
+
+  repeated tpu.PaddingMap padding_maps = 11;
+
+  // The location of step markers that XLA compile will instrument.
+  xla.DebugOptions.StepMarkerLocation step_marker_location = 12;
+
+  // Minimum number of batches run through the XLA graph before XLA fusion
+  // autotuner is enabled. Default value of zero disables the autotuner.
+  // The XLA fusion autotuner can improve performance by executing a heuristic
+  // search on the compiler parameters.
+  int64 xla_fusion_autotuner_thresh = 13;
+}

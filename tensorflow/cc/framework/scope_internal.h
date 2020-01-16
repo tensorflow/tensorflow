@@ -61,6 +61,7 @@ class Scope::Impl {
     enum class KernelLabel;
     enum class Colocate;
     enum class AssignedDevice;
+    enum class XlaCluster;
   };
 
   Impl(Graph* graph, Status* status, NameMap* name_map, ShapeRefiner* refiner,
@@ -78,6 +79,7 @@ class Scope::Impl {
   Impl(const Scope& other, Tags::Colocate, const Operation& colocate_with_op,
        bool clear_colocations);
   Impl(const Scope& other, Tags::AssignedDevice, const string& assigned_device);
+  Impl(const Scope& other, Tags::XlaCluster, const string& xla_cluster);
 
   std::unordered_set<string> GetColocationConstraints(
       const Operation& colocate_with_op) const;
@@ -112,6 +114,7 @@ class Scope::Impl {
   const string kernel_label_ = "";
   const string device_ = "";
   const string assigned_device_ = "";
+  const string xla_cluster_ = "";
   const std::unordered_set<string> colocation_constraints_;
 
   // If true, Scope::DoShapeInference() always returns Status:OK().

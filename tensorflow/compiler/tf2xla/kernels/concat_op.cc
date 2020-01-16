@@ -24,28 +24,18 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
-
-// Used to determine the number of Tensors allowed in a Concat op to prevent
-// going over the max gpu parameter memory size. This is an issue because concat
-// is variadic and can have an unlimited number of arguments when called.
-// Concat ops with more Tensors than this will be split into multiple concat
-// ops.
-//
-// TODO(b/112613927): Remove the logic here and put it properly in an HLO pass
-// along with boxing large numbers of parameters.
-constexpr int64 kMaxConcatArgsPerOp = 500;
 
 // --------------------------------------------------------------------------
 class ConcatBaseOp : public XlaOpKernel {
@@ -55,15 +45,13 @@ class ConcatBaseOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape concat_dim_tensor_shape = ctx->InputShape(axis_index_);
-    OP_REQUIRES(
-        ctx, IsLegacyScalar(concat_dim_tensor_shape),
-        errors::InvalidArgument(
-            "Concat dim tensor should be a scalar integer, but got shape ",
-            concat_dim_tensor_shape.DebugString()));
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(axis_index_, &literal));
-    // TODO(annarev): add a helper to support int64 input.
-    const int32 concat_dim = literal.Get<int>({});
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(concat_dim_tensor_shape),
+                errors::InvalidArgument(
+                    "Concat dim tensor should be a scalar, but got shape ",
+                    concat_dim_tensor_shape.DebugString()));
+    int64 concat_dim;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntScalar(axis_index_, &concat_dim));
 
     std::vector<xla::XlaOp> values;
     std::vector<TensorShape> shapes;
@@ -73,9 +61,7 @@ class ConcatBaseOp : public XlaOpKernel {
     const TensorShape& input_shape = shapes[0];
 
     int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
-    OP_REQUIRES(ctx,
-                (0 <= axis && axis < input_dims) ||
-                    (allow_legacy_scalars() && concat_dim == 0),
+    OP_REQUIRES(ctx, 0 <= axis && axis < input_dims,
                 errors::InvalidArgument(
                     "ConcatOp : Expected concatenating dimensions in the range "
                     "[",
@@ -84,16 +70,12 @@ class ConcatBaseOp : public XlaOpKernel {
     // Make a vector holding the XlaOp for each of the inputs that has non-zero
     // elements.
     std::vector<xla::XlaOp> input_data;
-    std::vector<xla::XlaOp> partial_concats;
     int output_concat_dim = 0;
-    const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
       xla::XlaOp handle = values[i];
       const TensorShape& in_shape = shapes[i];
-      const bool in_is_scalar = IsLegacyScalar(in_shape);
       OP_REQUIRES(
-          ctx,
-          in_shape.dims() == input_dims || (input_is_scalar && in_is_scalar),
+          ctx, in_shape.dims() == input_dims,
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
               input_shape.DebugString(), " vs. shape[", i,
@@ -105,30 +87,10 @@ class ConcatBaseOp : public XlaOpKernel {
         input_data.push_back(handle);
       }
       output_concat_dim += in_shape.dims() > 0 ? in_shape.dim_size(axis) : 1;
-
-      // Concat is associative, so it can be split into many operations when too
-      // many arguments are in a single op. This is a temporary workaround for
-      // b/112613927 where too many parameters in an XlaLaunchOp later result in
-      // too many parameters to a single GPU kernel.
-      if (i && i % kMaxConcatArgsPerOp == 0) {
-        partial_concats.push_back(
-            xla::ConcatInDim(ctx->builder(), input_data, axis));
-        input_data.clear();
-      }
     }
-    // Add any inputs that have not been put into another concat yet.
-    partial_concats.insert(partial_concats.end(), input_data.begin(),
-                           input_data.end());
 
     VLOG(1) << "Concat dim " << concat_dim << " equivalent to " << axis;
-    // Don't add an additional "identity" concatenate for better readibility of
-    // IR.
-    if (partial_concats.size() == 1) {
-      ctx->SetOutput(0, partial_concats.front());
-    } else {
-      ctx->SetOutput(0,
-                     xla::ConcatInDim(ctx->builder(), partial_concats, axis));
-    }
+    ctx->SetOutput(0, xla::ConcatInDim(ctx->builder(), input_data, axis));
   }
 
  private:
@@ -149,10 +111,11 @@ class ConcatV2Op : public ConcatBaseOp {
       : ConcatBaseOp(c, /* axis_index */ c->num_inputs() - 1) {}
 };
 
-REGISTER_XLA_OP(Name("Concat").CompileTimeConstInput("concat_dim"), ConcatOp);
+REGISTER_XLA_OP(Name("Concat").CompileTimeConstantInput("concat_dim"),
+                ConcatOp);
 REGISTER_XLA_OP(Name("ConcatV2")
                     .TypeConstraint("Tidx", DT_INT32)
-                    .CompileTimeConstInput("axis"),
+                    .CompileTimeConstantInput("axis"),
                 ConcatV2Op);
 
 class ConcatOffsetOp : public XlaOpKernel {
@@ -161,11 +124,10 @@ class ConcatOffsetOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape concat_dim_shape = ctx->InputShape(0);
-    OP_REQUIRES(
-        ctx, IsLegacyScalar(concat_dim_shape),
-        errors::InvalidArgument(
-            "Concat dim tensor should be a scalar integer, but got shape ",
-            concat_dim_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(concat_dim_shape),
+                errors::InvalidArgument(
+                    "Concat dim tensor should be a scalar, but got shape ",
+                    concat_dim_shape.DebugString()));
     for (int i = 1; i < ctx->num_inputs(); ++i) {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(ctx->InputShape(i)),
                   errors::InvalidArgument("input ", i,
@@ -192,39 +154,38 @@ class ConcatOffsetOp : public XlaOpKernel {
     //  [0, 5, 0, 0]
     const int32 N = ctx->num_inputs() - 1;
     const TensorShape inp0_shape = ctx->InputShape(1);
-    xla::Literal inp0_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &inp0_literal));
-    const int64 dims = inp0_shape.num_elements();
+    std::vector<int64> inp0_dims;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &inp0_dims));
+    const int64 inp0_rank = inp0_shape.num_elements();
 
-    xla::Literal concat_dim_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &concat_dim_literal));
-    const int64 cdim = concat_dim_literal.Get<int>({});
+    int64 cdim;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &cdim));
 
-    VLOG(1) << "ConcatOffset " << cdim << "," << dims;
-    int32 axis = cdim < 0 ? cdim + dims : cdim;
-    OP_REQUIRES(ctx, FastBoundsCheck(axis, dims),
+    VLOG(1) << "ConcatOffset " << cdim << "," << inp0_rank;
+    int32 axis = cdim < 0 ? cdim + inp0_rank : cdim;
+    OP_REQUIRES(ctx, FastBoundsCheck(axis, inp0_rank),
                 errors::InvalidArgument("Concat dim is out of range: ", axis,
-                                        " vs. ", dims));
+                                        " vs. ", inp0_rank));
     int32 offset = 0;
     for (int i = 0; i < N; ++i) {
       const TensorShape inp_shape = ctx->InputShape(1 + i);
-      OP_REQUIRES(ctx, dims == inp_shape.num_elements(),
-                  errors::InvalidArgument("input ", i, " should contain ", dims,
-                                          " elements, but got ",
+      OP_REQUIRES(ctx, inp0_rank == inp_shape.num_elements(),
+                  errors::InvalidArgument("input ", i, " should contain ",
+                                          inp0_rank, " elements, but got ",
                                           inp_shape.num_elements()));
-      xla::Literal inp_literal;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInput(1 + i, &inp_literal));
+      std::vector<int64> inp_dims;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1 + i, &inp_dims));
 
-      Tensor out_constant(DT_INT32, TensorShape({dims}));
+      Tensor out_constant(DT_INT32, TensorShape({inp0_rank}));
       auto out_vec = out_constant.vec<int32>();
-      for (int64 j = 0; j < dims; ++j) {
+      for (int64 j = 0; j < inp0_rank; ++j) {
         if (j == axis) {
           out_vec(j) = offset;
-          offset += inp_literal.Get<int>({j});
+          offset += inp_dims[j];
         } else {
-          const int32 inp0_element = inp0_literal.Get<int>({j});
-          const int32 inp_element = inp_literal.Get<int>({j});
-          OP_REQUIRES(ctx, (inp0_element == inp_element),
+          const int32 inp0_element = inp0_dims[j];
+          const int32 inp_element = inp_dims[j];
+          OP_REQUIRES(ctx, inp0_element == inp_element,
                       errors::InvalidArgument("input[", i, ",", j,
                                               "] mismatch: ", inp0_element,
                                               " vs. ", inp_element));
@@ -238,8 +199,8 @@ class ConcatOffsetOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("ConcatOffset")
-                    .CompileTimeConstInput("concat_dim")
-                    .CompileTimeConstInput("shape"),
+                    .CompileTimeConstantInput("concat_dim")
+                    .CompileTimeConstantInput("shape"),
                 ConcatOffsetOp);
 
 }  // namespace

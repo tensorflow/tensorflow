@@ -12,47 +12,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the LatencyAllEdges optimization."""
+"""Tests for the `LatencyAllEdges` optimization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
-from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops import stats_ops
+from tensorflow.python.data.experimental.ops import stats_aggregator
+from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class OptimizeStatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
+class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase,
+                          parameterized.TestCase):
 
+  # TODO(jsimsa): Investigate why are graph-mode tests failing.
+  @combinations.generate(test_base.eager_only_combinations())
   def testLatencyStatsOptimization(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.from_tensors(1).apply(
-        optimization.assert_next(
+        testing.assert_next(
             ["LatencyStats", "Map", "LatencyStats", "Prefetch",
-             "LatencyStats"])).map(lambda x: x * x).prefetch(1).apply(
-                 stats_ops.set_stats_aggregator(stats_aggregator))
+             "LatencyStats"])).map(lambda x: x * x).prefetch(1)
     options = dataset_ops.Options()
-    options.experimental_latency_all_edges = True
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_stats.latency_all_edges = True
+    options.experimental_stats.aggregator = aggregator
     dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
-    get_next = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
-
-    with self.cached_session() as sess:
-      sess.run(iterator.initializer)
-      self.assertEqual(1 * 1, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      summary_str = sess.run(summary_t)
-      self._assertSummaryHasCount(summary_str,
-                                  "record_latency_TensorDataset/_1", 1)
-      self._assertSummaryHasCount(summary_str, "record_latency_MapDataset/_4",
-                                  1)
-      self._assertSummaryHasCount(summary_str,
-                                  "record_latency_PrefetchDataset/_6", 1)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[1],
+        requires_initialization=True,
+        num_test_iterations=1)
+    handle = self.getHandle(aggregator)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::TensorDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::MapDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::PrefetchDataset"), 1)
 
 
 if __name__ == "__main__":

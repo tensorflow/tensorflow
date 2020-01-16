@@ -13,13 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Iterator ops."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
@@ -27,12 +28,39 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _convert_external_state_policy_to_enum(external_state_policy):
+  if external_state_policy == "warn":
+    return distribute_options.ExternalStatePolicy.WARN
+  if external_state_policy == "ignore":
+    return distribute_options.ExternalStatePolicy.IGNORE
+  if external_state_policy == "fail":
+    return distribute_options.ExternalStatePolicy.FAIL
+  raise ValueError(
+      "Failed to convert {} to an instance of ExternalStatePolicy."
+      "Supported values include: 'warn', 'ignore' and 'fail'".format(
+          external_state_policy))
+
+
 @tf_export("data.experimental.make_saveable_from_iterator")
-def make_saveable_from_iterator(iterator):
-  """Returns a SaveableObject for saving/restore iterator state using Saver.
+def make_saveable_from_iterator(iterator, external_state_policy="fail"):
+  """Returns a SaveableObject for saving/restoring iterator state using Saver.
 
   Args:
     iterator: Iterator.
+    external_state_policy: A string that identifies how to handle input
+      pipelines that depend on external state. Possible values are
+      'ignore': The external state is silently ignored.
+      'warn': The external state is ignored, logging a warning.
+      'fail': The operation fails upon encountering external state.
+      By default we set it to 'fail'.
+
+  Returns:
+    A SaveableObject for saving/restoring iterator state using Saver.
+
+  Raises:
+    ValueError: If iterator does not support checkpointing.
+    ValueError: If `external_state_policy` is not one of 'warn', 'ignore' or
+      'fail'.
 
   For example:
 
@@ -44,8 +72,8 @@ def make_saveable_from_iterator(iterator):
     saveable_obj = tf.data.experimental.make_saveable_from_iterator(iterator)
     # Add the SaveableObject to the SAVEABLE_OBJECTS collection so
     # it can be automatically saved using Saver.
-    tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
-    saver = tf.train.Saver()
+    tf.compat.v1.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+    saver = tf.compat.v1.train.Saver()
 
     while continue_training:
       ... Perform training ...
@@ -63,24 +91,11 @@ def make_saveable_from_iterator(iterator):
   Note: Not all iterators support checkpointing yet. Attempting to save the
   state of an unsupported iterator will throw an error.
   """
-  return _Saveable(iterator._iterator_resource)  # pylint: disable=protected-access
-
-
-class _Saveable(saver_lib.BaseSaverBuilder.SaveableObject):
-  """SaveableObject for saving/restoring iterator state."""
-
-  def __init__(self, iterator_resource):
-    serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
-    specs = [
-        saver_lib.BaseSaverBuilder.SaveSpec(serialized_iterator, "",
-                                            iterator_resource.name + "-state")
-    ]
-    super(_Saveable, self).__init__(iterator_resource, specs,
-                                    iterator_resource.name)
-
-  def restore(self, restored_tensors, unused_restored_shapes):
-    with ops.colocate_with(self.op):
-      return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
+  policy_enum = _convert_external_state_policy_to_enum(external_state_policy)
+  return iterator_ops._IteratorSaveable(  # pylint: disable=protected-access
+      iterator._iterator_resource,  # pylint: disable=protected-access
+      iterator._iterator_resource.name,  # pylint: disable=protected-access
+      external_state_policy=policy_enum)
 
 
 @tf_export("data.experimental.CheckpointInputPipelineHook")
@@ -129,16 +144,45 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
   collector when building the eval graph.
   """
 
-  def __init__(self, estimator):
+  def __init__(self, estimator, external_state_policy="fail"):
     """Initializes a `CheckpointInputPipelineHook`.
+
+    If the input pipeline depends on external state (e.g. seeds for
+    RandomUniform) beyond the input pipeline, this hook would be unable to
+    serialize and deserialize that state. If its acceptable to ignore that state
+    change the external_state_policy argument to 'warn' or 'ignore'. For e.g.
+
+    ```python
+    est = tf.estimator.Estimator(model_fn)
+    while True:
+      est.train(
+          train_input_fn,
+          hooks=[tf.data.experimental.CheckpointInputPipelineHook(
+              est, external_state_policy='warn')],
+          steps=train_steps_per_eval)
+      # Note: We do not pass the hook here.
+      metrics = est.evaluate(eval_input_fn)
+      if should_stop_the_training(metrics):
+        break
+    ```
 
     Args:
       estimator: Estimator.
+      external_state_policy: A string that identifies how to handle input
+        pipelines that depend on external state. Possible values are
+        'ignore': The external state is silently ignored.
+        'warn': The external state is ignored, logging a warning.
+        'fail': The operation fails upon encountering external state.
+        By default we set it to 'fail'.
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
       ValueError: At most one of saver or scaffold should be set.
+      ValueError: If `external_state_policy` is not one of 'warn', 'ignore' or
+        'fail'.
     """
+    self._external_state_policy = _convert_external_state_policy_to_enum(
+        external_state_policy)
     # `checkpoint_basename` is "input.ckpt" for non-distributed pipelines or
     # of the form "input_<task_type>_<task_id>.ckpt" for distributed pipelines.
     # Note: The default `checkpoint_basename` used by `CheckpointSaverHook` is
@@ -175,7 +219,6 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
     # `checkpoint_dir` is the same as the model checkpoint directory, there are
     # no conflicts during restore.
     self._latest_filename = "checkpoint_" + checkpoint_prefix
-    self._first_run = True
 
   def begin(self):
     # Build a Saver that saves all iterators in the `GLOBAL_ITERATORS`
@@ -184,11 +227,20 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
     if (self._checkpoint_saver_hook._saver is None and
         self._checkpoint_saver_hook._scaffold is None):
       iterators = ops.get_collection(iterator_ops.GLOBAL_ITERATORS)
-      saveables = [_Saveable(i) for i in iterators]
-      self._checkpoint_saver_hook._saver = _CustomSaver(saveables,
-                                                        self._latest_filename)
+      saveables = [
+          iterator_ops._IteratorSaveable(
+              i, i.name, external_state_policy=self._external_state_policy)
+          for i in iterators
+      ]
+      self._checkpoint_saver_hook._saver = _CustomSaver(
+          saveables, self._latest_filename, sharded=True)
     # pylint: enable=protected-access
     self._checkpoint_saver_hook.begin()
+
+  def after_create_session(self, session, coord):
+    # If a new session was created, we set _first_run to True so that we can
+    # restore if needed.
+    self._first_run = True
 
   def _restore_or_save_initial_ckpt(self, session):
     # Ideally this should be run in after_create_session but is not for the
@@ -198,7 +250,7 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
     # is run *after* this hook. That is troublesome because
     # 1. If a checkpoint exists and this hook restores it, the initializer hook
     #    will override it.
-    # 2. If no checkpoint exists, this hook will try to save an initialized
+    # 2. If no checkpoint exists, this hook will try to save an uninitialized
     #    iterator which will result in an exception.
     #
     # As a temporary fix we enter the following implicit contract between this
@@ -245,8 +297,8 @@ class _CustomSaver(saver_lib.Saver):
   the model ckpt saved by the `CheckpointSaverHook`.
   """
 
-  def __init__(self, var_list, latest_filename):
-    super(_CustomSaver, self).__init__(var_list)
+  def __init__(self, var_list, latest_filename, sharded=False):
+    super(_CustomSaver, self).__init__(var_list, sharded=sharded)
     self._latest_filename = latest_filename
 
   def save(self,
@@ -261,8 +313,3 @@ class _CustomSaver(saver_lib.Saver):
     return super(_CustomSaver, self).save(
         sess, save_path, global_step, latest_filename or self._latest_filename,
         meta_graph_suffix, write_meta_graph, write_state, strip_default_attrs)
-
-
-tf_export("data.experimental.Optional")(optional_ops.Optional)
-tf_export("data.experimental.get_next_as_optional")(
-    iterator_ops.get_next_as_optional)

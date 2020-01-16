@@ -68,7 +68,7 @@ class ListTest(converter_testing.TestCase):
       with self.cached_session() as sess:
         tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(sess.run(r), [1, 2, 3])
+        self.assertAllEqual(self.evaluate(r), [1, 2, 3])
 
   def test_list_pop(self):
 
@@ -87,12 +87,12 @@ class ListTest(converter_testing.TestCase):
     }
     node = lists.transform(node, ctx)
 
-    with self.compiled(node, ns, dtypes.int32) as result:
+    with self.compiled(node, ns, (dtypes.int32,)) as result:
       with self.cached_session() as sess:
         ts, tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(sess.run(r), [1, 2])
-        self.assertAllEqual(sess.run(ts), 3)
+        self.assertAllEqual(self.evaluate(r), [1, 2])
+        self.assertAllEqual(self.evaluate(ts), 3)
 
   def test_double_list_pop(self):
 
@@ -121,9 +121,9 @@ class ListTest(converter_testing.TestCase):
     }
     node = lists.transform(node, ctx)
 
-    with self.compiled(node, {}, array_ops.stack, dtypes.int32) as result:
+    with self.compiled(node, {}, (array_ops.stack, dtypes.int32)) as result:
       with self.cached_session() as sess:
-        self.assertAllEqual(sess.run(result.test_fn()), [1, 2, 3])
+        self.assertAllEqual(self.evaluate(result.test_fn()), [1, 2, 3])
 
   # TODO(mdan): Add a test with tf.stack with axis kwarg.
 

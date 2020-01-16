@@ -14,6 +14,79 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_STRING
     }
+    field {
+      name: "recv_buf_max_chunk"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "use_numa_affinity"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "collective_deterministic_sequential_execution"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "collective_nccl"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "share_session_state_in_clusterspec_propagation"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "disable_thread_spinning"
+      number: 9
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "share_cluster_devices_in_session"
+      number: 10
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "session_metadata"
+      number: 11
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SessionMetadata"
+    }
+    field {
+      name: "optimize_for_static_graph"
+      number: 12
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "enable_mlir_bridge"
+      number: 13
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "disable_output_partition_graphs"
+      number: 14
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "xla_fusion_autotuner_thresh"
+      number: 15
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
     reserved_range {
       start: 2
       end: 3

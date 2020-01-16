@@ -23,11 +23,11 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 
@@ -68,7 +68,7 @@ void EncodeVariant(const T& value, string* buf);
 //
 //   string TypeName() const;
 //   void Encode(VariantTensorData* data) const;
-//   void Decode(VariantTensorData data);
+//   bool Decode(VariantTensorData data);
 //
 // Simple POD types can elide the Encode/Decode functions, they are provided by
 // helper methods.
@@ -149,39 +149,79 @@ void EncodeVariant(const T& value, string* buf);
 //
 class Variant {
  public:
-  constexpr Variant() noexcept = default;
+  // Constructs a Variant holding no value (aka `is_empty()`).
+  //
+  // This is done by pointing at nullptr via the heap value.
+  Variant() noexcept : heap_value_(/*pointer=*/nullptr), is_inline_(false) {}
 
-  Variant(const Variant& other)
-      : value_(other.is_empty() ? std::unique_ptr<ValueInterface>()
-                                : other.value_->Clone()) {}
+  ~Variant();
 
-  Variant(Variant&& other) noexcept = default;
+  Variant(const Variant& other);
+  Variant(Variant&& other) noexcept;
 
-  // Make sure that the type is CopyConstructible and not a tensorflow::Variant
-  // object itself. We want the copy constructor to be chosen for the
-  // tensorflow::Variant case.
+  // Make sure that the type is CopyConstructible and not a
+  // tensorflow::Variant object itself. We want the copy constructor to be
+  // chosen for the tensorflow::Variant case.
+  template <typename T, typename VT = typename std::decay<T>::type,
+            typename std::enable_if<!std::is_same<Variant, VT>::value &&
+                                        std::is_move_constructible<VT>::value,
+                                    void>::type* = nullptr>
+  Variant(T&& value);
+
   template <typename T, typename VT = typename std::decay<T>::type,
             typename std::enable_if<!std::is_same<Variant, VT>::value &&
                                         std::is_copy_constructible<VT>::value,
                                     void>::type* = nullptr>
-  Variant(T&& value)  // NOLINT
-      : value_(new Value<VT>(in_place, std::forward<T>(value))) {}
+  Variant(const T& value);
+
+  template <typename T, typename VT = typename std::decay<T>::type,
+            typename std::enable_if<!std::is_same<Variant, VT>::value &&
+                                        std::is_copy_constructible<VT>::value,
+                                    void>::type* = nullptr>
+  Variant& operator=(const T& value);
+
+  template <typename T, typename VT = typename std::decay<T>::type,
+            typename std::enable_if<!std::is_same<Variant, VT>::value &&
+                                        std::is_move_constructible<VT>::value,
+                                    void>::type* = nullptr>
+  Variant& operator=(T&& value);
 
   Variant& operator=(const Variant& rhs) {
+    if (&rhs == this) return *this;
     Variant(rhs).swap(*this);
     return *this;
   }
 
   Variant& operator=(Variant&& rhs) noexcept {
+    if (&rhs == this) return *this;
     Variant(std::move(rhs)).swap(*this);
     return *this;
   }
 
-  bool is_empty() const { return value_ == nullptr; }
+  // Constructs a value of type T with the given args in-place in this Variant.
+  // Returns a reference to the newly constructed value.
+  // The signature is based on std::variant<Types...>::emplace() in C++17.
+  template <typename T, class... Args>
+  T& emplace(Args&&... args) {
+    ResetMemory();
+    is_inline_ = CanInlineType<T>();
+    if (is_inline_) {
+      new (&inline_value_)
+          InlineValue(InlineValue::Tag<T>{}, std::forward<Args>(args)...);
+      return static_cast<Variant::Value<T>*>(inline_value_.AsValueInterface())
+          ->value;
+    } else {
+      new (&heap_value_) HeapValue(
+          absl::make_unique<Value<T>>(InPlace(), std::forward<Args>(args)...));
+      return static_cast<Variant::Value<T>*>(heap_value_.get())->value;
+    }
+  }
 
-  void clear() noexcept { value_.reset(); }
+  bool is_empty() const { return GetValue() == nullptr; }
 
-  void swap(Variant& other) noexcept { value_.swap(other.value_); }
+  void clear() noexcept;
+
+  void swap(Variant& other) noexcept;
 
   // Note, unlike TypeName(), TypeId() does not return the TypeIndex
   // of the original type when a TensorValueDataProto is stored as the
@@ -191,12 +231,13 @@ class Variant {
     if (is_empty()) {
       return VoidTypeIndex;
     }
-    return value_->TypeId();
+    return GetValue()->TypeId();
   }
 
   string DebugString() const {
-    return strings::StrCat("Variant<type: ", TypeName(),
-                           " value: ", value_->DebugString(), ">");
+    return strings::StrCat(
+        "Variant<type: ", TypeName(),
+        " value: ", is_empty() ? "[empty]" : GetValue()->DebugString(), ">");
   }
 
   // Returns a pointer to the stored value if it is type T, or nullptr
@@ -205,7 +246,7 @@ class Variant {
   T* get() {
     const TypeIndex TTypeIndex = MakeTypeIndex<T>();
     if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
-    return std::addressof(static_cast<Variant::Value<T>*>(value_.get())->value);
+    return std::addressof(static_cast<Variant::Value<T>*>(GetValue())->value);
   }
 
   // Returns a pointer to the stored value if it is type T, or nullptr
@@ -215,7 +256,7 @@ class Variant {
     const TypeIndex TTypeIndex = MakeTypeIndex<T>();
     if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
     return std::addressof(
-        static_cast<const Variant::Value<T>*>(value_.get())->value);
+        static_cast<const Variant::Value<T>*>(GetValue())->value);
   }
 
   // Returns TypeNameVariant(value).
@@ -227,13 +268,13 @@ class Variant {
     if (is_empty()) {
       return "";
     }
-    return value_->TypeName();
+    return GetValue()->TypeName();
   }
 
   // Serialize the contents of the stored object into `data`.
   void Encode(VariantTensorData* data) const {
     if (!is_empty()) {
-      value_->Encode(data);
+      GetValue()->Encode(data);
     }
   }
 
@@ -243,19 +284,25 @@ class Variant {
   // Helper methods to directly serialize/deserialize from strings.
   void Encode(string* buf) const {
     if (!is_empty()) {
-      value_->Encode(buf);
+      GetValue()->Encode(buf);
     }
   }
   bool Decode(string buf) {
     if (!is_empty()) {
-      return value_->Decode(std::move(buf));
+      return GetValue()->Decode(std::move(buf));
     }
     return true;
   }
 
+  template <typename VT>
+  static constexpr bool CanInlineType() {
+    return ((sizeof(Value<VT>) <= InlineValue::kMaxValueSize) &&
+            (alignof(Value<VT>) <= kMaxInlineValueAlignSize));
+  }
+
  private:
   struct in_place_t {};
-  static constexpr in_place_t in_place{};
+  static constexpr in_place_t InPlace() { return in_place_t{}; }
 
   struct ValueInterface {
     virtual ~ValueInterface() = default;
@@ -263,6 +310,9 @@ class Variant {
     virtual void* RawPtr() = 0;
     virtual const void* RawPtr() const = 0;
     virtual std::unique_ptr<ValueInterface> Clone() const = 0;
+    virtual void CloneInto(ValueInterface* memory) const = 0;
+    virtual void MoveAssign(ValueInterface* memory) = 0;
+    virtual void MoveInto(ValueInterface* memory) = 0;
     virtual string TypeName() const = 0;
     virtual string DebugString() const = 0;
     virtual void Encode(VariantTensorData* data) const = 0;
@@ -272,48 +322,297 @@ class Variant {
   };
 
   template <typename T>
-  struct Value : ValueInterface {
+  struct Value final : ValueInterface {
     template <class... Args>
     explicit Value(in_place_t /*tag*/, Args&&... args)
         : value(std::forward<Args>(args)...) {}
 
-    TypeIndex TypeId() const override {
+    // NOTE(ebrevdo): Destructor must be explicitly defined for CUDA to happily
+    // build `alignof(Variant<void*>)`.
+    ~Value() final = default;
+
+    TypeIndex TypeId() const final {
       const TypeIndex value_type_index =
           MakeTypeIndex<typename std::decay<T>::type>();
       return value_type_index;
     }
 
-    void* RawPtr() override { return &value; }
+    void* RawPtr() final { return &value; }
 
-    const void* RawPtr() const override { return &value; }
+    const void* RawPtr() const final { return &value; }
 
-    std::unique_ptr<ValueInterface> Clone() const override {
-      return std::unique_ptr<ValueInterface>(new Value(in_place, value));
+    std::unique_ptr<ValueInterface> Clone() const final {
+      return absl::make_unique<Value>(InPlace(), value);
     }
 
-    string TypeName() const override { return TypeNameVariant(value); }
+    void MoveAssign(ValueInterface* memory) final {
+      CHECK(TypeId() == memory->TypeId())
+          << TypeId().name() << " vs. " << memory->TypeId().name();
+      static_cast<Value*>(memory)->value = std::move(value);
+    }
 
-    string DebugString() const override { return DebugStringVariant(value); }
+    void CloneInto(ValueInterface* memory) const final {
+      new (memory) Value(InPlace(), value);
+    }
 
-    void Encode(VariantTensorData* data) const override {
+    void MoveInto(ValueInterface* memory) final {
+      new (memory) Value(InPlace(), std::move(value));
+    }
+
+    string TypeName() const final { return TypeNameVariant(value); }
+
+    string DebugString() const final { return DebugStringVariant(value); }
+
+    void Encode(VariantTensorData* data) const final {
       EncodeVariant(value, data);
     }
 
-    bool Decode(VariantTensorData data) override {
+    bool Decode(VariantTensorData data) final {
       return DecodeVariant(&data, &value);
     }
 
-    void Encode(string* buf) const override { EncodeVariant(value, buf); }
+    void Encode(string* buf) const final { EncodeVariant(value, buf); }
 
-    bool Decode(string buf) override { return DecodeVariant(&buf, &value); }
+    bool Decode(string buf) final { return DecodeVariant(&buf, &value); }
 
     T value;
   };
+  static constexpr int kMaxInlineValueAlignSize = alignof(Value<void*>);
 
-  // value_ can point to any type T as wrapped by a ValueInterface.
-  // The only real requirement is that T is default-constructible.
-  std::unique_ptr<ValueInterface> value_;
+  using HeapValue = std::unique_ptr<ValueInterface>;
+
+  struct InlineValue {
+    // We try to size InlineValue so that sizeof(Variant) <= 64 and it can fit
+    // into the aligned space of a TensorBuffer.
+    static constexpr int kMaxValueSize = (64 - /*some extra padding=*/8);
+
+    typedef char ValueDataArray[kMaxValueSize];
+    alignas(kMaxInlineValueAlignSize) ValueDataArray value_data;
+
+    // Tag is used for deducing the right type when constructing a Value in
+    // place.
+    template <typename VT>
+    struct Tag {};
+
+    template <typename VT, class... Args>
+    explicit InlineValue(Tag<VT> /*tag*/, Args&&... args) noexcept {
+      Value<VT>* inline_value_data = reinterpret_cast<Value<VT>*>(value_data);
+      new (inline_value_data) Value<VT>(InPlace(), std::forward<Args>(args)...);
+    }
+
+    InlineValue(const InlineValue& other) noexcept {
+      other.AsValueInterface()->CloneInto(AsValueInterface());
+    }
+
+    InlineValue(InlineValue&& other) noexcept {
+      other.AsValueInterface()->MoveInto(AsValueInterface());
+    }
+
+    void ResetMemory() { AsValueInterface()->~ValueInterface(); }
+
+    InlineValue& operator=(const InlineValue& other) {
+      if (&other == this) return *this;
+      ResetMemory();
+      other.AsValueInterface()->CloneInto(AsValueInterface());
+      return *this;
+    }
+
+    InlineValue& operator=(InlineValue&& other) {
+      if (&other == this) return *this;
+      if (AsValueInterface()->TypeId() == other.AsValueInterface()->TypeId()) {
+        other.AsValueInterface()->MoveAssign(AsValueInterface());
+      } else {
+        ResetMemory();
+        other.AsValueInterface()->MoveInto(AsValueInterface());
+      }
+      return *this;
+    }
+
+    ValueInterface* AsValueInterface() {
+      return reinterpret_cast<ValueInterface*>(value_data);
+    }
+
+    const ValueInterface* AsValueInterface() const {
+      return reinterpret_cast<const ValueInterface*>(value_data);
+    }
+
+    ~InlineValue() { ResetMemory(); }
+  };
+
+  union {
+    HeapValue heap_value_;
+    InlineValue inline_value_;
+  };
+  // is_inline_ provides discrimination between which member of the prior union
+  // is currently within it's lifetime. To switch from one member to the other,
+  // the destructor must be called on the currently alive member before calling
+  // the constructor on the other member. In effect, a member is expected to be
+  // live at any given time and that member is tracked via this boolean.
+  bool is_inline_;
+
+  bool IsInlineValue() const { return is_inline_; }
+
+  // ResetMemory causes the destructor of the currently active member of the
+  // union to be run. This must be follwed with a placement new call on the
+  // member whose lifetime is to start. Additionally, is_inline_ needs to be set
+  // accordingly. ResetAndSetInline and ResetAndSetHeap are simple helper
+  // functions for performing the actions that are required to follow.
+  void ResetMemory() {
+    if (IsInlineValue()) {
+      inline_value_.~InlineValue();
+    } else {
+      heap_value_.~HeapValue();
+    }
+  }
+
+  // ResetAndSetInline clears the current state and then constructs a new value
+  // inline with the provided arguments.
+  template <typename... Args>
+  void ResetAndSetInline(Args&&... args) noexcept {
+    ResetMemory();
+    new (&inline_value_) InlineValue(std::forward<Args>(args)...);
+    is_inline_ = true;
+  }
+
+  // ResetAndSetHeap clears the current state then constructs a new value on the
+  // heap with the provided arguments.
+  template <typename... Args>
+  void ResetAndSetHeap(Args&&... args) noexcept {
+    ResetMemory();
+    new (&heap_value_) HeapValue(std::forward<Args>(args)...);
+    is_inline_ = false;
+  }
+
+  ValueInterface* GetValue() {
+    if (IsInlineValue()) {
+      return inline_value_.AsValueInterface();
+    } else {
+      return heap_value_.get();
+    }
+  }
+
+  const ValueInterface* GetValue() const {
+    if (IsInlineValue()) {
+      return inline_value_.AsValueInterface();
+    } else {
+      return heap_value_.get();
+    }
+  }
+
+  // PRECONDITION: Called on construction or ResetMemory() has been called
+  // before this method.
+  template <typename VT, typename T>
+  void InsertValue(T&& value) {
+    if (IsInlineValue()) {
+      new (&inline_value_)
+          InlineValue(InlineValue::Tag<VT>{}, std::forward<T>(value));
+    } else {
+      new (&heap_value_) HeapValue(
+          absl::make_unique<Value<VT>>(InPlace(), std::forward<T>(value)));
+    }
+  }
 };
+
+// Make sure that a Variant object can reside in a 64-byte aligned Tensor
+// buffer.
+static_assert(sizeof(Variant) <= 64,
+              "Expected internal representation to be 64 bytes.");
+
+inline Variant::Variant(const Variant& other)
+    : is_inline_(other.IsInlineValue()) {
+  if (IsInlineValue()) {
+    new (&inline_value_) InlineValue(other.inline_value_);
+  } else {
+    new (&heap_value_)
+        HeapValue(other.heap_value_ ? other.heap_value_->Clone() : nullptr);
+  }
+}
+
+inline Variant::Variant(Variant&& other) noexcept
+    : is_inline_(other.IsInlineValue()) {
+  if (IsInlineValue()) {
+    new (&inline_value_) InlineValue(std::move(other.inline_value_));
+  } else {
+    new (&heap_value_) HeapValue(std::move(other.heap_value_));
+  }
+}
+
+template <typename T, typename VT,
+          typename std::enable_if<!std::is_same<Variant, VT>::value &&
+                                      std::is_move_constructible<VT>::value,
+                                  void>::type*>
+inline Variant::Variant(T&& value) : is_inline_(CanInlineType<VT>()) {
+  InsertValue<VT>(std::forward<T>(value));
+}
+
+template <typename T, typename VT,
+          typename std::enable_if<!std::is_same<Variant, VT>::value &&
+                                      std::is_copy_constructible<VT>::value,
+                                  void>::type*>
+inline Variant::Variant(const T& value) : is_inline_(CanInlineType<VT>()) {
+  InsertValue<VT>(value);
+}
+
+template <typename T, typename VT,
+          typename std::enable_if<!std::is_same<Variant, VT>::value &&
+                                      std::is_move_constructible<VT>::value,
+                                  void>::type*>
+inline Variant& Variant::operator=(T&& value) {
+  ResetMemory();
+  is_inline_ = CanInlineType<VT>();
+  InsertValue<VT>(std::forward<T>(value));
+  return *this;
+}
+
+template <typename T, typename VT,
+          typename std::enable_if<!std::is_same<Variant, VT>::value &&
+                                      std::is_copy_constructible<VT>::value,
+                                  void>::type*>
+inline Variant& Variant::operator=(const T& value) {
+  ResetMemory();
+  is_inline_ = CanInlineType<VT>();
+  InsertValue<VT>(value);
+  return *this;
+}
+
+inline void Variant::clear() noexcept {
+  // We set the internal unique_ptr to nullptr so that we preserve the
+  // invariant that one of the two states must be set at all times. nullptr
+  // indicates that the variant is empty.
+  ResetAndSetHeap(/*pointer=*/nullptr);
+}
+
+inline void Variant::swap(Variant& other) noexcept {
+  if (is_empty()) {
+    if (other.IsInlineValue()) {
+      ResetAndSetInline(std::move(other.inline_value_));
+    } else {
+      ResetAndSetHeap(std::move(other.heap_value_));
+    }
+    other.clear();
+  } else if (other.is_empty()) {
+    if (IsInlineValue()) {
+      other.ResetAndSetInline(std::move(inline_value_));
+    } else {
+      other.ResetAndSetHeap(std::move(heap_value_));
+    }
+    clear();
+  } else {  // Both Variants have values.
+    if (other.IsInlineValue() && IsInlineValue()) {
+      std::swap(inline_value_, other.inline_value_);
+    } else if (!other.IsInlineValue() && !IsInlineValue()) {
+      std::swap(heap_value_, other.heap_value_);
+    } else if (other.IsInlineValue() && !IsInlineValue()) {
+      HeapValue v = std::move(heap_value_);
+      ResetAndSetInline(std::move(other.inline_value_));
+      other.ResetAndSetHeap(std::move(v));
+    } else {  // !other.IsInlineValue() && IsInlineValue()
+      HeapValue v = std::move(other.heap_value_);
+      other.ResetAndSetInline(std::move(inline_value_));
+      ResetAndSetHeap(std::move(v));
+    }
+  }
+}
 
 template <>
 void* Variant::get();

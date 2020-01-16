@@ -39,11 +39,13 @@ class ResizeBilinearOp : public OpKernel {
  public:
   explicit ResizeBilinearOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+    OP_REQUIRES_OK(
+        context, context->GetAttr("half_pixel_centers", &half_pixel_centers_));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    ImageResizerState st(align_corners_);
+    ImageResizerState st(align_corners_, half_pixel_centers_);
     st.ValidateAndCreateOutput(context, input);
 
     if (!context->status().ok()) return;
@@ -54,13 +56,14 @@ class ResizeBilinearOp : public OpKernel {
     typename TTypes<T, 4>::ConstTensor image_data(input.tensor<T, 4>());
     TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
-    functor::ResizeBilinear<Device, T>()(context->eigen_device<Device>(),
-                                         image_data, st.height_scale,
-                                         st.width_scale, output_data);
+    functor::ResizeBilinear<Device, T>()(
+        context->eigen_device<Device>(), image_data, st.height_scale,
+        st.width_scale, half_pixel_centers_, output_data);
   }
 
  private:
   bool align_corners_;
+  bool half_pixel_centers_;
 };
 
 namespace {
@@ -73,17 +76,22 @@ struct CachedInterpolation {
   float lerp;
 };
 
-inline void compute_interpolation_weights(const int64 out_size,
+template <typename Scaler>
+inline void compute_interpolation_weights(const Scaler scaler,
+                                          const int64 out_size,
                                           const int64 in_size,
                                           const float scale,
                                           CachedInterpolation* interpolation) {
   interpolation[out_size].lower = 0;
   interpolation[out_size].upper = 0;
   for (int64 i = out_size - 1; i >= 0; --i) {
-    const float in = i * scale;
-    interpolation[i].lower = static_cast<int64>(in);
-    interpolation[i].upper = std::min(interpolation[i].lower + 1, in_size - 1);
-    interpolation[i].lerp = in - interpolation[i].lower;
+    const float in = scaler(i, scale);
+    const float in_f = std::floor(in);
+    interpolation[i].lower =
+        std::max(static_cast<int64>(in_f), static_cast<int64>(0));
+    interpolation[i].upper =
+        std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+    interpolation[i].lerp = in - in_f;
   }
 }
 
@@ -203,6 +211,7 @@ template <typename T>
 struct ResizeBilinear<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor images,
                   const float height_scale, const float width_scale,
+                  bool half_pixel_centers,
                   typename TTypes<float, 4>::Tensor output) {
     const int batch_size = images.dimension(0);
     const int64 in_height = images.dimension(1);
@@ -222,10 +231,18 @@ struct ResizeBilinear<CPUDevice, T> {
     std::vector<CachedInterpolation> xs(out_width + 1);
 
     // Compute the cached interpolation weights on the x and y dimensions.
-    compute_interpolation_weights(out_height, in_height, height_scale,
-                                  ys.data());
-    compute_interpolation_weights(out_width, in_width, width_scale, xs.data());
+    if (half_pixel_centers) {
+      compute_interpolation_weights(HalfPixelScaler(), out_height, in_height,
+                                    height_scale, ys.data());
+      compute_interpolation_weights(HalfPixelScaler(), out_width, in_width,
+                                    width_scale, xs.data());
 
+    } else {
+      compute_interpolation_weights(LegacyScaler(), out_height, in_height,
+                                    height_scale, ys.data());
+      compute_interpolation_weights(LegacyScaler(), out_width, in_width,
+                                    width_scale, xs.data());
+    }
     // Scale x interpolation weights to avoid a multiplication during iteration.
     for (int i = 0; i < xs.size(); ++i) {
       xs[i].lower *= channels;
@@ -244,6 +261,8 @@ class ResizeBilinearOpGrad : public OpKernel {
   explicit ResizeBilinearOpGrad(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+    OP_REQUIRES_OK(
+        context, context->GetAttr("half_pixel_centers", &half_pixel_centers_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -252,7 +271,7 @@ class ResizeBilinearOpGrad : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& original_image = context->input(1);
 
-    ImageResizerGradientState st(align_corners_);
+    ImageResizerGradientState st(align_corners_, half_pixel_centers_);
     st.ValidateAndCreateOutput(context, input, original_image);
 
     if (!context->status().ok()) return;
@@ -260,23 +279,26 @@ class ResizeBilinearOpGrad : public OpKernel {
     TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
     typename TTypes<T, 4>::Tensor output_grad(st.output->tensor<T, 4>());
 
-    functor::ResizeBilinearGrad<Device, T>()(context->eigen_device<Device>(),
-                                             input_grad, st.height_scale,
-                                             st.width_scale, output_grad);
+    functor::ResizeBilinearGrad<Device, T>()(
+        context->eigen_device<Device>(), input_grad, st.height_scale,
+        st.width_scale, half_pixel_centers_, output_grad);
   }
 
  private:
   bool align_corners_;
+  bool half_pixel_centers_;
 };
 
 // Partial specialization of ResizeBilinearGrad functor for a CPUDevice.
 namespace functor {
+
 template <typename T>
 struct ResizeBilinearGrad<CPUDevice, T> {
-  void operator()(const CPUDevice& d,
-                  typename TTypes<float, 4>::ConstTensor input_grad,
-                  const float height_scale, const float width_scale,
-                  typename TTypes<T, 4>::Tensor output_grad) {
+  template <typename Scaler>
+  void ResizeGradCore(const Scaler& scaler,
+                      typename TTypes<float, 4>::ConstTensor input_grad,
+                      const float height_scale, const float width_scale,
+                      typename TTypes<T, 4>::Tensor output_grad) {
     const Eigen::Index batch = output_grad.dimension(0);
     const Eigen::Index original_height = output_grad.dimension(1);
     const Eigen::Index original_width = output_grad.dimension(2);
@@ -287,29 +309,34 @@ struct ResizeBilinearGrad<CPUDevice, T> {
 
     output_grad.setZero();
 
-    // Each resized pixel was computed as a weighted average of four input
-    // pixels. Here we find the pixels that contributed to each output pixel
-    // and add the corresponding coefficient to the gradient.
-    // resized(b, y, x, c) = top_left * (1 - y) * (1 - x)
-    //                       +  top_right * (1 - y) * x
-    //                       +  bottom_left * y * (1 - x)
-    //                       +  bottom_right * y * x
+    // Each resized output pixel was computed as a weighted average of four
+    // input pixels. Here we find the four input pixel locations that
+    // contributed to each output pixel and propgate the gradient at the output
+    // pixel location to each of those four input pixel locations in the same
+    // proportions that they originally contributed to the output pixel.
+    // Here is the forward-propagation pseudo-code, for reference:
+    // resized(b, y, x, c) = top_left     * (1 - y) * (1 - x)
+    //                     + top_right    * (1 - y) *      x
+    //                     + bottom_left  *      y  * (1 - x)
+    //                     + bottom_right *      y  *      x
     for (Eigen::Index b = 0; b < batch; ++b) {
       for (Eigen::Index y = 0; y < resized_height; ++y) {
-        const float in_y = y * height_scale;
+        const float in_y = scaler(y, height_scale);
         const Eigen::Index top_y_index =
-            static_cast<Eigen::Index>(floorf(in_y));
+            std::max(static_cast<Eigen::Index>(floorf(in_y)),
+                     static_cast<Eigen::Index>(0));
         const Eigen::Index bottom_y_index = std::min(
             static_cast<Eigen::Index>(ceilf(in_y)), original_height - 1);
-        const float y_lerp = in_y - top_y_index;
+        const float y_lerp = in_y - floorf(in_y);
         const float inverse_y_lerp = (1.0f - y_lerp);
         for (Eigen::Index x = 0; x < resized_width; ++x) {
-          const float in_x = x * width_scale;
+          const float in_x = scaler(x, width_scale);
           const Eigen::Index left_x_index =
-              static_cast<Eigen::Index>(floorf(in_x));
+              std::max(static_cast<Eigen::Index>(floorf(in_x)),
+                       static_cast<Eigen::Index>(0));
           const Eigen::Index right_x_index = std::min(
               static_cast<Eigen::Index>(ceilf(in_x)), original_width - 1);
-          const float x_lerp = in_x - left_x_index;
+          const float x_lerp = in_x - floorf(in_x);
           const float inverse_x_lerp = (1.0f - x_lerp);
           for (Eigen::Index c = 0; c < channels; ++c) {
             output_grad(b, top_y_index, left_x_index, c) +=
@@ -325,7 +352,21 @@ struct ResizeBilinearGrad<CPUDevice, T> {
       }
     }
   }
+  void operator()(const CPUDevice& d,
+                  typename TTypes<float, 4>::ConstTensor input_grad,
+                  const float height_scale, const float width_scale,
+                  const bool half_pixel_centers,
+                  typename TTypes<T, 4>::Tensor output_grad) {
+    if (half_pixel_centers) {
+      return ResizeGradCore(HalfPixelScaler(), input_grad, height_scale,
+                            width_scale, output_grad);
+    } else {
+      return ResizeGradCore(LegacyScaler(), input_grad, height_scale,
+                            width_scale, output_grad);
+    }
+  }
 };
+
 }  // namespace functor
 
 #define REGISTER_KERNEL(T)                            \
@@ -350,7 +391,7 @@ TF_CALL_double(REGISTER_GRAD_KERNEL);
 
 #undef REGISTER_GRAD_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_KERNEL(T)                            \
   REGISTER_KERNEL_BUILDER(Name("ResizeBilinear")      \
@@ -372,6 +413,6 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GRAD_KERNEL);
 
 #undef REGISTER_GRAD_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -34,7 +35,7 @@ class PoolAllocator;
 
 // Singleton that manages per-process state, e.g. allocation of
 // shared resources.
-class ProcessState {
+class ProcessState : public ProcessStateInterface {
  public:
   static ProcessState* singleton();
 
@@ -63,8 +64,8 @@ class ProcessState {
   MemDesc PtrType(const void* ptr);
 
   // Returns the one CPUAllocator used for the given numa_node.
-  // TEMPORARY: ignores numa_node.
-  Allocator* GetCPUAllocator(int numa_node);
+  // Treats numa_node == kNUMANoAffinity as numa_node == 0.
+  Allocator* GetCPUAllocator(int numa_node) override;
 
   // Registers alloc visitor for the CPU allocator(s).
   // REQUIRES: must be called before GetCPUAllocator.
@@ -78,27 +79,28 @@ class ProcessState {
 
  protected:
   ProcessState();
+  virtual ~ProcessState() {}
   friend class GPUProcessState;
 
   // If these flags need to be runtime configurable consider adding
   // them to ConfigProto.
-  static const bool FLAGS_brain_mem_reg_cuda_dma = true;
+  static const bool FLAGS_brain_mem_reg_gpu_dma = true;
   static const bool FLAGS_brain_gpu_record_mem_types = false;
 
   // Helper method for unit tests to reset the ProcessState singleton by
   // cleaning up everything. Never use in production.
-  virtual void TestOnlyReset();
+  void TestOnlyReset();
 
   static ProcessState* instance_;
   bool numa_enabled_;
 
   mutex mu_;
 
+  // Indexed by numa_node.  If we want numa-specific allocators AND a
+  // non-specific allocator, maybe should index by numa_node+1.
   std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
   std::vector<SubAllocator::Visitor> cpu_alloc_visitors_ GUARDED_BY(mu_);
   std::vector<SubAllocator::Visitor> cpu_free_visitors_ GUARDED_BY(mu_);
-
-  virtual ~ProcessState();
 
   // Optional RecordingAllocators that wrap the corresponding
   // Allocators for runtime attribute use analysis.
@@ -126,10 +128,16 @@ class RecordingAllocator : public Allocator {
     mm_->erase(iter);
     a_->DeallocateRaw(p);
   }
-  bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
-  size_t RequestedSize(const void* p) override { return a_->RequestedSize(p); }
-  size_t AllocatedSize(const void* p) override { return a_->AllocatedSize(p); }
-  void GetStats(AllocatorStats* stats) override { a_->GetStats(stats); }
+  bool TracksAllocationSizes() const override {
+    return a_->TracksAllocationSizes();
+  }
+  size_t RequestedSize(const void* p) const override {
+    return a_->RequestedSize(p);
+  }
+  size_t AllocatedSize(const void* p) const override {
+    return a_->AllocatedSize(p);
+  }
+  absl::optional<AllocatorStats> GetStats() override { return a_->GetStats(); }
   void ClearStats() override { a_->ClearStats(); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned

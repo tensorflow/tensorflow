@@ -19,6 +19,12 @@ from __future__ import print_function
 
 import sys
 
+# The unused imports are needed so that the python and lite modules are
+# available in sys.modules
+# pylint: disable=unused-import
+from tensorflow import python as _tf_for_api_traversal
+from tensorflow.lite.python import lite as _tflite_for_api_traversal
+# pylint: enable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_decorator
 
@@ -39,7 +45,7 @@ def _get_modules(package, attr_name, constants_attr_name):
       API constant names.
 
   Returns:
-    Set of TensorFow API modules.
+    Set of TensorFlow API modules.
   """
   modules = set()
   # TODO(annarev): split up the logic in create_python_api.py so that

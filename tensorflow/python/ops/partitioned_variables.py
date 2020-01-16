@@ -57,7 +57,7 @@ import math
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -68,7 +68,7 @@ __all__ = [
 ]
 
 
-@tf_export("variable_axis_size_partitioner")
+@tf_export(v1=["variable_axis_size_partitioner"])
 def variable_axis_size_partitioner(
     max_shard_bytes, axis=0, bytes_per_string_element=16, max_shards=None):
   """Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
@@ -96,7 +96,7 @@ def variable_axis_size_partitioner(
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
 
   Raises:
     ValueError: If any of the byte counts are non-positive.
@@ -136,13 +136,14 @@ def variable_axis_size_partitioner(
 
     partitions = [1] * shape.ndims
     bytes_per_slice = 1.0 * (
-        shape.num_elements() / shape[axis].value) * element_size
+        shape.num_elements() / shape.dims[axis].value) * element_size
     # How many slices can we fit on one shard of size at most max_shard_bytes?
     # At least one slice is required.
     slices_per_shard = max(1, math.floor(max_shard_bytes / bytes_per_slice))
     # How many shards do we need for axis given that each shard fits
-    # slices_per_shard slices from a total of shape[axis].value slices?
-    axis_shards = int(math.ceil(1.0 * shape[axis].value / slices_per_shard))
+    # slices_per_shard slices from a total of shape[axis] slices?
+    axis_shards = int(math.ceil(
+        1.0 * shape.dims[axis].value / slices_per_shard))
     if max_shards:
       axis_shards = min(max_shards, axis_shards)
 
@@ -153,7 +154,7 @@ def variable_axis_size_partitioner(
   return _partitioner
 
 
-@tf_export("min_max_variable_partitioner")
+@tf_export(v1=["min_max_variable_partitioner"])
 def min_max_variable_partitioner(max_partitions=1, axis=0,
                                  min_slice_size=256 << 10,
                                  bytes_per_string_element=16):
@@ -174,7 +175,7 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
 
   """
   def _partitioner(shape, dtype):
@@ -210,14 +211,14 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
     partitions_list = [1] * len(shape)
     # We can not partition the variable beyond what its shape or
     # `max_partitions` allows.
-    partitions_list[axis] = max(1, min(shape[axis].value,
+    partitions_list[axis] = max(1, min(shape.dims[axis].value,
                                        max_partitions,
                                        int(math.ceil(partitions))))
     return partitions_list
   return _partitioner
 
 
-@tf_export("fixed_size_partitioner")
+@tf_export(v1=["fixed_size_partitioner"])
 def fixed_size_partitioner(num_shards, axis=0):
   """Partitioner to specify a fixed number of shards along given axis.
 
@@ -227,16 +228,19 @@ def fixed_size_partitioner(num_shards, axis=0):
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
   """
   def _partitioner(shape, **unused_args):
     partitions_list = [1] * len(shape)
-    partitions_list[axis] = min(num_shards, shape[axis].value)
+    partitions_list[axis] = min(num_shards, shape.dims[axis].value)
     return partitions_list
   return _partitioner
 
 
-@tf_export("create_partitioned_variables")
+@tf_export(v1=["create_partitioned_variables"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use `tf.get_variable` with a partitioner set.")
 def create_partitioned_variables(
     shape, slicing, initializer, dtype=dtypes.float32,
     trainable=True, collections=None, name=None, reuse=None):
@@ -281,11 +285,6 @@ def create_partitioned_variables(
   Raises:
     ValueError: If any of the arguments is malformed.
   """
-  logging.warn(
-      "create_partitioned_variables is deprecated.  Use "
-      "tf.get_variable with a partitioner set, or "
-      "tf.get_partitioned_variable_list, instead.")
-
   if len(shape) != len(slicing):
     raise ValueError("The 'shape' and 'slicing' of a partitioned Variable "
                      "must have the length: shape: %s, slicing: %s" %

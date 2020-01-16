@@ -70,7 +70,7 @@ class DecodeCSVOp : public OpKernel {
                       " has ", record_defaults[i].NumElements()));
     }
 
-    auto records_t = records->flat<string>();
+    auto records_t = records->flat<tstring>();
     int64 records_size = records_t.size();
 
     OpOutputList output;
@@ -145,7 +145,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<float>()(i) = record_defaults[f].flat<float>()(0);
             } else {
               float value;
-              OP_REQUIRES(ctx, strings::safe_strtof(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strtof(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid float: ", fields[f]));
@@ -165,7 +165,7 @@ class DecodeCSVOp : public OpKernel {
                   record_defaults[f].flat<double>()(0);
             } else {
               double value;
-              OP_REQUIRES(ctx, strings::safe_strtod(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strtod(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid double: ", fields[f]));
@@ -181,10 +181,10 @@ class DecodeCSVOp : public OpKernel {
                           errors::InvalidArgument(
                               "Field ", f,
                               " is required but missing in record ", i, "!"));
-              output[f]->flat<string>()(i) =
-                  record_defaults[f].flat<string>()(0);
+              output[f]->flat<tstring>()(i) =
+                  record_defaults[f].flat<tstring>()(0);
             } else {
-              output[f]->flat<string>()(i) = fields[f];
+              output[f]->flat<tstring>()(i) = std::move(fields[f]);
             }
             break;
           }

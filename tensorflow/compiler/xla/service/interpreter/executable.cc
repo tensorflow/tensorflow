@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -37,26 +38,41 @@ namespace xla {
 namespace interpreter {
 
 InterpreterExecutable::InterpreterExecutable(
-    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloEvaluator> evaluator)
-    : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,
+    : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr),
       evaluator_(std::move(evaluator)) {}
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
-StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
+StatusOr<ExecutionOutput> InterpreterExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
+    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
   const se::Platform* platform = executor->platform();
 
+  // Convert the ShapeTree to a ShapedBuffer. We do this so we can call
+  // TransferManager methods below.
+  std::vector<ShapedBuffer> argument_buffers;
+  argument_buffers.reserve(arguments.size());
+  for (const ShapeTree<MaybeOwningDeviceMemory>& arg : arguments) {
+    argument_buffers.push_back(ShapedBuffer(arg.shape(), arg.shape(),
+                                            /*platform=*/nullptr,
+                                            /*device_ordinal=*/0));
+    auto in_it = arg.begin();
+    auto out_it = argument_buffers.back().buffers().begin();
+    for (; in_it != arg.end(); ++in_it, ++out_it) {
+      out_it->second = in_it->second.AsDeviceMemoryBase();
+    }
+  }
+
   VLOG(1) << "Execute " << module().name();
   if (VLOG_IS_ON(2)) {
-    for (const auto& a : arguments) {
-      VLOG(2) << "-- argument " << *a;
+    for (const auto& a : argument_buffers) {
+      VLOG(2) << "-- argument " << a;
     }
   }
 
@@ -68,6 +84,19 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
         "Mismatch between argument count and graph parameter count.");
   }
 
+  // Check that the args have the right shape.
+  for (int64 i = 0; i < computation->num_parameters(); ++i) {
+    const auto& expected_shape = computation->parameter_instruction(i)->shape();
+    const auto& actual_shape = argument_buffers[i].on_device_shape();
+    if (!Shape::Equal().MinorToMajorOnlyInLayout()(expected_shape,
+                                                   actual_shape)) {
+      return InvalidArgument(
+          "Shape mismatch on parameter %d.  Expected %s, but was %s.", i,
+          ShapeUtil::HumanStringWithLayout(expected_shape),
+          ShapeUtil::HumanStringWithLayout(actual_shape));
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager,
                       TransferManager::GetForPlatform(platform));
 
@@ -77,7 +106,7 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   for (int64 p = 0; p < computation->num_parameters(); ++p) {
     TF_ASSIGN_OR_RETURN(Literal arg_literal,
                         transfer_manager->TransferLiteralFromDevice(
-                            run_options->stream(), *arguments[p]));
+                            run_options->stream(), argument_buffers[p]));
     arg_literals.push_back(std::move(arg_literal));
   }
 
@@ -85,8 +114,9 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   Literal result_literal;
   {
     tensorflow::mutex_lock lock(evaluator_lock_);
-    TF_ASSIGN_OR_RETURN(result_literal, evaluator_->Evaluate<Literal>(
-                                            *computation, arg_literals));
+    evaluator_->ResetVisitStates();
+    TF_ASSIGN_OR_RETURN(result_literal,
+                        evaluator_->Evaluate(*computation, arg_literals));
   }
 
   // Transform the result literal back into a ShapedBuffer.
@@ -99,24 +129,26 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
-  {
-    tensorflow::mutex_lock lock(mutex_);
+  ExecutionProfile* profile = run_options->run_options().execution_profile();
+  if (profile) {
     const double nanoseconds = (end_micros - start_micros) * 1000.0;
-    execution_profile_.set_compute_time_ns(std::max(nanoseconds, 1.0));
+    profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
-  return std::move(result);
-}
-
-StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments) {
-  return tensorflow::errors::Unimplemented(
-      "ExecuteAsyncOnStream is not yet supported on Interpreter.");
+  std::vector<se::OwningDeviceMemory> buffers_to_free;
+  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
+    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
+      auto maybe_owning_buffer = buffer.second.Release();
+      if (maybe_owning_buffer) {
+        buffers_to_free.push_back(std::move(*maybe_owning_buffer));
+      }
+    }
+  }
+  return ExecutionOutput(std::move(result), std::move(buffers_to_free), {}, {});
 }
 
 /*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {
-  if (ShapeUtil::IsOpaque(shape)) {
+  if (shape.IsOpaque()) {
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));

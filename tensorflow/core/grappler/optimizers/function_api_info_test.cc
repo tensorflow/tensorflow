@@ -36,28 +36,35 @@ void SetArg(const string& name, const string& type_name,
 
 typedef std::pair<string, string> ArgSpec;  // name, type.
 
-void SetArgs(const std::vector<ArgSpec>& args_spec, OpDef* sig) {
-  for (const auto& arg_spec : args_spec)
+void SetArgs(const std::vector<ArgSpec>& input_args_spec,
+             const std::vector<ArgSpec>& output_args_spec, OpDef* sig) {
+  for (const auto& arg_spec : input_args_spec)
     SetArg(arg_spec.first, arg_spec.second, sig->add_input_arg());
-  SetArg("output", "float32", sig->add_output_arg());
+  for (const auto& arg_spec : output_args_spec)
+    SetArg(arg_spec.first, arg_spec.second, sig->add_output_arg());
 }
 
 void PopulateFunction(const string& name, const string& api_interface_name,
                       const string& preferred_device,
                       const std::vector<ArgSpec>& input_args,
+                      const std::vector<ArgSpec>& output_args,
+                      const string& forward_function_name,
+                      const string& backward_function_name,
                       FunctionDef* func_def) {
   OpDef* sig = func_def->mutable_signature();
   sig->set_name(name);
 
-  SetArgs(input_args, sig);
+  SetArgs(input_args, output_args, sig);
 
-  if (!api_interface_name.empty() || !preferred_device.empty()) {
-    auto* func_attr = func_def->mutable_attr();
-    if (!api_interface_name.empty())
-      (*func_attr)["experimental_api_implements"].set_s(api_interface_name);
-    if (!preferred_device.empty())
-      (*func_attr)["experimental_api_preferred_device"].set_s(preferred_device);
-  }
+  auto* func_attr = func_def->mutable_attr();
+  if (!api_interface_name.empty())
+    (*func_attr)["api_implements"].set_s(api_interface_name);
+  if (!preferred_device.empty())
+    (*func_attr)["api_preferred_device"].set_s(preferred_device);
+  if (!forward_function_name.empty())
+    (*func_attr)["forward_function_name"].set_s(forward_function_name);
+  if (!backward_function_name.empty())
+    (*func_attr)["backward_function_name"].set_s(backward_function_name);
 }
 
 void PopulateSampleLibrary(const bool mismatch_args,
@@ -65,37 +72,48 @@ void PopulateSampleLibrary(const bool mismatch_args,
   const std::vector<ArgSpec> func_args{{"in1", "float32"}, {"in2", "int32"}};
   const std::vector<ArgSpec> func_wrong_args{{"in1", "int32"},
                                              {"in2", "int32"}};
-  PopulateFunction("DoStuffCpu", "DoStuff", "CPU", func_args,
-                   func_lib->add_function());
+  const std::vector<ArgSpec> output_args{{"out", "float32"}};
+  PopulateFunction("DoStuffCpu", "DoStuff", "CPU", func_args, output_args, "",
+                   "", func_lib->add_function());
   PopulateFunction("DoStuffGpu", "DoStuff", "GPU",
-                   mismatch_args ? func_wrong_args : func_args,
+                   mismatch_args ? func_wrong_args : func_args, output_args, "",
+                   "", func_lib->add_function());
+  PopulateFunction("DoThings", "DoThings", "", func_args, output_args, "", "",
                    func_lib->add_function());
-  PopulateFunction("DoThings", "DoThings", "", func_args,
+  PopulateFunction("OneOff", "", "", func_args, output_args, "", "",
                    func_lib->add_function());
-  PopulateFunction("OneOff", "", "", func_args, func_lib->add_function());
-  PopulateFunction("AnotherOneOff", "", "", func_args,
+  PopulateFunction("AnotherOneOff", "", "", func_args, output_args, "", "",
                    func_lib->add_function());
+}
+
+void PopulateComplexLibrary(FunctionDefLibrary* func_lib) {
+  const std::vector<ArgSpec> input_args{{"in1", "float32"}, {"in2", "int32"}};
+  const std::vector<ArgSpec> output_args{{"out", "float32"}};
+  const std::vector<ArgSpec> output_with_state{
+      {"out", "float32"}, {"state1", "int32"}, {"state2", "int32"}};
+
+  PopulateFunction("DoStuffCpu", "DoStuff", "CPU", input_args, output_args, "",
+                   "DoStuffCpu_gradient", func_lib->add_function());
+  PopulateFunction("DoStuffCpu_gradient", "DoStuff", "CPU", output_args,
+                   input_args, "DoStuffCpu", "", func_lib->add_function());
+  PopulateFunction("DoStuffGpu", "DoStuff", "GPU", input_args,
+                   output_with_state, "", "DoStuffGpu_gradient",
+                   func_lib->add_function());
+  PopulateFunction("DoStuffGpu_gradient", "DoStuff", "GPU", output_with_state,
+                   input_args, "DoStuffGpu", "", func_lib->add_function());
 }
 
 bool CheckEquivImpl(const FunctionLibraryApiInfo& lib_api_info,
                     const string& func_name,
                     const std::vector<string>& expected_other) {
   std::vector<string> other_impl;
-  lib_api_info.GetEquivalentImplementations(func_name, &other_impl);
+  Status status =
+      lib_api_info.GetEquivalentImplementations(func_name, &other_impl);
+  EXPECT_EQ(status, Status::OK());
   const std::unordered_set<string> actual(other_impl.begin(), other_impl.end());
   const std::unordered_set<string> expected(expected_other.begin(),
                                             expected_other.end());
   return actual == expected;
-}
-
-bool CheckGetBestImpl(const FunctionLibraryApiInfo& lib_api_info,
-                      const string& function_name, const string& device,
-                      const string& expected_function_name) {
-  string best_function_name;
-  lib_api_info.GetBestImplementation(function_name, device,
-                                     &best_function_name);
-
-  return best_function_name == expected_function_name;
 }
 
 string GetInterfaceName(const FunctionLibraryApiInfo& lib_api_info,
@@ -117,12 +135,6 @@ TEST(FunctionApiInfoTest, ParseTags) {
   PopulateSampleLibrary(/* mismatch_args */ false, &func_lib);
   FunctionLibraryApiInfo lib_api_info;
   TF_ASSERT_OK(lib_api_info.Init(func_lib));
-  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffCpu", {"DoStuffGpu"}));
-  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffGpu", {"DoStuffCpu"}));
-  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "Undefined", {}));
-  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "OneOff", {}));
-  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "AnotherOneOff", {}));
-  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoThings", {}));
 
   EXPECT_EQ("DoStuff", GetInterfaceName(lib_api_info, "DoStuffCpu"));
   EXPECT_EQ("DoStuff", GetInterfaceName(lib_api_info, "DoStuffGpu"));
@@ -132,19 +144,37 @@ TEST(FunctionApiInfoTest, ParseTags) {
   EXPECT_EQ("GPU", GetPreferredDevice(lib_api_info, "DoStuffGpu"));
   EXPECT_EQ("", GetPreferredDevice(lib_api_info, "DoThings"));
 
-  EXPECT_TRUE(
-      CheckGetBestImpl(lib_api_info, "DoStuffCpu", "CPU", "DoStuffCpu"));
-  EXPECT_TRUE(
-      CheckGetBestImpl(lib_api_info, "DoStuffCpu", "GPU", "DoStuffGpu"));
-  EXPECT_TRUE(
-      CheckGetBestImpl(lib_api_info, "DoStuffGpu", "CPU", "DoStuffCpu"));
-  EXPECT_TRUE(
-      CheckGetBestImpl(lib_api_info, "DoStuffGpu", "GPU", "DoStuffGpu"));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffCpu", {"DoStuffGpu"}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffGpu", {"DoStuffCpu"}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "Undefined", {}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "OneOff", {}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "AnotherOneOff", {}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoThings", {}));
+}
 
-  EXPECT_TRUE(CheckGetBestImpl(lib_api_info, "DoThings", "GPU", "DoThings"));
-  // TPU impl is not available, choose the first one available which is the CPU.
-  EXPECT_TRUE(
-      CheckGetBestImpl(lib_api_info, "DoStuffGpu", "TPU", "DoStuffCpu"));
+TEST(FunctionApiInfoTest, ComplexFunctionLib) {
+  FunctionDefLibrary func_lib;
+  PopulateComplexLibrary(&func_lib);
+  FunctionLibraryApiInfo lib_api_info;
+  TF_ASSERT_OK(lib_api_info.Init(func_lib));
+
+  EXPECT_EQ("DoStuff", GetInterfaceName(lib_api_info, "DoStuffCpu"));
+  EXPECT_EQ("DoStuff", GetInterfaceName(lib_api_info, "DoStuffCpu_gradient"));
+  EXPECT_EQ("DoStuff", GetInterfaceName(lib_api_info, "DoStuffGpu"));
+  EXPECT_EQ("DoStuff", GetInterfaceName(lib_api_info, "DoStuffGpu_gradient"));
+
+  EXPECT_EQ("CPU", GetPreferredDevice(lib_api_info, "DoStuffCpu"));
+  EXPECT_EQ("CPU", GetPreferredDevice(lib_api_info, "DoStuffCpu_gradient"));
+  EXPECT_EQ("GPU", GetPreferredDevice(lib_api_info, "DoStuffGpu"));
+  EXPECT_EQ("GPU", GetPreferredDevice(lib_api_info, "DoStuffGpu_gradient"));
+
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffCpu", {"DoStuffGpu"}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffGpu", {"DoStuffCpu"}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffCpu_gradient",
+                             {"DoStuffGpu_gradient"}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffGpu_gradient",
+                             {"DoStuffCpu_gradient"}));
+  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "Undefined", {}));
 }
 
 TEST(FunctionApiInfoTest, MismatchedArguments) {

@@ -6,7 +6,7 @@
     <groupId>org.tensorflow</groupId>
     <artifactId>spark-tensorflow-connector_2.11</artifactId>
     <packaging>jar</packaging>
-    <version>1.11.0</version>
+    <version>1.15.0</version>
     <name>spark-tensorflow-connector</name>
     <url>https://www.tensorflow.org</url>
     <description>TensorFlow TFRecord connector for Apache Spark DataFrames</description>
@@ -33,7 +33,7 @@
         <scala.test.version>2.2.6</scala.test.version>
         <maven.compiler.version>3.0</maven.compiler.version>
         <java.version>1.8</java.version>
-        <spark.version>2.3.0</spark.version>
+        <spark.version>2.3.1</spark.version>
         <yarn.api.version>2.7.3</yarn.api.version>
         <junit.version>4.11</junit.version>
     </properties>
@@ -140,6 +140,12 @@
                                             org.tensorflow.spark.shaded.com.google.protobuf
                                         </shadedPattern>
                                     </relocation>
+                                    <relocation>
+                                        <pattern>org.tensorflow.hadoop</pattern>
+                                        <shadedPattern>
+                                            org.tensorflow.spark.shaded.org.tensorflow.hadoop
+                                        </shadedPattern>
+                                    </relocation>
                                 </relocations>
                             </configuration>
                         </execution>
@@ -212,6 +218,20 @@
             </plugin>
         </plugins>
     </build>
+
+    <repositories>
+        <repository>
+            <id>apache.snapshots</id>
+            <name>Apache Development Snapshot Repository</name>
+            <url>https://repository.apache.org/content/repositories/snapshots/</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
 
     <profiles>
         <profile>

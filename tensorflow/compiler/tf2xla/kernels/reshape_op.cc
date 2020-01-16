@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace {
@@ -36,7 +37,7 @@ class ReshapeOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
     const TensorShape sizes_shape = ctx->InputShape(1);
     // Preliminary validation of sizes.
-    OP_REQUIRES(ctx, IsLegacyVector(sizes_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(sizes_shape),
                 errors::InvalidArgument("sizes input must be 1-D, not shape ",
                                         sizes_shape.DebugString()));
     const int64 num_dims = sizes_shape.num_elements();
@@ -50,6 +51,7 @@ class ReshapeOp : public XlaOpKernel {
     TensorShape shape;
     int64 product = 1;
     int unknown_index = -1;
+    bool shape_has_zero_dim = false;
     for (int d = 0; d < num_dims; ++d) {
       const int32 size = shape_input[d];
       if (size == -1) {
@@ -59,6 +61,12 @@ class ReshapeOp : public XlaOpKernel {
                                     unknown_index, " and ", d));
         unknown_index = d;
         shape.AddDim(1);
+      } else if (size == 0) {
+        // We don't include zero-sized dimension in product, so that we can
+        // still calculate number of elements for non-zero-sized dimensions and
+        // therefore infer their shapes.
+        shape.AddDim(size);
+        shape_has_zero_dim = true;
       } else {
         OP_REQUIRES(ctx, size >= 0,
                     errors::InvalidArgument(
@@ -68,18 +76,28 @@ class ReshapeOp : public XlaOpKernel {
       }
     }
     if (unknown_index != -1) {
-      OP_REQUIRES(
-          ctx, product > 0,
-          errors::InvalidArgument("Reshape cannot infer the missing input size "
-                                  "for an empty tensor unless all specified "
-                                  "input sizes are non-zero"));
-      const int64 missing = input_shape.num_elements() / product;
-      OP_REQUIRES(
-          ctx, product * missing == input_shape.num_elements(),
-          errors::InvalidArgument(
-              "Input to reshape is a tensor with ", input_shape.num_elements(),
-              " values, but the requested shape requires a multiple of ",
-              product));
+      int64 input_num_elements = 1;
+      bool input_has_zero_dim = false;
+      for (int dim = 0; dim < input_shape.dims(); dim++) {
+        // For zero dimension, we don't count it into `input_num_elements`
+        // unless `sizes` has no zero dimension, so we are still able to
+        // infer shapes for other dimensions.
+        if (input_shape.dim_size(dim) > 0 || !shape_has_zero_dim) {
+          input_num_elements *= input_shape.dim_size(dim);
+        } else {
+          input_has_zero_dim = true;
+        }
+      }
+
+      const int64 missing = input_num_elements / product;
+      if (!input_has_zero_dim) {
+        OP_REQUIRES(
+            ctx, product * missing == input_num_elements,
+            errors::InvalidArgument(
+                "Input to reshape is a tensor with ", input_num_elements,
+                " values, but the requested shape requires a multiple of ",
+                product));
+      }
       shape.set_dim(unknown_index, missing);
     }
     OP_REQUIRES(ctx, shape.num_elements() == input_shape.num_elements(),
@@ -88,14 +106,38 @@ class ReshapeOp : public XlaOpKernel {
                                         " values, but the requested shape has ",
                                         shape.num_elements()));
 
-    VLOG(1) << "Reshape " << input_shape.DebugString() << " "
-            << shape.DebugString();
+    VLOG(2) << "Reshape from " << input_shape.DebugString() << " to "
+            << shape.DebugString() << ", unknown_index=" << unknown_index;
 
-    ctx->SetOutput(0, xla::Reshape(ctx->Input(0), shape.dim_sizes()));
+    shape_input.clear();
+    // Run get input again, this time with dynamic dimension represented as
+    // "-1"
+    ctx->set_dynamic_dimension_is_minus_one(true);
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &shape_input));
+
+    int dynamic_dimension = -1;
+
+    for (int d = 0; d < num_dims; ++d) {
+      const int32 size = shape_input[d];
+      if (size == -1) {
+        if (dynamic_dimension == -1) {
+          dynamic_dimension = d;
+        } else {
+          if (unknown_index != d) {
+            dynamic_dimension = d;
+          }
+        }
+      }
+    }
+
+    // Pass unknown_index to Xla::Reshape as a hint for dynamic shape inference
+    // in XLA to know which output dimension is dynamic.
+    ctx->SetOutput(0, xla::ReshapeWithInferredDimension(
+                          ctx->Input(0), shape.dim_sizes(), dynamic_dimension));
   }
 };
 
-REGISTER_XLA_OP(Name("Reshape").CompileTimeConstInput("shape"), ReshapeOp);
+REGISTER_XLA_OP(Name("Reshape").CompileTimeConstantInput("shape"), ReshapeOp);
 
 }  // namespace
 }  // namespace tensorflow

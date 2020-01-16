@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 import tensorflow as tf
 """
 
@@ -47,13 +48,17 @@ import traceback
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
-
-from tensorflow.python.tools import component_api_helper
-component_api_helper.package_hook(
-    parent_package_str='tensorflow.python',
-    child_package_str=(
-        'tensorflow_estimator.python.estimator'))
-del component_api_helper
+from tensorflow.python import _pywrap_utils
+from tensorflow.python import _pywrap_tfprof
+from tensorflow.python import _pywrap_events_writer
+from tensorflow.python import _pywrap_util_port
+from tensorflow.python import _pywrap_stat_summarizer
+from tensorflow.python import _pywrap_py_exception_registry
+from tensorflow.python import _pywrap_python_op_gen
+from tensorflow.python import _pywrap_kernel_registry
+from tensorflow.python import _pywrap_quantize_training
+from tensorflow.python import _pywrap_transform_graph
+from tensorflow.python import _pywrap_stacktrace_handler
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -69,6 +74,7 @@ from tensorflow.core.util.event_pb2 import *
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
+from tensorflow.python.framework import config
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 
@@ -85,34 +91,42 @@ from tensorflow.python.ops import initializers_ns as initializers
 
 # Bring in subpackages.
 from tensorflow.python import data
+from tensorflow.python import distribute
 from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
+from tensorflow.python.module import module
 from tensorflow.python.ops import bitwise_ops as bitwise
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
-from tensorflow.python.ops import spectral_ops as spectral
+from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.ops.linalg.sparse import sparse
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
+from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
-# Import boosted trees ops to make sure the ops are registered (but unused).
-from tensorflow.python.ops import gen_boosted_trees_ops as _gen_boosted_trees_ops
-
-# Import cudnn rnn ops to make sure their ops are registered.
-from tensorflow.python.ops import gen_cudnn_rnn_ops as _
-
+# Import to make sure the ops are registered.
+from tensorflow.python.ops import gen_audio_ops
+from tensorflow.python.ops import gen_boosted_trees_ops
+from tensorflow.python.ops import gen_cudnn_rnn_ops
+from tensorflow.python.ops import gen_rnn_ops
+from tensorflow.python.ops import gen_sendrecv_ops
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
+from tensorflow.python.training import quantize_training as _quantize_training
 
 # Sub-package for performing i/o directly instead of via ops in a graph.
 from tensorflow.python.lib.io import python_io
@@ -126,17 +140,40 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 
+from tensorflow.python.compat import v2_compat
+
 from tensorflow.python.util.all_util import make_all
 from tensorflow.python.util.tf_export import tf_export
 
 # Eager execution
 from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.eager.remote import connect_to_remote_host
+from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework.ops import enable_eager_execution
+
+# Check whether TF2_BEHAVIOR is turned on.
+from tensorflow.python.eager import monitoring as _monitoring
+from tensorflow.python import tf2 as _tf2
+_tf2_gauge = _monitoring.BoolGauge('/tensorflow/api/tf2_enable',
+                                   'Environment variable TF2_BEHAVIOR is set".')
+_tf2_gauge.get_cell().set(_tf2.enabled())
 
 # Necessary for the symbols in this module to be taken into account by
 # the namespace management system (API decorators).
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+
+# TensorFlow Debugger (tfdbg).
+from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.debug.lib import dumping_callback
+from tensorflow.python.ops import gen_debug_ops
+
+# XLA JIT compiler APIs.
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.compiler.xla import xla
+
+# MLIR APIs.
+from tensorflow.python.compiler.mlir import mlir
 
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).
@@ -149,26 +186,26 @@ nn.rnn_cell = rnn_cell
 
 # Export protos
 # pylint: disable=undefined-variable
-tf_export('AttrValue')(AttrValue)
-tf_export('ConfigProto')(ConfigProto)
-tf_export('Event', 'summary.Event')(Event)
-tf_export('GPUOptions')(GPUOptions)
-tf_export('GraphDef')(GraphDef)
-tf_export('GraphOptions')(GraphOptions)
-tf_export('HistogramProto')(HistogramProto)
-tf_export('LogMessage')(LogMessage)
-tf_export('MetaGraphDef')(MetaGraphDef)
-tf_export('NameAttrList')(NameAttrList)
-tf_export('NodeDef')(NodeDef)
-tf_export('OptimizerOptions')(OptimizerOptions)
-tf_export('RunMetadata')(RunMetadata)
-tf_export('RunOptions')(RunOptions)
-tf_export('SessionLog', 'summary.SessionLog')(SessionLog)
-tf_export('Summary', 'summary.Summary')(Summary)
-tf_export('summary.SummaryDescription')(SummaryDescription)
-tf_export('SummaryMetadata')(SummaryMetadata)
-tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
-tf_export('TensorInfo')(TensorInfo)
+tf_export(v1=['AttrValue'])(AttrValue)
+tf_export(v1=['ConfigProto'])(ConfigProto)
+tf_export(v1=['Event', 'summary.Event'])(Event)
+tf_export(v1=['GPUOptions'])(GPUOptions)
+tf_export(v1=['GraphDef'])(GraphDef)
+tf_export(v1=['GraphOptions'])(GraphOptions)
+tf_export(v1=['HistogramProto'])(HistogramProto)
+tf_export(v1=['LogMessage'])(LogMessage)
+tf_export(v1=['MetaGraphDef'])(MetaGraphDef)
+tf_export(v1=['NameAttrList'])(NameAttrList)
+tf_export(v1=['NodeDef'])(NodeDef)
+tf_export(v1=['OptimizerOptions'])(OptimizerOptions)
+tf_export(v1=['RunMetadata'])(RunMetadata)
+tf_export(v1=['RunOptions'])(RunOptions)
+tf_export(v1=['SessionLog', 'summary.SessionLog'])(SessionLog)
+tf_export(v1=['Summary', 'summary.Summary'])(Summary)
+tf_export(v1=['summary.SummaryDescription'])(SummaryDescription)
+tf_export(v1=['SummaryMetadata'])(SummaryMetadata)
+tf_export(v1=['summary.TaggedRunMetadata'])(TaggedRunMetadata)
+tf_export(v1=['TensorInfo'])(TensorInfo)
 # pylint: enable=undefined-variable
 
 # Special dunders that we choose to export:

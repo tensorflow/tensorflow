@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COPY_INSERTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COPY_INSERTION_H_
 
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -47,29 +47,18 @@ class CopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
 
-  // fusion_can_share_buffer: backend specific function that decides whether a
-  // fusion can share buffer with its operand.
+  // backend specific function that decides whether an instruction
+  // can share buffer with its operand.
   //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
-  CopyInsertion(const HloDataflowAnalysis::FusionCanShareBufferFunction&
-                    fusion_can_share_buffer = nullptr)
-      : fusion_can_share_buffer_(fusion_can_share_buffer) {}
+  explicit CopyInsertion(
+      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
+      : can_share_buffer_(can_share_buffer) {}
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
   StatusOr<bool> Run(HloModule* module) override;
-
-  // The CPU and GPU backend need additional copies added due to deficiencies in
-  // buffer assignment. Specifically, copies are needed for constants live-out
-  // of computations, and for values which are live-in and live-out of the same
-  // computation. These copies are needed because buffer-assignment uses a
-  // computation-scoped analyis (TuplePointsToAnalysis) and has limited
-  // visibility across computation boundaries. This method adds these necessary
-  // copies. Returns whether the module was modified.
-  //
-  // TODO(b/62548313): Remove this when buffer assignment is module-scoped.
-  static StatusOr<bool> AddCopiesForBufferAssignment(HloModule* module);
 
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
@@ -89,20 +78,17 @@ class CopyInsertion : public HloModulePass {
   //
   Status AddSpecialCaseCopies(HloModule* module);
 
-  // Verifies that no HLO values have interfering live ranges using the given
-  // ordering.
-  Status VerifyNoLiveRangeInterference(const HloOrdering& ordering,
-                                       HloModule* module);
+ protected:
+  // Override which requires the caller to pass in a call graph.
+  virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
+                                      HloModule* module);
+
+  // Backend specific function that decides whether an instruction can share
+  // buffer with its operand.
+  HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 
  private:
-  // Override which requires the caller to pass in a call graph.
-  Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module);
-
   Status AddCopiesToResolveInterference(HloModule* module);
-
-  // Backend specific function that decides whether a fusion can share buffer
-  // with its operand.
-  HloDataflowAnalysis::FusionCanShareBufferFunction fusion_can_share_buffer_;
 };
 
 }  // namespace xla

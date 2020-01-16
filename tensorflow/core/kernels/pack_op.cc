@@ -31,9 +31,9 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 typedef Eigen::GpuDevice GPUDevice;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
@@ -112,12 +112,12 @@ class PackOp : public OpKernel {
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             values[i].shaped<T, 2>({before_dim, after_dim})));
       }
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (std::is_same<Device, GPUDevice>::value) {
         ConcatGPU<T>(c, inputs_flat, output, &output_flat);
         return;
       }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
       if (std::is_same<Device, SYCLDevice>::value) {
         ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, &output_flat);
@@ -142,13 +142,13 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Primarily used for SavedModel support on mobile.
-REGISTER_PACK(string);
+REGISTER_PACK(tstring);
 #endif  // defined(IS_MOBILE_PLATFORM) &&
         // !defined(SUPPORT_SELECTIVE_REGISTRATION)
 
 #undef REGISTER_PACK
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                       \
   REGISTER_KERNEL_BUILDER(                                       \
@@ -158,7 +158,10 @@ REGISTER_PACK(string);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-REGISTER_GPU(bool);
+TF_CALL_int16(REGISTER_GPU);
+TF_CALL_bool(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
@@ -171,7 +174,7 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
                             .TypeConstraint<int32>("T"),
                         PackOp<CPUDevice, int32>);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(type)                                       \

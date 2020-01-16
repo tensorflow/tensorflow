@@ -13,33 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/env.h"
+
 #include <sys/stat.h>
+
 #include <deque>
 #include <utility>
 #include <vector>
+
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stringprintf.h"
+
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
 #if defined(__FreeBSD__)
 #include <sys/sysctl.h>
-#include <sys/types.h>
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
+#undef DeleteFile
+#undef CopyFile
 #include "tensorflow/core/platform/windows/wide_char.h"
 #define PATH_MAX MAX_PATH
 #else
+#include <fcntl.h>
+#include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 #endif
-
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -48,20 +55,23 @@ constexpr size_t kCopyFileBufferSize = 128 * 1024;
 
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
-  Status Register(const string& scheme, Factory factory) override;
-  FileSystem* Lookup(const string& scheme) override;
-  Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes) override;
+  Status Register(const std::string& scheme, Factory factory) override;
+  Status Register(const std::string& scheme,
+                  std::unique_ptr<FileSystem> filesystem) override;
+  FileSystem* Lookup(const std::string& scheme) override;
+  Status GetRegisteredFileSystemSchemes(
+      std::vector<std::string>* schemes) override;
 
  private:
   mutable mutex mu_;
-  mutable std::unordered_map<string, std::unique_ptr<FileSystem>> registry_
+  mutable std::unordered_map<std::string, std::unique_ptr<FileSystem>> registry_
       GUARDED_BY(mu_);
 };
 
-Status FileSystemRegistryImpl::Register(const string& scheme,
+Status FileSystemRegistryImpl::Register(const std::string& scheme,
                                         FileSystemRegistry::Factory factory) {
   mutex_lock lock(mu_);
-  if (!registry_.emplace(string(scheme), std::unique_ptr<FileSystem>(factory()))
+  if (!registry_.emplace(scheme, std::unique_ptr<FileSystem>(factory()))
            .second) {
     return errors::AlreadyExists("File factory for ", scheme,
                                  " already registered");
@@ -69,7 +79,17 @@ Status FileSystemRegistryImpl::Register(const string& scheme,
   return Status::OK();
 }
 
-FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
+Status FileSystemRegistryImpl::Register(
+    const std::string& scheme, std::unique_ptr<FileSystem> filesystem) {
+  mutex_lock lock(mu_);
+  if (!registry_.emplace(scheme, std::move(filesystem)).second) {
+    return errors::AlreadyExists("File system for ", scheme,
+                                 " already registered");
+  }
+  return Status::OK();
+}
+
+FileSystem* FileSystemRegistryImpl::Lookup(const std::string& scheme) {
   mutex_lock lock(mu_);
   const auto found = registry_.find(scheme);
   if (found == registry_.end()) {
@@ -79,7 +99,7 @@ FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
 }
 
 Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
-    std::vector<string>* schemes) {
+    std::vector<std::string>* schemes) {
   mutex_lock lock(mu_);
   for (const auto& e : registry_) {
     schemes->push_back(e.first);
@@ -89,10 +109,11 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
-Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
+Status Env::GetFileSystemForFile(const std::string& fname,
+                                 FileSystem** result) {
   StringPiece scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
-  FileSystem* file_system = file_system_registry_->Lookup(string(scheme));
+  FileSystem* file_system = file_system_registry_->Lookup(std::string(scheme));
   if (!file_system) {
     if (scheme.empty()) {
       scheme = "[local]";
@@ -105,13 +126,18 @@ Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   return Status::OK();
 }
 
-Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
+Status Env::GetRegisteredFileSystemSchemes(std::vector<std::string>* schemes) {
   return file_system_registry_->GetRegisteredFileSystemSchemes(schemes);
 }
 
-Status Env::RegisterFileSystem(const string& scheme,
+Status Env::RegisterFileSystem(const std::string& scheme,
                                FileSystemRegistry::Factory factory) {
   return file_system_registry_->Register(scheme, std::move(factory));
+}
+
+Status Env::RegisterFileSystem(const std::string& scheme,
+                               std::unique_ptr<FileSystem> filesystem) {
+  return file_system_registry_->Register(scheme, std::move(filesystem));
 }
 
 Status Env::FlushFileSystemCaches() {
@@ -296,9 +322,9 @@ string Env::GetExecutablePath() {
 #ifdef __APPLE__
   uint32_t buffer_size(0U);
   _NSGetExecutablePath(nullptr, &buffer_size);
-  char unresolved_path[buffer_size];
-  _NSGetExecutablePath(unresolved_path, &buffer_size);
-  CHECK(realpath(unresolved_path, exe_path));
+  std::vector<char> unresolved_path(buffer_size);
+  _NSGetExecutablePath(unresolved_path.data(), &buffer_size);
+  CHECK(realpath(unresolved_path.data(), exe_path));
 #elif defined(__FreeBSD__)
   int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
   size_t exe_path_size = PATH_MAX;
@@ -314,7 +340,31 @@ string Env::GetExecutablePath() {
   string file_path = WideCharToUtf8(wc_file_path);
   std::copy(file_path.begin(), file_path.end(), exe_path);
 #else
-  CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+  char buf[PATH_MAX] = {0};
+  int path_length = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  CHECK_NE(-1, path_length);
+
+  if (strstr(buf, "python") != nullptr) {
+    // Discard the path of the python binary, and any flags.
+    int fd = open("/proc/self/cmdline", O_RDONLY);
+    int cmd_length = read(fd, buf, PATH_MAX - 1);
+    CHECK_NE(-1, cmd_length);
+    int token_pos = 0;
+    for (bool token_is_first_or_flag = true; token_is_first_or_flag;) {
+      // Get token length, including null
+      int token_len = strlen(&buf[token_pos]) + 1;
+      token_is_first_or_flag = false;
+      // Check if we can skip without overshooting
+      if (token_pos + token_len < cmd_length) {
+        token_pos += token_len;
+        token_is_first_or_flag = (buf[token_pos] == '-');  // token is a flag
+      }
+    }
+    snprintf(exe_path, sizeof(exe_path), "%s", &buf[token_pos]);
+  } else {
+    snprintf(exe_path, sizeof(exe_path), "%s", buf);
+  }
+
 #endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
@@ -338,22 +388,10 @@ bool Env::LocalTempFilename(string* filename) {
 }
 
 bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
-#ifdef __APPLE__
-  uint64_t tid64;
-  pthread_threadid_np(nullptr, &tid64);
-  int32 tid = static_cast<int32>(tid64);
-  int32 pid = static_cast<int32>(getpid());
-#elif defined(__FreeBSD__)
-  // Has to be casted to long first, else this error appears:
-  // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
-  // is not allowed
-  int32 tid = static_cast<int32>(static_cast<int64>(pthread_self()));
-  int32 pid = static_cast<int32>(getpid());
-#elif defined(PLATFORM_WINDOWS)
-  int32 tid = static_cast<int32>(GetCurrentThreadId());
+  int32 tid = GetCurrentThreadId();
+#ifdef PLATFORM_WINDOWS
   int32 pid = static_cast<int32>(GetCurrentProcessId());
 #else
-  int32 tid = static_cast<int32>(pthread_self());
   int32 pid = static_cast<int32>(getpid());
 #endif
   uint64 now_microsec = NowMicros();
@@ -387,8 +425,8 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   if (!s.ok()) {
     return s;
   }
-  gtl::STLStringResizeUninitialized(data, file_size);
-  char* p = gtl::string_as_array(data);
+  data->resize(file_size);
+  char* p = &*data->begin();
   StringPiece result;
   s = file->Read(0, file_size, &result, p);
   if (!s.ok()) {
@@ -424,8 +462,16 @@ Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
   std::unique_ptr<RandomAccessFile> src_file;
   TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
 
+  // When `target` points to a directory, we need to create a file within.
+  string target_name;
+  if (target_fs->IsDirectory(target).ok()) {
+    target_name = io::JoinPath(target, io::Basename(src));
+  } else {
+    target_name = target;
+  }
+
   std::unique_ptr<WritableFile> target_file;
-  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
+  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target_name, &target_file));
 
   uint64 offset = 0;
   std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
@@ -453,7 +499,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
     pos_ += count;
     return true;
   }
-  protobuf_int64 ByteCount() const override { return pos_; }
+  int64_t ByteCount() const override { return pos_; }
   Status status() const { return status_; }
 
   bool Next(const void** data, int* size) override {
@@ -502,7 +548,8 @@ Status ReadBinaryProto(Env* env, const string& fname,
   // respectively.
   coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
-  if (!proto->ParseFromCodedStream(&coded_stream)) {
+  if (!proto->ParseFromCodedStream(&coded_stream) ||
+      !coded_stream.ConsumedEntireMessage()) {
     TF_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }
@@ -537,6 +584,21 @@ Status ReadTextProto(Env* env, const string& fname,
 #else
   return errors::Unimplemented("Can't parse text protos with protolite.");
 #endif
+}
+
+Status ReadTextOrBinaryProto(Env* env, const string& fname,
+#if !defined(TENSORFLOW_LITE_PROTOS)
+                             ::tensorflow::protobuf::Message* proto
+#else
+                             ::tensorflow::protobuf::MessageLite* proto
+#endif
+) {
+#if !defined(TENSORFLOW_LITE_PROTOS)
+  if (ReadTextProto(env, fname, proto).ok()) {
+    return Status::OK();
+  }
+#endif
+  return ReadBinaryProto(env, fname, proto);
 }
 
 }  // namespace tensorflow

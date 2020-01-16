@@ -132,7 +132,7 @@ class GradientsDebugger(object):
 
     # Create a train op under the grad_debugger context.
     with grad_debugger:
-      train_op = tf.train.GradientDescentOptimizer(z)
+      train_op = tf.compat.v1.train.GradientDescentOptimizer(z)
 
     # Now we can reflect through grad_debugger to get the gradient tensor
     # with respect to y.
@@ -195,7 +195,7 @@ class GradientsDebugger(object):
     # Create a train op under the grad_debugger context.
     grad_debugger = tf_debug.GradientsDebugger()
     with grad_debugger.watch_gradients_by_tensors(y):
-      train_op = tf.train.GradientDescentOptimizer(z)
+      train_op = tf.compat.v1.train.GradientDescentOptimizer(z)
 
     # Now we can reflect through grad_debugger to get the gradient tensor
     # with respect to y.
@@ -247,7 +247,7 @@ class GradientsDebugger(object):
     # Create a train op under the grad_debugger context.
     grad_debugger = tf_debug.GradientsDebugger()
     with grad_debugger.watch_gradients_by_tensor_names(r"(x|y):0$"):
-      train_op = tf.train.GradientDescentOptimizer(z)
+      train_op = tf.compat.v1.train.GradientDescentOptimizer(z)
 
     # Now we can reflect through grad_debugger to get the gradient tensor
     # with respect to x and y.

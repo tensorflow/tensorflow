@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
 namespace {
-class CpuOutfeedTest : public CpuCodegenTest {};
+
+using CpuOutfeedTest = CpuCodegenTest;
 
 TEST_F(CpuOutfeedTest, OutfeedRoot) {
   const string hlo_text = R"(
@@ -28,22 +30,20 @@ HloModule Outfeed
 
 ENTRY main {
   const_a = f32[2,3,2] constant(
-  f32[2,3,2]
     {{{1, 2}, {1001, 1002}, {2001, 2002}},
      {{2, 1}, {2001, 3002}, {2001, 2002}}})
 
-  token = token[] after-all()
-  outfeed = token[] outfeed(f32[2,3,2] const_a, token)
+  token0 = token[] after-all()
+  outfeed = token[] outfeed(f32[2,3,2] const_a, token0)
   ROOT root = () tuple()
 }
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [48 x i8]
+CHECK: private unnamed_addr constant [48 x i8]
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",
@@ -70,8 +70,7 @@ ENTRY main {
 CHECK: Outfeed
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",

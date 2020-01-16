@@ -15,11 +15,9 @@ namespace internal {
 
 // Accumulate the product of 2 QInt8 inputs on 32 bits to prevent
 // overflows
-template<> struct scalar_product_traits<QInt8, QInt8>
-{
-  enum {
-    Defined = 1
-  };
+template <>
+struct scalar_product_traits<QInt8, QInt8> {
+  enum { Defined = 1 };
   typedef QInt32 ReturnType;
 };
 
@@ -33,11 +31,17 @@ struct scalar_product_traits<QInt16, QInt16> {
 
 // Accumulate the product of QInt8 inputs with QUint8 inputs on 32 bits
 // to prevent overflows
-template<> struct scalar_product_traits<QInt8, QUInt8>
-{
-  enum {
-    Defined = 1
-  };
+template <>
+struct scalar_product_traits<QInt8, QUInt8> {
+  enum { Defined = 1 };
+  typedef QInt32 ReturnType;
+};
+
+// Accumulate the product of QUInt8 inputs with Qint8 inputs on 32 bits
+// to prevent overflows
+template <>
+struct scalar_product_traits<QUInt8, QInt8> {
+  enum { Defined = 1 };
   typedef QInt32 ReturnType;
 };
 
@@ -47,13 +51,15 @@ template<> struct scalar_product_traits<QInt8, QUInt8>
 // signed 8bit integers
 #ifndef EIGEN_USE_OPTIMIZED_INT8_INT8_MAT_MAT_PRODUCT
 
-template<bool _ConjLhs, bool _ConjRhs>
-class gebp_traits<QInt8, QInt8, _ConjLhs, _ConjRhs>
-{
-public:
+template <bool _ConjLhs, bool _ConjRhs>
+class gebp_traits<QInt8, QInt8, _ConjLhs, _ConjRhs> {
+ public:
   typedef QInt8 LhsScalar;
   typedef QInt8 RhsScalar;
   typedef QInt32 ResScalar;
+
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
 
   enum {
     // register block size along the M and N directions
@@ -68,22 +74,24 @@ public:
 };
 
 // The signed 8bit Mat-Mat product itself.
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-struct gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+struct gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+                   ConjugateRhs> {
   EIGEN_DONT_INLINE
-  void operator()(const DataMapper& res, const QInt8* blockA, const QInt8* blockB,
-                  Index rows, Index depth, Index cols, QInt32 alpha,
-                  Index strideA=-1, Index strideB=-1, Index offsetA=0, Index offsetB=0);
+  void operator()(const DataMapper& res, const QInt8* blockA,
+                  const QInt8* blockB, Index rows, Index depth, Index cols,
+                  QInt32 alpha, Index strideA = -1, Index strideB = -1,
+                  Index offsetA = 0, Index offsetB = 0);
 };
 
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE
-void gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-::operator()(const DataMapper& res, const QInt8* blockA, const QInt8* blockB,
-             Index rows, Index depth, Index cols, QInt32 alpha,
-             Index strideA, Index strideB, Index offsetA, Index offsetB)
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+EIGEN_DONT_INLINE void gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr,
+                                   ConjugateLhs, ConjugateRhs>::
+operator()(const DataMapper& res, const QInt8* blockA, const QInt8* blockB,
+           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
+           Index strideB, Index offsetA, Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
 
@@ -113,17 +121,18 @@ void gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs, Conjugat
 }
 #endif
 
-
 // This definition tackle the case where the lhs is encoded using signed 8bit
 // integers and the rhs using unsigned 8bit integers.
 #ifndef EIGEN_USE_OPTIMIZED_INT8_UINT8_MAT_MAT_PRODUCT
-template<bool _ConjLhs, bool _ConjRhs>
-class gebp_traits<QInt8, QUInt8, _ConjLhs, _ConjRhs>
-{
-public:
+template <bool _ConjLhs, bool _ConjRhs>
+class gebp_traits<QInt8, QUInt8, _ConjLhs, _ConjRhs> {
+ public:
   typedef QInt8 LhsScalar;
   typedef QUInt8 RhsScalar;
   typedef QInt32 ResScalar;
+
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
 
   enum {
     // register block size along the M and N directions
@@ -138,22 +147,24 @@ public:
 };
 
 // Mat-Mat product of a signed 8bit lhs with an unsigned 8bit rhs
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-struct gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+struct gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+                   ConjugateRhs> {
   EIGEN_DONT_INLINE
-  void operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-                  Index rows, Index depth, Index cols, QInt32 alpha,
-                  Index strideA=-1, Index strideB=-1, Index offsetA=0, Index offsetB=0);
+  void operator()(const DataMapper& res, const QInt8* blockA,
+                  const QUInt8* blockB, Index rows, Index depth, Index cols,
+                  QInt32 alpha, Index strideA = -1, Index strideB = -1,
+                  Index offsetA = 0, Index offsetB = 0);
 };
 
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE
-void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-::operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-             Index rows, Index depth, Index cols, QInt32 alpha,
-             Index strideA, Index strideB, Index offsetA, Index offsetB)
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+EIGEN_DONT_INLINE void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr,
+                                   ConjugateLhs, ConjugateRhs>::
+operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
+           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
+           Index strideB, Index offsetA, Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
 
@@ -183,17 +194,18 @@ void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, Conjuga
 }
 #endif
 
-
 // This definition tackle the case where the khs is encoded using unsigned 8bit
 // integers and the rhs using signed 8bit integers.
 #ifndef EIGEN_USE_OPTIMIZED_UINT8_INT8_MAT_MAT_PRODUCT
-template<bool _ConjLhs, bool _ConjRhs>
-class gebp_traits<QUInt8, QInt8, _ConjLhs, _ConjRhs>
-{
-public:
+template <bool _ConjLhs, bool _ConjRhs>
+class gebp_traits<QUInt8, QInt8, _ConjLhs, _ConjRhs> {
+ public:
   typedef QUInt8 LhsScalar;
   typedef QInt8 RhsScalar;
   typedef QInt32 ResScalar;
+
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
 
   enum {
     // register block size along the M and N directions
@@ -207,24 +219,25 @@ public:
   };
 };
 
-
 // Mat-Mat product of an unsigned 8bit lhs with a signed 8bit rhs
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-struct gebp_kernel<QUInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+struct gebp_kernel<QUInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+                   ConjugateRhs> {
   EIGEN_DONT_INLINE
-  void operator()(const DataMapper& res, const QUInt8* blockA, const QInt8* blockB,
-                  Index rows, Index depth, Index cols, QInt32 alpha,
-                  Index strideA=-1, Index strideB=-1, Index offsetA=0, Index offsetB=0);
+  void operator()(const DataMapper& res, const QUInt8* blockA,
+                  const QInt8* blockB, Index rows, Index depth, Index cols,
+                  QInt32 alpha, Index strideA = -1, Index strideB = -1,
+                  Index offsetA = 0, Index offsetB = 0);
 };
 
-template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE
-void gebp_kernel<QUInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
-::operator()(const DataMapper& res, const QUInt8* blockA, const QInt8* blockB,
-             Index rows, Index depth, Index cols, QInt32 alpha,
-             Index strideA, Index strideB, Index offsetA, Index offsetB)
-{
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+EIGEN_DONT_INLINE void gebp_kernel<QUInt8, QInt8, Index, DataMapper, mr, nr,
+                                   ConjugateLhs, ConjugateRhs>::
+operator()(const DataMapper& res, const QUInt8* blockA, const QInt8* blockB,
+           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
+           Index strideB, Index offsetA, Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
 
@@ -262,6 +275,9 @@ class gebp_traits<QInt16, QInt16, _ConjLhs, _ConjRhs> {
   typedef QInt16 LhsScalar;
   typedef QInt16 RhsScalar;
   typedef QInt32 ResScalar;
+
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
 
   enum {
     // register block size along the M and N directions

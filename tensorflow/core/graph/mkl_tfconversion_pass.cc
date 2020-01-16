@@ -93,7 +93,7 @@ class MklToTfConversionPass : public GraphOptimizationPass {
   // @input T Datatype to use for checking input op
   // @return true if op is Mkl supported; false, otherwise.
   inline bool IsMklSupportedOp(const string& op_name, DataType T) const {
-    return mkl_op_registry::IsMklOp(op_name, T);
+    return mkl_op_registry::IsMklLayoutDependentOp(op_name, T);
   }
 
   // Is the input Op supported by Mkl-specific layout AND
@@ -149,22 +149,20 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   CHECK_NOTNULL(dst);
 
   Node* conversion_node = nullptr;
-  DataType src_datatype = DT_INVALID;
-  DataType dst_datatype = DT_INVALID;
+  DataType src_datatype = src->output_type(e->src_output());
+  DataType dst_datatype = dst->input_type(e->dst_input());
   string data_format;
 
-  TF_CHECK_OK(GetNodeAttr(src->def(), "T", &src_datatype));
-  bool dst_dtype_found =
-      GetNodeAttr(dst->def(), "T", &dst_datatype) == Status::OK();
   // We compare source and destination datatypes only when both are found.
-  if (dst_dtype_found && (src_datatype != dst_datatype)) {
-    string err_msg = "T attribute of " + src->name() + " and " + dst->name() +
-                     " do not match. Will not insert" +
-                     " MklToTf node in such case.";
+  if (src_datatype != dst_datatype) {
+    string err_msg = "T attribute of " + src->name() + ":" +
+                     std::to_string(e->src_output()) + " and " + dst->name() +
+                     ":" + std::to_string(e->dst_input()) +
+                     " do not"
+                     " match. Will not insert MklToTf node in such case.";
     return Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
   }
 
-  // Build the conversion node and specify src as input.
   TF_CHECK_OK(
       NodeBuilder((*g)->NewName("Mkl2Tf"), "_MklToTf")
           .Input(src, e->src_output())
@@ -191,7 +189,8 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   conversion_node->set_assigned_device_name(src->assigned_device_name());
 
   // Set the Mkl op label for this op.
-  conversion_node->AddAttr("_kernel", mkl_op_registry::kMklOpLabel);
+  conversion_node->AddAttr("_kernel",
+                           mkl_op_registry::kMklLayoutDependentOpLabel);
 
   // Now that we have added edge from src->conversion_node, let's add edge from
   // output of conversion_node to the dest node. Since conversion_node
@@ -276,7 +275,8 @@ Status MklToTfConversionPass::InsertInputConversionNode(
   conversion_node->set_assigned_device_name(n->assigned_device_name());
 
   // Set the Mkl op label for this op.
-  conversion_node->AddAttr("_kernel", mkl_op_registry::kMklOpLabel);
+  conversion_node->AddAttr("_kernel",
+                           mkl_op_registry::kMklLayoutDependentOpLabel);
 
   // Now that we have added edges from src->conversion_node, let's add edge from
   // output of conversion_node to the element-wise node.

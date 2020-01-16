@@ -35,10 +35,9 @@ class XlaConvOp : public XlaOpKernel {
     string precision_config_attr;
     OP_REQUIRES_OK(
         context, context->GetAttr("precision_config", &precision_config_attr));
-    OP_REQUIRES(
-        context,
-        precision_config_.ParsePartialFromString(precision_config_attr),
-        errors::InvalidArgument("Error parsing convolution dimension numbers"));
+    OP_REQUIRES(context,
+                precision_config_.ParsePartialFromString(precision_config_attr),
+                errors::InvalidArgument("Error parsing precision config."));
   }
 
   void Compile(XlaOpKernelContext* context) override {
@@ -78,7 +77,7 @@ class XlaConvOp : public XlaOpKernel {
     xla::XlaOp output = xla::ConvGeneralDilated(
         context->Input(0), context->Input(1), window_strides, padding,
         lhs_dilation, rhs_dilation, dnums_, feature_group_count,
-        &precision_config_);
+        /*batch_group_count=*/1, &precision_config_);
     context->SetOutput(0, output);
   }
 
@@ -90,11 +89,11 @@ class XlaConvOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("XlaConv")
-                    .CompileTimeConstInput("window_strides")
-                    .CompileTimeConstInput("lhs_dilation")
-                    .CompileTimeConstInput("rhs_dilation")
-                    .CompileTimeConstInput("feature_group_count")
-                    .CompileTimeConstInput("padding"),
+                    .CompileTimeConstantInput("window_strides")
+                    .CompileTimeConstantInput("lhs_dilation")
+                    .CompileTimeConstantInput("rhs_dilation")
+                    .CompileTimeConstantInput("feature_group_count")
+                    .CompileTimeConstantInput("padding"),
                 XlaConvOp);
 
 }  // namespace

@@ -25,10 +25,11 @@ from __future__ import print_function
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('layers.Dense')
+@tf_export(v1=['layers.Dense'])
 class Dense(keras_layers.Dense, base.Layer):
   """Densely-connected layer class.
 
@@ -46,7 +47,7 @@ class Dense(keras_layers.Dense, base.Layer):
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: Initializer function for the weight matrix.
       If `None` (default), weights are initialized using the default
-      initializer used by `tf.get_variable`.
+      initializer used by `tf.compat.v1.get_variable`.
     bias_initializer: Initializer function for the bias.
     kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
@@ -63,7 +64,7 @@ class Dense(keras_layers.Dense, base.Layer):
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such cases.
-    reuse: Boolean, whether to reuse the weights of a previous layer
+    _reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
   Properties:
@@ -109,7 +110,9 @@ class Dense(keras_layers.Dense, base.Layer):
                                 **kwargs)
 
 
-@tf_export('layers.dense')
+@deprecation.deprecated(
+    date=None, instructions='Use keras.layers.Dense instead.')
+@tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
     activation=None,
@@ -141,7 +144,7 @@ def dense(
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: Initializer function for the weight matrix.
       If `None` (default), weights are initialized using the default
-      initializer used by `tf.get_variable`.
+      initializer used by `tf.compat.v1.get_variable`.
     bias_initializer: Initializer function for the bias.
     kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
@@ -184,7 +187,7 @@ def dense(
   return layer.apply(inputs)
 
 
-@tf_export('layers.Dropout')
+@tf_export(v1=['layers.Dropout'])
 class Dropout(keras_layers.Dropout, base.Layer):
   """Applies Dropout to the input.
 
@@ -203,7 +206,7 @@ class Dropout(keras_layers.Dropout, base.Layer):
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`.
+      `tf.compat.v1.set_random_seed`.
       for behavior.
     name: The name of the layer (string).
   """
@@ -223,7 +226,10 @@ class Dropout(keras_layers.Dropout, base.Layer):
     return super(Dropout, self).call(inputs, training=training)
 
 
-@tf_export('layers.dropout')
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.dropout instead.')
+@tf_export(v1=['layers.dropout'])
 def dropout(inputs,
             rate=0.5,
             noise_shape=None,
@@ -248,7 +254,7 @@ def dropout(inputs,
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode
@@ -265,7 +271,7 @@ def dropout(inputs,
   return layer.apply(inputs, training=training)
 
 
-@tf_export('layers.Flatten')
+@tf_export(v1=['layers.Flatten'])
 class Flatten(keras_layers.Flatten, base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
@@ -279,11 +285,11 @@ class Flatten(keras_layers.Flatten, base.Layer):
   Examples:
 
   ```
-    x = tf.placeholder(shape=(None, 4, 4), dtype='float32')
+    x = tf.compat.v1.placeholder(shape=(None, 4, 4), dtype='float32')
     y = Flatten()(x)
     # now `y` has shape `(None, 16)`
 
-    x = tf.placeholder(shape=(None, 3, None), dtype='float32')
+    x = tf.compat.v1.placeholder(shape=(None, 3, None), dtype='float32')
     y = Flatten()(x)
     # now `y` has shape `(None, None)`
   ```
@@ -291,7 +297,10 @@ class Flatten(keras_layers.Flatten, base.Layer):
   pass
 
 
-@tf_export('layers.flatten')
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.Flatten instead.')
+@tf_export(v1=['layers.flatten'])
 def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
@@ -310,11 +319,11 @@ def flatten(inputs, name=None, data_format='channels_last'):
   Examples:
 
   ```
-    x = tf.placeholder(shape=(None, 4, 4), dtype='float32')
+    x = tf.compat.v1.placeholder(shape=(None, 4, 4), dtype='float32')
     y = flatten(x)
     # now `y` has shape `(None, 16)`
 
-    x = tf.placeholder(shape=(None, 3, None), dtype='float32')
+    x = tf.compat.v1.placeholder(shape=(None, 3, None), dtype='float32')
     y = flatten(x)
     # now `y` has shape `(None, None)`
   ```

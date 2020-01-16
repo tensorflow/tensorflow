@@ -245,17 +245,17 @@ bool IsConstantFoldable(
   if (n->IsSink()) {
     return false;
   }
+  if (n->IsFakeParam()) {
+    return false;
+  }
   // Since constant-folding runs on the CPU, do not attempt to constant-fold
   // operators that have no CPU kernel. Also implies that we will not
   // constant-fold functions.
   // TODO(phawkins): allow constant-folding for functions; functions may
   // be arbitrarily expensive to execute.
-  if (!FindKernelDef(DeviceType(DEVICE_CPU), n->def(), /*def=*/nullptr,
-                     /*kernel_class_name=*/nullptr)
-           .ok()) {
+  if (!KernelDefAvailable(DeviceType(DEVICE_CPU), n->def())) {
     return false;
   }
-
   return true;
 }
 
@@ -327,14 +327,15 @@ void FindConstantFoldableNodes(
         shape_replacement_map) {
   bool internal_node_inserted = false;
   // Walk the nodes in data flow order.
-  ReverseDFS(*graph, nullptr,
-             [nodes, constant_control_deps, shape_replacement_map,
-              &internal_node_inserted, &opts](Node* n) {
-               ConsiderConstantFoldableNode(
-                   n, opts, nodes, constant_control_deps, shape_replacement_map,
-                   &internal_node_inserted);
-             },
-             NodeComparatorName());
+  ReverseDFS(
+      *graph, nullptr,
+      [nodes, constant_control_deps, shape_replacement_map,
+       &internal_node_inserted, &opts](Node* n) {
+        ConsiderConstantFoldableNode(n, opts, nodes, constant_control_deps,
+                                     shape_replacement_map,
+                                     &internal_node_inserted);
+      },
+      NodeComparatorName());
   // If we have inserted just leaf level nodes, then there is nothing to fold.
   if (!internal_node_inserted) {
     nodes->clear();
@@ -418,7 +419,7 @@ Graph* GetConstantGraph(
     const Graph* orig_graph, const std::vector<Node*>& nodes,
     const std::unordered_map<const Node*, std::vector<Tensor>>&
         shape_replacement_map,
-    std::map<NodeAndOutput, Node*>* tensors_to_fetch,
+    std::map<NodeAndOutput, NodeAndOutput>* tensors_to_fetch,
     const ConstantFoldNameGenerator& generate_new_name) {
   Graph* constant_graph = new Graph(orig_graph->op_registry());
   std::unordered_map<Node*, std::vector<Node*>> node_map;
@@ -440,7 +441,7 @@ Graph* GetConstantGraph(
         if (added_nodes.second.size() == 1) {
           tensors_to_fetch->insert(
               {{added_nodes.second[0], out_edge->src_output()},
-               added_nodes.first});
+               {added_nodes.first, out_edge->src_output()}});
         } else {
           // The node had multiple outputs and was replaced by a
           // vector of constants, so the NodeAndOutput is the 0th
@@ -448,7 +449,7 @@ Graph* GetConstantGraph(
           // output of the added node as in the standard case above.
           tensors_to_fetch->insert(
               {{added_nodes.second[out_edge->src_output()], 0},
-               added_nodes.first});
+               {added_nodes.first, out_edge->src_output()}});
         }
       }
     }
@@ -464,25 +465,25 @@ Graph* GetConstantGraph(
 // 'control_deps' is the set of nodes that should be control predecessors of the
 // new constant node.
 bool ReplaceTensorWithConstant(
-    Graph* graph, Device* partition_device, NodeAndOutput tensor,
+    Graph* graph, const Device* partition_device, NodeAndOutput tensor,
     const Tensor& constant, const gtl::FlatSet<Node*>& control_deps,
     int64 max_constant_size_in_bytes,
     const ConstantFoldNameGenerator& generate_new_name) {
   // Be conservative when replacing a tensor with a constant, when not
   // running on CPU.
   // 1) Do not replace another constant.
-  // 2) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
-  // constraint, do not replace it.
-  // 3) If the size of the constant in bytes is too large (>
+  // 2) If the destination tensor or any other tensor from the same node is not
+  // an int32 tensor, and has HOST_MEMORY constraint, do not replace it.
+  // 3) If the destination tensor or any other tensor from the same node is an
+  // int32 tensor, and has DEVICE_MEMORY constraint, do not replace it.
+  // 4) If the size of the constant in bytes is too large (>
   // max_constant_in_bytes), do not replace it. This prevents the size of the
   // Graph from growing too large.
-  // 4) If the constant op created does not have a kernel implementation
+  // 5) If the constant op created does not have a kernel implementation
   // for the device, do not use it.
   // TODO(keveman): Consider adding a new constant op that has a kernel
   // implementation for all types, but with HostMemory constraint on it's
   // output.
-  // 5) If the constant op for the device has different output memory type
-  // from the original op output memory type, do not replace it.
   if (tensor.first->IsConstant()) {
     return false;
   }
@@ -490,15 +491,20 @@ bool ReplaceTensorWithConstant(
                                ? DeviceType{partition_device->device_type()}
                                : DEVICE_CPU;
   if (partition_device && device_type != DEVICE_CPU) {
-    MemoryType memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
-                             &memory_type)
+    MemoryTypeVector input_mvec;
+    MemoryTypeVector output_mvec;
+    if (!MemoryTypesForNode(graph->op_registry(), device_type,
+                            tensor.first->def(), &input_mvec, &output_mvec)
              .ok()) {
       return false;
     }
-    bool is_int32 = tensor.first->output_type(tensor.second) == DT_INT32;
-    if (memory_type == HOST_MEMORY && !is_int32) {
-      return false;
+    for (int i = 0; i < output_mvec.size(); i++) {
+      MemoryType memory_type = output_mvec[i];
+      bool is_int32 = tensor.first->output_type(i) == DT_INT32;
+      if ((memory_type == HOST_MEMORY && !is_int32) ||
+          (memory_type == DEVICE_MEMORY && is_int32)) {
+        return false;
+      }
     }
   }
   if (constant.TotalBytes() > max_constant_size_in_bytes) {
@@ -535,23 +541,6 @@ bool ReplaceTensorWithConstant(
   if (!NodeBuilder(builder).Finalize(graph, &constant_node).ok()) {
     return false;
   }
-  if (partition_device && device_type != DEVICE_CPU) {
-    MemoryType original_output_memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
-                             &original_output_memory_type)
-             .ok()) {
-      return false;
-    }
-    MemoryType const_output_memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, constant_node, 0,
-                             &const_output_memory_type)
-             .ok()) {
-      return false;
-    }
-    if (original_output_memory_type != const_output_memory_type) {
-      return false;
-    }
-  }
   for (auto edge : edges_to_remove) {
     graph->AddEdge(constant_node, 0, edge->dst(), edge->dst_input());
     graph->RemoveEdge(edge);
@@ -573,7 +562,8 @@ bool ReplaceTensorWithConstant(
 
 Status ConstantFold(const ConstantFoldingOptions& opts,
                     FunctionLibraryRuntime* function_library, Env* env,
-                    Device* partition_device, Graph* graph, bool* was_mutated) {
+                    const Device* partition_device, Graph* graph,
+                    bool* was_mutated) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
   // the same here.
   port::ScopedFlushDenormal flush;
@@ -600,7 +590,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
     return Status::OK();
   }
 
-  std::map<NodeAndOutput, Node*> tensors_to_fetch;
+  std::map<NodeAndOutput, NodeAndOutput> tensors_to_fetch;
   std::unique_ptr<Graph> constant_graph(
       GetConstantGraph(graph, constant_foldable_nodes, shape_replacement_map,
                        &tensors_to_fetch, generate_new_name));
@@ -619,17 +609,18 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   std::vector<NodeAndOutput> tensors_to_replace;
   // Sorting the nodes based on the name gives us a stable ordering between runs
   // for the same graph.
-  std::vector<std::pair<NodeAndOutput, Node*>> tensors_to_fetch_sorted(
+  std::vector<std::pair<NodeAndOutput, NodeAndOutput>> tensors_to_fetch_sorted(
       tensors_to_fetch.begin(), tensors_to_fetch.end());
   std::sort(tensors_to_fetch_sorted.begin(), tensors_to_fetch_sorted.end(),
-            [](const std::pair<NodeAndOutput, Node*>& n1,
-               const std::pair<NodeAndOutput, Node*>& n2) {
-              return n1.first.first->name() < n2.first.first->name();
+            [](const std::pair<NodeAndOutput, NodeAndOutput>& n1,
+               const std::pair<NodeAndOutput, NodeAndOutput>& n2) {
+              return std::tie(n1.first.first->name(), n1.first.second) <
+                     std::tie(n2.first.first->name(), n2.first.second);
             });
   for (auto n : tensors_to_fetch_sorted) {
     tensors_to_fetch_names.push_back(
         strings::StrCat(n.first.first->name(), ":", n.first.second));
-    tensors_to_replace.push_back({n.second, n.first.second});
+    tensors_to_replace.push_back(n.second);
   }
 
   auto graph_runner = std::unique_ptr<GraphRunner>(new GraphRunner(env));

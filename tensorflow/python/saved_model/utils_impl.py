@@ -20,34 +20,59 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import struct_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
 # TensorInfo helpers.
 
 
-@tf_export("saved_model.build_tensor_info",
-           "saved_model.utils.build_tensor_info")
-@deprecation.deprecated_endpoints("saved_model.utils.build_tensor_info")
+@tf_export(v1=["saved_model.build_tensor_info",
+               "saved_model.utils.build_tensor_info"])
+@deprecation.deprecated(
+    None,
+    "This function will only be available through the v1 compatibility "
+    "library as tf.compat.v1.saved_model.utils.build_tensor_info or "
+    "tf.compat.v1.saved_model.build_tensor_info.")
 def build_tensor_info(tensor):
-  """Utility function to build TensorInfo proto.
+  """Utility function to build TensorInfo proto from a Tensor.
 
   Args:
     tensor: Tensor or SparseTensor whose name, dtype and shape are used to
         build the TensorInfo. For SparseTensors, the names of the three
-        constitutent Tensors are used.
+        constituent Tensors are used.
 
   Returns:
     A TensorInfo protocol buffer constructed based on the supplied argument.
+
+  Raises:
+    RuntimeError: If eager execution is enabled.
   """
+  if context.executing_eagerly():
+    raise RuntimeError("build_tensor_info is not supported in Eager mode.")
+  return build_tensor_info_internal(tensor)
+
+
+def build_tensor_info_internal(tensor):
+  """Utility function to build TensorInfo proto from a Tensor."""
+  if (isinstance(tensor, composite_tensor.CompositeTensor) and
+      not isinstance(tensor, sparse_tensor.SparseTensor)):
+    return _build_composite_tensor_info_internal(tensor)
+
   tensor_info = meta_graph_pb2.TensorInfo(
       dtype=dtypes.as_dtype(tensor.dtype).as_datatype_enum,
       tensor_shape=tensor.get_shape().as_proto())
@@ -60,22 +85,75 @@ def build_tensor_info(tensor):
   return tensor_info
 
 
-@tf_export("saved_model.get_tensor_from_tensor_info",
-           "saved_model.utils.get_tensor_from_tensor_info")
-@deprecation.deprecated_endpoints(
-    "saved_model.utils.get_tensor_from_tensor_info")
-def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
-  """Returns the Tensor or SparseTensor described by a TensorInfo proto.
+def _build_composite_tensor_info_internal(tensor):
+  """Utility function to build TensorInfo proto from a CompositeTensor."""
+  spec = tensor._type_spec  # pylint: disable=protected-access
+  tensor_info = meta_graph_pb2.TensorInfo()
+  struct_coder = nested_structure_coder.StructureCoder()
+  spec_proto = struct_coder.encode_structure(spec)
+  tensor_info.composite_tensor.type_spec.CopyFrom(spec_proto.type_spec_value)
+  for component in nest.flatten(tensor, expand_composites=True):
+    tensor_info.composite_tensor.components.add().CopyFrom(
+        build_tensor_info_internal(component))
+  return tensor_info
+
+
+def build_tensor_info_from_op(op):
+  """Utility function to build TensorInfo proto from an Op.
+
+  Note that this function should be used with caution. It is strictly restricted
+  to TensorFlow internal use-cases only. Please make sure you do need it before
+  using it.
+
+  This utility function overloads the TensorInfo proto by setting the name to
+  the Op's name, dtype to DT_INVALID and tensor_shape as None. One typical usage
+  is for the Op of the call site for the defunned function:
+  ```python
+    @function.defun
+    def some_vairable_initialiation_fn(value_a, value_b):
+      a = value_a
+      b = value_b
+
+    value_a = constant_op.constant(1, name="a")
+    value_b = constant_op.constant(2, name="b")
+    op_info = utils.build_op_info(
+        some_vairable_initialiation_fn(value_a, value_b))
+  ```
 
   Args:
-    tensor_info: A TensorInfo proto describing a Tensor or SparseTensor.
+    op: An Op whose name is used to build the TensorInfo. The name that points
+        to the Op could be fetched at run time in the Loader session.
+
+  Returns:
+    A TensorInfo protocol buffer constructed based on the supplied argument.
+  """
+  return meta_graph_pb2.TensorInfo(
+      dtype=types_pb2.DT_INVALID,
+      tensor_shape=tensor_shape.unknown_shape().as_proto(),
+      name=op.name)
+
+
+@tf_export(v1=["saved_model.get_tensor_from_tensor_info",
+               "saved_model.utils.get_tensor_from_tensor_info"])
+@deprecation.deprecated(
+    None,
+    "This function will only be available through the v1 compatibility "
+    "library as tf.compat.v1.saved_model.utils.get_tensor_from_tensor_info or "
+    "tf.compat.v1.saved_model.get_tensor_from_tensor_info.")
+def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
+  """Returns the Tensor or CompositeTensor described by a TensorInfo proto.
+
+  Args:
+    tensor_info: A TensorInfo proto describing a Tensor or SparseTensor or
+      CompositeTensor.
     graph: The tf.Graph in which tensors are looked up. If None, the
         current default graph is used.
     import_scope: If not None, names in `tensor_info` are prefixed with this
         string before lookup.
 
   Returns:
-    The Tensor or SparseTensor in `graph` described by `tensor_info`.
+    The Tensor or SparseTensor or CompositeTensor in `graph` described by
+    `tensor_info`.
 
   Raises:
     KeyError: If `tensor_info` does not correspond to a tensor in `graph`.
@@ -93,8 +171,37 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
         _get_tensor(tensor_info.coo_sparse.indices_tensor_name),
         _get_tensor(tensor_info.coo_sparse.values_tensor_name),
         _get_tensor(tensor_info.coo_sparse.dense_shape_tensor_name))
+  elif encoding == "composite_tensor":
+    struct_coder = nested_structure_coder.StructureCoder()
+    spec_proto = struct_pb2.StructuredValue(
+        type_spec_value=tensor_info.composite_tensor.type_spec)
+    spec = struct_coder.decode_proto(spec_proto)
+    components = [_get_tensor(component.name) for component in
+                  tensor_info.composite_tensor.components]
+    return spec.from_components(components)
   else:
     raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
+
+
+def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):
+  """Returns the element in the graph described by a TensorInfo proto.
+
+  Args:
+    tensor_info: A TensorInfo proto describing an Op or Tensor by name.
+    graph: The tf.Graph in which tensors are looked up. If None, the current
+      default graph is used.
+    import_scope: If not None, names in `tensor_info` are prefixed with this
+      string before lookup.
+
+  Returns:
+    Op or tensor in `graph` described by `tensor_info`.
+
+  Raises:
+    KeyError: If `tensor_info` does not correspond to an op or tensor in `graph`
+  """
+  graph = graph or ops.get_default_graph()
+  return graph.as_graph_element(
+      ops.prepend_name_scope(tensor_info.name, import_scope=import_scope))
 
 
 # Path helpers.
@@ -137,3 +244,19 @@ def get_assets_dir(export_dir):
   return os.path.join(
       compat.as_text(export_dir),
       compat.as_text(constants.ASSETS_DIRECTORY))
+
+
+def get_or_create_debug_dir(export_dir):
+  """Returns path to the debug sub-directory, creating if it does not exist."""
+  debug_dir = get_debug_dir(export_dir)
+
+  if not file_io.file_exists(debug_dir):
+    file_io.recursive_create_dir(debug_dir)
+
+  return debug_dir
+
+
+def get_debug_dir(export_dir):
+  """Returns path to the debug sub-directory in the SavedModel."""
+  return os.path.join(
+      compat.as_text(export_dir), compat.as_text(constants.DEBUG_DIRECTORY))

@@ -170,7 +170,8 @@ func listAttribute(op *Operation, cname *C.char, meta C.TF_AttrMetadata) (interf
 			}
 			// A []C.int64_t slice backed by C memory.
 			// See: https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
-			slice := (*[1 << 30]C.int64_t)(unsafe.Pointer(dim))[:numDim:numDim]
+			// Using [1<<27] instead of [1<<30] so it works on 32-bit architecture
+			slice := (*[1 << 27]C.int64_t)(unsafe.Pointer(dim))[:numDim:numDim]
 			list[i] = makeCShape(slice)
 		}
 		return list, nil

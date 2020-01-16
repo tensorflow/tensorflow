@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <ctype.h>
+
 #include <map>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/function.pb_text.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -30,10 +37,21 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
+
+/* static */ constexpr const char* const FunctionLibraryDefinition::kArgOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kDeviceArgOp;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kRetOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kDeviceRetOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kIntsOnDeviceAttr;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kGradientOp;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kFuncAttr;
 
 // Extracts the actual type from "attr_values" based on its definition
 // "arg_def".
@@ -149,8 +167,11 @@ class FunctionInstantiationHelper {
   }
 
   // Builds index for nodes that can be used as node's input arguments.
-  Status BuildInputArgIndex(const OpDef::ArgDef& arg_def,
-                            AttrSlice attr_values) {
+  // `resource_arg_unique_id`: if non-negative, will be populated to the
+  // "_resource_arg_unique_id" attribute of the arg node.
+  Status BuildInputArgIndex(const OpDef::ArgDef& arg_def, AttrSlice attr_values,
+                            const FunctionDef::ArgAttrs* arg_attrs,
+                            bool ints_on_device, int64 resource_arg_unique_id) {
     bool is_type_list;
     DataTypeVector dtypes;
     TF_RETURN_IF_ERROR(
@@ -169,9 +190,22 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op(FunctionLibraryDefinition::kArgOp);
-      AddAttr("T", dtypes[i], gnode);
+      if (ints_on_device && dtypes[i] == DataType::DT_INT32) {
+        gnode->set_op(FunctionLibraryDefinition::kDeviceArgOp);
+      } else {
+        gnode->set_op(FunctionLibraryDefinition::kArgOp);
+      }
+      DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
+      if (resource_arg_unique_id >= 0) {
+        AddAttr("_resource_arg_unique_id", resource_arg_unique_id, gnode);
+      }
+      if (arg_attrs) {
+        for (const auto& arg_attr : arg_attrs->attr()) {
+          AddAttr(arg_attr.first, arg_attr.second, gnode->mutable_attr());
+        }
+      }
       result_.arg_types.push_back(dtypes[i]);
       ++arg_index;
     }
@@ -238,7 +272,8 @@ class FunctionInstantiationHelper {
         const auto* item = GetItemOrNull(input_name);
         if (item == nullptr) {
           return errors::InvalidArgument(
-              "input ", input_name, " is not found: ", SummarizeNodeDef(fnode));
+              "input ", input_name,
+              " is not found: ", FormatNodeDefForError(fnode));
         }
         if (item->dtypes.size() > dtypes.size() - j) {
           return errors::InvalidArgument("Input ", input_name, " too long for ",
@@ -278,8 +313,7 @@ class FunctionInstantiationHelper {
       // must lie in the range [node_name, node_colon_bound).
       auto it = index_.lower_bound(node_name);
       while (it != index_.end() && it->first <= node_colon_bound) {
-        if (it->first == node_name ||
-            tensorflow::str_util::StartsWith(it->first, node_colon)) {
+        if (it->first == node_name || absl::StartsWith(it->first, node_colon)) {
           nid = it->second.nid;
           break;
         }
@@ -303,7 +337,7 @@ class FunctionInstantiationHelper {
   Status AddReturnNode(
       const OpDef::ArgDef& ret_def, AttrSlice attrs,
       const ::tensorflow::protobuf::Map<string, string>& ret_map,
-      int* ret_index) {
+      bool ints_on_device, int* ret_index) {
     auto ret_iter = ret_map.find(ret_def.name());
     if (ret_iter == ret_map.end()) {
       return errors::InvalidArgument("Return ", ret_def.name(), " missing.");
@@ -329,9 +363,14 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op(FunctionLibraryDefinition::kRetOp);
+      if (ints_on_device && dtypes[i] == DataType::DT_INT32) {
+        gnode->set_op(FunctionLibraryDefinition::kDeviceRetOp);
+      } else {
+        gnode->set_op(FunctionLibraryDefinition::kRetOp);
+      }
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = ret_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", (*ret_index)++, gnode);
       result_.ret_types.push_back(dtypes[i]);
     }
@@ -477,12 +516,12 @@ string Print(const AttrValue& attr_value) {
       return attr_value.func().name();
     }
     std::vector<string> entries;
-    for (auto p : attr_value.func().attr()) {
+    for (const auto& p : attr_value.func().attr()) {
       entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
     }
     std::sort(entries.begin(), entries.end());
     return strings::StrCat(attr_value.func().name(), "[",
-                           str_util::Join(entries, ", "), "]");
+                           absl::StrJoin(entries, ", "), "]");
   }
   return SummarizeAttrValue(attr_value);
 }
@@ -497,21 +536,31 @@ string Print(const NodeDef& n) {
       entries.push_back(strings::StrCat(a.first, "=", Print(a.second)));
     }
     std::sort(entries.begin(), entries.end());
-    strings::StrAppend(&out, "[", str_util::Join(entries, ", "), "]");
+    // Add a short device string at the end of all attributes.
+    if (!n.device().empty()) {
+      DeviceNameUtils::ParsedName parsed;
+      if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
+        entries.push_back(
+            strings::StrCat("device=", parsed.type, ":", parsed.id));
+      } else {
+        entries.push_back("device=<FAILED_TO_PARSE>");
+      }
+    }
+    strings::StrAppend(&out, "[", absl::StrJoin(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
   std::vector<StringPiece> dat;
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
-    if (str_util::ConsumePrefix(&s, "^")) {
+    if (absl::ConsumePrefix(&s, "^")) {
       dep.emplace_back(s);
     } else {
       dat.push_back(s);
     }
   }
-  strings::StrAppend(&out, str_util::Join(dat, ", "), ")");
+  strings::StrAppend(&out, absl::StrJoin(dat, ", "), ")");
   if (!dep.empty()) {
-    strings::StrAppend(&out, " @ ", str_util::Join(dep, ", "));
+    strings::StrAppend(&out, " @ ", absl::StrJoin(dep, ", "));
   }
   return out;
 }
@@ -547,6 +596,9 @@ string Print(const FunctionDef& fdef) {
   for (const auto& n : fdef.node_def()) {
     strings::StrAppend(&out, "  ", Print(n), "\n");
   }
+  for (const auto& cr : fdef.control_ret()) {
+    strings::StrAppend(&out, "  @return ", cr.first, " = ", cr.second, "\n");
+  }
   for (const auto& r : fdef.ret()) {
     strings::StrAppend(&out, "  return ", r.first, " = ", r.second, "\n");
   }
@@ -559,9 +611,11 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
   for (const NodeDef* n : nodes) {
-    if (n->op() == FunctionLibraryDefinition::kArgOp) {
+    if (n->op() == FunctionLibraryDefinition::kArgOp ||
+        n->op() == FunctionLibraryDefinition::kDeviceArgOp) {
       arg.push_back(n);
-    } else if (n->op() == FunctionLibraryDefinition::kRetOp) {
+    } else if (n->op() == FunctionLibraryDefinition::kRetOp ||
+               n->op() == FunctionLibraryDefinition::kDeviceRetOp) {
       ret.push_back(n);
     } else {
       body.push_back(n);
@@ -578,10 +632,22 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::sort(ret.begin(), ret.end(), comp);
   string out;
   strings::StrAppend(&out, "\n(");
-  auto get_type = [](const NodeDef& n) {
+  auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
-    if (!GetNodeAttr(n, "T", &dt).ok()) {
+    if (!TryGetNodeAttr(n, "T", &dt)) {
       dt = DT_INVALID;
+    }
+    if (!n.device().empty()) {
+      DeviceNameUtils::ParsedName parsed;
+      if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
+        return strings::StrCat(DataTypeString(dt), "@", parsed.type, ":",
+                               parsed.id);
+      } else {
+        LOG(WARNING) << "Failed to parse device \"" << n.device() << "\" in "
+                     << n.op() << ":" << n.name();
+        return strings::StrCat(DataTypeString(dt), "@",
+                               "<FAILED_TO_PARSE_DEVICE>");
+      }
     }
     return DataTypeString(dt);
   };
@@ -589,15 +655,29 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
     const NodeDef* n = arg[i];
     if (i > 0) strings::StrAppend(&out, ", ");
     CHECK_GE(n->attr_size(), 2);
-    strings::StrAppend(&out, n->name(), ":", get_type(*n));
+    strings::StrAppend(&out, n->name(), ":", get_type_and_device(*n));
   }
   strings::StrAppend(&out, ") -> (");
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
     if (i > 0) strings::StrAppend(&out, ", ");
     CHECK_LE(2, n->attr_size());
-    CHECK_EQ(1, n->input_size());
-    strings::StrAppend(&out, n->input(0), ":", get_type(*n));
+
+    // The _RetVal op should have a unique non-control input. We assert that
+    // here and add it to the output.
+    bool found_non_control_input = false;
+    for (const string& input : n->input()) {
+      if (!input.empty() && input[0] != '^') {
+        DCHECK_EQ(found_non_control_input, false)
+            << "RetVal node has more than one non-control input: "
+            << absl::StrJoin(n->input(), ", ");
+        strings::StrAppend(&out, n->input(0), ":", get_type_and_device(*n));
+        found_non_control_input = true;
+      }
+    }
+    DCHECK_EQ(found_non_control_input, true)
+        << "RetVal did not have any non-control inputs: "
+        << absl::StrJoin(n->input(), ", ");
   }
   strings::StrAppend(&out, ") {\n");
   for (size_t i = 0; i < body.size(); ++i) {
@@ -625,18 +705,43 @@ Status AddDefaultAttrs(const string& op,
 
 }  // end namespace
 
+// TODO(shikharagarwal): Transmit original node names correctly in file.
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
-  VLOG(3) << "Instantiation Function: " << Print(fdef);
+  if (VLOG_IS_ON(5)) {
+    const auto& signature = fdef.signature();
+    VLOG(5) << "Instantiate function definition: name=" << signature.name()
+            << " #input_args=" << signature.input_arg_size()
+            << " #output_args=" << signature.output_arg_size()
+            << " #control_output=" << signature.control_output_size();
+    for (const auto& line : str_util::Split(Print(fdef), '\n')) {
+      VLOG(5) << "|| " << line;
+    }
+  }
 
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
 
+  bool ints_on_device =
+      fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
+      fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b();
+
   FunctionInstantiationHelper helper(get_function, result);
   Status s;
-  for (const OpDef::ArgDef& arg_def : sig.input_arg()) {
-    s = helper.BuildInputArgIndex(arg_def, attr_values);
+  for (int i = 0, e = sig.input_arg_size(); i < e; ++i) {
+    const OpDef::ArgDef& arg_def = sig.input_arg(i);
+    auto it = fdef.arg_attr().find(i);
+    const FunctionDef::ArgAttrs* arg_attrs =
+        it != fdef.arg_attr().end() ? &it->second : nullptr;
+    auto resource_id_it = fdef.resource_arg_unique_id().find(i);
+    int64 resource_arg_unique_id =
+        resource_id_it != fdef.resource_arg_unique_id().end()
+            ? resource_id_it->second
+            : -1LL;
+    s = helper.BuildInputArgIndex(arg_def, attr_values, arg_attrs,
+                                  ints_on_device, resource_arg_unique_id);
+
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In ", Print(arg_def));
       return s;
@@ -673,7 +778,8 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
     s = helper.BuildNodeOutputIndex(fdef.node_def(i), AttrSlice(&node_attrs[i]),
                                     result->nodes.size() + i);
     if (!s.ok()) {
-      errors::AppendToMessage(&s, "In ", SummarizeNodeDef(fdef.node_def(i)));
+      errors::AppendToMessage(&s, "In ",
+                              FormatNodeDefForError(fdef.node_def(i)));
       return s;
     }
   }
@@ -681,7 +787,8 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   for (int i = 0; i < fdef.node_def_size(); ++i) {
     s = helper.InstantiateNode(fdef.node_def(i), AttrSlice(&node_attrs[i]));
     if (!s.ok()) {
-      errors::AppendToMessage(&s, "In ", SummarizeNodeDef(fdef.node_def(i)));
+      errors::AppendToMessage(&s, "In ",
+                              FormatNodeDefForError(fdef.node_def(i)));
       return s;
     }
   }
@@ -689,7 +796,8 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   // Emits nodes for the function's return values.
   int ret_index = 0;
   for (const OpDef::ArgDef& ret_def : sig.output_arg()) {
-    s = helper.AddReturnNode(ret_def, attr_values, fdef.ret(), &ret_index);
+    s = helper.AddReturnNode(ret_def, attr_values, fdef.ret(), ints_on_device,
+                             &ret_index);
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In function output ", Print(ret_def));
       return s;
@@ -739,7 +847,7 @@ namespace {
 // and adds an unset attr to the map.
 std::map<string, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
   std::map<string, AttrValue> set_attrs;
-  for (auto pair : fdef.attr()) {
+  for (const auto& pair : fdef.attr()) {
     if (pair.second.value_case() != AttrValue::VALUE_NOT_SET) {
       set_attrs[pair.first] = pair.second;
     }
@@ -755,7 +863,7 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   std::map<string, AttrValue> f1_attrs = GetSetAttrs(f1);
   std::map<string, AttrValue> f2_attrs = GetSetAttrs(f2);
   if (f1_attrs.size() != f2_attrs.size()) return false;
-  for (auto iter1 : f1_attrs) {
+  for (const auto& iter1 : f1_attrs) {
     auto iter2 = f2_attrs.find(iter1.first);
     if (iter2 == f2_attrs.end()) return false;
     if (!AreAttrValuesEqual(iter1.second, iter2->second)) return false;
@@ -768,6 +876,12 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   std::map<string, string> ret1(f1.ret().begin(), f1.ret().end());
   std::map<string, string> ret2(f2.ret().begin(), f2.ret().end());
   if (ret1 != ret2) return false;
+
+  std::map<string, string> control_ret1(f1.control_ret().begin(),
+                                        f1.control_ret().end());
+  std::map<string, string> control_ret2(f2.control_ret().begin(),
+                                        f2.control_ret().end());
+  if (control_ret1 != control_ret2) return false;
 
   return true;
 }
@@ -793,34 +907,157 @@ uint64 FunctionDefHash(const FunctionDef& fdef) {
     h = Hash64(p.second.data(), p.second.size(), h);
   }
 
+  // control output names
+  std::map<string, string> control_ret(fdef.control_ret().begin(),
+                                       fdef.control_ret().end());
+  for (const auto& p : control_ret) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64(p.second.data(), p.second.size(), h);
+  }
+
   return h;
 }
 
+static constexpr const char* const kExecutorAttr = "_executor";
+
+/* static */
+string FunctionLibraryRuntime::ExecutorType(const InstantiateOptions& options,
+                                            AttrSlice attrs) {
+  if (!options.executor_type.empty()) {
+    return options.executor_type;
+  } else if (const AttrValue* executor_attr = attrs.Find(kExecutorAttr)) {
+    return executor_attr->s();
+  } else {
+    return string();
+  }
+}
+
+namespace {
+class AttrKeyAndValue {
+ public:
+  enum ValueRepresentationOp {
+    kRaw,
+    kCEscape,
+  };
+  AttrKeyAndValue(absl::string_view key_name, int key_suffix, string value,
+                  ValueRepresentationOp value_op = kRaw)
+      : key_name_(key_name),
+        key_suffix_(key_suffix),
+        value_op_(value_op),
+        value_(std::move(value)) {}
+
+  bool operator<(const AttrKeyAndValue& b) const {
+    if (key_name_ != b.key_name_) {
+      return key_name_ < b.key_name_;
+    } else if (key_suffix_ != b.key_suffix_) {
+      return key_suffix_ < b.key_suffix_;
+    } else {
+      return value_ < b.value_;
+    }
+  }
+
+  void AppendTo(bool first, string* s) const {
+    absl::string_view v;
+    bool add_escaped = false;
+    if ((value_op_ == kCEscape) && NeedsEscaping(value_)) {
+      // Use CEscape call below
+      add_escaped = true;
+    } else {
+      // Add raw value contents directly
+      v = value_;
+    }
+    if (key_suffix_ >= 0) {
+      strings::StrAppend(s, first ? "" : ",", key_name_, key_suffix_, "=", v);
+    } else {
+      strings::StrAppend(s, first ? "" : ",", key_name_, "=", v);
+    }
+    if (add_escaped) {
+      strings::StrAppend(s, absl::CEscape(value_));
+    }
+  }
+
+ private:
+  static bool NeedsEscaping(const string& s) {
+    for (auto c : s) {
+      if (!isalnum(c) && (c != ' ')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  absl::string_view key_name_;
+  int key_suffix_;  // -1 if missing
+  ValueRepresentationOp value_op_;
+  string value_;
+};
+}  // namespace
+
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options) {
-  std::vector<string> entries;
-  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
-  for (auto p : attrs) {
-    entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+  absl::InlinedVector<AttrKeyAndValue, 8> entries;
+  entries.reserve(attrs.size() + static_cast<int>(!options.target.empty()) +
+                  options.input_devices.size());
+  for (const auto& p : attrs) {
+    if (p.first != kExecutorAttr) {
+      entries.push_back(AttrKeyAndValue(p.first, -1, Print(p.second)));
+    }
   }
   if (!options.target.empty()) {
-    entries.push_back(
-        strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+    entries.push_back(AttrKeyAndValue("_target", -1, options.target,
+                                      AttrKeyAndValue::kCEscape));
   }
-  if (options.overlay_lib) {
-    entries.push_back(strings::StrCat(
-        "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
+  for (int i = 0; i < options.input_devices.size(); ++i) {
+    entries.push_back(AttrKeyAndValue("_input_dev", i, options.input_devices[i],
+                                      AttrKeyAndValue::kCEscape));
+  }
+  for (int i = 0; i < options.output_devices.size(); ++i) {
+    entries.push_back(AttrKeyAndValue("_output_dev", i,
+                                      options.output_devices[i],
+                                      AttrKeyAndValue::kCEscape));
+  }
+  for (const auto& iter : options.input_resource_dtypes_and_shapes) {
+    entries.push_back(AttrKeyAndValue("_input_resource_dtype", iter.first,
+                                      DataTypeString(iter.second.dtype)));
+    entries.push_back(AttrKeyAndValue("_input_resource_shape", iter.first,
+                                      iter.second.shape.DebugString(),
+                                      AttrKeyAndValue::kCEscape));
+  }
+  if (options.lib_def) {
+    entries.push_back(AttrKeyAndValue(
+        "_lib_def", -1,
+        absl::StrCat("", reinterpret_cast<uintptr_t>(options.lib_def))));
   }
   if (!options.state_handle.empty()) {
     entries.push_back(
-        strings::StrCat("_state_handle", "=", options.state_handle));
+        AttrKeyAndValue("_state_handle", -1, options.state_handle));
   }
-  if (!options.executor_type.empty()) {
-    entries.push_back(
-        strings::StrCat("_executor_type", "=", options.executor_type));
+  string executor_type = FunctionLibraryRuntime::ExecutorType(options, attrs);
+  if (!executor_type.empty()) {
+    entries.push_back(AttrKeyAndValue(kExecutorAttr, -1, executor_type));
+  }
+  if (options.config_proto.ByteSize() > 0) {
+    string config_proto_serialized;
+    options.config_proto.SerializeToString(&config_proto_serialized);
+    entries.push_back(AttrKeyAndValue("_config_proto", -1,
+                                      config_proto_serialized,
+                                      AttrKeyAndValue::kCEscape));
   }
   std::sort(entries.begin(), entries.end());
-  return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
+  string result = strings::StrCat(funcname, "[");
+  bool first = true;
+  for (const auto& entry : entries) {
+    entry.AppendTo(first, &result);
+    first = false;
+  }
+  result += "]";
+  return result;
+}
+
+string Canonicalize(const string& funcname, AttrSlice attrs) {
+  static const FunctionLibraryRuntime::InstantiateOptions* kEmptyOptions =
+      new FunctionLibraryRuntime::InstantiateOptions;
+  return Canonicalize(funcname, attrs, *kEmptyOptions);
 }
 
 FunctionCallFrame::FunctionCallFrame(DataTypeSlice arg_types,
@@ -922,9 +1159,7 @@ FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
     : default_registry_(other.default_registry_) {
   tf_shared_lock l(other.mu_);
-  for (const auto& it : other.function_defs_) {
-    TF_CHECK_OK(AddFunctionDef(it.second->fdef));
-  }
+  function_defs_ = other.function_defs_;
   func_grad_ = other.func_grad_;
 }
 
@@ -952,16 +1187,21 @@ bool FunctionLibraryDefinition::Contains(const string& func) const {
 
 const FunctionDef* FunctionLibraryDefinition::Find(const string& func) const {
   tf_shared_lock l(mu_);
-  return FindHelper(func);
+  auto result = FindHelper(func);
+  if (result) {
+    return &result->fdef;
+  } else {
+    return nullptr;
+  }
 }
 
-const FunctionDef* FunctionLibraryDefinition::FindHelper(
-    const string& func) const {
+std::shared_ptr<FunctionLibraryDefinition::FunctionDefAndOpRegistration>
+FunctionLibraryDefinition::FindHelper(const string& func) const {
   auto iter = function_defs_.find(func);
   if (iter == function_defs_.end()) {
     return nullptr;
   } else {
-    return &iter->second->fdef;
+    return iter->second;
   }
 }
 
@@ -974,16 +1214,16 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
 Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
                                                        bool* added) {
   *added = false;
-  std::unique_ptr<FunctionDefAndOpRegistration>* entry =
-      &function_defs_[fdef.signature().name()];
-  if (*entry != nullptr) {
-    if (!FunctionDefsEqual((*entry)->fdef, fdef)) {
+  std::shared_ptr<FunctionDefAndOpRegistration>& entry =
+      function_defs_[fdef.signature().name()];
+  if (entry) {
+    if (!FunctionDefsEqual(entry->fdef, fdef)) {
       return errors::InvalidArgument(
           "Cannot add function '", fdef.signature().name(),
           "' because a different function with the same name already "
           "exists.");
     }
-    // Ignore duplicate FunctionDefs
+    // Ignore duplicate FunctionDefs.
     return Status::OK();
   }
   const OpDef* op_def;
@@ -992,8 +1232,71 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
         "Cannot add function '", fdef.signature().name(),
         "' because an op with the same name already exists.");
   }
-  entry->reset(new FunctionDefAndOpRegistration(fdef));
+  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef);
   *added = true;
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::AddHelper(
+    std::shared_ptr<FunctionDefAndOpRegistration> registration, bool* added) {
+  *added = false;
+  std::shared_ptr<FunctionDefAndOpRegistration>& entry =
+      function_defs_[registration->fdef.signature().name()];
+  if (entry) {
+    if (!FunctionDefsEqual(entry->fdef, registration->fdef)) {
+      return errors::InvalidArgument(
+          "Cannot add function '", registration->fdef.signature().name(),
+          "' because a different function with the same name already "
+          "exists.");
+    }
+    // Ignore duplicate FunctionDefs.
+    return Status::OK();
+  }
+  const OpDef* op_def;
+  if (default_registry_
+          ->LookUpOpDef(registration->fdef.signature().name(), &op_def)
+          .ok()) {
+    return errors::InvalidArgument(
+        "Cannot add function '", registration->fdef.signature().name(),
+        "' because an op with the same name already exists.");
+  }
+  entry = std::move(registration);
+  *added = true;
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::CopyFunctionDefFrom(
+    const string& func, const FunctionLibraryDefinition& other) {
+  if (default_registry_ != other.default_registry_) {
+    return errors::InvalidArgument(
+        "Cannot copy function '", func,
+        "' because CopyFunctionDefFrom() requires that both libraries have the "
+        "same default registry.");
+  }
+  std::shared_ptr<FunctionDefAndOpRegistration> function_def;
+  {
+    tf_shared_lock l(other.mu_);
+    function_def = other.FindHelper(func);
+  }
+  if (!function_def) {
+    return errors::InvalidArgument(
+        "Cannot copy function '", func,
+        "' because no function with that name exists in the other library.");
+  }
+  {
+    mutex_lock l(mu_);
+    std::shared_ptr<FunctionDefAndOpRegistration>& entry = function_defs_[func];
+    if (entry) {
+      if (!FunctionDefsEqual(entry->fdef, function_def->fdef)) {
+        return errors::InvalidArgument(
+            "Cannot copy function '", func,
+            "' because a different function with the same name already "
+            "exists.");
+      }
+    } else {
+      entry = std::move(function_def);
+    }
+  }
   return Status::OK();
 }
 
@@ -1028,6 +1331,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   // the duration of the function could lead to deadlock).
   FunctionLibraryDefinition clone(other);
   mutex_lock l(mu_);
+  mutex_lock l2(clone.mu_);
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   std::vector<string> funcs;
@@ -1035,7 +1339,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   Status s;
   bool added;
   for (auto iter : clone.function_defs_) {
-    s = AddFunctionDefHelper(iter.second->fdef, &added);
+    s = AddHelper(iter.second, &added);
     if (!s.ok()) {
       Remove(funcs, funcs_with_grads);
       return s;
@@ -1096,7 +1400,7 @@ Status FunctionLibraryDefinition::ReplaceFunction(const string& func,
                                                   const FunctionDef& fdef) {
   mutex_lock l(mu_);
   bool added;
-  TF_RETURN_IF_ERROR(RemoveFunction(func));
+  TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
   TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, &added));
   return Status::OK();
 }
@@ -1110,10 +1414,16 @@ Status FunctionLibraryDefinition::ReplaceGradient(const GradientDef& grad) {
 }
 
 Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   const auto& i = function_defs_.find(func);
   if (i == function_defs_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent function ",
-                                   func);
+    return errors::InvalidArgument("Tried to remove non-existent function '",
+                                   func, "'.");
   }
   function_defs_.erase(i);
   return Status::OK();
@@ -1122,8 +1432,8 @@ Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
 Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
   if (i == func_grad_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent gradient ",
-                                   func);
+    return errors::InvalidArgument("Tried to remove non-existent gradient '",
+                                   func, "'.");
   }
   func_grad_.erase(i);
   return Status::OK();
@@ -1133,7 +1443,7 @@ void FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
   for (const string& f : funcs) {
-    Status s = RemoveFunction(f);
+    Status s = RemoveFunctionHelper(f);
     DCHECK(s.ok());
   }
   for (const string& f : funcs_with_grads) {
@@ -1184,7 +1494,7 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   // If ndef is SymbolicGradient[f=Foo], we use Foo's gradient or
   // Foo's attributes.
   const NameAttrList* forward_func_attrs;
-  if (!GetNodeAttr(ndef, kFuncAttr, &forward_func_attrs).ok()) {
+  if (!TryGetNodeAttr(ndef, kFuncAttr, &forward_func_attrs)) {
     return nullptr;
   }
   const string& func_name = forward_func_attrs->name();
@@ -1195,10 +1505,20 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
     // function's attrs to see if noinline is specified. Otherwise,
     // uses func's attrs.
     if (!grad_name.empty()) {
-      return FindHelper(grad_name);
+      return &(FindHelper(grad_name)->fdef);
     }
-    return FindHelper(func_name);
+    return &(FindHelper(func_name)->fdef);
   }
+}
+
+std::vector<string> FunctionLibraryDefinition::ListFunctionNames() const {
+  std::vector<string> function_names;
+  tf_shared_lock l(mu_);
+  function_names.reserve(function_defs_.size());
+  for (const auto& it : function_defs_) {
+    function_names.emplace_back(it.first);
+  }
+  return function_names;
 }
 
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
@@ -1219,7 +1539,7 @@ template <typename T>
 Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
                                           const string& attr, T* value) const {
   const FunctionDef* fdef = GetAttrImpl(ndef);
-  if (fdef && GetNodeAttr(AttrSlice(&fdef->attr()), attr, value).ok()) {
+  if (fdef && TryGetNodeAttr(AttrSlice(&fdef->attr()), attr, value)) {
     return Status::OK();
   }
   return errors::InvalidArgument("Attr ", attr, " is not defined.");
@@ -1239,6 +1559,173 @@ Status FunctionLibraryDefinition::GetAttr(const Node& node, const string& attr,
 GET_ATTR(string)
 GET_ATTR(bool)
 #undef GET_ATTR
+
+namespace {
+
+constexpr char kApiImplements[] = "api_implements";
+
+std::set<string> ReachableFunctions(
+    const FunctionLibraryDefinition& flib,
+    const protobuf::RepeatedPtrField<NodeDef>& nodes) {
+  // Functions that are reachable from the graph.
+  std::set<string> reachable_funcs;
+
+  // For any functions, if it has attribute "api_implements" =
+  // "some_interface" and it is reachable, then it means any other
+  // function with same attribute name and value could also be potentially
+  // reachable, eg via implementation_selector swapping the nodedef.
+  absl::flat_hash_set<string> reachable_api_interface;
+
+  // Functions might be reachable from the nested function calls, so we keep a
+  // queue of functions that we have to check.
+  gtl::InlinedVector<const FunctionDef*, 4> func_queue;
+
+  // Add reachable and not already processed functions to the functions queue.
+  const auto add_to_func_queue = [&](const string& func_name) {
+    const FunctionDef* func = flib.Find(func_name);
+    if (func && reachable_funcs.find(func_name) == reachable_funcs.end()) {
+      func_queue.push_back(func);
+    }
+  };
+
+  // If any function with certain API name is reachable, all the other functions
+  // with same API name should also be checked.
+  const auto add_function_with_api_interface = [&](const string& api_name) {
+    if (!reachable_api_interface.contains(api_name)) {
+      reachable_api_interface.insert(api_name);
+      for (const auto& func_name : flib.ListFunctionNames()) {
+        const auto& func_def = flib.Find(func_name);
+        const auto attr_it = func_def->attr().find(kApiImplements);
+        if (attr_it != func_def->attr().end() &&
+            attr_it->second.s() == api_name) {
+          add_to_func_queue(func_name);
+        }
+      }
+    }
+  };
+
+  // Add all the functions that are reachable from the given node to the queue.
+  const auto process_node = [&](const NodeDef& node) {
+    // Node itself can be a call to the function.
+    add_to_func_queue(node.op());
+
+    // Or node can have an attribute referencing a function.
+    for (const auto& attr : node.attr()) {
+      const auto& attr_value = attr.second;
+
+      // 1. AttrValue.func
+      if (attr_value.has_func()) {
+        add_to_func_queue(attr_value.func().name());
+      }
+
+      // 2. AttrValue.ListValue.func
+      if (attr_value.has_list()) {
+        for (const auto& func : attr_value.list().func()) {
+          add_to_func_queue(func.name());
+        }
+      }
+    }
+  };
+
+  // Add all functions that are directly called from the optimized graph.
+  std::for_each(nodes.begin(), nodes.end(), process_node);
+
+  // Process all reachable functions.
+  while (!func_queue.empty()) {
+    const FunctionDef* func = func_queue.back();
+    func_queue.pop_back();
+
+    const string& func_name = func->signature().name();
+    reachable_funcs.insert(func_name);
+
+    const auto attr_it = func->attr().find(kApiImplements);
+    if (attr_it != func->attr().end()) {
+      add_function_with_api_interface(attr_it->second.s());
+    }
+
+    // Find all the functions called from the function body.
+    const auto& func_body = func->node_def();
+    std::for_each(func_body.begin(), func_body.end(), process_node);
+
+    // Check if the function has a registered gradient.
+    const string grad_func_name = flib.FindGradient(func_name);
+    if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
+  }
+
+  return reachable_funcs;
+}
+
+FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
+    const FunctionLibraryDefinition& flib,
+    const protobuf::RepeatedPtrField<NodeDef>& nodes) {
+  std::set<string> reachable_funcs = ReachableFunctions(flib, nodes);
+
+  FunctionLibraryDefinition reachable_flib(flib.default_registry(),
+                                           FunctionDefLibrary());
+
+  for (const string& func_name : reachable_funcs) {
+    // This should never fail, because we copy functions from a valid flib and
+    // use the same default registry.
+    Status added = reachable_flib.CopyFunctionDefFrom(func_name, flib);
+    TF_DCHECK_OK(added);
+
+    const string grad_func_name = flib.FindGradient(func_name);
+    if (!grad_func_name.empty()) {
+      GradientDef grad;
+      grad.set_function_name(func_name);
+      grad.set_gradient_func(grad_func_name);
+      // It can only fail if function already has a gradient function.
+      const Status added_grad = reachable_flib.AddGradientDef(grad);
+      TF_DCHECK_OK(added_grad);
+    }
+  }
+
+  return reachable_flib;
+}
+
+string AllocatorAttributesToString(
+    const std::vector<AllocatorAttributes>& attrs) {
+  string result("[");
+  // AllocatorAttribute::DebugString produces around 85 bytes now.
+  result.reserve(100 * attrs.size());
+  for (const AllocatorAttributes& attr : attrs) {
+    result.append(attr.DebugString());
+    result.append(", ");
+  }
+  if (!attrs.empty()) {
+    result.resize(result.size() - 2);
+  }
+  result.append("]");
+  return result;
+}
+
+const char* IsSet(void* ptr) { return ptr == nullptr ? "unset" : "set"; }
+
+}  // namespace
+
+FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
+    const GraphDef& graph) const {
+  return ReachableFunctionLibraryDefinition(*this, graph.node());
+}
+
+FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
+    const FunctionDef& func) const {
+  return ReachableFunctionLibraryDefinition(*this, func.node_def());
+}
+
+string FunctionLibraryRuntime::Options::DebugString() const {
+  return absl::StrCat(
+      "FLR::Options(step_id=", step_id, " rendezvous=", IsSet(rendezvous),
+      " cancellation_manager=", IsSet(cancellation_manager),
+      " collective_executor=", IsSet(collective_executor),
+      " step_container=", IsSet(step_container),
+      " stats_collector=", IsSet(stats_collector), " runner=", IsSet(runner),
+      " remote_execution=", remote_execution, " source_device=", source_device,
+      " create_rendezvous=", create_rendezvous,
+      " allow_dead_tensors=", allow_dead_tensors,
+      " args_alloc_attrs=", AllocatorAttributesToString(args_alloc_attrs),
+      " rets_alloc_attrs=", AllocatorAttributesToString(rets_alloc_attrs), ")");
+}
 
 void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {
   if (val.size() >= 2 && val[0] == '$') {
@@ -1272,6 +1759,9 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   for (const string& d : this->dep) {
     n.add_input(strings::StrCat("^", d));
   }
+  if (!this->device.empty()) {
+    n.set_device(this->device);
+  }
   return n;
 }
 
@@ -1280,7 +1770,8 @@ FunctionDef FunctionDefHelper::Create(
     const string& function_name, gtl::ArraySlice<string> in_def,
     gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
     gtl::ArraySlice<Node> node_def,
-    gtl::ArraySlice<std::pair<string, string>> ret_def) {
+    gtl::ArraySlice<std::pair<string, string>> ret_def,
+    gtl::ArraySlice<std::pair<string, string>> control_ret_def) {
   FunctionDef fdef;
 
   // Signature
@@ -1288,6 +1779,7 @@ FunctionDef FunctionDefHelper::Create(
   for (const auto& i : in_def) b.Input(i);
   for (const auto& o : out_def) b.Output(o);
   for (const auto& a : attr_def) b.Attr(a);
+  for (const auto& c : control_ret_def) b.ControlOutput(c.first);
 
   OpRegistrationData op_reg_data;
   TF_CHECK_OK(b.Finalize(&op_reg_data));
@@ -1303,6 +1795,11 @@ FunctionDef FunctionDefHelper::Create(
     fdef.mutable_ret()->insert({r.first, r.second});
   }
 
+  // Control returns
+  for (const auto& cr : control_ret_def) {
+    fdef.mutable_control_ret()->insert({cr.first, cr.second});
+  }
+
   auto* op_def_registry = OpRegistry::Global();
   // Check if any op is stateful.
   for (const auto& n : node_def) {
@@ -1314,7 +1811,18 @@ FunctionDef FunctionDefHelper::Create(
       fdef.mutable_signature()->set_is_stateful(true);
     }
   }
+
   return fdef;
+}
+
+/* static */
+FunctionDef FunctionDefHelper::Create(
+    const string& function_name, gtl::ArraySlice<string> in_def,
+    gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
+    gtl::ArraySlice<Node> node_def,
+    gtl::ArraySlice<std::pair<string, string>> ret_def) {
+  return Create(function_name, in_def, out_def, attr_def, node_def, ret_def,
+                /*control_ret_def=*/{});
 }
 
 /* static */
@@ -1421,4 +1929,4 @@ Status GetOpGradientCreator(const string& op, Creator* creator) {
 
 }  // end namespace gradient
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

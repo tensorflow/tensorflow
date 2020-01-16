@@ -58,23 +58,46 @@ PY_TEST_DIR="py_test_dir"
 SKIP_TEST=0
 RELEASE_BUILD=0
 TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..."
+PROJECT_NAME=""
+EXTRA_BUILD_FLAGS=""
+EXTRA_TEST_FLAGS=""
 
 # --skip_test            Skip running tests
 # --enable_remote_cache  Add options to enable remote cache for build and test
 # --release_build        Build for release, compilation time will be longer to
 #                        ensure performance
 # --test_core_only       Use tensorflow/python/... as test target
-# --test_contrib_only    Use tensorflow/contrib/... as test target
-for ARG in "$@"; do
-  case "$ARG" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --tf_nightly) TF_NIGHTLY=1 ;;
     --skip_test) SKIP_TEST=1 ;;
     --enable_remote_cache) set_remote_cache_options ;;
     --release_build) RELEASE_BUILD=1 ;;
     --test_core_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..." ;;
-    --test_contrib_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/contrib/..." ;;
+    --extra_build_flags)
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      EXTRA_BUILD_FLAGS="$1"
+      ;;
+    --project_name)
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      PROJECT_NAME="$1"
+      ;;
+    --extra_test_flags)
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      EXTRA_TEST_FLAGS="$1"
+      ;;
     *)
   esac
+  shift
 done
 
 if [[ "$RELEASE_BUILD" == 1 ]]; then
@@ -87,8 +110,20 @@ else
 fi
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
-  python tensorflow/tools/ci_build/update_version.py --nightly
-  EXTRA_PIP_FLAG="--nightly_flag"
+  if [[ ${PROJECT_NAME} == *"2.0_preview"* ]]; then
+    python tensorflow/tools/ci_build/update_version.py --version=2.0.0 --nightly
+  else
+    python tensorflow/tools/ci_build/update_version.py --nightly
+  fi
+  if [ -z ${PROJECT_NAME} ]; then
+    EXTRA_PIP_FLAGS="--nightly_flag"
+  else
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
+  fi
+else
+  if [[ -v PROJECT_NAME  ]]; then
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME}"
+  fi
 fi
 
 # Enable short object file path to avoid long path issue on Windows.
@@ -103,7 +138,10 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build --announce_rc --config=opt --define=no_tensorflow_py_deps=true \
+  --output_filter=^$ \
+  ${EXTRA_BUILD_FLAGS} \
+  tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
@@ -112,14 +150,15 @@ fi
 # Create a python test directory to avoid package name conflict
 create_python_test_dir "${PY_TEST_DIR}"
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" --gpu "${EXTRA_PIP_FLAG}"
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" \
+  --gpu ${EXTRA_PIP_FLAGS}
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0
 fi
 
 # Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow_gpu-*.whl)
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
 TF_GPU_COUNT=${TF_GPU_COUNT:-4}
@@ -129,11 +168,16 @@ TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 # GPU tests are very flaky when running concurrently, so set local_test_jobs=1
 bazel test --announce_rc --config=opt -k --test_output=errors \
   --test_env=TF_GPU_COUNT \
+  ${EXTRA_TEST_FLAGS} \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss \
-  --build_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss --build_tests_only \
+  --test_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,gpu,-v1only \
+  --build_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,gpu --build_tests_only \
   --test_size_filters=small,medium \
   --local_test_jobs=$TF_GPU_COUNT --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
-  ${TEST_TARGET}
+  --output_filter=^$ \
+  -- ${TEST_TARGET} -//${PY_TEST_DIR}/tensorflow/python:timeline_test_gpu
+# TODO(b/140106487): apply https://developer.nvidia.com/ERR_NVGPUCTRPERM to the
+# Kokoro machines and enable timeline_test_gpu again.
+

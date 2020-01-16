@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include "tensorflow/python/lib/core/strings.i"
 %include "tensorflow/python/platform/base.i"
 
 %{
@@ -23,6 +24,13 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/python/client/tf_session_helper.h"
+#include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/eager/pywrap_tfe.h"
+// We were getting lucky on imports with safe_ptr.h being placed prior to
+// tf_session which imported safe_ptr. We also need pywrap_tfe.h to cast
+// one of the inputs to a graph function from a Python string to const char*.
+
 
 // Helper function to convert a Python list of Tensors to a C++ vector of
 // TF_Outputs.
@@ -78,12 +86,23 @@ void PyInt64ListToVector(PyObject* py_int_seq, std::vector<int64_t>* vec) {
 
 %}
 
+%include "tensorflow/c/tf_datatype.h"
+%include "tensorflow/c/tf_status.h"
+
 %include "tensorflow/python/client/tf_sessionrun_wrapper.i"
 
 // Required to use PyArray_* functions.
 %init %{
 tensorflow::ImportNumpy();
 %}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* op_name {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
 
 // TensorFlow version and GraphDef versions
 %constant const char* __version__ = TF_VERSION_STRING;
@@ -143,12 +162,42 @@ tensorflow::ImportNumpy();
   $result = PyLong_FromUnsignedLongLong($1);
 }
 
+// Convert TF_OperationGetAttrType TF_DataType* out-argument to Python integer.
+%typemap(in, numinputs=0) TF_DataType *value (TF_DataType temp) {
+  $1 = &temp;
+}
+%typemap(argout) TF_DataType *value {
+  $result = PyInt_FromLong(*$1);
+}
+
+// Convert TF_OperationGetAttrBool unsigned char* out-argument to Python bool.
+%typemap(in, numinputs=0) unsigned char *value (unsigned char temp) {
+  $1 = &temp;
+}
+%typemap(argout) unsigned char *value {
+  $result = PyBool_FromLong(*$1);
+}
+
+// Convert TF_OperationGetAttrInt int64_t* out-argument to Python bool.
+%typemap(in, numinputs=0) int64_t *value (int64_t temp) {
+  $1 = &temp;
+}
+%typemap(argout) int64_t *value {
+  $result = PyLong_FromLongLong(*$1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;
 %unignore TF_OperationGetControlInputs_wrapper;
 // See comment for "%noexception TF_SessionRun_wrapper;"
 %noexception TF_OperationGetControlInputs_wrapper;
+
+
+// Migrate one function from pywrap_tfe.i
+%include "tensorflow/c/c_api_experimental.h"
+%unignore TF_ImportGraphDefOptionsSetValidateColocationConstraints;
+%noexception TF_ImportGraphDefOptionsSetValidateColocationConstraints;
 
 // Build a Python list of TF_Operation* and return it.
 %typemap(out) std::vector<TF_Operation*> tensorflow::TF_OperationGetControlInputs_wrapper {
@@ -516,6 +565,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 
 %include "tensorflow/c/c_api.h"
+%include "tensorflow/c/tf_attrtype.h"
 %include "tensorflow/c/python_api.h"
 
 
@@ -571,8 +621,7 @@ def TF_Reset(target, containers=None, config=None):
   from tensorflow.python.framework import errors
   opts = TF_NewSessionOptions(target=target, config=config)
   try:
-    with errors.raise_exception_on_not_ok_status() as status:
-      TF_Reset_wrapper(opts, containers, status)
+    TF_Reset_wrapper(opts, containers)
   finally:
     TF_DeleteSessionOptions(opts)
 %}
@@ -599,6 +648,27 @@ def TF_Reset(target, containers=None, config=None):
       opers.push_back(oper_ptr);
     }
     $1 = &opers;
+  } else {
+    $1 = nullptr;
+  }
+}
+
+// $input is a Python list of wrapped TF_Operations
+%typemap(in) (const std::vector<TF_Operation*>* control_outputs)
+    (std::vector<TF_Operation*> control_outputs) {
+  if ($input != Py_None) {
+    if (!PyList_Check($input)) {
+      SWIG_exception_fail(SWIG_TypeError, "$symname: expected list");
+    }
+    size_t size = PyList_Size($input);
+    for (int i = 0; i < size; ++i) {
+      PyObject* item = PyList_GetItem($input, i);
+      TF_Operation* oper_ptr;
+      SWIG_ConvertPtr(item, reinterpret_cast<void**>(&oper_ptr),
+                      $descriptor(TF_Operation*), 0);
+      control_outputs.push_back(oper_ptr);
+    }
+    $1 = &control_outputs;
   } else {
     $1 = nullptr;
   }
@@ -775,6 +845,24 @@ def TF_Reset(target, containers=None, config=None):
 
   Py_DECREF(seq);
   $1 = &types_local;
+}
+
+%unignore TF_CreatePlaceholders;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_CreatePlaceholders;
+
+// Build a Python list of TF_Output and return it.
+%typemap(out) std::vector<TF_Output> tensorflow::TF_CreatePlaceholders {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>>
+  const std::vector<TF_Output>& tf_outputs = $1;
+  for (size_t i = 0; i < tf_outputs.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput(tf_outputs[i]));
+  }
 }
 
 %unignore TF_NewSessionRef;

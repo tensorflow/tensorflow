@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -86,23 +86,58 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 }  // namespace
 
 HloTestBase::HloTestBase(bool verifier_layout_sensitive,
-                         bool allow_mixed_precision_in_hlo_verifier)
+                         bool allow_mixed_precision_in_hlo_verifier,
+                         std::function<bool(const HloInstruction*)>
+                             instruction_can_change_layout_func)
     : HloTestBase(GetTestPlatform(), GetReferencePlatform(),
                   verifier_layout_sensitive,
-                  allow_mixed_precision_in_hlo_verifier) {}
+                  allow_mixed_precision_in_hlo_verifier,
+                  instruction_can_change_layout_func) {}
 
 HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform,
                          bool verifier_layout_sensitive,
-                         bool allow_mixed_precision_in_hlo_verifier)
-    : test_runner_(test_platform), reference_runner_(reference_platform) {
+                         bool allow_mixed_precision_in_hlo_verifier,
+                         std::function<bool(const HloInstruction*)>
+                             instruction_can_change_layout_func)
+    : test_runner_(test_platform),
+      reference_runner_(reference_platform),
+      verifier_layout_sensitive_(verifier_layout_sensitive),
+      allow_mixed_precision_in_hlo_verifier_(
+          allow_mixed_precision_in_hlo_verifier) {
   hlo_verifier_ = absl::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
-      /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier);
+      /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier,
+      instruction_can_change_layout_func);
 }
 
-std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
+std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
+    const string& name) {
   return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
+}
+
+std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
+    const string& name) {
+  return absl::make_unique<VerifiedHloModule>(
+      name, GetModuleConfigForTest(), verifier_layout_sensitive_,
+      allow_mixed_precision_in_hlo_verifier_,
+      backend().compiler()->ShapeSizeBytesFunction());
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
+HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
+  return ParseAndReturnVerifiedModule(hlo_text, GetModuleConfigForTest());
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
+HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
+                                          const HloModuleConfig& config) {
+  auto module = absl::make_unique<VerifiedHloModule>(
+      TestName(), config, verifier_layout_sensitive_,
+      allow_mixed_precision_in_hlo_verifier_,
+      backend().compiler()->ShapeSizeBytesFunction());
+  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  return std::move(module);
 }
 
 /* static */
@@ -129,10 +164,11 @@ PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
 }
 
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
-  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  auto debug_options = GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
+  debug_options.set_xla_hlo_evaluator_use_fast_path(true);
   return debug_options;
 }
 
@@ -152,6 +188,34 @@ Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
 Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
   return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
+}
+
+StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+    int64 num_replicas, bool use_threads, bool run_hlo_passes) {
+  HloRunner::ReplicatedExecuteOptions options;
+  options.num_replicas = num_replicas;
+  options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = use_threads;
+  for (auto argument : arguments) {
+    options.arguments.push_back(argument);
+  }
+  return test_runner_.ExecuteReplicated(std::move(module), options);
+}
+
+StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+    int64 num_replicas, DeviceAssignment* device_assignment,
+    bool run_hlo_passes, bool use_threads) {
+  HloRunner::ReplicatedExecuteOptions options;
+  options.num_replicas = num_replicas;
+  options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = use_threads;
+  for (auto argument : arguments) {
+    options.arguments.push_back(argument);
+  }
+  return test_runner_.ExecuteReplicated(std::move(module), options,
+                                        device_assignment);
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
@@ -251,8 +315,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 ::testing::AssertionResult HloTestBase::RunAndCompare(
     string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
@@ -262,27 +325,130 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                        reference_preprocessor);
 }
 
-::testing::AssertionResult HloTestBase::Run(string_view hlo_string) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+::testing::AssertionResult HloTestBase::Run(string_view hlo_string,
+                                            bool run_hlo_passes,
+                                            ExecutionProfile* profile,
+                                            string backend_config) {
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
            << module_or_status.status().ToString();
   }
+
+  std::unique_ptr<HloModule> module = std::move(module_or_status.ValueOrDie());
   const auto& fake_arguments =
-      MakeFakeArguments(module_or_status.ValueOrDie().get())
-          .ConsumeValueOrDie();
+      MakeFakeArguments(module.get()).ConsumeValueOrDie();
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
-  return test_runner_
-                 .Execute(std::move(module_or_status.ValueOrDie()),
-                          fake_argument_ptrs, /*run_hlo_passes=*/true)
-                 .ok()
+
+  if (profile != nullptr) {
+    // We have to enable HLO profiling since otherwise currently the
+    // ExecutionProfile is not correct.
+    //
+    // TODO(b/119432044): Fix collection of the ExecutionProfile
+    // so that this is not necessary.
+    HloModuleConfig config = module->config();
+    DebugOptions debug_options = config.debug_options();
+    debug_options.set_xla_hlo_profile(true);
+    config.set_debug_options(debug_options);
+    module->set_config(config);
+  }
+
+  if (!backend_config.empty()) {
+    // Set backend configuration if it is given.
+    HloInstruction* instruction =
+        module->entry_computation()->root_instruction();
+    instruction->set_raw_backend_config_string(backend_config);
+  }
+
+  auto output = test_runner_.Execute(std::move(module), fake_argument_ptrs,
+                                     /*run_hlo_passes=*/run_hlo_passes,
+                                     /*profile=*/profile);
+
+  return output.ok()
              ? ::testing::AssertionSuccess()
-             : ::testing::AssertionFailure();
+             : ::testing::AssertionFailure() << output.status().error_message();
+}
+
+::testing::AssertionResult HloTestBase::RunMultipleTimes(
+    string_view hlo_string, bool run_hlo_passes,
+    std::vector<ExecutionProfile>* profiles, string backend_config,
+    bool assert_determinism) {
+  int n = profiles->size();
+  std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
+  std::vector<std::vector<Literal>> fake_arguments(n);
+  std::vector<std::unique_ptr<Executable>> executables(n);
+
+  for (int i = 0; i < n; ++i) {
+    auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
+    if (!module_or_status.ok()) {
+      return ::testing::AssertionFailure()
+             << "Error while parsing HLO text format: "
+             << module_or_status.status().ToString();
+    }
+    std::unique_ptr<HloModule> module =
+        std::move(module_or_status.ValueOrDie());
+
+    fake_arguments[i] = MakeFakeArguments(module.get()).ConsumeValueOrDie();
+    absl::c_transform(
+        fake_arguments[i], std::back_inserter(fake_argument_ptrs[i]),
+        [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+    if (profiles != nullptr) {
+      // We have to enable HLO profiling since otherwise currently the
+      // ExecutionProfile is not correct.
+      //
+      // TODO(b/119432044): Fix collection of the ExecutionProfile
+      // so that this is not necessary.
+      HloModuleConfig config = module->config();
+      DebugOptions debug_options = config.debug_options();
+      debug_options.set_xla_hlo_profile(true);
+      config.set_debug_options(debug_options);
+      module->set_config(config);
+    }
+
+    if (!backend_config.empty()) {
+      // Set backend configuration if it is given.
+      HloInstruction* instruction =
+          module->entry_computation()->root_instruction();
+      instruction->set_raw_backend_config_string(backend_config);
+    }
+
+    auto executable =
+        test_runner_.CreateExecutable(std::move(module), run_hlo_passes);
+    if (!executable.ok()) {
+      return ::testing::AssertionFailure()
+             << executable.status().error_message();
+    }
+    executables[i] = std::move(executable.ValueOrDie());
+  }
+
+  absl::optional<Literal> canonical_output;
+  for (int i = 0; i < n; ++i) {
+    StatusOr<Literal> output =
+        test_runner_.Execute(std::move(executables[i]), fake_argument_ptrs[i],
+                             /*profile=*/&((*profiles)[i]));
+    if (!output.ok()) {
+      return ::testing::AssertionFailure() << output.status().error_message();
+    }
+
+    if (assert_determinism) {
+      if (!canonical_output.has_value()) {
+        canonical_output = output.ConsumeValueOrDie();
+      } else {
+        if (*canonical_output != output.ValueOrDie()) {
+          return ::testing::AssertionFailure()
+                 << "Successive runs have returned different results: "
+                 << *canonical_output << " vs. " << output.ValueOrDie();
+        }
+      }
+    }
+  }
+
+  return ::testing::AssertionSuccess();
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(
@@ -301,8 +467,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
     string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
@@ -342,6 +507,19 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
     auto instructions = c->instructions();
     auto it = absl::c_find_if(
         instructions, [&](HloInstruction* i) { return i->name() == name; });
+    if (it != instructions.end()) {
+      return *it;
+    }
+  }
+  return nullptr;
+}
+
+HloInstruction* HloTestBase::FindInstruction(HloModule* module,
+                                             HloOpcode opcode) {
+  for (const HloComputation* c : module->computations()) {
+    auto instructions = c->instructions();
+    auto it = absl::c_find_if(
+        instructions, [&](HloInstruction* i) { return i->opcode() == opcode; });
     if (it != instructions.end()) {
       return *it;
     }

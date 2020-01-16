@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #define EIGEN_USE_GPU
 
@@ -88,9 +89,16 @@ struct SetZeroFunctor<GPUDevice, T> {
   }
 };
 
+template <>
+void SetZeroFunctor<GPUDevice, Variant>::operator()(
+    const GPUDevice& d, typename TTypes<Variant>::Flat out) {
+  // TODO(b/123028789): Implement this.
+}
+
 #define DEFINE_SETZERO_GPU(T) template struct SetZeroFunctor<GPUDevice, T>;
 TF_CALL_NUMBER_TYPES(DEFINE_SETZERO_GPU);
 TF_CALL_bool(DEFINE_SETZERO_GPU);
+TF_CALL_variant(DEFINE_SETZERO_GPU);
 #undef DEFINE_SETZERO_GPU
 
 // Partial specialization of FillFunctor<Device=GPUDevice, T>.
@@ -109,4 +117,4 @@ TF_CALL_bool(DEFINE_SETONE_GPU);
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

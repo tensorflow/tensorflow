@@ -45,10 +45,10 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 using random::PhiloxRandom;
 
+static constexpr int kMaxIterations = 1000;
+
 template <typename T>
 struct TruncatedNormalFunctor<CPUDevice, T> {
-  static const int kMaxIterations = 1000;
-
   void operator()(OpKernelContext* ctx, const CPUDevice& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,
                   typename TTypes<T>::ConstFlat means,
@@ -57,11 +57,20 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat maxvals,
                   const random::PhiloxRandom& gen,
                   typename TTypes<T>::Flat output) {
+    // The randn rejection sampling is used when the mean and at least this many
+    // standard deviations are inside the bounds.
+    // The uniform proposal samplers become less efficient as the bounds are
+    // further from the mean, the reverse is true for the randn sampler.
+    // This number was chosen by empirical benchmarking. If modified, the
+    // benchmarks in parameterized_truncated_normal_op_test should also be
+    // changed.
+    const T kStdDevsInsideBoundsToUseRandnSampler = T(1.3);
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
     auto DoWork = [samples_per_batch, num_elements, &ctx, &means, &stddevs,
-                   &minvals, &maxvals, &gen,
-                   &output](int start_batch, int limit_batch) {
+                   &minvals, &maxvals, &gen, &output,
+                   kStdDevsInsideBoundsToUseRandnSampler](int start_batch,
+                                                          int limit_batch) {
       // Capturing "gen" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
@@ -73,6 +82,8 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                     4);
       typedef random::UniformDistribution<random::PhiloxRandom, T> Uniform;
       Uniform dist;
+      typedef random::NormalDistribution<random::PhiloxRandom, T> Normal;
+      Normal normal_dist;
 
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
@@ -125,7 +136,52 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
             (normMin + sqrtFactor);
         const T diff = normMax - normMin;
 
-        if (diff < cutoff) {
+        if (((normMin < -kStdDevsInsideBoundsToUseRandnSampler) &&
+             (normMax >= T(0.))) ||
+            ((normMax > kStdDevsInsideBoundsToUseRandnSampler) &&
+             (normMin <= T(0.)))) {
+          // If the bounds are a least 3 standard deviations from the mean
+          // on at least one side then we rejection sample by sampling
+          // from the normal distribution and rejecting samples outside
+          // the bounds.
+          // Under this condition the acceptance rate per iteration should
+          // always be ~ 50%. This sampler is more efficient (and more
+          // numerically stable when one or both bounds is far from the mean).
+
+          while (sample < limit_sample) {
+            const auto randn_sample = normal_dist(&gen_copy);
+            const int size = randn_sample.size();
+
+            for (int i = 0; i < size; i++) {
+              if ((randn_sample[i] >= normMin) &&
+                  (randn_sample[i] <= normMax)) {
+                output(sample) = randn_sample[i] * stddev + mean;
+                sample++;
+                if (sample >= limit_sample) {
+                  break;
+                }
+                numIterations = 0;
+              } else {
+                numIterations++;
+                if (numIterations > kMaxIterations) {
+                  // This should never occur because this sampler should
+                  // (by the selection criteria above) be used if at least 3
+                  // standard deviations of one side of the distribution
+                  // is within the limits (so acceptance probability per
+                  // iterations >~ 1/2 per iteration).
+                  LOG(ERROR) << "TruncatedNormal randn rejection sampler "
+                             << "exceeded maximum iterations for "
+                             << "normMin=" << normMin << " normMax=" << normMax
+                             << " kMaxIterations=" << kMaxIterations;
+                  ctx->SetStatus(errors::Internal(
+                      "TruncatedNormal randn rejection sampler failed to accept"
+                      " a sample."));
+                  return;
+                }
+              }
+            }
+          }
+        } else if (diff < cutoff) {
           // Sample from a uniform distribution on [normMin, normMax].
 
           const T plusFactor = (normMin < T(0)) ? T(0) : normMin * normMin;
@@ -154,9 +210,13 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                 // the proposal distribution is the uniform distribution
                 // U(lower_bound, upper_bound).
                 if (!accept) {
-                  LOG(WARNING) << "TruncatedNormal uniform rejection sampler "
-                               << "exceeded max iterations. Sample may contain "
-                               << "outliers.";
+                  LOG(ERROR) << "TruncatedNormal uniform rejection sampler "
+                             << "exceeded max iterations. Sample may contain "
+                             << "outliers.";
+                  ctx->SetStatus(errors::Internal(
+                      "TruncatedNormal uniform rejection sampler failed to "
+                      " accept a sample."));
+                  return;
                 }
                 output(sample) = z[i] * stddev + mean;
                 sample++;
@@ -190,9 +250,13 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
               auto accept = (u <= g && z < normMax);
               if (accept || numIterations + 1 >= kMaxIterations) {
                 if (!accept) {
-                  LOG(WARNING) << "TruncatedNormal exponential distribution "
-                               << "rejection sampler exceeds max iterations. "
-                               << "Sample may contain outliers.";
+                  LOG(ERROR) << "TruncatedNormal exponential distribution "
+                             << "rejection sampler exceeds max iterations. "
+                             << "Sample may contain outliers.";
+                  ctx->SetStatus(errors::Internal(
+                      "TruncatedNormal exponential distribution rejection"
+                      " sampler failed to accept a sample."));
+                  return;
                 }
                 output(sample) = z * stddev + mean;
                 sample++;
@@ -357,9 +421,9 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
 
     auto truncFunctor = functor::TruncatedNormalFunctor<Device, T>();
     // Each worker has the fudge factor for samples_per_batch, so use it here.
-    random::PhiloxRandom rng = generator_.ReserveSamples128(
-        num_batches * 2 * truncFunctor.kMaxIterations *
-        (samples_per_batch + 3) / 4);
+    random::PhiloxRandom rng =
+        generator_.ReserveSamples128(num_batches * 2 * functor::kMaxIterations *
+                                     (samples_per_batch + 3) / 4);
     truncFunctor(ctx, ctx->eigen_device<Device>(), num_batches,
                  samples_per_batch, num_elements, means_tensor.flat<T>(),
                  stddevs_tensor.flat<T>(), minvals_tensor.flat<T>(),
@@ -386,7 +450,7 @@ TF_CALL_double(REGISTER);
 
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER(TYPE)                                         \
   REGISTER_KERNEL_BUILDER(Name("ParameterizedTruncatedNormal") \
@@ -401,6 +465,6 @@ TF_CALL_double(REGISTER);
 
 #undef REGISTER
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

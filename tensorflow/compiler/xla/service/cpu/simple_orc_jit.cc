@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 
 #include <stdint.h>
+
 #include <algorithm>
 #include <list>
 #include <utility>
@@ -25,10 +26,10 @@ limitations under the License.
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_mkl.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -55,24 +57,13 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   if (llvm::sys::getHostCPUFeatures(host_features)) {
     for (auto& feature : host_features) {
       if (feature.second) {
-        llvm::StringRef feature_name = feature.first();
-        // Skip avx512 for now, it isn't quite ready in LLVM.
-        if (feature_name.startswith("avx512")) {
-          continue;
-        }
-        result.push_back(feature_name);
+        result.push_back(feature.first());
       }
     }
   }
   return result;
 }
 
-llvm::StringRef GetHostCpuName() {
-  auto cpu_name = llvm::sys::getHostCPUName();
-  // Skip avx512 for now, it isn't quite ready in LLVM.
-  cpu_name.consume_back("-avx512");
-  return cpu_name;
-}
 }  // namespace
 
 /*static*/ std::unique_ptr<llvm::TargetMachine>
@@ -85,20 +76,20 @@ SimpleOrcJIT::InferTargetMachineForJIT(
           .setOptLevel(opt_level)
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-              /*MCPU=*/GetHostCpuName(),
+              /*MCPU=*/llvm::sys::getHostCPUName(),
               /*MAttrs=*/DetectMachineAttributes()));
   CHECK(target_machine != nullptr);
   return target_machine;
 }
 
-SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
-                           llvm::CodeGenOpt::Level opt_level,
-                           bool optimize_for_size, bool enable_fast_math,
-                           bool disable_expensive_passes,
-                           LLVMCompiler::ModuleHook pre_optimization_hook,
-                           LLVMCompiler::ModuleHook post_optimization_hook)
+SimpleOrcJIT::SimpleOrcJIT(
+    const llvm::TargetOptions& target_options,
+    llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
+    bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
+    LLVMCompiler::ModuleHook pre_optimization_hook,
+    LLVMCompiler::ModuleHook post_optimization_hook,
+    std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook)
     : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
-      disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
           execution_session_,
@@ -108,33 +99,76 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
           })),
-      object_layer_(execution_session_,
-                    [this](llvm::orc::VModuleKey) {
-                      llvm::orc::RTDyldObjectLinkingLayer::Resources result;
-                      result.MemMgr =
-                          std::make_shared<llvm::SectionMemoryManager>(
-                              orc_jit_memory_mapper::GetInstance());
-                      result.Resolver = symbol_resolver_;
-                      return result;
-                    }),
-      compile_layer_(object_layer_,
-                     CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, optimize_for_size,
-                                     enable_fast_math, disable_expensive_passes,
-                                     std::move(pre_optimization_hook),
-                                     std::move(post_optimization_hook))) {
+      object_layer_(
+          execution_session_,
+          [this](llvm::orc::VModuleKey) {
+            llvm::orc::LegacyRTDyldObjectLinkingLayer::Resources result;
+            result.MemMgr = std::make_shared<llvm::SectionMemoryManager>(
+                orc_jit_memory_mapper::GetInstance());
+            result.Resolver = symbol_resolver_;
+            return result;
+          },
+          /*NotifyLoaded=*/
+          llvm::orc::LegacyRTDyldObjectLinkingLayer::NotifyLoadedFtor(),
+          /*NotifyFinalized=*/
+          [this](VModuleKeyT, const llvm::object::ObjectFile& object,
+                 const llvm::RuntimeDyld::LoadedObjectInfo& object_info) {
+            this->NotifyObjectFinalized(object, object_info);
+          },
+          /*NotifyFreed=*/
+          [this](VModuleKeyT, const llvm::object::ObjectFile& object) {
+            this->NotifyObjectFreed(object);
+          }),
+      compile_layer_(
+          object_layer_,
+          CompilerFunctor(target_machine_.get(), opt_level, optimize_for_size,
+                          disable_expensive_passes, fast_math_flags,
+                          std::move(pre_optimization_hook),
+                          std::move(post_optimization_hook),
+                          std::move(post_codegen_hook))),
+      gdb_jit_event_listener_(
+          llvm::JITEventListener::createGDBRegistrationListener()) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
 
 llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
-  void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  void* func_addr = nullptr;
+  if (name.size() > 1 && name.front() == data_layout_.getGlobalPrefix()) {
+    // On Mac OS X, 'name' may have a leading underscore prefix, even though the
+    // registered name may not.
+    std::string stripped_name(name.begin() + 1, name.end());
+    func_addr =
+        xla::CustomCallTargetRegistry::Global()->Lookup(stripped_name, "Host");
+  } else {
+    func_addr = xla::CustomCallTargetRegistry::Global()->Lookup(name, "Host");
+  }
+
   if (func_addr == nullptr) {
+    LOG(ERROR)
+        << "Unable to resolve runtime symbol: `" << name
+        << "'.  Hint: if the symbol a custom call target, make sure you've "
+           "registered it with the JIT using "
+           "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
     return nullptr;
   }
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
                                        llvm::JITSymbolFlags::None);
   return symbol_info;
+}
+
+void SimpleOrcJIT::NotifyObjectFinalized(
+    const llvm::object::ObjectFile& object,
+    const llvm::RuntimeDyld::LoadedObjectInfo& object_info) {
+  uint64_t key = static_cast<uint64_t>(
+      reinterpret_cast<uintptr_t>(object.getData().data()));
+  gdb_jit_event_listener_->notifyObjectLoaded(key, object, object_info);
+}
+
+void SimpleOrcJIT::NotifyObjectFreed(const llvm::object::ObjectFile& object) {
+  uint64_t key = static_cast<uint64_t>(
+      reinterpret_cast<uintptr_t>(object.getData().data()));
+  gdb_jit_event_listener_->notifyFreeingObject(key);
 }
 
 SimpleOrcJIT::VModuleKeyT SimpleOrcJIT::AddModule(
@@ -169,20 +203,23 @@ llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
 namespace {
 // Register some known symbols with the CustomCallTargetRegistry.
 bool RegisterKnownJITSymbols() {
-  CustomCallTargetRegistry* registry = CustomCallTargetRegistry::Global();
+  xla::CustomCallTargetRegistry* registry =
+      xla::CustomCallTargetRegistry::Global();
 
 #define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
   do {                                                                       \
     auto* function_address =                                                 \
         reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);              \
     registry->Register(xla::cpu::runtime::k##base_name##SymbolName,          \
-                       function_address);                                    \
+                       function_address, "Host");                            \
     CHECK_EQ(absl::string_view(xla::cpu::runtime::k##base_name##SymbolName), \
              "__xla_cpu_runtime_" #base_name);                               \
   } while (false)
 
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireOutfeedBufferForPopulation);
+  REGISTER_CPU_RUNTIME_SYMBOL(AllReduce);
+  REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF32);
@@ -190,6 +227,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulS32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF32);
@@ -200,24 +238,20 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulS32);
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortPRED);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS8);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU8);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS64);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU64);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSort);
+  REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
+  REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
 
-  registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
-  registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
+  registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),
+                     "Host");
+  registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee),
+                     "Host");
+  registry->Register("__truncdfhf2", reinterpret_cast<void*>(__truncdfhf2),
+                     "Host");
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 
@@ -225,11 +259,12 @@ bool RegisterKnownJITSymbols() {
 // Unfortunately the double versions are overloaded on some systems, e.g.
 // Mac so we need an explicit cast. This requires passing the function signature
 // for that case.
-#define REGISTER_LIBM_SYMBOL(name, double_sig)                          \
-  do {                                                                  \
-    registry->Register(#name "f", reinterpret_cast<void*>(name##f));    \
-    registry->Register(                                                 \
-        #name, reinterpret_cast<void*>(static_cast<double_sig>(name))); \
+#define REGISTER_LIBM_SYMBOL(name, double_sig)                                 \
+  do {                                                                         \
+    registry->Register(#name "f", reinterpret_cast<void*>(name##f), "Host");   \
+    registry->Register(#name,                                                  \
+                       reinterpret_cast<void*>(static_cast<double_sig>(name)), \
+                       "Host");                                                \
   } while (false)
 
   REGISTER_LIBM_SYMBOL(acos, double (*)(double));
@@ -286,6 +321,10 @@ bool RegisterKnownJITSymbols() {
   REGISTER_LIBM_SYMBOL(sin, double (*)(double));
 #ifdef __APPLE__
   REGISTER_LIBM_SYMBOL(__sincos, void (*)(double, double*, double*));
+  registry->Register("__sincosf_stret",
+                     reinterpret_cast<void*>(__sincosf_stret), "Host");
+  registry->Register("__sincos_stret", reinterpret_cast<void*>(__sincos_stret),
+                     "Host");
 #else
   REGISTER_LIBM_SYMBOL(sincos, void (*)(double, double*, double*));
 #endif
@@ -298,9 +337,21 @@ bool RegisterKnownJITSymbols() {
 
 #undef REGISTER_LIBM_SYMBOL
 
-  registry->Register("memcpy", reinterpret_cast<void*>(memcpy));
-  registry->Register("memmove", reinterpret_cast<void*>(memmove));
-  registry->Register("memset", reinterpret_cast<void*>(memset));
+  registry->Register("memcpy", reinterpret_cast<void*>(memcpy), "Host");
+  registry->Register("memmove", reinterpret_cast<void*>(memmove), "Host");
+  registry->Register("memset", reinterpret_cast<void*>(memset), "Host");
+
+#ifdef __APPLE__
+  registry->Register("__bzero", reinterpret_cast<void*>(bzero), "Host");
+  registry->Register("memset_pattern16",
+                     reinterpret_cast<void*>(memset_pattern16), "Host");
+#endif
+
+#ifdef MEMORY_SANITIZER
+  registry->Register("__msan_unpoison",
+                     reinterpret_cast<void*>(__msan_unpoison), "Host");
+#endif
+
   return true;
 }
 

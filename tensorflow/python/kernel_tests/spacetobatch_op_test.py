@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker
@@ -100,14 +101,18 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
   """
 
   def _testPad(self, inputs, paddings, block_size, outputs):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       # outputs = space_to_batch(inputs)
       x_tf = self.space_to_batch(
-          math_ops.to_float(inputs), paddings, block_size=block_size)
+          math_ops.cast(inputs, dtypes.float32),
+          paddings,
+          block_size=block_size)
       self.assertAllEqual(x_tf.eval(), outputs)
       # inputs = batch_to_space(outputs)
       x_tf = self.batch_to_space(
-          math_ops.to_float(outputs), paddings, block_size=block_size)
+          math_ops.cast(outputs, dtypes.float32),
+          paddings,
+          block_size=block_size)
       self.assertAllEqual(x_tf.eval(), inputs)
 
   def _testOne(self, inputs, block_size, outputs):
@@ -115,6 +120,7 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
     self._testPad(inputs, paddings, block_size, outputs)
 
   # [1, 2, 2, 1] <-> [4, 1, 1, 1]
+  @test_util.run_deprecated_v1
   def testSmallInput2x2(self):
     x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 2
@@ -122,6 +128,7 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
     self._testOne(x_np, block_size, x_out)
 
   # [1, 2, 2, 1] <-> [1, 3, 3, 1] (padding) <-> [9, 1, 1, 1]
+  @test_util.run_deprecated_v1
   def testSmallInput2x2Pad1x0(self):
     x_np = [[[[1], [2]], [[3], [4]]]]
     paddings = np.array([[1, 0], [1, 0]], dtype=np.int32)
@@ -132,6 +139,7 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
 
   # Test with depth larger than 1.
   # [1, 2, 2, 3] <-> [4, 1, 1, 3]
+  @test_util.run_deprecated_v1
   def testDepthInput2x2(self):
     x_np = [[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]
     block_size = 2
@@ -140,6 +148,7 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
 
   # Test for larger input dimensions.
   # [1, 4, 4, 1] <-> [4, 2, 2, 1]
+  @test_util.run_deprecated_v1
   def testLargerInput2x2(self):
     x_np = [[[[1], [2], [3], [4]], [[5], [6], [7], [8]],
              [[9], [10], [11], [12]], [[13], [14], [15], [16]]]]
@@ -150,6 +159,7 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
 
   # Test with batch larger than 1.
   # [2, 2, 4, 1] <-> [8, 1, 2, 1]
+  @test_util.run_deprecated_v1
   def testBatchInput2x2(self):
     x_np = [[[[1], [2], [3], [4]], [[5], [6], [7], [8]]],
             [[[9], [10], [11], [12]], [[13], [14], [15], [16]]]]
@@ -162,6 +172,7 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
   # that elements are correctly laid out spatially and properly interleaved
   # along the batch dimension.
   # [2, 4, 4, 1] <-> [8, 2, 2, 1]
+  @test_util.run_deprecated_v1
   def testLargerInputBatch2x2(self):
     x_np = [[[[1], [2], [3], [4]], [[5], [6], [7], [8]],
              [[9], [10], [11], [12]], [[13], [14], [15], [16]]],
@@ -190,14 +201,14 @@ class SpaceToBatchNDTest(test.TestCase):
     block_shape = np.array(block_shape)
     paddings = np.array(paddings).reshape((len(block_shape), 2))
     for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         # outputs = space_to_batch(inputs)
         x_tf = array_ops.space_to_batch_nd(
-            math_ops.to_float(inputs), block_shape, paddings)
+            math_ops.cast(inputs, dtypes.float32), block_shape, paddings)
         self.assertAllEqual(x_tf.eval(), outputs)
         # inputs = batch_to_space(outputs)
         x_tf = array_ops.batch_to_space_nd(
-            math_ops.to_float(outputs), block_shape, paddings)
+            math_ops.cast(outputs, dtypes.float32), block_shape, paddings)
         self.assertAllEqual(x_tf.eval(), inputs)
 
   def _testDirect(self, input_shape, block_shape, paddings):
@@ -206,6 +217,7 @@ class SpaceToBatchNDTest(test.TestCase):
     self._testPad(inputs, block_shape, paddings,
                   space_to_batch_direct(inputs, block_shape, paddings))
 
+  @test_util.run_deprecated_v1
   def testZeroBlockDimsZeroRemainingDims(self):
     self._testPad(
         inputs=[1, 2],
@@ -213,6 +225,7 @@ class SpaceToBatchNDTest(test.TestCase):
         paddings=[],
         outputs=[1, 2],)
 
+  @test_util.run_deprecated_v1
   def testZeroBlockDimsOneRemainingDim(self):
     self._testPad(
         inputs=[[1, 2], [3, 4]],
@@ -227,6 +240,7 @@ class SpaceToBatchNDTest(test.TestCase):
         paddings=[[0, 0]],
         outputs=[[1, 2], [3, 4]])
 
+  @test_util.run_deprecated_v1
   def testZeroBlockDimsTwoRemainingDims(self):
     self._testPad(
         inputs=[[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
@@ -248,6 +262,7 @@ class SpaceToBatchNDTest(test.TestCase):
         paddings=[[0, 0], [0, 0]],
         outputs=[[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
 
+  @test_util.run_deprecated_v1
   def testOneBlockDimZeroRemainingDims(self):
     self._testPad(
         inputs=[[1, 2, 3], [4, 5, 6]],
@@ -255,6 +270,7 @@ class SpaceToBatchNDTest(test.TestCase):
         paddings=[1, 0],
         outputs=[[0, 2], [0, 5], [1, 3], [4, 6]])
 
+  @test_util.run_deprecated_v1
   def testOneBlockDimOneRemainingDim(self):
     self._testPad(
         inputs=[[[1, 11], [2, 21], [3, 31]], [[4, 41], [5, 51], [6, 61]]],
@@ -263,6 +279,7 @@ class SpaceToBatchNDTest(test.TestCase):
         outputs=[[[0, 0], [2, 21]], [[0, 0], [5, 51]], [[1, 11], [3, 31]],
                  [[4, 41], [6, 61]]])
 
+  @test_util.run_deprecated_v1
   def testDirect(self):
     # Test with zero-size remaining dimension.
     self._testDirect(
@@ -300,6 +317,7 @@ class SpaceToBatchNDTest(test.TestCase):
 class SpaceToBatchSpaceToDepth(test.TestCase, PythonOpImpl):
 
   # Verifies that: space_to_batch(x) = transpose(space_to_depth(transpose(x)))
+  @test_util.run_deprecated_v1
   def testSpaceToDepthTranspose(self):
     x = np.arange(5 * 10 * 16 * 7, dtype=np.float32).reshape([5, 10, 16, 7])
     block_size = 2
@@ -309,7 +327,7 @@ class SpaceToBatchSpaceToDepth(test.TestCase, PythonOpImpl):
         array_ops.space_to_depth(
             array_ops.transpose(x, [3, 1, 2, 0]), block_size=block_size),
         [3, 1, 2, 0])
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(y1.eval(), y2.eval())
 
 
@@ -319,6 +337,7 @@ class SpaceToBatchSpaceToDepthCpp(SpaceToBatchSpaceToDepth, CppOpImpl):
 
 class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
 
+  @test_util.run_deprecated_v1
   def testInputWrongDimMissingBatch(self):
     # The input is missing the first dimension ("batch")
     x_np = [[[1], [2]], [[3], [4]]]
@@ -327,6 +346,7 @@ class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
     with self.assertRaises(ValueError):
       _ = self.space_to_batch(x_np, paddings, block_size)
 
+  @test_util.run_deprecated_v1
   def testBlockSize0(self):
     # The block size is 0.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -336,6 +356,7 @@ class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
       out_tf = self.space_to_batch(x_np, paddings, block_size)
       out_tf.eval()
 
+  @test_util.run_deprecated_v1
   def testBlockSizeOne(self):
     # The block size is 1. The block size needs to be > 1.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -345,6 +366,7 @@ class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
       out_tf = self.space_to_batch(x_np, paddings, block_size)
       out_tf.eval()
 
+  @test_util.run_deprecated_v1
   def testBlockSizeLarger(self):
     # The block size is too large for this input.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -354,6 +376,7 @@ class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
       out_tf = self.space_to_batch(x_np, paddings, block_size)
       out_tf.eval()
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleWidth(self):
     # The block size divides width but not height.
     x_np = [[[[1], [2], [3]], [[3], [4], [7]]]]
@@ -362,6 +385,7 @@ class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
     with self.assertRaises(ValueError):
       _ = self.space_to_batch(x_np, paddings, block_size)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleHeight(self):
     # The block size divides height but not width.
     x_np = [[[[1], [2]], [[3], [4]], [[5], [6]]]]
@@ -370,6 +394,7 @@ class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
     with self.assertRaises(ValueError):
       _ = self.space_to_batch(x_np, paddings, block_size)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisibleBoth(self):
     # The block size does not divide neither width or height.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -378,6 +403,7 @@ class SpaceToBatchErrorHandlingTest(test.TestCase, PythonOpImpl):
     with self.assertRaises(ValueError):
       _ = self.space_to_batch(x_np, paddings, block_size)
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     t = self.space_to_batch(
         array_ops.placeholder(dtypes.float32),
@@ -424,25 +450,31 @@ class SpaceToBatchNDErrorHandlingTest(test.TestCase):
     self._testStaticShape(input_shape, block_shape, paddings, error)
     self._testDynamicShape(input_shape, block_shape, paddings)
 
+  @test_util.run_deprecated_v1
   def testBlockSize0(self):
     # The block size is 0.
     self._testShape([1, 2, 2], [0, 2], [[0, 0], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNegative(self):
     self._testShape([1, 2, 2], [-1, 2], [[0, 0], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testNegativePadding(self):
     # The padding is negative.
     self._testShape([1, 2, 2], [1, 1], [[0, -1], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNotDivisible(self):
     # The padded size is not divisible by the block size.
     self._testShape([1, 2, 3, 1], [3, 3], [[0, 0], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testBlockDimsMismatch(self):
     # Shape of block_shape does not match shape of paddings.
     self._testStaticShape([1, 3, 3, 1], [3, 3], [[0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testUnknown(self):
     # Verify that input shape and paddings shape can be unknown.
     _ = array_ops.space_to_batch_nd(
@@ -494,7 +526,7 @@ class SpaceToBatchGradientTest(test.TestCase, PythonOpImpl):
   # Check the gradients.
   def _checkGrad(self, x, paddings, block_size):
     assert 4 == x.ndim
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_x = ops.convert_to_tensor(x)
       tf_y = self.space_to_batch(tf_x, paddings, block_size)
       epsilon = 1e-5
@@ -522,18 +554,21 @@ class SpaceToBatchGradientTest(test.TestCase, PythonOpImpl):
 
   # Don't use very large numbers as dimensions here as the result is tensor
   # with cartesian product of the dimensions.
+  @test_util.run_deprecated_v1
   def testSmall(self):
     block_size = 2
     pad_beg = 0
     pad_end = 0
     self._compare(1, 2, 3, 5, block_size, pad_beg, pad_end)
 
+  @test_util.run_deprecated_v1
   def testSmall2(self):
     block_size = 2
     pad_beg = 0
     pad_end = 0
     self._compare(2, 4, 3, 2, block_size, pad_beg, pad_end)
 
+  @test_util.run_deprecated_v1
   def testSmallPad1x1(self):
     block_size = 2
     pad_beg = 1
@@ -572,15 +607,19 @@ class SpaceToBatchNDGradientTest(test.TestCase):
 
   # Don't use very large numbers as dimensions here as the result is tensor
   # with cartesian product of the dimensions.
+  @test_util.run_deprecated_v1
   def testSmall(self):
     self._compare([1, 4, 6, 5], [2, 2], [[0, 0], [0, 0]])
 
+  @test_util.run_deprecated_v1
   def testSmall2(self):
     self._compare([2, 8, 6, 2], [2, 2], [[0, 0], [0, 0]])
 
+  @test_util.run_deprecated_v1
   def testSmallPad1(self):
     self._compare([2, 4, 6, 2], [2, 2], [[1, 1], [1, 1]])
 
+  @test_util.run_deprecated_v1
   def testSmallPadThreeBlockDims(self):
     self._compare([2, 2, 4, 3, 2], [2, 2, 2], [[1, 1], [1, 1], [1, 0]])
 
@@ -644,6 +683,7 @@ class RequiredSpaceToBatchPaddingsTest(test.TestCase):
     self.assertAllEqual(paddings_result, paddings_const)
     self.assertAllEqual(crops_result, crops_const)
 
+  @test_util.run_deprecated_v1
   def testSimple(self):
     self._test(
         input_shape=np.zeros((0,), np.int32),

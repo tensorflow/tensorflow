@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import random
 import time
 
@@ -26,19 +27,24 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class FIFOQueueTest(test.TestCase):
 
   def testConstructor(self):
@@ -46,7 +52,7 @@ class FIFOQueueTest(test.TestCase):
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list { type: DT_FLOAT } } }
       attr { key: 'shapes' value { list {} } }
       attr { key: 'capacity' value { i: 10 } }
@@ -62,7 +68,7 @@ class FIFOQueueTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }
@@ -81,7 +87,7 @@ class FIFOQueueTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }
@@ -99,41 +105,33 @@ class FIFOQueueTest(test.TestCase):
       """, q.queue_ref.op.node_def)
 
   def testEnqueue(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      enqueue_op = q.enqueue((10.0,))
-      enqueue_op.run()
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+    self.evaluate(q.enqueue((10.0,)))
 
   def testEnqueueHalf(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float16)
-      enqueue_op = q.enqueue((10.0,))
-      enqueue_op.run()
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float16)
+    self.evaluate(q.enqueue((10.0,)))
 
   def testEnqueueWithShape(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=(3, 2))
-      enqueue_correct_op = q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],))
-      enqueue_correct_op.run()
-      with self.assertRaises(ValueError):
-        q.enqueue(([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],))
-      self.assertEqual(1, q.size().eval())
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=(3, 2))
+    self.evaluate(q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],)))
+    with self.assertRaises(ValueError):
+      q.enqueue(([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],))
+    self.assertEqual(1, self.evaluate(q.size()))
 
   def testEnqueueManyWithShape(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(
-          10, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
-      q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
-      self.assertEqual(4, q.size().eval())
+    q = data_flow_ops.FIFOQueue(
+        10, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
+    self.evaluate(
+        q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]))
+    self.assertEqual(4, self.evaluate(q.size()))
 
-  @test_util.run_in_graph_and_eager_modes
   def testMultipleDequeues(self):
     q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
     self.evaluate(q.enqueue_many([[1, 2, 3]]))
     a, b, c = self.evaluate([q.dequeue(), q.dequeue(), q.dequeue()])
     self.assertAllEqual(set([1, 2, 3]), set([a, b, c]))
 
-  @test_util.run_in_graph_and_eager_modes
   def testQueuesDontShare(self):
     q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
     self.evaluate(q.enqueue(1))
@@ -142,312 +140,225 @@ class FIFOQueueTest(test.TestCase):
     self.assertAllEqual(self.evaluate(q2.dequeue()), 2)
     self.assertAllEqual(self.evaluate(q.dequeue()), 1)
 
+  def testQueueInFunction(self):
+
+    class _M(module.Module):
+
+      def __init__(self):
+        self.q1 = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+        self.q2 = None
+
+      @def_function.function
+      def uses_queues(self, x):
+        if self.q2 is None:
+          self.q2 = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+        self.q2.enqueue(x)
+        self.q2.enqueue(x + 3)
+        self.q1.enqueue(self.q2.dequeue())
+
+    m = _M()
+    self.evaluate(m.uses_queues(constant_op.constant(2)))
+    self.assertAllEqual(2, self.evaluate(m.q1.dequeue()))
+    self.assertAllEqual(5, self.evaluate(m.q2.dequeue()))
+    if context.executing_eagerly():
+      q1_handle = m.q1.queue_ref
+      q2_handle = m.q2.queue_ref
+      del m
+      gc.collect()
+      # If executing eagerly, deleting the Module should clean up the queue
+      # resources.
+      with self.assertRaisesRegexp(errors_impl.NotFoundError,
+                                   r"Resource .* does not exist."):
+        gen_resource_variable_ops.destroy_resource_op(
+            q1_handle, ignore_lookup_error=False)
+      with self.assertRaisesRegexp(errors_impl.NotFoundError,
+                                   r"Resource .* does not exist."):
+        gen_resource_variable_ops.destroy_resource_op(
+            q2_handle, ignore_lookup_error=False)
+
   def testEnqueueDictWithoutNames(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      with self.assertRaisesRegexp(ValueError, "must have names"):
-        q.enqueue({"a": 12.0})
-      with self.assertRaisesRegexp(ValueError, "must have names"):
-        q.enqueue_many({"a": [12.0, 13.0]})
-
-  def testParallelEnqueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
-      enqueue_ops = [q.enqueue((x,)) for x in elems]
-      dequeued_t = q.dequeue()
-
-      # Run one producer thread for each element in elems.
-      def enqueue(enqueue_op):
-        sess.run(enqueue_op)
-
-      threads = [
-          self.checkedThread(
-              target=enqueue, args=(e,)) for e in enqueue_ops
-      ]
-      for thread in threads:
-        thread.start()
-      for thread in threads:
-        thread.join()
-
-      # Dequeue every element using a single thread.
-      results = []
-      for _ in xrange(len(elems)):
-        results.append(dequeued_t.eval())
-      self.assertItemsEqual(elems, results)
-
-  def testParallelDequeue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
-      enqueue_ops = [q.enqueue((x,)) for x in elems]
-      dequeued_t = q.dequeue()
-
-      # Enqueue every element using a single thread.
-      for enqueue_op in enqueue_ops:
-        enqueue_op.run()
-
-      # Run one consumer thread for each element in elems.
-      results = []
-
-      def dequeue():
-        results.append(sess.run(dequeued_t))
-
-      threads = [self.checkedThread(target=dequeue) for _ in enqueue_ops]
-      for thread in threads:
-        thread.start()
-      for thread in threads:
-        thread.join()
-      self.assertItemsEqual(elems, results)
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+    with self.assertRaisesRegexp(ValueError, "must have names"):
+      q.enqueue({"a": 12.0})
+    with self.assertRaisesRegexp(ValueError, "must have names"):
+      q.enqueue_many({"a": [12.0, 13.0]})
 
   def testDequeue(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0]
-      enqueue_ops = [q.enqueue((x,)) for x in elems]
-      dequeued_t = q.dequeue()
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+    elems = [10.0, 20.0, 30.0]
 
-      for enqueue_op in enqueue_ops:
-        enqueue_op.run()
+    for x in elems:
+      self.evaluate(q.enqueue((x,)))
 
-      for i in xrange(len(elems)):
-        vals = dequeued_t.eval()
-        self.assertEqual([elems[i]], vals)
+    for i in xrange(len(elems)):
+      vals = self.evaluate(q.dequeue())
+      self.assertEqual([elems[i]], vals)
 
   def testDequeueHalf(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float16)
-      elems = [10.0, 20.0, 30.0]
-      enqueue_ops = [q.enqueue((x,)) for x in elems]
-      dequeued_t = q.dequeue()
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float16)
+    elems = [10.0, 20.0, 30.0]
 
-      for enqueue_op in enqueue_ops:
-        enqueue_op.run()
+    for x in elems:
+      self.evaluate(q.enqueue((x,)))
 
-      for i in xrange(len(elems)):
-        vals = dequeued_t.eval()
-        self.assertEqual([elems[i]], vals)
-
-  def testEnqueueAndBlockingDequeue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(3, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0]
-      enqueue_ops = [q.enqueue((x,)) for x in elems]
-      dequeued_t = q.dequeue()
-
-      def enqueue():
-        # The enqueue_ops should run after the dequeue op has blocked.
-        # TODO(mrry): Figure out how to do this without sleeping.
-        time.sleep(0.1)
-        for enqueue_op in enqueue_ops:
-          sess.run(enqueue_op)
-
-      results = []
-
-      def dequeue():
-        for _ in xrange(len(elems)):
-          results.append(sess.run(dequeued_t))
-
-      enqueue_thread = self.checkedThread(target=enqueue)
-      dequeue_thread = self.checkedThread(target=dequeue)
-      enqueue_thread.start()
-      dequeue_thread.start()
-      enqueue_thread.join()
-      dequeue_thread.join()
-
-      for elem, result in zip(elems, results):
-        self.assertEqual([elem], result)
+    for i in xrange(len(elems)):
+      vals = self.evaluate(q.dequeue())
+      self.assertEqual([elems[i]], vals)
 
   def testMultiEnqueueAndDequeue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32))
-      elems = [(5, 10.0), (10, 20.0), (15, 30.0)]
-      enqueue_ops = [q.enqueue((x, y)) for x, y in elems]
-      dequeued_t = q.dequeue()
+    q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32))
+    elems = [(5, 10.0), (10, 20.0), (15, 30.0)]
 
-      for enqueue_op in enqueue_ops:
-        enqueue_op.run()
+    for x in elems:
+      self.evaluate(q.enqueue(x))
 
-      for i in xrange(len(elems)):
-        x_val, y_val = sess.run(dequeued_t)
-        x, y = elems[i]
-        self.assertEqual([x], x_val)
-        self.assertEqual([y], y_val)
+    for i in xrange(len(elems)):
+      x_val, y_val = self.evaluate(q.dequeue())
+      x, y = elems[i]
+      self.assertEqual([x], x_val)
+      self.assertEqual([y], y_val)
 
   def testQueueSizeEmpty(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      self.assertEqual([0], q.size().eval())
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+    self.assertEqual([0], self.evaluate(q.size()))
 
   def testQueueSizeAfterEnqueueAndDequeue(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      enqueue_op = q.enqueue((10.0,))
-      dequeued_t = q.dequeue()
-      size = q.size()
-      self.assertEqual([], size.get_shape())
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+    self.assertEqual([], q.size().get_shape())
 
-      enqueue_op.run()
-      self.assertEqual(1, size.eval())
-      dequeued_t.op.run()
-      self.assertEqual(0, size.eval())
+    self.evaluate(q.enqueue((10.0,)))
+    self.assertEqual(1, self.evaluate(q.size()))
+    self.evaluate(q.dequeue())
+    self.assertEqual(0, self.evaluate(q.size()))
 
   def testEnqueueMany(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      dequeued_t = q.dequeue()
-      enqueue_op.run()
-      enqueue_op.run()
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+    elems = [10.0, 20.0, 30.0, 40.0]
+    self.evaluate(q.enqueue_many((elems,)))
+    self.evaluate(q.enqueue_many((elems,)))
 
-      for i in range(8):
-        vals = dequeued_t.eval()
-        self.assertEqual([elems[i % 4]], vals)
+    for i in range(8):
+      vals = self.evaluate(q.dequeue())
+      self.assertEqual([elems[i % 4]], vals)
 
   def testEmptyEnqueueMany(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      empty_t = constant_op.constant(
-          [], dtype=dtypes_lib.float32, shape=[0, 2, 3])
-      enqueue_op = q.enqueue_many((empty_t,))
-      size_t = q.size()
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+    empty_t = constant_op.constant(
+        [], dtype=dtypes_lib.float32, shape=[0, 2, 3])
 
-      self.assertEqual([0], size_t.eval())
-      enqueue_op.run()
-      self.assertEqual([0], size_t.eval())
+    self.assertEqual([0], self.evaluate(q.size()))
+    self.evaluate(q.enqueue_many((empty_t,)))
+    self.assertEqual([0], self.evaluate(q.size()))
 
   def testEmptyDequeueMany(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=())
-      enqueue_op = q.enqueue((10.0,))
-      dequeued_t = q.dequeue_many(0)
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=())
 
-      self.assertEqual([], dequeued_t.eval().tolist())
-      enqueue_op.run()
-      self.assertEqual([], dequeued_t.eval().tolist())
+    self.assertEqual([], self.evaluate(q.dequeue_many(0)).tolist())
+    self.evaluate(q.enqueue((10.0,)))
+    self.assertEqual([], self.evaluate(q.dequeue_many(0)).tolist())
 
   def testEmptyDequeueUpTo(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=())
-      enqueue_op = q.enqueue((10.0,))
-      dequeued_t = q.dequeue_up_to(0)
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=())
 
-      self.assertEqual([], dequeued_t.eval().tolist())
-      enqueue_op.run()
-      self.assertEqual([], dequeued_t.eval().tolist())
+    self.assertEqual([], self.evaluate(q.dequeue_up_to(0)).tolist())
+    self.evaluate(q.enqueue((10.0,)))
+    self.assertEqual([], self.evaluate(q.dequeue_up_to(0)).tolist())
 
   def testEmptyDequeueManyWithNoShape(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      # Expect the operation to fail due to the shape not being constrained.
-      with self.assertRaisesOpError("specified shapes"):
-        q.dequeue_many(0).eval()
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+    # Expect the operation to fail due to the shape not being constrained.
+    with self.assertRaisesOpError("specified shapes"):
+      self.evaluate(q.dequeue_many(0))
 
   def testMultiEnqueueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, (dtypes_lib.float32, dtypes_lib.int32))
-      float_elems = [10.0, 20.0, 30.0, 40.0]
-      int_elems = [[1, 2], [3, 4], [5, 6], [7, 8]]
-      enqueue_op = q.enqueue_many((float_elems, int_elems))
-      dequeued_t = q.dequeue()
+    q = data_flow_ops.FIFOQueue(10, (dtypes_lib.float32, dtypes_lib.int32))
+    float_elems = [10.0, 20.0, 30.0, 40.0]
+    int_elems = [[1, 2], [3, 4], [5, 6], [7, 8]]
 
-      enqueue_op.run()
-      enqueue_op.run()
+    self.evaluate(q.enqueue_many((float_elems, int_elems)))
+    self.evaluate(q.enqueue_many((float_elems, int_elems)))
 
-      for i in range(8):
-        float_val, int_val = sess.run(dequeued_t)
-        self.assertEqual(float_elems[i % 4], float_val)
-        self.assertAllEqual(int_elems[i % 4], int_val)
+    for i in range(8):
+      float_val, int_val = self.evaluate(q.dequeue())
+      self.assertEqual(float_elems[i % 4], float_val)
+      self.assertAllEqual(int_elems[i % 4], int_val)
 
   def testDequeueMany(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
-      enqueue_op = q.enqueue_many((elems,))
-      dequeued_t = q.dequeue_many(4)
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+    elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
 
-      enqueue_op.run()
+    self.evaluate(q.enqueue_many((elems,)))
 
-      self.assertAllEqual(elems[0:4], dequeued_t.eval())
-      self.assertAllEqual(elems[4:8], dequeued_t.eval())
+    self.assertAllEqual(elems[0:4], self.evaluate(q.dequeue_many(4)))
+    self.assertAllEqual(elems[4:8], self.evaluate(q.dequeue_many(4)))
 
   def testDequeueUpToNoBlocking(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
-      enqueue_op = q.enqueue_many((elems,))
-      dequeued_t = q.dequeue_up_to(4)
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+    elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
 
-      enqueue_op.run()
+    self.evaluate(q.enqueue_many((elems,)))
 
-      self.assertAllEqual(elems[0:4], dequeued_t.eval())
-      self.assertAllEqual(elems[4:8], dequeued_t.eval())
+    self.assertAllEqual(elems[0:4], self.evaluate(q.dequeue_up_to(4)))
+    self.assertAllEqual(elems[4:8], self.evaluate(q.dequeue_up_to(4)))
 
   def testMultiDequeueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(
-          10, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
-      float_elems = [
-          10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0
-      ]
-      int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14],
-                   [15, 16], [17, 18], [19, 20]]
-      enqueue_op = q.enqueue_many((float_elems, int_elems))
-      dequeued_t = q.dequeue_many(4)
-      dequeued_single_t = q.dequeue()
+    q = data_flow_ops.FIFOQueue(
+        10, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
+    float_elems = [
+        10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0
+    ]
+    int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14],
+                 [15, 16], [17, 18], [19, 20]]
 
-      enqueue_op.run()
+    self.evaluate(q.enqueue_many((float_elems, int_elems)))
 
-      float_val, int_val = sess.run(dequeued_t)
-      self.assertAllEqual(float_elems[0:4], float_val)
-      self.assertAllEqual(int_elems[0:4], int_val)
-      self.assertEqual(float_val.shape, dequeued_t[0].get_shape())
-      self.assertEqual(int_val.shape, dequeued_t[1].get_shape())
+    dequeued_t = q.dequeue_many(4)
+    float_val, int_val = self.evaluate(dequeued_t)
+    self.assertAllEqual(float_elems[0:4], float_val)
+    self.assertAllEqual(int_elems[0:4], int_val)
+    self.assertEqual(float_val.shape, dequeued_t[0].get_shape())
+    self.assertEqual(int_val.shape, dequeued_t[1].get_shape())
 
-      float_val, int_val = sess.run(dequeued_t)
-      self.assertAllEqual(float_elems[4:8], float_val)
-      self.assertAllEqual(int_elems[4:8], int_val)
+    float_val, int_val = self.evaluate(q.dequeue_many(4))
+    self.assertAllEqual(float_elems[4:8], float_val)
+    self.assertAllEqual(int_elems[4:8], int_val)
 
-      float_val, int_val = sess.run(dequeued_single_t)
-      self.assertAllEqual(float_elems[8], float_val)
-      self.assertAllEqual(int_elems[8], int_val)
-      self.assertEqual(float_val.shape, dequeued_single_t[0].get_shape())
-      self.assertEqual(int_val.shape, dequeued_single_t[1].get_shape())
+    dequeued_single_t = q.dequeue()
+    float_val, int_val = self.evaluate(dequeued_single_t)
+    self.assertAllEqual(float_elems[8], float_val)
+    self.assertAllEqual(int_elems[8], int_val)
+    self.assertEqual(float_val.shape, dequeued_single_t[0].get_shape())
+    self.assertEqual(int_val.shape, dequeued_single_t[1].get_shape())
 
   def testMultiDequeueUpToNoBlocking(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(
-          10, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
-      float_elems = [
-          10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0
-      ]
-      int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14],
-                   [15, 16], [17, 18], [19, 20]]
-      enqueue_op = q.enqueue_many((float_elems, int_elems))
-      dequeued_t = q.dequeue_up_to(4)
+    q = data_flow_ops.FIFOQueue(
+        10, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
+    float_elems = [
+        10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0
+    ]
+    int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14],
+                 [15, 16], [17, 18], [19, 20]]
 
-      enqueue_op.run()
+    self.evaluate(q.enqueue_many((float_elems, int_elems)))
 
-      float_val, int_val = sess.run(dequeued_t)
-      self.assertAllEqual(float_elems[0:4], float_val)
-      self.assertAllEqual(int_elems[0:4], int_val)
+    dequeued_t = q.dequeue_up_to(4)
+    float_val, int_val = self.evaluate(dequeued_t)
+    self.assertAllEqual(float_elems[0:4], float_val)
+    self.assertAllEqual(int_elems[0:4], int_val)
+    if not context.executing_eagerly():
       self.assertEqual([None], dequeued_t[0].get_shape().as_list())
       self.assertEqual([None, 2], dequeued_t[1].get_shape().as_list())
 
-      float_val, int_val = sess.run(dequeued_t)
-      self.assertAllEqual(float_elems[4:8], float_val)
-      self.assertAllEqual(int_elems[4:8], int_val)
+    float_val, int_val = self.evaluate(q.dequeue_up_to(4))
+    self.assertAllEqual(float_elems[4:8], float_val)
+    self.assertAllEqual(int_elems[4:8], int_val)
 
   def testHighDimension(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, (4, 4, 4, 4))
-      elems = np.array([[[[[x] * 4] * 4] * 4] * 4 for x in range(10)], np.int32)
-      enqueue_op = q.enqueue_many((elems,))
-      dequeued_t = q.dequeue_many(10)
+    q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, (4, 4, 4, 4))
+    elems = np.array([[[[[x] * 4] * 4] * 4] * 4 for x in range(10)], np.int32)
 
-      enqueue_op.run()
-      self.assertAllEqual(dequeued_t.eval(), elems)
+    self.evaluate(q.enqueue_many((elems,)))
+    self.assertAllEqual(self.evaluate(q.dequeue_many(10)), elems)
 
   def testEnqueueWrongShape(self):
     q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32), ((),
@@ -459,288 +370,69 @@ class FIFOQueueTest(test.TestCase):
     with self.assertRaises(ValueError):
       q.enqueue_many((7, [[1, 2], [3, 4], [5, 6]]))
 
-  def testBatchSizeMismatch(self):
-    q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32,
-                                     dtypes_lib.int32), ((), (), ()))
-
-    with self.assertRaises(ValueError):
-      q.enqueue_many(([1, 2, 3], [1, 2], [1, 2, 3]))
-
-    with self.assertRaises(ValueError):
-      q.enqueue_many(
-          ([1, 2, 3], [1, 2], array_ops.placeholder(dtypes_lib.int32)))
-
-    with self.assertRaises(ValueError):
-      q.enqueue_many(
-          (array_ops.placeholder(dtypes_lib.int32), [1, 2], [1, 2, 3]))
-
   def testEnqueueManyEmptyTypeConversion(self):
     q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32), (
         (), ()))
-    enq = q.enqueue_many(([], []))
-    self.assertEqual(dtypes_lib.int32, enq.inputs[1].dtype)
-    self.assertEqual(dtypes_lib.float32, enq.inputs[2].dtype)
+
+    @def_function.function
+    def _f():
+      enq = q.enqueue_many(([], []))
+      self.assertEqual(dtypes_lib.int32, enq.inputs[1].dtype)
+      self.assertEqual(dtypes_lib.float32, enq.inputs[2].dtype)
+
+    _f()
 
   def testEnqueueWrongType(self):
     q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32), (
         (), ()))
 
-    with self.assertRaises(ValueError):
-      q.enqueue((array_ops.placeholder(dtypes_lib.int32),
-                 array_ops.placeholder(dtypes_lib.int32)))
+    @def_function.function
+    def _f():
+      with self.assertRaises(ValueError):
+        q.enqueue((array_ops.placeholder(dtypes_lib.int32),
+                   array_ops.placeholder(dtypes_lib.int32)))
 
-    with self.assertRaises(ValueError):
-      q.enqueue_many((array_ops.placeholder(dtypes_lib.int32),
-                      array_ops.placeholder(dtypes_lib.int32)))
+      with self.assertRaises(ValueError):
+        q.enqueue_many((array_ops.placeholder(dtypes_lib.int32),
+                        array_ops.placeholder(dtypes_lib.int32)))
 
-  def testEnqueueWrongShapeAtRuntime(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32), (
-          (2, 2), (3, 3)))
-      elems_ok = np.array([1] * 4).reshape((2, 2)).astype(np.int32)
-      elems_bad = array_ops.placeholder(dtypes_lib.int32)
-      enqueue_op = q.enqueue((elems_ok, elems_bad))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   r"Expected \[3,3\], got \[3,4\]"):
-        sess.run([enqueue_op],
-                 feed_dict={elems_bad: np.array([1] * 12).reshape((3, 4))})
+    _f()
 
-  def testEnqueueDequeueManyWrongShape(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32), (
-          (2, 2), (3, 3)))
-      elems_ok = np.array([1] * 8).reshape((2, 2, 2)).astype(np.int32)
-      elems_bad = array_ops.placeholder(dtypes_lib.int32)
-      enqueue_op = q.enqueue_many((elems_ok, elems_bad))
-      dequeued_t = q.dequeue_many(2)
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Shape mismatch in tuple component 1. "
-                                   r"Expected \[2,3,3\], got \[2,3,4\]"):
-        sess.run([enqueue_op],
-                 feed_dict={elems_bad: np.array([1] * 24).reshape((2, 3, 4))})
-        dequeued_t.eval()
 
-  def testParallelEnqueueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
-      elems = [10.0 * x for x in range(100)]
-      enqueue_op = q.enqueue_many((elems,))
-      dequeued_t = q.dequeue_many(1000)
+@test_util.run_all_in_graph_and_eager_modes
+class GPUCompatibleFIFOQueueTests(test.TestCase):
 
-      # Enqueue 100 items in parallel on 10 threads.
-      def enqueue():
-        sess.run(enqueue_op)
+  def testEnqueueWithShape(self):
+    with test_util.use_gpu():
+      q = data_flow_ops.GPUCompatibleFIFOQueue(
+          10, dtypes_lib.float32, shapes=(3, 2))
+      self.evaluate(q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],)))
+      with self.assertRaises(ValueError):
+        q.enqueue(([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],))
+      self.assertEqual(1, self.evaluate(q.size()))
 
-      threads = [self.checkedThread(target=enqueue) for _ in range(10)]
-      for thread in threads:
-        thread.start()
-      for thread in threads:
-        thread.join()
+  def testEnqueueDequeue(self):
+    with test_util.use_gpu():
+      q = data_flow_ops.GPUCompatibleFIFOQueue(10, dtypes_lib.float32)
+      elems_numpy = [10.0, 20.0, 30.0]
+      elems = [constant_op.constant(x) for x in elems_numpy]
 
-      self.assertItemsEqual(dequeued_t.eval(), elems * 10)
+      for x in elems:
+        self.evaluate(q.enqueue((x,)))
 
-  def testParallelDequeueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
-      elems = [10.0 * x for x in range(1000)]
-      enqueue_op = q.enqueue_many((elems,))
-      dequeued_t = q.dequeue_many(100)
+      for i in xrange(len(elems)):
+        dequeued_tensor = q.dequeue()
+        self.assertEqual(elems[0].device, dequeued_tensor.device)
+        vals = self.evaluate(dequeued_tensor)
+        self.assertEqual([elems_numpy[i]], vals)
 
-      enqueue_op.run()
 
-      # Dequeue 100 items in parallel on 10 threads.
-      dequeued_elems = []
-
-      def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t))
-
-      threads = [self.checkedThread(target=dequeue) for _ in range(10)]
-      for thread in threads:
-        thread.start()
-      for thread in threads:
-        thread.join()
-      self.assertItemsEqual(elems, dequeued_elems)
-
-  def testParallelDequeueUpTo(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
-      elems = [10.0 * x for x in range(1000)]
-      enqueue_op = q.enqueue_many((elems,))
-      close_op = q.close()
-      dequeued_t = q.dequeue_up_to(101)
-
-      enqueue_op.run()
-      close_op.run()
-
-      # Dequeue up to 101 items in parallel on 10 threads, from closed queue.
-      dequeued_elems = []
-
-      def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t))
-
-      threads = [self.checkedThread(target=dequeue) for _ in range(10)]
-      for thread in threads:
-        thread.start()
-      for thread in threads:
-        thread.join()
-      self.assertItemsEqual(elems, dequeued_elems)
-
-  def testParallelEnqueueAndDequeue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(50, dtypes_lib.float32, shapes=())
-      initial_elements = [10.0] * 49
-      q.enqueue_many((initial_elements,)).run()
-
-      enqueue_op = q.enqueue((20.0,))
-      dequeued_t = q.dequeue()
-
-      def enqueue():
-        for _ in xrange(100):
-          sess.run(enqueue_op)
-
-      def dequeue():
-        for _ in xrange(100):
-          self.assertTrue(sess.run(dequeued_t) in (10.0, 20.0))
-
-      enqueue_threads = [self.checkedThread(target=enqueue) for _ in range(10)]
-      dequeue_threads = [self.checkedThread(target=dequeue) for _ in range(10)]
-      for enqueue_thread in enqueue_threads:
-        enqueue_thread.start()
-      for dequeue_thread in dequeue_threads:
-        dequeue_thread.start()
-      for enqueue_thread in enqueue_threads:
-        enqueue_thread.join()
-      for dequeue_thread in dequeue_threads:
-        dequeue_thread.join()
-
-      # Dequeue the initial count of elements to clean up.
-      cleanup_elems = q.dequeue_many(49).eval()
-      for elem in cleanup_elems:
-        self.assertTrue(elem in (10.0, 20.0))
-
-  def testMixtureOfEnqueueAndEnqueueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, shapes=())
-      enqueue_placeholder = array_ops.placeholder(dtypes_lib.int32, shape=())
-      enqueue_op = q.enqueue((enqueue_placeholder,))
-      enqueuemany_placeholder = array_ops.placeholder(
-          dtypes_lib.int32, shape=(None,))
-      enqueuemany_op = q.enqueue_many((enqueuemany_placeholder,))
-
-      dequeued_t = q.dequeue()
-      close_op = q.close()
-
-      def dequeue():
-        for i in xrange(250):
-          self.assertEqual(i, sess.run(dequeued_t))
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-
-      elements_enqueued = 0
-      while elements_enqueued < 250:
-        # With equal probability, run Enqueue or enqueue_many.
-        if random.random() > 0.5:
-          enqueue_op.run({enqueue_placeholder: elements_enqueued})
-          elements_enqueued += 1
-        else:
-          count = random.randint(0, min(20, 250 - elements_enqueued))
-          range_to_enqueue = np.arange(
-              elements_enqueued, elements_enqueued + count, dtype=np.int32)
-          enqueuemany_op.run({enqueuemany_placeholder: range_to_enqueue})
-          elements_enqueued += count
-
-      close_op.run()
-      dequeue_thread.join()
-      self.assertEqual(0, q.size().eval())
-
-  def testMixtureOfDequeueAndDequeueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, shapes=())
-      enqueue_op = q.enqueue_many((np.arange(250, dtype=np.int32),))
-      dequeued_t = q.dequeue()
-      count_placeholder = array_ops.placeholder(dtypes_lib.int32, shape=())
-      dequeuemany_t = q.dequeue_many(count_placeholder)
-
-      def enqueue():
-        sess.run(enqueue_op)
-
-      enqueue_thread = self.checkedThread(target=enqueue)
-      enqueue_thread.start()
-
-      elements_dequeued = 0
-      while elements_dequeued < 250:
-        # With equal probability, run Dequeue or dequeue_many.
-        if random.random() > 0.5:
-          self.assertEqual(elements_dequeued, dequeued_t.eval())
-          elements_dequeued += 1
-        else:
-          count = random.randint(0, min(20, 250 - elements_dequeued))
-          expected_range = np.arange(
-              elements_dequeued, elements_dequeued + count, dtype=np.int32)
-          self.assertAllEqual(expected_range,
-                              dequeuemany_t.eval({
-                                  count_placeholder: count
-                              }))
-          elements_dequeued += count
-
-      q.close().run()
-      enqueue_thread.join()
-      self.assertEqual(0, q.size().eval())
-
-  def testBlockingDequeueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      dequeued_t = q.dequeue_many(4)
-
-      dequeued_elems = []
-
-      def enqueue():
-        # The enqueue_op should run after the dequeue op has blocked.
-        # TODO(mrry): Figure out how to do this without sleeping.
-        time.sleep(0.1)
-        sess.run(enqueue_op)
-
-      def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t).tolist())
-
-      enqueue_thread = self.checkedThread(target=enqueue)
-      dequeue_thread = self.checkedThread(target=dequeue)
-      enqueue_thread.start()
-      dequeue_thread.start()
-      enqueue_thread.join()
-      dequeue_thread.join()
-
-      self.assertAllEqual(elems, dequeued_elems)
-
-  def testBlockingDequeueUpTo(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      dequeued_t = q.dequeue_up_to(4)
-
-      dequeued_elems = []
-
-      def enqueue():
-        # The enqueue_op should run after the dequeue op has blocked.
-        # TODO(mrry): Figure out how to do this without sleeping.
-        time.sleep(0.1)
-        sess.run(enqueue_op)
-
-      def dequeue():
-        dequeued_elems.extend(sess.run(dequeued_t).tolist())
-
-      enqueue_thread = self.checkedThread(target=enqueue)
-      dequeue_thread = self.checkedThread(target=dequeue)
-      enqueue_thread.start()
-      dequeue_thread.start()
-      enqueue_thread.join()
-      dequeue_thread.join()
-
-      self.assertAllEqual(elems, dequeued_elems)
+@test_util.run_v1_only(
+    "These tests can likely run in 2.x with some fixes, but have not been "
+    "converted yet. Currently they hold on to operations and rely on "
+    "re-running them; for eager compatibility we need to 're-create' the op "
+    "each time.")
+class UnconvertedFIFOQueueTests(test.TestCase):
 
   def testDequeueManyWithTensorParameter(self):
     with self.cached_session():
@@ -778,387 +470,12 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
       close_op.run()
       for elem in elems:
-        self.assertEqual([elem], dequeued_t.eval())
+        self.assertEqual([elem], self.evaluate(dequeued_t))
 
       # Expect the operation to fail due to the queue being closed.
       with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                    "is closed and has insufficient"):
-        dequeued_t.eval()
-
-  def testBlockingDequeueFromClosedQueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      close_op = q.close()
-      dequeued_t = q.dequeue()
-
-      enqueue_op.run()
-
-      def dequeue():
-        for elem in elems:
-          self.assertEqual([elem], sess.run(dequeued_t))
-        # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
-          sess.run(dequeued_t)
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      close_op.run()
-      dequeue_thread.join()
-
-  def testBlockingDequeueFromClosedEmptyQueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      close_op = q.close()
-      dequeued_t = q.dequeue()
-
-      def dequeue():
-        # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
-          sess.run(dequeued_t)
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      close_op.run()
-      dequeue_thread.join()
-
-  def testBlockingDequeueManyFromClosedQueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      close_op = q.close()
-      dequeued_t = q.dequeue_many(4)
-
-      enqueue_op.run()
-
-      def dequeue():
-        self.assertAllEqual(elems, sess.run(dequeued_t))
-        # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
-          sess.run(dequeued_t)
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      close_op.run()
-      dequeue_thread.join()
-
-  def testBlockingDequeueManyButNotAllFromClosedQueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      close_op = q.close()
-      dequeued_t = q.dequeue_many(3)
-
-      enqueue_op.run()
-
-      def dequeue():
-        self.assertAllEqual(elems[:3], sess.run(dequeued_t))
-        # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
-          sess.run(dequeued_t)
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      close_op.run()
-      dequeue_thread.join()
-
-  def testDequeueUpToFromClosedQueueReturnsRemainder(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      close_op = q.close()
-      dequeued_t = q.dequeue_up_to(3)
-
-      enqueue_op.run()
-
-      def dequeue():
-        self.assertAllEqual(elems[:3], sess.run(dequeued_t))
-        self.assertAllEqual(elems[3:], sess.run(dequeued_t))
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      close_op.run()
-      dequeue_thread.join()
-
-  def testEnqueueManyLargerThanCapacityWithConcurrentDequeueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32, ())
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      close_op = q.close()
-      dequeued_t = q.dequeue_many(3)
-      cleanup_dequeue_t = q.dequeue()
-
-      def enqueue():
-        sess.run(enqueue_op)
-
-      def dequeue():
-        self.assertAllEqual(elems[0:3], sess.run(dequeued_t))
-        with self.assertRaises(errors_impl.OutOfRangeError):
-          sess.run(dequeued_t)
-        self.assertEqual(elems[3], sess.run(cleanup_dequeue_t))
-
-      def close():
-        sess.run(close_op)
-
-      enqueue_thread = self.checkedThread(target=enqueue)
-      enqueue_thread.start()
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-
-      close_thread = self.checkedThread(target=close)
-      close_thread.start()
-
-      enqueue_thread.join()
-      dequeue_thread.join()
-      close_thread.join()
-
-  def testClosedBlockingDequeueManyRestoresPartialBatch(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(4, (dtypes_lib.float32, dtypes_lib.float32), (
-          (), ()))
-      elems_a = [1.0, 2.0, 3.0]
-      elems_b = [10.0, 20.0, 30.0]
-      enqueue_op = q.enqueue_many((elems_a, elems_b))
-      dequeued_a_t, dequeued_b_t = q.dequeue_many(4)
-      cleanup_dequeue_a_t, cleanup_dequeue_b_t = q.dequeue()
-      close_op = q.close()
-
-      enqueue_op.run()
-
-      def dequeue():
-        with self.assertRaises(errors_impl.OutOfRangeError):
-          sess.run([dequeued_a_t, dequeued_b_t])
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-
-      close_op.run()
-      dequeue_thread.join()
-      # Test that the elements in the partially-dequeued batch are
-      # restored in the correct order.
-      for elem_a, elem_b in zip(elems_a, elems_b):
-        val_a, val_b = sess.run([cleanup_dequeue_a_t, cleanup_dequeue_b_t])
-        self.assertEqual(elem_a, val_a)
-        self.assertEqual(elem_b, val_b)
-      self.assertEqual(0, q.size().eval())
-
-  def testBlockingDequeueManyFromClosedEmptyQueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      close_op = q.close()
-      dequeued_t = q.dequeue_many(4)
-
-      def dequeue():
-        # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
-          sess.run(dequeued_t)
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      close_op.run()
-      dequeue_thread.join()
-
-  def testBlockingDequeueUpToFromClosedEmptyQueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
-      close_op = q.close()
-      dequeued_t = q.dequeue_up_to(4)
-
-      def dequeue():
-        # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
-          sess.run(dequeued_t)
-
-      dequeue_thread = self.checkedThread(target=dequeue)
-      dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      close_op.run()
-      dequeue_thread.join()
-
-  def testEnqueueToClosedQueue(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      enqueue_op = q.enqueue((10.0,))
-      close_op = q.close()
-
-      enqueue_op.run()
-      close_op.run()
-
-      # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(errors_impl.CancelledError, "is closed"):
-        enqueue_op.run()
-
-  def testEnqueueManyToClosedQueue(self):
-    with self.cached_session():
-      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      close_op = q.close()
-
-      enqueue_op.run()
-      close_op.run()
-
-      # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(errors_impl.CancelledError, "is closed"):
-        enqueue_op.run()
-
-  def testBlockingEnqueueToFullQueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      blocking_enqueue_op = q.enqueue((50.0,))
-      dequeued_t = q.dequeue()
-
-      enqueue_op.run()
-
-      def blocking_enqueue():
-        sess.run(blocking_enqueue_op)
-
-      thread = self.checkedThread(target=blocking_enqueue)
-      thread.start()
-      # The dequeue ops should run after the blocking_enqueue_op has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      for elem in elems:
-        self.assertEqual([elem], dequeued_t.eval())
-      self.assertEqual([50.0], dequeued_t.eval())
-      thread.join()
-
-  def testBlockingEnqueueManyToFullQueue(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      blocking_enqueue_op = q.enqueue_many(([50.0, 60.0],))
-      dequeued_t = q.dequeue()
-
-      enqueue_op.run()
-
-      def blocking_enqueue():
-        sess.run(blocking_enqueue_op)
-
-      thread = self.checkedThread(target=blocking_enqueue)
-      thread.start()
-      # The dequeue ops should run after the blocking_enqueue_op has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-      for elem in elems:
-        self.assertEqual([elem], dequeued_t.eval())
-        time.sleep(0.01)
-      self.assertEqual([50.0], dequeued_t.eval())
-      self.assertEqual([60.0], dequeued_t.eval())
-
-      # Make sure the thread finishes before exiting.
-      thread.join()
-
-  def testBlockingEnqueueBeforeClose(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0, 40.0]
-      enqueue_op = q.enqueue_many((elems,))
-      blocking_enqueue_op = q.enqueue((50.0,))
-      close_op = q.close()
-      dequeued_t = q.dequeue()
-
-      enqueue_op.run()
-
-      def blocking_enqueue():
-        # Expect the operation to succeed once the dequeue op runs.
-        sess.run(blocking_enqueue_op)
-
-      enqueue_thread = self.checkedThread(target=blocking_enqueue)
-      enqueue_thread.start()
-
-      # The close_op should run after the blocking_enqueue_op has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-
-      def close():
-        sess.run(close_op)
-
-      close_thread = self.checkedThread(target=close)
-      close_thread.start()
-
-      # The dequeue will unblock both threads.
-      self.assertEqual(10.0, dequeued_t.eval())
-      enqueue_thread.join()
-      close_thread.join()
-
-      for elem in [20.0, 30.0, 40.0, 50.0]:
-        self.assertEqual(elem, dequeued_t.eval())
-      self.assertEqual(0, q.size().eval())
-
-  def testBlockingEnqueueManyBeforeClose(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
-      elems = [10.0, 20.0, 30.0]
-      enqueue_op = q.enqueue_many((elems,))
-      blocking_enqueue_op = q.enqueue_many(([50.0, 60.0],))
-      close_op = q.close()
-      dequeued_t = q.dequeue()
-      enqueue_op.run()
-
-      def blocking_enqueue():
-        sess.run(blocking_enqueue_op)
-
-      enqueue_thread = self.checkedThread(target=blocking_enqueue)
-      enqueue_thread.start()
-
-      # The close_op should run after the blocking_enqueue_op has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-
-      def close():
-        sess.run(close_op)
-
-      close_thread = self.checkedThread(target=close)
-      close_thread.start()
-
-      # The dequeue will unblock both threads.
-      self.assertEqual(10.0, dequeued_t.eval())
-      enqueue_thread.join()
-      close_thread.join()
-      for elem in [20.0, 30.0, 50.0, 60.0]:
-        self.assertEqual(elem, dequeued_t.eval())
+        self.evaluate(dequeued_t)
 
   def testDoesNotLoseValue(self):
     with self.cached_session():
@@ -1246,7 +563,7 @@ class FIFOQueueTest(test.TestCase):
   def testSelectQueue(self):
     with self.cached_session():
       num_queues = 10
-      qlist = list()
+      qlist = []
       for _ in xrange(num_queues):
         qlist.append(data_flow_ops.FIFOQueue(10, dtypes_lib.float32))
       # Enqueue/Dequeue into a dynamically selected queue
@@ -1263,121 +580,6 @@ class FIFOQueueTest(test.TestCase):
       enq_q = data_flow_ops.FIFOQueue.from_list(3, [q1, q2])
       with self.assertRaisesOpError("is not in"):
         enq_q.dequeue().eval()
-
-  def _blockingDequeue(self, sess, dequeue_op):
-    with self.assertRaisesOpError("was cancelled"):
-      sess.run(dequeue_op)
-
-  def _blockingDequeueMany(self, sess, dequeue_many_op):
-    with self.assertRaisesOpError("was cancelled"):
-      sess.run(dequeue_many_op)
-
-  def _blockingEnqueue(self, sess, enqueue_op):
-    with self.assertRaisesOpError("was cancelled"):
-      sess.run(enqueue_op)
-
-  def _blockingEnqueueMany(self, sess, enqueue_many_op):
-    with self.assertRaisesOpError("was cancelled"):
-      sess.run(enqueue_many_op)
-
-  def testResetOfBlockingOperation(self):
-    with self.cached_session() as sess:
-      q_empty = data_flow_ops.FIFOQueue(5, dtypes_lib.float32, ())
-      dequeue_op = q_empty.dequeue()
-      dequeue_many_op = q_empty.dequeue_many(1)
-
-      q_full = data_flow_ops.FIFOQueue(5, dtypes_lib.float32)
-      sess.run(q_full.enqueue_many(([1.0, 2.0, 3.0, 4.0, 5.0],)))
-      enqueue_op = q_full.enqueue((6.0,))
-      enqueue_many_op = q_full.enqueue_many(([6.0],))
-
-      threads = [
-          self.checkedThread(
-              self._blockingDequeue, args=(sess, dequeue_op)),
-          self.checkedThread(
-              self._blockingDequeueMany, args=(sess, dequeue_many_op)),
-          self.checkedThread(
-              self._blockingEnqueue, args=(sess, enqueue_op)),
-          self.checkedThread(
-              self._blockingEnqueueMany, args=(sess, enqueue_many_op))
-      ]
-      for t in threads:
-        t.start()
-      time.sleep(0.1)
-      sess.close()  # Will cancel the blocked operations.
-      for t in threads:
-        t.join()
-
-  def testBigEnqueueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(5, dtypes_lib.int32, ((),))
-      elem = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-      enq = q.enqueue_many((elem,))
-      deq = q.dequeue()
-      size_op = q.size()
-
-      enq_done = []
-
-      def blocking_enqueue():
-        enq_done.append(False)
-        # This will fill the queue and then block until enough dequeues happen.
-        sess.run(enq)
-        enq_done.append(True)
-
-      thread = self.checkedThread(target=blocking_enqueue)
-      thread.start()
-
-      # The enqueue should start and then block.
-      results = []
-      results.append(deq.eval())  # Will only complete after the enqueue starts.
-      self.assertEqual(len(enq_done), 1)
-      self.assertEqual(sess.run(size_op), 5)
-
-      for _ in range(3):
-        results.append(deq.eval())
-
-      time.sleep(0.1)
-      self.assertEqual(len(enq_done), 1)
-      self.assertEqual(sess.run(size_op), 5)
-
-      # This dequeue will unblock the thread.
-      results.append(deq.eval())
-      time.sleep(0.1)
-      self.assertEqual(len(enq_done), 2)
-      thread.join()
-
-      for i in range(5):
-        self.assertEqual(size_op.eval(), 5 - i)
-        results.append(deq.eval())
-        self.assertEqual(size_op.eval(), 5 - i - 1)
-
-      self.assertAllEqual(elem, results)
-
-  def testBigDequeueMany(self):
-    with self.cached_session() as sess:
-      q = data_flow_ops.FIFOQueue(2, dtypes_lib.int32, ((),))
-      elem = np.arange(4, dtype=np.int32)
-      enq_list = [q.enqueue((e,)) for e in elem]
-      deq = q.dequeue_many(4)
-
-      results = []
-
-      def blocking_dequeue():
-        # Will only complete after 4 enqueues complete.
-        results.extend(sess.run(deq))
-
-      thread = self.checkedThread(target=blocking_dequeue)
-      thread.start()
-      # The dequeue should start and then block.
-      for enq in enq_list:
-        # TODO(mrry): Figure out how to do this without sleeping.
-        time.sleep(0.1)
-        self.assertEqual(len(results), 0)
-        sess.run(enq)
-
-      # Enough enqueued to unblock the dequeue
-      thread.join()
-      self.assertAllEqual(elem, results)
 
   def testDtypes(self):
     with self.cached_session() as sess:
@@ -1405,73 +607,10 @@ class FIFOQueueTest(test.TestCase):
       q.enqueue_many(input_tuple).run()
 
       output_tuple_t = q.dequeue_many(32)
-      output_tuple = sess.run(output_tuple_t)
+      output_tuple = self.evaluate(output_tuple_t)
 
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
-
-  def testDequeueEnqueueFail(self):
-    with self.cached_session() as session:
-      q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
-      a = q.dequeue()
-      b = control_flow_ops.Assert(False, ["Before enqueue"])
-      with ops.control_dependencies([b]):
-        c = q.enqueue(33)
-      with self.assertRaisesWithPredicateMatch(
-          errors_impl.InvalidArgumentError,
-          lambda e: "Before enqueue" in str(e)):
-        session.run([a, c])
-
-
-class FIFOQueueDictTest(test.TestCase):
-
-  def testConstructor(self):
-    with ops.Graph().as_default():
-      q = data_flow_ops.FIFOQueue(
-          5, (dtypes_lib.int32, dtypes_lib.float32),
-          names=("i", "j"),
-          shared_name="foo",
-          name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
-    self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
-      attr { key: 'component_types' value { list {
-        type: DT_INT32 type : DT_FLOAT
-      } } }
-      attr { key: 'shapes' value { list {} } }
-      attr { key: 'capacity' value { i: 5 } }
-      attr { key: 'container' value { s: '' } }
-      attr { key: 'shared_name' value { s: 'foo' } }
-      """, q.queue_ref.op.node_def)
-    self.assertEqual(["i", "j"], q.names)
-
-  def testConstructorWithShapes(self):
-    with ops.Graph().as_default():
-      q = data_flow_ops.FIFOQueue(
-          5, (dtypes_lib.int32, dtypes_lib.float32),
-          names=("i", "f"),
-          shapes=(tensor_shape.TensorShape([1, 1, 2, 3]),
-                  tensor_shape.TensorShape([5, 8])),
-          name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
-    self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
-      attr { key: 'component_types' value { list {
-        type: DT_INT32 type : DT_FLOAT
-      } } }
-      attr { key: 'shapes' value { list {
-        shape { dim { size: 1 }
-                dim { size: 1 }
-                dim { size: 2 }
-                dim { size: 3 } }
-        shape { dim { size: 5 }
-                dim { size: 8 } }
-      } } }
-      attr { key: 'capacity' value { i: 5 } }
-      attr { key: 'container' value { s: '' } }
-      attr { key: 'shared_name' value { s: '' } }
-      """, q.queue_ref.op.node_def)
-    self.assertEqual(["i", "f"], q.names)
 
   def testEnqueueDequeueOneComponent(self):
     with self.cached_session() as sess:
@@ -1507,10 +646,10 @@ class FIFOQueueDictTest(test.TestCase):
       enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0]})
       dequeue = q.dequeue()
       dequeue_2 = q.dequeue_many(2)
-      sess.run(enqueue_op)
-      sess.run(enqueue_op2)
-      sess.run(enqueue_op3)
-      sess.run(enqueue_op4)
+      self.evaluate(enqueue_op)
+      self.evaluate(enqueue_op2)
+      self.evaluate(enqueue_op3)
+      self.evaluate(enqueue_op4)
       f = sess.run(dequeue["f"])
       self.assertEqual(10.0, f)
       f = sess.run(dequeue_2["f"])
@@ -1565,10 +704,10 @@ class FIFOQueueDictTest(test.TestCase):
       })
       dequeue = q.dequeue()
       dequeue_2 = q.dequeue_many(2)
-      sess.run(enqueue_op)
-      sess.run(enqueue_op2)
-      sess.run(enqueue_op3)
-      sess.run(enqueue_op4)
+      self.evaluate(enqueue_op)
+      self.evaluate(enqueue_op2)
+      self.evaluate(enqueue_op3)
+      self.evaluate(enqueue_op4)
       i, f, s = sess.run([dequeue["i"], dequeue["f"], dequeue["s"]])
       self.assertEqual(123, i)
       self.assertEqual(10.0, f)
@@ -1582,11 +721,979 @@ class FIFOQueueDictTest(test.TestCase):
       self.assertTrue([40.0, 50.0], list(f))
       self.assertTrue([compat.as_bytes("dd"), compat.as_bytes("ee")], list(s))
 
+  def testBatchSizeMismatch(self):
+    q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32,
+                                     dtypes_lib.int32), ((), (), ()))
 
+    with self.assertRaises(ValueError):
+      q.enqueue_many(([1, 2, 3], [1, 2], [1, 2, 3]))
+
+    with self.assertRaises(ValueError):
+      q.enqueue_many(
+          ([1, 2, 3], [1, 2], array_ops.placeholder(dtypes_lib.int32)))
+
+    with self.assertRaises(ValueError):
+      q.enqueue_many(
+          (array_ops.placeholder(dtypes_lib.int32), [1, 2], [1, 2, 3]))
+
+  def testEnqueueWrongShapeAtRuntime(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32), (
+          (2, 2), (3, 3)))
+      elems_ok = np.array([1] * 4).reshape((2, 2)).astype(np.int32)
+      elems_bad = array_ops.placeholder(dtypes_lib.int32)
+      enqueue_op = q.enqueue((elems_ok, elems_bad))
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   r"Expected \[3,3\], got \[3,4\]"):
+        sess.run([enqueue_op],
+                 feed_dict={elems_bad: np.array([1] * 12).reshape((3, 4))})
+
+  def testEnqueueDequeueManyWrongShape(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32), (
+          (2, 2), (3, 3)))
+      elems_ok = np.array([1] * 8).reshape((2, 2, 2)).astype(np.int32)
+      elems_bad = array_ops.placeholder(dtypes_lib.int32)
+      enqueue_op = q.enqueue_many((elems_ok, elems_bad))
+      dequeued_t = q.dequeue_many(2)
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "Shape mismatch in tuple component 1. "
+                                   r"Expected \[2,3,3\], got \[2,3,4\]"):
+        sess.run([enqueue_op],
+                 feed_dict={elems_bad: np.array([1] * 24).reshape((2, 3, 4))})
+        self.evaluate(dequeued_t)
+
+
+@test_util.run_v1_only(
+    "These tests are heavily reliant on Session for parallelism. We can likely "
+    "convert them to run in 2.x/eager, but it may be difficult.")
+class FIFOQueueParallelTests(test.TestCase):
+
+  def testParallelEnqueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
+      enqueue_ops = [q.enqueue((x,)) for x in elems]
+      dequeued_t = q.dequeue()
+
+      # Run one producer thread for each element in elems.
+      def enqueue(enqueue_op):
+        self.evaluate(enqueue_op)
+
+      threads = [
+          self.checkedThread(
+              target=enqueue, args=(e,)) for e in enqueue_ops
+      ]
+      for thread in threads:
+        thread.start()
+      for thread in threads:
+        thread.join()
+
+      # Dequeue every element using a single thread.
+      results = []
+      for _ in xrange(len(elems)):
+        results.append(dequeued_t.eval())
+      self.assertItemsEqual(elems, results)
+
+  def testParallelDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
+      enqueue_ops = [q.enqueue((x,)) for x in elems]
+      dequeued_t = q.dequeue()
+
+      # Enqueue every element using a single thread.
+      for enqueue_op in enqueue_ops:
+        enqueue_op.run()
+
+      # Run one consumer thread for each element in elems.
+      results = []
+
+      def dequeue():
+        results.append(self.evaluate(dequeued_t))
+
+      threads = [self.checkedThread(target=dequeue) for _ in enqueue_ops]
+      for thread in threads:
+        thread.start()
+      for thread in threads:
+        thread.join()
+      self.assertItemsEqual(elems, results)
+
+  def testEnqueueAndBlockingDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(3, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0]
+      enqueue_ops = [q.enqueue((x,)) for x in elems]
+      dequeued_t = q.dequeue()
+
+      def enqueue():
+        # The enqueue_ops should run after the dequeue op has blocked.
+        # TODO(mrry): Figure out how to do this without sleeping.
+        time.sleep(0.1)
+        for enqueue_op in enqueue_ops:
+          self.evaluate(enqueue_op)
+
+      results = []
+
+      def dequeue():
+        for _ in xrange(len(elems)):
+          results.append(self.evaluate(dequeued_t))
+
+      enqueue_thread = self.checkedThread(target=enqueue)
+      dequeue_thread = self.checkedThread(target=dequeue)
+      enqueue_thread.start()
+      dequeue_thread.start()
+      enqueue_thread.join()
+      dequeue_thread.join()
+
+      for elem, result in zip(elems, results):
+        self.assertEqual([elem], result)
+
+  def testBigDequeueMany(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(2, dtypes_lib.int32, ((),))
+      elem = np.arange(4, dtype=np.int32)
+      enq_list = [q.enqueue((e,)) for e in elem]
+      deq = q.dequeue_many(4)
+
+      results = []
+
+      def blocking_dequeue():
+        # Will only complete after 4 enqueues complete.
+        results.extend(self.evaluate(deq))
+
+      thread = self.checkedThread(target=blocking_dequeue)
+      thread.start()
+      # The dequeue should start and then block.
+      for enq in enq_list:
+        # TODO(mrry): Figure out how to do this without sleeping.
+        time.sleep(0.1)
+        self.assertEqual(len(results), 0)
+        self.evaluate(enq)
+
+      # Enough enqueued to unblock the dequeue
+      thread.join()
+      self.assertAllEqual(elem, results)
+
+  def testBigEnqueueMany(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(5, dtypes_lib.int32, ((),))
+      elem = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      enq = q.enqueue_many((elem,))
+      deq = q.dequeue()
+      size_op = q.size()
+
+      enq_done = []
+
+      def blocking_enqueue():
+        enq_done.append(False)
+        # This will fill the queue and then block until enough dequeues happen.
+        self.evaluate(enq)
+        enq_done.append(True)
+
+      thread = self.checkedThread(target=blocking_enqueue)
+      thread.start()
+
+      # The enqueue should start and then block.
+      results = []
+      results.append(deq.eval())  # Will only complete after the enqueue starts.
+      self.assertEqual(len(enq_done), 1)
+      self.assertEqual(self.evaluate(size_op), 5)
+
+      for _ in range(3):
+        results.append(deq.eval())
+
+      time.sleep(0.1)
+      self.assertEqual(len(enq_done), 1)
+      self.assertEqual(self.evaluate(size_op), 5)
+
+      # This dequeue will unblock the thread.
+      results.append(deq.eval())
+      time.sleep(0.1)
+      self.assertEqual(len(enq_done), 2)
+      thread.join()
+
+      for i in range(5):
+        self.assertEqual(size_op.eval(), 5 - i)
+        results.append(deq.eval())
+        self.assertEqual(size_op.eval(), 5 - i - 1)
+
+      self.assertAllEqual(elem, results)
+
+  def _blockingDequeue(self, sess, dequeue_op):
+    with self.assertRaisesOpError("was cancelled"):
+      sess.run(dequeue_op)
+
+  def _blockingDequeueMany(self, sess, dequeue_many_op):
+    with self.assertRaisesOpError("was cancelled"):
+      sess.run(dequeue_many_op)
+
+  def _blockingEnqueue(self, sess, enqueue_op):
+    with self.assertRaisesOpError("was cancelled"):
+      sess.run(enqueue_op)
+
+  def _blockingEnqueueMany(self, sess, enqueue_many_op):
+    with self.assertRaisesOpError("was cancelled"):
+      sess.run(enqueue_many_op)
+
+  def testResetOfBlockingOperation(self):
+    with self.session() as sess:
+      q_empty = data_flow_ops.FIFOQueue(5, dtypes_lib.float32, ())
+      dequeue_op = q_empty.dequeue()
+      dequeue_many_op = q_empty.dequeue_many(1)
+
+      q_full = data_flow_ops.FIFOQueue(5, dtypes_lib.float32)
+      sess.run(q_full.enqueue_many(([1.0, 2.0, 3.0, 4.0, 5.0],)))
+      enqueue_op = q_full.enqueue((6.0,))
+      enqueue_many_op = q_full.enqueue_many(([6.0],))
+
+      threads = [
+          self.checkedThread(
+              self._blockingDequeue, args=(sess, dequeue_op)),
+          self.checkedThread(
+              self._blockingDequeueMany, args=(sess, dequeue_many_op)),
+          self.checkedThread(
+              self._blockingEnqueue, args=(sess, enqueue_op)),
+          self.checkedThread(
+              self._blockingEnqueueMany, args=(sess, enqueue_many_op))
+      ]
+      for t in threads:
+        t.start()
+      time.sleep(0.1)
+      sess.close()  # Will cancel the blocked operations.
+      for t in threads:
+        t.join()
+
+    # Create a new session that hasn't been closed, so cached_session
+    # isn't messed up.
+    with self.session() as sess:
+      pass
+
+  def testBlockingDequeueFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue()
+
+      enqueue_op.run()
+
+      def dequeue():
+        for elem in elems:
+          self.assertEqual([elem], self.evaluate(dequeued_t))
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          self.evaluate(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testBlockingDequeueFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+      close_op = q.close()
+      dequeued_t = q.dequeue()
+
+      def dequeue():
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          self.evaluate(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testBlockingDequeueManyFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_many(4)
+
+      enqueue_op.run()
+
+      def dequeue():
+        self.assertAllEqual(elems, self.evaluate(dequeued_t))
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          self.evaluate(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testBlockingDequeueManyButNotAllFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_many(3)
+
+      enqueue_op.run()
+
+      def dequeue():
+        self.assertAllEqual(elems[:3], self.evaluate(dequeued_t))
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          self.evaluate(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testDequeueUpToFromClosedQueueReturnsRemainder(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(3)
+
+      enqueue_op.run()
+
+      def dequeue():
+        self.assertAllEqual(elems[:3], self.evaluate(dequeued_t))
+        self.assertAllEqual(elems[3:], self.evaluate(dequeued_t))
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testEnqueueManyLargerThanCapacityWithConcurrentDequeueMany(self):
+    with ops.Graph().as_default(), self.session() as sess:
+      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_many(3)
+      cleanup_dequeue_t = q.dequeue()
+
+      def enqueue():
+        sess.run(enqueue_op)
+
+      def dequeue():
+        self.assertAllEqual(elems[0:3], sess.run(dequeued_t))
+        with self.assertRaises(errors_impl.OutOfRangeError):
+          sess.run(dequeued_t)
+        self.assertEqual(elems[3], sess.run(cleanup_dequeue_t))
+
+      def close():
+        sess.run(close_op)
+
+      enqueue_thread = self.checkedThread(target=enqueue)
+      enqueue_thread.start()
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+
+      close_thread = self.checkedThread(target=close)
+      close_thread.start()
+
+      enqueue_thread.join()
+      dequeue_thread.join()
+      close_thread.join()
+
+  def testClosedBlockingDequeueManyRestoresPartialBatch(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(4, (dtypes_lib.float32, dtypes_lib.float32), (
+          (), ()))
+      elems_a = [1.0, 2.0, 3.0]
+      elems_b = [10.0, 20.0, 30.0]
+      enqueue_op = q.enqueue_many((elems_a, elems_b))
+      dequeued_a_t, dequeued_b_t = q.dequeue_many(4)
+      cleanup_dequeue_a_t, cleanup_dequeue_b_t = q.dequeue()
+      close_op = q.close()
+
+      enqueue_op.run()
+
+      def dequeue():
+        with self.assertRaises(errors_impl.OutOfRangeError):
+          self.evaluate([dequeued_a_t, dequeued_b_t])
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+
+      close_op.run()
+      dequeue_thread.join()
+      # Test that the elements in the partially-dequeued batch are
+      # restored in the correct order.
+      for elem_a, elem_b in zip(elems_a, elems_b):
+        val_a, val_b = self.evaluate([cleanup_dequeue_a_t, cleanup_dequeue_b_t])
+        self.assertEqual(elem_a, val_a)
+        self.assertEqual(elem_b, val_b)
+      self.assertEqual(0, q.size().eval())
+
+  def testBlockingDequeueManyFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+      close_op = q.close()
+      dequeued_t = q.dequeue_many(4)
+
+      def dequeue():
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          self.evaluate(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testBlockingDequeueUpToFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(4)
+
+      def dequeue():
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          self.evaluate(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testEnqueueToClosedQueue(self):
+    with self.cached_session():
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+      enqueue_op = q.enqueue((10.0,))
+      close_op = q.close()
+
+      enqueue_op.run()
+      close_op.run()
+
+      # Expect the operation to fail due to the queue being closed.
+      with self.assertRaisesRegexp(errors_impl.CancelledError, "is closed"):
+        enqueue_op.run()
+
+  def testEnqueueManyToClosedQueue(self):
+    with self.cached_session():
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+
+      enqueue_op.run()
+      close_op.run()
+
+      # Expect the operation to fail due to the queue being closed.
+      with self.assertRaisesRegexp(errors_impl.CancelledError, "is closed"):
+        enqueue_op.run()
+
+  def testBlockingEnqueueToFullQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      blocking_enqueue_op = q.enqueue((50.0,))
+      dequeued_t = q.dequeue()
+
+      enqueue_op.run()
+
+      def blocking_enqueue():
+        self.evaluate(blocking_enqueue_op)
+
+      thread = self.checkedThread(target=blocking_enqueue)
+      thread.start()
+      # The dequeue ops should run after the blocking_enqueue_op has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      for elem in elems:
+        self.assertEqual([elem], self.evaluate(dequeued_t))
+      self.assertEqual([50.0], self.evaluate(dequeued_t))
+      thread.join()
+
+  def testBlockingEnqueueManyToFullQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      blocking_enqueue_op = q.enqueue_many(([50.0, 60.0],))
+      dequeued_t = q.dequeue()
+
+      enqueue_op.run()
+
+      def blocking_enqueue():
+        self.evaluate(blocking_enqueue_op)
+
+      thread = self.checkedThread(target=blocking_enqueue)
+      thread.start()
+      # The dequeue ops should run after the blocking_enqueue_op has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      for elem in elems:
+        self.assertEqual([elem], self.evaluate(dequeued_t))
+        time.sleep(0.01)
+      self.assertEqual([50.0], self.evaluate(dequeued_t))
+      self.assertEqual([60.0], self.evaluate(dequeued_t))
+
+      # Make sure the thread finishes before exiting.
+      thread.join()
+
+  def testBlockingEnqueueBeforeClose(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      blocking_enqueue_op = q.enqueue((50.0,))
+      close_op = q.close()
+      dequeued_t = q.dequeue()
+
+      enqueue_op.run()
+
+      def blocking_enqueue():
+        # Expect the operation to succeed once the dequeue op runs.
+        self.evaluate(blocking_enqueue_op)
+
+      enqueue_thread = self.checkedThread(target=blocking_enqueue)
+      enqueue_thread.start()
+
+      # The close_op should run after the blocking_enqueue_op has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.2)
+
+      def close():
+        self.evaluate(close_op)
+
+      close_thread = self.checkedThread(target=close)
+      close_thread.start()
+
+      # The dequeue will unblock both threads.
+      self.assertEqual(10.0, self.evaluate(dequeued_t))
+      enqueue_thread.join()
+      close_thread.join()
+
+      for elem in [20.0, 30.0, 40.0, 50.0]:
+        self.assertEqual(elem, self.evaluate(dequeued_t))
+      self.assertEqual(0, q.size().eval())
+
+  def testBlockingEnqueueManyBeforeClose(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.session() as sess:
+      q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
+      elems = [10.0, 20.0, 30.0]
+      enqueue_op = q.enqueue_many((elems,))
+      blocking_enqueue_op = q.enqueue_many(([50.0, 60.0],))
+      close_op = q.close()
+      dequeued_t = q.dequeue()
+      enqueue_op.run()
+
+      def blocking_enqueue():
+        sess.run(blocking_enqueue_op)
+
+      enqueue_thread = self.checkedThread(target=blocking_enqueue)
+      enqueue_thread.start()
+
+      # The close_op should run after the blocking_enqueue_op has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+
+      def close():
+        sess.run(close_op)
+
+      close_thread = self.checkedThread(target=close)
+      close_thread.start()
+
+      # The dequeue will unblock both threads.
+      self.assertEqual(10.0, self.evaluate(dequeued_t))
+      enqueue_thread.join()
+      close_thread.join()
+      for elem in [20.0, 30.0, 50.0, 60.0]:
+        self.assertEqual(elem, self.evaluate(dequeued_t))
+
+  def testParallelEnqueueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
+      elems = [10.0 * x for x in range(100)]
+      enqueue_op = q.enqueue_many((elems,))
+      dequeued_t = q.dequeue_many(1000)
+
+      # Enqueue 100 items in parallel on 10 threads.
+      def enqueue():
+        self.evaluate(enqueue_op)
+
+      threads = [self.checkedThread(target=enqueue) for _ in range(10)]
+      for thread in threads:
+        thread.start()
+      for thread in threads:
+        thread.join()
+
+      self.assertItemsEqual(dequeued_t.eval(), elems * 10)
+
+  def testParallelDequeueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
+      elems = [10.0 * x for x in range(1000)]
+      enqueue_op = q.enqueue_many((elems,))
+      dequeued_t = q.dequeue_many(100)
+
+      enqueue_op.run()
+
+      # Dequeue 100 items in parallel on 10 threads.
+      dequeued_elems = []
+
+      def dequeue():
+        dequeued_elems.extend(self.evaluate(dequeued_t))
+
+      threads = [self.checkedThread(target=dequeue) for _ in range(10)]
+      for thread in threads:
+        thread.start()
+      for thread in threads:
+        thread.join()
+      self.assertItemsEqual(elems, dequeued_elems)
+
+  def testParallelDequeueUpTo(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
+      elems = [10.0 * x for x in range(1000)]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(101)
+
+      enqueue_op.run()
+      close_op.run()
+
+      # Dequeue up to 101 items in parallel on 10 threads, from closed queue.
+      dequeued_elems = []
+
+      def dequeue():
+        dequeued_elems.extend(self.evaluate(dequeued_t))
+
+      threads = [self.checkedThread(target=dequeue) for _ in range(10)]
+      for thread in threads:
+        thread.start()
+      for thread in threads:
+        thread.join()
+      self.assertItemsEqual(elems, dequeued_elems)
+
+  def testParallelEnqueueAndDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(50, dtypes_lib.float32, shapes=())
+      initial_elements = [10.0] * 49
+      q.enqueue_many((initial_elements,)).run()
+
+      enqueue_op = q.enqueue((20.0,))
+      dequeued_t = q.dequeue()
+
+      def enqueue():
+        for _ in xrange(100):
+          self.evaluate(enqueue_op)
+
+      def dequeue():
+        for _ in xrange(100):
+          self.assertTrue(self.evaluate(dequeued_t) in (10.0, 20.0))
+
+      enqueue_threads = [self.checkedThread(target=enqueue) for _ in range(10)]
+      dequeue_threads = [self.checkedThread(target=dequeue) for _ in range(10)]
+      for enqueue_thread in enqueue_threads:
+        enqueue_thread.start()
+      for dequeue_thread in dequeue_threads:
+        dequeue_thread.start()
+      for enqueue_thread in enqueue_threads:
+        enqueue_thread.join()
+      for dequeue_thread in dequeue_threads:
+        dequeue_thread.join()
+
+      # Dequeue the initial count of elements to clean up.
+      cleanup_elems = q.dequeue_many(49).eval()
+      for elem in cleanup_elems:
+        self.assertTrue(elem in (10.0, 20.0))
+
+  def testMixtureOfEnqueueAndEnqueueMany(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, shapes=())
+      enqueue_placeholder = array_ops.placeholder(dtypes_lib.int32, shape=())
+      enqueue_op = q.enqueue((enqueue_placeholder,))
+      enqueuemany_placeholder = array_ops.placeholder(
+          dtypes_lib.int32, shape=(None,))
+      enqueuemany_op = q.enqueue_many((enqueuemany_placeholder,))
+
+      dequeued_t = q.dequeue()
+      close_op = q.close()
+
+      def dequeue():
+        for i in xrange(250):
+          self.assertEqual(i, self.evaluate(dequeued_t))
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+
+      elements_enqueued = 0
+      while elements_enqueued < 250:
+        # With equal probability, run Enqueue or enqueue_many.
+        if random.random() > 0.5:
+          enqueue_op.run({enqueue_placeholder: elements_enqueued})
+          elements_enqueued += 1
+        else:
+          count = random.randint(0, min(20, 250 - elements_enqueued))
+          range_to_enqueue = np.arange(
+              elements_enqueued, elements_enqueued + count, dtype=np.int32)
+          enqueuemany_op.run({enqueuemany_placeholder: range_to_enqueue})
+          elements_enqueued += count
+
+      close_op.run()
+      dequeue_thread.join()
+      self.assertEqual(0, q.size().eval())
+
+  def testMixtureOfDequeueAndDequeueMany(self):
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, shapes=())
+      enqueue_op = q.enqueue_many((np.arange(250, dtype=np.int32),))
+      dequeued_t = q.dequeue()
+      count_placeholder = array_ops.placeholder(dtypes_lib.int32, shape=())
+      dequeuemany_t = q.dequeue_many(count_placeholder)
+
+      def enqueue():
+        self.evaluate(enqueue_op)
+
+      enqueue_thread = self.checkedThread(target=enqueue)
+      enqueue_thread.start()
+
+      elements_dequeued = 0
+      while elements_dequeued < 250:
+        # With equal probability, run Dequeue or dequeue_many.
+        if random.random() > 0.5:
+          self.assertEqual(elements_dequeued, self.evaluate(dequeued_t))
+          elements_dequeued += 1
+        else:
+          count = random.randint(0, min(20, 250 - elements_dequeued))
+          expected_range = np.arange(
+              elements_dequeued, elements_dequeued + count, dtype=np.int32)
+          self.assertAllEqual(expected_range,
+                              dequeuemany_t.eval({
+                                  count_placeholder: count
+                              }))
+          elements_dequeued += count
+
+      q.close().run()
+      enqueue_thread.join()
+      self.assertEqual(0, q.size().eval())
+
+  def testBlockingDequeueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      dequeued_t = q.dequeue_many(4)
+
+      dequeued_elems = []
+
+      def enqueue():
+        # The enqueue_op should run after the dequeue op has blocked.
+        # TODO(mrry): Figure out how to do this without sleeping.
+        time.sleep(0.1)
+        self.evaluate(enqueue_op)
+
+      def dequeue():
+        dequeued_elems.extend(self.evaluate(dequeued_t).tolist())
+
+      enqueue_thread = self.checkedThread(target=enqueue)
+      dequeue_thread = self.checkedThread(target=dequeue)
+      enqueue_thread.start()
+      dequeue_thread.start()
+      enqueue_thread.join()
+      dequeue_thread.join()
+
+      self.assertAllEqual(elems, dequeued_elems)
+
+  def testBlockingDequeueUpTo(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      dequeued_t = q.dequeue_up_to(4)
+
+      dequeued_elems = []
+
+      def enqueue():
+        # The enqueue_op should run after the dequeue op has blocked.
+        # TODO(mrry): Figure out how to do this without sleeping.
+        time.sleep(0.1)
+        self.evaluate(enqueue_op)
+
+      def dequeue():
+        dequeued_elems.extend(self.evaluate(dequeued_t).tolist())
+
+      enqueue_thread = self.checkedThread(target=enqueue)
+      dequeue_thread = self.checkedThread(target=dequeue)
+      enqueue_thread.start()
+      dequeue_thread.start()
+      enqueue_thread.join()
+      dequeue_thread.join()
+
+      self.assertAllEqual(elems, dequeued_elems)
+
+  def testDequeueEnqueueFail(self):
+    with self.cached_session() as session:
+      q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+      a = q.dequeue()
+      b = control_flow_ops.Assert(False, ["Before enqueue"])
+      with ops.control_dependencies([b]):
+        c = q.enqueue(33)
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError,
+          lambda e: "Before enqueue" in str(e)):
+        session.run([a, c])
+
+
+class FIFOQueueDictTest(test.TestCase):
+
+  def testConstructor(self):
+    with ops.Graph().as_default():
+      q = data_flow_ops.FIFOQueue(
+          5, (dtypes_lib.int32, dtypes_lib.float32),
+          names=("i", "j"),
+          shared_name="foo",
+          name="Q")
+    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertProtoEquals("""
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
+      attr { key: 'component_types' value { list {
+        type: DT_INT32 type : DT_FLOAT
+      } } }
+      attr { key: 'shapes' value { list {} } }
+      attr { key: 'capacity' value { i: 5 } }
+      attr { key: 'container' value { s: '' } }
+      attr { key: 'shared_name' value { s: 'foo' } }
+      """, q.queue_ref.op.node_def)
+    self.assertEqual(["i", "j"], q.names)
+
+  def testConstructorWithShapes(self):
+    with ops.Graph().as_default():
+      q = data_flow_ops.FIFOQueue(
+          5, (dtypes_lib.int32, dtypes_lib.float32),
+          names=("i", "f"),
+          shapes=(tensor_shape.TensorShape([1, 1, 2, 3]),
+                  tensor_shape.TensorShape([5, 8])),
+          name="Q")
+    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertProtoEquals("""
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
+      attr { key: 'component_types' value { list {
+        type: DT_INT32 type : DT_FLOAT
+      } } }
+      attr { key: 'shapes' value { list {
+        shape { dim { size: 1 }
+                dim { size: 1 }
+                dim { size: 2 }
+                dim { size: 3 } }
+        shape { dim { size: 5 }
+                dim { size: 8 } }
+      } } }
+      attr { key: 'capacity' value { i: 5 } }
+      attr { key: 'container' value { s: '' } }
+      attr { key: 'shared_name' value { s: '' } }
+      """, q.queue_ref.op.node_def)
+    self.assertEqual(["i", "f"], q.names)
+
+
+@test_util.run_v1_only(
+    "These tests are heavily reliant on Session for parallelism. We can likely "
+    "convert them to run in 2.x/eager, but it may be difficult.")
 class FIFOQueueWithTimeoutTest(test.TestCase):
 
   def testDequeueWithTimeout(self):
-    with self.test_session(
+    with self.session(
         config=config_pb2.ConfigProto(operation_timeout_in_ms=20)) as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       self.assertEqual(
@@ -1597,7 +1704,7 @@ class FIFOQueueWithTimeoutTest(test.TestCase):
       # until operation_timeout_in_ms.
       with self.assertRaisesRegexp(errors_impl.DeadlineExceededError,
                                    "Timed out waiting for notification"):
-        sess.run(dequeued_t)
+        self.evaluate(dequeued_t)
 
   def testReusableAfterTimeout(self):
     with self.cached_session() as sess:
@@ -1613,8 +1720,8 @@ class FIFOQueueWithTimeoutTest(test.TestCase):
                                    "Timed out waiting for notification"):
         sess.run(dequeued_t, options=config_pb2.RunOptions(timeout_in_ms=10))
 
-      sess.run(enqueue_op)
-      self.assertEqual(37, sess.run(dequeued_t))
+      self.evaluate(enqueue_op)
+      self.assertEqual(37, self.evaluate(dequeued_t))
 
 
 class QueueContainerTest(test.TestCase):

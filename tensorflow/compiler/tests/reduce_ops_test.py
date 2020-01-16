@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import itertools
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -45,7 +46,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     """Tests that the output of 'tf_reduce_fn' matches numpy's output."""
 
     for test_input in test_inputs:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(index_dtype)
@@ -91,6 +92,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       np.array([], dtype=np.bool).reshape(0, 3),
       np.array([[False, True, False], [True, True, False]]),
   ]
+  ONES = [np.ones([34000, 2])]
 
   def testReduceSumF32(self, index_dtype):
     self._testReduction(math_ops.reduce_sum, np.sum, np.float32, self.REAL_DATA,
@@ -149,6 +151,11 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_mean, np.mean, np.float32,
                         self.NONEMPTY_REAL_DATA, index_dtype)
 
+  def testReduceMeanF16(self, index_dtype):
+    if np.float16 in self.all_types:
+      self._testReduction(math_ops.reduce_mean, np.mean, np.float16, self.ONES,
+                          index_dtype)
+
   def testReduceMeanC64(self, index_dtype):
     self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,
                         self.NONEMPTY_COMPLEX_DATA, index_dtype)
@@ -184,7 +191,7 @@ class ReduceOpPrecisionTest(xla_test.XLATestCase):
     """
 
     for test_input in test_inputs:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(dtypes.int32)

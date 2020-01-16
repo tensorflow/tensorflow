@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_HUMAN_READABLE_JSON_H_
 #define TENSORFLOW_CORE_PLATFORM_HUMAN_READABLE_JSON_H_
 
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -26,7 +26,11 @@ namespace tensorflow {
 //
 // This string may not be strictly JSON-compliant, but it must be parseable by
 // HumanReadableJSONToProto.
-Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result);
+//
+// When ignore_accuracy_loss = true, this function may ignore JavaScript
+// accuracy loss with large integers.
+Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
+                                bool ignore_accuracy_loss);
 
 // Converts a string produced by ProtoToHumanReadableJSON to a protobuf.  Not
 // guaranteed to work for general JSON.

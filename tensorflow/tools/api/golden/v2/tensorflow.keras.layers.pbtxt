@@ -1,6 +1,10 @@
 path: "tensorflow.keras.layers"
 tf_module {
   member {
+    name: "AbstractRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Activation"
     mtype: "<type \'type\'>"
   }
@@ -13,7 +17,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "AdditiveAttention"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "AlphaDropout"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Attention"
     mtype: "<type \'type\'>"
   }
   member {
@@ -113,15 +125,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CuDNNGRU"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "CuDNNLSTM"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Dense"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DenseFeatures"
     mtype: "<type \'type\'>"
   }
   member {
@@ -234,6 +242,10 @@ tf_module {
   }
   member {
     name: "Layer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LayerNormalization"
     mtype: "<type \'type\'>"
   }
   member {
@@ -396,9 +408,13 @@ tf_module {
     name: "ZeroPadding3D"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "Input"
-    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\', \'ragged\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "add"
@@ -411,6 +427,10 @@ tf_module {
   member_method {
     name: "concatenate"
     argspec: "args=[\'inputs\', \'axis\'], varargs=None, keywords=kwargs, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "dot"
@@ -427,6 +447,10 @@ tf_module {
   member_method {
     name: "multiply"
     argspec: "args=[\'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'layer\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "subtract"

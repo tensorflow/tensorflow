@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_ERROR_H_
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"  // IWYU pragma: export
+#include "tensorflow/core/protobuf/error_codes.pb.h"  // IWYU pragma: export
 
 namespace stream_executor {
 namespace port {

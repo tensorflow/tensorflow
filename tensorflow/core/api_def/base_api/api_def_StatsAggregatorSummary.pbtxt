@@ -1,4 +1,5 @@
 op {
   graph_op_name: "StatsAggregatorSummary"
+  visibility: HIDDEN
   summary: "Produces a summary of any statistics recorded by the given statistics manager."
 }

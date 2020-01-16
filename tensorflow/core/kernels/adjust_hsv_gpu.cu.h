@@ -14,7 +14,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
 #define TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -91,56 +91,55 @@ inline __device__ RgbTuple hsv2rgb_cuda(const float h, const float s,
   return tuple;
 }
 
-template <bool AdjustHue, bool AdjustSaturation, bool AdjustV>
-__global__ void adjust_hsv_nhwc(const int64 number_elements,
-                                const float* const __restrict__ input,
-                                float* const output,
-                                const float* const hue_delta,
-                                const float* const saturation_scale,
-                                const float* const value_scale) {
+template <bool AdjustHue, bool AdjustSaturation, bool AdjustV, typename T>
+__global__ void adjust_hsv_nhwc(
+    const int64 number_elements, const T* const __restrict__ input,
+    T* const __restrict__ output, const float* const __restrict__ hue_delta,
+    const float* const __restrict__ saturation_scale,
+    const float* const __restrict__ value_scale) {
   // multiply by 3 since we're dealing with contiguous RGB bytes for each pixel
   // (NHWC)
-  const int64 idx = (blockDim.x * blockIdx.x + threadIdx.x) * 3;
-  // bounds check
-  if (idx > number_elements - 1) {
-    return;
-  }
-  if (!AdjustHue && !AdjustSaturation && !AdjustV) {
-    output[idx] = input[idx];
-    output[idx + 1] = input[idx + 1];
-    output[idx + 2] = input[idx + 2];
-    return;
-  }
-  const HsvTuple hsv = rgb2hsv_cuda(input[idx], input[idx + 1], input[idx + 2]);
-  float new_h = hsv.h;
-  float new_s = hsv.s;
-  float new_v = hsv.v;
-  // hue adjustment
-  if (AdjustHue) {
-    const float delta = *hue_delta;
-    new_h = fmodf(hsv.h + delta, 1.0f);
-    if (new_h < 0.0f) {
-      new_h = fmodf(1.0f + new_h, 1.0f);
+  for (int64 idx = (blockDim.x * blockIdx.x + threadIdx.x) * 3;
+       idx < number_elements; idx += blockDim.x * gridDim.x * 3) {
+    if (!AdjustHue && !AdjustSaturation && !AdjustV) {
+      output[idx] = input[idx];
+      output[idx + 1] = input[idx + 1];
+      output[idx + 2] = input[idx + 2];
+      continue;
     }
+    const HsvTuple hsv = rgb2hsv_cuda(static_cast<float>(input[idx]),
+                                      static_cast<float>(input[idx + 1]),
+                                      static_cast<float>(input[idx + 2]));
+    float new_h = hsv.h;
+    float new_s = hsv.s;
+    float new_v = hsv.v;
+    // hue adjustment
+    if (AdjustHue) {
+      const float delta = *hue_delta;
+      new_h = fmodf(hsv.h + delta, 1.0f);
+      if (new_h < 0.0f) {
+        new_h = fmodf(1.0f + new_h, 1.0f);
+      }
+    }
+    // saturation adjustment
+    if (AdjustSaturation && saturation_scale != nullptr) {
+      const float scale = *saturation_scale;
+      new_s = fminf(1.0f, fmaxf(0.0f, hsv.s * scale));
+    }
+    // value adjustment
+    if (AdjustV && value_scale != nullptr) {
+      const float scale = *value_scale;
+      new_v = hsv.v * scale;
+    }
+    const RgbTuple rgb = hsv2rgb_cuda(new_h, new_s, new_v);
+    output[idx] = static_cast<T>(rgb.r);
+    output[idx + 1] = static_cast<T>(rgb.g);
+    output[idx + 2] = static_cast<T>(rgb.b);
   }
-  // saturation adjustment
-  if (AdjustSaturation && saturation_scale != nullptr) {
-    const float scale = *saturation_scale;
-    new_s = fminf(1.0f, fmaxf(0.0f, hsv.s * scale));
-  }
-  // value adjustment
-  if (AdjustV && value_scale != nullptr) {
-    const float scale = *value_scale;
-    new_v = hsv.v * scale;
-  }
-  const RgbTuple rgb = hsv2rgb_cuda(new_h, new_s, new_v);
-  output[idx] = rgb.r;
-  output[idx + 1] = rgb.g;
-  output[idx + 2] = rgb.b;
 }
 
 }  // namespace internal
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #endif  // TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_

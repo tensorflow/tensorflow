@@ -15,19 +15,21 @@ limitations under the License.
 
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <memory>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "linenoise.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -93,7 +95,7 @@ int Run(int argc, char** argv) {
   string FLAGS_select = "micros";
   string FLAGS_output = "";
   for (int i = 0; i < argc; i++) {
-    fprintf(stderr, "%s\n", argv[i]);
+    absl::FPrintF(stderr, "%s\n", argv[i]);
   }
 
   std::vector<Flag> flag_list = {
@@ -114,7 +116,7 @@ int Run(int argc, char** argv) {
       Flag("min_output_bytes", &FLAGS_min_output_bytes, "min_output_bytes"),
       Flag("min_micros", &FLAGS_min_micros, "min micros"),
       Flag("min_accelerator_micros", &FLAGS_min_accelerator_micros,
-           "min acclerator_micros"),
+           "min accelerator_micros"),
       Flag("min_cpu_micros", &FLAGS_min_cpu_micros, "min_cpu_micros"),
       Flag("min_params", &FLAGS_min_params, "min params"),
       Flag("min_float_ops", &FLAGS_min_float_ops, "min float ops"),
@@ -135,31 +137,31 @@ int Run(int argc, char** argv) {
   string usage = Flags::Usage(argv[0], flag_list);
   bool parse_ok = Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok) {
-    printf("%s", usage.c_str());
+    absl::PrintF("%s", usage);
     return (2);
   }
   port::InitMain(argv[0], &argc, &argv);
 
   if (!FLAGS_profile_path.empty() &&
       (!FLAGS_graph_path.empty() || !FLAGS_run_meta_path.empty())) {
-    fprintf(stderr,
-            "--profile_path is set, do not set --graph_path or "
-            "--run_meta_path\n");
+    absl::FPrintF(stderr,
+                  "--profile_path is set, do not set --graph_path or "
+                  "--run_meta_path\n");
     return 1;
   }
 
   std::vector<string> account_type_regexes =
-      str_util::Split(FLAGS_account_type_regexes, ',', str_util::SkipEmpty());
+      absl::StrSplit(FLAGS_account_type_regexes, ',', absl::SkipEmpty());
   std::vector<string> start_name_regexes =
-      str_util::Split(FLAGS_start_name_regexes, ',', str_util::SkipEmpty());
+      absl::StrSplit(FLAGS_start_name_regexes, ',', absl::SkipEmpty());
   std::vector<string> trim_name_regexes =
-      str_util::Split(FLAGS_trim_name_regexes, ',', str_util::SkipEmpty());
+      absl::StrSplit(FLAGS_trim_name_regexes, ',', absl::SkipEmpty());
   std::vector<string> show_name_regexes =
-      str_util::Split(FLAGS_show_name_regexes, ',', str_util::SkipEmpty());
+      absl::StrSplit(FLAGS_show_name_regexes, ',', absl::SkipEmpty());
   std::vector<string> hide_name_regexes =
-      str_util::Split(FLAGS_hide_name_regexes, ',', str_util::SkipEmpty());
+      absl::StrSplit(FLAGS_hide_name_regexes, ',', absl::SkipEmpty());
   std::vector<string> select =
-      str_util::Split(FLAGS_select, ',', str_util::SkipEmpty());
+      absl::StrSplit(FLAGS_select, ',', absl::SkipEmpty());
 
   string output_type;
   std::map<string, string> output_options;
@@ -183,14 +185,14 @@ int Run(int argc, char** argv) {
     }
   }
 
-  printf("Reading Files...\n");
+  absl::PrintF("Reading Files...\n");
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader;
   TF_Status* status = TF_NewStatus();
   if (!FLAGS_checkpoint_path.empty()) {
     ckpt_reader.reset(
         new checkpoint::CheckpointReader(FLAGS_checkpoint_path, status));
     if (TF_GetCode(status) != TF_OK) {
-      fprintf(stderr, "%s\n", TF_Message(status));
+      absl::FPrintF(stderr, "%s\n", TF_Message(status));
       TF_DeleteStatus(status);
       return 1;
     }
@@ -201,15 +203,14 @@ int Run(int argc, char** argv) {
   if (!FLAGS_profile_path.empty()) {
     tf_stat.reset(new TFStats(FLAGS_profile_path, std::move(ckpt_reader)));
   } else {
-    printf(
+    absl::PrintF(
         "Try to use a single --profile_path instead of "
         "graph_path,op_log_path,run_meta_path\n");
     std::unique_ptr<GraphDef> graph(new GraphDef());
     if (!FLAGS_graph_path.empty()) {
       s = ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false);
       if (!s.ok()) {
-        fprintf(stderr, "Failed to read graph_path: %s\n",
-                s.ToString().c_str());
+        absl::FPrintF(stderr, "Failed to read graph_path: %s\n", s.ToString());
         return 1;
       }
     }
@@ -219,12 +220,11 @@ int Run(int argc, char** argv) {
       string op_log_str;
       s = ReadFileToString(Env::Default(), FLAGS_op_log_path, &op_log_str);
       if (!s.ok()) {
-        fprintf(stderr, "Failed to read op_log_path: %s\n",
-                s.ToString().c_str());
+        absl::FPrintF(stderr, "Failed to read op_log_path: %s\n", s.ToString());
         return 1;
       }
       if (!ParseProtoUnlimited(op_log.get(), op_log_str)) {
-        fprintf(stderr, "Failed to parse op_log_path\n");
+        absl::FPrintF(stderr, "Failed to parse op_log_path\n");
         return 1;
       }
     }
@@ -232,18 +232,19 @@ int Run(int argc, char** argv) {
                               std::move(ckpt_reader)));
 
     std::vector<string> run_meta_files =
-        str_util::Split(FLAGS_run_meta_path, ',', str_util::SkipEmpty());
+        absl::StrSplit(FLAGS_run_meta_path, ',', absl::SkipEmpty());
     for (int i = 0; i < run_meta_files.size(); ++i) {
       std::unique_ptr<RunMetadata> run_meta(new RunMetadata());
       s = ReadProtoFile(Env::Default(), run_meta_files[i], run_meta.get(),
                         true);
       if (!s.ok()) {
-        fprintf(stderr, "Failed to read run_meta_path %s. Status: %s\n",
-                run_meta_files[i].c_str(), s.ToString().c_str());
+        absl::FPrintF(stderr, "Failed to read run_meta_path %s. Status: %s\n",
+                      run_meta_files[i], s.ToString());
         return 1;
       }
       tf_stat->AddRunMeta(i, std::move(run_meta));
-      fprintf(stdout, "run graph coverage: %.2f\n", tf_stat->run_coverage());
+      absl::FPrintF(stdout, "run graph coverage: %.2f\n",
+                    tf_stat->run_coverage());
     }
   }
 
@@ -280,9 +281,9 @@ int Run(int argc, char** argv) {
     char* line = linenoise("tfprof> ");
     if (line == nullptr) {
       if (!looped) {
-        fprintf(stderr,
-                "Cannot start interative shell, "
-                "use 'bazel-bin' instead of 'bazel run'.\n");
+        absl::FPrintF(stderr,
+                      "Cannot start interative shell, "
+                      "use 'bazel-bin' instead of 'bazel run'.\n");
       }
       break;
     }
@@ -291,7 +292,7 @@ int Run(int argc, char** argv) {
     free(line);
 
     if (line_s.empty()) {
-      printf("%s", opts.ToString().c_str());
+      absl::PrintF("%s", opts.ToString());
       continue;
     }
     linenoiseHistoryAdd(line_s.c_str());
@@ -300,7 +301,7 @@ int Run(int argc, char** argv) {
     Options new_opts = opts;
     Status s = ParseCmdLine(line_s, &cmd, &new_opts);
     if (!s.ok()) {
-      fprintf(stderr, "E: %s\n", s.ToString().c_str());
+      absl::FPrintF(stderr, "E: %s\n", s.ToString());
       continue;
     }
     if (cmd == kCmds[5]) {

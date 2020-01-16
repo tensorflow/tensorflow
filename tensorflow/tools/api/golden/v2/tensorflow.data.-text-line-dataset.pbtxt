@@ -1,27 +1,26 @@
 path: "tensorflow.data.TextLineDataset"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.ops.readers.TextLineDataset\'>"
-  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.Dataset\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.readers.TextLineDatasetV2\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetSource\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
-    name: "output_classes"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "output_shapes"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "output_types"
+    name: "element_spec"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'filenames\', \'compression_type\', \'buffer_size\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'filenames\', \'compression_type\', \'buffer_size\', \'num_parallel_reads\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
     argspec: "args=[\'self\', \'transformation_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_numpy_iterator"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "batch"
@@ -36,6 +35,10 @@ tf_class {
     argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "enumerate"
+    argspec: "args=[\'self\', \'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
     name: "filter"
     argspec: "args=[\'self\', \'predicate\'], varargs=None, keywords=None, defaults=None"
   }
@@ -48,10 +51,6 @@ tf_class {
     argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
-    name: "from_sparse_tensor_slices"
-    argspec: "args=[\'sparse_tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "from_tensor_slices"
     argspec: "args=[\'tensors\'], varargs=None, keywords=None, defaults=None"
   }
@@ -61,19 +60,11 @@ tf_class {
   }
   member_method {
     name: "interleave"
-    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
+    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'-1\', \'1\', \'None\'], "
   }
   member_method {
     name: "list_files"
     argspec: "args=[\'file_pattern\', \'shuffle\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "make_initializable_iterator"
-    argspec: "args=[\'self\', \'shared_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "make_one_shot_iterator"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "map"
@@ -85,7 +76,7 @@ tf_class {
   }
   member_method {
     name: "padded_batch"
-    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "prefetch"
@@ -93,7 +84,7 @@ tf_class {
   }
   member_method {
     name: "range"
-    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "reduce"
@@ -118,6 +109,10 @@ tf_class {
   member_method {
     name: "take"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unbatch"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "window"

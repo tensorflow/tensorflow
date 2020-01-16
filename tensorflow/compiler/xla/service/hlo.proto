@@ -29,12 +29,13 @@ limitations under the License.
 syntax = "proto3";
 
 package xla;
+
 import "tensorflow/compiler/xla/xla_data.proto";
 
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 56
+// Next ID: 70
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -48,10 +49,16 @@ message HloInstructionProto {
   reserved "called_computation_names";
   reserved 44;
   reserved "replica_group_ids";
+  // Use backend_config instead for custom_call_opaque.
+  reserved 53;
+  reserved "custom_call_opaque";
+  // Use backend_config instead for all_reduce_barrier.
+  reserved 46;
+  reserved "all_reduce_barrier";
 
   string name = 1;
   string opcode = 2;
-  xla.Shape shape = 3;
+  xla.ShapeProto shape = 3;
 
   xla.OpMetadata metadata = 7;
 
@@ -81,6 +88,8 @@ message HloInstructionProto {
   // the input feature dimension and output feature dimension. If not specified,
   // it will use a default value of 1.
   int64 feature_group_count = 50;
+
+  int64 batch_group_count = 58;
 
   // Describes the [begin, end) index range and stride for slices.
   message SliceDimensions {
@@ -117,8 +126,9 @@ message HloInstructionProto {
   // Only present for kBatchNormTraining.
   int64 feature_index = 25;
 
-  // Represents a unique identifier for each Send/Recv instruction pair.
-  // Only present for kSend or kRecv.
+  // Represents a unique identifier for each Send/Recv instruction pair or
+  // optionally for collective instructions (AllReduce, CollectivePermute,
+  // AllToAll). Non-positive channel_id is equivalent to no channel id.
   int64 channel_id = 26;
 
   // The string representation of the infeed configuration.
@@ -128,11 +138,8 @@ message HloInstructionProto {
   // kCustomCall.
   string custom_call_target = 28;
 
-  // Opaque string, only present for kCustomCall.
-  string custom_call_opaque = 53;
-
   // Shape of outfeed request.
-  xla.Shape outfeed_shape = 29;
+  xla.ShapeProto outfeed_shape = 29;
 
   // Describes the dimension numbers used for a dot operation
   xla.DotDimensionNumbers dot_dimension_numbers = 30;
@@ -142,6 +149,9 @@ message HloInstructionProto {
 
   // FFT length.
   repeated int64 fft_length = 32;
+
+  // Comparison direction only used for kCompare.
+  string comparison_direction = 63;
 
   // Gather dimension numbers.
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
@@ -165,13 +175,17 @@ message HloInstructionProto {
 
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
-  int64 all_reduce_id = 45;
-  string cross_replica_sum_barrier = 46;
+  // Deprecated, but keeping it for backward compatibility. Use channel_id.
+  // Non-positive all_reduce_id is equivalent to no all_reduce_id.
+  int64 all_reduce_id = 45 [deprecated = true];
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone
   // partners.
   bool is_host_transfer = 47;
+
+  // Whether this Sort instruction should be stable.
+  bool is_stable = 60;
 
   xla.ScatterDimensionNumbers scatter_dimension_numbers = 48;
 
@@ -184,6 +198,49 @@ message HloInstructionProto {
   // Sharding for kDomain instructions.
   xla.OpSharding domain_entry_sharding = 54;
   xla.OpSharding domain_exit_sharding = 55;
+
+  // For custom call this indicates that the layouts are constrained. If
+  // constrain_layout is true then the 'shape' field must contain a layout, and
+  // 'operand_shapes_with_layout' must contain a shape with layout for each
+  // operand.
+  bool constrain_layout = 56;
+  repeated xla.ShapeProto operand_shapes_with_layout = 57;
+
+  // Options for TriangularSolve
+  xla.TriangularSolveOptions triangular_solve_options = 59;
+
+  // Options for Cholesky
+  xla.CholeskyOptions cholesky_options = 62;
+
+  // Describes how parameters behave with regards to replicas.
+  xla.ParameterReplication parameter_replication = 61;
+
+  // If set, the given instruction is run in parallel on e.g. multiple CPU
+  // cores.  The outermost dimension gets split up into
+  // outer_dimension_partitions[0] pieces, the next-outermost dim gets split
+  // into outer_dimension_partitions[1] pieces, etc.
+  //
+  // It's illegal to partition a dimension into more shards than there are
+  // elements in that dimension.
+  repeated int64 outer_dimension_partitions = 64;
+
+  // Whether the kCustomCall instruction has side-effects, only present for
+  // kCustomCall.
+  bool custom_call_has_side_effect = 65;
+
+  // The delta value for kRngGetAndUpdateState.
+  int64 delta = 66;
+
+  // Specifies if the gather/scatter indices are guaranteed to be sorted by the
+  // caller.
+  bool indices_are_sorted = 67;
+
+  // Frontend attributes to pass to the XLA backend.
+  xla.FrontendAttributes frontend_attributes = 68;
+
+  // Specifies if all elements updated are guaranteed to be unique by
+  // the caller.
+  bool unique_indices = 69;
 }
 
 // Serialization of HloComputation.
@@ -198,7 +255,8 @@ message HloComputationProto {
   repeated HloInstructionProto instructions = 2;
 
   // The program shape (with layout) of this computation.
-  xla.ProgramShape program_shape = 4;
+
+  xla.ProgramShapeProto program_shape = 4;
 
   // The id of this computation.
   int64 id = 5;
@@ -218,6 +276,81 @@ message HloScheduleProto {
   map<int64, InstructionSequence> sequences = 1;
 }
 
+message HloInputOutputAliasProto {
+  enum Kind {
+    // Define a UNDEFINED_ALIAS equal to zero to get around the default-0 proto3
+    // behavior and missing has_*() APIs.
+    UNDEFINED_ALIAS = 0;
+    // An alias setup by the user as must alias. A use setting USER_ALIAS is
+    // expecting the designed output to be dropped over the given input
+    // parameter number+index.
+    USER_ALIAS = 1;
+    // An alias setup by the compiler as part of its optimizations.
+    SYSTEM_ALIAS = 2;
+  }
+
+  // The following proto describes a pair of aliased an input
+  // (described by parameter number and a ShapeIndex of the parameter)
+  // and an output (described by a ShapeIndex of the root
+  // instruction). For example:
+  //
+  // entry = {
+  //  output_shape_index={1},
+  //  parameter_number=0,
+  //  parameter_shape_index={1, 2},
+  // }
+  //
+  // This entry indicates that the first paremter's {1, 2} element is
+  // aliased with the {1} element of the root instruction.
+  message AliasEntryProto {
+    // ShapeIndex of the root hlo.
+    repeated int64 output_shape_index = 1;
+    // Number of the parameter in entry computation.
+    int64 parameter_number = 2;
+    // ShapeIndex of the parameter instruction.
+    repeated int64 parameter_shape_index = 3;
+    // The kind of alias to be setup.
+    Kind kind = 4;
+  }
+
+  repeated AliasEntryProto entries = 1;
+}
+
+message DynamicParameterBindingProto {
+  // A list of bindings which indicates that the `target_dim_num` in
+  // the subshape `target_param_index` of parameter `target_param_num`
+  // is a dynamic dimension and its real dynamic size is represented
+  // by `dynamic_param_index` in parameter `dynamic_param_num`.
+  //
+  // As an example, imagine we have a program:
+  //
+  // ENTRY main {
+  //   a = f32[] parameter(0)
+  //   b = f32[10] parameter(1)
+  //   ROOT root = (f32[], f32[10]) tuple(%a, %b)
+  // }
+  //
+  // Let's say 'b' (param index 1) is a dynamic shape whose input has
+  // an upperbound of 10 and real size is determined at runtime.'a'
+  // represents the real size of b's first dimension.
+  //
+  // In this case, the fields are set in the following way:
+  // dynamic_param_num = 1
+  // dynamic_param_index = {}
+  // target_param_num = 0
+  // target_param_index = {}
+  // target_param_dim = 0
+  message Binding {
+    int64 dynamic_param_num = 1;
+    repeated int64 dynamic_param_index = 2;
+    int64 target_param_num = 3;
+    repeated int64 target_param_index = 4;
+    int64 target_param_dim_num = 5;
+  }
+
+  repeated Binding entries = 1;
+}
+
 // Serialization of HloModule.
 message HloModuleProto {
   string name = 1;
@@ -228,14 +361,19 @@ message HloModuleProto {
   // callees appear before their callers.
   repeated HloComputationProto computations = 3;
 
-  // The program shape (with layout) of the entry computation.
-  xla.ProgramShape program_shape = 4;
+  // The host program shape (with layout) of the entry computation.
+  xla.ProgramShapeProto host_program_shape = 4;
 
   // The id of this module.
   int64 id = 5;
 
   // The schedule for this module.
   HloScheduleProto schedule = 7;
+
+  // Describes alias information between inputs and outputs.
+  HloInputOutputAliasProto input_output_alias = 8;
+
+  DynamicParameterBindingProto dynamic_parameter_binding = 9;
 }
 
 // Serialization of LogicalBuffer.

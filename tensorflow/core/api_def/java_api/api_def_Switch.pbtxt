@@ -1,4 +1,6 @@
 op {
-  graph_op_name: "Switch" #TODO(karllessard) escape that reserved name
-  visibility: HIDDEN
+  graph_op_name: "Switch"
+  endpoint {
+    name: "SwitchCond"
+  }
 }

@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import item
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
@@ -79,7 +80,7 @@ class ItemTest(test.TestCase):
         else:
           self.assertEqual(1, len(node_prop))
           self.assertEqual(dtypes.int32, node_prop[0].dtype)
-          self.assertEqual(tensor_shape.scalar(), node_prop[0].shape)
+          self.assertEqual(tensor_shape.TensorShape([]), node_prop[0].shape)
 
   def testUpdates(self):
     with ops.Graph().as_default() as g:
@@ -107,6 +108,7 @@ class ItemTest(test.TestCase):
     newest_tf_item = grappler_item.tf_item
     self.assertEqual(new_tf_item, newest_tf_item)
 
+  @test_util.run_v1_only('b/120545219')
   def testColocationContraints(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant([10])

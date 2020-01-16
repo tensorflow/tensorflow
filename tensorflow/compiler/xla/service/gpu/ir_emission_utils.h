@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -53,19 +54,30 @@ enum class CudnnConvKind {
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
 
+StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
+    const HloCustomCallInstruction* instr);
+
+StatusOr<se::dnn::DataType> GetDnnDataType(
+    const HloCustomCallInstruction* conv);
+
 // Converts a CudnnConvKind value to a string.
 string CudnnConvKindToString(CudnnConvKind kind);
 
+// Matrix multiplication before the rewrite.
+//
+// This function should never return "true" on instructions after
+// GemmRewriter pass has finished.
+bool IsMatrixMultiplication(const HloInstruction& dot);
+
+// Matrix multiplication rewritten into a GEMM custom call.
+// All matrix multiplications should be rewritten as such custom calls
+// after a GemmRewriter lowering pass.
+bool IsCublasGemm(const HloInstruction& hlo);
+
 constexpr int64 kWarpSize = 32;
 
-// Returns true if `hlo` will be implemented as a call to BLAS gemm.
-//
-// Precondition: `hlo` is in an "unnested context", meaning, it lives within the
-// entry computation, within the either of a while loop's subcomputations,
-// within any of a conditional's subcomputations, etc., but *does not* live
-// within a reduce subcomputation, a map subcomputation, a fusion
-// subcomputation, etc.  It's OK if `hlo` *is* a fusion.
-bool ImplementedAsGemm(const HloInstruction& hlo);
+// A call to cuBLAS general matrix multiplication API.
+extern const char* const kGemmCallTarget;
 
 // A call to cuDNN for batch normalization is represented as CustomCall HLO with
 // a call target equal to one of these strings.
@@ -108,9 +120,9 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 // memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
 // is not well-defined.
 //
-// CudnnConvolutionRewriter lowers kConvolution HLOs to these custom calls.
+// GpuConvRewriter lowers kConvolution HLOs to these custom calls.
 // When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
-// on in the pipeline, CudnnConvolutionAlgorithmChooser chooses an explicit
+// on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
 // algorithm for each conv and sets the amount of scratch space needed.
 //
 // (Representing the scratch memory as an output may seem strange at first, but
@@ -131,11 +143,57 @@ extern const char* const kCudnnConvBiasActivationForwardCallTarget;
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 
+// Returns true if `hlo` will be implemented as a call to a cuSolver routine.
+//
+// This returns true if `hlo` is a CustomCall HLO with a call target equal to
+// one of the kCusolver... constants, but returns *false* for HLOs with
+// say, a kCholesky opcode.
+bool IsCustomCallToCusolver(const HloInstruction& hlo);
+
+// Cholesky decomposition. Takes a (batched) matrix as input, and returns a
+// tuple of (result, workspace, info), where result is the result of the
+// Cholesky decomposition, workspace is scratch space for cuSolver, and info
+// is a success/failure code per batch element.
+extern const char* const kCusolverCholeskyCallTarget;
+
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 
-bool IsReductionToVector(const HloInstruction& reduce);
+// Returns true if either the dimensions being reduced or the dimensions being
+// kept are contiguous in the input of the reduce instruction.
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
+
+// Returns whether unnested_hlo is an input fusion whose root is either a slice
+// or a tuple of slices. If verify_no_strides is true, returns false unless all
+// ROOT slices have no strides.
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides = false);
+
+struct ReductionDimensions {
+  // Indicates whether the reduction is a row reduction or a column reduction.
+  bool is_row_reduction;
+
+  // Contains the size of the three contiguous components for
+  // the reduction [depth, height, width] (major-to-minor ordering).
+  //
+  // For row reduction, we do: [D, H, W] -> [D, H].
+  // For column reduction, we do: [D, H, W] -> [D, W].
+  std::array<int64, 3> dimensions;
+};
+
+// Given the input shape and dimensions to reduce for a reduction, returns
+// ReductionDimensions.
+//
+// Prerequisite: the reduction instruction passes the check
+// IsReductionFromOrToContiguousDimensions, which guarantees either the
+// dimensions to reduce or the dimensions to keep are consecutive.
+ReductionDimensions GetReductionKindAndContiguousComponents(
+    const HloInstruction& reduce);
+
+// Get tiling per thread for the given reduction in dimensions [D, H, W].
+std::array<int64, 3> GetReductionTiling(
+    const ReductionDimensions& reduction_dimensions);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -154,6 +212,15 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder);
+
+// Emits code that determines whether the current thread is thread 0 within
+// block 0 of the kernel.
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
+
+// Returns whether the outputs of a fusion with reduction are consistent.
+bool AreFusedReductionOutputsConsistent(
+    absl::Span<const HloInstruction* const> output_instructions,
+    const HloInstruction* first_reduce);
 
 }  // namespace gpu
 }  // namespace xla

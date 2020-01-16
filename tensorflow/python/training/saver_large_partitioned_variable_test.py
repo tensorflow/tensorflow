@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
@@ -44,8 +45,12 @@ class SaverLargePartitionedVariableTest(test.TestCase):
         # split into smaller sized variables.
         init = lambda shape, dtype, partition_info: constant_op.constant(
             True, dtype, shape)
-        partitioned_var = partitioned_variables.create_partitioned_variables(
-            [1 << 31], [4], init, dtype=dtypes.bool, name=var_name)
+        partitioned_var = list(variable_scope.get_variable(
+            var_name,
+            shape=[1 << 31],
+            partitioner=partitioned_variables.fixed_size_partitioner(4),
+            initializer=init,
+            dtype=dtypes.bool))
         variables.global_variables_initializer().run()
         save = saver.Saver(partitioned_var)
         val = save.save(sess, save_path)

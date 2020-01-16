@@ -1,0 +1,20 @@
+path: "tensorflow.data.experimental.Structure"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "value_type"
+    mtype: "<class \'abc.abstractproperty\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'spec_or_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_compatible_type"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+}

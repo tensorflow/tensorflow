@@ -17,12 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TUPLE_POINTS_TO_ANALYSIS_H_
 
 #include <stddef.h>
+
 #include <iosfwd>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -248,9 +250,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleDomain(HloInstruction* domain) override;
   Status HandleCopy(HloInstruction* copy) override;
+  Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   string ToString() const;
 
@@ -261,15 +265,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   bool DoesNotUseOperandBuffer(const HloInstruction* operand,
                                const ShapeIndex& index,
                                const HloInstruction* user) const;
-
-  // Returns true if 'user' (at 'user_index') can share a buffer with its
-  // operand 'operand' (at 'operand_index'). Returns false otherwise.
-  //
-  // REQUIRES: 'operand' is an operand of 'user'.
-  bool CanShareOperandBufferWithUser(HloInstruction* operand,
-                                     const ShapeIndex& operand_index,
-                                     HloInstruction* user,
-                                     const ShapeIndex& user_index) const;
 
  private:
   explicit TuplePointsToAnalysis(
@@ -307,7 +302,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // Information kept per instruction
   struct PerInstruction {
     std::unique_ptr<PointsToSet> points_to_set;
-    // Empircally, ~92% of instructions have 1
+    // Empirically, ~92% of instructions have 1
     // instruction_defined_buffer, and 99% have 0 or 1
     BufferDefinitionVector instruction_defined_buffers;
   };
@@ -315,14 +310,23 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const PerInstruction* PerInst(const HloInstruction* inst) const {
     int id = inst->unique_id();
     DCHECK_GE(id, 0);
-    DCHECK_LT(id, per_instruction_.size());
-    return &per_instruction_[id];
+    auto iter = per_instruction_.find(id);
+    if (iter == per_instruction_.end()) {
+      LOG(FATAL) << "Expected per-instruction information to already exist";
+    } else {
+      return iter->second.get();
+    }
   }
   PerInstruction* PerInst(const HloInstruction* inst) {
     int id = inst->unique_id();
     DCHECK_GE(id, 0);
-    DCHECK_LT(id, per_instruction_.size());
-    return &per_instruction_[id];
+    auto iter = per_instruction_.find(id);
+    if (iter == per_instruction_.end()) {
+      return per_instruction_.emplace(id, absl::make_unique<PerInstruction>())
+          .first->second.get();
+    } else {
+      return iter->second.get();
+    }
   }
 
   std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
@@ -339,7 +343,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis_;
 
   // A map from instruction->unique_id() to
-  std::vector<PerInstruction> per_instruction_;
+  absl::flat_hash_map<int, std::unique_ptr<PerInstruction>> per_instruction_;
 
   // A map from LogicalBuffer->id() to alias information about that logical
   // buffer

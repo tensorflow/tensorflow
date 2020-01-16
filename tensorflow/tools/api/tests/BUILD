@@ -1,32 +1,37 @@
 # TensorFlow API backwards compatibility tests.
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "py_test",
+)
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
 package(
     default_visibility = ["//tensorflow/tools/api:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files([
     "README.txt",
     "API_UPDATE_WARNING.txt",
 ])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-
 py_test(
     name = "api_compatibility_test",
-    srcs = [
-        "api_compatibility_test.py",
-        "//tensorflow:tf_python_api_gen_v2",
-    ],
-    args = ["--only_test_core_api=true"],
+    srcs = ["api_compatibility_test.py"],
     data = [
         "//tensorflow/tools/api/golden:api_golden_v1",
         "//tensorflow/tools/api/golden:api_golden_v2",
         "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
         "//tensorflow/tools/api/tests:README.txt",
     ],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "no_rocm",
+        "no_windows",  # Bugs due to some paths.
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -35,6 +40,38 @@ py_test(
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "deprecation_test",
+    srcs = ["deprecation_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # Failing due to missing API symbols.
+        "v1only",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "module_test",
+    srcs = ["module_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # Failing due to missing API symbols.
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

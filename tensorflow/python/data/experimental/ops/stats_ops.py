@@ -20,113 +20,21 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("data.experimental.StatsAggregator")
-class StatsAggregator(object):
-  """A stateful resource that aggregates statistics from one or more iterators.
-
-  To record statistics, use one of the custom transformation functions defined
-  in this module when defining your `tf.data.Dataset`. All statistics will be
-  aggregated by the `StatsAggregator` that is associated with a particular
-  iterator (see below). For example, to record the latency of producing each
-  element by iterating over a dataset:
-
-  ```python
-  dataset = ...
-  dataset = dataset.apply(tf.data.experimental.latency_stats("total_bytes"))
-  ```
-
-  To associate a `StatsAggregator` with a `tf.data.Dataset` object, use
-  the following pattern:
-
-  ```python
-  stats_aggregator = stats_ops.StatsAggregator()
-  dataset = ...
-
-  # Apply `set_stats_aggregator` to associate `dataset` with `stats_aggregator`.
-  dataset = dataset.apply(
-      tf.data.experimental.set_stats_aggregator(stats_aggregator))
-  iterator = dataset.make_one_shot_iterator()
-  ```
-
-  To get a protocol buffer summary of the currently aggregated statistics,
-  use the `StatsAggregator.get_summary()` tensor. The easiest way to do this
-  is to add the returned tensor to the `tf.GraphKeys.SUMMARIES` collection,
-  so that the summaries will be included with any existing summaries.
-
-  ```python
-  stats_aggregator = stats_ops.StatsAggregator()
-  # ...
-  stats_summary = stats_aggregator.get_summary()
-  tf.add_to_collection(tf.GraphKeys.SUMMARIES, stats_summary)
-  ```
-
-  Note: This interface is experimental and expected to change. In particular,
-  we expect to add other implementations of `StatsAggregator` that provide
-  different ways of exporting statistics, and add more types of statistics.
-  """
-
-  def __init__(self):
-    """Creates a `StatsAggregator`."""
-    self._resource = gen_dataset_ops.stats_aggregator_handle()
-
-  # TODO(b/116314787): Update this/add support for V2 summary API.
-  def get_summary(self):
-    """Returns a string `tf.Tensor` that summarizes the aggregated statistics.
-
-    The returned tensor will contain a serialized `tf.summary.Summary` protocol
-    buffer, which can be used with the standard TensorBoard logging facilities.
-
-    Returns:
-      A scalar string `tf.Tensor` that summarizes the aggregated statistics.
-    """
-    return gen_dataset_ops.stats_aggregator_summary(self._resource)
-
-
-class _SetStatsAggregatorDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that acts as an identity, and sets given stats_aggregator."""
-
-  def __init__(self, input_dataset, stats_aggregator, tag, prefix):
-    super(_SetStatsAggregatorDataset, self).__init__(input_dataset)
-    self._input_dataset = input_dataset
-    self._stats_aggregator = stats_aggregator
-    self._tag = tag
-    self._prefix = prefix
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.set_stats_aggregator_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._stats_aggregator._resource,  # pylint: disable=protected-access
-        self._tag,
-        self._prefix,
-        **dataset_ops.flat_structure(self))
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-
-@tf_export("data.experimental.set_stats_aggregator")
-def set_stats_aggregator(stats_aggregator, tag="", counter_prefix=""):
+@deprecation.deprecated(None, "Use `tf.data.experimental.StatsOptions`.")
+def set_stats_aggregator(stats_aggregator, prefix="", counter_prefix=""):
   """Set the given `stats_aggregator` for aggregating the input dataset stats.
 
   Args:
-    stats_aggregator: A `tf.contrib.data.StatsAggregator` object.
-    tag: (Optional) String, all statistics recorded for the input `dataset`
-      will have given `tag` prepend with the name.
+    stats_aggregator: A `tf.data.experimental.StatsAggregator` object.
+    prefix: (Optional) String, all statistics recorded for the input `dataset`
+      will have given `prefix` prepend with the name.
     counter_prefix: (Optional) String, all statistics recorded as `counters`
-      will have the given `prefix` for the counter. Defaults to "/tesorflow".
+      will have the given `prefix` for the counter. Defaults to "/tensorflow".
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -134,14 +42,13 @@ def set_stats_aggregator(stats_aggregator, tag="", counter_prefix=""):
   """
 
   def _apply_fn(dataset):
-    return _SetStatsAggregatorDataset(dataset, stats_aggregator, tag,
-                                      counter_prefix)
+    return dataset_ops._SetStatsAggregatorDataset(  # pylint: disable=protected-access
+        dataset, stats_aggregator, prefix, counter_prefix)
 
   return _apply_fn
 
 
-# TODO(b/38416882): Properly export in the `tf.data.experimental` API when
-# stable or make private / remove.
+@tf_export("data.experimental.bytes_produced_stats")
 def bytes_produced_stats(tag):
   """Records the number of bytes produced by each element of the input dataset.
 
@@ -158,8 +65,8 @@ def bytes_produced_stats(tag):
   """
 
   def _apply_fn(dataset):
-    return _StatsDataset(dataset, gen_dataset_ops.bytes_produced_stats_dataset,
-                         tag)
+    return _StatsDataset(
+        dataset, gen_experimental_dataset_ops.bytes_produced_stats_dataset, tag)
 
   return _apply_fn
 
@@ -181,34 +88,21 @@ def latency_stats(tag):
   """
 
   def _apply_fn(dataset):
-    return _StatsDataset(dataset, gen_dataset_ops.latency_stats_dataset, tag)
+    return _StatsDataset(
+        dataset, gen_experimental_dataset_ops.latency_stats_dataset, tag)
 
   return _apply_fn
 
 
-class _StatsDataset(dataset_ops.UnaryDataset):
+class _StatsDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and also records statistics."""
 
   def __init__(self, input_dataset, op_function, tag):
-    super(_StatsDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._op_function = op_function
     self._tag = ops.convert_to_tensor(tag, dtype=dtypes.string)
-
-  def _as_variant_tensor(self):
-    return self._op_function(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    variant_tensor = self._op_function(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._tag,
-        **dataset_ops.flat_structure(self))
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
+        **self._flat_structure)
+    super(_StatsDataset, self).__init__(input_dataset, variant_tensor)

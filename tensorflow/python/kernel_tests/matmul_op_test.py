@@ -19,13 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 import operator
+
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -35,11 +37,22 @@ from tensorflow.python.platform import test as test_lib
 # os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
 
 
+class MatVecTest(test_lib.TestCase):
+  """Simple test for matvec, which is sugar on top of matmul."""
+
+  def testTwoByTwoCase(self):
+    a = np.array([[1, 2], [3, 4]])
+    b = np.array([5, 6])
+    c = math_ops.matvec(a, b)
+    self.assertAllEqual((2,), c.shape)
+    self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c)
+
+
 def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
   if hasattr(test, test_name):
     raise RuntimeError("Test %s defined more than once" % test_name)
-  setattr(test, test_name, fn)
+  setattr(test, test_name, test_util.deprecated_graph_mode_only(fn))
 
 
 def _GetTransposedMatrices(x, x_name, kwargs):
@@ -62,7 +75,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
     use_gpu = True
     if a_np_.dtype is np.float16 and (
-        not test_util.CudaSupportsHalfMatMulAndConv()):
+        not test_util.GpuSupportsHalfMatMulAndConv()):
       use_gpu = False
       print("Built without fp16 matmul support for Cuda, running test on CPU.")
 
@@ -72,12 +85,12 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     # np.matrix(a_np_) * np.matrix(b_np_)
     effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
     effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session() as sess, test_util.device(use_gpu):
       if use_static_shape_:
         a = constant_op.constant(effective_a_np)
         b = constant_op.constant(effective_b_np)
         res = math_ops.matmul(a, b, **kwargs_)
-        tf_val = res.eval()
+        tf_val = self.evaluate(res)
       else:
         a = array_ops.placeholder(a_np_.dtype)
         b = array_ops.placeholder(b_np_.dtype)
@@ -87,8 +100,8 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     self.assertAllCloseAccordingToType(
         tf_val,
         np_val,
-        float_rtol=2e-5,
-        float_atol=2e-5,
+        float_rtol=3e-5,
+        float_atol=3e-5,
         half_rtol=0.2,
         half_atol=0.2)
 
@@ -102,7 +115,7 @@ class MatMulGradientTest(test_lib.TestCase):
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
   def Test(self):
-    if not use_static_shape_ or a_np_.dtype in (np.int32, np.float16):
+    if not use_static_shape_ or a_np_.dtype in (np.int32, np.int64, np.float16):
       self.skipTest("Skipping infeasible gradient test.")
 
     # Transpose and possibly conjugate a_np_ and b_np_ according to the
@@ -115,45 +128,45 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
-    with self.test_session(use_gpu=True):
-      a = constant_op.constant(effective_a_np)
-      b = constant_op.constant(effective_b_np)
-      res = math_ops.matmul(a, b, **kwargs_)
-      for x, x_init in [a, effective_a_np], [b, effective_b_np]:
-        theoretical, numerical = gradient_checker.compute_gradient(
-            x,
-            x_init.shape,
-            res, [a_np_.shape[0], b_np_.shape[1]],
-            x_init_value=x_init,
-            delta=delta)
-        self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
+    with self.session():
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.matmul(x, effective_b_np, **kwargs_),
+          [effective_a_np],
+          delta=delta)
+      self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
+
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.matmul(effective_a_np, x, **kwargs_),
+          [effective_b_np],
+          delta=delta)
+      self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
 
   return Test
 
 
 class MatMulStatsTest(test_lib.TestCase):
 
+  @test_util.run_v1_only("Test requires a Graph and NodeDef inspection")
   def testSimpleStatistics(self):
-    g = ops.Graph()
-    with g.as_default():
-      a = variables.Variable(random_ops.random_normal([25, 16]))
-      b = variables.Variable(random_ops.random_normal([16, 9]))
-      math_ops.matmul(a, b)
-      for op in g.get_operations():
-        flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
-        if op.name == "MatMul":
-          self.assertEqual(7200, flops)
+    a = variables.Variable(random_ops.random_normal([25, 16]))
+    b = variables.Variable(random_ops.random_normal([16, 9]))
+    math_ops.matmul(a, b)
+    g = ops.get_default_graph()
+    for op in g.get_operations():
+      flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
+      if op.name == "MatMul":
+        self.assertEqual(7200, flops)
 
+  @test_util.run_v1_only("Test requires a Graph and NodeDef inspection")
   def testTransposedStatistics(self):
-    g = ops.Graph()
-    with g.as_default():
-      a = variables.Variable(random_ops.random_normal([16, 25]))
-      b = variables.Variable(random_ops.random_normal([16, 9]))
-      math_ops.matmul(a, b, transpose_a=True)
-      for op in g.get_operations():
-        flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
-        if op.name == "MatMul":
-          self.assertEqual(7200, flops)
+    a = variables.Variable(random_ops.random_normal([16, 25]))
+    b = variables.Variable(random_ops.random_normal([16, 9]))
+    math_ops.matmul(a, b, transpose_a=True)
+    g = ops.get_default_graph()
+    for op in g.get_operations():
+      flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
+      if op.name == "MatMul":
+        self.assertEqual(7200, flops)
 
 
 try:
@@ -182,19 +195,20 @@ except AttributeError:
 class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
-    with self.assertRaisesWithPredicateMatch(ValueError,
-                                             lambda e: "Shape must" in str(e)):
+    with self.assertRaisesRegexp(
+        Exception, "(Shape must be rank 2 but is rank 1|is not a matrix)"):
       infix_matmul(
           ops.convert_to_tensor([10.0, 20.0, 30.0]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testMismatchedDimensions(self):
-    with self.assertRaisesWithPredicateMatch(
-        ValueError, lambda e: "Dimensions must" in str(e)):
+    with self.assertRaisesRegexp(
+        Exception, "(Dimensions must be equal|Matrix size-incompatible)"):
       infix_matmul(
           ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
+  @test_util.run_v1_only("Tensor.op is generally not applicable in TF 2")
   def testInfixMatmulIsTfMatmul(self):
     a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
@@ -206,17 +220,20 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
     c = infix_matmul(a, b)
     d = math_ops.matmul(a, b)
-    with self.cached_session():
-      self.assertAllEqual(c.eval(), d.eval())
+    self.assertAllEqual(c, d)
 
 
 if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
-  for use_static_shape in [False, True]:
-    for dtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
-                  np.complex128):
-      if not use_static_shape and dtype == np.int32:
+  dtypes_to_test = [np.int32, np.int64, np.float16, np.float32, np.float64]
+  if not test_lib.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
+  # TF2 does not support placeholders under eager so we skip it
+  for use_static_shape in set([True, tf2.enabled()]):
+    for dtype in dtypes_to_test:
+      if not use_static_shape and (dtype == np.int32 or dtype == np.int64):
         # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
         # bug in Windows (b/35935459).
         continue

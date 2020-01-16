@@ -101,8 +101,8 @@ class HloSharding {
     if (!IsTuple()) {
       return replicated_;
     }
-    return std::all_of(tuple_elements_.begin(), tuple_elements_.end(),
-                       [](const HloSharding& s) { return s.IsReplicated(); });
+    return absl::c_all_of(
+        tuple_elements_, [](const HloSharding& s) { return s.IsReplicated(); });
   }
 
   // Returns true if the tile size is the same as the input size.
@@ -110,16 +110,17 @@ class HloSharding {
     if (!IsTuple()) {
       return maximal_;
     }
-    return std::all_of(tuple_elements_.begin(), tuple_elements_.end(),
-                       [](const HloSharding& s) { return s.IsTileMaximal(); });
+    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+      return s.IsTileMaximal();
+    });
   }
 
   // Returns true if the sharding defines an operation on the given device.
   bool UsesDevice(int64 device) const;
 
-  // Retrieves an histogram of the devices used by the sharding. The returned
+  // Retrieves a histogram of the devices used by the sharding. The returned
   // map has the device number as key, and the occurrence count as value.
-  // If a sharding does not have a device, it will not be incuded in the
+  // If a sharding does not have a device, it will not be included in the
   // histogram. The count argument, if not nullptr, will receive the total
   // number of elements this sharding is made of (one for array, N leaves for
   // tuples).
@@ -206,6 +207,7 @@ class HloSharding {
   // Returns the flattened list of all the leaf shardings in a tuple shape, by
   // pre-order walk (ShapeTree iterator order).
   // REQUIRES: IsTuple().
+  std::vector<HloSharding>& tuple_elements() { return tuple_elements_; }
   const std::vector<HloSharding>& tuple_elements() const {
     return tuple_elements_;
   }
@@ -259,6 +261,19 @@ class HloSharding {
   bool replicated_;
   bool maximal_;
   bool tuple_;
+  // This field is only used if replicated_ is false. If maximal_ is true, then
+  // the field contains a rank 1 array with a single element, which is the
+  // device the HLO is assigned to. If maximal_ is false, the field contains an
+  // array with the same rank as the corresponding HLO. The dimension sizes of
+  // the array describe the number of ways the HLO is partitioned along each
+  // dimension. The values of the array specify which device each tile of
+  // the HLO is assigned to. The index of each value determines which tile it
+  // takes.
+  // For example, {{{2, 3}}, {{5, 7}}} (whose ToString representation is
+  // "{devices=[2,1,2]2,3,5,7}"), means that dimension 1 is split two way and
+  // dimension 3 is split 2 way. Core 5, whose index is [2,1,1] will take the
+  // tile that contains the 2nd half of dimension 1 and the 1st half of
+  // dimension 3.
   Array<int64> tile_assignment_;
   // Only non-empty when tuple_ is true. If a tuple is empty then one entry is
   // present for the root. This is a flattened list of all the leaf shardings in

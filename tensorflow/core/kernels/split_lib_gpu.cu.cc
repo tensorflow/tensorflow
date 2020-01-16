@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
 
-#include "tensorflow/core/kernels/split_lib.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/cuda_device_array_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/gpu_device_array_gpu.h"
+#include "tensorflow/core/kernels/split_lib.h"
+#include "tensorflow/core/kernels/split_lib_gpu.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -56,6 +56,8 @@ TF_CALL_complex64(DEFINE_GPU_KERNELS);
 TF_CALL_complex128(DEFINE_GPU_KERNELS);
 TF_CALL_int64(DEFINE_GPU_KERNELS);
 TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
+TF_CALL_uint8(DEFINE_GPU_KERNELS);
+TF_CALL_bool(DEFINE_GPU_KERNELS);
 
 #undef DEFINE_GPU_KERNELS
 #define DEFINE_GPU_KERNELS(T) template struct SplitCustom<Eigen::GpuDevice, T>;
@@ -72,11 +74,12 @@ TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 namespace {
 
 template <typename T>
-__global__ void SplitOpKernel(const T* input, int32 prefix_dim_size,
-                              int32 split_dim_size, int32 suffix_dim_size,
-                              CudaDeviceArrayStruct<T*> output_ptr_data) {
+__global__ void SplitOpKernel(const T* __restrict__ input,
+                              int32 prefix_dim_size, int32 split_dim_size,
+                              int32 suffix_dim_size,
+                              GpuDeviceArrayStruct<T*> output_ptr_data) {
   const int32 num_split = output_ptr_data.size;
-  T** output_ptrs = GetCudaDeviceArrayOnDevice(&output_ptr_data);
+  T** output_ptrs = GetGpuDeviceArrayOnDevice(&output_ptr_data);
 
   eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
@@ -85,7 +88,7 @@ __global__ void SplitOpKernel(const T* input, int32 prefix_dim_size,
   int32 size = prefix_dim_size * split_dim_size * suffix_dim_size;
   int32 piece_size = split_dim_size / num_split;
 
-  CUDA_1D_KERNEL_LOOP(offset, size) {
+  GPU_1D_KERNEL_LOOP(offset, size) {
     // Calculate the index into input from offset.
     int32 i = offset / (split_dim_size * suffix_dim_size);
     int32 j = (offset % (split_dim_size * suffix_dim_size)) / suffix_dim_size;
@@ -110,19 +113,19 @@ __global__ void SplitOpKernel(const T* input, int32 prefix_dim_size,
 // very similar to the concat kernel except the input/output logic
 // is reversed
 template <typename T, typename IntType, bool useSmem>
-__global__ void split_v_kernel(const T* input_ptr,
-                               CudaDeviceArrayStruct<IntType> output_scan,
+__global__ void split_v_kernel(const T* __restrict__ input_ptr,
+                               GpuDeviceArrayStruct<IntType> output_scan,
                                IntType total_rows, IntType total_cols,
-                               CudaDeviceArrayStruct<T*> output_ptr_data) {
-  T** output_ptrs = GetCudaDeviceArrayOnDevice(&output_ptr_data);
-  IntType* col_scan = GetCudaDeviceArrayOnDevice(&output_scan);
+                               GpuDeviceArrayStruct<T*> output_ptr_data) {
+  T** output_ptrs = GetGpuDeviceArrayOnDevice(&output_ptr_data);
+  IntType* col_scan = GetGpuDeviceArrayOnDevice(&output_scan);
 
   // do upper_bound on col to find which pointer we should be using
   IntType gidx = blockIdx.x * blockDim.x + threadIdx.x;
   int num_outputs = output_ptr_data.size;
 
   // verbose declaration needed due to template
-  extern __shared__ __align__(sizeof(T)) unsigned char smem[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, smem);
   IntType* smem_col_scan = reinterpret_cast<IntType*>(smem);
 
   if (useSmem) {
@@ -142,7 +145,7 @@ __global__ void split_v_kernel(const T* input_ptr,
   // works well when there are many small segments and when the
   // segments are much longer
   IntType segment =
-      cuda_helper::upper_bound<IntType>(col_scan, num_outputs, gidx) - 1;
+      gpu_helper::upper_bound<IntType>(col_scan, num_outputs, gidx) - 1;
 
   IntType curr_offset = col_scan[segment];
   IntType curr_segment = segment;
@@ -167,11 +170,12 @@ __global__ void split_v_kernel(const T* input_ptr,
 // different from the original split implementation due to 2D vs 3D
 // dimensions.  This version is likely faster due to less integer math.
 template <typename T>
-__global__ void SplitVOpKernel_fixed(
-    const T* input, int32 prefix_dim_size, int32 suffix_dim_size,
-    CudaDeviceArrayStruct<T*> output_ptr_data) {
+__global__ void SplitVOpKernel_fixed(const T* __restrict__ input,
+                                     int32 prefix_dim_size,
+                                     int32 suffix_dim_size,
+                                     GpuDeviceArrayStruct<T*> output_ptr_data) {
   const int32 num_split = output_ptr_data.size;
-  T** output_ptrs = GetCudaDeviceArrayOnDevice(&output_ptr_data);
+  T** output_ptrs = GetGpuDeviceArrayOnDevice(&output_ptr_data);
 
   eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
@@ -179,7 +183,7 @@ __global__ void SplitVOpKernel_fixed(
   int32 size = prefix_dim_size * suffix_dim_size;
   int32 piece_size = suffix_dim_size / num_split;
 
-  CUDA_1D_KERNEL_LOOP(offset, size) {
+  GPU_1D_KERNEL_LOOP(offset, size) {
     // Calculate the index into input from offset.
     int32 i = offset / suffix_dim_size;
     int32 j = offset % suffix_dim_size;
@@ -192,54 +196,54 @@ __global__ void SplitVOpKernel_fixed(
 }
 
 template <typename T>
-struct SplitOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
-           int32 split_dim_size, int32 suffix_dim_size,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data) {
-    CudaLaunchConfig config = GetCudaLaunchConfig(
-        prefix_dim_size * split_dim_size * suffix_dim_size, d);
+void SplitOpGPULaunch<T>::Run(const Eigen::GpuDevice& d, const T* input,
+                              int32 prefix_dim_size, int32 split_dim_size,
+                              int32 suffix_dim_size,
+                              const GpuDeviceArrayStruct<T*>& output_ptr_data) {
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(prefix_dim_size * split_dim_size * suffix_dim_size, d);
 
-    SplitOpKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            input, prefix_dim_size, split_dim_size, suffix_dim_size,
-            output_ptr_data);
-  }
-};
+  TF_CHECK_OK(GpuLaunchKernel(SplitOpKernel<T>, config.block_count,
+                              config.thread_per_block, 0, d.stream(), input,
+                              prefix_dim_size, split_dim_size, suffix_dim_size,
+                              output_ptr_data));
+}
 
 template <typename T, typename IntType>
-struct SplitVOpGPULaunch {
-  void Run(const Eigen::GpuDevice& gpu_device, bool fixed_size,
-           const T* input_ptr, int total_rows, int total_cols,
-           const CudaDeviceArrayStruct<IntType>& output_scan,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data) {
-    if (fixed_size) {
-      CudaLaunchConfig config =
-          GetCudaLaunchConfig(total_rows * total_cols, gpu_device);
+void SplitVOpGPULaunch<T, IntType>::Run(
+    const Eigen::GpuDevice& gpu_device, bool fixed_size, const T* input_ptr,
+    int total_rows, int total_cols,
+    const GpuDeviceArrayStruct<IntType>& output_scan,
+    const GpuDeviceArrayStruct<T*>& output_ptr_data) {
+  if (fixed_size) {
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(total_rows * total_cols, gpu_device);
 
-      SplitVOpKernel_fixed<T><<<config.block_count, config.thread_per_block, 0,
-                                gpu_device.stream()>>>(
-          input_ptr, total_rows, total_cols, output_ptr_data);
+    TF_CHECK_OK(GpuLaunchKernel(SplitVOpKernel_fixed<T>, config.block_count,
+                                config.thread_per_block, 0, gpu_device.stream(),
+                                input_ptr, total_rows, total_cols,
+                                output_ptr_data));
+  } else {
+    auto config = GetGpu2DLaunchConfig(total_cols, total_rows, gpu_device);
+    IntType smem_max = gpu_device.sharedMemPerBlock();
+    IntType smem_usage = output_scan.size * sizeof(IntType);
+    // performance crossover is less than using maximum available shared
+    // memory on most processors possibly due to decreasing occupancy
+    // 4096 inputs is a lot, most code will take the smem path
+    const int32 kMaxSmemBytesPerformance = 16384;
+    if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
+      TF_CHECK_OK(GpuLaunchKernel(
+          split_v_kernel<T, IntType, true>, config.block_count,
+          config.thread_per_block, smem_usage, gpu_device.stream(), input_ptr,
+          output_scan, total_rows, total_cols, output_ptr_data));
     } else {
-      auto config = GetCuda2DLaunchConfig(total_cols, total_rows, gpu_device);
-      IntType smem_max = gpu_device.sharedMemPerBlock();
-      IntType smem_usage = output_scan.size * sizeof(IntType);
-      // performance crossover is less than using maximum available shared
-      // memory on most processors possibly due to decreasing occupancy
-      // 4096 inputs is a lot, most code will take the smem path
-      const int32 kMaxSmemBytesPerformance = 16384;
-      if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance)
-        split_v_kernel<T, IntType, true>
-            <<<config.block_count, config.thread_per_block, smem_usage,
-               gpu_device.stream()>>>(input_ptr, output_scan, total_rows,
-                                      total_cols, output_ptr_data);
-      else
-        split_v_kernel<T, IntType, false>
-            <<<config.block_count, config.thread_per_block, 0,
-               gpu_device.stream()>>>(input_ptr, output_scan, total_rows,
-                                      total_cols, output_ptr_data);
+      TF_CHECK_OK(GpuLaunchKernel(
+          split_v_kernel<T, IntType, false>, config.block_count,
+          config.thread_per_block, 0, gpu_device.stream(), input_ptr,
+          output_scan, total_rows, total_cols, output_ptr_data));
     }
   }
-};
+}
 
 #define REGISTER_GPU_KERNEL(T) template struct SplitOpGPULaunch<T>;
 
@@ -260,4 +264,4 @@ TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -33,6 +33,10 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
 
 
+class CallerMustSetThis(object):
+  pass
+
+
 class Symbol(collections.namedtuple('Symbol', ['name'])):
   """Represents a Python symbol."""
 
@@ -98,6 +102,9 @@ class QN(object):
 
   def is_symbol(self):
     return isinstance(self.qn[0], str)
+
+  def is_simple(self):
+    return len(self.qn) <= 1
 
   def is_composite(self):
     return len(self.qn) > 1
@@ -185,20 +192,25 @@ class QN(object):
     return ssf_string + ssfs[-1]
 
   def ast(self):
+    """AST representation."""
     # The caller must adjust the context appropriately.
     if self.has_subscript():
-      return gast.Subscript(self.parent.ast(), gast.Index(self.qn[-1].ast()),
-                            None)
+      return gast.Subscript(
+          value=self.parent.ast(),
+          slice=gast.Index(self.qn[-1].ast()),
+          ctx=CallerMustSetThis)
     if self.has_attr():
-      return gast.Attribute(self.parent.ast(), self.qn[-1], None)
+      return gast.Attribute(
+          value=self.parent.ast(), attr=self.qn[-1], ctx=CallerMustSetThis)
 
     base = self.qn[0]
     if isinstance(base, str):
-      return gast.Name(base, None, None)
+      return gast.Name(
+          base, ctx=CallerMustSetThis, annotation=None, type_comment=None)
     elif isinstance(base, StringLiteral):
-      return gast.Str(base.value)
+      return gast.Constant(base.value, kind=None)
     elif isinstance(base, NumberLiteral):
-      return gast.Num(base.value)
+      return gast.Constant(base.value, kind=None)
     else:
       assert False, ('the constructor should prevent types other than '
                      'str, StringLiteral and NumberLiteral')
@@ -230,10 +242,8 @@ class QnResolver(gast.NodeTransformer):
       # TODO(mdan): Support range and multi-dimensional indices.
       # Continuing silently because some demos use these.
       return node
-    if isinstance(s.value, gast.Num):
-      subscript = QN(NumberLiteral(s.value.n))
-    elif isinstance(s.value, gast.Str):
-      subscript = QN(StringLiteral(s.value.s))
+    if isinstance(s.value, gast.Constant):
+      subscript = QN(NumberLiteral(s.value.value))
     else:
       # The index may be an expression, case in which a name doesn't make sense.
       if anno.hasanno(node.slice.value, anno.Basic.QN):

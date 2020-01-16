@@ -13,11 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
+
+namespace {
+
+class NoOp : public OpKernel {
+ public:
+  explicit NoOp(OpKernelConstruction* context) : OpKernel(context) {}
+  void Compute(OpKernelContext* context) override {}
+  bool IsExpensive() override { return false; }
+};
+
+}  // namespace
 
 // XLA_* devices also register a "real" NoOp operator so we suppress the
 // dummy operator using CompilationOnly().

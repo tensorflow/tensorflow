@@ -12,1063 +12,92 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/parallel_interleave_dataset_op.h"
+
 #include <atomic>
 #include <deque>
+#include <memory>
 #include <utility>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace data {
-namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
- public:
-  explicit ParallelInterleaveDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &interleave_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-  }
-
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override {
-    int64 cycle_length = 0;
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument(ctx, "cycle_length", &cycle_length));
-    OP_REQUIRES(ctx, cycle_length > 0,
-                errors::InvalidArgument("`cycle_length` must be > 0"));
-
-    int64 block_length = 0;
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument(ctx, "block_length", &block_length));
-    OP_REQUIRES(ctx, block_length > 0,
-                errors::InvalidArgument("`block_length` must be > 0"));
-
-    bool sloppy = false;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "sloppy", &sloppy));
-
-    int64 buffer_output_elements = 0;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "buffer_output_elements",
-                                            &buffer_output_elements));
-    OP_REQUIRES(
-        ctx, buffer_output_elements > 0,
-        errors::InvalidArgument("`buffer_output_elements` must be > 0"));
-
-    int64 prefetch_input_elements = 0;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "prefetch_input_elements",
-                                            &prefetch_input_elements));
-    OP_REQUIRES(
-        ctx, prefetch_input_elements >= 0,
-        errors::InvalidArgument("`prefetch_input_elements` must be >= 0"));
-
-    std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
-                                      &captured_func));
-
-    *output =
-        new Dataset(ctx, input, interleave_func_, std::move(captured_func),
-                    cycle_length, block_length, sloppy, buffer_output_elements,
-                    prefetch_input_elements, output_types_, output_shapes_);
-  }
-
- private:
-  class Dataset : public DatasetBase {
-   public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
-            std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
-            int64 block_length, bool sloppy, int64 buffer_output_elements,
-            int64 prefetch_input_elements, const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes)
-        : DatasetBase(DatasetContext(ctx)),
-          input_(input),
-          interleave_func_(func),
-          captured_func_(std::move(captured_func)),
-          cycle_length_(cycle_length),
-          block_length_(block_length),
-          sloppy_(sloppy),
-          buffer_output_elements_(buffer_output_elements),
-          prefetch_input_elements_(prefetch_input_elements),
-          output_types_(output_types),
-          output_shapes_(output_shapes) {
-      input_->Ref();
-    }
-
-    ~Dataset() override { input_->Unref(); }
-
-    std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::ParallelInterleave")}));
-    }
-
-    const DataTypeVector& output_dtypes() const override {
-      return output_types_;
-    }
-
-    const std::vector<PartialTensorShape>& output_shapes() const override {
-      return output_shapes_;
-    }
-
-    string DebugString() const override {
-      return "ParallelInterleaveDatasetOp::Dataset";
-    }
-
-   protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, interleave_func_.name()));
-      Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
-      Node* cycle_length_node;
-      TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
-      Node* block_length_node;
-      TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
-      Node* sloppy_node;
-      TF_RETURN_IF_ERROR(b->AddScalar(sloppy_, &sloppy_node));
-      Node* buffer_output_elements_node;
-      TF_RETURN_IF_ERROR(
-          b->AddScalar(buffer_output_elements_, &buffer_output_elements_node));
-      Node* prefetch_input_elements_node;
-      TF_RETURN_IF_ERROR(b->AddScalar(prefetch_input_elements_,
-                                      &prefetch_input_elements_node));
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
-      std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
-      AttrValue f;
-      b->BuildAttrValue(interleave_func_, &f);
-      AttrValue other_arguments_types_attr;
-      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
-
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this,
-          {{0, input_node},
-           {2, cycle_length_node},
-           {3, block_length_node},
-           {4, sloppy_node},
-           {5, buffer_output_elements_node},
-           {6, prefetch_input_elements_node}},
-          {{1, other_arguments}},
-          {{"f", f}, {"Targuments", other_arguments_types_attr}}, output));
-      return Status::OK();
-    }
-
-   private:
-    int64 num_threads() const {
-      return cycle_length_ + prefetch_input_elements_;
-    }
-
-    // Parallel interleave's implementation is designed around a few principles:
-    //  1. Thread creation is relatively expensive. (Not reusing
-    //     threads causes a number of indirect costs such as poorer tcmalloc
-    //     performance due to thread-local caches, etc.) We allocate a fixed
-    //     number of threads at the start and never change. This is why we've
-    //     fused functionality that is theoretically orthogonal (i.e.
-    //     .prefetch()) into the implementation.
-    //  2. Drop-in replacement for standard interleave. The goal will be to
-    //     auto-opt people into an optimized implementation without any work
-    //     on the customer's part. We thus go through great pains to maintain
-    //     identical iteration orders, full determinism (disabled only via a
-    //     flag, etc.)
-    //  3. Performance across a variety of environments and I/O envelopes.
-    //
-    // The actual implementation centers around a collection of worker threads
-    // and their corresponding worker state (tracked in the `workers_` vector).
-    // Worker threads repeatedly receive a vector of Tensors that are used as
-    // input to the flat-map function (`captured_func_`). The output of this
-    // function must be a dataset. The worker thread then repeatedly calls
-    // `GetNext()`, maintaining a buffer of elements to minimize the likelihood
-    // that a caller will block waiting for an element to be produced.
-    //
-    // Pointers to these worker states are kept in 2 disjoint data structures:
-    //  1. `interleave_indices_` is a vector containing indices of WorkerStates
-    //     in `workers_` that we are interleaving. Worker threads backing these
-    //     WorkerStates should be regularly producing values.
-    //  2. `staging_indices_` is a deque containing indices of WorkerStates in
-    //     `workers_` that we will move to `interleave_indices_` when an
-    //     iterator in `interleave_indices_` is exhausted.
-    //
-    // The client calls `GetNext[Internal]()` to retrieve an output element. The
-    // internal implementation updates the state of `interleave_indices_` and
-    // `staging_indices_` as output iterators (run by the worker threads) are
-    // exhausted.
-    //
-    // `input_impl_` is the input iterator that generates arguments for the
-    // flat-map function (`captured_func_`). It is set to an iterator at
-    // Iterator construction, and is fixed until we consume all input elements.
-    // Once it is exhausted, we reset the unique_ptr to eagerly deallocate
-    // memory.
-    //
-    // A few invariants are maintained:
-    //  1. No element in interleave_indices_ should be a -1 unless
-    //     `staging_indices_` is empty and `input_impl_` is empty.
-    //  2. Every `worker_` element is pointed to by at most one element of the
-    //     union of `interleave_indices_` and `staging_indices_`.
-    //  3. Unless `input_impl_` is empty, every `worker_` must be pointed to by
-    //     an element in `interleave_indices_` or `staging_indices_`.
-    class Iterator : public DatasetIterator<Dataset> {
-     public:
-      explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            workers_(dataset()->num_threads()),
-            worker_thread_states_(dataset()->num_threads()) {}
-
-      ~Iterator() override {
-        mutex_lock l(mu_);
-        cancelled_ = true;
-        // Notify all workers in case they are blocked.
-        for (auto& worker : workers_) {
-          worker.cond_var.notify_all();
-        }
-      }
-
-      Status Initialize(IteratorContext* ctx) override {
-        AddConstantParameter(ctx, "parallelism", dataset()->cycle_length_);
-        TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
-      }
-
-      // It is implemented so that it matches the deterministic interleave
-      // unless getting the next element would block and we are allowed to be
-      // sloppy.
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(EnsureWorkerThreadsStarted(ctx));
-        while (!cancelled_) {
-          // Wait for an item to become available, blocking if necessary. If we
-          // are allowed to be sloppy, we can skip over input datasets that do
-          // not have an item readily available.
-          bool can_produce_elements = false;
-          bool must_wait_for_input = true;
-          for (int64 i = 0; i < interleave_indices_.size(); ++i) {
-            int64 index = (next_index_ + i) % interleave_indices_.size();
-            int64 current_worker_index = interleave_indices_[index];
-            if (current_worker_index < 0) {
-              continue;  // Empty interleave elements.
-            }
-            WorkerState* current_worker = &workers_[current_worker_index];
-            can_produce_elements |= current_worker->MayHaveElements();
-            if (!current_worker->outputs.empty()) {
-              // We have an element!
-              next_index_ = index;
-              const bool element_acquired_sloppily =
-                  dataset()->sloppy_ && i > 1;
-              if (!element_acquired_sloppily) {
-                // If the element was acquired in the regular (non-sloppy)
-                // order, then advance the current block and cycle pointers to
-                // the next element in the regular order.
-                block_count_++;
-                if (block_count_ == dataset()->block_length_) {
-                  next_index_ = (index + 1) % interleave_indices_.size();
-                  block_count_ = 0;
-                }
-              } else {
-                block_count_ = 0;
-              }
-              *end_of_sequence = false;
-              Status s = current_worker->outputs.front().status;
-              current_worker->outputs.front().output.swap(*out_tensors);
-              current_worker->outputs.pop_front();
-              current_worker->cond_var.notify_one();
-              return s;
-            } else if (current_worker->is_producing && !dataset()->sloppy_) {
-              // current_worker.outputs.empty(), and we must wait for this
-              // iterator.
-              if (next_index_ != index) {
-                // We have advanced to a new iterator; reset block counts.
-                next_index_ = index;
-                block_count_ = 0;
-              }
-              break;
-            } else if (!current_worker->is_producing) {
-              // This iterator has reached end of input.
-              interleave_indices_[index] = -1;
-              if (input_impl_) {
-                // Start prefetching a new iterator.
-                std::vector<Tensor> args;
-                bool end_of_input = false;
-                Status s = input_impl_->GetNext(ctx, &args, &end_of_input);
-                if (end_of_input) {
-                  input_impl_.reset();
-                } else {
-                  current_worker->SetInputs(s, std::move(args));
-                  staging_indices_.emplace_back(current_worker_index);
-                }
-              }
-
-              if (!staging_indices_.empty()) {
-                // Move a worker from `staging_indices_` to
-                // `interleave_indices_`.
-                interleave_indices_[index] = staging_indices_.front();
-                staging_indices_.pop_front();
-
-                next_index_ = (index + 1) % interleave_indices_.size();
-                block_count_ = 0;
-                // Restart the inner [for] loop
-                can_produce_elements = true;
-                must_wait_for_input = false;
-                break;
-              }
-            }
-          }
-
-          if (!can_produce_elements && !input_impl_) {
-            // No potential for future values.
-            *end_of_sequence = true;
-            return Status::OK();
-          }
-
-          if (must_wait_for_input) {
-            // Wait for elements to become available.
-            RecordStop(ctx);
-            if (dataset()->sloppy_) {
-              sloppy_cond_var_.wait(l);
-            } else {
-              workers_[interleave_indices_[next_index_]].cond_var.wait(l);
-            }
-            RecordStart(ctx);
-          }
-        }
-        return errors::Cancelled(
-            "ParallelInterleaveDatasetOp::Dataset::Iterator::GetNext");
-      }
-
-     protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        // The order of locking is important here to avoid deadlock.
-        mutex_lock l(mu_);
-        mutex_lock ckpt_l(ckpt_mu_);
-        if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
-        } else {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("input_exhausted"), ""));
-        }
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("next_index"), next_index_));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("block_count"), block_count_));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("workers_size"), workers_.size()));
-        for (int i = 0; i < workers_.size(); ++i) {
-          TF_RETURN_IF_ERROR(WriteWorkerStateLocked(writer, i));
-        }
-        for (int i = 0; i < worker_thread_states_.size(); ++i) {
-          TF_RETURN_IF_ERROR(WriteWorkerThreadStateLocked(writer, i));
-        }
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("interleave_size"),
-                                               interleave_indices_.size()));
-        for (int i = 0; i < interleave_indices_.size(); ++i) {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat("interleave_indices_", i)),
-              interleave_indices_[i]));
-        }
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("staging_size"),
-                                               staging_indices_.size()));
-        for (int i = 0; i < staging_indices_.size(); ++i) {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat("staging_indices_", i)),
-              staging_indices_[i]));
-        }
-        if (!worker_threads_.empty()) {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("worker_threads_running"), ""));
-        }
-        return Status::OK();
-      }
-
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
-        // The order of locking is important here to avoid deadlock.
-        mutex_lock l(mu_);
-        mutex_lock ckpt_l(ckpt_mu_);
-        if (!reader->Contains(full_name("input_exhausted"))) {
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        } else {
-          input_impl_.reset();
-        }
-        int64 temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("next_index"), &temp));
-        next_index_ = size_t(temp);
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("block_count"), &temp));
-        block_count_ = size_t(temp);
-
-        // Restore WorkerStates.
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("workers_size"), &temp));
-        if (temp != dataset()->num_threads()) {
-          return errors::Internal("Expected ", dataset()->num_threads(),
-                                  " worker states but found ", temp, ".");
-        }
-        for (size_t i = 0; i < dataset()->num_threads(); ++i) {
-          TF_RETURN_IF_ERROR(ReadWorkerStateLocked(reader, i, ctx));
-        }
-        for (size_t i = 0; i < dataset()->num_threads(); ++i) {
-          TF_RETURN_IF_ERROR(ReadWorkerThreadStateLocked(reader, i, ctx));
-        }
-
-        // Restore `interleave_indices_`.
-        std::set<int64> all_indices;
-        {
-          int64 interleave_size;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("interleave_size"),
-                                                &interleave_size));
-          interleave_indices_.reserve(interleave_size);
-          for (int64 i = 0; i < interleave_size; ++i) {
-            int64 temp;
-            TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("interleave_indices_", i)), &temp));
-            if (temp >= 0 && all_indices.find(temp) != all_indices.end()) {
-              return errors::Internal(
-                  "Duplicate entry for ", temp,
-                  " found when reading interleave and staging indices.");
-            }
-            if (temp >= 0) {
-              all_indices.insert(temp);
-            }
-            interleave_indices_.emplace_back(temp);
-          }
-        }
-
-        // Restore `staging_indices_`.
-        {
-          int64 staging_size;
-          TF_RETURN_IF_ERROR(
-              reader->ReadScalar(full_name("staging_size"), &staging_size));
-          for (int i = 0; i < staging_size; ++i) {
-            int64 temp;
-            TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("staging_indices_", i)), &temp));
-            if (all_indices.find(temp) != all_indices.end()) {
-              return errors::Internal(
-                  "Duplicate entry for ", temp,
-                  " found when reading interleave and staging indices.");
-            }
-            if (temp >= 0) {
-              all_indices.insert(temp);
-            }
-            staging_indices_.emplace_back(temp);
-          }
-        }
-
-        // Start Worker threads.
-        if (reader->Contains(full_name("worker_threads_running"))) {
-          worker_threads_.reserve(dataset()->num_threads());
-          for (size_t i = 0; i < dataset()->num_threads(); ++i) {
-            std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-            worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, "worker_thread",
-                [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
-          }
-        }
-        return Status::OK();
-      }
-
-     private:
-      // OutputElem contains the information from a call to GetNext by an output
-      // iterator.
-      struct OutputElem {
-        // The output iterator sets `status` if getting the output element
-        // fails.
-        Status status;
-        // The buffered data element.
-        std::vector<Tensor> output;
-
-        explicit OutputElem(const Status& s) : status(s) {}
-      };
-
-      // Worker threads operate on their relevant WorkerState structs.
-      //
-      // WorkerState's fields are all protected by mu_;
-      struct WorkerState {
-        // The arguments to be used to construct an output iterator.
-        std::vector<Tensor> input;
-        // The buffered output elements.
-        std::deque<OutputElem> outputs;
-        // Set to true iff the worker thread expects to append more elements to
-        // outputs. is_producing can be false despite !outputs.empty().
-        // Concretely, all output elements will have been consumed only when:
-        // is_producing == false && outputs.empty();
-        bool is_producing = false;
-        // Condition variable used to coordinate between threads. The worker
-        // thread waits on this condition variable when it is either (1) waiting
-        // for the main thread to add arguments to `input`, or (2) waiting for
-        // the main thread to consume an element of `outputs`. The main thread
-        // waits on cond_var if it is waiting for the worker thread to produce
-        // an element into `outputs` (this implies sloppy_==false).
-        condition_variable cond_var;
-
-        inline bool MayHaveElements() const {
-          return is_producing || !outputs.empty();
-        }
-
-        // Sets inputs for a worker thread and notifies it to start processing.
-        void SetInputs(const Status& s, std::vector<Tensor> input_arguments) {
-          if (s.ok()) {
-            DCHECK(!MayHaveElements())
-                << "Tried to start inputs, despite already producing!";
-            input = std::move(input_arguments);
-            is_producing = true;
-            cond_var.notify_one();
-          } else {
-            outputs.emplace_back(s);
-          }
-        }
-      };
-
-      // The internal state of a worker thread that is not already captured
-      // in its `WorkerState`.
-      //
-      // This is needed only for checkpointing purposes. We keep this
-      // separate from `WorkerState` and guard its fields using a separate
-      // lock `ckpt_mu_` so as to not affect the performance of main pipeline.
-      struct WorkerThreadState {
-        // The output element that has been produced from the input iterator
-        // and is waiting to be added to `WorkerState.outputs`.
-        OutputElem output_elem;
-
-        // Whether the input iterator returned an `end_of_sequence`.
-        bool end_of_sequence = false;
-
-        // Status returned from `MakeIteratorFromInputElement`.
-        Status iterator_creation_status;
-
-        // The arguments to be used to construct `iterator`.
-        std::vector<Tensor> input;
-
-        std::unique_ptr<IteratorBase> iterator;
-
-        WorkerThreadState() : output_elem(Status::OK()) {}
-      };
-
-      Status EnsureWorkerThreadsStarted(IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (worker_threads_.empty()) {
-          worker_threads_.reserve(dataset()->num_threads());
-          for (int64 i = 0; i < dataset()->num_threads(); ++i) {
-            std::vector<Tensor> args;
-            bool end_of_input = false;
-            Status s = input_impl_->GetNext(ctx, &args, &end_of_input);
-            if (end_of_input) {
-              input_impl_.reset();
-              return Status::OK();
-            }
-            workers_[i].SetInputs(s, std::move(args));
-            std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-            worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, "worker_thread",
-                [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
-            if (i < dataset()->cycle_length_) {
-              interleave_indices_.push_back(i);
-            } else {
-              staging_indices_.push_back(i);
-            }
-          }
-          DCHECK(interleave_indices_.size() == dataset()->cycle_length_);
-          DCHECK(staging_indices_.size() ==
-                 dataset()->prefetch_input_elements_);
-        }
-        return Status::OK();
-      }
-
-      // Produces elements into the worker's output buffers.
-      void WorkerThread(const std::shared_ptr<IteratorContext>& ctx,
-                        const int64 thread_index) {
-        // Notes on checkpointing thread local state, i.e., `WorkerThreadState`:
-        //
-        // 1. Any local state that may need to be checkpointed should be kept
-        //    in `worker_thread_states_[thread_index]`.
-        // 2. `WorkerThreadState` should contain state that is needed only for
-        //    checkpointing, i.e., if we were to remove checkpointing support,
-        //    we could keep that state as local variables in this thread.
-        // 3. This thread should only read/write state at `thread_index`
-        //    and should not access other thread states.
-        // 4. When restoring from checkpoint, threads are started only after
-        //    the restore is complete.
-        // 5. Once restored from a checkpoint, the local state is edited only
-        //    by this thread. 3 & 4 allow making assumptions like temporarily
-        //    caching local state in this thread and using it outside a lock
-        //    e.g. `make_new_iterator`.
-        // 6. `ckpt_mu_` should be wisely used to create *consistent*
-        //    checkpoint markers.
-
-        // std::function arguments are copy-constructable, so we pass raw
-        // pointers, and then immediately wrap them to ensure correct ownership.
-        RecordStart(ctx.get());
-        auto cleanup = gtl::MakeCleanup([this, thread_index, ctx] {
-          mutex_lock l(mu_);
-          workers_[thread_index].cond_var.notify_all();
-          RecordStop(ctx.get());
-        });
-        bool make_new_iterator;
-        {
-          tf_shared_lock l(ckpt_mu_);
-          // Decide whether a new iterator should be built.
-          // 1. If there is an existing iterator, we use it.
-          // 2. If there was an error in iterator creation that could not be
-          //    notified to the client we attempt to send that to the client
-          //    first.
-          make_new_iterator =
-              worker_thread_states_[thread_index].iterator == nullptr &&
-              worker_thread_states_[thread_index].iterator_creation_status.ok();
-        }
-        // Even though `make_new_iterator` has cached values from
-        // `worker_thread_states_[thread_index]` which is guarded by ckpt_mu_,
-        // it is safe to *read* `make_new_iterator`outside of a lock without
-        // worrying about concurrent changes to values in
-        // `worker_thread_states_[thread_index]`. See comment at the start of
-        // this function for details.
-        while (true) {
-          // Whether creation of the iterator succeeded.
-          Status iterator_creation_status;
-          // 1. Build a new iterator or use the existing one.
-          if (make_new_iterator) {
-            // 1a. Get new input tensors or use the exiting ones.
-            bool read_new_input;
-            {
-              tf_shared_lock l(ckpt_mu_);
-              // worker_thread_states_[thread_index].input will be non-empty
-              // if checkpointing happened at CHECKPOINT_MARKER_A.
-              read_new_input =
-                  worker_thread_states_[thread_index].input.empty();
-            }
-
-            if (read_new_input) {
-              mutex_lock l(mu_);
-              while (!cancelled_ && !workers_[thread_index].is_producing) {
-                RecordStop(ctx.get());
-                workers_[thread_index].cond_var.wait(l);
-                RecordStart(ctx.get());
-              }
-              if (cancelled_) return;
-              // Copy the input tensors so that we do not need to block on `mu_`
-              // when building the iterator.
-              // We keep a copy of the input tensors in
-              // `WorkerThreadState.input` till the iterator is in use. This is
-              // used in `RestoreInternal` to re-build the iterator.
-              // TODO(b/78046638): Explore ways to avoid tracking the input
-              // tensors.
-              tf_shared_lock ckpt_l(ckpt_mu_);
-              worker_thread_states_[thread_index].input.swap(
-                  workers_[thread_index].input);
-              // CHECKPOINT_MARKER_A
-              // We have the input tensors but have not built the iterator yet.
-            }
-
-            // 1b. Run the user defined function to produce a new iterator.
-            {
-              tf_shared_lock l(ckpt_mu_);
-              worker_thread_states_[thread_index].iterator_creation_status =
-                  MakeIteratorFromInputElement(
-                      ctx.get(), worker_thread_states_[thread_index].input,
-                      thread_index, dataset()->captured_func_.get(), prefix(),
-                      &worker_thread_states_[thread_index].iterator);
-              iterator_creation_status =
-                  worker_thread_states_[thread_index].iterator_creation_status;
-              if (!iterator_creation_status.ok()) {
-                worker_thread_states_[thread_index].input.clear();
-              }
-              // CHECKPOINT_MARKER_B
-              // Either an iterator has been successfully built and placed in
-              // `worker_thread_states_[thread_index].iterator` or it failed and
-              // a non-OK status has been put in
-              // `worker_thread_states_[thread_index].iterator_creation_status`.
-            }
-          } else {
-            tf_shared_lock l(ckpt_mu_);
-            iterator_creation_status =
-                worker_thread_states_[thread_index].iterator_creation_status;
-            // Mark that we have used up the restored iterator.
-            make_new_iterator = true;
-          }
-          // 2. Start producing elements or send error state to client if
-          //    iterator creation failed.
-          if (!iterator_creation_status.ok()) {
-            mutex_lock l(mu_);
-            // Wait for space in the prefetch queue.
-            while (!cancelled_ && workers_[thread_index].outputs.size() ==
-                                      dataset()->buffer_output_elements_) {
-              RecordStop(ctx.get());
-              workers_[thread_index].cond_var.wait(l);
-              RecordStart(ctx.get());
-            }
-            if (cancelled_) return;
-            tf_shared_lock ckpt_l(ckpt_mu_);
-            workers_[thread_index].outputs.emplace_back(
-                iterator_creation_status);
-            workers_[thread_index].is_producing = false;
-            worker_thread_states_[thread_index].iterator_creation_status =
-                Status::OK();
-            // CHECKPOINT_MARKER_C
-            // Non-OK iterator creation status has been notified to the
-            // client.
-            workers_[thread_index].cond_var.notify_one();
-          } else {
-            bool end_of_sequence = false;
-            while (!end_of_sequence) {
-              // 3.a Produce an element!
-              {
-                tf_shared_lock ckpt_l(ckpt_mu_);
-                if (worker_thread_states_[thread_index]
-                        .output_elem.status.ok() &&
-                    worker_thread_states_[thread_index]
-                        .output_elem.output.empty() &&
-                    !worker_thread_states_[thread_index].end_of_sequence) {
-                  worker_thread_states_[thread_index].output_elem.status =
-                      worker_thread_states_[thread_index].iterator->GetNext(
-                          ctx.get(),
-                          &worker_thread_states_[thread_index]
-                               .output_elem.output,
-                          &worker_thread_states_[thread_index].end_of_sequence);
-                  end_of_sequence =
-                      worker_thread_states_[thread_index].end_of_sequence;
-                } else {
-                  end_of_sequence =
-                      worker_thread_states_[thread_index].end_of_sequence;
-                }
-                // CHECKPOINT_MARKER_D
-                // An element has been read or an error or end_of_sequence has
-                // been received from the input iterator and is waiting to be
-                // sent to client.
-              }
-
-              // 3.b Make it available to the client.
-              {
-                mutex_lock l(mu_);
-
-                // Wait for space in the prefetch queue.
-                while (!cancelled_ && workers_[thread_index].outputs.size() ==
-                                          dataset()->buffer_output_elements_) {
-                  RecordStop(ctx.get());
-                  workers_[thread_index].cond_var.wait(l);
-                  RecordStart(ctx.get());
-                }
-                if (cancelled_) return;
-
-                tf_shared_lock ckpt_l(ckpt_mu_);
-                workers_[thread_index].is_producing = !end_of_sequence;
-
-                // Output the element.
-
-                // Move the temporary state in WorkerThreadState to WorkerState
-                // and mark it as used.
-                if (end_of_sequence) {
-                  worker_thread_states_[thread_index].iterator.reset();
-                  worker_thread_states_[thread_index].input.clear();
-                  worker_thread_states_[thread_index].end_of_sequence = false;
-                } else {
-                  workers_[thread_index].outputs.emplace_back(
-                      worker_thread_states_[thread_index].output_elem.status);
-                  workers_[thread_index].outputs.back().output.swap(
-                      worker_thread_states_[thread_index].output_elem.output);
-                }
-                worker_thread_states_[thread_index].output_elem.status =
-                    Status::OK();
-                if (dataset()->sloppy_) {
-                  sloppy_cond_var_.notify_one();
-                } else {
-                  workers_[thread_index].cond_var.notify_one();
-                }
-                // CHECKPOINT_MARKER_E
-                // Output element or iterator status has been sent to the
-                // client.
-              }
-            }
-          }
-        }
-      }
-
-      Status WriteWorkerStateLocked(IteratorStateWriter* writer, int index)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-        string prefix = strings::StrCat("worker_", index);
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(prefix, "_input_size")),
-            workers_[index].input.size()));
-        for (int i = 0; i < workers_[index].input.size(); ++i) {
-          TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(strings::StrCat(prefix, "_input_", i)),
-              workers_[index].input[i]));
-        }
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(prefix, "_outputs_size")),
-            workers_[index].outputs.size()));
-        for (int i = 0; i < workers_[index].outputs.size(); ++i) {
-          TF_RETURN_IF_ERROR(WriteOutputElemLocked(
-              writer, workers_[index].outputs[i],
-              full_name(strings::StrCat(prefix, "_outputs_", i))));
-        }
-        if (workers_[index].is_producing) {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(prefix, "_is_producing")), ""));
-        }
-        return Status::OK();
-      }
-
-      Status ReadWorkerStateLocked(IteratorStateReader* reader, int index,
-                                   IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-        string worker_prefix = strings::StrCat("worker_", index);
-        // Restore inputs.
-        int64 input_size;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(worker_prefix, "_input_size")),
-            &input_size));
-        workers_[index].input.reserve(input_size);
-        for (int i = 0; i < input_size; ++i) {
-          workers_[index].input.emplace_back();
-          TF_RETURN_IF_ERROR(reader->ReadTensor(
-              full_name(strings::StrCat(worker_prefix, "_input_", i)),
-              &workers_[index].input.back()));
-        }
-        int64 outputs_size;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(worker_prefix, "_outputs_size")),
-            &outputs_size));
-        for (int i = 0; i < outputs_size; ++i) {
-          workers_[index].outputs.emplace_back(Status::OK());
-          TF_RETURN_IF_ERROR(ReadOutputElemLocked(
-              reader, &workers_[index].outputs.back(),
-              full_name(strings::StrCat(worker_prefix, "_outputs_", i))));
-        }
-        if (reader->Contains(
-                full_name(strings::StrCat(worker_prefix, "_is_producing")))) {
-          workers_[index].is_producing = true;
-        } else {
-          workers_[index].is_producing = false;
-        }
-        return Status::OK();
-      }
-
-      Status WriteWorkerThreadStateLocked(IteratorStateWriter* writer,
-                                          int index)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-        string prefix = strings::StrCat("worker_thread_", index);
-        if (worker_thread_states_[index].iterator != nullptr) {
-          TF_RETURN_IF_ERROR(
-              SaveInput(writer, worker_thread_states_[index].iterator));
-        } else {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(prefix, "_iterator_exhausted")), ""));
-        }
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(prefix, "_input_size")),
-            worker_thread_states_[index].input.size()));
-        for (int i = 0; i < worker_thread_states_[index].input.size(); ++i) {
-          TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(strings::StrCat(prefix, "_input_", i)),
-              worker_thread_states_[index].input[i]));
-        }
-        TF_RETURN_IF_ERROR(WriteStatusLocked(
-            writer, strings::StrCat(prefix, "_iterator_creation_status"),
-            worker_thread_states_[index].iterator_creation_status));
-        TF_RETURN_IF_ERROR(WriteOutputElemLocked(
-            writer, worker_thread_states_[index].output_elem,
-            full_name(strings::StrCat(prefix, "_output"))));
-        if (worker_thread_states_[index].end_of_sequence) {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(prefix, "_end_of_sequence")), ""));
-        }
-        return Status::OK();
-      }
-
-      Status ReadWorkerThreadStateLocked(IteratorStateReader* reader, int index,
-                                         IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-        string worker_prefix = strings::StrCat("worker_thread_", index);
-        // Restore inputs.
-        int64 input_size;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(worker_prefix, "_input_size")),
-            &input_size));
-        worker_thread_states_[index].input.reserve(input_size);
-        for (int i = 0; i < input_size; ++i) {
-          worker_thread_states_[index].input.emplace_back();
-          TF_RETURN_IF_ERROR(reader->ReadTensor(
-              full_name(strings::StrCat(worker_prefix, "_input_", i)),
-              &worker_thread_states_[index].input.back()));
-        }
-        // Restore iterator.
-        if (reader->Contains(full_name(
-                strings::StrCat(worker_prefix, "_iterator_exhausted")))) {
-          worker_thread_states_[index].iterator.reset();
-        } else {
-          std::unique_ptr<IteratorBase> iterator;
-          Status s = MakeIteratorFromInputElement(
-              ctx, worker_thread_states_[index].input, index,
-              dataset()->captured_func_.get(), prefix(), &iterator);
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
-          worker_thread_states_[index].iterator.swap(iterator);
-        }
-        TF_RETURN_IF_ERROR(ReadStatusLocked(
-            reader, strings::StrCat(worker_prefix, "_iterator_creation_status"),
-            &worker_thread_states_[index].iterator_creation_status));
-        TF_RETURN_IF_ERROR(ReadOutputElemLocked(
-            reader, &worker_thread_states_[index].output_elem,
-            full_name(strings::StrCat(worker_prefix, "_output"))));
-        if (reader->Contains(full_name(
-                strings::StrCat(worker_prefix, "_end_of_sequence")))) {
-          worker_thread_states_[index].end_of_sequence = true;
-        } else {
-          worker_thread_states_[index].end_of_sequence = false;
-        }
-        return Status::OK();
-      }
-
-      Status WriteOutputElemLocked(IteratorStateWriter* writer,
-                                   const OutputElem& output_elem,
-                                   const string& prefix)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-        TF_RETURN_IF_ERROR(WriteStatusLocked(
-            writer, strings::StrCat(prefix, "_status"), output_elem.status));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(strings::StrCat(prefix, "_output_size"),
-                                output_elem.output.size()));
-        for (int i = 0; i < output_elem.output.size(); ++i) {
-          TF_RETURN_IF_ERROR(writer->WriteTensor(
-              strings::StrCat(prefix, "_output_", i), output_elem.output[i]));
-        }
-        return Status::OK();
-      }
-
-      Status ReadOutputElemLocked(IteratorStateReader* reader,
-                                  OutputElem* output_elem, const string& prefix)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-        TF_RETURN_IF_ERROR(ReadStatusLocked(
-            reader, strings::StrCat(prefix, "_status"), &output_elem->status));
-        int64 output_size;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            strings::StrCat(prefix, "_output_size"), &output_size));
-        output_elem->output.reserve(output_size);
-        for (int i = 0; i < output_size; ++i) {
-          output_elem->output.emplace_back();
-          TF_RETURN_IF_ERROR(
-              reader->ReadTensor(strings::StrCat(prefix, "_output_", i),
-                                 &output_elem->output.back()));
-        }
-        return Status::OK();
-      }
-
-      Status WriteStatusLocked(IteratorStateWriter* writer,
-                               const string& prefix, const Status& status)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(strings::StrCat(prefix, "_code")),
-                                static_cast<int64>(status.code())));
-        if (!status.ok()) {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(strings::StrCat(prefix, "_msg")),
-                                  status.error_message()));
-        }
-        return Status::OK();
-      }
-
-      Status ReadStatusLocked(IteratorStateReader* reader, const string& prefix,
-                              Status* status)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-        int64 code_int;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(prefix, "_code")), &code_int));
-        error::Code code = static_cast<error::Code>(code_int);
-
-        if (code != error::Code::OK) {
-          string error_message;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(
-              full_name(strings::StrCat(prefix, "_msg")), &error_message));
-          *status = Status(code, error_message);
-        } else {
-          *status = Status::OK();
-        }
-        return Status::OK();
-      }
-
-      // Mutex & condition variable to guard mutable iterator internals and
-      // coordinate among worker threads and client thread[s].
-      mutex mu_ ACQUIRED_BEFORE(ckpt_mu_);
-      // The main thread waits on this condition variable if running in sloppy
-      // mode and no values are available.
-      condition_variable sloppy_cond_var_;
-      // Mutex used to wait for a consistent state while checkpointing.
-      // Only Save and Restore require an exclusive lock on this mutex. In
-      // other scenarios we just acquire a shared lock so the pipeline's
-      // performance should not be affected in the absence of checkpointing.
-      // A thread must not wait on any condition variable while holding
-      // `ckpt_mu_` in either shared or exclusive modes.
-      mutex ckpt_mu_;
-
-      // The iterator producing elements which are converted to datasets by
-      // the dataset()->captured_func_ then interleaved together.
-      // input_impl_ is reset when we have exhausted its input.
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-
-      // The WorkerState structs the worker threads operate on.
-      // workers_ elements are in at most one of interleave_ and staging_.
-      std::vector<WorkerState> workers_ GUARDED_BY(mu_);
-
-      // Stores the temporary state of WorkerThreads which is not stored in
-      // WorkerState. This is used for checkpointing purposes only.
-      std::vector<WorkerThreadState> worker_thread_states_ GUARDED_BY(ckpt_mu_);
-
-      // Indices in `workers_` of iterators to interleave.
-      std::vector<int64> interleave_indices_ GUARDED_BY(mu_);
-      // Indices in `workers_` of prefetched iterators.
-      std::deque<int64> staging_indices_ GUARDED_BY(mu_);
-
-      // The index into output_elements_ for next element to produce.
-      size_t next_index_ GUARDED_BY(mu_) = 0;
-      // The number of items produced so far within the block
-      size_t block_count_ GUARDED_BY(mu_) = 0;
-      // Flag to instruct the worker threads to exit.
-      bool cancelled_ GUARDED_BY(mu_) = false;
-      // The worker threads. This must be last to ensure the
-      // threads have exited before any other members are deallocated.
-      // TODO(b/65178177): Avoid allocating additional threads.
-      std::vector<std::unique_ptr<Thread>> worker_threads_ GUARDED_BY(mu_);
-    };
-
-    const DatasetBase* const input_;
-    const NameAttrList interleave_func_;
-    const std::unique_ptr<CapturedFunction> captured_func_;
-    const int64 cycle_length_;
-    const int64 block_length_;
-    const bool sloppy_;
-    const int64 buffer_output_elements_;
-    const int64 prefetch_input_elements_;
-    const DataTypeVector output_types_;
-    const std::vector<PartialTensorShape> output_shapes_;
-  };
-
-  DataTypeVector output_types_;
-  std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList interleave_func_;
-};
-
-REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDataset").Device(DEVICE_CPU),
-                        ParallelInterleaveDatasetOp);
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kDatasetType;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kInputDataset;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kOtherArguments;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kCycleLength;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kBlockLength;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kNumParallelCalls;
+/* static */ constexpr const char* const ParallelInterleaveDatasetOp::kFunc;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kTarguments;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const ParallelInterleaveDatasetOp::kSloppy;
+
+constexpr char kTfDataParallelInterleaveWorkerPool[] =
+    "tf_data_parallel_interleave_worker_pool";
+constexpr char kParallelism[] = "parallelism";
+constexpr char kBlockIndex[] = "block_index";
+constexpr char kCycleIndex[] = "cycle_index";
+constexpr char kEndOfInput[] = "end_of_input";
+constexpr char kElementIdCounter[] = "element_id_counter";
+constexpr char kCurrentElements[] = "current_elements";
+constexpr char kCurrentElementsSize[] = "current_elements.size";
+constexpr char kFutureElements[] = "future_elements";
+constexpr char kFutureElementsSize[] = "future_elements.size";
+constexpr char kResultsSuffix[] = ".results";
+constexpr char kCodeSuffix[] = ".code";
+constexpr char kErrorMessageSuffix[] = ".error_message";
+constexpr char kIdSuffix[] = ".id";
+constexpr char kSizeSuffix[] = ".size";
+constexpr char kInputsSuffix[] = ".inputs";
+constexpr char kIsReadySuffix[] = ".is_ready";
+
+// `kCyclePrefetchFactor * cycle_length` is the number of future cycle elements
+// that will be prefetched ahead of time. The purpose of prefetching future
+// cycle elements is to overlap expensive initialization (e.g. opening of a
+// remote file) with other computation.
+constexpr double kCyclePrefetchFactor = 2.0L;
+
+// `kPerIteratorPrefetchFactor * block_length + 1` is the number of per-iterator
+// results that will be prefetched ahead of time. The `+ 1` is to match the
+// behavior of the original autotune implementation.
+constexpr double kPerIteratorPrefetchFactor = 2.0L;
 
 // The motivation for creating an alternative implementation of parallel
 // interleave is to decouple the degree of parallelism from the cycle length.
@@ -1078,597 +107,1332 @@ REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDataset").Device(DEVICE_CPU),
 //
 // Furthermore, this class favors modularity over extended functionality. In
 // particular, it refrains from implementing configurable buffering of output
-// elements and prefetching of input iterators, relying on other parts of
-// tf.data to provide this functionality if necessary.
-//
-// The above design choices were made with automated optimizations in mind,
-// isolating the degree of parallelism as the single tunable knob of this
-// implementation.
-//
-// TODO(b/116852688): Make coordination between the performance model and this
-// transformation more robust.
-class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
+// elements and prefetching of input iterators.
+class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
  public:
-  explicit ParallelInterleaveDatasetV2Op(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &interleave_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  Dataset(OpKernelContext* ctx, const DatasetBase* input,
+          std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
+          int64 block_length, int64 num_parallel_calls, bool sloppy,
+          const DataTypeVector& output_types,
+          const std::vector<PartialTensorShape>& output_shapes)
+      : DatasetBase(DatasetContext(ctx)),
+        input_(input),
+        captured_func_(std::move(captured_func)),
+        cycle_length_(cycle_length),
+        block_length_(block_length),
+        num_parallel_calls_(num_parallel_calls),
+        sloppy_(sloppy),
+        output_types_(output_types),
+        output_shapes_(output_shapes) {
+    input_->Ref();
   }
 
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override {
-    int64 cycle_length = 0;
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument(ctx, "cycle_length", &cycle_length));
-    OP_REQUIRES(ctx, cycle_length > 0,
-                errors::InvalidArgument("`cycle_length` must be > 0"));
+  ~Dataset() override { input_->Unref(); }
 
-    int64 block_length = 0;
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument(ctx, "block_length", &block_length));
-    OP_REQUIRES(ctx, block_length > 0,
-                errors::InvalidArgument("`block_length` must be > 0"));
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const override {
+    name_utils::IteratorPrefixParams params;
+    params.op_version = op_version_;
+    return absl::make_unique<ParallelInterleaveIterator>(
+        ParallelInterleaveIterator::Params{
+            this,
+            name_utils::IteratorPrefix(
+                ParallelInterleaveDatasetOp::kDatasetType, prefix, params)},
+        sloppy_);
+  }
 
-    int64 num_parallel_calls;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
-                                            &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
-    OP_REQUIRES(
-        ctx, num_parallel_calls <= cycle_length,
-        errors::InvalidArgument(
-            "num_parallel_calls must less than or equal to cycle_length."));
+  const DataTypeVector& output_dtypes() const override { return output_types_; }
 
-    std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
-                                      &captured_func));
+  const std::vector<PartialTensorShape>& output_shapes() const override {
+    return output_shapes_;
+  }
 
-    *output = new Dataset(ctx, input, interleave_func_,
-                          std::move(captured_func), cycle_length, block_length,
-                          num_parallel_calls, output_types_, output_shapes_);
+  string DebugString() const override {
+    name_utils::DatasetDebugStringParams params;
+    params.op_version = op_version_;
+    return name_utils::DatasetDebugString(
+        ParallelInterleaveDatasetOp::kDatasetType, params);
+  }
+
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+    return input_->CheckExternalState();
+  }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** output) const override {
+    Node* input_node;
+    TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
+    Node* cycle_length_node;
+    TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
+    Node* block_length_node;
+    TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
+    Node* num_parallel_calls_node;
+    TF_RETURN_IF_ERROR(
+        b->AddScalar(num_parallel_calls_, &num_parallel_calls_node));
+    std::vector<Node*> other_arguments;
+    DataTypeVector other_arguments_types;
+    TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                  &other_arguments_types));
+    AttrValue f;
+    b->BuildAttrValue(captured_func_->func(), &f);
+    AttrValue other_arguments_types_attr;
+    b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+    AttrValue sloppy_attr;
+    b->BuildAttrValue(sloppy_, &sloppy_attr);
+
+    TF_RETURN_IF_ERROR(b->AddDataset(this,
+                                     {{0, input_node},
+                                      {2, cycle_length_node},
+                                      {3, block_length_node},
+                                      {4, num_parallel_calls_node}},
+                                     {{1, other_arguments}},
+                                     {{kFunc, f},
+                                      {kTarguments, other_arguments_types_attr},
+                                      {kSloppy, sloppy_attr}},
+                                     output));
+    return Status::OK();
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class ParallelInterleaveIterator : public DatasetIterator<Dataset> {
    public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
-            std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
-            int64 block_length, int64 num_parallel_calls,
-            const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes)
-        : DatasetBase(DatasetContext(ctx)),
-          input_(input),
-          interleave_func_(func),
-          captured_func_(std::move(captured_func)),
-          cycle_length_(cycle_length),
-          block_length_(block_length),
-          num_parallel_calls_(num_parallel_calls),
-          output_types_(output_types),
-          output_shapes_(output_shapes) {
-      input_->Ref();
+    ParallelInterleaveIterator(const Params& params, bool sloppy)
+        : DatasetIterator<Dataset>(params),
+          per_iterator_prefetch_(
+              static_cast<int>(params.dataset->block_length_ *
+                               kPerIteratorPrefetchFactor) +
+              1),
+          future_elements_prefetch_(static_cast<int>(
+              params.dataset->cycle_length_ * kCyclePrefetchFactor)),
+          mu_(std::make_shared<mutex>()),
+          num_parallel_calls_cond_var_(std::make_shared<condition_variable>()),
+          num_parallel_calls_(std::make_shared<model::SharedState>(
+              params.dataset->num_parallel_calls_, mu_,
+              num_parallel_calls_cond_var_)),
+          sloppy_(sloppy),
+          current_elements_(params.dataset->cycle_length_) {}
+
+    ~ParallelInterleaveIterator() override {
+      CancelThreads(/*wait=*/true);
+      if (deregister_fn_) deregister_fn_();
     }
 
-    ~Dataset() override { input_->Unref(); }
-
-    std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::ParallelInterleaveV2")}));
+    string BuildTraceMeName() override {
+      int64 parallelism = -1;
+      // NOTE: We only set the parallelism value if the lock can be acquired
+      // right away to avoid introducing tracing overhead.
+      if (mu_->try_lock()) {
+        parallelism = num_parallel_calls_->value;
+        mu_->unlock();
+      }
+      return strings::StrCat(
+          prefix(), "#parallelism=", parallelism,
+          ",cycle_length=", dataset()->cycle_length_,
+          ",block_length=", dataset()->block_length_,
+          ",autotune=", dataset()->num_parallel_calls_ == model::kAutotune,
+          ",deterministic=", !sloppy_, "#");
     }
 
-    const DataTypeVector& output_dtypes() const override {
-      return output_types_;
+    Status Initialize(IteratorContext* ctx) override {
+      mutex_lock l(*mu_);
+      // Note that if `ctx->thread_pool()` is non-null, then instead of creating
+      // a dedicated thread pool of size `num_threads`, computation will be
+      // scheduled into the shared threadpool. The threadpool is guaranteed to
+      // support `num_threads` concurrent tasks without blocking indefinitely.
+      //
+      // Allocate one thread for the worker manager, `cycle_length_` threads for
+      // the current workers, and `future_elements_prefetch_` for the future
+      // workers.
+      int max_current_workers = dataset()->cycle_length_;
+      int future_workers = future_elements_prefetch_ + dataset()->cycle_length_;
+      const int num_threads = 1 + max_current_workers + future_workers;
+      thread_pool_ = ctx->CreateThreadPool(kTfDataParallelInterleaveWorkerPool,
+                                           num_threads);
+      if (num_parallel_calls_->value == model::kAutotune) {
+        num_parallel_calls_->value = dataset()->cycle_length_;
+      }
+      // TODO(jsimsa): Register cancellation callback once the implementation is
+      // refactored not to hold mu_ while calling `GetNext` on the input.
+      ctx_ = std::make_unique<IteratorContext>(*ctx);
+      TF_RETURN_IF_ERROR(
+          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+      return dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_);
     }
 
-    const std::vector<PartialTensorShape>& output_shapes() const override {
-      return output_shapes_;
-    }
-
-    string DebugString() const override {
-      return "ParallelInterleaveDatasetV2Op::Dataset";
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      std::shared_ptr<Result> result;
+      {
+        mutex_lock l(*mu_);
+        EnsureInitialElementsCreated();
+        EnsureThreadsStarted();
+        while (!cancelled_ && !Consume(&result)) {
+          RecordStop(ctx);
+          if (sloppy_) {
+            sloppy_cond_var_.wait(l);
+          } else {
+            VLOG(3) << "Blocked waiting for element "
+                    << current_elements_[cycle_index_]->id;
+            current_elements_[cycle_index_]->cond_var.wait(l);
+          }
+          RecordStart(ctx);
+        }
+        if (cancelled_) {
+          return errors::Cancelled("Iterator was cancelled");
+        }
+      }
+      if (!result) {
+        *end_of_sequence = true;
+        return Status::OK();
+      }
+      if (result->status.ok()) {
+        *out_tensors = std::move(result->return_values);
+        RecordBufferDequeue(ctx, *out_tensors);
+      }
+      *end_of_sequence = false;
+      return result->status;
     }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, interleave_func_.name()));
-      Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
-      Node* cycle_length_node;
-      TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
-      Node* block_length_node;
-      TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
-      Node* num_parallel_calls_node;
-      TF_RETURN_IF_ERROR(
-          b->AddScalar(num_parallel_calls_, &num_parallel_calls_node));
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
-      std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
-      AttrValue f;
-      b->BuildAttrValue(interleave_func_, &f);
-      AttrValue other_arguments_types_attr;
-      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeAsyncInterleaveManyNode(
+          std::move(args),
+          {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/1,
+                                /*max=*/dataset()->cycle_length_)});
+    }
 
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this,
-          {{0, input_node},
-           {2, cycle_length_node},
-           {3, block_length_node},
-           {4, num_parallel_calls_node}},
-          {{1, other_arguments}},
-          {{"f", f}, {"Targuments", other_arguments_types_attr}}, output));
+    // TODO(aaudibert): Refactor the implementations to avoid the need for
+    // `IteratorContext` when saving the state of the iterator.
+    Status SaveInternal(IteratorStateWriter* writer) override {
+      mutex_lock l(*mu_);
+      wait_for_checkpoint_ = true;
+      // Wait for all in-flight calls to complete.
+      while (num_active_workers_ > 0) {
+        RecordStop(ctx_.get());
+        zero_active_workers_cond_var_.wait(l);
+        RecordStart(ctx_.get());
+      }
+      // Initialize all elements and filter out elements with no input.
+      InitializeInputs(element_id_counter_);
+      for (auto& element : current_elements_) {
+        if (element && element->no_input) {
+          element.reset();
+        }
+      }
+      while (!future_elements_.empty() && future_elements_.back()->no_input) {
+        future_elements_.pop_back();
+      }
+      wait_for_checkpoint_ = false;
+      DCHECK_EQ(num_active_workers_, 0);
+      VLOG(4) << "State before save:\n" << DebugString();
+      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(prefix(), kBlockIndex, block_index_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(prefix(), kCycleIndex, cycle_index_));
+      if (end_of_input_) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kEndOfInput, ""));
+      }
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kElementIdCounter,
+                                             element_id_counter_));
+      TF_RETURN_IF_ERROR(WriteCurrentElements(writer));
+      TF_RETURN_IF_ERROR(WriteFutureElements(writer));
+      // Wake workers back up.
+      current_workers_cond_var_.notify_all();
+      future_workers_cond_var_.notify_all();
+      return Status::OK();
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      {
+        mutex_lock l(*mu_);
+        DCHECK(!threads_initialized_);
+        DCHECK(!initial_elements_created_);
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kBlockIndex, &block_index_));
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kCycleIndex, &cycle_index_));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kElementIdCounter,
+                                              &element_id_counter_));
+        end_of_input_ = reader->Contains(prefix(), kEndOfInput);
+      }
+      TF_RETURN_IF_ERROR(ReadCurrentElements(ctx, reader));
+      TF_RETURN_IF_ERROR(ReadFutureElements(ctx, reader));
+      mutex_lock l(*mu_);
+      initial_elements_created_ = false;
+      for (int i = 0; i < current_elements_.size(); ++i) {
+        int index = (cycle_index_ + i) % current_elements_.size();
+        auto element = current_elements_[index];
+        if (element) {
+          elements_to_process_.push_back(index);
+          element->initialized = true;
+          element->cycle_index = index;
+          initial_elements_created_ = true;
+        }
+      }
+      for (auto element : future_elements_) {
+        element->initialized = true;
+      }
+      last_valid_current_element_ = current_elements_.size() - 1;
+      while (last_valid_current_element_ >= 0 &&
+             !current_elements_[last_valid_current_element_]) {
+        last_valid_current_element_--;
+      }
+      VLOG(2) << "Parallel interleave iterator restored";
+      VLOG(4) << "State after restore:\n" << DebugString();
       return Status::OK();
     }
 
    private:
-    class Iterator : public DatasetIterator<Dataset> {
-     public:
-      explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            mu_(std::make_shared<mutex>()),
-            cond_var_(std::make_shared<condition_variable>()),
-            num_parallel_calls_(std::make_shared<model::SharedState>(
-                params.dataset->num_parallel_calls_, mu_, cond_var_)),
-            args_list_(params.dataset->cycle_length_),
-            current_elements_(params.dataset->cycle_length_),
-            element_in_use_(params.dataset->cycle_length_, false),
-            thread_pool_(new thread::ThreadPool(
-                Env::Default(), ThreadOptions(), "parallel_interleave",
-                dataset()->cycle_length_ /* num_threads */,
-                false /* low_latency_hint */)) {}
+    // Represents the result of fetching an element from a dataset.
+    struct Result {
+      Status status;
+      std::vector<Tensor> return_values;
+    };
 
-      ~Iterator() override {
-        mutex_lock l(*mu_);
-        // Cancel the runner thread.
-        cancelled_ = true;
-        cond_var_->notify_all();
-        // Wait for all in-flight calls to complete.
-        while (num_calls_ > 0) {
-          cond_var_->wait(l);
+    // The interleave transformation repeatedly inputs elements, applies the
+    // user-provided function to transform the input elements to datasets, and
+    // interleaves the elements of these datasets as its output.
+    //
+    // This structure represents an input element and derived state.
+    struct Element {
+      // Unique identifier, needed to support checkpointing.
+      int64 id GUARDED_BY(&ParallelInterleaveIterator::mu_);
+      // The actual input element.  Iterator created from the input element. A
+      // null value indicates that the element either reached end of input or
+      // hasn't been initialized yet.
+      std::unique_ptr<std::vector<Tensor>> inputs
+          GUARDED_BY(&ParallelInterleaveIterator::mu_);
+      // Iterator created from the input element. A null value indicates that
+      // the element either reached end of input or hasn't been initialized yet.
+      std::unique_ptr<IteratorBase> iterator
+          GUARDED_BY(&ParallelInterleaveIterator::mu_);
+      // Buffer for storing the outputs of `iterator`.
+      std::deque<std::shared_ptr<Result>> GUARDED_BY(
+          &ParallelInterleaveIterator::mu_) results;
+      // The element's index in the cycle, if it is in the current cycle.
+      // -1 if the element is not in the current cycle.
+      int64 cycle_index GUARDED_BY(&ParallelInterleaveIterator::mu_) = -1;
+      // Whether the element is currently being processed by a worker thread.
+      // This is used to ensure that only one thread at a time tries to process
+      // an element.
+      bool active GUARDED_BY(&ParallelInterleaveIterator::mu_) = false;
+      // Whether the inputs and iterator have been initialized.
+      bool initialized GUARDED_BY(&ParallelInterleaveIterator::mu_) = false;
+      // Whether we tried to initialize the element, but the input interator
+      // was exhausted so we could produce no inputs.
+      bool no_input GUARDED_BY(&ParallelInterleaveIterator::mu_) = false;
+      // Condition variable for communicating between current worker threads
+      // and GetNext.
+      condition_variable cond_var;
+
+      std::string DebugString()
+          EXCLUSIVE_LOCKS_REQUIRED(&ParallelInterleaveIterator::mu_) {
+        return absl::StrFormat(
+            "Element(id: %d, iterator_null: %d, results_size: %d, "
+            "cycle_index: %d, active: %d, initialized: %d, no_input: %d)",
+            id, iterator == nullptr, results.size(), cycle_index, active,
+            initialized, no_input);
+      }
+    };
+
+    // Sets the cancellation bit and wakes up all threads that need to be
+    // cancelled. Optionally, the method waits until all threads finish
+    // executing.
+    void CancelThreads(bool wait) LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(*mu_);
+      cancelled_ = true;
+      // Wake up all threads so that they can exit. This will also wake up any
+      // threads waiting in GetNextInternal.
+      for (auto element : current_elements_) {
+        if (element) {
+          element->cond_var.notify_all();
         }
       }
-
-      Status Initialize(IteratorContext* ctx) override {
-        mutex_lock l(*mu_);
-        if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = 1;
-          AddTunableParameter(ctx, "parallelism", num_parallel_calls_, 1,
-                              dataset()->cycle_length_);
-        } else {
-          AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
-        }
-        AddConstantParameter(ctx, "cycle_length", dataset()->cycle_length_);
-        TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+      current_workers_cond_var_.notify_all();
+      future_workers_cond_var_.notify_all();
+      num_parallel_calls_cond_var_->notify_all();
+      while (wait && outstanding_threads_ > 0) {
+        outstanding_threads_finished_cond_var_.wait(l);
       }
+      sloppy_cond_var_.notify_all();
+      zero_active_workers_cond_var_.notify_all();
+    }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
-        std::shared_ptr<InvocationResult> result;
-        do {
-          {
-            mutex_lock l(*mu_);
-            EnsureRunnerThreadStarted(ctx);
-            while (invocation_results_.empty() &&
-                   (!end_of_input_ || num_open_ > 0)) {
-              RecordStop(ctx);
-              cond_var_->wait(l);
-              RecordStart(ctx);
+    void EnsureInitialElementsCreated() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!initial_elements_created_) {
+        for (int i = 0; i < dataset()->cycle_length_; ++i) {
+          current_elements_[i] = MakeElement();
+          if (!current_elements_[i]) {
+            break;
+          }
+          current_elements_[i]->cycle_index = i;
+          elements_to_process_.push_back(i);
+          last_valid_current_element_ = i;
+        }
+        initial_elements_created_ = true;
+      }
+    }
+
+    void EnsureThreadsStarted() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!threads_initialized_) {
+        IncrementOutstandingThreads();
+        thread_pool_->Schedule([this]() { WorkerManagerThread(); });
+        threads_initialized_ = true;
+      }
+    }
+
+    // Advances the position in the interleave cycle to the next cycle
+    // element.
+    void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      DCHECK_NE(last_valid_current_element_, -1);
+      block_index_ = 0;
+      cycle_index_ = (cycle_index_ + 1) % (last_valid_current_element_ + 1);
+    }
+
+    // Advances the position in the interleave cycle by one.
+    void AdvancePosition() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      ++block_index_;
+      if (block_index_ == dataset()->block_length_) {
+        AdvanceToNextInCycle();
+      }
+    }
+
+    // Consumes a result (if available), returning an indication of whether
+    // a result is available. If `true` is returned, `result` either
+    // points to a valid result or is null if end of input has been reached.
+    bool Consume(std::shared_ptr<Result>* result)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!sloppy_) {
+        return ConsumeHelper(result);
+      }
+      // If we are allowed to be sloppy (i.e. return results out of order),
+      // try to find an element in the cycle that has a result available.
+      for (int i = 0; i < dataset()->cycle_length_; ++i) {
+        if (ConsumeHelper(result)) {
+          return true;
+        }
+        AdvanceToNextInCycle();
+      }
+      return false;
+    }
+
+    // Consumes a result (if available), returning an indication of whether
+    // a result is available. If `true` is returned, `result` either
+    // points to a valid result or is null if end of input has been reached.
+    bool ConsumeHelper(std::shared_ptr<Result>* result)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      while (true) {
+        if (last_valid_current_element_ == -1) {
+          // Reached end of input.
+          return true;
+        }
+        for (int64 i = 0; i < (last_valid_current_element_ + 1); ++i) {
+          int64 index = (cycle_index_ + i) % (last_valid_current_element_ + 1);
+          if (current_elements_[index]) {
+            cycle_index_ = index;
+            if (i > 0) {
+              block_index_ = 0;
             }
-            if (!invocation_results_.empty()) {
-              std::swap(result, invocation_results_.front());
-              invocation_results_.pop_front();
-            } else {
-              *end_of_sequence = true;
-              return Status::OK();
-            }
-            cond_var_->notify_all();
-          }
-          RecordStop(ctx);
-          result->notification.WaitForNotification();
-          RecordStart(ctx);
-        } while (result->skip);
-
-        if (result->status.ok()) {
-          *out_tensors = std::move(result->return_values);
-        }
-        *end_of_sequence = false;
-        return result->status;
-      }
-
-     protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(*mu_);
-        // Wait for all in-flight calls to complete.
-        while (num_calls_ > 0) {
-          cond_var_->wait(l);
-        }
-        CHECK_EQ(num_calls_, 0);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name("invocation_results.size"), invocation_results_.size()));
-        for (size_t i = 0; i < invocation_results_.size(); i++) {
-          std::shared_ptr<InvocationResult> result = invocation_results_[i];
-          TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, result->status));
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat("invocation_results[", i, "].size")),
-              result->return_values.size()));
-          for (size_t j = 0; j < result->return_values.size(); j++) {
-            TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(
-                    strings::StrCat("invocation_results[", i, "][", j, "]")),
-                result->return_values[j]));
-          }
-          if (result->skip) {
-            TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat("invocation_results[", i, "].skip")),
-                ""));
-          }
-        }
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("cycle_index"), cycle_index_));
-        if (end_of_input_) {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("end_of_input"), ""));
-        }
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("num_open"), num_open_));
-        TF_RETURN_IF_ERROR(WriteCurrentElements(writer));
-        return Status::OK();
-      }
-
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
-        mutex_lock l(*mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        int64 invocation_results_size;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name("invocation_results.size"), &invocation_results_size));
-        for (size_t i = 0; i < invocation_results_size; i++) {
-          std::shared_ptr<InvocationResult> result(new InvocationResult());
-          invocation_results_.push_back(result);
-          TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &result->status));
-          size_t num_return_values;
-          {
-            int64 size;
-            TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("invocation_results[", i, "].size")),
-                &size));
-            num_return_values = static_cast<size_t>(size);
-            if (num_return_values != size) {
-              return errors::InvalidArgument(strings::StrCat(
-                  full_name(
-                      strings::StrCat("invocation_results[", i, "].size")),
-                  ": ", size, " is not a valid value of type size_t."));
-            }
-          }
-          result->return_values.reserve(num_return_values);
-          for (size_t j = 0; j < num_return_values; j++) {
-            result->return_values.emplace_back();
-            TF_RETURN_IF_ERROR(
-                reader->ReadTensor(full_name(strings::StrCat(
-                                       "invocation_results[", i, "][", j, "]")),
-                                   &result->return_values.back()));
-          }
-          result->skip = reader->Contains(
-              full_name(strings::StrCat("invocation_results[", i, "].skip")));
-          result->notification.Notify();
-        }
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("cycle_index"), &cycle_index_));
-        if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("num_open"), &num_open_));
-        TF_RETURN_IF_ERROR(ReadCurrentElements(ctx, reader));
-        return Status::OK();
-      }
-
-     private:
-      struct InvocationResult {
-        Notification notification;  // used for coordination with the consumer
-        Status status;              // the invocation status
-        std::vector<Tensor> return_values;  // the invocation result values
-        bool skip;  // if set the result should be skipped
-      };
-
-      void EnsureRunnerThreadStarted(IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-        if (!runner_thread_) {
-          std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-          runner_thread_.reset(ctx->env()->StartThread(
-              {}, "runner_thread",
-              [this, new_ctx]() { RunnerThread(new_ctx); }));
-        }
-      }
-
-      // Fetches up to `results.size()` outputs from the cycle element at
-      // position `cycle_index`.
-      //
-      // If end of input is encountered, the `skip` field of the invocation
-      // result is used to identify results that should be skipped.
-      void FetchOutputs(
-          const std::shared_ptr<IteratorContext>& ctx, int64 cycle_index,
-          const std::vector<std::shared_ptr<InvocationResult>>& results)
-          LOCKS_EXCLUDED(*mu_) {
-        RecordStart(ctx.get());
-        auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-        bool end_of_input = false;
-        for (auto& result : results) {
-          if (!end_of_input) {
-            result->status = current_elements_[cycle_index]->GetNext(
-                ctx.get(), &result->return_values, &end_of_input);
-          }
-          if (end_of_input) {
-            result->skip = true;
-          }
-          result->notification.Notify();
-          if (!result->status.ok()) {
             break;
           }
         }
-
-        // Release the ownership of the cycle element iterator, closing the
-        // iterator if end of input was encountered.
-        if (end_of_input) {
-          current_elements_[cycle_index].reset();
-        }
-        mutex_lock l(*mu_);
-        element_in_use_[cycle_index] = false;
-        num_calls_--;
-        if (end_of_input) {
-          args_list_[cycle_index].clear();
-          num_open_--;
-        }
-        cond_var_->notify_all();
-      }
-
-      // Method responsible for 1) creating iterators out of input elements, 2)
-      // determining the order in which elements are fetched from the iterators,
-      // and 3) scheduling the fetching of the elements to a threadpool.
-      //
-      // This method runs in the `runner_thread` background thread.
-      void RunnerThread(const std::shared_ptr<IteratorContext>& ctx) {
-        RecordStart(ctx.get());
-        auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-        auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-          return element_in_use_[cycle_index_] ||
-                 num_calls_ >= num_parallel_calls_->value ||
-                 invocation_results_.size() >=
-                     dataset()->cycle_length_ * dataset()->block_length_;
-        };
-        while (true) {
-          mutex_lock l(*mu_);
-          // Wait until this thread is cancelled, the end of input has been
-          // reached, or the cycle element at the `cycle_index_` position is
-          // not in use and there is space in the `invocation_results_` queue.
-          while (!cancelled_ && (!end_of_input_ || num_open_ > 0) && busy()) {
-            RecordStop(ctx.get());
-            cond_var_->wait(l);
-            RecordStart(ctx.get());
+        DCHECK(current_elements_[cycle_index_]);
+        std::shared_ptr<Element> element = current_elements_[cycle_index_];
+        if (!element->results.empty()) {
+          // We found a result.
+          std::swap(*result, element->results.front());
+          element->results.pop_front();
+          if (!element->active) {
+            elements_to_process_.push_back(cycle_index_);
+            current_workers_cond_var_.notify_one();
           }
+          AdvancePosition();
+          return true;
+        }
+        if (!element->initialized || element->iterator) {
+          // The element is still producing results, so we wait.
+          return false;
+        }
+        // We've consumed all results from the element. Get a new element from
+        // future_elements, or create a new element if no future elements are
+        // available.
+        if (!future_elements_.empty()) {
+          std::shared_ptr<Element> future_element =
+              std::move(future_elements_.front());
+          future_elements_.pop_front();
+          if (future_element->iterator) {
+            EnableAutotune(ctx_.get(), future_element->iterator.get());
+          }
+          future_element->cycle_index = cycle_index_;
+          current_elements_[cycle_index_] = std::move(future_element);
+          future_workers_cond_var_.notify_one();
+          if (!current_elements_[cycle_index_]->active) {
+            current_workers_cond_var_.notify_one();
+          }
+        } else {
+          current_elements_[cycle_index_] = MakeElement();
+          if (current_elements_[cycle_index_]) {
+            current_elements_[cycle_index_]->cycle_index = cycle_index_;
+            elements_to_process_.push_back(cycle_index_);
+            element->cycle_index = cycle_index_;
+            current_workers_cond_var_.notify_one();
+          }
+          while (last_valid_current_element_ >= 0 &&
+                 !current_elements_[last_valid_current_element_]) {
+            last_valid_current_element_--;
+            if (cycle_index_ > last_valid_current_element_) {
+              // We are about to move the cycle index below in
+              // AdvanceToNextInCycle().
+              cycle_index_ = last_valid_current_element_;
+            }
+          }
+        }
+        if (last_valid_current_element_ != -1) {
+          AdvanceToNextInCycle();
+        }
+      }
+    }
 
-          if (cancelled_ || (end_of_input_ && num_open_ == 0)) {
+    // Creates a new element.
+    std::shared_ptr<Element> MakeElement() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (end_of_input_) {
+        return nullptr;
+      }
+      auto element = std::make_shared<Element>();
+      element->id = element_id_counter_++;
+      uninitialized_elements_.push_back(element);
+      return element;
+    }
+
+    // Thread responsible for launching all worker threads. The thread stays
+    // around after startup in case autotuning increases num_parallel_calls.
+    void WorkerManagerThread() LOCKS_EXCLUDED(mu_) {
+      int initial_current_workers;
+      // When elements are moved from `future_elements_` to `current_elements_`,
+      // the future worker which created the element may continue to process
+      // the element for some time. That is why we need an additional
+      // `cycle_length_` future workers to guarantee that whenever
+      // `future_element_.size() < future_elements_prefetch_`, there will be a
+      // future worker available to create a new future element.
+      int future_workers = future_elements_prefetch_ + dataset()->cycle_length_;
+      {
+        mutex_lock l(*mu_);
+        initial_current_workers = num_parallel_calls_->value;
+        outstanding_threads_ += initial_current_workers + future_workers;
+        num_current_workers_ += initial_current_workers;
+        num_active_workers_ += initial_current_workers + future_workers;
+        num_current_active_workers_ += initial_current_workers;
+      }
+      // Start current workers before future workers to improve startup time.
+      for (int i = 0; i < initial_current_workers; ++i) {
+        StartCurrentWorkerThread();
+      }
+      for (int i = 0; i < future_workers; ++i) {
+        StartFutureWorkerThread();
+      }
+      while (true) {
+        {
+          mutex_lock l(*mu_);
+          while (!cancelled_ &&
+                 num_current_workers_ >= num_parallel_calls_->value) {
+            RecordStop(ctx_.get());
+            num_parallel_calls_cond_var_->wait(l);
+            RecordStart(ctx_.get());
+          }
+          if (cancelled_ || end_of_input_) {
+            DecrementOutstandingThreads();
             return;
           }
+          IncrementOutstandingThreads();
+          IncrementCurrentWorkers();
+          IncrementActiveWorkers();
+          IncrementCurrentActiveWorkers();
+          StartCurrentWorkerThread();
+        }
+      }
+    }
 
-          while ((!end_of_input_ || num_open_ > 0) && !busy()) {
-            if (!current_elements_[cycle_index_]) {
-              // Try to create a new iterator from the next input element.
-              Status status = input_impl_->GetNext(
-                  ctx.get(), &args_list_[cycle_index_], &end_of_input_);
-              if (!status.ok()) {
-                invocation_results_.emplace_back(new InvocationResult());
-                std::shared_ptr<InvocationResult>& result =
-                    invocation_results_.back();
-                result->status.Update(status);
-                result->notification.Notify();
+    void StartCurrentWorkerThread() {
+      thread_pool_->Schedule([this]() { CurrentWorkerThread(); });
+    }
+
+    void StartFutureWorkerThread() {
+      thread_pool_->Schedule([this]() { FutureWorkerThread(); });
+    }
+
+    // Current workers are responsible for keeping elements in
+    // `current_elements_` processed. An element is processed if it is either
+    // done or its `results` buffer is full (contains `kPerIteratorPrefetch`
+    // elements).
+    //
+    // Current workers cycle between two phases: (1) finding an element and (2)
+    // processing it. When a worker is processing an element, it will
+    // claim the element by setting `element->active`, then continue to produce
+    // results for the element until enough results have been computed for the
+    // current cycle and the results buffer is full.
+    void CurrentWorkerThread() LOCKS_EXCLUDED(mu_) {
+      RecordStart(ctx_.get());
+      auto done = [this]() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        RecordStop(ctx_.get());
+        DecrementActiveWorkers();
+        DecrementCurrentActiveWorkers();
+        DecrementOutstandingThreads();
+        DecrementCurrentWorkers();
+      };
+      while (true) {
+        int element_index;
+        std::shared_ptr<Element> element;
+        // Find an element to process.
+        {
+          mutex_lock l(*mu_);
+          // In case autotune changes num_parallel_calls.
+          if (num_current_workers_ > num_parallel_calls_->value) {
+            done();
+            return;
+          }
+          // Look for an element that needs processing.
+          element.reset();
+          while (!cancelled_) {
+            while (!elements_to_process_.empty() && !wait_for_checkpoint_) {
+              int index = elements_to_process_.front();
+              elements_to_process_.pop_front();
+              auto& e = current_elements_[index];
+              if (NeedsProcessing(e) && !e->active) {
+                element_index = index;
+                element = e;
                 break;
               }
-              if (!end_of_input_) {
-                Status status = MakeIteratorFromInputElement(
-                    ctx.get(), args_list_[cycle_index_], cycle_index_,
-                    dataset()->captured_func_.get(), prefix(),
-                    &current_elements_[cycle_index_]);
-                if (!status.ok()) {
-                  invocation_results_.emplace_back(new InvocationResult());
-                  std::shared_ptr<InvocationResult>& result =
-                      invocation_results_.back();
-                  result->status.Update(status);
-                  result->notification.Notify();
-                  break;
-                }
-                ++num_open_;
-              }
             }
-            if (current_elements_[cycle_index_]) {
-              // Pre-allocate invocation results for outputs to be fetched
-              // and then fetch the outputs asynchronously.
-              std::vector<std::shared_ptr<InvocationResult>> results;
-              results.reserve(dataset()->block_length_);
-              for (int i = 0; i < dataset()->block_length_; ++i) {
-                invocation_results_.emplace_back(new InvocationResult());
-                results.push_back(invocation_results_.back());
-              }
-              num_calls_++;
-              element_in_use_[cycle_index_] = true;
-              thread_pool_->Schedule(std::bind(&Iterator::FetchOutputs, this,
-                                               ctx, cycle_index_,
-                                               std::move(results)));
+            if (element) {
+              break;
             }
-            cycle_index_ = (cycle_index_ + 1) % dataset()->cycle_length_;
+            DecrementCurrentActiveWorkers();
+            WaitWorkerThread(&current_workers_cond_var_, &l);
+            IncrementCurrentActiveWorkers();
           }
-          cond_var_->notify_all();
+          if (cancelled_) {
+            done();
+            return;
+          }
+          VLOG(3) << "Current worker woke up to process " << element->id;
+          element->active = true;
+        }
+        // Loop on the element until we fill its results buffer or reach end of
+        // input for the element.
+        while (true) {
+          ProcessElement(element);
+          {
+            mutex_lock l(*mu_);
+            // Check whether we have produced enough results for the current
+            // cycle.
+            if (!NeedsProcessing(element)) {
+              element->active = false;
+              break;
+            }
+          }
         }
       }
+    }
 
-      Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
-                               const Status& status)
-          EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            CodeKey(index), static_cast<int64>(status.code())));
+    // Future workers process elements after the current interleave cycle. A
+    // future worker's job is to keep `future_elements_` filled with elements.
+    // Elements in `future_elements` have had their first `kPerIteratorPrefetch`
+    // results computed.
+    void FutureWorkerThread() LOCKS_EXCLUDED(mu_) {
+      RecordStart(ctx_.get());
+      auto done = [this]() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        RecordStop(ctx_.get());
+        DecrementActiveWorkers();
+        DecrementOutstandingThreads();
+      };
+      std::shared_ptr<Element> element;
+      while (true) {
+        {
+          mutex_lock l(*mu_);
+          if (element) {
+            element->active = false;
+            if (element->cycle_index != -1) {
+              element->cond_var.notify_one();
+              // A current worker may need to process the element further.
+              elements_to_process_.push_back(element->cycle_index);
+              current_workers_cond_var_.notify_one();
+            }
+          }
+          while (!cancelled_ &&
+                 (future_elements_.size() >= future_elements_prefetch_ ||
+                  wait_for_checkpoint_)) {
+            WaitWorkerThread(&future_workers_cond_var_, &l);
+          }
+          if (cancelled_) {
+            done();
+            return;
+          }
+          element = MakeElement();
+          if (!element) {
+            done();
+            return;
+          }
+          VLOG(3) << "Future worker created element " << element->id;
+          element->active = true;
+          future_elements_.push_back(element);
+        }
+        ProcessElement(element);
+      }
+    }
+
+    // Generates results for the given element until the element's results
+    // buffer is full or the element is done producing results.
+    void ProcessElement(std::shared_ptr<Element> element) LOCKS_EXCLUDED(mu_) {
+      DCHECK(element != nullptr);
+      IteratorBase* iterator;
+      // Initialize the inputs and iterator if necessary.
+      {
+        mutex_lock l(*mu_);
+        DCHECK(element->active);
+        if (!element->iterator) {
+          InitializeInputs(element->id);
+          if (!element->iterator) {
+            return;
+          }
+        }
+        // `iterator` will remain valid after releasing the lock because we have
+        // marked the element as active, so no other thread will modify its
+        // iterator.
+        iterator = element->iterator.get();
+      }
+      DCHECK(iterator != nullptr);
+      // Process until the results queue is full or we reach end of input.
+      while (true) {
+        auto result = std::make_shared<Result>();
+        bool end_of_input = false;
+        result->status = iterator->GetNext(ctx_.get(), &result->return_values,
+                                           &end_of_input);
+        if (end_of_input) {
+          mutex_lock l(*mu_);
+          element->iterator.reset();
+          element->inputs.reset();
+          NotifyElementUpdate(element);
+          break;
+        }
+        RecordBufferEnqueue(ctx_.get(), result->return_values);
+        mutex_lock l(*mu_);
+        element->results.push_back(std::move(result));
+        NotifyElementUpdate(element);
+        if (element->results.size() == per_iterator_prefetch_) {
+          break;
+        }
+      }
+    }
+
+    // Initialize inputs and create an iterator for all elements up to
+    // element_id.
+    void InitializeInputs(int element_id) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      while (!uninitialized_elements_.empty() &&
+             uninitialized_elements_.front()->id <= element_id) {
+        std::shared_ptr<Element> element = uninitialized_elements_.front();
+        uninitialized_elements_.pop_front();
+        element->initialized = true;
+        // Check if we've already reached end of input.
+        if (end_of_input_) {
+          element->no_input = true;
+          NotifyElementUpdate(element);
+          continue;
+        }
+        std::vector<Tensor> inputs;
+        Status status;
+        {
+          // TODO(aaudibert): Refactor the implementation to move calls of
+          // `GetNext` out of the scope of `mu_`.
+          status = input_impl_->GetNext(ctx_.get(), &inputs, &end_of_input_);
+        }
         if (!status.ok()) {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
-                                                 status.error_message()));
+          AddErrorResult(element, status);
+          continue;
         }
-        return Status::OK();
+        if (end_of_input_) {
+          element->no_input = true;
+          NotifyElementUpdate(element);
+          continue;
+        }
+        element->inputs =
+            absl::make_unique<std::vector<Tensor>>(std::move(inputs));
+        status = MakeIteratorFromInputElement(
+            ctx_.get(), *element->inputs, element->id,
+            *instantiated_captured_func_, prefix(), &element->iterator);
+        if (!status.ok()) {
+          element->inputs.reset();
+          element->iterator.reset();
+          AddErrorResult(element, status);
+          continue;
+        }
+        if (element->cycle_index == -1) {
+          DisableAutotune(ctx_.get(), element->iterator.get());
+        }
       }
+    }
 
-      Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
-                              Status* status) EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-        int64 code_int;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
-        error::Code code = static_cast<error::Code>(code_int);
+    // Adds an error result for the given element.
+    void AddErrorResult(std::shared_ptr<Element> element, Status status)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      auto result = std::make_shared<Result>();
+      result->status = status;
+      element->results.push_back(std::move(result));
+      NotifyElementUpdate(element);
+    }
 
-        if (code != error::Code::OK) {
-          string error_message;
+    // Cancels all threads (including the manager) and waits for them to finish.
+    void StopAllThreads(mutex_lock* l) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    }
+
+    // Waits on the given cond_var in a worker thread.
+    void WaitWorkerThread(condition_variable* cond_var, mutex_lock* l)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      DecrementActiveWorkers();
+      RecordStop(ctx_.get());
+      cond_var->wait(*l);
+      RecordStart(ctx_.get());
+      IncrementActiveWorkers();
+    }
+
+    void NotifyElementUpdate(std::shared_ptr<Element> element)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (sloppy_) {
+        sloppy_cond_var_.notify_one();
+      } else {
+        element->cond_var.notify_one();
+      }
+    }
+
+    bool NeedsProcessing(const std::shared_ptr<Element>& element)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!element) {
+        return false;
+      }
+      if (!element->initialized) {
+        return true;
+      }
+      return element->iterator &&
+             element->results.size() < per_iterator_prefetch_;
+    }
+
+    inline void IncrementCurrentWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      num_current_workers_++;
+    }
+
+    inline void DecrementCurrentWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      num_current_workers_--;
+    }
+
+    inline void IncrementActiveWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      num_active_workers_++;
+    }
+
+    inline void DecrementActiveWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      num_active_workers_--;
+      if (num_active_workers_ == 0) {
+        zero_active_workers_cond_var_.notify_one();
+      }
+    }
+
+    inline void IncrementCurrentActiveWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      num_current_active_workers_++;
+      UpdateThreadUtilizationStats();
+    }
+
+    inline void DecrementCurrentActiveWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      num_current_active_workers_--;
+      UpdateThreadUtilizationStats();
+    }
+
+    inline void IncrementOutstandingThreads() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      outstanding_threads_++;
+    }
+
+    inline void DecrementOutstandingThreads() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      outstanding_threads_--;
+      if (outstanding_threads_ == 0) {
+        outstanding_threads_finished_cond_var_.notify_one();
+      }
+    }
+
+    inline void UpdateThreadUtilizationStats() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      const auto& stats_aggregator = ctx_->stats_aggregator();
+      if (stats_aggregator) {
+        stats_aggregator->AddScalar(
+            stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
+            static_cast<float>(num_current_active_workers_) /
+                static_cast<float>(num_parallel_calls_->value),
+            num_elements());
+      }
+    }
+
+    Status WriteStatusLocked(IteratorStateWriter* writer,
+                             const string& iterator_name, size_t idx,
+                             const Status& status)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          iterator_name, CodeKey(idx), static_cast<int64>(status.code())));
+      if (!status.ok()) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            iterator_name, ErrorMessageKey(idx), status.error_message()));
+      }
+      return Status::OK();
+    }
+
+    Status ReadStatusLocked(IteratorStateReader* reader,
+                            const string& iterator_name, size_t idx,
+                            Status* status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      int64 code_int;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(iterator_name, CodeKey(idx), &code_int));
+      error::Code code = static_cast<error::Code>(code_int);
+
+      if (code != error::Code::OK) {
+        tstring error_message;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            iterator_name, ErrorMessageKey(idx), &error_message));
+        *status = Status(code, error_message);
+      } else {
+        *status = Status::OK();
+      }
+      return Status::OK();
+    }
+
+    string CodeKey(size_t idx) {
+      return absl::StrCat(kResultsSuffix, "[", idx, "]", kCodeSuffix);
+    }
+
+    string ErrorMessageKey(size_t idx) {
+      return absl::StrCat(kResultsSuffix, "[", idx, "]", kErrorMessageSuffix);
+    }
+
+    Status WriteElement(std::shared_ptr<Element> element, int idx,
+                        const string& key_prefix, IteratorStateWriter* writer)
+        EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+      const auto& iterator_name =
+          absl::StrCat(prefix(), "::", key_prefix, "::", idx);
+      if (element->iterator) {
+        TF_RETURN_IF_ERROR(SaveInput(writer, element->iterator));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(iterator_name, kIdSuffix, element->id));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            iterator_name, absl::StrCat(kInputsSuffix, kSizeSuffix),
+            element->inputs->size()));
+        for (int i = 0; i < element->inputs->size(); i++) {
+          TF_RETURN_IF_ERROR(writer->WriteTensor(
+              iterator_name, absl::StrCat(kInputsSuffix, "[", i, "]"),
+              element->inputs->at(i)));
+        }
+      }
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          iterator_name, absl::StrCat(kResultsSuffix, kSizeSuffix),
+          element->results.size()));
+      for (size_t i = 0; i < element->results.size(); i++) {
+        std::shared_ptr<Result> result = element->results[i];
+        TF_RETURN_IF_ERROR(
+            WriteStatusLocked(writer, iterator_name, i, result->status));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            iterator_name,
+            absl::StrCat(kResultsSuffix, "[", i, "]", kSizeSuffix),
+            result->return_values.size()));
+        for (size_t j = 0; j < result->return_values.size(); j++) {
+          TF_RETURN_IF_ERROR(writer->WriteTensor(
+              iterator_name, absl::StrCat(kResultsSuffix, "[", i, "][", j, "]"),
+              result->return_values[j]));
+        }
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            iterator_name,
+            absl::StrCat(kResultsSuffix, "[", i, "]", kIsReadySuffix), ""));
+      }
+      return Status::OK();
+    }
+
+    Status WriteCurrentElements(IteratorStateWriter* writer)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentElementsSize,
+                                             current_elements_.size()));
+      for (int idx = 0; idx < current_elements_.size(); idx++) {
+        if (current_elements_[idx]) {
+          TF_RETURN_IF_ERROR(WriteElement(current_elements_[idx], idx,
+                                          kCurrentElements, writer));
+        }
+      }
+      return Status::OK();
+    }
+
+    Status WriteFutureElements(IteratorStateWriter* writer)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kFutureElementsSize,
+                                             future_elements_.size()));
+      for (int idx = 0; idx < future_elements_.size(); idx++) {
+        if (future_elements_[idx]) {
+          TF_RETURN_IF_ERROR(WriteElement(future_elements_[idx], idx,
+                                          kFutureElements, writer));
+        }
+      }
+      return Status::OK();
+    }
+
+    Status ReadElement(IteratorContext* ctx, IteratorStateReader* reader,
+                       int idx, const string& key_prefix,
+                       std::shared_ptr<Element>* out) {
+      std::unique_ptr<IteratorBase> iterator;
+      auto element = std::make_shared<Element>();
+      {
+        mutex_lock l(*mu_);
+        const auto& iterator_name =
+            absl::StrCat(prefix(), "::", key_prefix, "::", idx);
+        if (!reader->Contains(iterator_name,
+                              absl::StrCat(kResultsSuffix, kSizeSuffix))) {
+          return Status::OK();
+        }
+        int64 results_size;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            iterator_name, absl::StrCat(kResultsSuffix, kSizeSuffix),
+            &results_size));
+        element->results.resize(results_size);
+        for (size_t i = 0; i < results_size; i++) {
+          auto result = std::make_shared<Result>();
           TF_RETURN_IF_ERROR(
-              reader->ReadScalar(ErrorMessageKey(index), &error_message));
-          *status = Status(code, error_message);
-        } else {
-          *status = Status::OK();
-        }
-        return Status::OK();
-      }
-
-      string CodeKey(size_t index) {
-        return full_name(
-            strings::StrCat("invocation_results[", index, "].code"));
-      }
-
-      string ErrorMessageKey(size_t index) {
-        return full_name(
-            strings::StrCat("invocation_results[", index, "].error_message"));
-      }
-
-      Status WriteCurrentElements(IteratorStateWriter* writer)
-          EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-        for (int idx = 0; idx < current_elements_.size(); idx++) {
-          if (current_elements_[idx]) {
-            TF_RETURN_IF_ERROR(SaveInput(writer, current_elements_[idx]));
-            TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat("args_size[", idx, "]")),
-                args_list_[idx].size()));
-            for (int i = 0; i < args_list_[idx].size(); i++) {
-              TF_RETURN_IF_ERROR(writer->WriteTensor(
-                  full_name(strings::StrCat("args_list_[", idx, "][", i, "]")),
-                  args_list_[idx][i]));
-            }
+              ReadStatusLocked(reader, iterator_name, i, &result->status));
+          int64 num_return_values;
+          TF_RETURN_IF_ERROR(reader->ReadScalar(
+              iterator_name,
+              absl::StrCat(kResultsSuffix, "[", i, "]", kSizeSuffix),
+              &num_return_values));
+          result->return_values.reserve(num_return_values);
+          for (size_t j = 0; j < num_return_values; j++) {
+            result->return_values.emplace_back();
+            TF_RETURN_IF_ERROR(reader->ReadTensor(
+                iterator_name,
+                absl::StrCat(kResultsSuffix, "[", i, "][", j, "]"),
+                &result->return_values.back()));
           }
+          element->results[i] = std::move(result);
         }
+        if (!reader->Contains(iterator_name,
+                              absl::StrCat(kInputsSuffix, kSizeSuffix))) {
+          element->iterator.reset();
+          *out = std::move(element);
+          return Status::OK();
+        }
+        int64 inputs_size;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            iterator_name, absl::StrCat(kInputsSuffix, kSizeSuffix),
+            &inputs_size));
+        element->inputs = std::make_unique<std::vector<Tensor>>(inputs_size);
+        for (int i = 0; i < inputs_size; i++) {
+          TF_RETURN_IF_ERROR(reader->ReadTensor(
+              iterator_name, absl::StrCat(kInputsSuffix, "[", i, "]"),
+              &element->inputs->at(i)));
+        }
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(iterator_name, kIdSuffix, &element->id));
+        TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
+            ctx, *element->inputs, element->id,
+            *instantiated_captured_func_.get(), prefix(), &iterator));
+      }
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
+      mutex_lock l(*mu_);
+      element->iterator = std::move(iterator);
+      *out = std::move(element);
+      return Status::OK();
+    }
+
+    Status ReadCurrentElements(IteratorContext* ctx,
+                               IteratorStateReader* reader) {
+      int64 size;
+      {
+        mutex_lock l(*mu_);
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kCurrentElementsSize, &size));
+        DCHECK_EQ(current_elements_.size(), size);
+      }
+      if (size == 0) {
         return Status::OK();
       }
+      std::vector<std::shared_ptr<Element>> elements;
+      TF_RETURN_IF_ERROR(
+          ReadElementsParallel(ctx, reader, size, kCurrentElements, &elements));
+      mutex_lock l(*mu_);
+      for (int idx = 0; idx < size; ++idx) {
+        current_elements_[idx] = std::move(elements[idx]);
+      }
+      return Status::OK();
+    }
 
-      Status ReadCurrentElements(IteratorContext* ctx,
-                                 IteratorStateReader* reader)
-          EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-        for (int idx = 0; idx < current_elements_.size(); idx++) {
-          if (reader->Contains(
-                  full_name(strings::StrCat("args_size[", idx, "]")))) {
-            int64 args_size;
-            TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("args_size[", idx, "]")),
-                &args_size));
-            args_list_[idx].resize(args_size);
-            for (int i = 0; i < args_size; i++) {
-              TF_RETURN_IF_ERROR(reader->ReadTensor(
-                  full_name(strings::StrCat("args_list_[", idx, "][", i, "]")),
-                  &args_list_[idx][i]));
-            }
-            TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                ctx, args_list_[idx], idx, dataset()->captured_func_.get(),
-                prefix(), &current_elements_[idx]));
-            TF_RETURN_IF_ERROR(
-                RestoreInput(ctx, reader, current_elements_[idx]));
-          } else {
-            current_elements_[idx].reset();
+    Status ReadFutureElements(IteratorContext* ctx,
+                              IteratorStateReader* reader) {
+      int64 size;
+      {
+        mutex_lock l(*mu_);
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kFutureElementsSize, &size));
+        future_elements_.resize(size);
+      }
+      if (size == 0) {
+        return Status::OK();
+      }
+      std::vector<std::shared_ptr<Element>> elements;
+      TF_RETURN_IF_ERROR(
+          ReadElementsParallel(ctx, reader, size, kFutureElements, &elements));
+      mutex_lock l(*mu_);
+      for (int idx = 0; idx < size; ++idx) {
+        future_elements_[idx] = std::move(elements[idx]);
+      }
+      return Status::OK();
+    }
+
+    Status ReadElementsParallel(
+        IteratorContext* ctx, IteratorStateReader* reader, int64 size,
+        const string& name, std::vector<std::shared_ptr<Element>>* elements) {
+      elements->resize(size);
+      std::unique_ptr<thread::ThreadPool> threadpool =
+          ctx->CreateThreadPool(absl::StrCat("read_", name), size);
+      Status s = Status::OK();
+      BlockingCounter counter(size);
+      for (int idx = 0; idx < size; ++idx) {
+        threadpool->Schedule(
+            [this, ctx, reader, idx, name, &s, &counter, elements] {
+              std::shared_ptr<Element> elem;
+              Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
+              mutex_lock l(*mu_);
+              if (!ret_status.ok()) {
+                s.Update(ret_status);
+                counter.DecrementCount();
+                return;
+              }
+              (*elements)[idx] = elem;
+              counter.DecrementCount();
+            });
+      }
+      counter.Wait();
+      return s;
+    }
+
+    std::string DebugString() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      std::string result;
+      result.append(strings::StrCat("Cycle index: ", cycle_index_, "\n"));
+      result.append(strings::StrCat("Block index: ", block_index_, "\n"));
+      result.append(strings::StrCat("End of input: ", end_of_input_, "\n"));
+      {
+        result.append("Current elements:\n");
+        for (int i = 0; i < current_elements_.size(); ++i) {
+          string element_string = "null";
+          if (current_elements_[i]) {
+            element_string = current_elements_[i]->DebugString();
           }
+          result.append(absl::StrFormat("%d: %s\n", i, element_string));
         }
-        return Status::OK();
       }
+      {
+        result.append("Future elements:\n");
+        for (int i = 0; i < future_elements_.size(); ++i) {
+          string element_string = "null";
+          if (future_elements_[i]) {
+            element_string = future_elements_[i]->DebugString();
+          }
+          result.append(absl::StrFormat("%d: %s\n", i, element_string));
+        }
+      }
+      return result;
+    }
 
-      // Used for coordination between the main thread, the runner thread, and
-      // the worker threads.
-      const std::shared_ptr<mutex> mu_;
+    // Indices of `current_elements_` which need to be processed by a current
+    // worker.
+    std::deque<int> elements_to_process_;
 
-      // Used for coordination between the main thread, the runner thread, and
-      // the worker threads. In particular, the runner thread should only
-      // schedule new calls when the number of in-flight calls is less than the
-      // user specified level of parallelism, there are slots available in the
-      // `invocation_results_` buffer, the current cycle element is not in use,
-      // and there are elements left to be fetched.
-      const std::shared_ptr<condition_variable> cond_var_;
+    // The last index in `current_elements_` containing a non-null element.
+    // This allows us to optimize the situation when the cycle_length is large
+    // but the input dataset doesn't have many elements. By tracking the index
+    // of the last valid element, GetNext can avoid checking many null entries
+    // each time through the cycle.
+    //
+    // TODO(aaudibert): Generalize this optimization by removing null elements
+    // from `current_elements_`, e.g. by compacting the vector when x% of
+    // its elements are null.
+    int64 last_valid_current_element_ GUARDED_BY(mu_) = -1;
 
-      // Identifies the maximum number of parallel calls.
-      const std::shared_ptr<model::SharedState> num_parallel_calls_;
+    const int per_iterator_prefetch_;
+    const int future_elements_prefetch_;
 
-      // Iterator for input elements.
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(*mu_);
+    // Identifies whether the current_elements_ vector has been initialized.
+    bool initial_elements_created_ GUARDED_BY(mu_) = false;
 
-      // Identifies current cycle element.
-      int64 cycle_index_ = 0;
+    // Identifies whether the element threads have been initialized.
+    bool threads_initialized_ GUARDED_BY(mu_) = false;
 
-      // Arguments for creating an iterator for cycle elements.
-      std::vector<std::vector<Tensor>> args_list_ GUARDED_BY(*mu_);
+    // Used for coordination between the main thread, the manager threads, and
+    // the worker threads.
+    //
+    // NOTE: We should never call GetNext on the input while holding this mutex.
+    const std::shared_ptr<mutex> mu_;
 
-      // Iterators for the current cycle elements. Concurrent access is
-      // protected by `element_in_use_`.
-      std::vector<std::unique_ptr<IteratorBase>> current_elements_;
+    // Condition variable for waking up current workers.
+    condition_variable current_workers_cond_var_;
 
-      // Identifies cycle elements that are in use by worker threads.
-      std::vector<bool> element_in_use_ GUARDED_BY(*mu_);
+    // Condition variable for waking up future workers.
+    condition_variable future_workers_cond_var_;
 
-      // Buffer for storing the invocation results.
-      std::deque<std::shared_ptr<InvocationResult>> invocation_results_
-          GUARDED_BY(*mu_);
+    // Number of active worker threads which might be processing elements,
+    // including both current workers and future workers. Used by
+    // checkpointing to wait for outstanding work to finish.
+    int num_active_workers_ GUARDED_BY(mu_) = 0;
 
-      // Identifies whether end of input has been reached.
-      bool end_of_input_ GUARDED_BY(*mu_) = false;
+    // Number of active current worker threads.
+    int num_current_active_workers_ GUARDED_BY(mu_) = 0;
 
-      // Identifies the number of open iterators.
-      int64 num_open_ GUARDED_BY(*mu_) = 0;
+    // Condition variable notified whenever the total number of active workers
+    // drops to zero. Used for checkpointing.
+    condition_variable zero_active_workers_cond_var_;
 
-      // Identifies the number of outstanding calls.
-      int64 num_calls_ GUARDED_BY(*mu_) = 0;
+    // Condition notified whenever num_parallel_calls_ changes. Shared so that
+    // autotuning can notify us when num_parallel_calls_ changes.
+    std::shared_ptr<condition_variable> num_parallel_calls_cond_var_;
 
-      std::unique_ptr<thread::ThreadPool> thread_pool_;
-      std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
+    // Identifies the maximum number of parallel calls.
+    const std::shared_ptr<model::SharedState> num_parallel_calls_;
 
-      // Identifies whether background activity should be cancelled.
-      bool cancelled_ GUARDED_BY(*mu_) = false;
-    };
+    // The number of current workers currently alive or scheduled to be started.
+    // This includes current workers which are blocked waiting for work.
+    int num_current_workers_ GUARDED_BY(mu_) = 0;
 
-    const DatasetBase* const input_;
-    const NameAttrList interleave_func_;
-    const std::unique_ptr<CapturedFunction> captured_func_;
-    const int64 cycle_length_;
-    const int64 block_length_;
-    const int64 num_parallel_calls_;
-    const DataTypeVector output_types_;
-    const std::vector<PartialTensorShape> output_shapes_;
+    // Condition variable to signal that a result has been produced by some
+    // element thread. Only used when `sloppy_` is true.
+    condition_variable sloppy_cond_var_;
+
+    // Determines whether outputs can be produced in non-deterministic order.
+    const bool sloppy_;
+
+    // Iterator for input elements.
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+
+    // Identifies position in the interleave cycle.
+    int64 block_index_ GUARDED_BY(mu_) = 0;
+    // It is an invariant that either `last_valid_current_element_ == -1` or
+    // `cycle_index_ <= last_valid_current_element_`.
+    int64 cycle_index_ GUARDED_BY(mu_) = 0;
+
+    // Elements of the current interleave cycle.
+    std::vector<std::shared_ptr<Element>> current_elements_ GUARDED_BY(mu_);
+
+    // Elements which still need their inputs and iterators to be initialized.
+    // Elements at the front need to be initialized first.
+    std::deque<std::shared_ptr<Element>> uninitialized_elements_
+        GUARDED_BY(mu_);
+
+    // Elements to be used in the interleave cycle in the future. The element
+    // at the front is the next element to add to the interleave cycle when a
+    // current element is exhausted.
+    std::deque<std::shared_ptr<Element>> future_elements_ GUARDED_BY(mu_);
+
+    // Identifies whether the global end of input has been reached.
+    bool end_of_input_ GUARDED_BY(mu_) = false;
+
+    // The number of outstanding element threads.
+    int outstanding_threads_ GUARDED_BY(mu_) = 0;
+
+    // Condition variable notified when outstanding_threads_ drops to 0.
+    condition_variable outstanding_threads_finished_cond_var_;
+
+    std::unique_ptr<thread::ThreadPool> thread_pool_;
+
+    int64 element_id_counter_ GUARDED_BY(mu_) = 0;
+
+    // Iterator context used in worker threads.
+    std::unique_ptr<IteratorContext> ctx_;
+
+    // Set to true during checkpointing to alert element threads that they
+    // should pause operation. This is needed to prevent constantly-active
+    // worker threads from blocking checkpointing indefinitely.
+    bool wait_for_checkpoint_ = false;
+
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+
+    // Identifies whether background threads should be cancelled.
+    bool cancelled_ GUARDED_BY(mu_) = false;
+
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
   };
 
-  DataTypeVector output_types_;
-  std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList interleave_func_;
+  const DatasetBase* const input_;
+  const std::unique_ptr<CapturedFunction> captured_func_;
+  const int64 cycle_length_;
+  const int64 block_length_;
+  const int64 num_parallel_calls_;
+  const int op_version_ = 2;
+  const bool sloppy_;
+  const DataTypeVector output_types_;
+  const std::vector<PartialTensorShape> output_shapes_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDatasetV2").Device(DEVICE_CPU),
-                        ParallelInterleaveDatasetV2Op);
+ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
+    OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  FunctionMetadata::Params params;
+  params.is_multi_device_function = true;
+  OP_REQUIRES_OK(ctx,
+                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kSloppy, &sloppy_));
+}
 
+void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
+                                              DatasetBase* input,
+                                              DatasetBase** output) {
+  int64 cycle_length = 0;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
+  if (cycle_length == model::kAutotune) {
+    cycle_length = port::NumSchedulableCPUs();
+  }
+  OP_REQUIRES(ctx, cycle_length > 0,
+              errors::InvalidArgument("`cycle_length` must be > 0"));
+
+  int64 block_length = 0;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
+  OP_REQUIRES(ctx, block_length > 0,
+              errors::InvalidArgument("`block_length` must be > 0"));
+
+  int64 num_parallel_calls = 0;
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
+  OP_REQUIRES(
+      ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
+      errors::InvalidArgument("num_parallel_calls must be greater than zero."));
+  OP_REQUIRES(
+      ctx, num_parallel_calls <= cycle_length,
+      errors::InvalidArgument(
+          "num_parallel_calls must less than or equal to cycle_length."));
+
+  std::unique_ptr<CapturedFunction> captured_func;
+  OP_REQUIRES_OK(ctx,
+                 CapturedFunction::Create(ctx, func_metadata_, kOtherArguments,
+                                          &captured_func));
+
+  if (num_parallel_calls == model::kAutotune) {
+    metrics::RecordTFDataAutotune(kDatasetType);
+  }
+
+  *output = new Dataset(ctx, input, std::move(captured_func), cycle_length,
+                        block_length, num_parallel_calls, sloppy_,
+                        output_types_, output_shapes_);
+}
+
+namespace {
+REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDatasetV2").Device(DEVICE_CPU),
+                        ParallelInterleaveDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION("ParallelInterleaveDatasetV2");
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -53,13 +52,13 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
-  const std::vector<const HloInstruction*>& entry_schedule =
+  const auto& entry_schedule =
       schedule.sequence(module->entry_computation()).instructions();
 
   EXPECT_EQ(entry_schedule.size(), 6);
@@ -87,10 +86,10 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -136,10 +135,10 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -180,10 +179,10 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -228,7 +227,7 @@ HloModule UpdateScheduleWithMultipleComputations
   %param = (s32[], token[]) parameter(0)
   %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
   %constant = s32[] constant(42)
-  ROOT %less-than = pred[] less-than(s32[] %get-tuple-element, s32[] %constant)
+  ROOT %less-than = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
 }
 
 ENTRY %WhileLoop () -> s32[] {
@@ -241,10 +240,10 @@ ENTRY %WhileLoop () -> s32[] {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));
@@ -297,7 +296,7 @@ HloModule UpdateScheduleWithMultipleComputations
   %param = (s32[], token[]) parameter(0)
   %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
   %constant = s32[] constant(42)
-  ROOT %less-than = pred[] less-than(s32[] %get-tuple-element, s32[] %constant)
+  ROOT %less-than = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
 }
 
 ENTRY %WhileLoop () -> s32[] {
@@ -310,10 +309,10 @@ ENTRY %WhileLoop () -> s32[] {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));

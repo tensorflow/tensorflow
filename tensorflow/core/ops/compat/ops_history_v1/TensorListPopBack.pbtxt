@@ -1,0 +1,23 @@
+op {
+  name: "TensorListPopBack"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "element_shape"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}

@@ -52,10 +52,11 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
       AttrSlice n_attrs = n->attrs();
       auto base_make_node = [n, &n_attrs](const string& op,
                                           const string& name) {
-        NodeBuilder node_builder(name, op);
+        NodeDebugInfo debug_info(*n);
+        NodeBuilder node_builder(name, op, OpRegistry::Global(), &debug_info);
         node_builder.Device(n->requested_device());
-        string colo;
-        if (GetNodeAttr(n_attrs, "_class", &colo).ok()) {
+        const string& colo = GetNodeAttrString(n_attrs, "_class");
+        if (!colo.empty()) {
           node_builder.Attr("_class", colo);
         }
         return node_builder;
@@ -78,7 +79,6 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
 
       // Add all the inplace_updates.
       std::vector<Node*> control_nodes;
-      int64 i = 0;
       for (const Edge* input_edge : n->in_edges()) {
         if (input_edge->IsControlEdge()) {
           g->AddControlEdge(input_edge->src(), start);
@@ -88,13 +88,11 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
         Node* update;
         TF_RETURN_IF_ERROR(
             make_node("_ParallelConcatUpdate")
-                .Attr("loc", i)
+                .Attr("loc", input_edge->dst_input())
                 .Input(start)
                 .Input(input_edge->src(), input_edge->src_output())
                 .Finalize(g, &update));
         control_nodes.push_back(update);
-
-        ++i;
       }
 
       // Add the final identity.
@@ -119,7 +117,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     return Status::OK();
   }
 };
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       ParallelConcatRemovePass);
 
 }  // namespace

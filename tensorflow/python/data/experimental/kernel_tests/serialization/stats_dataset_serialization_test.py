@@ -17,41 +17,46 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-# TODO(shivaniagrawal): Can not checkpoint input_pipeline with the
+# TODO(b/116814321): Can not checkpoint input_pipeline with the
 # transformation `stats_ops.set_stats_aggregator`, since we don't support
-# serializing StatsAggregator yet.
+# saving/restoring resources (StatsAggregator in this case) yet.
 class StatsDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _build_dataset_bytes_stats(self, num_elements):
     return dataset_ops.Dataset.range(num_elements).map(
         lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
             stats_ops.bytes_produced_stats("bytes_produced"))
 
+  @combinations.generate(test_base.default_test_combinations())
   def test_bytes_produced_stats_invalid_tag_shape(self):
     with self.assertRaisesRegexp(
         ValueError, "Shape must be rank 0 but is rank 1"):
       # pylint: disable=g-long-lambda
       self.run_core_tests(
           lambda: dataset_ops.Dataset.range(100).apply(
-              stats_ops.bytes_produced_stats(["bytes_produced"])),
-          None, 100)
+              stats_ops.bytes_produced_stats(["bytes_produced"])), 100)
       # pylint: enable=g-long-lambda
 
+  @combinations.generate(test_base.default_test_combinations())
   def testBytesStatsDatasetSaveableCore(self):
     num_outputs = 100
-    self.run_core_tests(
-        lambda: self._build_dataset_bytes_stats(num_outputs),
-        lambda: self._build_dataset_bytes_stats(num_outputs // 10), num_outputs)
+    self.run_core_tests(lambda: self._build_dataset_bytes_stats(num_outputs),
+                        num_outputs)
 
   def _build_dataset_latency_stats(self, num_elements, tag="record_latency"):
     return dataset_ops.Dataset.range(num_elements).apply(
@@ -64,6 +69,7 @@ class StatsDatasetSerializationTest(
     return dataset_ops.Dataset.range(num_elements).apply(
         stats_ops.latency_stats(tag1)).apply(stats_ops.latency_stats(tag2))
 
+  @combinations.generate(test_base.default_test_combinations())
   def test_latency_stats_invalid_tag_shape(self):
     with self.assertRaisesRegexp(
         ValueError, "Shape must be rank 0 but is rank 1"):
@@ -71,35 +77,33 @@ class StatsDatasetSerializationTest(
       self.run_core_tests(
           lambda: dataset_ops.Dataset.range(100).apply(
               stats_ops.latency_stats(["record_latency", "record_latency_2"])),
-          None, 100)
+          100)
       # pylint: enable=g-long-lambda
 
+  @combinations.generate(test_base.default_test_combinations())
   def testLatencyStatsDatasetSaveableCore(self):
     num_outputs = 100
 
-    self.run_core_tests(
-        lambda: self._build_dataset_latency_stats(num_outputs),
-        lambda: self._build_dataset_latency_stats(num_outputs // 10),
-        num_outputs)
+    self.run_core_tests(lambda: self._build_dataset_latency_stats(num_outputs),
+                        num_outputs)
 
     self.run_core_tests(lambda: self._build_dataset_multiple_tags(num_outputs),
-                        None, num_outputs)
+                        num_outputs)
 
     tag1 = "record_latency"
     tag2 = "record_latency"
     self.run_core_tests(
         lambda: self._build_dataset_multiple_tags(num_outputs, tag1, tag2),
-        None, num_outputs)
+        num_outputs)
 
   def _build_dataset_stats_aggregator(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+    aggregator = stats_aggregator.StatsAggregator()
     return dataset_ops.Dataset.range(10).apply(
-        stats_ops.set_stats_aggregator(stats_aggregator))
+        stats_ops.set_stats_aggregator(aggregator))
 
+  @combinations.generate(test_base.default_test_combinations())
   def test_set_stats_aggregator_not_support_checkpointing(self):
-    with self.assertRaisesRegexp(errors.UnimplementedError,
-                                 "does not support checkpointing"):
-      self.run_core_tests(self._build_dataset_stats_aggregator, None, 10)
+    self.run_core_tests(self._build_dataset_stats_aggregator, 10)
 
 
 if __name__ == "__main__":

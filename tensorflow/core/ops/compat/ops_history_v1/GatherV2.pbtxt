@@ -1,0 +1,93 @@
+op {
+  name: "GatherV2"
+  input_arg {
+    name: "params"
+    type_attr: "Tparams"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "axis"
+    type_attr: "Taxis"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tparams"
+  }
+  attr {
+    name: "Tparams"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Taxis"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "GatherV2"
+  input_arg {
+    name: "params"
+    type_attr: "Tparams"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "axis"
+    type_attr: "Taxis"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tparams"
+  }
+  attr {
+    name: "batch_dims"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "Tparams"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Taxis"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}

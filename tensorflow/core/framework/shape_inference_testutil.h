@@ -84,17 +84,17 @@ class ShapeInferenceTestutil {
       "", ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes( \
               op, i, o)                                                       \
               .error_message())
-#define INFER_ERROR(error_substring, op, i)                                    \
-  {                                                                            \
-    string error_message =                                                     \
-        ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes(    \
-            op, i, "e")                                                        \
-            .error_message();                                                  \
-    const string& substring = error_substring;                                 \
-    EXPECT_NE("", error_message);                                              \
-    EXPECT_TRUE(::tensorflow::str_util::StrContains(error_message, substring)) \
-        << "Expected to see '" << substring << "' in '" << error_message       \
-        << "'";                                                                \
+#define INFER_ERROR(error_substring, op, i)                                 \
+  {                                                                         \
+    string error_message =                                                  \
+        ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes( \
+            op, i, "e")                                                     \
+            .error_message();                                               \
+    const string& substring = error_substring;                              \
+    EXPECT_NE("", error_message);                                           \
+    EXPECT_TRUE(absl::StrContains(error_message, substring))                \
+        << "Expected to see '" << substring << "' in '" << error_message    \
+        << "'";                                                             \
   }
 
 }  // namespace tensorflow

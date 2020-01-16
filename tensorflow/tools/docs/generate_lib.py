@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +42,7 @@ def write_docs(output_dir,
                yaml_toc,
                root_title='TensorFlow',
                search_hints=True,
-               site_api_path=''):
+               site_api_path='api_docs/python'):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -95,8 +96,7 @@ def write_docs(output_dir,
             parser.is_free_function(py_object, full_name, parser_config.index)):
       continue
 
-    sitepath = os.path.join('api_docs/python',
-                            parser.documentation_path(full_name)[:-3])
+    sitepath = os.path.join(parser.documentation_path(full_name)[:-3])
 
     # For TOC, we need to store a mapping from full_name to the file
     # we're generating
@@ -148,8 +148,10 @@ def write_docs(output_dir,
     duplicates = [item for item in duplicates if item != full_name]
 
     for dup in duplicates:
-      from_path = os.path.join(site_api_path, dup.replace('.', '/'))
-      to_path = os.path.join(site_api_path, full_name.replace('.', '/'))
+      from_path = os.path.join(site_api_path,
+                               six.ensure_str(dup).replace('.', '/'))
+      to_path = os.path.join(site_api_path,
+                             six.ensure_str(full_name).replace('.', '/'))
       redirects.append((
           os.path.join('/', from_path),
           os.path.join('/', to_path)))
@@ -168,7 +170,7 @@ def write_docs(output_dir,
     # Generate table of contents
 
     # Put modules in alphabetical order, case-insensitive
-    modules = sorted(module_children.keys(), key=lambda a: a.upper())
+    modules = sorted(list(module_children.keys()), key=lambda a: a.upper())
 
     leftnav_path = os.path.join(output_dir, '_toc.yaml')
     with open(leftnav_path, 'w') as f:
@@ -184,16 +186,15 @@ def write_docs(output_dir,
         if indent_num > 1:
           # tf.contrib.baysflow.entropy will be under
           #   tf.contrib->baysflow->entropy
-          title = module.split('.')[-1]
+          title = six.ensure_str(module).split('.')[-1]
         else:
           title = module
 
         header = [
-            '- title: ' + title,
-            '  section:',
-            '  - title: Overview',
-            '    path: ' + os.path.join('/', site_api_path,
-                                        symbol_to_file[module])]
+            '- title: ' + six.ensure_str(title), '  section:',
+            '  - title: Overview', '    path: ' +
+            os.path.join('/', site_api_path, symbol_to_file[module])
+        ]
         header = ''.join([indent+line+'\n' for line in header])
         f.write(header)
 
@@ -212,8 +213,9 @@ def write_docs(output_dir,
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
     f.write(
-        parser.generate_global_index(root_title, parser_config.index,
-                                     parser_config.reference_resolver))
+        six.ensure_str(
+            parser.generate_global_index(root_title, parser_config.index,
+                                         parser_config.reference_resolver)))
 
 
 def add_dict_to_dict(add_from, add_to):
@@ -227,8 +229,8 @@ def add_dict_to_dict(add_from, add_to):
 # Exclude some libraries in contrib from the documentation altogether.
 def _get_default_private_map():
   return {
-      'tf.contrib.autograph': ['utils', 'operators'],
       'tf.test': ['mock'],
+      'tf': ['contrib'],
       'tf.compat': ['v1', 'v2'],
   }
 
@@ -238,44 +240,6 @@ def _get_default_do_not_descend_map():
   # TODO(markdaoust): Use docs_controls decorators, locally, instead.
   return {
       'tf': ['cli', 'lib', 'wrappers'],
-      'tf.contrib': [
-          'compiler',
-          'grid_rnn',
-          # Block contrib.keras to de-clutter the docs
-          'keras',
-          'labeled_tensor',
-          'quantization',
-          'session_bundle',
-          'slim',
-          'solvers',
-          'specs',
-          'tensor_forest',
-          'tensorboard',
-          'testing',
-          'tfprof',
-      ],
-      'tf.contrib.bayesflow': [
-          'special_math', 'stochastic_gradient_estimators',
-          'stochastic_variables'
-      ],
-      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
-      'tf.contrib.graph_editor': [
-          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
-      ],
-      'tf.contrib.keras': ['api', 'python'],
-      'tf.contrib.layers': ['feature_column', 'summaries'],
-      'tf.contrib.learn': [
-          'datasets',
-          'head',
-          'graph_actions',
-          'io',
-          'models',
-          'monitors',
-          'ops',
-          'preprocessing',
-          'utils',
-      ],
-      'tf.contrib.util': ['loader'],
   }
 
 
@@ -345,7 +309,7 @@ def build_doc_index(src_dir):
   for dirpath, _, filenames in os.walk(src_dir):
     suffix = os.path.relpath(path=dirpath, start=src_dir)
     for base_name in filenames:
-      if not base_name.endswith('.md'):
+      if not six.ensure_str(base_name).endswith('.md'):
         continue
       title_parser = _GetMarkdownTitle()
       title_parser.process(os.path.join(dirpath, base_name))
@@ -353,7 +317,8 @@ def build_doc_index(src_dir):
         msg = ('`{}` has no markdown title (# title)'.format(
             os.path.join(dirpath, base_name)))
         raise ValueError(msg)
-      key_parts = os.path.join(suffix, base_name[:-3]).split('/')
+      key_parts = six.ensure_str(os.path.join(suffix,
+                                              base_name[:-3])).split('/')
       if key_parts[-1] == 'index':
         key_parts = key_parts[:-1]
       doc_info = _DocInfo(os.path.join(suffix, base_name), title_parser.title)
@@ -367,8 +332,8 @@ def build_doc_index(src_dir):
 class _GuideRef(object):
 
   def __init__(self, base_name, title, section_title, section_tag):
-    self.url = 'api_guides/python/' + (('%s#%s' % (base_name, section_tag))
-                                       if section_tag else base_name)
+    self.url = 'api_guides/python/' + six.ensure_str(
+        (('%s#%s' % (base_name, section_tag)) if section_tag else base_name))
     self.link_text = (('%s > %s' % (title, section_title))
                       if section_title else title)
 
@@ -447,7 +412,7 @@ def update_id_tags_inplace(src_dir):
       # modified file contents
       content = tag_updater.process(full_path)
       with open(full_path, 'w') as f:
-        f.write(content)
+        f.write(six.ensure_str(content))
 
 
 EXCLUDED = set(['__init__.py', 'OWNERS', 'README.txt'])
@@ -512,7 +477,7 @@ def replace_refs(src_dir,
       content = reference_resolver.replace_references(content,
                                                       relative_path_to_root)
       with open(full_out_path, 'wb') as f:
-        f.write(content.encode('utf-8'))
+        f.write(six.ensure_binary(content, 'utf-8'))
 
 
 class DocGenerator(object):
@@ -533,7 +498,7 @@ class DocGenerator(object):
 
     self.argument_parser.add_argument(
         '--site_api_path',
-        type=str, default='',
+        type=str, default='api_docs/python',
         help='The path from the site-root to api_docs'
              'directory for this project')
 

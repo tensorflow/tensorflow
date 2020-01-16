@@ -17,12 +17,29 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_DATA_GENERATOR_DATASET_OP_H_
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/kernels/data/captured_function.h"
 
 namespace tensorflow {
 namespace data {
 
 class GeneratorDatasetOp : public DatasetOpKernel {
  public:
+  static constexpr const char* const kDatasetType = "Generator";
+  static constexpr const char* const kInitFuncOtherArgs =
+      "init_func_other_args";
+  static constexpr const char* const kNextFuncOtherArgs =
+      "next_func_other_args";
+  static constexpr const char* const kFinalizeFuncOtherArgs =
+      "finalize_func_other_args";
+  static constexpr const char* const kInitFunc = "init_func";
+  static constexpr const char* const kNextFunc = "next_func";
+  static constexpr const char* const kFinalizeFunc = "finalize_func";
+  static constexpr const char* const kTinitFuncArgs = "Tinit_func_args";
+  static constexpr const char* const kTnextFuncArgs = "Tnext_func_args";
+  static constexpr const char* const kTfinalizeFuncArgs = "Tfinalize_func_args";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
+
   explicit GeneratorDatasetOp(OpKernelConstruction* ctx);
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
@@ -32,9 +49,9 @@ class GeneratorDatasetOp : public DatasetOpKernel {
 
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList init_func_;
-  NameAttrList next_func_;
-  NameAttrList finalize_func_;
+  std::shared_ptr<FunctionMetadata> init_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> next_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> finalize_func_metadata_ = nullptr;
 };
 
 }  // namespace data

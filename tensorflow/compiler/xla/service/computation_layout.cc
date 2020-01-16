@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -42,8 +43,8 @@ void ComputationLayout::SetToDefaultLayout() {
 }
 
 bool ComputationLayout::LayoutIsSet() const {
-  return std::all_of(parameter_layouts_.begin(), parameter_layouts_.end(),
-                     [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
+  return absl::c_all_of(parameter_layouts_,
+                        [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
          result_layout_.LayoutIsSet();
 }
 
@@ -54,6 +55,35 @@ string ComputationLayout::ToString() const {
   }
   return absl::StrCat("(", absl::StrJoin(params, ", "), ") => ",
                       result_layout_.ToString());
+}
+
+ProgramShape ComputationLayout::ComputeProgramShape() const {
+  ProgramShape program_shape;
+  for (int64 i = 0; i < parameter_layouts_.size(); ++i) {
+    *program_shape.add_parameters() = parameter_layouts_[i].shape();
+    *program_shape.add_parameter_names() = absl::StrCat("p", i);
+  }
+  *program_shape.mutable_result() = result_layout_.shape();
+  return program_shape;
+}
+
+bool ComputationLayout::operator==(const ComputationLayout& other) const {
+  return result_layout() == other.result_layout() &&
+         parameter_layouts() == other.parameter_layouts();
+}
+
+bool ComputationLayout::operator!=(const ComputationLayout& other) const {
+  return result_layout() != other.result_layout() ||
+         parameter_layouts() != other.parameter_layouts();
+}
+
+uint64 ComputationLayout::Hash() const {
+  uint64 hash_value = ShapeUtil::Hash(result_layout_.shape());
+  for (const auto& parameter_layout : parameter_layouts_) {
+    hash_value = tensorflow::Hash64Combine(
+        hash_value, ShapeUtil::Hash(parameter_layout.shape()));
+  }
+  return hash_value;
 }
 
 }  // namespace xla

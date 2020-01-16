@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -86,64 +87,67 @@ class SparseTest(test.TestCase):
             "expected": ()
         },
         {
-            "types": tensor_shape.scalar(),
+            "types": tensor_shape.TensorShape([]),
             "classes": ops.Tensor,
-            "expected": tensor_shape.scalar()
+            "expected": tensor_shape.TensorShape([])
         },
         {
-            "types": tensor_shape.scalar(),
+            "types": tensor_shape.TensorShape([]),
             "classes": sparse_tensor.SparseTensor,
             "expected": tensor_shape.unknown_shape()
         },
         {
-            "types": (tensor_shape.scalar()),
+            "types": (tensor_shape.TensorShape([])),
             "classes": (ops.Tensor),
-            "expected": (tensor_shape.scalar())
+            "expected": (tensor_shape.TensorShape([]))
         },
         {
-            "types": (tensor_shape.scalar()),
+            "types": (tensor_shape.TensorShape([])),
             "classes": (sparse_tensor.SparseTensor),
             "expected": (tensor_shape.unknown_shape())
         },
         {
-            "types": (tensor_shape.scalar(), ()),
+            "types": (tensor_shape.TensorShape([]), ()),
             "classes": (ops.Tensor, ()),
-            "expected": (tensor_shape.scalar(), ())
+            "expected": (tensor_shape.TensorShape([]), ())
         },
         {
-            "types": ((), tensor_shape.scalar()),
+            "types": ((), tensor_shape.TensorShape([])),
             "classes": ((), ops.Tensor),
-            "expected": ((), tensor_shape.scalar())
+            "expected": ((), tensor_shape.TensorShape([]))
         },
         {
-            "types": (tensor_shape.scalar(), ()),
+            "types": (tensor_shape.TensorShape([]), ()),
             "classes": (sparse_tensor.SparseTensor, ()),
             "expected": (tensor_shape.unknown_shape(), ())
         },
         {
-            "types": ((), tensor_shape.scalar()),
+            "types": ((), tensor_shape.TensorShape([])),
             "classes": ((), sparse_tensor.SparseTensor),
             "expected": ((), tensor_shape.unknown_shape())
         },
         {
-            "types": (tensor_shape.scalar(), (), tensor_shape.scalar()),
+            "types": (tensor_shape.TensorShape([]), (),
+                      tensor_shape.TensorShape([])),
             "classes": (ops.Tensor, (), ops.Tensor),
-            "expected": (tensor_shape.scalar(), (), tensor_shape.scalar())
+            "expected": (tensor_shape.TensorShape([]), (),
+                         tensor_shape.TensorShape([]))
         },
         {
-            "types": (tensor_shape.scalar(), (), tensor_shape.scalar()),
-            "classes": (sparse_tensor.SparseTensor, (),
-                        sparse_tensor.SparseTensor),
+            "types": (tensor_shape.TensorShape([]), (),
+                      tensor_shape.TensorShape([])),
+            "classes":
+                (sparse_tensor.SparseTensor, (), sparse_tensor.SparseTensor),
             "expected": (tensor_shape.unknown_shape(), (),
                          tensor_shape.unknown_shape())
         },
         {
-            "types": ((), tensor_shape.scalar(), ()),
+            "types": ((), tensor_shape.TensorShape([]), ()),
             "classes": ((), ops.Tensor, ()),
-            "expected": ((), tensor_shape.scalar(), ())
+            "expected": ((), tensor_shape.TensorShape([]), ())
         },
         {
-            "types": ((), tensor_shape.scalar(), ()),
+            "types": ((), tensor_shape.TensorShape([]), ()),
             "classes": ((), sparse_tensor.SparseTensor, ()),
             "expected": ((), tensor_shape.unknown_shape(), ())
         },
@@ -292,10 +296,11 @@ class SparseTest(test.TestCase):
       return
     self.assertTrue(isinstance(b, sparse_tensor.SparseTensor))
     with self.cached_session():
-      self.assertAllEqual(a.eval().indices, b.eval().indices)
-      self.assertAllEqual(a.eval().values, b.eval().values)
-      self.assertAllEqual(a.eval().dense_shape, b.eval().dense_shape)
+      self.assertAllEqual(a.eval().indices, self.evaluate(b).indices)
+      self.assertAllEqual(a.eval().values, self.evaluate(b).values)
+      self.assertAllEqual(a.eval().dense_shape, self.evaluate(b).dense_shape)
 
+  @test_util.run_deprecated_v1
   def testSerializeDeserialize(self):
     test_cases = (
         (),
@@ -325,6 +330,7 @@ class SparseTest(test.TestCase):
       for a, e in zip(nest.flatten(actual), nest.flatten(expected)):
         self.assertSparseValuesEqual(a, e)
 
+  @test_util.run_deprecated_v1
   def testSerializeManyDeserialize(self):
     test_cases = (
         (),

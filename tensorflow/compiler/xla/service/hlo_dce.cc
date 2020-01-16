@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -34,38 +35,53 @@ limitations under the License.
 
 namespace xla {
 
+StatusOr<bool> HloDCE::RunOnComputation(HloComputation* computation) {
+  bool changed = false;
+  VLOG(3) << "Before dce:";
+  XLA_VLOG_LINES(3, computation->ToString());
+  // Remove any dead roots and their dead transitive operands. Collect them
+  // into a separate list first to avoid problems with iterating through the
+  // computation's instruction while simultaneously removing instructions.
+  std::vector<HloInstruction*> dead_roots;
+  for (auto* instruction : computation->instructions()) {
+    if (instruction != computation->root_instruction() &&
+        instruction->user_count() == 0 &&
+        computation->IsSafelyRemovable(instruction) &&
+        !instruction->HasSideEffect()) {
+      dead_roots.push_back(instruction);
+    }
+  }
+
+  for (HloInstruction* dead_root : dead_roots) {
+    VLOG(1) << "Removing dead root " << dead_root->ToString()
+            << " and it's unused operands";
+    TF_RETURN_IF_ERROR(
+        computation->RemoveInstructionAndUnusedOperands(dead_root));
+    changed = true;
+  }
+  if (changed) {
+    VLOG(3) << "After dce:";
+    XLA_VLOG_LINES(3, computation->ToString());
+  }
+  return changed;
+}
+
 StatusOr<bool> HloDCE::Run(HloModule* module) {
   bool changed = false;
 
   VLOG(2) << "Before dce:";
   XLA_VLOG_LINES(2, module->ToString());
 
+  // Run DCE on each computation.
   for (auto* computation : module->MakeComputationPostOrder()) {
-    // Remove any dead roots and their dead transitive operands. Collect them
-    // into a separate list first to avoid problems with iterating through the
-    // computation's instruction while simultaneously removing instructions.
-    std::vector<HloInstruction*> dead_roots;
-    for (auto* instruction : computation->instructions()) {
-      if (instruction != computation->root_instruction() &&
-          instruction->user_count() == 0 &&
-          computation->IsRemovable(instruction) &&
-          !instruction->HasSideEffect()) {
-        dead_roots.push_back(instruction);
-      }
-    }
-
-    for (HloInstruction* dead_root : dead_roots) {
-      VLOG(1) << "Removing dead root " << dead_root->ToString()
-              << " and it's unused operands";
-      TF_RETURN_IF_ERROR(
-          computation->RemoveInstructionAndUnusedOperands(dead_root));
-      changed = true;
-    }
+    TF_ASSIGN_OR_RETURN(bool changed_for_computation,
+                        RunOnComputation(computation));
+    changed |= changed_for_computation;
   }
 
   // Now DCE HloComputations.  First, collect the computations that are
   // referenced by some remaining instruction.
-  std::unordered_set<HloComputation*> live_computations;
+  absl::flat_hash_set<HloComputation*> live_computations;
   if (HloComputation* entry_computation = module->entry_computation()) {
     live_computations.insert(entry_computation);
   }
@@ -79,7 +95,7 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
 
   // Remove dead computations.
   for (auto* computation : module->MakeComputationPostOrder()) {
-    if (live_computations.count(computation) == 0) {
+    if (!live_computations.contains(computation)) {
       TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
       changed = true;
     }

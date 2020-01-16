@@ -46,7 +46,7 @@ tf_module {
   }
   member_method {
     name: "batch_normalization"
-    argspec: "args=[\'x\', \'mean\', \'var\', \'beta\', \'gamma\', \'epsilon\'], varargs=None, keywords=None, defaults=[\'0.001\'], "
+    argspec: "args=[\'x\', \'mean\', \'var\', \'beta\', \'gamma\', \'axis\', \'epsilon\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.001\'], "
   }
   member_method {
     name: "batch_set_value"
@@ -98,7 +98,7 @@ tf_module {
   }
   member_method {
     name: "conv2d_transpose"
-    argspec: "args=[\'x\', \'kernel\', \'output_shape\', \'strides\', \'padding\', \'data_format\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\'], "
+    argspec: "args=[\'x\', \'kernel\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\', \'(1, 1)\'], "
   }
   member_method {
     name: "conv3d"
@@ -123,6 +123,18 @@ tf_module {
   member_method {
     name: "ctc_label_dense_to_sparse"
     argspec: "args=[\'labels\', \'label_lengths\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cumprod"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "cumsum"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "depthwise_conv2d"
+    argspec: "args=[\'x\', \'depthwise_kernel\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\', \'(1, 1)\'], "
   }
   member_method {
     name: "dot"
@@ -182,7 +194,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'inputs\', \'outputs\', \'updates\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'outputs\', \'updates\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "gather"
@@ -190,7 +202,7 @@ tf_module {
   }
   member_method {
     name: "get_session"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'op_input_list\'], varargs=None, keywords=None, defaults=[\'()\'], "
   }
   member_method {
     name: "get_uid"
@@ -237,6 +249,10 @@ tf_module {
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "is_keras_tensor"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_sparse"
     argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
@@ -249,12 +265,24 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "learning_phase_scope"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "less"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "less_equal"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_conv1d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "local_conv2d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'output_shape\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "log"
@@ -322,7 +350,7 @@ tf_module {
   }
   member_method {
     name: "placeholder"
-    argspec: "args=[\'shape\', \'ndim\', \'dtype\', \'sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'shape\', \'ndim\', \'dtype\', \'sparse\', \'name\', \'ragged\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "pool2d"
@@ -386,7 +414,7 @@ tf_module {
   }
   member_method {
     name: "resize_images"
-    argspec: "args=[\'x\', \'height_factor\', \'width_factor\', \'data_format\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'x\', \'height_factor\', \'width_factor\', \'data_format\', \'interpolation\'], varargs=None, keywords=None, defaults=[\'nearest\'], "
   }
   member_method {
     name: "resize_volumes"
@@ -398,7 +426,7 @@ tf_module {
   }
   member_method {
     name: "rnn"
-    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\', \'time_major\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
+    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\', \'time_major\', \'zero_output_for_mask\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "round"
@@ -511,6 +539,10 @@ tf_module {
   member_method {
     name: "temporal_padding"
     argspec: "args=[\'x\', \'padding\'], varargs=None, keywords=None, defaults=[\'(1, 1)\'], "
+  }
+  member_method {
+    name: "tile"
+    argspec: "args=[\'x\', \'n\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_dense"

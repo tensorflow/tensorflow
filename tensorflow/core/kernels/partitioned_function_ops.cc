@@ -12,481 +12,276 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/partitioned_function_ops.h"
+
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/placer.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/graph/graph_partition.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
-#include "tensorflow/core/util/reffed_status_callback.h"
+#ifndef __ANDROID__
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/stream_executor/stream.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
-typedef FunctionLibraryRuntime::Handle FHandle;
 
-namespace {
+PartitionedCallOp::PartitionedCallOp(OpKernelConstruction* ctx)
+    : AsyncOpKernel(ctx),
+      func_(new NameAttrList),
+      config_proto_(new ConfigProto) {
+  OP_REQUIRES_OK(
+      ctx, ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, func_.get()));
+  string deprecated_config_serialized;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &deprecated_config_serialized));
+  string config_proto_serialized;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("config_proto", &config_proto_serialized));
+  OP_REQUIRES(
+      ctx,
+      deprecated_config_serialized.empty() || config_proto_serialized.empty(),
+      errors::InvalidArgument("Provided both 'config' and 'config_proto' but "
+                              "only one should be provided.  Note the "
+                              "'config' option is deprecated."));
+  if (!deprecated_config_serialized.empty()) {
+    OP_REQUIRES(ctx,
+                config_proto_->mutable_graph_options()
+                    ->mutable_rewrite_options()
+                    ->ParseFromString(deprecated_config_serialized),
+                errors::InvalidArgument("Unable to parse config string as "
+                                        "tensorflow::RewriteOptions proto."));
+  } else {
+    OP_REQUIRES(
+        ctx, config_proto_->ParseFromString(config_proto_serialized),
+        errors::InvalidArgument("Unable to parse config_proto string as "
+                                "tensorflow::ConfigProto proto."));
+  }
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("executor_type", &executor_type_));
+}
 
-// A `PartitionedCallOp` asynchronously executes a function, potentially across
-// multiple devices but within a single process. The kernel places and
-// partitions a given function's underlying graph, and executes each of the
-// partitioned subgraphs as a function.
-//
-// TODO(akshayka): Support distributed execution.
-class PartitionedCallOp : public AsyncOpKernel {
- public:
-  explicit PartitionedCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+PartitionedCallOp::~PartitionedCallOp() {
+  for (const auto& it : handles_) {
+    Status status = it.first->ReleaseHandle(it.second);
+    if (!status.ok()) {
+      LOG(INFO) << "Ignoring error while destructing PartitionedCallOp: "
+                << status.ToString();
+    }
+  }
+}
+
+void PartitionedCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  FunctionLibraryRuntime* lib = ctx->function_library();
+  OP_REQUIRES_ASYNC(ctx, lib != nullptr,
+                    errors::Internal("No function library is provided."), done);
+
+  // The function body's graph is placed and partitioned the first time
+  // `ComputeAsync` is invoked; every subsequent invocation calls each
+  // of the function shards yielded by partitioning.
+  //
+  // The partitioning step yields a set of devices on which to run the
+  // function, and exactly one function shard is created for each device
+  // Inputs and outputs are pinned to the local device, for simplicity.
+  //
+  // TODO(akshayka): Support re-sharding the function on subsequent calls,
+  // via, e.g., virtual device annotations and a list of device names
+  // supplied through an attribute.
+  //
+  // TODO(akshayka): Add a fastpath for functions that execute on a single
+  // device.
+  FunctionLibraryRuntime::Handle handle;
+  // If we are instantiating the function, we can efficiently extract the
+  // inputs while instantiating. Else, we extract them separately below.
+  std::vector<Tensor> inputs;
+  bool inputs_extracted = false;
+  {
+    mutex_lock l(mu_);
+    auto it = handles_.find(lib);
+    if (it == handles_.end()) {
+      OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, ctx, &inputs, &handle), done);
+      inputs_extracted = true;
+      handles_[lib] = handle;
+    } else {
+      handle = it->second;
+    }
   }
 
-  ~PartitionedCallOp() override {}
-
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    FunctionLibraryRuntime* lib = ctx->function_library();
-    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                      errors::Internal("No function library is provided."),
-                      done);
-
+  if (!inputs_extracted) {
     OpInputList args;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &args), done);
-
-    // The function body's graph is placed and partitioned the first time
-    // `ComputeAsync` is invoked; every subsequent invocation calls each
-    // of the function shards yielded by partitioning.
-    //
-    // The partitioning step yields a set of devices on which to run the
-    // function, and exactly one function shard is created for each device
-    // Inputs and outputs are pinned to the local device, for simplicity.
-    //
-    // TODO(akshayka): Support re-sharding the function on subsequent calls,
-    // via, e.g., virtual device annotations and a list of device names supplied
-    // through an attribute.
-    //
-    // TODO(akshayka): Add a fastpath for functions that execute on a single
-    // device.
-    {
-      mutex_lock l(mu_);
-      if (function_handles_.find(lib) == function_handles_.end()) {
-        if (local_device_name_.empty()) {
-          // The full local device name isn't known at kernel construction
-          // time, hence the need to set it here.
-          local_device_name_ = lib->device()->name();
-        }
-
-        // TODO(b/37549631): Because this kernel may correspond to a stateful
-        // op, it may be shared by multiple subgraphs, which in turn may have
-        // different `FunctionLibraryRuntime` objects and therefore different
-        // `FHandle` namespaces. As such, we partition on a per-FLR basis.
-        FunctionLibraryRuntime::InstantiateOptions opts;
-        FHandle handle;
-        OP_REQUIRES_OK_ASYNC(
-            ctx,
-            lib->Instantiate(func_.name(), AttrSlice(&func_.attr()), opts,
-                             &handle),
-            done);
-        const FunctionBody* fbody = lib->GetFunctionBody(handle);
-        OP_REQUIRES_ASYNC(ctx, fbody != nullptr,
-                          errors::Internal("Could not find handle ", handle),
-                          done);
-        // We need to pass global op_registry as default_registry when creating
-        // graph. So that graph optimization passes can lookup all possible ops
-        // by name.
-        auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
-        FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-        TF_CHECK_OK(
-                    graph.get()->AddFunctionLibrary(global_flib.ToProto()));
-        CopyGraph(*fbody->graph, graph.get());
-        OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
-
-        DeviceSet device_set;
-        for (auto d : lib->device_mgr()->ListDevices()) {
-          device_set.AddDevice(d);
-        }
-
-        // The FunctionLibraryRuntime's library cannot be mutated from within
-        // an OpKernel, so functions are instantiated in an overlay library.
-        OP_REQUIRES_ASYNC(
-            ctx, overlay_libs_.find(lib) == overlay_libs_.end(),
-            errors::Internal("Found an overlay library but did not "
-                             "find cached function partitions; "
-                             "this indicates a bug."),
-            done);
-        FunctionLibraryDefinition* overlay_lib =
-            new FunctionLibraryDefinition(*lib->GetFunctionLibraryDefinition());
-        overlay_libs_.emplace(lib, overlay_lib);
-
-        GraphOptimizationPassOptions optimization_options;
-        // TODO(akshayka): Thread SessionOptions (if any) into this kernel, or
-        // make it possible to specify the relevant options via attributes.
-        SessionOptions session_options;
-        session_options.env = ctx->env();
-        optimization_options.session_options = &session_options;
-        optimization_options.graph = &graph;
-        optimization_options.flib_def = overlay_lib;
-        optimization_options.device_set = &device_set;
-        OP_REQUIRES_OK_ASYNC(
-            ctx,
-            OptimizationPassRegistry::Global()->RunGrouping(
-                OptimizationPassRegistry::PRE_PLACEMENT, optimization_options),
-            done);
-        Placer placer(graph.get(), &device_set);
-        OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
-        OP_REQUIRES_OK_ASYNC(
-            ctx,
-            OptimizationPassRegistry::Global()->RunGrouping(
-                OptimizationPassRegistry::POST_PLACEMENT, optimization_options),
-            done);
-        OP_REQUIRES_OK_ASYNC(
-            ctx,
-            OptimizationPassRegistry::Global()->RunGrouping(
-                OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
-                optimization_options),
-            done);
-
-        std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
-        OP_REQUIRES_OK_ASYNC(
-            ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
-            done);
-        optimization_options.graph = nullptr;
-        optimization_options.device_set = nullptr;
-        optimization_options.partition_graphs = &subgraphs;
-        OP_REQUIRES_OK_ASYNC(ctx,
-                             OptimizationPassRegistry::Global()->RunGrouping(
-                                 OptimizationPassRegistry::POST_PARTITIONING,
-                                 optimization_options),
-                             done);
-
-        auto handles = tensorflow::MakeUnique<gtl::FlatMap<string, FHandle>>();
-        for (const auto& pair : subgraphs) {
-          // TODO(akshayka): Fail gracefully if the set of devices corresponds
-          // to more than one address space.
-          const string& target = pair.first;
-          const auto& subgraph = pair.second;
-          OP_REQUIRES_OK_ASYNC(
-              ctx, UpdateArgAndRetMetadata(target, subgraph.get()), done);
-          FunctionDef shard;
-          string unique_name = UniquifyFunctionName(overlay_lib, func_.name());
-          OP_REQUIRES_OK_ASYNC(
-              ctx, GraphToFunctionDef(*subgraph, unique_name, &shard), done);
-          OP_REQUIRES_OK_ASYNC(ctx, overlay_lib->AddFunctionDef(shard), done);
-          FunctionLibraryRuntime::InstantiateOptions opts;
-          opts.target = target;
-          opts.overlay_lib = overlay_lib;
-          FHandle handle;
-          OP_REQUIRES_OK_ASYNC(
-              ctx,
-              lib->Instantiate(unique_name, AttrSlice(&shard.attr()), opts,
-                               &handle),
-              done);
-          handles->emplace(target, handle);
-        }
-
-        function_handles_.emplace(lib, std::move(handles));
-      }
+    inputs.reserve(args.size());
+    for (const Tensor& tensor : args) {
+      inputs.push_back(tensor);
     }
-    ExecuteFunctions(lib, ctx, args, std::move(done));
   }
 
- private:
-  typedef std::pair<string, FHandle> DeviceAndFHandle;
-  typedef std::pair<std::vector<int>, std::vector<int>> ArgAndRetIndices;
-  typedef std::pair<std::vector<AllocatorAttributes>,
-                    std::vector<AllocatorAttributes>>
-      ArgAndRetAllocAttrs;
+  RunFunction(handle, inputs, lib, ctx, done);
+}
 
-  // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
-  // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices.
-  Status PinResourceArgs(Graph* graph, const OpInputList& args) {
-    for (Node* node : graph->op_nodes()) {
-      string node_type = node->type_string();
-      if (node_type == FunctionLibraryDefinition::kArgOp) {
-        const AttrValue* attr_value;
-        TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
-        int index = attr_value->i();
-        TF_RETURN_IF_ERROR(node->attrs().Find("T", &attr_value));
-        DataType dtype = attr_value->type();
-        if (dtype == DT_RESOURCE) {
-          const ResourceHandle& handle = args[index].flat<ResourceHandle>()(0);
-          node->set_assigned_device_name(handle.device());
-        }
-      }
-    }
-    return Status::OK();
+Status PartitionedCallOp::FillOutputDevices(
+    const FunctionLibraryRuntime& lib, const Device& cpu_device,
+    AttrSlice attrs, FunctionLibraryRuntime::InstantiateOptions* opts) {
+  const FunctionLibraryDefinition* flib = lib.GetFunctionLibraryDefinition();
+  const FunctionDef* fdef = flib->Find(func_->name());
+  if (fdef == nullptr) {
+    return errors::NotFound("Failed for find definition for function \"",
+                            func_->name(), "\"");
   }
 
-  // Partitions `graph` and populates `subgraphs` with the partitions.
-  Status PartitionHelper(
-      const DeviceSet& device_set, std::unique_ptr<Graph> graph,
-      std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs) {
-    PartitionOptions partition_options;
-    partition_options.node_to_loc = [](const Node* node) {
-      // TODO(akshayka): To better support the distributed case, first split
-      // the graph by worker (e.g,. using the master session's
-      // `SplitByWorker` policy), and then recursively partition the
-      // per-worker shards at the remote worker(s).
-      return node->assigned_device_name();
-    };
-    int64 edge_name_counter = 0;
-    partition_options.new_name = [&edge_name_counter](const string& prefix) {
-      return strings::StrCat(prefix, "/_", ++edge_name_counter);
-    };
-    partition_options.get_incarnation =
-        [&device_set](const string& name) -> int64 {
-      const Device* d = device_set.FindDeviceByName(name);
-      if (d == nullptr) {
-        return PartitionOptions::kIllegalIncarnation;
+  bool is_type_list;
+  for (const OpDef::ArgDef& ret_def : fdef->signature().output_arg()) {
+    DataTypeVector dtypes;
+    TF_RETURN_IF_ERROR(ArgNumType(attrs, ret_def, &is_type_list, &dtypes));
+    for (DataType dtype : dtypes) {
+      if (dtype == DT_RESOURCE) {
+        // Resource memory type is HOST_MEMORY, however the actual resource
+        // might be allocated on a device. We leave output device for resource
+        // outputs empty, and rely on a Placer and colocation constraints to
+        // infer correct placement for the function output.
+        opts->output_devices.push_back("");
       } else {
-        return d->attributes().incarnation();
-      }
-    };
-    partition_options.control_flow_added = false;
-    std::unordered_map<string, GraphDef> partitions;
-    TF_RETURN_IF_ERROR(Partition(partition_options, graph.get(), &partitions));
-
-    VLOG(3) << "Partitioned function '" << func_.name() << "', yielding "
-            << partitions.size() << " shards.";
-
-    for (const auto& partition : partitions) {
-      std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
-      FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-      TF_CHECK_OK(
-                subgraph.get()->AddFunctionLibrary(global_flib.ToProto()));
-      GraphConstructorOptions opts;
-      opts.allow_internal_ops = true;
-      opts.expect_device_spec = true;
-      const string& device = partition.first;
-      const GraphDef& graph_def = partition.second;
-      TF_RETURN_IF_ERROR(
-          ConvertGraphDefToGraph(opts, graph_def, subgraph.get()));
-      subgraphs->emplace(device, std::move(subgraph));
-    }
-
-    return Status::OK();
-  }
-
-  // Each subgraph produced by partitioning the function body contains a subset
-  // of the original `Arg` and `Retval` nodes. This function performs
-  // bookkeeping to track which `Arg` and `Retval` nodes were placed on a
-  // particular device / subgraph.
-  //
-  // More specifically, this function
-  //  (1) rewrites the indices of the `Arg` and `Retval` nodes placed on a
-  //      particular device,
-  //  (2) records the subsets of `Arg` and `Retval` nodes assigned to the
-  //      device, and
-  //  (3) records which `Arg` and `Retval` nodes live in host memory.
-  Status UpdateArgAndRetMetadata(const string& device, Graph* subgraph) {
-    ArgAndRetIndices indices;
-    std::vector<int>* arg_indices = &indices.first;
-    std::vector<int>* ret_indices = &indices.second;
-    std::vector<std::pair<Node*, int>> arg_nodes;
-    std::vector<std::pair<Node*, int>> ret_nodes;
-    const AttrValue* attr_value;
-
-    // Find the Arg and Retval nodes, along with their corresponding indices
-    // in the original function.
-    for (Node* node : subgraph->op_nodes()) {
-      string node_type = node->type_string();
-      if (node_type == FunctionLibraryDefinition::kArgOp) {
-        TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
-        int index = attr_value->i();
-        arg_indices->push_back(index);
-        arg_nodes.push_back(std::make_pair(node, index));
-      } else if (node_type == FunctionLibraryDefinition::kRetOp) {
-        TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
-        int index = attr_value->i();
-        ret_indices->push_back(index);
-        ret_nodes.push_back(std::make_pair(node, index));
-      }
-    }
-
-    // Rewrite the indices of the Arg and Retval nodes for this function
-    // to range from 0 to the number of Arg nodes, Retval nodes, respectively.
-    auto sort_by_index = [](std::pair<Node*, int> one,
-                            std::pair<Node*, int> two) -> bool {
-      return one.second < two.second;
-    };
-    std::sort(arg_nodes.begin(), arg_nodes.end(), sort_by_index);
-    std::sort(ret_nodes.begin(), ret_nodes.end(), sort_by_index);
-    for (int i = 0; i < arg_nodes.size(); ++i) {
-      Node* arg = arg_nodes[i].first;
-      arg->AddAttr("index", i);
-      TF_RETURN_IF_ERROR(arg->attrs().Find("T", &attr_value));
-      AllocatorAttributes alloc_attr;
-      DataType type = attr_value->type();
-      if (MTypeFromDType(type) == HOST_MEMORY) {
-        alloc_attr.set_on_host(true);
-      }
-      arg_and_ret_alloc_attrs_[device].first.push_back(alloc_attr);
-    }
-    for (int i = 0; i < ret_nodes.size(); ++i) {
-      Node* ret = ret_nodes[i].first;
-      ret->AddAttr("index", i);
-      TF_RETURN_IF_ERROR(ret->attrs().Find("T", &attr_value));
-      AllocatorAttributes alloc_attr;
-      DataType type = attr_value->type();
-      if (MTypeFromDType(type) == HOST_MEMORY) {
-        alloc_attr.set_on_host(true);
-      }
-      arg_and_ret_alloc_attrs_[device].second.push_back(alloc_attr);
-    }
-
-    // If this kernel execution corresponds to a StatefulPartitionedCallOp,
-    // `arg_and_ret_indices_` might have been populated by a previous
-    // invocation.
-    if (arg_and_ret_indices_.find(device) == arg_and_ret_indices_.end()) {
-      arg_and_ret_indices_.emplace(device, indices);
-    }
-    return Status::OK();
-  }
-
-  std::vector<Tensor> GetArgsForIndices(const std::vector<int>& indices,
-                                        const OpInputList& arguments) {
-    std::vector<Tensor> args;
-    args.reserve(indices.size());
-    for (int i : indices) {
-      args.push_back(arguments[i]);
-    }
-    return args;
-  }
-
-  void ExecuteFunctions(FunctionLibraryRuntime* lib, OpKernelContext* ctx,
-                        const OpInputList& op_args, DoneCallback done)
-      LOCKS_EXCLUDED(mu_) {
-    const gtl::FlatMap<string, FHandle>* handles;
-    {
-      mutex_lock l(mu_);
-      handles = function_handles_[lib].get();
-    }
-    if (handles->empty()) {
-      // Trivial case where the function body is empty.
-      ctx->SetStatus(Status::OK());
-      done();
-      return;
-    }
-
-    FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
-    opts.step_container = ctx->step_container();
-    opts.cancellation_manager = ctx->cancellation_manager();
-    opts.stats_collector = ctx->stats_collector();
-    // TODO(akshayka): Consider selecting a runner on a per-device basis, i.e.,
-    // using device-specific threadpools when available.
-    opts.runner = ctx->runner();
-    opts.source_device = local_device_name_;
-    opts.allow_dead_tensors = true;
-    // TODO(akshayka): Accommodate the multiple-worker scenario by adding the
-    // constructed rendezvous to a rendezvous manager.
-    Rendezvous* rendez = new IntraProcessRendezvous(lib->device_mgr());
-    opts.rendezvous = rendez;
-
-    StatusCallback callback = std::bind(
-        [](Rendezvous* rendez, DoneCallback& done, const Status& status) {
-          rendez->Unref();
-          done();
-        },
-        rendez, std::move(done), std::placeholders::_1);
-    auto* refcounted_done = new ReffedStatusCallback(std::move(callback));
-    for (int i = 1; i < handles->size(); ++i) {
-      refcounted_done->Ref();
-    }
-
-    for (const auto& pair : *handles) {
-      const string& target = pair.first;
-      FHandle handle = pair.second;
-      VLOG(3) << "Running function shard on device " << target;
-      ArgAndRetIndices indices = arg_and_ret_indices_[target];
-      ArgAndRetAllocAttrs alloc_attrs = arg_and_ret_alloc_attrs_[target];
-      const std::vector<int>& arg_indices = indices.first;
-      const std::vector<int>& ret_indices = indices.second;
-      opts.args_alloc_attrs = alloc_attrs.first;
-      opts.rets_alloc_attrs = alloc_attrs.second;
-      if (target == local_device_name_) {
-        opts.remote_execution = false;
-        std::vector<Tensor> args = GetArgsForIndices(arg_indices, op_args);
-        std::vector<Tensor>* rets = new std::vector<Tensor>;
-        lib->Run(
-            opts, handle, args, rets,
-            [rets, ret_indices, refcounted_done, ctx](const Status& status) {
-              if (!status.ok()) {
-                VLOG(3) << "Local execution failed: " << status;
-                ctx->SetStatus(status);
-              } else {
-                for (int i = 0; i < rets->size(); ++i) {
-                  ctx->set_output(ret_indices[i], (*rets)[i]);
-                }
-              }
-              delete rets;
-              VLOG(3) << "Finished local execution.";
-              refcounted_done->Unref();
-            });
-      } else {
-        opts.remote_execution = true;
-        std::vector<Tensor> args = GetArgsForIndices(arg_indices, op_args);
-        std::vector<Tensor>* rets = new std::vector<Tensor>;
-        lib->Run(
-            opts, handle, args, rets,
-            [rets, ret_indices, refcounted_done, ctx](const Status& status) {
-              if (!status.ok()) {
-                VLOG(3) << "Remote execution failed: " << status;
-                ctx->SetStatus(status);
-              } else {
-                for (int i = 0; i < rets->size(); ++i) {
-                  ctx->set_output(ret_indices[i], (*rets)[i]);
-                }
-              }
-              delete rets;
-              VLOG(3) << "Finished remote execution.";
-              refcounted_done->Unref();
-            });
+        opts->output_devices.push_back(opts->target);
       }
     }
   }
+  return Status::OK();
+}
 
-  string UniquifyFunctionName(const FunctionLibraryDefinition* function_library,
-                              const string& name) {
-    for (;; ++suffix_) {
-      const string candidate = strings::StrCat(name, "_", suffix_);
-      if (function_library->Find(candidate) == nullptr) {
-        return candidate;
-      }
+Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
+                                      OpKernelContext* ctx,
+                                      std::vector<Tensor>* inputs,
+                                      FunctionLibraryRuntime::Handle* handle) {
+  FunctionLibraryRuntime::InstantiateOptions opts;
+  const auto* config = (ctx->function_library())
+                           ? ctx->function_library()->config_proto()
+                           : nullptr;
+  if (config) {
+    opts.config_proto = *config;
+  }
+
+#ifndef __ANDROID__
+  // Android tf library does not include grappler.
+  grappler::GrapplerItem::OptimizationOptions optimization_options;
+  // Tensorflow 2.0 in eager mode with automatic control dependencies will
+  // prune all nodes that are not in the transitive fanin of the fetch nodes.
+  // However because the function will be executed via FunctionLibraryRuntime,
+  // and current function implementation does not prune stateful and dataset
+  // ops, we rely on Grappler to do the correct graph pruning.
+  optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+  // All the nested function calls will be executed and optimized via
+  // PartitionedCallOp, there is no need to optimize functions now.
+  optimization_options.optimize_function_library = false;
+
+  opts.optimize_graph_fn =
+      std::bind(grappler::OptimizeGraph, std::placeholders::_1,
+                std::placeholders::_2, std::placeholders::_3,
+                std::placeholders::_4, std::placeholders::_5, *config_proto_,
+                func_->name(), optimization_options, std::placeholders::_6);
+#endif
+
+  // In some contexts like running the graph to evaluate constants,
+  // the FLR won't have any device.
+  opts.target = lib->device() == nullptr ? "" : lib->device()->name();
+  opts.is_multi_device_function = true;
+  opts.graph_collector = ctx->graph_collector();
+  opts.executor_type = executor_type_;
+
+  OpInputList args;
+  TF_RETURN_IF_ERROR(ctx->input_list("args", &args));
+  Device* cpu_device;
+  TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
+
+  inputs->reserve(args.size());
+  for (const Tensor& tensor : args) {
+    inputs->push_back(tensor);
+    DataType dtype = tensor.dtype();
+    if (dtype == DT_RESOURCE) {
+      const ResourceHandle& handle = tensor.flat<ResourceHandle>()(0);
+      opts.input_devices.push_back(handle.device());
+    } else {
+      opts.input_devices.push_back(opts.target);
     }
   }
 
-  NameAttrList func_;
-  string local_device_name_;
-  // Contains maps from device names to handles of function partitions, keyed by
-  // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated
-  // for a stateful op, different invocations of it may use different FLRs.)
-  gtl::FlatMap<FunctionLibraryRuntime*,
-               std::unique_ptr<gtl::FlatMap<string, FHandle>>>
-      function_handles_ GUARDED_BY(mu_);
-  // Function partitions are added to overlay libraries.
-  gtl::FlatMap<FunctionLibraryRuntime*,
-               std::unique_ptr<FunctionLibraryDefinition>>
-      overlay_libs_ GUARDED_BY(mu_);
-  // Map from device name to the indices of the arguments and return values
-  // placed on that device. Read-only after the first invocation.
-  gtl::FlatMap<string, ArgAndRetIndices> arg_and_ret_indices_;
-  // Map from device name to alloc attrs for arguments and return values of the
-  // function placed on that device. Read-only after the first invocation.
-  gtl::FlatMap<string, ArgAndRetAllocAttrs> arg_and_ret_alloc_attrs_;
+  TF_RETURN_IF_ERROR(
+      FillOutputDevices(*lib, *cpu_device, AttrSlice(&func_->attr()), &opts));
 
-  mutex mu_;
+  TF_RETURN_IF_ERROR(
+      lib->Instantiate(func_->name(), AttrSlice(&func_->attr()), opts, handle));
+  return Status::OK();
+}
 
-  // Used to uniquify function names in `overlay_libs_`.
-  uint32 suffix_ = 0;
-};
+void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
+                                    const std::vector<Tensor>& inputs,
+                                    FunctionLibraryRuntime* lib,
+                                    OpKernelContext* ctx, DoneCallback done) {
+  FunctionLibraryRuntime::Options run_opts;
+  ResourceMgr* resource_mgr = lib->device()->resource_manager();
+  ScopedStepContainer* step_container = new ScopedStepContainer(
+      run_opts.step_id, [resource_mgr](const string& name) {
+        resource_mgr->Cleanup(name).IgnoreError();
+      });
+  run_opts.step_container = step_container;
+  run_opts.cancellation_manager = ctx->cancellation_manager();
+  run_opts.stats_collector = ctx->stats_collector();
+  run_opts.collective_executor = ctx->collective_executor();
+  // TODO(akshayka): Consider selecting a runner on a per-device basis,
+  // i.e., using device-specific threadpools when available.
+  run_opts.runner = ctx->runner();
+  run_opts.source_device =
+      lib->device() == nullptr ? "" : lib->device()->name();
+  run_opts.allow_dead_tensors = true;
+
+  Rendezvous* rendez;
+  OP_REQUIRES_OK_ASYNC(
+      ctx,
+      ctx->create_rendezvous(run_opts.step_id,
+                             ctx->function_library()->device_mgr(), &rendez),
+      done);
+  run_opts.rendezvous = rendez;
+
+  std::vector<Tensor>* rets = new std::vector<Tensor>;
+  const string& func_name = func_->name();
+  profiler::TraceMe trace_me(
+      [&] {
+        return absl::StrCat(
+            "PartitionedCallOp #parent_step_id=", ctx->step_id(),
+            ",function_step_id=", run_opts.step_id, "#");
+      },
+      /*level=*/2);
+  lib->Run(run_opts, handle, inputs, rets,
+           [rets, rendez, done, ctx, func_name,
+            step_container](const Status& status) {
+             if (!status.ok()) {
+               const string function_and_msg =
+                   strings::StrCat(errors::FormatFunctionForError(func_name),
+                                   " ", status.error_message());
+               ctx->SetStatus(Status(status.code(), function_and_msg));
+             } else {
+               for (int i = 0; i < rets->size(); ++i) {
+                 ctx->set_output(i, (*rets)[i]);
+               }
+             }
+             delete rets;
+             delete step_container;
+             rendez->Unref();
+             done();
+           });
+}
+
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_CPU),
                         PartitionedCallOp);
 REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_CPU),
@@ -495,6 +290,10 @@ REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_GPU),
                         PartitionedCallOp);
 REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_GPU),
                         PartitionedCallOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("PartitionedCall");
+REGISTER_INPUT_COLOCATION_EXEMPTION("StatefulPartitionedCall");
+
 #if TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_SYCL),
                         PartitionedCallOp);
@@ -502,5 +301,4 @@ REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_SYCL),
                         PartitionedCallOp);
 #endif  // TENSORFLOW_USE_SYCL
 
-}  // namespace
 }  // namespace tensorflow

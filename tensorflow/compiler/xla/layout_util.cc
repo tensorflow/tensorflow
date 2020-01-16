@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <functional>
 #include <random>
@@ -41,28 +42,46 @@ namespace {
 
 // Internal helper for GetDefaultLayoutForShape and SetToDefaultLayout. Sets
 // minor_to_major to the value that represents the default layout.
-void SetDefaultLayoutToContainer(
-    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-        minor_to_major) {
+template <typename T>
+void SetDefaultLayoutToContainer(T* minor_to_major) {
   // The default XLA layout is major-to-minor (dim 0 is major).
   // For more information on XLA layouts, see:
   // https://www.tensorflow.org/performance/xla/shapes
   const int64 size = minor_to_major->size();
   for (int64 i = 0; i < size; ++i) {
-    minor_to_major->Set(i, size - 1 - i);
+    (*minor_to_major)[i] = size - 1 - i;
   }
 }
 
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
-    absl::Span<const int64> minor_to_major) {
+    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
+    int64 element_size_in_bits, int64 memory_space) {
   Layout layout;
   layout.set_format(DENSE);
   for (int64 dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
+  for (Tile tile : tiles) {
+    for (int64 dim : tile.dimensions()) {
+      if (dim < 0 && dim != Tile::kCombineDimension) {
+        LOG(FATAL) << "Tile dimension size needs to be mininum int64 value if "
+                      "it's negative. Value is "
+                   << dim;
+      }
+    }
+    *layout.add_tiles() = tile;
+  }
+  layout.set_element_size_in_bits(element_size_in_bits);
+  layout.set_memory_space(memory_space);
   return layout;
+}
+
+/* static */ Layout LayoutUtil::MakeDescendingLayout(int64 rank) {
+  std::vector<int64> layout(rank);
+  std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
+  return MakeLayout(layout);
 }
 
 /* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
@@ -75,22 +94,14 @@ void SetDefaultLayoutToContainer(
   return layout;
 }
 
-/* static */ Layout LayoutUtil::MakeSparseLayout(int64 max_sparse_elements) {
-  Layout layout;
-  layout.set_format(SPARSE);
-  layout.set_max_sparse_elements(max_sparse_elements);
-  return layout;
-}
-
 namespace {
 
 // Internal helper that creates a default layout for an array of the given rank.
 Layout CreateDefaultLayoutForRank(int64 rank) {
   Layout layout;
   layout.set_format(DENSE);
-  tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-      minor_to_major = layout.mutable_minor_to_major();
-  minor_to_major->Resize(rank, 0);
+  auto* minor_to_major = layout.mutable_minor_to_major();
+  minor_to_major->resize(rank, 0);
   SetDefaultLayoutToContainer(minor_to_major);
   return layout;
 }
@@ -98,13 +109,13 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }  // namespace
 
 /* static */ Layout LayoutUtil::GetDefaultLayoutForShape(const Shape& shape) {
-  if (ShapeUtil::IsOpaque(shape) || ShapeUtil::IsToken(shape)) {
+  if (shape.IsOpaque() || shape.IsToken()) {
     // Opaque and token types have empty layouts.
     return Layout();
   }
 
   // A Layout proto corresponds to a single array, not a tuple.
-  CHECK(ShapeUtil::IsArray(shape));
+  CHECK(shape.IsArray());
   return CreateDefaultLayoutForRank(shape.dimensions_size());
 }
 
@@ -125,17 +136,16 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ void LayoutUtil::SetToDefaultLayout(Shape* shape) {
-  if (ShapeUtil::IsTuple(*shape)) {
+  if (shape->IsTuple()) {
     // Tuple shape.
     for (auto& element_shape : *shape->mutable_tuple_shapes()) {
       SetToDefaultLayout(&element_shape);
     }
     shape->clear_layout();
-  } else if (ShapeUtil::IsArray(*shape)) {
+  } else if (shape->IsArray()) {
     shape->mutable_layout()->set_format(DENSE);
-    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-        minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
-    minor_to_major->Resize(shape->dimensions_size(), 0);
+    auto* minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
+    minor_to_major->resize(shape->dimensions_size(), 0);
     SetDefaultLayoutToContainer(minor_to_major);
   } else {
     // Opaque, token types etc. have no layout.
@@ -156,18 +166,23 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
 
-/* static */ Status LayoutUtil::ValidateLayoutInShape(const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape)) {
+/* static */ Status LayoutUtil::ValidateLayoutInShape(
+    const Shape& shape, bool allow_missing_layouts) {
+  if (shape.IsTuple()) {
     // Tuple shape.
     if (shape.has_layout()) {
       return InvalidArgument("tuple should not have a layout field");
     }
     for (auto& element_shape : shape.tuple_shapes()) {
-      TF_RETURN_IF_ERROR(ValidateLayoutInShape(element_shape));
+      TF_RETURN_IF_ERROR(
+          ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
     return Status::OK();
-  } else if (ShapeUtil::IsArray(shape)) {
+  } else if (shape.IsArray()) {
     if (!shape.has_layout()) {
+      if (allow_missing_layouts) {
+        return Status::OK();
+      }
       return InvalidArgument("shape %s does not have a layout",
                              ShapeUtil::HumanString(shape));
     }
@@ -185,13 +200,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 
 /* static */ Status LayoutUtil::ValidateLayoutForShape(const Layout& layout,
                                                        const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
 
-  if (!ShapeUtil::IsArray(shape)) {
-    if (layout.minor_to_major_size() != 0 ||
-        layout.padded_dimensions_size() != 0) {
+  if (!shape.IsArray()) {
+    if (layout.minor_to_major_size() != 0) {
       return InvalidArgument(
           "shape of primitive type %s should not have a non-trivial layout",
           PrimitiveType_Name(shape.element_type()));
@@ -199,26 +213,25 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     return Status::OK();
   }
 
-  if (layout.format() == INVALID_FORMAT) {
-    return InvalidArgument(
-        "Layout does not have a valid format: layout {%s}, shape {%s}",
-        layout.ShortDebugString(), shape.ShortDebugString());
+  if (layout.format() == INVALID_FORMAT || !Format_IsValid(layout.format())) {
+    return InvalidArgument("Layout has an invalid format (%d)",
+                           layout.format());
   }
 
   if (layout.format() == DENSE) {
-    if (layout.minor_to_major_size() != ShapeUtil::Rank(shape)) {
+    if (layout.minor_to_major_size() != shape.rank()) {
       return InvalidArgument(
           "layout minor_to_major field contains %d elements, "
           "but shape is rank %d: {%s}; shape: %s",
-          layout.minor_to_major_size(), ShapeUtil::Rank(shape),
+          layout.minor_to_major_size(), shape.rank(),
           absl::StrJoin(layout.minor_to_major(), ", "),
           shape.ShortDebugString());
     }
 
-    std::vector<bool> dimensions_in_layout(ShapeUtil::Rank(shape), false);
-    for (int64 i = 0; i < ShapeUtil::Rank(shape); ++i) {
+    std::vector<bool> dimensions_in_layout(shape.rank(), false);
+    for (int64 i = 0; i < shape.rank(); ++i) {
       int64 dim = layout.minor_to_major(i);
-      if (dim < 0 || dim >= ShapeUtil::Rank(shape)) {
+      if (dim < 0 || dim >= shape.rank()) {
         return InvalidArgument(
             "layout minor_to_major field has out-of-bounds value: %s",
             HumanString(layout));
@@ -230,27 +243,9 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
       }
       dimensions_in_layout[dim] = true;
     }
-
-    if (layout.padded_dimensions_size() > 0) {
-      if (layout.padded_dimensions_size() != ShapeUtil::Rank(shape)) {
-        return InvalidArgument(
-            "layout has %d padded dimensions, but shape is rank %d",
-            layout.padded_dimensions_size(), ShapeUtil::Rank(shape));
-      }
-      for (int i = 0; i < layout.padded_dimensions_size(); ++i) {
-        if (layout.padded_dimensions(i) < shape.dimensions(i)) {
-          return InvalidArgument(
-              "for dimension %d, dimension padding (%d) is smaller than "
-              "the dimension size (%d) of the shape",
-              i, layout.padded_dimensions(i), shape.dimensions(i));
-        }
-      }
-    }
-  }
-
-  if (layout.format() == SPARSE) {
-    if (!layout.padded_dimensions().empty()) {
-      return InvalidArgument("Sparse layout has padded dimensions");
+  } else {
+    if (layout.tiles_size() != 0) {
+      return InvalidArgument("Only dense layouts can be tiled.");
     }
   }
 
@@ -272,8 +267,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ bool LayoutUtil::IsDenseArray(const Shape& shape) {
-  return ShapeUtil::IsArray(shape) && shape.has_layout() &&
-         IsDense(shape.layout());
+  return shape.IsArray() && shape.has_layout() && IsDense(shape.layout());
 }
 
 /* static */ bool LayoutUtil::IsDense(const Layout& layout) {
@@ -292,58 +286,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
                         layout.minor_to_major().end(), std::greater<int64>());
 }
 
-/* static */ bool LayoutUtil::IsPadded(const Shape& shape) {
-  if (!ShapeUtil::IsArray(shape) || !HasLayout(shape) ||
-      shape.layout().padded_dimensions_size() == 0) {
-    return false;
-  }
-  CHECK(IsDenseArray(shape)) << shape.ShortDebugString();
-  CHECK_EQ(shape.dimensions_size(), shape.layout().padded_dimensions_size());
-  for (int64 i = 0; i < shape.dimensions_size(); ++i) {
-    if (shape.layout().padded_dimensions(i) > shape.dimensions(i)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/* static */ absl::Span<const int64> LayoutUtil::PaddedDimensions(
-    const Shape& shape) {
-  CHECK(IsDenseArray(shape));
-  return AsInt64Slice(shape.layout().padded_dimensions());
-}
-
-/* static */ int64 LayoutUtil::PaddedDimension(const Shape& shape,
-                                               int64 index) {
-  CHECK(IsDenseArray(shape));
-  return shape.layout().padded_dimensions(index);
-}
-
-/* static */ PaddingValue LayoutUtil::GetPaddingValue(const Shape& shape) {
-  CHECK(IsDenseArray(shape));
-  return shape.layout().padding_value();
-}
-
-/* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
-  return ShapeUtil::IsArray(shape) && shape.has_layout() &&
-         IsSparse(shape.layout());
-}
-
-/* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
-  return layout.format() == SPARSE;
-}
-
-/* static */ int64 LayoutUtil::MaxSparseElements(const Layout& layout) {
-  CHECK(IsSparse(layout));
-  return layout.max_sparse_elements();
-}
-
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     // Tuple shape: all subshapes must have a layout.
-    return std::all_of(shape.tuple_shapes().begin(), shape.tuple_shapes().end(),
-                       [](const Shape& s) { return HasLayout(s); });
-  } else if (!ShapeUtil::IsArray(shape)) {
+    return absl::c_all_of(shape.tuple_shapes(),
+                          [](const Shape& s) { return HasLayout(s); });
+  } else if (!shape.IsArray()) {
     // Opaque, token types etc. ignore layout.
     return true;
   }
@@ -360,7 +308,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ bool LayoutUtil::Equal(const Layout& lhs, const Layout& rhs) {
-  return protobuf_util::ProtobufEquals(lhs, rhs);
+  return lhs == rhs;
 }
 
 /* static */ absl::Span<const int64> LayoutUtil::MinorToMajor(
@@ -402,22 +350,18 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ string LayoutUtil::HumanString(const Layout& layout) {
-  if (IsSparse(layout)) {
-    return absl::StrCat("sparse{", layout.max_sparse_elements(), "}");
-  }
-  CHECK(IsDense(layout));
-  return absl::StrCat("{", absl::StrJoin(layout.minor_to_major(), ","), "}");
+  return layout.ToString();
 }
 
 namespace {
 
 // Internal helper for recursively copying layouts.
 Status CopyLayoutInternal(const Shape& src, Shape* dst) {
-  if (ShapeUtil::IsTuple(src) != ShapeUtil::IsTuple(*dst)) {
+  if (src.IsTuple() != dst->IsTuple()) {
     return InvalidArgument(
         "cannot copy layout from shape: shape structure differs");
   }
-  if (ShapeUtil::IsTuple(src)) {
+  if (src.IsTuple()) {
     if (ShapeUtil::TupleElementCount(src) !=
         ShapeUtil::TupleElementCount(*dst)) {
       return InvalidArgument(
@@ -429,7 +373,7 @@ Status CopyLayoutInternal(const Shape& src, Shape* dst) {
     }
   } else {
     if (src.has_layout()) {
-      if (ShapeUtil::Rank(src) != ShapeUtil::Rank(*dst)) {
+      if (src.rank() != dst->rank()) {
         return InvalidArgument("cannot copy layout from shape: ranks differs");
       }
       TF_RETURN_IF_ERROR(
@@ -451,9 +395,9 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 
 /* static */ bool LayoutUtil::LayoutsInShapesEqual(const Shape& lhs,
                                                    const Shape& rhs) {
-  if (ShapeUtil::IsTuple(lhs)) {
-    if (!ShapeUtil::IsTuple(rhs) || ShapeUtil::TupleElementCount(lhs) !=
-                                        ShapeUtil::TupleElementCount(rhs)) {
+  if (lhs.IsTuple()) {
+    if (!rhs.IsTuple() || ShapeUtil::TupleElementCount(lhs) !=
+                              ShapeUtil::TupleElementCount(rhs)) {
       return false;
     }
     for (int i = 0; i < ShapeUtil::TupleElementCount(lhs); ++i) {
@@ -462,8 +406,8 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
       }
     }
     return true;
-  } else if (ShapeUtil::IsArray(lhs)) {
-    return ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
+  } else if (lhs.IsArray()) {
+    return lhs.rank() == rhs.rank() &&
            LayoutUtil::Equal(lhs.layout(), rhs.layout());
   } else {
     // Layouts of non-array and non-tuple shapes is ignored.
@@ -479,18 +423,13 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     positions_in_layout.push_back(
         PositionInContainer(layout.minor_to_major(), dim));
   }
-  std::sort(positions_in_layout.begin(), positions_in_layout.end());
+  absl::c_sort(positions_in_layout);
   for (size_t i = 1; i < positions_in_layout.size(); ++i) {
     if (1 != positions_in_layout[i] - positions_in_layout[i - 1]) {
       return false;
     }
   }
   return true;
-}
-
-std::ostream& operator<<(std::ostream& out, const Layout& layout) {
-  out << LayoutUtil::HumanString(layout);
-  return out;
 }
 
 /*static*/ size_t LayoutUtil::Hash(const Layout& layout) {
@@ -502,14 +441,13 @@ std::ostream& operator<<(std::ostream& out, const Layout& layout) {
   for (int64 minor_to_major : layout.minor_to_major()) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
-
-  for (int64 padded_dim : layout.padded_dimensions()) {
-    hash_value = Hash64Combine(hash_value, hash<int64>()(padded_dim));
+  for (Tile tile : layout.tiles()) {
+    for (int64 tile_dim : tile.dimensions()) {
+      hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));
+    }
   }
-
-  hash_value =
-      Hash64Combine(hash_value, hash<PaddingValue>()(layout.padding_value()));
-  hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
+  hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());
+  hash_value = Hash64Combine(hash_value, layout.memory_space());
 
   return hash_value;
 }

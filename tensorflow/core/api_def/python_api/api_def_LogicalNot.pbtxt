@@ -5,6 +5,12 @@ op {
   }
   endpoint {
     name: "logical_not"
-    deprecated: true
   }
+  description: <<END
+Example:
+
+>>> tf.math.logical_not(tf.constant([True, False]))
+<tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  True])>
+
+END
 }

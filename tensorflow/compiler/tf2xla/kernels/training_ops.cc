@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
 namespace {
@@ -53,9 +52,9 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
-REGISTER_XLA_OP(
-    Name("ResourceApplyGradientDescent").TypeConstraint("T", kFloatTypes),
-    ResourceApplyGradientDescent);
+REGISTER_XLA_OP(Name("ResourceApplyGradientDescent")
+                    .TypeConstraint("T", kFloatAndComplexTypes),
+                ResourceApplyGradientDescent);
 
 xla::XlaOp ProximalGradientDescentUpdate(xla::XlaOp var, xla::XlaOp lr,
                                          xla::XlaOp l1, xla::XlaOp l2,
@@ -112,7 +111,7 @@ class ResourceApplyProximalGradientDescent : public XlaOpKernel {
   DataType dtype_;
 };
 REGISTER_XLA_OP(Name("ResourceApplyProximalGradientDescent")
-                    .TypeConstraint("T", kFloatTypes),
+                    .TypeConstraint("T", kFloatAndComplexTypes),
                 ResourceApplyProximalGradientDescent);
 
 class ResourceApplyMomentum : public XlaOpKernel {
@@ -172,9 +171,70 @@ class ResourceApplyMomentum : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ResourceApplyMomentum").TypeConstraint("T", kFloatTypes),
                 ResourceApplyMomentum);
 
+class ResourceApplyKerasMomentum : public XlaOpKernel {
+ public:
+  explicit ResourceApplyKerasMomentum(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType type = ctx->input_type(2);
+
+    TensorShape var_shape, accum_shape;
+    xla::XlaOp var, accum;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
+                errors::InvalidArgument(
+                    "var and accum do not have the same shape",
+                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+
+    TensorShape lr_shape = ctx->InputShape(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+
+    TensorShape grad_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    TensorShape momentum_shape = ctx->InputShape(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_shape),
+                errors::InvalidArgument("momentum is not a scalar: ",
+                                        momentum_shape.DebugString()));
+
+    xla::XlaOp lr = ctx->Input(2);
+    xla::XlaOp grad = ctx->Input(3);
+    xla::XlaOp momentum = ctx->Input(4);
+
+    accum = accum * momentum - grad * lr;
+    if (use_nesterov_) {
+      // See https://github.com/tensorflow/tensorflow/pull/2798 for an
+      // explanation of the reparameterization used here.
+      var = var + accum * momentum - grad * lr;
+    } else {
+      var = var + accum;
+    }
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
+  }
+
+ private:
+  bool use_nesterov_;
+};
+REGISTER_XLA_OP(Name("ResourceApplyKerasMomentum")
+                    .TypeConstraint("T", kFloatAndComplexTypes),
+                ResourceApplyKerasMomentum);
+
 class ResourceApplyAdagrad : public XlaOpKernel {
  public:
-  explicit ResourceApplyAdagrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit ResourceApplyAdagrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     DataType type = ctx->input_type(2);
@@ -203,14 +263,75 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     xla::XlaOp lr = ctx->Input(2);
     xla::XlaOp grad = ctx->Input(3);
 
-    accum = accum + xla::Square(grad);
+    if (update_slots_) {
+      accum = accum + xla::Square(grad);
+    }
     var = var - grad * lr * xla::Rsqrt(accum);
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
   }
+
+ private:
+  bool update_slots_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyAdagrad").TypeConstraint("T", kFloatTypes),
-                ResourceApplyAdagrad);
+REGISTER_XLA_OP(
+    Name("ResourceApplyAdagrad").TypeConstraint("T", kFloatAndComplexTypes),
+    ResourceApplyAdagrad);
+
+class ResourceApplyAdagradV2 : public XlaOpKernel {
+ public:
+  explicit ResourceApplyAdagradV2(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType type = ctx->input_type(2);
+
+    TensorShape var_shape, accum_shape;
+    xla::XlaOp var, accum;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
+                errors::InvalidArgument(
+                    "var and accum do not have the same shape",
+                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+
+    TensorShape lr_shape = ctx->InputShape(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+
+    TensorShape epsilon_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon_shape.DebugString()));
+
+    TensorShape grad_shape = ctx->InputShape(4);
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    xla::XlaOp lr = ctx->Input(2);
+    xla::XlaOp epsilon = ctx->Input(3);
+    xla::XlaOp grad = ctx->Input(4);
+
+    if (update_slots_) {
+      accum = accum + xla::Square(grad);
+    }
+    var = var - grad * lr / (xla::Sqrt(accum) + epsilon);
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
+  }
+
+ private:
+  bool update_slots_;
+};
+REGISTER_XLA_OP(
+    Name("ResourceApplyAdagradV2").TypeConstraint("T", kFloatAndComplexTypes),
+    ResourceApplyAdagradV2);
 
 class ResourceApplyProximalAdagrad : public XlaOpKernel {
  public:
@@ -264,9 +385,9 @@ class ResourceApplyProximalAdagrad : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(
-    Name("ResourceApplyProximalAdagrad").TypeConstraint("T", kFloatTypes),
-    ResourceApplyProximalAdagrad);
+REGISTER_XLA_OP(Name("ResourceApplyProximalAdagrad")
+                    .TypeConstraint("T", kFloatAndComplexTypes),
+                ResourceApplyProximalAdagrad);
 
 class ResourceApplyAdagradDA : public XlaOpKernel {
  public:
@@ -320,9 +441,8 @@ class ResourceApplyAdagradDA : public XlaOpKernel {
     xla::XlaOp lr = ctx->Input(4);
     xla::XlaOp l1 = ctx->Input(5);
     xla::XlaOp l2 = ctx->Input(6);
-    xla::XlaBuilder* const b = ctx->builder();
     xla::XlaOp global_step =
-        XlaHelpers::ConvertElementType(b, ctx->Input(7), dtype_);
+        XlaHelpers::ConvertElementType(ctx->Input(7), dtype_);
 
     accum = accum + grad;
     squared_accum = squared_accum + xla::Square(grad);
@@ -349,6 +469,7 @@ class ResourceApplyAdam : public XlaOpKernel {
  public:
   explicit ResourceApplyAdam(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -409,26 +530,37 @@ class ResourceApplyAdam : public XlaOpKernel {
     // alpha <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
     // m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
     // v_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t
-    // variable <- variable - alpha * m_t / (sqrt(v_t) + epsilon)
+    // if not use_nesterov:
+    //   variable <- variable - alpha * m_t / (sqrt(v_t) + epsilon)
+    // if use_nesterov:
+    //   variable <- variable - alpha * (m_t * beta1 + (1 - beta1) * g_t) /
+    //   (sqrt(v_t) + epsilon)
 
     xla::XlaBuilder* b = ctx->builder();
     xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype_, 1.0);
 
     xla::XlaOp alpha = lr * xla::Sqrt(one - beta2_power) / (one - beta1_power);
-    m = m + (grad - m) * (one - beta1);
+    auto m_t = m + (grad - m) * (one - beta1);
     v = v + (xla::Square(grad) - v) * (one - beta2);
-    var = var - m * alpha / (xla::Sqrt(v) + epsilon);
+    if (use_nesterov_) {
+      var = var - alpha * (m_t * beta1 + (one - beta1) * grad) /
+                      (xla::Sqrt(v) + epsilon);
+    } else {
+      var = var - m_t * alpha / (xla::Sqrt(v) + epsilon);
+    }
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, m));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, m_t));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, dtype_, v));
   }
 
  private:
   DataType dtype_;
+  bool use_nesterov_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyAdam").TypeConstraint("T", kFloatTypes),
-                ResourceApplyAdam);
+REGISTER_XLA_OP(
+    Name("ResourceApplyAdam").TypeConstraint("T", kFloatAndComplexTypes),
+    ResourceApplyAdam);
 
 class ResourceApplyAdaMax : public XlaOpKernel {
  public:
@@ -600,8 +732,9 @@ class ResourceApplyRMSProp : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyRMSProp").TypeConstraint("T", kFloatTypes),
-                ResourceApplyRMSProp);
+REGISTER_XLA_OP(
+    Name("ResourceApplyRMSProp").TypeConstraint("T", kFloatAndComplexTypes),
+    ResourceApplyRMSProp);
 
 class ResourceApplyCenteredRMSProp : public ResourceApplyRMSProp {
  public:
@@ -610,9 +743,9 @@ class ResourceApplyCenteredRMSProp : public ResourceApplyRMSProp {
     centered_ = true;
   }
 };
-REGISTER_XLA_OP(
-    Name("ResourceApplyCenteredRMSProp").TypeConstraint("T", kFloatTypes),
-    ResourceApplyCenteredRMSProp);
+REGISTER_XLA_OP(Name("ResourceApplyCenteredRMSProp")
+                    .TypeConstraint("T", kFloatAndComplexTypes),
+                ResourceApplyCenteredRMSProp);
 
 void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
                  bool has_l2_shrinkage) {
@@ -798,15 +931,12 @@ class ResourceApplyAdadelta : public XlaOpKernel {
     xla::XlaOp grad = ctx->Input(6);
 
     xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp neg_half = XlaHelpers::FloatLiteral(b, dtype_, -0.5);
-    xla::XlaOp half = XlaHelpers::FloatLiteral(b, dtype_, 0.5);
     xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype_, 1.0);
-    xla::XlaOp two = XlaHelpers::FloatLiteral(b, dtype_, 2.0);
 
-    accum = rho * accum + (one - rho) * xla::Pow(grad, two);
-    xla::XlaOp update = xla::Pow(accum_update + epsilon, half) *
-                        xla::Pow(accum + epsilon, neg_half) * grad;
-    accum_update = rho * accum_update + (one - rho) * xla::Pow(update, two);
+    accum = rho * accum + (one - rho) * xla::Square(grad);
+    xla::XlaOp update =
+        xla::Sqrt(accum_update + epsilon) * xla::Rsqrt(accum + epsilon) * grad;
+    accum_update = rho * accum_update + (one - rho) * xla::Square(update);
     var = var - update * lr;
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, accum));
@@ -816,8 +946,9 @@ class ResourceApplyAdadelta : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyAdadelta").TypeConstraint("T", kFloatTypes),
-                ResourceApplyAdadelta);
+REGISTER_XLA_OP(
+    Name("ResourceApplyAdadelta").TypeConstraint("T", kFloatAndComplexTypes),
+    ResourceApplyAdadelta);
 
 class ResourceApplySignBase : public XlaOpKernel {
  public:

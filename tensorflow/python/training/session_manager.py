@@ -18,14 +18,15 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -46,7 +47,7 @@ def _maybe_name(obj):
     return "<no name for %s>" % type(obj)
 
 
-@tf_export("train.SessionManager")
+@tf_export(v1=["train.SessionManager"])
 class SessionManager(object):
   """Training helper that restores from checkpoint and creates session.
 
@@ -97,7 +98,8 @@ class SessionManager(object):
                ready_for_local_init_op=None,
                graph=None,
                recovery_wait_secs=30,
-               local_init_run_options=None):
+               local_init_run_options=None,
+               local_init_feed_dict=None):
     """Creates a SessionManager.
 
     The `local_init_op` is an `Operation` that is run always after a new session
@@ -131,6 +133,8 @@ class SessionManager(object):
       recovery_wait_secs: Seconds between checks for the model to be ready.
       local_init_run_options: RunOptions to be passed to session.run when
         executing the local_init_op.
+      local_init_feed_dict: Optional session feed dictionary to use when running
+        the local_init_op.
 
     Raises:
       ValueError: If ready_for_local_init_op is not None but local_init_op is
@@ -146,6 +150,7 @@ class SessionManager(object):
     self._recovery_wait_secs = recovery_wait_secs
     self._target = None
     self._local_init_run_options = local_init_run_options
+    self._local_init_feed_dict = local_init_feed_dict
     if ready_for_local_init_op is not None and local_init_op is None:
       raise ValueError("If you pass a ready_for_local_init_op "
                        "you must also pass a local_init_op "
@@ -182,14 +187,16 @@ class SessionManager(object):
         set.
     """
     self._target = master
-    sess = session.Session(self._target, graph=self._graph, config=config)
-    # TODO(jhseu): Delete once tpu.initialize_system() goes away.
-    initialize_ops = (
-        distribution_strategy_context.get_distribution_strategy().initialize()
-    )
-    if initialize_ops:
-      sess.run(initialize_ops)
 
+    # This is required to so that we initialize the TPU device before
+    # restoring from checkpoint since we'll be placing variables on the device
+    # and TPUInitialize wipes out the memory of the device.
+    strategy = distribution_strategy_context.get_strategy()
+    if strategy and hasattr(strategy.extended,
+                            "_experimental_initialize_system"):
+      strategy.extended._experimental_initialize_system()  # pylint: disable=protected-access
+
+    sess = session.Session(self._target, graph=self._graph, config=config)
     if checkpoint_dir and checkpoint_filename_with_path:
       raise ValueError("Can not provide both checkpoint_dir and "
                        "checkpoint_filename_with_path.")
@@ -496,7 +503,8 @@ class SessionManager(object):
       is_ready_for_local_init, msg = self._model_ready_for_local_init(sess)
       if is_ready_for_local_init:
         logging.info("Running local_init_op.")
-        sess.run(self._local_init_op, options=self._local_init_run_options)
+        sess.run(self._local_init_op, feed_dict=self._local_init_feed_dict,
+                 options=self._local_init_run_options)
         logging.info("Done running local_init_op.")
         return True, None
       else:

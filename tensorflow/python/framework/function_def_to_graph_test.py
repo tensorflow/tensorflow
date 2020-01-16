@@ -23,11 +23,14 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import graph_to_function_def
+from tensorflow.python.framework import op_def_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -52,6 +55,7 @@ class FunctionDefToGraphTest(test.TestCase):
     fdef.signature.name = "_whats_in_a_name"
     return fdef
 
+  @test_util.run_deprecated_v1
   def testInputsAndOutputs(self):
     fdef = self._build_function_def()
     g = function_def_to_graph.function_def_to_graph(fdef)
@@ -72,15 +76,18 @@ class FunctionDefToGraphTest(test.TestCase):
     self.assertIsNone(g.outputs[1].shape.dims)  # Unknown dims.
 
     g = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes=[tensor_shape.vector(5),
-                            tensor_shape.vector(5)])
+        fdef,
+        input_shapes=[
+            tensor_shape.TensorShape([5]),
+            tensor_shape.TensorShape([5])
+        ])
     self.assertSequenceEqual(g.inputs[0].shape.dims, [5])
     self.assertSequenceEqual(g.inputs[1].shape.dims, [5])
     self.assertSequenceEqual(g.outputs[0].shape.dims, [5])
     self.assertSequenceEqual(g.outputs[1].shape.dims, [5])
 
     g = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes=[None, tensor_shape.matrix(5, 7)])
+        fdef, input_shapes=[None, tensor_shape.TensorShape([5, 7])])
     self.assertIsNone(g.inputs[0].shape.dims)
     self.assertSequenceEqual(g.inputs[1].shape.dims, [5, 7])
     self.assertSequenceEqual(g.outputs[0].shape.dims, [5, 7])
@@ -90,7 +97,7 @@ class FunctionDefToGraphTest(test.TestCase):
     # the number of input args in FunctionDef.signature.input_arg.
     with self.assertRaises(ValueError):
       g = function_def_to_graph.function_def_to_graph(
-          fdef, input_shapes=[tensor_shape.matrix(5, 7)])
+          fdef, input_shapes=[tensor_shape.TensorShape([5, 7])])
 
 
 class FunctionDefToGraphDefTest(test.TestCase):
@@ -113,8 +120,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
       y = array_ops.placeholder(dtypes.int32, name="y")
       z = array_ops.placeholder(dtypes.int32, name="z")
 
-      d_1, e_1 = test_ops._op_def_lib.apply_op(
-          "Foo1", name="foo_1", a=x, b=y, c=z)
+      d_1, e_1 = op_def_library.apply_op("Foo1", name="foo_1", a=x, b=y, c=z)
 
       list_output0, list_output1 = test_ops.list_output(
           T=[dtypes.int32, dtypes.int32], name="list_output")
@@ -174,8 +180,10 @@ class FunctionDefToGraphDefTest(test.TestCase):
     fdef = self._build_function_def()
     g, _ = function_def_to_graph.function_def_to_graph_def(
         fdef,
-        input_shapes=[tensor_shape.scalar(),
-                      tensor_shape.vector(5), None])
+        input_shapes=[
+            tensor_shape.TensorShape([]),
+            tensor_shape.TensorShape([5]), None
+        ])
     self.assertEqual("shape" in g.node[0].attr, True)
     self.assertSequenceEqual(
         tensor_shape.TensorShape(g.node[0].attr["shape"].shape).as_list(), [])
@@ -186,48 +194,17 @@ class FunctionDefToGraphDefTest(test.TestCase):
     self.assertEqual(g.node[0].attr["shape"].shape.unknown_rank, False)
     self.assertFalse("shape" in g.node[2].attr)
 
-  def testFunctionCallsFromFunction(self):
-    x = constant_op.constant(5.0)
-    y = constant_op.constant(10.0)
-
-    @function.defun
-    def fn():
-
-      @function.defun
-      def inner_fn():
-        return x + y
-
-      return inner_fn()
-
-    @function.defun
-    def fn2():
-      return 2 * fn()
-
-    fn2_defun = fn2.get_concrete_function()
-
-    # Call `fn2` to make sure `fn` is correctly instantiated so
-    # `function_def_to_graph` can find it.
-    fn2_defun()
-
-    fdef = fn2_defun._inference_function.definition
-    func_graph = function_def_to_graph.function_def_to_graph(fdef)
-    with func_graph.as_default():
-      x_ph, y_ph = func_graph.inputs
-      with self.session(graph=func_graph) as sess:
-        self.assertEqual(
-            sess.run(func_graph.outputs[0], feed_dict={
-                x_ph: 5.0,
-                y_ph: 10.0
-            }), 30.0)
-
   def testControlDependencies(self):
+
+    v = variables.Variable(1)
 
     @function.defun
     def fn(inp):
+      assign = v.assign(3, name="assign", read_value=False)
       x = constant_op.constant(2.0, name="x")
       # TODO(b/79881896): Test external control dependency once that's
       # supported.
-      with ops.control_dependencies([x, inp]):
+      with ops.control_dependencies([x, inp, assign]):
         constant_op.constant(3.0, name="y")
       return 4.0
 
@@ -236,9 +213,27 @@ class FunctionDefToGraphDefTest(test.TestCase):
     func_graph = function_def_to_graph.function_def_to_graph(fdef)
 
     op = func_graph.get_operation_by_name("y")
-    self.assertEqual(len(op.control_inputs), 2)
-    self.assertEqual(op.control_inputs[0].name, "x")
-    self.assertEqual(op.control_inputs[1].name, "placeholder")
+    self.assertEqual(len(op.control_inputs), 3)
+    self.assertEqual(op.control_inputs[0].name, "assign")
+    self.assertEqual(op.control_inputs[1].name, "inp")
+    self.assertEqual(op.control_inputs[2].name, "x")
+
+  def testAttributesForArgDef(self):
+
+    @function.defun
+    def fn(x):
+      return x
+
+    inp = constant_op.constant(1.0)
+    fdef = fn.get_concrete_function(inp).function_def
+    fdef.arg_attr[0].attr["_test_attr"].s = "value".encode("ascii")
+    graph_def = function_def_to_graph.function_def_to_graph_def(fdef)
+    placeholders = [
+        ndef for ndef in graph_def[0].node if ndef.op == "Placeholder"
+    ]
+    self.assertEqual(1, len(placeholders))
+    self.assertEqual(placeholders[0].attr["_test_attr"].s,
+                     "value".encode("ascii"))
 
 
 if __name__ == "__main__":

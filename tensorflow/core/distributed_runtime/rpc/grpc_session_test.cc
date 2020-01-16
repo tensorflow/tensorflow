@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
 
@@ -286,6 +286,41 @@ TEST(GrpcSessionTest, FetchMultipleTimes) {
   TF_CHECK_OK(session->Close());
 }
 
+TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
+  GraphDef graph;
+  string node_names[3];
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  SessionOptions options = Options(cluster->targets()[0], 1);
+  options.config.mutable_experimental()->set_disable_output_partition_graphs(
+      true);
+
+  std::unique_ptr<Session> session(NewRemote(options));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+  {
+    // Just run to target node.
+    TF_CHECK_OK(session->Run({}, {}, {node_names[2]}, nullptr));
+  }
+  {
+    // Attempting to get the partition graphs should fail.
+    RunOptions run_options;
+    run_options.set_output_partition_graphs(true);
+    RunMetadata run_metadata;
+    Status s = session->Run(run_options, {}, {}, {node_names[2]}, nullptr,
+                            &run_metadata);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "disable_output_partition_graphs"));
+  }
+
+  TF_CHECK_OK(session->Close());
+}
+
 // A = [3 2; -1 0]; x = rand(2, 1); We want to compute the largest
 // eigenvalue for A, which is 2.0. Iteratively, we do
 //   repeat x = y / y.norm(); y = A * x; end
@@ -501,7 +536,7 @@ TEST(GrpcSessionTest, MultiDevices_String) {
   Graph graph(OpRegistry::Global());
   Tensor a_tensor(DT_STRING, TensorShape({2, 2}));
   for (int i = 0; i < 4; ++i) {
-    a_tensor.flat<string>()(i) = "hello, world";
+    a_tensor.flat<tstring>()(i) = "hello, world";
   }
   Node* a = test::graph::Constant(&graph, a_tensor);
   Node* b = test::graph::Identity(&graph, a);
@@ -525,7 +560,7 @@ TEST(GrpcSessionTest, MultiDevices_String) {
         ASSERT_EQ(outputs[0].dtype(), DT_STRING);
         ASSERT_EQ(outputs[0].NumElements(), 4);
         for (int i = 0; i < outputs[0].NumElements(); ++i) {
-          EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
+          EXPECT_EQ(outputs[0].flat<tstring>()(i), "hello, world");
         }
         TF_CHECK_OK(session->Close());
       } else {
@@ -638,6 +673,65 @@ TEST(GrpcSessionTest, Error) {
     Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
     EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+  }
+  // session->Close() shall clean up all states related to the session->
+  // E.g., deregisters subgraph with workers, etc.
+  TF_CHECK_OK(session->Close());
+
+  // Sleep a bit so that most of asynchronous works finishes before
+  // the test process finishes.
+  Env::Default()->SleepForMicroseconds(2000000);
+}
+
+TEST(GrpcSessionTest, ErrorStatusLog) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  const string& master = cluster->targets()[0];
+  const string& dev_a = cluster->devices()[0].name();
+  const string& dev_b = cluster->devices()[1].name();
+  LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
+  GraphDef gdef;
+  std::vector<string> fetches;
+  {
+    Graph g(OpRegistry::Global());
+
+    // a2 = a + error(a)
+    //
+    // Subgraph for "a" fails. The master will cancel the subgraph for
+    // "b" and then returns the Session::Run.
+    auto a = test::graph::Constant(&g, Tensor());
+    a->set_assigned_device_name(dev_a);
+    auto a_err = test::graph::Error(&g, a, "fantasia!", true);
+    a_err->set_assigned_device_name(dev_a);
+    auto a2 = test::graph::Add(&g, a, a_err);
+    a2->set_assigned_device_name(dev_a);
+    fetches.push_back(a2->name());
+
+    // b2 = b + delay(b)
+    //
+    // Subgraph for "b" sleeps at the node "b_delay". When the sleep
+    // finishes, the subgraph "b" will continue execution till it
+    // notices that it is canceled. Meanwhile, subgraph's executor
+    // and its related state (registered ops) should still be alive.
+    auto b = test::graph::Constant(&g, Tensor());
+    b->set_assigned_device_name(dev_b);
+    auto b_delay = test::graph::Delay(&g, b, Microseconds(1000000));
+    b_delay->set_assigned_device_name(dev_b);
+    auto b2 = test::graph::Add(&g, b, b_delay);
+    b2->set_assigned_device_name(dev_b);
+    fetches.push_back(b2->name());
+    g.ToGraphDef(&gdef);
+  }
+  std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(gdef));
+  {
+    Status status = session->Run({}, fetches, {}, nullptr);
+    EXPECT_FALSE(status.ok());
+    std::cerr << status << "\n";
+    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    EXPECT_NE(status.ToString().find("ErrorOp: fantasia!"), string::npos);
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
@@ -1064,6 +1158,377 @@ TEST(SessionTest, RunTimeoutWithRunOptions) {
   // GRPC_CHTTP2_INTERNAL_ERROR which is mapped to error::INTERNAL.
   EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
               error::INTERNAL == status.code());
+}
+
+TEST(SessionTest, TestCompression) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  SessionOptions options = Options(cluster->targets()[0], 100);
+  RPCOptions* rpc_options = options.config.mutable_rpc_options();
+  rpc_options->set_compression_algorithm("deflate");
+  rpc_options->set_compression_level(GRPC_COMPRESS_LEVEL_HIGH);
+
+  std::unique_ptr<Session> session(NewRemote(options));
+
+  static const float kTestValue = 409.1934f;
+  Graph graph(OpRegistry::Global());
+  Tensor tensor(DT_FLOAT, TensorShape({1, 1}));
+  tensor.flat<float>()(0) = kTestValue;
+  Node* b = test::graph::Constant(&graph, tensor);
+  GraphDef gdef;
+  graph.ToGraphDef(&gdef);
+  RunOptions run_options;
+  TF_CHECK_OK(session->Create(run_options, gdef));
+
+  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+  TF_CHECK_OK(session->Run(inputs, {b->name()}, {}, &outputs));
+  ASSERT_EQ(1, outputs.size());
+  IsSingleFloatValue(outputs[0], kTestValue);
+}
+
+TEST(GrpcSessionTest, ErrorAggregationTwoWorkersTwoErrors) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  auto& devs = cluster->devices();
+  const string& master = cluster->targets()[0];
+  // worker 1
+  const string w1_dev1 = devs[0].name();
+  // worker 2
+  const string w2_dev1 = devs[1].name();
+
+  LOG(INFO) << "master " << master << "w1_dev1 " << w1_dev1 << " w2_dev1 "
+            << w2_dev1;
+  GraphDef gdef;
+  std::vector<string> fetches;
+  {
+    // Set up a graph to test the error handling when two workers both reports
+    // original errors. The expected behavior is:
+    //   1. The master issues a cancel operation upon receiving the first error.
+    //   2. The master may receive one or both errors depending on the timing
+    //      of the cancel operation.
+    //
+    // Set up:
+    // Set up two workers. Both worker reports error the master without any
+    // delay.
+    Graph g(OpRegistry::Global());
+
+    // Worker 1. a_err runs on w1_dev1 and a_delay runs on w2_dev2.
+    auto a = test::graph::Constant(&g, Tensor(1));
+    a->set_assigned_device_name(w1_dev1);
+
+    auto a_err = test::graph::Error(&g, a, "fantasia1!");
+    a_err->set_assigned_device_name(w1_dev1);
+
+    fetches.push_back(a_err->name());
+
+    // Worker 2. b2 depends on a_err and detects the error via the rendezvous
+    // from worker 1.
+    auto b = test::graph::Constant(&g, Tensor(1));
+    b->set_assigned_device_name(w2_dev1);
+
+    auto b_err = test::graph::Error(&g, b, "fantasia2!");
+    b_err->set_assigned_device_name(w2_dev1);
+
+    fetches.push_back(b_err->name());
+
+    g.ToGraphDef(&gdef);
+  }
+
+  std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(gdef));
+  {
+    std::vector<Tensor> outputs;
+    Status status = session->Run({}, fetches, {}, &outputs);
+    LOG(INFO) << status;
+    EXPECT_FALSE(status.ok());
+    // Status contains the error either worker1 or worker2.
+    EXPECT_NE(status.ToString().find("fantasia"), string::npos);
+    EXPECT_EQ(status.code(), error::Code::INTERNAL);
+  }
+  // session->Close() shall clean up all states related to the session->
+  // E.g., deregisters subgraph with workers, etc.
+  TF_CHECK_OK(session->Close());
+
+  // Sleep a bit so that most of asynchronous works finishes before
+  // the test process finishes.
+  Env::Default()->SleepForMicroseconds(2000000);
+}
+
+TEST(GrpcSessionTest, ErrorAggregationTwoWorkerRace) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(2, 0), 2, &cluster));
+  auto& devs = cluster->devices();
+  const string& master = cluster->targets()[0];
+  // worker 1
+  const string w1_dev1 = devs[0].name();
+  const string w1_dev2 = devs[1].name();
+  // worker 2
+  const string w2_dev1 = devs[2].name();
+
+  LOG(INFO) << "master " << master << "w1_dev1 " << w1_dev1 << " w1_dev2 "
+            << w1_dev2 << " w2_dev1 " << w2_dev1;
+  GraphDef gdef;
+  std::vector<string> fetches;
+  std::vector<string> targets;
+  {
+    // Set up a graph to test the error handling when a derived error is
+    // reported to master before the original error. The expected behavior is:
+    //    1. the original error will be received by the master and reported
+    //       to the user as the error status.
+    //
+    // Setup:
+    //
+    // Worker 1 generates the original error but it delays for 5 seconds before
+    // reporting to master. Worker 2 detects the error (via Rendezvous) and
+    // reports to the master before worker 1.
+    Graph g(OpRegistry::Global());
+
+    // Worker 1. a_err runs on w1_dev1 and a_delay runs on w2_dev2.
+    auto a = test::graph::Constant(&g, Tensor(1));
+    a->set_assigned_device_name(w1_dev1);
+
+    auto a_err = test::graph::Error(&g, a, "fantasia!");
+    a_err->set_assigned_device_name(w1_dev1);
+
+    auto a_delay = test::graph::Delay(&g, a, Microseconds(5000000));
+    a_delay->set_assigned_device_name(w1_dev2);
+
+    // We need to put a_delay in targets instead of fetches. Putting
+    // a_delay in fetches will cause the executor for w1_dev2 to report failure
+    // status as well as the Rendezvous is already poisoned by the a_err op in
+    // w1_dev1.
+    targets.push_back(a_delay->name());
+    fetches.push_back(a_err->name());
+
+    // Worker 2. b2 depends on a_err and detects the error via the rendezvous
+    // from worker 1.
+    auto b = test::graph::Constant(&g, Tensor(3));
+    b->set_assigned_device_name(w2_dev1);
+    auto b2 = test::graph::Add(&g, b, a_err);
+    b2->set_assigned_device_name(w2_dev1);
+    fetches.push_back(b2->name());
+
+    g.ToGraphDef(&gdef);
+  }
+
+  std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(gdef));
+  {
+    std::vector<Tensor> outputs;
+    Status status = session->Run({}, fetches, targets, &outputs);
+    LOG(INFO) << status;
+    EXPECT_FALSE(status.ok());
+    // assert status contains the root error
+    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    // assert status does not contain cancelled error.
+    EXPECT_EQ(status.ToString().find("Cancelled"), string::npos);
+    EXPECT_EQ(status.code(), error::Code::INTERNAL);
+  }
+  // session->Close() shall clean up all states related to the session->
+  // E.g., deregisters subgraph with workers, etc.
+  TF_CHECK_OK(session->Close());
+
+  // Sleep a bit so that most of asynchronous works finishes before
+  // the test process finishes.
+  Env::Default()->SleepForMicroseconds(2000000);
+}
+
+TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant1) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(2, 0), 3, &cluster));
+  auto& devs = cluster->devices();
+  const string& master = cluster->targets()[0];
+  // worker 1
+  const string w1_dev1 = devs[0].name();
+  const string w1_dev2 = devs[1].name();
+  // worker 2
+  const string w2_dev1 = devs[2].name();
+  // worker 3
+  const string w3_dev1 = devs[4].name();
+
+  LOG(INFO) << "master " << master << "w1_dev1 " << w1_dev1 << " w1_dev2 "
+            << w1_dev2 << " w2_dev1 " << w2_dev1 << " w3_dev1 " << w3_dev1;
+  GraphDef gdef;
+  std::vector<string> fetches;
+  std::vector<string> targets;
+  {
+    // Set up a graph to test the error handling when a derived error is
+    // reported to master before the original error and a third worker is
+    // canceled by the master. The expect behavior is that
+    //    1. the original error will be received by the master,
+    //    2. the canceled error will be treated as a derived error.
+    //
+    // Setup:
+    //
+    // Worker 1 generates the original error but it delays for 5 seconds before
+    // reporting to master. Worker 2 detects the error (via Rendezvous) and
+    // reports to the master before worker 1. Worker 3 runs a delay op and will
+    // be canceled by the master.
+    Graph g(OpRegistry::Global());
+
+    // Worker 1. a_err runs on w1_dev1 and a_delay runs on w2_dev2.
+    auto a = test::graph::Constant(&g, Tensor(1));
+    a->set_assigned_device_name(w1_dev1);
+
+    auto a_err = test::graph::Error(&g, a, "fantasia!");
+    a_err->set_assigned_device_name(w1_dev1);
+
+    auto a_delay = test::graph::Delay(&g, a, Microseconds(5000000));
+    a_delay->set_assigned_device_name(w1_dev2);
+
+    // Putting a_delay in fetches will cause the executor for w1_dev2 to report
+    // failure status as well due to the use of SendOp, as the Rendezvous is
+    // already poisoned by the a_err op in w1_dev1.
+    targets.push_back(a_delay->name());
+    fetches.push_back(a_err->name());
+
+    // Worker 2. b2 depends on a_err and detects the error via the rendezvous
+    // from worker 1.
+    auto b = test::graph::Constant(&g, Tensor(3));
+    b->set_assigned_device_name(w2_dev1);
+    auto b2 = test::graph::Add(&g, b, a_err);
+    b2->set_assigned_device_name(w2_dev1);
+    fetches.push_back(b2->name());
+
+    // Worker 3. Runs only a delay op. This worker will be cancelled by master
+    // when the master receives the root error from Worker 1.
+    auto c = test::graph::Constant(&g, Tensor(3));
+    c->set_assigned_device_name(w3_dev1);
+    auto c_delay = test::graph::Delay(&g, c, Microseconds(4000000));
+    c_delay->set_assigned_device_name(w3_dev1);
+
+    // Put c_delay in targets so that an implicit SendOp for c_delay to
+    // worker 1 is not generated.
+    targets.push_back(c_delay->name());
+
+    g.ToGraphDef(&gdef);
+  }
+
+  std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(gdef));
+  {
+    std::vector<Tensor> outputs;
+    Status status = session->Run({}, fetches, targets, &outputs);
+    LOG(INFO) << status;
+    EXPECT_FALSE(status.ok());
+    // assert status contains the root error
+    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    // assert status does not contain cancelled or aborted error.
+    EXPECT_EQ(status.ToString().find("Cancelled"), string::npos);
+    EXPECT_EQ(status.ToString().find("Aborted"), string::npos);
+    EXPECT_EQ(status.code(), error::Code::INTERNAL);
+  }
+  // session->Close() shall clean up all states related to the session->
+  // E.g., deregisters subgraph with workers, etc.
+  TF_CHECK_OK(session->Close());
+
+  // Sleep a bit so that most of asynchronous works finishes before
+  // the test process finishes.
+  Env::Default()->SleepForMicroseconds(2000000);
+}
+
+TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant2) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(2, 0), 3, &cluster));
+  auto& devs = cluster->devices();
+  const string& master = cluster->targets()[0];
+  // worker 1
+  const string w1_dev1 = devs[0].name();
+  const string w1_dev2 = devs[1].name();
+  // worker 2
+  const string w2_dev1 = devs[2].name();
+  // worker 3
+  const string w3_dev1 = devs[4].name();
+
+  LOG(INFO) << "master " << master << "w1_dev1 " << w1_dev1 << " w1_dev2 "
+            << w1_dev2 << " w2_dev1 " << w2_dev1 << " w3_dev1 " << w3_dev1;
+  GraphDef gdef;
+  std::vector<string> fetches;
+  std::vector<string> targets;
+  {
+    // Set up a graph to test the error handling when a derived error is
+    // reported to master before the original error and a third worker is
+    // aborted from an implicit SendOp. The expect behavior is that
+    //    1. the original error will be received by the master,
+    //    2. the aborted error will be treated as a derived error.
+    //
+    // Setup:
+    //
+    // Worker 1 generates the original error but it delays for 5 seconds before
+    // reporting to master. Worker 2 detects the error (via Rendezvous) and
+    // reports to the master before worker 1. Worker 3 runs a delay op and an
+    // implicit SendOp (for sending tensor c_delay to Worker 1) and will be
+    // aborted by worker 1.
+    Graph g(OpRegistry::Global());
+
+    // Worker 1. a_err runs on w1_dev1 and a_delay runs on w2_dev2.
+    auto a = test::graph::Constant(&g, Tensor(1));
+    a->set_assigned_device_name(w1_dev1);
+
+    auto a_err = test::graph::Error(&g, a, "fantasia!");
+    a_err->set_assigned_device_name(w1_dev1);
+
+    auto a_delay = test::graph::Delay(&g, a, Microseconds(5000000));
+    a_delay->set_assigned_device_name(w1_dev2);
+
+    // Putting a_delay in fetches will cause the executor for w1_dev2 to report
+    // failure status as well due to the use of SendOp, as the Rendezvous is
+    // already poisoned by the a_err op in w1_dev1.
+    targets.push_back(a_delay->name());
+    fetches.push_back(a_err->name());
+
+    // Worker 2. b2 depends on a_err and detects the error via the rendezvous
+    // from worker 1.
+    auto b = test::graph::Constant(&g, Tensor(3));
+    b->set_assigned_device_name(w2_dev1);
+    auto b2 = test::graph::Add(&g, b, a_err);
+    b2->set_assigned_device_name(w2_dev1);
+    fetches.push_back(b2->name());
+
+    // Worker 3. Runs only a delay op. This worker will be cancelled by master
+    // when the master receives the root error from Worker 1.
+    auto c = test::graph::Constant(&g, Tensor(3));
+    c->set_assigned_device_name(w3_dev1);
+    auto c_delay = test::graph::Delay(&g, c, Microseconds(4000000));
+    c_delay->set_assigned_device_name(w3_dev1);
+
+    // Put c_delay in fetches so that an implicit SendOp for c_delay to worker 1
+    // is generated.
+    fetches.push_back(c_delay->name());
+
+    g.ToGraphDef(&gdef);
+  }
+
+  std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(gdef));
+  {
+    std::vector<Tensor> outputs;
+    Status status = session->Run({}, fetches, targets, &outputs);
+    LOG(INFO) << status;
+    EXPECT_FALSE(status.ok());
+    // assert status contains the root error
+    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    // assert status does not contain cancelled or aborted error.
+    EXPECT_EQ(status.ToString().find("Cancelled"), string::npos);
+    EXPECT_EQ(status.ToString().find("Aborted"), string::npos);
+    EXPECT_EQ(status.code(), error::Code::INTERNAL);
+  }
+  // session->Close() shall clean up all states related to the session->
+  // E.g., deregisters subgraph with workers, etc.
+  TF_CHECK_OK(session->Close());
+
+  // Sleep a bit so that most of asynchronous works finishes before
+  // the test process finishes.
+  Env::Default()->SleepForMicroseconds(2000000);
 }
 
 }  // namespace tensorflow

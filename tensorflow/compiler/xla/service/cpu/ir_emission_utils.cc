@@ -26,7 +26,7 @@ namespace cpu {
 
 int64 GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features) {
-  CHECK(ShapeUtil::IsArray(shape));
+  CHECK(shape.IsArray());
   CHECK(!LayoutUtil::HasLayout(shape) || LayoutUtil::IsDense(shape.layout()));
 
   // We don't require a layout to be set on `shape`.  This only works on CPU
@@ -72,7 +72,8 @@ bool PotentiallyImplementedAsEigenConvolution(
   CHECK(
       ShapeUtil::SameElementTypeIgnoringFpPrecision(input_shape, kernel_shape));
   // TODO(b/65408531): Explore using Eigen dot for complex64 type.
-  if (ShapeUtil::ElementIsComplex(input_shape)) {
+  PrimitiveType primitive_type = input_shape.element_type();
+  if (primitive_type != F16 && primitive_type != F32) {
     return false;
   }
   if (window_util::HasWindowReversal(convolution.window())) {

@@ -5,6 +5,15 @@ op {
   }
   endpoint {
     name: "rsqrt"
-    deprecated: true
+    deprecation_version: 2
   }
+  description: <<END
+I.e., \\(y = 1 / \sqrt{x}\\).
+
+Example:
+>>> x = tf.constant([2., 0., -2.])
+>>> tf.math.rsqrt(x)
+<tf.Tensor: shape=(3,), dtype=float32, numpy=array([0.70710677,        inf,        nan], dtype=float32)>
+
+END
 }

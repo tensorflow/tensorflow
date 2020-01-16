@@ -88,7 +88,7 @@ class GPUUtil {
   static void CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  const DeviceContext* device_context,
                                  Device* gpu_device, Tensor* gpu_tensor,
-                                 StatusCallback done);
+                                 StatusCallback done, bool sync_dst_compute);
 
   static void DeviceToDeviceCopy(
       DeviceContext* send_dev_context, DeviceContext* recv_dev_context,

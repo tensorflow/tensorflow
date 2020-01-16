@@ -10,11 +10,11 @@ tf_module {
   }
   member_method {
     name: "add"
-    argspec: "args=[\'a\', \'b\', \'thresh\'], varargs=None, keywords=None, defaults=[\'0\'], "
+    argspec: "args=[\'a\', \'b\', \'threshold\', \'thresh\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "concat"
-    argspec: "args=[\'axis\', \'sp_inputs\', \'name\', \'expand_nonconcat_dim\', \'concat_dim\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+    argspec: "args=[\'axis\', \'sp_inputs\', \'name\', \'expand_nonconcat_dim\', \'concat_dim\', \'expand_nonconcat_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
   }
   member_method {
     name: "cross"
@@ -35,6 +35,10 @@ tf_module {
   member_method {
     name: "fill_empty_rows"
     argspec: "args=[\'sp_input\', \'default_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_dense"
+    argspec: "args=[\'tensor\', 'name'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "mask"
@@ -113,12 +117,16 @@ tf_module {
     argspec: "args=[\'sp_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "sparse_dense_matmul"
+    argspec: "args=[\'sp_a\', \'b\', \'adjoint_a\', \'adjoint_b\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "split"
     argspec: "args=[\'keyword_required\', \'sp_input\', \'num_split\', \'axis\', \'name\', \'split_dim\'], varargs=None, keywords=None, defaults=[\'KeywordRequired()\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "to_dense"
-    argspec: "args=[\'sp_input\', \'default_value\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'None\'], "
+    argspec: "args=[\'sp_input\', \'default_value\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "to_indicator"

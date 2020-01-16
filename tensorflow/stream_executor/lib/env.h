@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ENV_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_ENV_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -31,7 +31,7 @@ inline Status FileExists(const string& filename) {
   return Env::Default()->FileExists(filename);
 }
 
-inline Status FileExists(const port::StringPiece& filename) {
+inline Status FileExists(const absl::string_view& filename) {
   return Env::Default()->FileExists(string(filename));
 }
 

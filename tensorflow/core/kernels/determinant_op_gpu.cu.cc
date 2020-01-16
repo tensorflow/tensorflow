@@ -17,20 +17,20 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/determinant_op.h"
-
 #include <complex>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/determinant_op.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
 namespace {
-__device__ int PermutationOrder(int n, const int* pivots) {
+__device__ int PermutationOrder(int n, const int* __restrict__ pivots) {
   // Compute the order of the permutation from the number of transpositions
   // encoded in the pivot array, see:
   // http://icl.cs.utk.edu/lapack-forum/viewtopic.php?f=2&t=340
@@ -83,11 +83,10 @@ __device__ inline complex128 operator/(const complex128& a, const double& b) {
 // on the value of the template parameter. If compute_log_abs_det is false,
 // the sign argument is ignored.
 template <typename Scalar, bool compute_log_abs_det = true>
-__global__ void DeterminantFromPivotedLUKernel(int nthreads, int n,
-                                               const Scalar* lu_factor,
-                                               const int* all_pivots,
-                                               Scalar* sign,
-                                               Scalar* log_abs_det) {
+__global__ void DeterminantFromPivotedLUKernel(
+    int nthreads, int n, const Scalar* __restrict__ lu_factor,
+    const int* __restrict__ all_pivots, Scalar* __restrict__ sign,
+    Scalar* __restrict__ log_abs_det) {
   typedef typename Eigen::NumTraits<Scalar>::Real RealScalar;
   const int matrix_size = n * n;
   const int stride = n + 1;
@@ -95,7 +94,7 @@ __global__ void DeterminantFromPivotedLUKernel(int nthreads, int n,
   // since this cheap O(n) kernel always follows an O(n^3) LU factorization.
   // The main purpose is to avoid having to copy the LU decomposition to
   // host memory.
-  CUDA_1D_KERNEL_LOOP(o_idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(o_idx, nthreads) {
     // Initialize sign to (-1)^order.
     const int order = PermutationOrder(n, all_pivots + o_idx * n);
     Scalar prod_sign = order % 2 ? Scalar(-1) : Scalar(1);
@@ -128,11 +127,13 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
                   int* info) {
     const int64 num_matrices = output.size();
     const int64 n = lu_factor.dimension(2);
-    CudaLaunchConfig config = GetCudaLaunchConfig(num_matrices, device);
-    DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/false>
-        <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-            config.virtual_thread_count, n, lu_factor.data(), pivots, nullptr,
-            output.data());
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
+
+    TF_CHECK_OK(GpuLaunchKernel(
+        DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/false>,
+        config.block_count, config.thread_per_block, 0, device.stream(),
+        config.virtual_thread_count, n, lu_factor.data(), pivots, nullptr,
+        output.data()));
   }
 };
 
@@ -149,11 +150,12 @@ struct LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
                   typename TTypes<Scalar, 1>::Tensor log_abs_det) {
     const int64 num_matrices = sign.size();
     const int64 n = lu_factor.dimension(2);
-    CudaLaunchConfig config = GetCudaLaunchConfig(num_matrices, device);
-    DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>
-        <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-            config.virtual_thread_count, n, lu_factor.data(), pivots,
-            sign.data(), log_abs_det.data());
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
+    TF_CHECK_OK(GpuLaunchKernel(
+        DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>,
+        config.block_count, config.thread_per_block, 0, device.stream(),
+        config.virtual_thread_count, n, lu_factor.data(), pivots, sign.data(),
+        log_abs_det.data()));
   }
 };
 

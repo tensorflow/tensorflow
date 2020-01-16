@@ -1,10 +1,4 @@
 op {
   graph_op_name: "Substr"
-  endpoint {
-    name: "strings.substr"
-  }
-  endpoint {
-    name: "substr"
-    deprecated: true
-  }
+  visibility: HIDDEN
 }

@@ -20,11 +20,11 @@ limitations under the License.
 // So accessing feature values is not very convenient.
 //
 // For example, to read a first value of integer feature "tag":
-//   int id = example.features().feature().at("tag").int64_list().value(0)
+//   int id = example.features().feature().at("tag").int64_list().value(0);
 //
 // to add a value:
 //   auto features = example->mutable_features();
-//   (*features->mutable_feature())["tag"].mutable_int64_list()->add_value(id)
+//   (*features->mutable_feature())["tag"].mutable_int64_list()->add_value(id);
 //
 // For float features you have to use float_list, for string - bytes_list.
 //
@@ -67,7 +67,8 @@ limitations under the License.
 //         feature { float_list { value: [4.0] } }
 //         feature { float_list { value: [5.0, 3.0] } }
 //       }
-//     } }
+//     }
+//   }
 //
 // Functions exposed by this library:
 //   HasFeature<[FeatureType]>(key, proto) -> bool
@@ -75,11 +76,13 @@ limitations under the License.
 //     FeatureType, belongs to the Features or Example proto.
 //   HasFeatureList(key, sequence_example) -> bool
 //     Returns true if SequenceExample has a feature_list with the key.
+//
 //   GetFeatureValues<FeatureType>(key, proto) -> RepeatedField<FeatureType>
 //     Returns values for the specified key and the FeatureType.
 //     Supported types for the proto: Example, Features.
 //   GetFeatureList(key, sequence_example) -> RepeatedPtrField<Feature>
 //     Returns Feature protos associated with a key.
+//
 //   AppendFeatureValues(begin, end, feature)
 //   AppendFeatureValues(container or initializer_list, feature)
 //     Copies values into a Feature.
@@ -87,13 +90,24 @@ limitations under the License.
 //   AppendFeatureValues(container or initializer_list, key, proto)
 //     Copies values into Features and Example protos with the specified key.
 //
+//   ClearFeatureValues<FeatureType>(feature)
+//     Clears the feature's repeated field of the given type.
+//
+//   SetFeatureValues(begin, end, feature)
+//   SetFeatureValues(container or initializer_list, feature)
+//     Clears a Feature, then copies values into it.
+//   SetFeatureValues(begin, end, key, proto)
+//   SetFeatureValues(container or initializer_list, key, proto)
+//     Clears Features or Example protos with the specified key,
+//     then copies values into them.
+//
 // Auxiliary functions, it is unlikely you'll need to use them directly:
 //   GetFeatures(proto) -> Features
 //     A convenience function to get Features proto.
 //     Supported types for the proto: Example, Features.
-//   GetFeature(key, proto) -> Feature*
-//     Returns a Feature proto for the specified key, creates a new if
-//     necessary. Supported types for the proto: Example, Features.
+//   GetFeature(key, proto) -> Feature
+//     Returns a Feature proto for the specified key.
+//     Supported types for the proto: Example, Features.
 //   GetFeatureValues<FeatureType>(feature) -> RepeatedField<FeatureType>
 //     Returns values of the feature for the FeatureType.
 
@@ -135,6 +149,13 @@ struct RepeatedFieldTrait<float> {
   using Type = protobuf::RepeatedField<float>;
 };
 
+#ifdef USE_TSTRING
+template <>
+struct RepeatedFieldTrait<tstring> {
+  using Type = protobuf::RepeatedPtrField<string>;
+};
+#endif
+
 template <>
 struct RepeatedFieldTrait<string> {
   using Type = protobuf::RepeatedPtrField<string>;
@@ -171,6 +192,11 @@ struct is_string<string> : std::true_type {};
 
 template <>
 struct is_string<::tensorflow::StringPiece> : std::true_type {};
+
+#ifdef USE_TSTRING
+template <>
+struct is_string<tstring> : std::true_type {};
+#endif
 
 template <typename ValueType>
 struct FeatureTrait<
@@ -232,8 +258,16 @@ typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
   return GetFeatureValues<FeatureType>(&feature);
 }
 
-// Returns a Feature proto for the specified key, creates a new if necessary.
-// Supported types for the proto: Example, Features.
+// Returns a read-only Feature proto for the specified key, throws
+// std::out_of_range if the key is not found. Supported types for the proto:
+// Example, Features.
+template <typename ProtoType>
+const Feature& GetFeature(const string& key, const ProtoType& proto) {
+  return GetFeatures(proto).feature().at(key);
+}
+
+// Returns a mutable Feature proto for the specified key, creates a new if
+// necessary. Supported types for the proto: Example, Features.
 template <typename ProtoType>
 Feature* GetFeature(const string& key, ProtoType* proto) {
   return &(*GetFeatures(proto)->mutable_feature())[key];
@@ -297,6 +331,67 @@ void AppendFeatureValues(std::initializer_list<ValueType> container,
       typename std::initializer_list<ValueType>::const_iterator;
   AppendFeatureValues<IteratorType>(container.begin(), container.end(), key,
                                     proto);
+}
+
+// Clears the feature's repeated field (int64, float, or string).
+template <typename... FeatureType>
+void ClearFeatureValues(Feature* feature);
+
+// Clears the feature's repeated field (int64, float, or string). Copies
+// elements from the range, defined by [first, last) into the feature's repeated
+// field.
+template <typename IteratorType>
+void SetFeatureValues(IteratorType first, IteratorType last, Feature* feature) {
+  using FeatureType = typename internal::FeatureTrait<
+      typename std::iterator_traits<IteratorType>::value_type>::Type;
+  ClearFeatureValues<FeatureType>(feature);
+  AppendFeatureValues(first, last, feature);
+}
+
+// Clears the feature's repeated field (int64, float, or string). Copies all
+// elements from the initializer list into the feature's repeated field.
+template <typename ValueType>
+void SetFeatureValues(std::initializer_list<ValueType> container,
+                      Feature* feature) {
+  SetFeatureValues(container.begin(), container.end(), feature);
+}
+
+// Clears the feature's repeated field (int64, float, or string). Copies all
+// elements from the container into the feature's repeated field.
+template <typename ContainerType>
+void SetFeatureValues(const ContainerType& container, Feature* feature) {
+  using IteratorType = typename ContainerType::const_iterator;
+  SetFeatureValues<IteratorType>(container.begin(), container.end(), feature);
+}
+
+// Clears the feature's repeated field (int64, float, or string). Copies
+// elements from the range, defined by [first, last) into the feature's repeated
+// field.
+template <typename IteratorType, typename ProtoType>
+void SetFeatureValues(IteratorType first, IteratorType last, const string& key,
+                      ProtoType* proto) {
+  SetFeatureValues(first, last, GetFeature(key, GetFeatures(proto)));
+}
+
+// Clears the feature's repeated field (int64, float, or string). Copies all
+// elements from the container into the feature's repeated field.
+template <typename ContainerType, typename ProtoType>
+void SetFeatureValues(const ContainerType& container, const string& key,
+                      ProtoType* proto) {
+  using IteratorType = typename ContainerType::const_iterator;
+  SetFeatureValues<IteratorType>(container.begin(), container.end(), key,
+                                 proto);
+}
+
+// Clears the feature's repeated field (int64, float, or string). Copies all
+// elements from the initializer list into the feature's repeated field.
+template <typename ValueType, typename ProtoType>
+void SetFeatureValues(std::initializer_list<ValueType> container,
+                      const string& key, ProtoType* proto) {
+  using IteratorType =
+      typename std::initializer_list<ValueType>::const_iterator;
+  SetFeatureValues<IteratorType>(container.begin(), container.end(), key,
+                                 proto);
 }
 
 // Returns true if a feature with the specified key belongs to the Features.

@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker
@@ -50,6 +51,7 @@ class CppOpImpl(object):
 class BatchToSpaceDepthToSpace(test.TestCase, PythonOpImpl):
 
   # Verifies that: batch_to_space(x) = transpose(depth_to_space(transpose(x)))
+  @test_util.run_deprecated_v1
   def testDepthToSpaceTranspose(self):
     x = np.arange(20 * 5 * 8 * 7, dtype=np.float32).reshape([20, 5, 8, 7])
     block_size = 2
@@ -70,6 +72,7 @@ class BatchToSpaceDepthToSpaceCpp(BatchToSpaceDepthToSpace, CppOpImpl):
 
 class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
 
+  @test_util.run_deprecated_v1
   def testInputWrongDimMissingBatch(self):
     # The input is missing the first dimension ("batch")
     x_np = [[[1], [2]], [[3], [4]]]
@@ -78,6 +81,7 @@ class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
     with self.assertRaises(ValueError):
       _ = self.batch_to_space(x_np, crops, block_size)
 
+  @test_util.run_deprecated_v1
   def testBlockSize0(self):
     # The block size is 0.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -87,6 +91,7 @@ class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
       out_tf = self.batch_to_space(x_np, crops, block_size)
       out_tf.eval()
 
+  @test_util.run_deprecated_v1
   def testBlockSizeOne(self):
     # The block size is 1. The block size needs to be > 1.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -96,6 +101,7 @@ class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
       out_tf = self.batch_to_space(x_np, crops, block_size)
       out_tf.eval()
 
+  @test_util.run_deprecated_v1
   def testBlockSizeLarger(self):
     # The block size is too large for this input.
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -105,6 +111,7 @@ class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
       out_tf = self.batch_to_space(x_np, crops, block_size)
       out_tf.eval()
 
+  @test_util.run_deprecated_v1
   def testBlockSizeSquaredNotDivisibleBatch(self):
     # The block size squared does not divide the batch.
     x_np = [[[[1], [2], [3]], [[3], [4], [7]]]]
@@ -113,6 +120,7 @@ class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
     with self.assertRaises(ValueError):
       _ = self.batch_to_space(x_np, crops, block_size)
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     t = self.batch_to_space(
         array_ops.placeholder(dtypes.float32),
@@ -160,28 +168,35 @@ class BatchToSpaceNDErrorHandlingTest(test.TestCase):
     self._testStaticShape(input_shape, block_shape, paddings, error)
     self._testDynamicShape(input_shape, block_shape, paddings)
 
+  @test_util.run_deprecated_v1
   def testInputWrongDimMissingBatch(self):
     self._testShape([2, 2], [2, 2], [[0, 0], [0, 0]], ValueError)
     self._testShape([2, 2, 3], [2, 2, 3], [[0, 0], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testBlockSize0(self):
     # The block size is 0.
     self._testShape([1, 2, 2, 1], [0, 1], [[0, 0], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeNegative(self):
     self._testShape([1, 2, 2, 1], [-1, 1], [[0, 0], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testNegativePadding(self):
     self._testShape([1, 2, 2], [1, 1], [[0, -1], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testCropTooLarge(self):
     # The amount to crop exceeds the padded size.
     self._testShape([1 * 2 * 2, 2, 3, 1], [2, 2], [[3, 2], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testBlockSizeSquaredNotDivisibleBatch(self):
     # The batch dimension is not divisible by the product of the block_shape.
     self._testShape([3, 1, 1, 1], [2, 3], [[0, 0], [0, 0]], ValueError)
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     # Verify that input shape and paddings shape can be unknown.
     _ = array_ops.batch_to_space_nd(
@@ -263,18 +278,21 @@ class BatchToSpaceGradientTest(test.TestCase, PythonOpImpl):
 
   # Don't use very large numbers as dimensions here as the result is tensor
   # with cartesian product of the dimensions.
+  @test_util.run_deprecated_v1
   def testSmall(self):
     block_size = 2
     crop_beg = 0
     crop_end = 0
     self._compare(1, 2, 3, 5, block_size, crop_beg, crop_end)
 
+  @test_util.run_deprecated_v1
   def testSmall2(self):
     block_size = 2
     crop_beg = 0
     crop_end = 0
     self._compare(2, 4, 3, 2, block_size, crop_beg, crop_end)
 
+  @test_util.run_deprecated_v1
   def testSmallCrop1x1(self):
     block_size = 2
     crop_beg = 1
@@ -316,14 +334,17 @@ class BatchToSpaceNDGradientTest(test.TestCase):
 
   # Don't use very large numbers as dimensions here as the result is tensor
   # with cartesian product of the dimensions.
+  @test_util.run_deprecated_v1
   def testSmall(self):
     for dtype in [dtypes.int64, dtypes.int32]:
       self._compare([1, 2, 3, 5], [2, 2], [[0, 0], [0, 0]], dtype)
 
+  @test_util.run_deprecated_v1
   def testSmall2(self):
     for dtype in [dtypes.int64, dtypes.int32]:
       self._compare([2, 4, 3, 2], [2, 2], [[0, 0], [0, 0]], dtype)
 
+  @test_util.run_deprecated_v1
   def testSmallCrop1x1(self):
     for dtype in [dtypes.int64, dtypes.int32]:
       self._compare([1, 2, 3, 5], [2, 2], [[1, 1], [1, 1]], dtype)

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -24,7 +26,7 @@ namespace hlo_query {
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   if (instruction->opcode() == HloOpcode::kConstant &&
-      ShapeUtil::IsScalarF32(instruction->shape())) {
+      ShapeUtil::IsScalarWithElementType(instruction->shape(), F32)) {
     *out = instruction->literal().Get<float>({});
     return true;
   }
@@ -102,6 +104,48 @@ bool MatchBinaryInstructionOperandOpcode(HloOpcode opcode,
 
 bool IsScalarConstant(const HloInstruction* instruction) {
   return instruction->IsConstant() && ShapeUtil::IsScalar(instruction->shape());
+}
+
+bool ContainsInstrWithOpcode(const HloComputation* comp,
+                             const absl::flat_hash_set<HloOpcode>& opcodes) {
+  for (const auto* instr : comp->instructions()) {
+    if (opcodes.count(instr->opcode())) {
+      return true;
+    }
+    for (const HloComputation* subcomp : instr->called_computations()) {
+      if (ContainsInstrWithOpcode(subcomp, opcodes)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
+  for (auto computation : module.computations()) {
+    for (auto hlo : computation->instructions()) {
+      if (hlo->opcode() == HloOpcode::kAllReduce &&
+          DynCast<HloAllReduceInstruction>(hlo)->constrain_layout()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+int64 NextChannelId(const HloModule& module) {
+  int64 next_channel_id = 1;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* hlo : comp->instructions()) {
+      const HloChannelInstruction* channel_instr =
+          DynCast<HloChannelInstruction>(hlo);
+      if (channel_instr && channel_instr->channel_id()) {
+        next_channel_id =
+            std::max(next_channel_id, *channel_instr->channel_id() + 1);
+      }
+    }
+  }
+  return next_channel_id;
 }
 
 }  // namespace hlo_query

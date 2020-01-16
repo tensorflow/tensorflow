@@ -20,7 +20,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -30,14 +33,32 @@ class FunctionApiInfo {
   FunctionApiInfo();
   virtual ~FunctionApiInfo();
 
+  enum FunctionType {
+    INFERENCE,  // Default type.
+    FORWARD,
+    BACKWARD,
+  };
+
   Status Init(const FunctionDef& function_def);
 
   const string& interface_name() const;
   const string& preferred_device() const;
+  const FunctionType function_type() const;
+  const string& pairing_function_name() const;
+  const DataTypeVector& input_arg_dtypes() const;
+  const DataTypeVector& output_arg_dtypes() const;
 
  private:
   string interface_name_;
   string preferred_device_;
+  FunctionType function_type_;
+  // The pairing function is used to pair between forward and backward function,
+  // which will be useful during function swapping. Inference function won't
+  // have pairing function.
+  string pairing_function_name_;
+  // The following two attributes are useful for forward and backward functions.
+  DataTypeVector input_arg_dtypes_;
+  DataTypeVector output_arg_dtypes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionApiInfo);
 };
@@ -55,21 +76,24 @@ class FunctionLibraryApiInfo {
   // Populate the internal field for the functions within the function_library.
   Status Init(const FunctionDefLibrary& function_library);
 
-  void GetEquivalentImplementations(const string& function_name,
-                                    std::vector<string>* other_names) const;
-
-  void GetBestImplementation(const string& function_name, const string& device,
-                             string* best_func_name) const;
+  Status GetEquivalentImplementations(
+      const string& function_name, std::vector<string>* other_functions) const;
 
   const FunctionApiInfo* GetApiInfo(const string& function_name) const;
+  bool empty() const { return func_info_.empty(); }
+  std::size_t size() const { return func_info_.size(); }
 
  private:
   // Map between function name to function details.
   std::unordered_map<string, std::unique_ptr<FunctionApiInfo>> func_info_;
-  // Map between function name to interface name.
-  std::unordered_map<string, string> func_to_intf_;
+
   // Map between interface name to function names.
-  std::unordered_map<string, std::vector<string>> intf_to_funcs_;
+  // Forward/backward function pair usually have different signatures between
+  // each other since forward function could produce extra internal state as
+  // output, and backward will take those extra state as inputs.
+  absl::flat_hash_map<string, std::vector<string>> intf_to_inference_funcs_;
+  absl::flat_hash_map<string, std::vector<string>> intf_to_forward_funcs_;
+  absl::flat_hash_map<string, std::vector<string>> intf_to_backward_funcs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryApiInfo);
 };

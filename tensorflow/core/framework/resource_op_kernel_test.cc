@@ -46,7 +46,7 @@ class StubDevice : public DeviceBase {
 // Stub resource for testing resource op kernel.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
   int code;
 };
 
@@ -89,12 +89,13 @@ class ResourceOpKernelTest : public ::testing::Test {
  protected:
   std::unique_ptr<StubResourceOpKernel> CreateOp(int code,
                                                  const string& shared_name) {
+    static std::atomic<int64> count(0);
     NodeDef node_def;
-    TF_CHECK_OK(
-        NodeDefBuilder(strings::StrCat("test-node", count_++), "StubResourceOp")
-            .Attr("code", code)
-            .Attr("shared_name", shared_name)
-            .Finalize(&node_def));
+    TF_CHECK_OK(NodeDefBuilder(strings::StrCat("test-node", count.fetch_add(1)),
+                               "StubResourceOp")
+                    .Attr("code", code)
+                    .Attr("shared_name", shared_name)
+                    .Finalize(&node_def));
     Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(
         DEVICE_CPU, &device_, device_.GetAllocator(AllocatorAttributes()),
@@ -126,7 +127,6 @@ class ResourceOpKernelTest : public ::testing::Test {
 
   StubDevice device_;
   ResourceMgr mgr_;
-  int count_ = 0;
 };
 
 TEST_F(ResourceOpKernelTest, PrivateResource) {
@@ -137,6 +137,9 @@ TEST_F(ResourceOpKernelTest, PrivateResource) {
   TF_EXPECT_OK(RunOpKernel(op.get()));
 
   // Default non-shared name provided from ContainerInfo.
+  // TODO(gonnet): This test is brittle since it assumes that the
+  // ResourceManager is untouched and thus the private resource name starts
+  // with "_0_".
   const string key = "_0_" + op->name();
 
   StubResource* resource;

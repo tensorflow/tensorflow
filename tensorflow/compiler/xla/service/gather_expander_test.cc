@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gather_expander.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
+
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 
 namespace xla {
 namespace {
-TEST(GatherExpanderTest, ErrorStatusOnTooManyIndices) {
+
+using GatherExpanderTest = HloTestBase;
+
+TEST_F(GatherExpanderTest, ErrorStatusOnTooManyIndices) {
   const string hlo_text = R"(
 HloModule TensorFlowGatherMultipleBatchDims
 
@@ -36,7 +40,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   Status status = GatherExpander{}.Run(module.get()).status();
   EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
@@ -47,7 +51,7 @@ ENTRY main {
                            "indices are not supported."));
 }
 
-TEST(GatherExpanderTest, AvoidDegenerateDims) {
+TEST_F(GatherExpanderTest, AvoidDegenerateDims) {
   const string hlo_text = R"(
 HloModule TensorFlowGatherV2
 
@@ -63,7 +67,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, GatherExpander{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
@@ -89,7 +93,7 @@ ENTRY main {
   // an implementation detail from WhileUtil::MakeCountedLoop).
 
   const Shape& while_shape = while_instr->shape();
-  ASSERT_TRUE(ShapeUtil::IsTuple(while_shape));
+  ASSERT_TRUE(while_shape.IsTuple());
   ASSERT_EQ(ShapeUtil::TupleElementCount(while_shape), 4);
 
   EXPECT_TRUE(ShapeUtil::SameDimensions(
@@ -103,6 +107,45 @@ ENTRY main {
   EXPECT_TRUE(ShapeUtil::SameDimensions(
       ShapeUtil::MakeShape(S32, {2, 3}),
       ShapeUtil::GetTupleElementShape(while_shape, 3)));
+}
+
+TEST_F(GatherExpanderTest, CheckOpMetadata) {
+  const string hlo_text = R"(
+HloModule TensorFlowGatherV2
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[3,2] gather(operand, indices),
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
+      index_vector_dim=1,
+      slice_sizes={3, 1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  OpMetadata metadata;
+  metadata.set_op_name("Gather");
+  module->entry_computation()->root_instruction()->set_metadata(metadata);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, GatherExpander{}.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  HloInstruction* while_instr = nullptr;
+  for (auto* instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kWhile) {
+      ASSERT_EQ(while_instr, nullptr)
+          << "Expected exactly one while instruction in the entry computation "
+             "after gather expansion";
+      while_instr = instr;
+    }
+  }
+
+  ASSERT_NE(while_instr, nullptr)
+      << "Expected exactly one while instruction in the entry computation "
+         "after gather expansion";
+  EXPECT_EQ(while_instr->metadata().op_name(), "Gather");
 }
 }  // namespace
 }  // namespace xla

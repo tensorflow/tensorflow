@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -17,6 +19,16 @@ filegroup(
 py_library(
     name = "testing",
     srcs = [
+        "basic_definitions.py",
+        "decorators.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "codegen",
+    srcs = [
         "codegen.py",
     ],
     srcs_version = "PY2AND3",
@@ -32,6 +44,7 @@ py_test(
     name = "codegen_test",
     size = "large",
     srcs = ["codegen_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -40,7 +53,7 @@ py_test(
         "notap",
     ],
     deps = [
-        ":testing",
+        ":codegen",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct",
         "@gast_archive//:gast",

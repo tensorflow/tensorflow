@@ -37,6 +37,21 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+template <typename T>
+struct RawType {
+  using type = T;
+};
+
+template <>
+struct RawType<qint8> {
+  // spacetodepth_op_gpu.cu.cc does not instantiate SpaceToDepthOpFunctor for
+  // int8, so we map qint8 to uint8. Instantiating int8 could slow down
+  // compilation and the code generated is almost the same as for uint8.
+  using type = uint8;
+};
+}  // namespace
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -66,17 +81,17 @@ class SpaceToDepthOp : public OpKernel {
     const Tensor& input = context->input(0);
     const int dims = input.dims();
 
-    // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
-    constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
-    OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
-                errors::InvalidArgument(
-                    "qint8 should be used with data_format NCHW_VECT_C."));
-
-    constexpr int kVect = is_int8x4 ? 4 : 1;
-    constexpr int kDims = is_int8x4 ? 5 : 4;
-    OP_REQUIRES(context, kDims == dims,
-                errors::InvalidArgument("Input rank should be: ", kDims,
-                                        " instead of: ", dims));
+    const bool is_int8x4 = (data_format_ == FORMAT_NCHW_VECT_C);
+    const int vect = is_int8x4 ? 4 : 1;
+    if (is_int8x4) {
+      OP_REQUIRES(
+          context, dims == 5,
+          errors::InvalidArgument("Input rank should be 5 instead of ", dims));
+    } else {
+      OP_REQUIRES(
+          context, dims == 4,
+          errors::InvalidArgument("Input rank should be 4 instead of ", dims));
+    }
 
     constexpr int kNumSpatialDims = 2;
     const int batch_size =
@@ -87,7 +102,7 @@ class SpaceToDepthOp : public OpKernel {
         input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'W'));
     const int input_depth =
         input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'C')) *
-        kVect;
+        vect;
 
     // Both width and height must be divisible by block_size.
     OP_REQUIRES(context,
@@ -111,32 +126,32 @@ class SpaceToDepthOp : public OpKernel {
                                        output_width, output_depth),
                        &outputs_tensor));
 
-    auto Tinput = input.tensor<T, kDims>();
-    auto Toutput = outputs_tensor->tensor<T, kDims>();
-
     if (std::is_same<Device, GPUDevice>::value) {
-      if (is_int8x4) {
+      using RT = typename RawType<T>::type;
+      if (data_format_ == FORMAT_NCHW_VECT_C) {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
         auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
         auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
         functor::SpaceToDepthOpFunctor<GPUDevice, int32, FORMAT_NCHW> functor;
         functor(context->eigen_device<GPUDevice>(), Tinput_v, block_size_,
                 Toutput_v);
-        return;
       } else if (data_format_ == FORMAT_NCHW) {
-        functor::SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), Tinput, block_size_,
-                Toutput);
-        return;
+        CHECK((std::is_same<T, RT>::value));
+        functor::SpaceToDepthOpFunctor<GPUDevice, RT, FORMAT_NCHW> functor;
+        functor(context->eigen_device<GPUDevice>(), input.tensor<RT, 4>(),
+                block_size_, outputs_tensor->tensor<RT, 4>());
+      } else {
+        CHECK((std::is_same<T, RT>::value));
+        functor::SpaceToDepthOpFunctor<GPUDevice, RT, FORMAT_NHWC> functor;
+        functor(context->eigen_device<GPUDevice>(), input.tensor<RT, 4>(),
+                block_size_, outputs_tensor->tensor<RT, 4>());
       }
-    }
-
-    // NOTE: Assumes data_format_ == FORMAT_NHWC here, since we have rejected
-    // (CPU && data_format_ != FORMAT_NHWC) in the constructor.
-
-    if (!is_int8x4) {
+    } else {
+      // NOTE: Assumes data_format_ == FORMAT_NHWC here, since we have rejected
+      // (CPU && data_format_ != FORMAT_NHWC) in the constructor.
       functor::SpaceToDepthOpFunctor<Device, T, FORMAT_NHWC> functor;
-      functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
+      functor(context->eigen_device<Device>(), input.tensor<T, 4>(),
+              block_size_, outputs_tensor->tensor<T, 4>());
     }
   };
 
@@ -175,15 +190,18 @@ struct SpaceToDepthOpFunctor<CPUDevice, T, FORMAT_NHWC> {
 };
 }  // namespace functor
 
-#define REGISTER(type)                                                   \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("SpaceToDepth").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SpaceToDepthOp<CPUDevice, type>);
+#define REGISTER(type)                                                \
+  REGISTER_KERNEL_BUILDER(Name("SpaceToDepth")                        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T")              \
+                              .AttrConstraint("data_format", "NHWC"), \
+                          SpaceToDepthOp<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER);
+TF_CALL_qint8(REGISTER);
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     SpaceToDepthOp<GPUDevice, float>);
@@ -193,6 +211,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     SpaceToDepthOp<GPUDevice, qint8>);
-#endif  // GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(
+    Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<uint8>("T"),
+    SpaceToDepthOp<GPUDevice, uint8>);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

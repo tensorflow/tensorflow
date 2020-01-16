@@ -31,7 +31,7 @@ bool IsZlibCompressed(RecordWriterOptions options) {
 RecordWriterOptions RecordWriterOptions::CreateRecordWriterOptions(
     const string& compression_type) {
   RecordWriterOptions options;
-  if (compression_type == "ZLIB") {
+  if (compression_type == compression::kZlib) {
     options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
 #if defined(IS_SLIM_BUILD)
     LOG(ERROR) << "Compression is not supported but compression_type is set."
@@ -107,6 +107,27 @@ Status RecordWriter::WriteRecord(StringPiece data) {
   return dest_->Append(StringPiece(footer, sizeof(footer)));
 }
 
+#if defined(PLATFORM_GOOGLE)
+Status RecordWriter::WriteRecord(const absl::Cord& data) {
+  if (dest_ == nullptr) {
+    return Status(::tensorflow::error::FAILED_PRECONDITION,
+                  "Writer not initialized or previously closed");
+  }
+  // Format of a single record:
+  //  uint64    length
+  //  uint32    masked crc of length
+  //  byte      data[length]
+  //  uint32    masked crc of data
+  char header[kHeaderSize];
+  char footer[kFooterSize];
+  PopulateHeader(header, data);
+  PopulateFooter(footer, data);
+  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(data));
+  return dest_->Append(StringPiece(footer, sizeof(footer)));
+}
+#endif
+
 Status RecordWriter::Close() {
   if (dest_ == nullptr) return Status::OK();
 #if !defined(IS_SLIM_BUILD)
@@ -125,10 +146,7 @@ Status RecordWriter::Flush() {
     return Status(::tensorflow::error::FAILED_PRECONDITION,
                   "Writer not initialized or previously closed");
   }
-  if (IsZlibCompressed(options_)) {
-    return dest_->Flush();
-  }
-  return Status::OK();
+  return dest_->Flush();
 }
 
 }  // namespace io

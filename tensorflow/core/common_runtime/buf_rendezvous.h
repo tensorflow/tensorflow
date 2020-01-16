@@ -18,9 +18,11 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
@@ -38,7 +40,8 @@ class Tensor;
 // execution point.
 class BufRendezvous {
  public:
-  explicit BufRendezvous(uint64 step_id) : step_id_(step_id) {}
+  explicit BufRendezvous(uint64 step_id, const DeviceMgr* dev_mgr)
+      : step_id_(step_id), dev_mgr_(dev_mgr) {}
 
   ~BufRendezvous();
 
@@ -79,8 +82,14 @@ class BufRendezvous {
                   const ProducerCallback& done);
 
   // Called to request access to a Tensor value corresponding to key.
-  // Consumer is provide with a Hook as soon as available.
-  void ConsumeBuf(const string& key, const ConsumerCallback& done);
+  // Consumer is provided with a Hook as soon as available.
+  //
+  // This function also checks that the current incarnation number of the
+  // `device` that produced this value matches the `incarnation` expected by the
+  // consumer, and invokes `done` with `FailedPrecondition` status and
+  // `nullptr` hook if it does not match.
+  void ConsumeBuf(const string& key, const string& device,
+                  const uint64 incarnation, const ConsumerCallback& done);
 
   // Consumer must call this function when it's done reading the Hook provided
   // by the ConsumerCallback.  This function will invoke the producer callback
@@ -92,9 +101,10 @@ class BufRendezvous {
 
  protected:
   const uint64 step_id_;
+  const DeviceMgr* const dev_mgr_;  // Not owned.
   mutex mu_;
   Status status_ GUARDED_BY(mu_);
-  typedef gtl::FlatMap<string, Hook*> HookTable;
+  typedef absl::flat_hash_map<string, Hook*> HookTable;
   HookTable hook_table_ GUARDED_BY(mu_);
 
   void PurgeTable(const Status& s, HookTable* table);

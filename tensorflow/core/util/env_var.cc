@@ -32,7 +32,7 @@ Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
   if (tf_env_var_val == nullptr) {
     return Status::OK();
   }
-  string str_value = str_util::Lowercase(tf_env_var_val);
+  string str_value = absl::AsciiStrToLower(tf_env_var_val);
   if (str_value == "0" || str_value == "false") {
     *value = false;
     return Status::OK();
@@ -57,6 +57,21 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
   }
   return errors::InvalidArgument(strings::StrCat(
       "Failed to parse the env-var ${", env_var_name, "} into int64: ",
+      tf_env_var_val, ". Use the default value: ", default_val));
+}
+
+Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
+                           float* value) {
+  *value = default_val;
+  const char* tf_env_var_val = getenv(string(env_var_name).c_str());
+  if (tf_env_var_val == nullptr) {
+    return Status::OK();
+  }
+  if (strings::safe_strtof(tf_env_var_val, value)) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument(strings::StrCat(
+      "Failed to parse the env-var ${", env_var_name, "} into float: ",
       tf_env_var_val, ". Use the default value: ", default_val));
 }
 

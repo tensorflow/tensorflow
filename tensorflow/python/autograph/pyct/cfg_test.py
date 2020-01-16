@@ -40,7 +40,7 @@ class CountingVisitor(cfg.GraphVisitor):
 class GraphVisitorTest(test.TestCase):
 
   def _build_cfg(self, fn):
-    node, _ = parser.parse_entity(fn)
+    node, _ = parser.parse_entity(fn, future_features=())
     cfgs = cfg.build(node)
     return cfgs, node
 
@@ -57,15 +57,14 @@ class GraphVisitorTest(test.TestCase):
     graph, = graphs.values()
     visitor = CountingVisitor(graph)
     visitor.visit_forward()
-    fn_node = node.body[0]
 
-    self.assertEqual(visitor.counts[fn_node.args], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].test], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].body[0]], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].body[1]], 1)
+    self.assertEqual(visitor.counts[node.args], 1)
+    self.assertEqual(visitor.counts[node.body[0].test], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[0]], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[1]], 1)
     # The return node should be unreachable in forward direction.
-    self.assertTrue(fn_node.body[0].body[2] not in visitor.counts)
-    self.assertEqual(visitor.counts[fn_node.body[1]], 1)
+    self.assertNotIn(node.body[0].body[2], visitor.counts)
+    self.assertEqual(visitor.counts[node.body[1]], 1)
 
   def test_basic_coverage_reverse(self):
 
@@ -80,20 +79,19 @@ class GraphVisitorTest(test.TestCase):
     graph, = graphs.values()
     visitor = CountingVisitor(graph)
     visitor.visit_reverse()
-    fn_node = node.body[0]
 
-    self.assertEqual(visitor.counts[fn_node.args], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].test], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].body[0]], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].body[1]], 1)
-    self.assertTrue(visitor.counts[fn_node.body[0].body[2]], 1)
-    self.assertEqual(visitor.counts[fn_node.body[1]], 1)
+    self.assertEqual(visitor.counts[node.args], 1)
+    self.assertEqual(visitor.counts[node.body[0].test], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[0]], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[1]], 1)
+    self.assertTrue(visitor.counts[node.body[0].body[2]], 1)
+    self.assertEqual(visitor.counts[node.body[1]], 1)
 
 
 class AstToCfgTest(test.TestCase):
 
   def _build_cfg(self, fn):
-    node, _ = parser.parse_entity(fn)
+    node, _ = parser.parse_entity(fn, future_features=())
     cfgs = cfg.build(node)
     return cfgs
 
@@ -174,8 +172,8 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (None, 'a, b', 'a = b + 1'),
-            ('a = b + 1', 'a += max(a)', None),
+            (None, 'a, b', 'a = (b + 1)'),
+            ('a = (b + 1)', 'a += max(a)', None),
         ),
     )
 
@@ -211,7 +209,7 @@ class AstToCfgTest(test.TestCase):
         (
             (None, 'a', '(a > 0)'),
             ('(a > 0)', 'a = 1', None),
-            ('(a > 0)', 'a += -1', None),
+            ('(a > 0)', 'a += (- 1)', None),
         ),
     )
     self.assertStatementEdges(
@@ -961,6 +959,346 @@ class AstToCfgTest(test.TestCase):
             ('a', 'max(a)', 'a = 0'),
             ('max(a)', 'a = 0', 'return b'),
             ('a = 0', 'return b', None),
+        ),
+    )
+
+  def test_lambda_basic(self):
+
+    def test_fn(a):
+      a = lambda b: a + b
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = (lambda b: (a + b))', 'return a'),
+            ('a = (lambda b: (a + b))', 'return a', None),
+        ),
+    )
+
+  def test_pass(self):
+
+    def test_fn(a):  # pylint:disable=unused-argument
+      pass
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'pass', None),
+        ),
+    )
+
+  def test_try_finally(self):
+
+    def test_fn(a):
+      try:
+        a = 1
+      finally:
+        a = 2
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = 1', 'a = 2'),
+            ('a = 1', 'a = 2', 'return a'),
+            ('a = 2', 'return a', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a', 'Try:2', 'return a'),
+        ),
+    )
+
+  def test_try_except_single_bare(self):
+
+    def test_fn(a):
+      try:
+        a = 1
+        a = 2
+      except:  # pylint:disable=bare-except
+        a = 3
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = 1', 'a = 2'),
+            ('a = 2', 'a = 3', 'return a'),
+            (('a = 2', 'a = 3'), 'return a', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a', 'Try:2', 'return a'),
+            ('a = 2', 'ExceptHandler:5', 'return a'),
+        ),
+    )
+
+  def test_try_except_single(self):
+
+    def test_fn(a):
+      try:
+        a = 1
+        a = 2
+      except Exception1:  # pylint:disable=undefined-variable
+        a = 3
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = 1', 'a = 2'),
+            ('a = 2', 'a = 3', 'return a'),
+            (('a = 2', 'a = 3'), 'return a', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a', 'Try:2', 'return a'),
+            ('a = 2', 'ExceptHandler:5', 'return a'),
+        ),
+    )
+
+  def test_try_except_single_aliased(self):
+
+    def test_fn(a):
+      try:
+        a = 1
+      except Exception1 as e:  # pylint:disable=undefined-variable,unused-variable
+        a = 2
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = 1', ('a = 2', 'return a')),
+            (('a = 1', 'a = 2'), 'return a', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a', 'Try:2', 'return a'),
+            ('a = 1', 'ExceptHandler:4', 'return a'),
+        ),
+    )
+
+  def test_try_except_single_tuple_aliased(self):
+
+    def test_fn(a):
+      try:
+        a = 1
+      except (Exception1, Exception2) as e:  # pylint:disable=undefined-variable,unused-variable
+        a = 2
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = 1', ('a = 2', 'return a')),
+            (('a = 1', 'a = 2'), 'return a', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a', 'Try:2', 'return a'),
+            ('a = 1', 'ExceptHandler:4', 'return a'),
+        ),
+    )
+
+  def test_try_except_multiple(self):
+
+    def test_fn(a):
+      try:
+        a = 1
+      except Exception1:  # pylint:disable=undefined-variable
+        a = 2
+      except Exception2:  # pylint:disable=undefined-variable
+        a = 3
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = 1', ('a = 2', 'a = 3', 'return a')),
+            (('a = 1', 'a = 2', 'a = 3'), 'return a', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a', 'Try:2', 'return a'),
+            ('a = 1', 'ExceptHandler:4', 'return a'),
+            ('a = 1', 'ExceptHandler:6', 'return a'),
+        ),
+    )
+
+  def test_try_except_finally(self):
+
+    def test_fn(a):
+      try:
+        a = 1
+      except Exception1:  # pylint:disable=undefined-variable
+        a = 2
+      except Exception2:  # pylint:disable=undefined-variable
+        a = 3
+      finally:
+        a = 4
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = 1', ('a = 2', 'a = 3', 'a = 4')),
+            (('a = 1', 'a = 2', 'a = 3'), 'a = 4', 'return a'),
+            ('a = 4', 'return a', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a', 'Try:2', 'return a'),
+            ('a = 1', 'ExceptHandler:4', 'a = 4'),
+            ('a = 1', 'ExceptHandler:6', 'a = 4'),
+        ),
+    )
+
+  def test_try_in_if(self):
+
+    def test_fn(a):
+      try:
+        if a > 0:
+          a = 1
+        else:
+          a = 2
+      except Exception1:  # pylint:disable=undefined-variable
+        a = 3
+      a = 4
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', '(a > 0)', ('a = 1', 'a = 2')),
+            ('(a > 0)', 'a = 1', ('a = 3', 'a = 4')),
+            ('(a > 0)', 'a = 2', ('a = 3', 'a = 4')),
+            (('a = 1', 'a = 2'), 'a = 3', 'a = 4'),
+            (('a = 1', 'a = 2', 'a = 3'), 'a = 4', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a', 'Try:2', 'a = 4'),
+            ('a', 'If:3', ('a = 3', 'a = 4')),
+            (('a = 1', 'a = 2'), 'ExceptHandler:7', 'a = 4'),
+        ),
+    )
+
+  def test_try_in_if_all_branches_exit(self):
+
+    def test_fn(a, b):
+      try:
+        if a > 0:
+          raise b
+        else:
+          return 0
+      except b:
+        return 1
+
+    graph, = self._build_cfg(test_fn).values()
+
+    # TODO(mdan): raise and return should have an edge to the except blocks.
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a, b', '(a > 0)', ('raise b', 'return 0')),
+            ('(a > 0)', 'raise b', None),
+            ('(a > 0)', 'return 0', None),
+            (None, 'return 1', None),
+        ),
+    )
+    self.assertStatementEdges(
+        graph,
+        (
+            ('a, b', 'Try:2', None),
+            ('a, b', 'If:3', None),
+            (None, 'ExceptHandler:7', None),
+        ),
+    )
+
+  def test_list_comprehension(self):
+
+    def test_fn(a):
+      c = [b for b in a]
+      return c
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'c = [b for b in a]', 'return c'),
+            ('c = [b for b in a]', 'return c', None),
+        ),
+    )
+
+  def test_class_definition_empty(self):
+
+    def test_fn(a, b):
+      class C(a(b)):
+        pass
+      return C
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a, b', 'class C', 'return C'),
+            ('class C', 'return C', None),
+        ),
+    )
+
+  def test_class_definition_with_members(self):
+
+    def test_fn(a, b):
+      class C(a(b)):
+        d = 1
+      return C
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a, b', 'class C', 'return C'),
+            ('class C', 'return C', None),
         ),
     )
 

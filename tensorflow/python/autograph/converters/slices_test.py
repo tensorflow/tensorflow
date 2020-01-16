@@ -23,7 +23,6 @@ from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import list_ops
@@ -44,12 +43,12 @@ class SliceTest(converter_testing.TestCase):
     }
     node = slices.transform(node, ctx)
 
-    with self.compiled(node, {}, dtypes.int32) as result:
+    with self.compiled(node, {}, (dtypes.int32,)) as result:
       with self.cached_session() as sess:
         tl = list_ops.tensor_list_from_tensor(
             [1, 2], element_shape=constant_op.constant([], dtype=dtypes.int32))
         y = result.test_fn(tl)
-        self.assertEqual(2, sess.run(y))
+        self.assertEqual(2, self.evaluate(y))
 
   def test_index_access_multiple_definitions(self):
 
@@ -68,7 +67,7 @@ class SliceTest(converter_testing.TestCase):
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.float32')
     }
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(ValueError):
       slices.transform(node, ctx)
 
 

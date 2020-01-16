@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
@@ -28,6 +28,8 @@ string PlatformKindString(PlatformKind kind) {
   switch (kind) {
     case PlatformKind::kCuda:
       return "CUDA";
+    case PlatformKind::kROCm:
+      return "ROCm";
     case PlatformKind::kOpenCL:
       return "OpenCL";
     case PlatformKind::kHost:
@@ -35,7 +37,7 @@ string PlatformKindString(PlatformKind kind) {
     case PlatformKind::kMock:
       return "Mock";
     default:
-      return port::StrCat("InvalidPlatformKind(", static_cast<int>(kind), ")");
+      return absl::StrCat("InvalidPlatformKind(", static_cast<int>(kind), ")");
   }
 }
 
@@ -52,6 +54,7 @@ PlatformKind PlatformKindFromString(string kind) {
 bool PlatformIsRunnable(PlatformKind kind) {
   switch (kind) {
     case PlatformKind::kCuda:
+    case PlatformKind::kROCm:
     case PlatformKind::kOpenCL:
     case PlatformKind::kHost:
       return true;
@@ -63,6 +66,7 @@ bool PlatformIsRunnable(PlatformKind kind) {
 bool PlatformIsRunnableOnDevice(PlatformKind kind) {
   switch (kind) {
     case PlatformKind::kCuda:
+    case PlatformKind::kROCm:
     case PlatformKind::kOpenCL:
       return true;
     default:

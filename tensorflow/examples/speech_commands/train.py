@@ -86,11 +86,11 @@ FLAGS = None
 
 
 def main(_):
-  # We want to see all the logging messages for this tutorial.
-  tf.logging.set_verbosity(tf.logging.INFO)
+  # Set the verbosity based on flags (default is INFO, so we see all messages)
+  tf.compat.v1.logging.set_verbosity(FLAGS.verbosity)
 
   # Start a new TensorFlow session.
-  sess = tf.InteractiveSession()
+  sess = tf.compat.v1.InteractiveSession()
 
   # Begin by making sure we have the training data we need. If you already have
   # training data of your own, use `--data_url= ` on the command line to avoid
@@ -122,22 +122,12 @@ def main(_):
         'lists, but are %d and %d long instead' % (len(training_steps_list),
                                                    len(learning_rates_list)))
 
-  input_placeholder = tf.placeholder(
+  input_placeholder = tf.compat.v1.placeholder(
       tf.float32, [None, fingerprint_size], name='fingerprint_input')
   if FLAGS.quantize:
-    # TODO(petewarden): These values have been derived from the observed ranges
-    # of spectrogram and MFCC inputs. If the preprocessing pipeline changes,
-    # they may need to be updated.
-    if FLAGS.preprocess == 'average':
-      fingerprint_min = 0.0
-      fingerprint_max = 2048.0
-    elif FLAGS.preprocess == 'mfcc':
-      fingerprint_min = -247.0
-      fingerprint_max = 30.0
-    else:
-      raise Exception('Unknown preprocess mode "%s" (should be "mfcc" or'
-                      ' "average")' % (FLAGS.preprocess))
-    fingerprint_input = tf.fake_quant_with_min_max_args(
+    fingerprint_min, fingerprint_max = input_data.get_features_range(
+        model_settings)
+    fingerprint_input = tf.quantization.fake_quant_with_min_max_args(
         input_placeholder, fingerprint_min, fingerprint_max)
   else:
     fingerprint_input = input_placeholder
@@ -149,48 +139,69 @@ def main(_):
       is_training=True)
 
   # Define loss and optimizer
-  ground_truth_input = tf.placeholder(
+  ground_truth_input = tf.compat.v1.placeholder(
       tf.int64, [None], name='groundtruth_input')
 
   # Optionally we can add runtime checks to spot when NaNs or other symptoms of
   # numerical errors start occurring during training.
   control_dependencies = []
   if FLAGS.check_nans:
-    checks = tf.add_check_numerics_ops()
+    checks = tf.compat.v1.add_check_numerics_ops()
     control_dependencies = [checks]
 
   # Create the back propagation and training evaluation machinery in the graph.
-  with tf.name_scope('cross_entropy'):
-    cross_entropy_mean = tf.losses.sparse_softmax_cross_entropy(
+  with tf.compat.v1.name_scope('cross_entropy'):
+    cross_entropy_mean = tf.compat.v1.losses.sparse_softmax_cross_entropy(
         labels=ground_truth_input, logits=logits)
+
   if FLAGS.quantize:
-    tf.contrib.quantize.create_training_graph(quant_delay=0)
-  with tf.name_scope('train'), tf.control_dependencies(control_dependencies):
-    learning_rate_input = tf.placeholder(
+    try:
+      tf.contrib.quantize.create_training_graph(quant_delay=0)
+    except ImportError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
+
+  with tf.compat.v1.name_scope('train'), tf.control_dependencies(
+      control_dependencies):
+    learning_rate_input = tf.compat.v1.placeholder(
         tf.float32, [], name='learning_rate_input')
-    train_step = tf.train.GradientDescentOptimizer(
-        learning_rate_input).minimize(cross_entropy_mean)
-  predicted_indices = tf.argmax(logits, 1)
+    if FLAGS.optimizer == 'gradient_descent':
+      train_step = tf.compat.v1.train.GradientDescentOptimizer(
+          learning_rate_input).minimize(cross_entropy_mean)
+    elif FLAGS.optimizer == 'momentum':
+      train_step = tf.compat.v1.train.MomentumOptimizer(
+          learning_rate_input, .9,
+          use_nesterov=True).minimize(cross_entropy_mean)
+    else:
+      raise Exception('Invalid Optimizer')
+  predicted_indices = tf.argmax(input=logits, axis=1)
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
-  confusion_matrix = tf.confusion_matrix(
-      ground_truth_input, predicted_indices, num_classes=label_count)
-  evaluation_step = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-  with tf.get_default_graph().name_scope('eval'):
-    tf.summary.scalar('cross_entropy', cross_entropy_mean)
-    tf.summary.scalar('accuracy', evaluation_step)
+  confusion_matrix = tf.math.confusion_matrix(labels=ground_truth_input,
+                                              predictions=predicted_indices,
+                                              num_classes=label_count)
+  evaluation_step = tf.reduce_mean(input_tensor=tf.cast(correct_prediction,
+                                                        tf.float32))
+  with tf.compat.v1.get_default_graph().name_scope('eval'):
+    tf.compat.v1.summary.scalar('cross_entropy', cross_entropy_mean)
+    tf.compat.v1.summary.scalar('accuracy', evaluation_step)
 
-  global_step = tf.train.get_or_create_global_step()
-  increment_global_step = tf.assign(global_step, global_step + 1)
+  global_step = tf.compat.v1.train.get_or_create_global_step()
+  increment_global_step = tf.compat.v1.assign(global_step, global_step + 1)
 
-  saver = tf.train.Saver(tf.global_variables())
+  saver = tf.compat.v1.train.Saver(tf.compat.v1.global_variables())
 
   # Merge all the summaries and write them out to /tmp/retrain_logs (by default)
-  merged_summaries = tf.summary.merge_all(scope='eval')
-  train_writer = tf.summary.FileWriter(FLAGS.summaries_dir + '/train',
-                                       sess.graph)
-  validation_writer = tf.summary.FileWriter(FLAGS.summaries_dir + '/validation')
+  merged_summaries = tf.compat.v1.summary.merge_all(scope='eval')
+  train_writer = tf.compat.v1.summary.FileWriter(FLAGS.summaries_dir + '/train',
+                                                 sess.graph)
+  validation_writer = tf.compat.v1.summary.FileWriter(
+      FLAGS.summaries_dir + '/validation')
 
-  tf.global_variables_initializer().run()
+  tf.compat.v1.global_variables_initializer().run()
 
   start_step = 1
 
@@ -198,11 +209,11 @@ def main(_):
     models.load_variables_from_checkpoint(sess, FLAGS.start_checkpoint)
     start_step = global_step.eval(session=sess)
 
-  tf.logging.info('Training from step: %d ', start_step)
+  tf.compat.v1.logging.info('Training from step: %d ', start_step)
 
   # Save graph.pbtxt.
-  tf.train.write_graph(sess.graph_def, FLAGS.train_dir,
-                       FLAGS.model_architecture + '.pbtxt')
+  tf.io.write_graph(sess.graph_def, FLAGS.train_dir,
+                    FLAGS.model_architecture + '.pbtxt')
 
   # Save list of words.
   with gfile.GFile(
@@ -240,9 +251,10 @@ def main(_):
             dropout_prob: 0.5
         })
     train_writer.add_summary(train_summary, training_step)
-    tf.logging.info('Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
-                    (training_step, learning_rate_value, train_accuracy * 100,
-                     cross_entropy_value))
+    tf.compat.v1.logging.info(
+        'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
+        (training_step, learning_rate_value, train_accuracy * 100,
+         cross_entropy_value))
     is_last_step = (training_step == training_steps_max)
     if (training_step % FLAGS.eval_step_interval) == 0 or is_last_step:
       set_size = audio_processor.set_size('validation')
@@ -268,20 +280,21 @@ def main(_):
           total_conf_matrix = conf_matrix
         else:
           total_conf_matrix += conf_matrix
-      tf.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
-      tf.logging.info('Step %d: Validation accuracy = %.1f%% (N=%d)' %
-                      (training_step, total_accuracy * 100, set_size))
+      tf.compat.v1.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
+      tf.compat.v1.logging.info('Step %d: Validation accuracy = %.1f%% (N=%d)' %
+                                (training_step, total_accuracy * 100, set_size))
 
     # Save the model checkpoint periodically.
     if (training_step % FLAGS.save_step_interval == 0 or
         training_step == training_steps_max):
       checkpoint_path = os.path.join(FLAGS.train_dir,
                                      FLAGS.model_architecture + '.ckpt')
-      tf.logging.info('Saving to "%s-%d"', checkpoint_path, training_step)
+      tf.compat.v1.logging.info('Saving to "%s-%d"', checkpoint_path,
+                                training_step)
       saver.save(sess, checkpoint_path, global_step=training_step)
 
   set_size = audio_processor.set_size('testing')
-  tf.logging.info('set_size=%d', set_size)
+  tf.compat.v1.logging.info('set_size=%d', set_size)
   total_accuracy = 0
   total_conf_matrix = None
   for i in xrange(0, set_size, FLAGS.batch_size):
@@ -300,9 +313,9 @@ def main(_):
       total_conf_matrix = conf_matrix
     else:
       total_conf_matrix += conf_matrix
-  tf.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
-  tf.logging.info('Final test accuracy = %.1f%% (N=%d)' % (total_accuracy * 100,
-                                                           set_size))
+  tf.compat.v1.logging.warn('Confusion Matrix:\n %s' % (total_conf_matrix))
+  tf.compat.v1.logging.warn('Final test accuracy = %.1f%% (N=%d)' %
+                            (total_accuracy * 100, set_size))
 
 
 if __name__ == '__main__':
@@ -311,7 +324,7 @@ if __name__ == '__main__':
       '--data_url',
       type=str,
       # pylint: disable=line-too-long
-      default='http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz',
+      default='https://storage.googleapis.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz',
       # pylint: enable=line-too-long
       help='Location of speech training data archive on the web.')
   parser.add_argument(
@@ -456,7 +469,40 @@ if __name__ == '__main__':
       '--preprocess',
       type=str,
       default='mfcc',
-      help='Spectrogram processing mode. Can be "mfcc" or "average"')
+      help='Spectrogram processing mode. Can be "mfcc", "average", or "micro"')
+
+  # Function used to parse --verbosity argument
+  def verbosity_arg(value):
+    """Parses verbosity argument.
+
+    Args:
+      value: A member of tf.logging.
+    Raises:
+      ArgumentTypeError: Not an expected value.
+    """
+    value = value.upper()
+    if value == 'INFO':
+      return tf.compat.v1.logging.INFO
+    elif value == 'DEBUG':
+      return tf.compat.v1.logging.DEBUG
+    elif value == 'ERROR':
+      return tf.compat.v1.logging.ERROR
+    elif value == 'FATAL':
+      return tf.compat.v1.logging.FATAL
+    elif value == 'WARN':
+      return tf.compat.v1.logging.WARN
+    else:
+      raise argparse.ArgumentTypeError('Not an expected value')
+  parser.add_argument(
+      '--verbosity',
+      type=verbosity_arg,
+      default=tf.compat.v1.logging.INFO,
+      help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
+  parser.add_argument(
+      '--optimizer',
+      type=str,
+      default='gradient_descent',
+      help='Optimizer (gradient_descent or momentum)')
 
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

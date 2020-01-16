@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
@@ -429,11 +429,9 @@ TEST_F(ConvertTest, ConvertReshape) {
 
 std::vector<float> GetInterestingF16ConversionTestCases() {
   float infinity = std::numeric_limits<float>::infinity();
-  float half_min_positive_normal =
-      tensorflow::bit_cast<float, uint32>(0x38800000);
-  float half_max_subnormal = tensorflow::bit_cast<float, uint32>(0x387fc000);
-  float half_min_positive_subnormal =
-      tensorflow::bit_cast<float, uint32>(0x33800000);
+  float half_min_positive_normal = absl::bit_cast<float, uint32>(0x38800000);
+  float half_max_subnormal = absl::bit_cast<float, uint32>(0x387fc000);
+  float half_min_positive_subnormal = absl::bit_cast<float, uint32>(0x33800000);
   float half_max = 65504.0f;
 
   std::vector<float> test_cases(

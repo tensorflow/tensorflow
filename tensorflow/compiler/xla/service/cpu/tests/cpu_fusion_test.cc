@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
@@ -34,11 +34,18 @@ namespace xla {
 namespace cpu {
 namespace {
 
-class CpuFusionTest : public HloVerifiedTestBase {
+class CpuFusionTest : public HloTestBase {
  protected:
   CpuFusionTest() {}
 
   ErrorSpec error_spec_{0.0001, 1e-5};
+
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.add_xla_disable_hlo_passes("layout-assignment");
+    return debug_options;
+  }
 };
 
 TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
@@ -57,11 +64,11 @@ TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
   builder.AddInstruction(
       HloInstruction::CreateUnary(vshape, HloOpcode::kNegate, add1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -104,11 +111,11 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(vshape, HloOpcode::kMultiply, two, floor));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -131,7 +138,7 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
 TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
   // Test a chain of fusible ops with a non-fusible op (a reduce) thrown in the
   // middle.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto input_literal = LiteralUtil::CreateR1<float>({-1.5, -2.5, -3.0});
   Shape vshape = input_literal.shape();
@@ -162,11 +169,11 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
   auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
       cshape,
       builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(F32, {6, 1}), concatenate)),
+          ShapeUtil::MakeShape(F32, {1, 6}), concatenate)),
       /*init_value=*/
       builder.AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
-      /*dimensions_to_reduce=*/{1}, add_f32));
+      /*dimensions_to_reduce=*/{0}, add_f32));
 
   auto exp = builder.AddInstruction(
       HloInstruction::CreateUnary(cshape, HloOpcode::kExp, reduce));
@@ -183,7 +190,7 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -250,12 +257,12 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
       builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
 
   // Create computation and module.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   // Run fusion.
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
 
   auto fusion1 = result->operand(0);
   auto fusion2 = result->operand(1);
@@ -267,12 +274,9 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
   EXPECT_EQ(4, fusion1->fused_instruction_count());
   EXPECT_EQ(4, fusion2->fused_instruction_count());
 
-  // Each fusion instruction should have one parameter and the parameter should
-  // be the constant.
-  EXPECT_EQ(1, fusion1->operand_count());
-  EXPECT_EQ(constant, fusion1->operand(0));
-  EXPECT_EQ(1, fusion2->operand_count());
-  EXPECT_EQ(constant, fusion2->operand(0));
+  // The fusion has no parameters, everything is fused including constants.
+  EXPECT_EQ(0, fusion1->operand_count());
+  EXPECT_EQ(0, fusion2->operand_count());
 }
 
 TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
@@ -310,11 +314,11 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({negate1, negate2, exp2}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
 
   // The only fusion instruction should be operand 0 of the tuple (formerly
   // negate1).
@@ -324,10 +328,9 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
 
   auto fusion_inst = tuple->operand(0);
   // There should be three fused instructions: negate2, exp2, and the fused
-  // parameter.
+  // constant.
   EXPECT_EQ(3, fusion_inst->fused_instruction_count());
-  EXPECT_EQ(1, fusion_inst->operand_count());
-  EXPECT_EQ(constant, fusion_inst->operand(0));
+  EXPECT_EQ(0, fusion_inst->operand_count());
 }
 
 }  // namespace

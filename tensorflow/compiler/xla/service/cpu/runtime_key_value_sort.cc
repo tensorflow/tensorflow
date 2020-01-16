@@ -15,11 +15,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <memory>
+#include <numeric>
 #include <string>
-#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -27,80 +26,21 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace {
-using tensorflow::int16;
 using tensorflow::int32;
 using tensorflow::int64;
-using tensorflow::int8;
-using tensorflow::uint16;
-using tensorflow::uint32;
-using tensorflow::uint64;
-using tensorflow::uint8;
+}  // namespace
 
-template <typename KeyType>
-void KeyValueSort(std::pair<KeyType, int64>* row_to_sort, int64 num_elements) {
-  std::sort(row_to_sort, row_to_sort + num_elements);
-}
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
+    int64 a, int64 b, int64 c, char** values, int32 values_count,
+    int32* values_primitive_type_size_in_bytes, bool is_stable,
+    char* run_options, int64* prof_counters,
+    void (*less_than)(char*, char*, char**, char**, tensorflow::int64*)) {
+  // 'values' and 'values_primitive_type_size_in_bytes' are managed by the JIT
+  // code, so msan can't tell they are initialized.
+  TF_ANNOTATE_MEMORY_IS_INITIALIZED(values, values_count * sizeof(char*));
+  TF_ANNOTATE_MEMORY_IS_INITIALIZED(values_primitive_type_size_in_bytes,
+                                    values_count * sizeof(int32));
 
-// For floating point numbers, we want a total order comparator. -NaN and NaN
-// should appear at the beginning and end of the ordering, and -0.0 should
-// appear before 0.0. Also we want to have a stable sort, so if the keys are the
-// same, we compare the index values.
-template <typename KeyType>
-bool LessThan(KeyType lhs, int64 lhs_index, KeyType rhs, int64 rhs_index) {
-  bool lhs_is_negative = std::signbit(lhs);
-  bool rhs_is_negative = std::signbit(rhs);
-  // If the signs are different, we can just compare the signs.
-  if (lhs_is_negative != rhs_is_negative) {
-    return lhs_is_negative && !rhs_is_negative;
-  }
-  bool lhs_nan = std::isnan(lhs);
-  bool rhs_nan = std::isnan(rhs);
-  // Exactly one number is nan?
-  if (lhs_nan != rhs_nan) {
-    if (lhs_nan) {
-      return lhs_is_negative;
-    }
-    return !rhs_is_negative;
-  }
-  if (lhs != rhs) {
-    return lhs < rhs;
-  }
-  return lhs_index < rhs_index;
-}
-
-template <>
-void KeyValueSort(std::pair<double, int64>* row_to_sort, int64 num_elements) {
-  std::sort(row_to_sort, row_to_sort + num_elements,
-            [](const std::pair<double, int64>& lhs,
-               const std::pair<double, int64>& rhs) -> bool {
-              return LessThan(lhs.first, lhs.second, rhs.first, rhs.second);
-            });
-}
-
-template <>
-void KeyValueSort(std::pair<float, int64>* row_to_sort, int64 num_elements) {
-  std::sort(row_to_sort, row_to_sort + num_elements,
-            [](const std::pair<float, int64>& lhs,
-               const std::pair<float, int64>& rhs) -> bool {
-              return LessThan(lhs.first, lhs.second, rhs.first, rhs.second);
-            });
-}
-
-template <>
-void KeyValueSort(std::pair<Eigen::half, int64>* row_to_sort,
-                  int64 num_elements) {
-  std::sort(row_to_sort, row_to_sort + num_elements,
-            [](const std::pair<Eigen::half, int64>& lhs,
-               const std::pair<Eigen::half, int64>& rhs) -> bool {
-              return LessThan(
-                  Eigen::half_impl::half_to_float(lhs.first), lhs.second,
-                  Eigen::half_impl::half_to_float(rhs.first), rhs.second);
-            });
-}
-
-template <typename KeyType>
-void KeyValueSortImpl(KeyType* keys, int64 a, int64 b, int64 c, char* values,
-                      int32 values_primitive_type_size_in_bytes) {
   // High-level idea of the iteration/sorting logic:
   // Conceptually we have a 3-dimensional shape [a, b, c]. b corresponds to the
   // dimension to sort, c is the product of the more minor dimensions (set to 1
@@ -114,8 +54,9 @@ void KeyValueSortImpl(KeyType* keys, int64 a, int64 b, int64 c, char* values,
   int64 num_iteration_elements = a * c;
   int64 sort_dimension_offset = c;
 
-  std::unique_ptr<std::pair<KeyType, int64>[]> row_to_sort(
-      new std::pair<KeyType, int64>[sort_dimension_elements]);
+  std::unique_ptr<int64[]> indices(new int64[sort_dimension_elements]);
+  std::unique_ptr<char*[]> comparison_values(new char*[2 * values_count]);
+  std::iota(indices.get(), indices.get() + sort_dimension_elements, 0);
   std::unique_ptr<std::string[]> reordered_values(
       new std::string[sort_dimension_elements]);
   for (int64 index = 0; index < num_iteration_elements; ++index) {
@@ -128,109 +69,45 @@ void KeyValueSortImpl(KeyType* keys, int64 a, int64 b, int64 c, char* values,
     int64 base_offset =
         index % sort_dimension_offset +
         (index - index % sort_dimension_offset) * sort_dimension_elements;
-    // TODO(b/26783907): We could define a custom iterator class that references
-    // both arrays. Then we could avoid the intermediate copy. However this
-    // would become more complicated, and it is not clear if the benefit is high
-    // enough.
-    for (int64 i = 0; i < sort_dimension_elements; ++i) {
-      row_to_sort[i] =
-          std::make_pair(keys[base_offset + i * sort_dimension_offset], i);
-    }
-    KeyValueSort(row_to_sort.get(), sort_dimension_elements);
-    for (int64 i = 0; i < sort_dimension_elements; ++i) {
-      keys[base_offset + i * sort_dimension_offset] = row_to_sort[i].first;
-    }
-    if (values == nullptr) {
-      continue;
+    auto compare_function = [&](int64 a, int64 b) -> bool {
+      for (int32 i = 0; i < values_count; ++i) {
+        int64 memory_index_lhs = (base_offset + a * sort_dimension_offset) *
+                                 values_primitive_type_size_in_bytes[i];
+        int64 memory_index_rhs = (base_offset + b * sort_dimension_offset) *
+                                 values_primitive_type_size_in_bytes[i];
+        comparison_values[i * 2] = values[i] + memory_index_lhs;
+        comparison_values[i * 2 + 1] = values[i] + memory_index_rhs;
+      }
+      char result = 0;  // Overwritten by less_than.
+      less_than(&result, run_options, comparison_values.get(), nullptr,
+                prof_counters);
+      return result != 0u;
+    };
+    if (is_stable) {
+      std::stable_sort(indices.get(), indices.get() + sort_dimension_elements,
+                       compare_function);
+    } else {
+      std::sort(indices.get(), indices.get() + sort_dimension_elements,
+                compare_function);
     }
 
-    // Reorder the values according to the order defined by the keys.
-    for (int64 i = 0; i < sort_dimension_elements; ++i) {
-      int64 memory_index =
-          (base_offset + row_to_sort[i].second * sort_dimension_offset) *
-          values_primitive_type_size_in_bytes;
+    // Reorder the values according to the order defined by 'indices'.
+    for (int32 idx = 0; idx < values_count; ++idx) {
+      for (int64 i = 0; i < sort_dimension_elements; ++i) {
+        int64 memory_index =
+            (base_offset + indices[i] * sort_dimension_offset) *
+            values_primitive_type_size_in_bytes[idx];
 
-      reordered_values[i] = std::string(values + memory_index,
-                                        values_primitive_type_size_in_bytes);
-    }
-    for (int64 i = 0; i < sort_dimension_elements; ++i) {
-      int64 memory_index = (base_offset + i * sort_dimension_offset) *
-                           values_primitive_type_size_in_bytes;
-      memcpy(values + memory_index, reordered_values[i].c_str(),
-             values_primitive_type_size_in_bytes);
+        reordered_values[i] =
+            std::string(values[idx] + memory_index,
+                        values_primitive_type_size_in_bytes[idx]);
+      }
+      for (int64 i = 0; i < sort_dimension_elements; ++i) {
+        int64 memory_index = (base_offset + i * sort_dimension_offset) *
+                             values_primitive_type_size_in_bytes[idx];
+        memcpy(values[idx] + memory_index, reordered_values[i].c_str(),
+               values_primitive_type_size_in_bytes[idx]);
+      }
     }
   }
-}
-}  // namespace
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortPRED(
-    bool* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortS8(
-    int8* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortU8(
-    uint8* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortS16(
-    int16* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortU16(
-    uint16* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortF16(
-    Eigen::half* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortS32(
-    int32* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortU32(
-    uint32* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortF32(
-    float* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortS64(
-    int64* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortU64(
-    uint64* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
-}
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSortF64(
-    double* keys, int64 a, int64 b, int64 c, char* values,
-    int32 values_primitive_type_size_in_bytes) {
-  KeyValueSortImpl(keys, a, b, c, values, values_primitive_type_size_in_bytes);
 }

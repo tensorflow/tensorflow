@@ -1,7 +1,0 @@
-path: "tensorflow.saved_model.builder"
-tf_module {
-  member {
-    name: "SavedModelBuilder"
-    mtype: "<type \'type\'>"
-  }
-}

@@ -128,7 +128,6 @@ string TensorSlice::DebugString() const {
     if (!first) {
       buffer.append(":");
     }
-    string s;
     if (IsFullAt(d)) {
       buffer.append("-");
     } else {

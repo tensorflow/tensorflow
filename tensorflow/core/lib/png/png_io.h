@@ -35,8 +35,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "absl/base/casts.h"
 #include "tensorflow/core/platform/png.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -68,7 +69,7 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
 // DecodeContext context;
 // CHECK(CommonInitDecode(png_string, 3 /*RGB*/, 8 /*uint8*/, &context));
 // char* image_buffer = new char[3*context.width*context.height];
-// CHECK(CommonFinishDecode(bit_cast<png_byte*>(image_buffer),
+// CHECK(CommonFinishDecode(absl::bit_cast<png_byte*>(image_buffer),
 //       3*context.width /*stride*/, &context));
 //
 // desired_channels may be 0 to detected it from the input.
@@ -93,10 +94,23 @@ void CommonFreeDecode(DecodeContext* context);
 // compression is in [-1,9], where 0 is fast and weak compression, 9 is slow
 // and strong, and -1 is the zlib default.
 
+template <typename T>
 bool WriteImageToBuffer(
+    const void* image, int width, int height, int row_bytes, int num_channels,
+    int channel_bits, int compression, T* png_string,
+    const std::vector<std::pair<string, string> >* metadata);
+
+// Explicit instantiations defined in png_io.cc.
+extern template bool WriteImageToBuffer<string>(
     const void* image, int width, int height, int row_bytes, int num_channels,
     int channel_bits, int compression, string* png_string,
     const std::vector<std::pair<string, string> >* metadata);
+#ifdef USE_TSTRING
+extern template bool WriteImageToBuffer<tstring>(
+    const void* image, int width, int height, int row_bytes, int num_channels,
+    int channel_bits, int compression, tstring* png_string,
+    const std::vector<std::pair<string, string> >* metadata);
+#endif  // USE_TSTRING
 
 }  // namespace png
 }  // namespace tensorflow

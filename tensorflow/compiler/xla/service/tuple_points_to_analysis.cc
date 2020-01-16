@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -55,11 +57,10 @@ bool PointsToSet::IsAmbiguous() const {
 
 bool PointsToSet::IsDistinct() const {
   bool distinct = true;
-  std::set<const LogicalBuffer*> all_points_to;
-  ForEachElement([&distinct, &all_points_to](const ShapeIndex& /*index*/,
-                                             const BufferList& points_to) {
+  absl::flat_hash_set<const LogicalBuffer*> all_points_to;
+  ForEachElement([&](const ShapeIndex& /*index*/, const BufferList& points_to) {
     for (auto& buffer : points_to) {
-      if (all_points_to.count(buffer) != 0) {
+      if (all_points_to.contains(buffer)) {
         distinct = false;
       }
       all_points_to.insert(buffer);
@@ -87,9 +88,7 @@ bool PointsToSet::ContainsBuffer(const LogicalBuffer& buffer) const {
   bool found = false;
   ForEachElement([&found, &buffer](const ShapeIndex& /*index*/,
                                    const BufferList& pointed_to_buffers) {
-    if (!found &&
-        std::find(pointed_to_buffers.begin(), pointed_to_buffers.end(),
-                  &buffer) != pointed_to_buffers.end()) {
+    if (!found && absl::c_linear_search(pointed_to_buffers, &buffer)) {
       found = true;
     }
   });
@@ -99,8 +98,7 @@ bool PointsToSet::ContainsBuffer(const LogicalBuffer& buffer) const {
 bool PointsToSet::ContainsBufferAtIndex(const LogicalBuffer& buffer,
                                         const ShapeIndex& index) const {
   const auto& pointed_to_buffers = element(index);
-  return std::find(pointed_to_buffers.begin(), pointed_to_buffers.end(),
-                   &buffer) != pointed_to_buffers.end();
+  return absl::c_linear_search(pointed_to_buffers, &buffer);
 }
 
 void PointsToSet::AddPointedToBuffer(const LogicalBuffer& buffer,
@@ -148,7 +146,7 @@ TuplePointsToAnalysis::Run(const HloModule* module) {
 
 Status TuplePointsToAnalysis::Analyze() {
   per_instruction_.clear();
-  per_instruction_.resize(module_->NumUniqueInstructionIds());
+  per_instruction_.reserve(module_->instruction_count());
 
   logical_buffer_aliases_.clear();
   logical_buffer_aliases_.resize(
@@ -210,7 +208,7 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
             &logical_buffer_analysis_->GetBuffer(hlo_instruction, index));
       });
 
-  if (ShapeUtil::IsTuple(hlo_instruction->shape())) {
+  if (hlo_instruction->shape().IsTuple()) {
     // If the hlo instruction is a tuple-shaped, then trivially the instruction
     // itself is the source of the tuple.
     points_to_set.add_tuple_source({}, hlo_instruction);
@@ -280,6 +278,13 @@ Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
   return Status::OK();
 }
 
+Status TuplePointsToAnalysis::HandleAddDependency(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand.
+  CreateCopiedPointsToSet(add_dependency, add_dependency->operand(0));
+  return Status::OK();
+}
+
 Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   // RecvDone aliases its input (Recv) tuple element {0} to element {0} of its
   // output. The other indices ({} and {1}) define their own buffers.
@@ -307,6 +312,29 @@ Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
           points_to_set.add_tuple_source(index, tuple_source);
         }
       });
+  return Status::OK();
+}
+
+Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
+  // CopyDone forwards its aliased operand.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(copy_done);
+  const PointsToSet& operand_points_to_set =
+      GetPointsToSet(copy_done->operand(0));
+  operand_points_to_set.ForEachElement(
+      [&points_to_set, &operand_points_to_set](
+          const ShapeIndex& src_index,
+          const PointsToSet::BufferList& points_to) {
+        if (src_index == ShapeIndex({0})) {
+          const ShapeIndex target_index = {};
+          *points_to_set.mutable_element(target_index) = points_to;
+
+          for (HloInstruction* tuple :
+               operand_points_to_set.tuple_sources(src_index)) {
+            points_to_set.add_tuple_source(target_index, tuple);
+          }
+        }
+      });
+
   return Status::OK();
 }
 
@@ -594,12 +622,10 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
     // GetTupleElement instructions only access the top-level buffer of their
     // operand.
     return true;
-  } else if (user->opcode() == HloOpcode::kFusion &&
-             user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+  } else if (user->IsLoopFusion()) {
     // Find fusion parameter associated with 'operand'.
-    auto it = std::find_if(
-        user->fused_parameters().begin(), user->fused_parameters().end(),
-        [=](HloInstruction* fused_param) {
+    auto it = absl::c_find_if(
+        user->fused_parameters(), [&](HloInstruction* fused_param) {
           return user->operand(fused_param->parameter_number()) == operand;
         });
     CHECK(it != user->fused_parameters().end());
@@ -665,9 +691,8 @@ bool TuplePointsToAnalysis::HasUniqueFusedUseOfOperandAt(
   }
   // Find fusion parameter associated with 'operand'.
   const auto& fused_params = fusion->fused_parameters();
-  auto fused_param_it = std::find_if(
-      fused_params.begin(), fused_params.end(),
-      [&](HloInstruction* fused_param) {
+  auto fused_param_it =
+      absl::c_find_if(fused_params, [&](HloInstruction* fused_param) {
         return fusion->operand(fused_param->parameter_number()) == operand;
       });
   if (fused_param_it == fused_params.end()) {
@@ -683,130 +708,4 @@ bool TuplePointsToAnalysis::HasUniqueFusedUseOfOperandAt(
          fused_param_uses[0].first == fusion->fused_expression_root() &&
          fused_param_uses[0].second == use_operand_index;
 }
-
-// User and operand can share buffers iff both instructions emit the same shape
-// and layout, and 'user' meets one of the following qualifications:
-//
-// (1) Is element-wise. Or...
-// (2) Is a loop fusion instruction where the only use of 'operand' at 'index'
-//     in the set 'user.fused_instructions' is a DynamicUpdateSlice fused root
-//     at operand 0. Or...
-// (3) Is a kDot -> kAdd output fusion instruction where the only use of
-//     'operand' at 'index' in the set 'user.fused_instructions' is a kAdd fused
-//     root at operand 0 or 1. Or...
-// (4) The 'user' of 'operand' is DynamicUpdateSlice or While at operand index
-//     0.
-// (5) The 'user' of 'operand' is Sort, and it is the only user.
-//
-// (2) and (3) can only be determined if points-to analysis is available.
-bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
-    HloInstruction* operand, const ShapeIndex& operand_index,
-    HloInstruction* user, const ShapeIndex& user_index) const {
-  CHECK(user->IsUserOf(operand))
-      << "user: " << user->ToString() << " operand: " << operand->ToString();
-  const Shape& operand_subshape =
-      ShapeUtil::GetSubshape(operand->shape(), operand_index);
-  const Shape& user_subshape =
-      ShapeUtil::GetSubshape(user->shape(), user_index);
-  // Check that operand and user emit the same shape and layout.
-  if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
-    return false;
-  }
-  if (user->opcode() == HloOpcode::kFusion) {
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-        user->fusion_kind() == HloInstruction::FusionKind::kInput) {
-      if (user->fused_expression_root()->opcode() ==
-          HloOpcode::kDynamicUpdateSlice) {
-        // Loop fusion with kDynamicUpdateSlice fused root.
-        //
-        // Returns true iff there is exactly one use of 'operand' at shape index
-        // 'operand_index', and this singleton use is the fused root at operand
-        // index 0.
-        return HasUniqueFusedUseOfOperandAt(operand, operand_index, user, 0);
-      } else {
-        HloInstruction* fusion_param =
-            user->fused_parameter(user->operand_index(operand));
-        return HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
-            fusion_param);
-      }
-    } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
-               user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
-      // Output fusion with kAdd fused root.
-
-      // Check if one operand of kAdd fused root is kDot or kConvolution.
-      auto* add = user->fused_expression_root();
-      auto add_operand_it =
-          std::find_if(add->operands().begin(), add->operands().end(),
-                       [&](HloInstruction* operand) {
-                         return operand->opcode() == HloOpcode::kConvolution ||
-                                operand->opcode() == HloOpcode::kDot;
-                       });
-      if (add_operand_it == add->operands().end()) {
-        return false;
-      }
-      auto* matched_add_operand = *add_operand_it;
-      // Calculate operand index of 'add' operand which was not matched above.
-      const int64 other_add_operand_index =
-          matched_add_operand == add->operand(0) ? 1 : 0;
-      // Returns true iff there is exactly one use of 'operand' at shape index
-      // 'operand_index', and this singleton use is the fused root (at operand
-      // index 'other_add_operand_index').
-      return HasUniqueFusedUseOfOperandAt(operand, operand_index, user,
-                                          other_add_operand_index);
-    }
-  }
-  if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
-      user->opcode() == HloOpcode::kWhile) {
-    // We eliminated other users in BufferLiveness::live_range_strictly_before,
-    // so here we just need to check that the use is at operand index 0.
-    std::vector<int64> operand_indices = user->OperandIndices(operand);
-    return operand_indices.size() == 1 && operand_indices[0] == 0;
-  }
-  if (user->opcode() == HloOpcode::kSort) {
-    // Only valid if there are no other users.
-    if (operand->users().size() != 1) {
-      return false;
-    }
-    // If we only sort keys, the output of sort is not a tuple, so we can always
-    // share the buffer.
-    if (user->operand_count() == 1) {
-      return true;
-    }
-    CHECK(!user_index.empty());
-    // Only share with the right tuple element buffer.
-    std::vector<int64> operand_indices = user->OperandIndices(operand);
-    return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
-  }
-  if (user->opcode() == HloOpcode::kCall) {
-    // TODO(b/62548313): Remove when buffer assignment is module scoped and
-    // does not assign buffers to calls.
-    // Find called computation parameter associated with 'operand'.
-    const std::vector<int64> operand_indices = user->OperandIndices(operand);
-    if (operand_indices.size() > 1) {
-      return false;
-    }
-    CHECK_EQ(1, operand_indices.size());
-    auto* param = user->to_apply()->parameter_instruction(operand_indices[0]);
-    // Get all uses of 'operand' at 'index' in called computation.
-    auto param_uses = GetAllUsesOfInstructionAtIndex(param, operand_index);
-
-    // Return true iff:
-    // *) There exists exactly one use of 'operand' in called computation.
-    // *) The unique use is by the root instruction of called computation.
-    //    (Note: we check the root of the called computation, because the
-    //     root result buffer is required to alias with the Call result buffer).
-    // *) The root instruction of the called computation is element-wise on
-    //    'operand'.
-    auto* callee_root = user->to_apply()->root_instruction();
-    return param_uses.size() == 1 && param_uses[0].first == callee_root &&
-           callee_root->IsElementwiseOnOperand(param_uses[0].second);
-  }
-  // Loop fusions that contain transposing copies won't reach here as they have
-  // different layouts, which fails the check in the beginning of this function.
-  //
-  // Multi-output fusion will fail the check here as tuples are not considered
-  // an elementwise operation.
-  return user->IsElementwiseOnOperand(user->operand_index(operand));
-}
-
 }  // namespace xla

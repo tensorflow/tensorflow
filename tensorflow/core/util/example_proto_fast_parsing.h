@@ -41,7 +41,19 @@ namespace example {
 // in Example.
 struct FastParseExampleConfig {
   struct Dense {
-    string feature_name;
+    Dense(StringPiece feature_name, DataType dtype, PartialTensorShape shape,
+          Tensor default_value, bool variable_length,
+          std::size_t elements_per_stride)
+        : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
+                                       // tstring when this is available.
+          dtype(dtype),
+          shape(std::move(shape)),
+          default_value(std::move(default_value)),
+          variable_length(variable_length),
+          elements_per_stride(elements_per_stride) {}
+    Dense() = default;
+
+    tstring feature_name;
     DataType dtype;
     // These 2 fields correspond exactly to dense_shapes and dense_defaults in
     // ParseExample op.
@@ -53,12 +65,32 @@ struct FastParseExampleConfig {
   };
 
   struct Sparse {
-    string feature_name;
+    Sparse(StringPiece feature_name, DataType dtype)
+        : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
+                                       // tstring when this is available.
+          dtype(dtype) {}
+    Sparse() = default;
+
+    tstring feature_name;
     DataType dtype;
+  };
+
+  struct Ragged {
+    Ragged(StringPiece feature_name, DataType dtype, DataType splits_dtype)
+        : feature_name(feature_name),  // TODO(mrry): Switch to preallocated
+                                       // tstring when this is available.
+          dtype(dtype),
+          splits_dtype(splits_dtype) {}
+    Ragged() = default;
+
+    tstring feature_name;
+    DataType dtype;
+    DataType splits_dtype;
   };
 
   std::vector<Dense> dense;
   std::vector<Sparse> sparse;
+  std::vector<Ragged> ragged;
 
   // If `true`, `Result::feature_stats` will contain one
   // `PerExampleFeatureStats` for each serialized example in the input.
@@ -88,6 +120,9 @@ struct Result {
   std::vector<Tensor> sparse_values;
   std::vector<Tensor> sparse_shapes;
   std::vector<Tensor> dense_values;
+  std::vector<Tensor> ragged_values;
+  std::vector<Tensor> ragged_splits;
+  std::vector<Tensor> ragged_outer_splits;  // For SequenceExamples
 
   // This vector will be populated with one element per example if
   // `FastParseExampleConfig::collect_feature_stats` is set to `true`.
@@ -99,27 +134,28 @@ struct Result {
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
 Status FastParseExample(const FastParseExampleConfig& config,
-                        gtl::ArraySlice<string> serialized,
-                        gtl::ArraySlice<string> example_names,
+                        gtl::ArraySlice<tstring> serialized,
+                        gtl::ArraySlice<tstring> example_names,
                         thread::ThreadPool* thread_pool, Result* result);
 
 // TODO(mrry): Move the hash table construction into the config object.
 typedef FastParseExampleConfig FastParseSingleExampleConfig;
 
 Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
-                              const string& serialized, Result* result);
+                              StringPiece serialized, Result* result);
 
 // Parses a batch of serialized SequenceExample protos and converts them into
 // result according to given config.
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
+// (If batch=true, then this parses a single SequenceExample.)
 Status FastParseSequenceExample(
     const example::FastParseExampleConfig& context_config,
     const example::FastParseExampleConfig& feature_list_config,
-    gtl::ArraySlice<string> serialized, gtl::ArraySlice<string> example_names,
+    gtl::ArraySlice<tstring> serialized, gtl::ArraySlice<tstring> example_names,
     thread::ThreadPool* thread_pool, example::Result* context_result,
     example::Result* feature_list_result,
-    std::vector<Tensor>* dense_feature_lengths);
+    std::vector<Tensor>* dense_feature_lengths, bool is_batch = true);
 
 // This function parses serialized Example and populates given example.
 // It uses the same specialized parser as FastParseExample which is efficient.

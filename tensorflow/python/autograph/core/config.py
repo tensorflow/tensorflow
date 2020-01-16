@@ -18,32 +18,43 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core import config_lib
+
+Action = config_lib.Action
+Convert = config_lib.Convert
+DoNotConvert = config_lib.DoNotConvert
 
 
-PYTHON_LITERALS = {
-    'None': None,
-    'False': False,
-    'True': True,
-    'float': float,
-}
+# This list is evaluated in order and stops at the first rule that tests True
+# for a definitely_convert of definitely_bypass call.
+CONVERSION_RULES = (
+    # Known packages
+    Convert('tensorflow.python.training.experimental'),
 
-DEFAULT_UNCOMPILED_MODULES = set((
-    ('tensorflow',),
-    (utils.__name__,),
+    # Builtin modules
+    DoNotConvert('collections'),
+    DoNotConvert('copy'),
+    DoNotConvert('cProfile'),
+    DoNotConvert('inspect'),
+    DoNotConvert('ipdb'),
+    DoNotConvert('linecache'),
+    DoNotConvert('mock'),
+    DoNotConvert('pathlib'),
+    DoNotConvert('pdb'),
+    DoNotConvert('posixpath'),
+    DoNotConvert('pstats'),
+    DoNotConvert('re'),
+    DoNotConvert('threading'),
 
-    # All of tensorflow's subpackages. Unlike the root tf module, they don't
-    # have well-known names. Not referring to the module directly to avoid
-    # circular imports.
-    (
-        utils.__name__[:-len('.python.autograph.utils')],),
-))
+    # Known libraries
+    DoNotConvert('numpy'),
+    DoNotConvert('pandas'),
+    DoNotConvert('tensorflow'),
+    DoNotConvert('PIL'),
 
-NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
+    # TODO(b/133417201): Remove.
+    DoNotConvert('tensorflow_probability'),
 
-# TODO(mdan): Also allow controlling the generated names.
-# TODO(mdan); Consolidate all internal imports into a single __ag module.
-COMPILED_IMPORT_STATEMENTS = (
-    'from __future__ import print_function',
-    'import tensorflow as tf',
+    # TODO(b/133842282): Remove.
+    DoNotConvert('tensorflow_datasets.core'),
 )

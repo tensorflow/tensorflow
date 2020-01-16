@@ -13,12 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+namespace shape_inference {
+class InferenceContext;
+}  // namespace shape_inference
 
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
@@ -89,6 +100,16 @@ REGISTER_OP("ReduceJoin")
     .Attr("separator: string = ''")
     .Output("output: string")
     .SetShapeFn(shape_inference::ReductionShape);
+
+REGISTER_OP("UnsortedSegmentJoin")
+    .Input("inputs: string")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Attr("separator: string = ''")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("AsString")
     .Input("input: T")
@@ -195,6 +216,18 @@ REGISTER_OP("StringSplitV2")
       return Status::OK();
     });
 
+REGISTER_OP("StringLower")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("encoding: string =''")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringUpper")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("encoding: string =''")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("StringStrip")
     .Input("input: string")
     .Output("output: string")
@@ -223,12 +256,15 @@ REGISTER_OP("Substr")
     .Input("len: T")
     .Output("output: string")
     .Attr("T: {int32, int64}")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle pos_shape = c->input(1);
       ShapeHandle len_shape = c->input(2);
       ShapeHandle unused;
-      // Check that pos/len have same rank
-      TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
+      // If len rank is known, check that pos and len have the same rank
+      if (c->RankKnown(len_shape)) {
+        TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
+      }
       // Check that dimensions are equal
       for (int32 i = 0; i < c->Rank(pos_shape); ++i) {
         DimensionHandle pos_dim = c->Dim(pos_shape, i);
@@ -248,5 +284,109 @@ REGISTER_OP("UnicodeScript")
     .Input("input: int32")
     .Output("output: int32")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("UnicodeEncode")
+    .Input("input_values: int32")
+    .Input("input_splits: Tsplits")
+    .Attr("errors: {'ignore', 'replace', 'strict'} = 'replace'")
+    .Attr("output_encoding: {'UTF-8', 'UTF-16-BE', 'UTF-32-BE'}")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
+    .Output("output: string")
+    .SetShapeFn([](InferenceContext* c) {
+      // Check rank of inner values
+      ShapeHandle input_inner_values_shape = c->input(0);
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(input_inner_values_shape, 1, &unused));
+
+      // Check rank of input_splits
+      ShapeHandle splits_shape = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(splits_shape, 1, &unused));
+
+      // Output shape is a 1-D tensor with size equal to number of splits.
+      std::vector<DimensionHandle> dims(1);
+      TF_RETURN_IF_ERROR(c->Subtract(c->Dim(splits_shape, 0), 1, &dims[0]));
+      c->set_output(0, c->MakeShape(dims));
+
+      return Status::OK();
+    });
+
+REGISTER_OP("UnicodeTranscode")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("input_encoding: string")
+    .Attr("output_encoding: {'UTF-8', 'UTF-16-BE', 'UTF-32-BE'}")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("UnicodeDecode")
+    .Input("input: string")
+    .Output("row_splits: Tsplits")
+    .Output("char_values: int32")
+    .Attr("input_encoding: string")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      // row_splits.shape == [input.size() + 1]
+      DimensionHandle num_row_splits;
+      DimensionHandle input_size = c->NumElements(c->input(0));
+      TF_RETURN_IF_ERROR(c->Add(input_size, 1, &num_row_splits));
+      c->set_output(0, c->Vector(num_row_splits));
+
+      // char_values.shape == [num_chars]
+      DimensionHandle num_chars = c->UnknownDim();
+      c->set_output(1, c->Vector(num_chars));
+      return Status::OK();
+    });
+
+REGISTER_OP("UnicodeDecodeWithOffsets")
+    .Input("input: string")
+    .Output("row_splits: Tsplits")
+    .Output("char_values: int32")
+    .Output("char_to_byte_starts: int64")
+    .Attr("input_encoding: string")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      // row_splits.shape == [input.size() + 1]
+      DimensionHandle num_row_splits;
+      DimensionHandle input_size = c->NumElements(c->input(0));
+      TF_RETURN_IF_ERROR(c->Add(input_size, 1, &num_row_splits));
+      c->set_output(0, c->Vector(num_row_splits));
+
+      // char_values.shape == offset_values.shape == [num_chars]
+      DimensionHandle num_chars = c->UnknownDim();
+      c->set_output(1, c->Vector(num_chars));
+      c->set_output(2, c->Vector(num_chars));
+      return Status::OK();
+    });
+
+REGISTER_OP("StringNGrams")
+    .Attr("separator: string")
+    .Attr("ngram_widths: list(int) >= 0")
+    .Attr("left_pad: string")
+    .Attr("right_pad: string")
+    .Attr("pad_width: int")
+    .Attr("preserve_short_sequences: bool")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
+    .Input("data: string")
+    .Input("data_splits: Tsplits")
+    .Output("ngrams: string")
+    .Output("ngrams_splits: Tsplits")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->UnknownShapeOfRank(1));
+      ShapeHandle data = c->input(0);
+      TF_RETURN_IF_ERROR(c->WithRank(data, 1, &data));
+      ShapeHandle data_splits = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(data_splits, 1, &data_splits));
+      c->set_output(1, data_splits);
+      return Status::OK();
+    });
 
 }  // namespace tensorflow

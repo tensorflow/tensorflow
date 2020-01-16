@@ -22,50 +22,110 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
+from tensorflow.python.eager import function
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
 class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.named_parameters(
-      ("Zero", 0, 1),
-      ("Five", 5, 1),
-      ("Ten", 10, 1),
-      ("Empty", 100, 1, errors.InvalidArgumentError, "Dataset was empty."),
-      ("MoreThanOne", 0, 2, errors.InvalidArgumentError,
-       "Dataset had more than one element."),
-  )
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              skip=[0, 5, 10], take=[1], error=[None], error_msg=[None]) +
+          combinations.combine(
+              skip=[100],
+              take=[1],
+              error=[errors.InvalidArgumentError],
+              error_msg=["Dataset was empty."]) + combinations.combine(
+                  skip=[0],
+                  take=[2],
+                  error=[errors.InvalidArgumentError],
+                  error_msg=["Dataset had more than one element."])))
   def testGetSingleElement(self, skip, take, error=None, error_msg=None):
-    skip_t = array_ops.placeholder(dtypes.int64, shape=[])
-    take_t = array_ops.placeholder(dtypes.int64, shape=[])
 
     def make_sparse(x):
       x_1d = array_ops.reshape(x, [1])
       x_2d = array_ops.reshape(x, [1, 1])
       return sparse_tensor.SparseTensor(x_2d, x_1d, x_1d)
 
-    dataset = dataset_ops.Dataset.range(100).skip(skip_t).map(
-        lambda x: (x * x, make_sparse(x))).take(take_t)
-    element = get_single_element.get_single_element(dataset)
+    dataset = dataset_ops.Dataset.range(100).skip(
+        skip).map(lambda x: (x * x, make_sparse(x))).take(take)
+    if error is None:
+      dense_val, sparse_val = self.evaluate(
+          get_single_element.get_single_element(dataset))
+      self.assertEqual(skip * skip, dense_val)
+      self.assertAllEqual([[skip]], sparse_val.indices)
+      self.assertAllEqual([skip], sparse_val.values)
+      self.assertAllEqual([skip], sparse_val.dense_shape)
+    else:
+      with self.assertRaisesRegexp(error, error_msg):
+        self.evaluate(get_single_element.get_single_element(dataset))
 
-    with self.cached_session() as sess:
-      if error is None:
-        dense_val, sparse_val = sess.run(
-            element, feed_dict={
-                skip_t: skip,
-                take_t: take
-            })
-        self.assertEqual(skip * skip, dense_val)
-        self.assertAllEqual([[skip]], sparse_val.indices)
-        self.assertAllEqual([skip], sparse_val.values)
-        self.assertAllEqual([skip], sparse_val.dense_shape)
-      else:
-        with self.assertRaisesRegexp(error, error_msg):
-          sess.run(element, feed_dict={skip_t: skip, take_t: take})
+  @combinations.generate(test_base.default_test_combinations())
+  def testWindow(self):
+    """Test that `get_single_element()` can consume a nested dataset."""
+    def flat_map_func(ds):
+      batched = ds.batch(2)
+      element = get_single_element.get_single_element(batched)
+      return dataset_ops.Dataset.from_tensors(element)
+
+    dataset = dataset_ops.Dataset.range(10).window(2).flat_map(flat_map_func)
+    self.assertDatasetProduces(
+        dataset, [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSideEffect(self):
+    counter_var = variables.Variable(0)
+
+    def increment_fn(x):
+      counter_var.assign_add(1)
+      return x
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(1).map(increment_fn)
+
+    @function.defun
+    def fn():
+      _ = get_single_element.get_single_element(dataset_fn())
+      return "hello"
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), b"hello")
+    self.assertEqual(self.evaluate(counter_var), 1)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testAutomaticControlDependencies(self):
+    counter_var = variables.Variable(1)
+
+    def increment_fn(x):
+      counter_var.assign(counter_var + 1)
+      return x
+
+    def multiply_fn(x):
+      counter_var.assign(counter_var * 2)
+      return x
+
+    def dataset1_fn():
+      return dataset_ops.Dataset.range(1).map(increment_fn)
+
+    def dataset2_fn():
+      return dataset_ops.Dataset.range(1).map(multiply_fn)
+
+    @function.defun
+    def fn():
+      _ = get_single_element.get_single_element(dataset1_fn())
+      _ = get_single_element.get_single_element(dataset2_fn())
+      return "hello"
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), b"hello")
+    self.assertEqual(self.evaluate(counter_var), 4)
 
 
 if __name__ == "__main__":

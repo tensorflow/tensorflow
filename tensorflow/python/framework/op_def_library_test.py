@@ -19,119 +19,49 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from google.protobuf import text_format
-
-from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
+from tensorflow.python.framework import op_def_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
-
-
-def _unknown_shape(op):
-  """Shape function for use with ops whose output shapes are unknown."""
-  return [tensor_shape.unknown_shape() for _ in op.outputs]
+from tensorflow.python.util import compat
 
 
 class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
-  def setUp(self):
-    self._lib = test_ops._op_def_lib
-
-  def _add_op(self, ascii):  # pylint: disable=redefined-builtin
-    op_def = op_def_pb2.OpDef()
-    text_format.Merge(ascii, op_def)
-    self._lib.add_op(op_def)
-
   def Tensor(self, t, name="in"):
-    return self._lib.apply_op("OutT", T=t, name=name)
+    return op_def_library.apply_op("OutT", T=t, name=name)
 
   def testNoRegisteredOpFails(self):
     with self.assertRaises(RuntimeError) as cm:
-      self._lib.apply_op("unknown")
+      op_def_library.apply_op("unknown")
     self.assertEqual(str(cm.exception), "Unrecognized Op name unknown")
-
-  def testAddOpValidation(self):
-    with self.assertRaises(TypeError) as cm:
-      self._add_op("name: 'MissingTypeAttr' "
-                   "input_arg { name: 'a' type_attr: 'T' } ")
-    self.assertEqual(str(cm.exception),
-                     "Inconsistent OpDef for 'MissingTypeAttr', "
-                     "missing attr 'T'")
-
-    with self.assertRaises(TypeError) as cm:
-      self._add_op("name: 'BadTypeAttr' "
-                   "output_arg { name: 'a' type_attr: 'T' } "
-                   "attr { name: 'T' type: 'int' }")
-    self.assertEqual(
-        str(cm.exception),
-        "Attr 'T' of 'BadTypeAttr' used as a type_attr but has type int")
-
-    with self.assertRaises(TypeError) as cm:
-      self._add_op("name: 'MissingNumberAttr' "
-                   "input_arg { name: 'a' type: DT_INT32 number_attr: 'N' } ")
-    self.assertEqual(str(cm.exception),
-                     "Inconsistent OpDef for 'MissingNumberAttr', "
-                     "missing attr 'N'")
-
-    with self.assertRaises(TypeError) as cm:
-      self._add_op("name: 'BadNumberAttr' "
-                   "output_arg { name: 'a' type: DT_INT32 number_attr: 'N' } "
-                   "attr { name: 'N' type: 'type' }")
-    self.assertEqual(
-        str(cm.exception),
-        "Attr 'N' of 'BadNumberAttr' used as a number_attr but has type type")
-
-    with self.assertRaises(TypeError) as cm:
-      self._add_op("name: 'TwoTypesA' "
-                   "input_arg { name: 'a' type: DT_INT32 type_attr: 'T' } "
-                   "attr { name: 'T' type: 'type' }")
-    self.assertEqual(str(cm.exception),
-                     "Arg 'a' of 'TwoTypesA' must have one type field not 2")
-
-    with self.assertRaises(TypeError) as cm:
-      self._add_op("name: 'TwoTypesB' "
-                   "input_arg { name: 'a' type: DT_INT32 type_list_attr: 'T' } "
-                   "attr { name: 'T' type: 'list(type)' }")
-    self.assertEqual(str(cm.exception),
-                     "Arg 'a' of 'TwoTypesB' must have one type field not 2")
-
-    with self.assertRaises(TypeError) as cm:
-      self._add_op("name: 'ThreeTypes' "
-                   "input_arg { name: 'a' type: DT_INT32 type_attr: 'T' "
-                   "type_list_attr: 'U' } "
-                   "attr { name: 'T' type: 'type' } "
-                   "attr { name: 'U' type: 'list(type)' }")
-    self.assertEqual(str(cm.exception),
-                     "Arg 'a' of 'ThreeTypes' must have one type field not 3")
-
-    with self.assertRaises(TypeError) as cm:
-      self._add_op("name: 'NoTypes' output_arg { name: 'a' } ")
-    self.assertEqual(str(cm.exception),
-                     "Arg 'a' of 'NoTypes' must have one type field not 0")
 
   def testSimple(self):
     with ops.Graph().as_default():
-      out = self._lib.apply_op("Simple", a=3)
+      out = op_def_library.apply_op("Simple", a=3)
       self.assertEqual(dtypes.float32, out.dtype)
       self.assertProtoEquals("""
         name: 'Simple' op: 'Simple' input: 'Simple/a'
         """, out.op.node_def)
 
-      out = self._lib.apply_op("Simple", a=4)
+      out = op_def_library.apply_op("Simple", a=4)
       self.assertProtoEquals("""
         name: 'Simple_1' op: 'Simple' input: 'Simple_1/a'
         """, out.op.node_def)
 
-      out = self._lib.apply_op("Simple", a=5, name="named")
+      out = op_def_library.apply_op("Simple", a=5, name="named")
       self.assertProtoEquals("""
         name: 'named' op: 'Simple' input: 'named/a'
         """, out.op.node_def)
 
-      out = self._lib.apply_op("Simple", a=[[1, 2, 3], [4, 5, 6]], name="two_d")
+      out = op_def_library.apply_op(
+          "Simple", a=[[1, 2, 3], [4, 5, 6]], name="two_d")
       self.assertProtoEquals("""
         name: 'two_d' op: 'Simple' input: 'two_d/a'
         """, out.op.node_def)
@@ -139,66 +69,70 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
   def testSimpleFailures(self):
     with ops.Graph().as_default():
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Simple", a="Bad string")
-      self.assertEqual(str(cm.exception),
-                       "Expected int32 passed to parameter 'a' of op 'Simple', "
-                       "got 'Bad string' of type 'str' instead.")
+        op_def_library.apply_op("Simple", a="Bad string")
+      self.assertTrue(
+          "Expected int32 passed to parameter 'a' of op 'Simple', "
+          "got 'Bad string' of type 'str' instead." in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Simple", a=self.Tensor(dtypes.string))
-      self.assertEqual(str(cm.exception),
-                       "Input 'a' of 'Simple' Op has type string "
-                       "that does not match expected type of int32.")
+        op_def_library.apply_op("Simple", a=self.Tensor(dtypes.string))
+      self.assertTrue(
+          "Input 'a' of 'Simple' Op has type string "
+          "that does not match expected type of int32." in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Simple", a=6, extra="bogus")
-      self.assertEqual(str(cm.exception),
-                       "apply_op() got unexpected keyword arguments: extra")
+        op_def_library.apply_op("Simple", a=6, extra="bogus")
+      self.assertTrue(
+          "apply_op() got unexpected keyword arguments: extra"
+          in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Simple", a=6, extra1="bogus", extra2="also_bogus")
-      self.assertEqual(str(cm.exception),
-                       "apply_op() got unexpected keyword arguments: extra1, "
-                       "extra2")
+        op_def_library.apply_op(
+            "Simple", a=6, extra1="bogus", extra2="also_bogus")
+      self.assertTrue(
+          "apply_op() got unexpected keyword arguments: extra1, "
+          "extra2" in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Simple")
-      self.assertEqual(str(cm.exception), "No argument for input a")
+        op_def_library.apply_op("Simple")
+      self.assertTrue(
+          "No argument for input a" in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Simple", wrong=7)
-      self.assertEqual(str(cm.exception), "No argument for input a")
+        op_def_library.apply_op("Simple", wrong=7)
+      self.assertTrue(
+          "No argument for input a" in str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Simple", a={"label": 1})
-      self.assertEqual(str(cm.exception),
-                       "Expected int32 passed to parameter 'a' of op 'Simple', "
-                       "got {'label': 1} of type 'dict' instead.")
+        op_def_library.apply_op("Simple", a={"label": 1})
+      self.assertTrue(
+          "Expected int32 passed to parameter 'a' of op 'Simple', "
+          "got {'label': 1} of type 'dict' instead." in str(cm.exception))
 
   def testReservedInput(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("ReservedInput", input_=7, name="x")
+      op = op_def_library.apply_op("ReservedInput", input_=7, name="x")
       self.assertProtoEquals("""
         name: 'x' op: 'ReservedInput' input: 'x/input'
         """, op.node_def)
 
   def testPolymorphic(self):
     with ops.Graph().as_default():
-      out = self._lib.apply_op("Polymorphic", a=7, name="p")
+      out = op_def_library.apply_op("Polymorphic", a=7, name="p")
       self.assertEqual(dtypes.int32, out.dtype)
       self.assertProtoEquals("""
         name: 'p' op: 'Polymorphic' input: 'p/a'
         attr { key: 'T' value { type: DT_INT32 } }
         """, out.op.node_def)
 
-      out = self._lib.apply_op("Polymorphic", a="s", name="q")
+      out = op_def_library.apply_op("Polymorphic", a="s", name="q")
       self.assertEqual(dtypes.string, out.dtype)
       self.assertProtoEquals("""
         name: 'q' op: 'Polymorphic' input: 'q/a'
         attr { key: 'T' value { type: DT_STRING } }
         """, out.op.node_def)
 
-      out = self._lib.apply_op("Polymorphic", a=["s", "t", "u"], name="r")
+      out = op_def_library.apply_op("Polymorphic", a=["s", "t", "u"], name="r")
       self.assertEqual(dtypes.string, out.dtype)
       self.assertProtoEquals("""
         name: 'r' op: 'Polymorphic' input: 'r/a'
@@ -206,20 +140,20 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, out.op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Polymorphic", a="s", T=dtypes.string)
+        op_def_library.apply_op("Polymorphic", a="s", T=dtypes.string)
       self.assertEqual(str(cm.exception),
                        "Should not specify value for inferred attr 'T'.")
 
   def testPolymorphicOut(self):
     with ops.Graph().as_default():
-      out = self._lib.apply_op("PolymorphicOut", T=dtypes.int32, name="p")
+      out = op_def_library.apply_op("PolymorphicOut", T=dtypes.int32, name="p")
       self.assertEqual(dtypes.int32, out.dtype)
       self.assertProtoEquals("""
         name: 'p' op: 'PolymorphicOut'
         attr { key: 'T' value { type: DT_INT32 } }
         """, out.op.node_def)
 
-      out = self._lib.apply_op("PolymorphicOut", T=dtypes.bool, name="q")
+      out = op_def_library.apply_op("PolymorphicOut", T=dtypes.bool, name="q")
       self.assertEqual(dtypes.bool, out.dtype)
       self.assertProtoEquals("""
         name: 'q' op: 'PolymorphicOut'
@@ -227,25 +161,26 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, out.op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("PolymorphicOut")
+        op_def_library.apply_op("PolymorphicOut")
       self.assertEqual(str(cm.exception),
                        "No argument for attr T")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("PolymorphicOut", T=None)
+        op_def_library.apply_op("PolymorphicOut", T=None)
       self.assertEqual(str(cm.exception),
                        "Expected DataType for argument 'T' not None.")
 
   def testPolymorphicDefaultOut(self):
     with ops.Graph().as_default():
-      out = self._lib.apply_op("PolymorphicDefaultOut", T=None, name="p")
+      out = op_def_library.apply_op("PolymorphicDefaultOut", T=None, name="p")
       self.assertEqual(dtypes.string, out.dtype)
       self.assertProtoEquals("""
         name: 'p' op: 'PolymorphicDefaultOut'
         attr { key: 'T' value { type: DT_STRING } }
         """, out.op.node_def)
 
-      out = self._lib.apply_op("PolymorphicDefaultOut", T=dtypes.bool, name="q")
+      out = op_def_library.apply_op(
+          "PolymorphicDefaultOut", T=dtypes.bool, name="q")
       self.assertEqual(dtypes.bool, out.dtype)
       self.assertProtoEquals("""
         name: 'q' op: 'PolymorphicDefaultOut'
@@ -254,44 +189,37 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testBinary(self):
     with ops.Graph().as_default():
-      out = self._lib.apply_op("Binary", a=8, b=9, name="b")
+      out = op_def_library.apply_op("Binary", a=8, b=9, name="b")
       self.assertEqual(dtypes.int32, out.dtype)
       self.assertProtoEquals("""
         name: 'b' op: 'Binary' input: 'b/a' input: 'b/b'
         attr { key: 'T' value { type: DT_INT32 } }
         """, out.op.node_def)
 
-      out = self._lib.apply_op("Binary", a="left", b="right", name="c")
+      out = op_def_library.apply_op("Binary", a="left", b="right", name="c")
       self.assertEqual(dtypes.string, out.dtype)
       self.assertProtoEquals("""
         name: 'c' op: 'Binary' input: 'c/a' input: 'c/b'
         attr { key: 'T' value { type: DT_STRING } }
         """, out.op.node_def)
 
-      with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Binary", a="left", b=12)
-      self.assertEqual(str(cm.exception),
-                       "Expected string passed to parameter 'b' of op 'Binary',"
-                       " got 12 of type 'int' instead.")
+      with self.assertRaises(TypeError):
+        op_def_library.apply_op("Binary", a="left", b=12)
 
-      with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Binary",
-                           a=self.Tensor(dtypes.string),
-                           b=self.Tensor(dtypes.int32))
-      self.assertEqual(str(cm.exception),
-                       "Input 'b' of 'Binary' Op has type int32 "
-                       "that does not match type string of argument 'a'.")
+      with self.assertRaises(TypeError):
+        op_def_library.apply_op(
+            "Binary", a=self.Tensor(dtypes.string), b=self.Tensor(dtypes.int32))
 
   def testRestrict(self):
     with ops.Graph().as_default():
-      out = self._lib.apply_op("Restrict", a="foo", name="g")
+      out = op_def_library.apply_op("Restrict", a="foo", name="g")
       self.assertEqual(dtypes.string, out.dtype)
       self.assertProtoEquals("""
         name: 'g' op: 'Restrict' input: 'g/a'
         attr { key: 'T' value { type: DT_STRING } }
         """, out.op.node_def)
 
-      out = self._lib.apply_op("Restrict", a=True, name="h")
+      out = op_def_library.apply_op("Restrict", a=True, name="h")
       self.assertEqual(dtypes.bool, out.dtype)
       self.assertProtoEquals("""
         name: 'h' op: 'Restrict' input: 'h/a'
@@ -299,61 +227,59 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, out.op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Restrict", a=17)
+        op_def_library.apply_op("Restrict", a=17)
       self.assertEqual(str(cm.exception),
                        "Value passed to parameter 'a' has DataType int32 "
                        "not in list of allowed values: string, bool")
 
   def testTypeList(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("TypeList", a=["foo"], name="z")
+      op = op_def_library.apply_op("TypeList", a=["foo"], name="z")
       self.assertProtoEquals("""
         name: 'z' op: 'TypeList' input: 'z/a_0'
         attr { key: 'T' value { list { type: DT_STRING } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("TypeList", a=[True, 12], name="y")
+      op = op_def_library.apply_op("TypeList", a=[True, 12], name="y")
       self.assertProtoEquals("""
         name: 'y' op: 'TypeList' input: 'y/a_0' input: 'y/a_1'
         attr { key: 'T' value { list { type: DT_BOOL type: DT_INT32 } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("TypeList", a=[], name="empty")
+      op = op_def_library.apply_op("TypeList", a=[], name="empty")
       self.assertProtoEquals("""
         name: 'empty' op: 'TypeList' attr { key: 'T' value { list { } } }
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("TypeList", a=17)
+        op_def_library.apply_op("TypeList", a=17)
       self.assertStartsWith(str(cm.exception),
                             "Expected list for 'a' "
                             "argument to 'TypeList' Op, not ")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("TypeList", a=[self.Tensor(dtypes.int32), None])
+        op_def_library.apply_op("TypeList", a=[self.Tensor(dtypes.int32), None])
       self.assertStartsWith(str(cm.exception),
                             "Tensors in list passed to 'a' of 'TypeList' Op "
                             "have types [int32, <NOT CONVERTIBLE TO TENSOR>]")
 
   def testTypeListTwice(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("TypeListTwice",
-                              a=["foo", True],
-                              b=["bar", False],
-                              name="z")
+      op = op_def_library.apply_op(
+          "TypeListTwice", a=["foo", True], b=["bar", False], name="z")
       self.assertProtoEquals("""
         name: 'z' op: 'TypeListTwice'
         input: 'z/a_0' input: 'z/a_1' input: 'z/b_0' input: 'z/b_1'
         attr { key: 'T' value { list { type: DT_STRING type: DT_BOOL } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("TypeListTwice", a=[], b=[], name="empty")
+      op = op_def_library.apply_op("TypeListTwice", a=[], b=[], name="empty")
       self.assertProtoEquals("""
         name: 'empty' op: 'TypeListTwice' attr { key: 'T' value { list { } } }
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("TypeListTwice", a=["foo", True], b=["bar", 6])
+        op_def_library.apply_op("TypeListTwice", a=["foo", True], b=["bar", 6])
       self.assertEqual(str(cm.exception),
                        "Input 'b' of 'TypeListTwice' Op has type list of "
                        "string, int32 that does not match type list "
@@ -361,16 +287,16 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testOutTypeList(self):
     with ops.Graph().as_default():
-      out, = self._lib.apply_op("OutTypeList", T=[dtypes.float32], name="x")
+      out, = op_def_library.apply_op(
+          "OutTypeList", T=[dtypes.float32], name="x")
       self.assertEqual(dtypes.float32, out.dtype)
       self.assertProtoEquals("""
         name: 'x' op: 'OutTypeList'
         attr { key: 'T' value { list { type: DT_FLOAT } } }
         """, out.op.node_def)
 
-      out1, out2 = self._lib.apply_op("OutTypeList",
-                                      T=[dtypes.int32, dtypes.bool],
-                                      name="w")
+      out1, out2 = op_def_library.apply_op(
+          "OutTypeList", T=[dtypes.int32, dtypes.bool], name="w")
       self.assertEqual(dtypes.int32, out1.dtype)
       self.assertEqual(dtypes.bool, out2.dtype)
       self.assertProtoEquals("""
@@ -378,32 +304,32 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'T' value { list { type: DT_INT32 type: DT_BOOL } } }
         """, out1.op.node_def)
 
-      out = self._lib.apply_op("OutTypeList", T=[], name="empty")
+      out = op_def_library.apply_op("OutTypeList", T=[], name="empty")
       self.assertEqual([], out)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("OutTypeList", T=dtypes.int32)
+        op_def_library.apply_op("OutTypeList", T=dtypes.int32)
       self.assertEqual(str(cm.exception), "Expected list for attr T")
 
   def testTypeListRestrict(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("TypeListRestrict", a=["foo", False], name="v")
+      op = op_def_library.apply_op(
+          "TypeListRestrict", a=["foo", False], name="v")
       self.assertProtoEquals("""
         name: 'v' op: 'TypeListRestrict' input: 'v/a_0' input: 'v/a_1'
         attr { key: 'T' value { list { type: DT_STRING type: DT_BOOL } } }
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("TypeListRestrict", a=[True, 12])
+        op_def_library.apply_op("TypeListRestrict", a=[True, 12])
       self.assertEqual(str(cm.exception),
                        "Value passed to parameter 'a' has DataType int32 "
                        "not in list of allowed values: string, bool")
 
   def testOutTypeListRestrict(self):
     with ops.Graph().as_default():
-      out1, out2 = self._lib.apply_op("OutTypeListRestrict",
-                                      t=[dtypes.bool, dtypes.string],
-                                      name="u")
+      out1, out2 = op_def_library.apply_op(
+          "OutTypeListRestrict", t=[dtypes.bool, dtypes.string], name="u")
       self.assertEqual(dtypes.bool, out1.dtype)
       self.assertEqual(dtypes.string, out2.dtype)
       self.assertProtoEquals("""
@@ -412,140 +338,209 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, out1.op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("OutTypeListRestrict",
-                           t=[dtypes.string, dtypes.int32])
+        op_def_library.apply_op(
+            "OutTypeListRestrict", t=[dtypes.string, dtypes.int32])
       self.assertEqual(str(cm.exception),
                        "Value passed to parameter 't' has DataType int32 "
                        "not in list of allowed values: string, bool")
 
   def testAttr(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("Attr", a=12, name="t")
+      op = op_def_library.apply_op("Attr", a=12, name="t")
       self.assertProtoEquals("""
         name: 't' op: 'Attr' attr { key: 'a' value { i: 12 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("Attr", a=tensor_shape.Dimension(13), name="u")
+      op = op_def_library.apply_op(
+          "Attr", a=tensor_shape.Dimension(13), name="u")
       self.assertProtoEquals("""
         name: 'u' op: 'Attr' attr { key: 'a' value { i: 13 } }
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Attr", a="bad")
+        op_def_library.apply_op("Attr", a="bad")
       self.assertEqual(str(cm.exception),
                        "Expected int for argument 'a' not 'bad'.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Attr", a=[12])
+        op_def_library.apply_op("Attr", a=[12])
       self.assertEqual(str(cm.exception),
                        "Expected int for argument 'a' not [12].")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Attr", a=None)
+        op_def_library.apply_op("Attr", a=None)
       self.assertEqual(str(cm.exception),
                        "Expected int for argument 'a' not None.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("Attr")
+        op_def_library.apply_op("Attr")
       self.assertEqual(str(cm.exception), "No argument for attr a")
 
   def testAttrFloat(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrFloat", a=1.2, name="t")
+      op = op_def_library.apply_op("AttrFloat", a=1.2, name="t")
       self.assertProtoEquals("""
         name: 't' op: 'AttrFloat' attr { key: 'a' value { f: 1.2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrFloat", a=12, name="u")
+      op = op_def_library.apply_op("AttrFloat", a=12, name="u")
       self.assertProtoEquals("""
         name: 'u' op: 'AttrFloat' attr { key: 'a' value { f: 12 } }
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("AttrFloat", a="bad")
+        op_def_library.apply_op("AttrFloat", a="bad")
       self.assertEqual(str(cm.exception),
                        "Expected float for argument 'a' not 'bad'.")
 
+  def testAttrFunc(self):
+    with ops.Graph().as_default():
+      @function.Defun(dtypes.float32, func_name="MyFn")
+      def fn(x):
+        return 2 + x
+
+      op = op_def_library.apply_op("FuncAttr", f=fn, name="t")
+      self.assertProtoEquals("""
+        name: 't' op: 'FuncAttr' attr { key: 'f'
+                                        value { func { name: 'MyFn' } } }
+        """, op.node_def)
+
+      with self.assertRaises(TypeError) as cm:
+        op_def_library.apply_op("FuncAttr", f=3)
+      self.assertEqual(str(cm.exception),
+                       "Don't know how to convert 3 to a func for argument f")
+
+  def testAttrFuncWithFuncWithAttrs(self):
+    with ops.Graph().as_default():
+      @eager_function.defun_with_attributes(
+          input_signature=(tensor_spec.TensorSpec(None, dtypes.float32),),
+          autograph=False,
+          attributes={"_dummy_attr": 15})
+      def fn(x):
+        return 2 + x
+
+      concrete_fn = fn.get_concrete_function()
+
+      op = op_def_library.apply_op("FuncAttr", f=concrete_fn, name="t")
+      self.assertProtoEquals("""
+        name: 't' op: 'FuncAttr'
+        attr {
+          key: 'f'
+          value {
+            func {
+              name: '%s'
+              attr { key: "_dummy_attr" value { i: 15 } }
+            }
+          }
+        }
+        """ % compat.as_str(concrete_fn.name), op.node_def)
+
+  def testAttrFuncList(self):
+    with ops.Graph().as_default():
+      @function.Defun(dtypes.float32, func_name="MyFn")
+      def fn1(x):
+        return 2 + x
+      @function.Defun(dtypes.int32, dtypes.float32, func_name="MyFn2")
+      def fn2(x, y):
+        return 2 + x, y * 3
+      @function.Defun(dtypes.int32, func_name="MyFn3")
+      def fn3(y):
+        return 2 + y
+
+      op = op_def_library.apply_op("FuncListAttr", f=[fn1, fn2, fn3], name="t")
+      self.assertProtoEquals("""
+        name: 't' op: 'FuncListAttr'
+        attr { key: 'f' value { list { func { name: 'MyFn' }
+                                       func { name: 'MyFn2' }
+                                       func { name: 'MyFn3' } } } }
+        """, op.node_def)
+
+      with self.assertRaises(TypeError) as cm:
+        op_def_library.apply_op("FuncListAttr", f=[fn1, 3, fn2])
+      self.assertEqual(str(cm.exception),
+                       "Don't know how to convert 3 to a func for argument f")
+
   def testAttrBool(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrBool", a=True, name="t")
+      op = op_def_library.apply_op("AttrBool", a=True, name="t")
       self.assertProtoEquals("""
         name: 't' op: 'AttrBool' attr { key: 'a' value { b: true } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrBool", a=False, name="u")
+      op = op_def_library.apply_op("AttrBool", a=False, name="u")
       self.assertProtoEquals("""
         name: 'u' op: 'AttrBool' attr { key: 'a' value { b: false } }
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("AttrBool", a=0)
+        op_def_library.apply_op("AttrBool", a=0)
       self.assertEqual(str(cm.exception),
                        "Expected bool for argument 'a' not 0.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("AttrBool", a=1)
+        op_def_library.apply_op("AttrBool", a=1)
       self.assertEqual(str(cm.exception),
                        "Expected bool for argument 'a' not 1.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("AttrBool", a=[])
+        op_def_library.apply_op("AttrBool", a=[])
       self.assertEqual(str(cm.exception),
                        "Expected bool for argument 'a' not [].")
 
   def testAttrBoolList(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrBoolList", a=[True, False, True], name="t")
+      op = op_def_library.apply_op(
+          "AttrBoolList", a=[True, False, True], name="t")
       self.assertProtoEquals("""
         name: 't' op: 'AttrBoolList'
         attr { key: 'a' value { list { b: true b: false b:true } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrBoolList", a=[], name="u")
+      op = op_def_library.apply_op("AttrBoolList", a=[], name="u")
       self.assertProtoEquals("""
         name: 'u' op: 'AttrBoolList' attr { key: 'a' value { list { } } }
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("AttrBoolList", a=[0])
+        op_def_library.apply_op("AttrBoolList", a=[0])
       self.assertEqual(str(cm.exception),
                        "Expected bool for argument 'a' not 0.")
 
   def testAttrMin(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrMin", a=12, name="s")
+      op = op_def_library.apply_op("AttrMin", a=12, name="s")
       self.assertProtoEquals("""
         name: 's' op: 'AttrMin' attr { key: 'a' value { i: 12 } }
         """, op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("AttrMin", a=2)
+        op_def_library.apply_op("AttrMin", a=2)
       self.assertEqual(str(cm.exception),
                        "Attr 'a' of 'AttrMin' Op passed 2 less than minimum 5.")
 
   def testAttrListMin(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrListMin", a=[1, 2], name="r")
+      op = op_def_library.apply_op("AttrListMin", a=[1, 2], name="r")
       self.assertProtoEquals("""
         name: 'r' op: 'AttrListMin'
         attr { key: 'a' value { list { i: 1 i: 2 } } }
         """, op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("AttrListMin", a=[17])
+        op_def_library.apply_op("AttrListMin", a=[17])
       self.assertEqual(str(cm.exception),
                        "Attr 'a' of 'AttrListMin' Op "
                        "passed list of length 1 less than minimum 2.")
 
   def testAttrEnum(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrEnum", a="oranges", name="e")
+      op = op_def_library.apply_op("AttrEnum", a="oranges", name="e")
       self.assertProtoEquals("""
         name: 'e' op: 'AttrEnum' attr { key: 'a' value { s: 'oranges' } }
         """, op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("AttrEnum", a="invalid")
+        op_def_library.apply_op("AttrEnum", a="invalid")
       self.assertEqual(str(cm.exception),
                        'Attr \'a\' of \'AttrEnum\' Op '
                        'passed string \'invalid\' not in: '
@@ -553,14 +548,16 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testAttrEnumList(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrEnumList", a=["oranges", "apples"], name="f")
+      op = op_def_library.apply_op(
+          "AttrEnumList", a=["oranges", "apples"], name="f")
       self.assertProtoEquals("""
         name: 'f' op: 'AttrEnumList'
         attr { key: 'a' value { list { s: 'oranges' s: 'apples' } } }
         """, op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("AttrEnumList", a=["apples", "invalid", "oranges"])
+        op_def_library.apply_op(
+            "AttrEnumList", a=["apples", "invalid", "oranges"])
       self.assertEqual(str(cm.exception),
                        'Attr \'a\' of \'AttrEnumList\' Op '
                        'passed string \'invalid\' not '
@@ -568,20 +565,20 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testAttrShape(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrShape", a=[5], name="s1")
+      op = op_def_library.apply_op("AttrShape", a=[5], name="s1")
       self.assertProtoEquals("""
         name: 's1' op: 'AttrShape'
         attr { key: 'a' value { shape { dim { size: 5 } } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrShape", a=(4, 3, 2), name="s2")
+      op = op_def_library.apply_op("AttrShape", a=(4, 3, 2), name="s2")
       self.assertProtoEquals("""
         name: 's2' op: 'AttrShape'
         attr { key: 'a' value {
           shape { dim { size: 4 } dim { size: 3 } dim { size: 2 } } } }
         """, op.node_def)
 
-      op = self._lib.apply_op(
+      op = op_def_library.apply_op(
           "AttrShape", a=tensor_shape.TensorShape([3, 2]), name="s3")
       self.assertProtoEquals("""
         name: 's3' op: 'AttrShape'
@@ -589,7 +586,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
           shape { dim { size: 3 } dim { size: 2 } } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrShape", a=[], name="s4")
+      op = op_def_library.apply_op("AttrShape", a=[], name="s4")
       self.assertProtoEquals("""
         name: 's4' op: 'AttrShape' attr { key: 'a' value { shape { } } }
         """, op.node_def)
@@ -597,7 +594,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       shape = tensor_shape_pb2.TensorShapeProto()
       shape.dim.add().size = 6
       shape.dim.add().size = 3
-      op = self._lib.apply_op("AttrShape", a=shape, name="s5")
+      op = op_def_library.apply_op("AttrShape", a=shape, name="s5")
       self.assertProtoEquals("""
         name: 's5' op: 'AttrShape'
         attr { key: 'a' value { shape { dim { size: 6 } dim { size: 3 } } } }
@@ -606,17 +603,18 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       # TODO(josh11b): Re-enable this test once we stop promoting scalars to
       # shapes.
       # with self.assertRaises(TypeError) as cm:
-      #   self._lib.apply_op("AttrShape", a=5)
+      #   op_def_library.apply_op("AttrShape", a=5)
       # self.assertEqual(str(cm.exception),
       #                  "Don't know how to convert 5 to a TensorShapeProto for"
       #                  " argument 'a'")
 
       with self.assertRaises(TypeError):
-        self._lib.apply_op("AttrShape", a="ABC")
+        op_def_library.apply_op("AttrShape", a="ABC")
 
   def testAttrShapeList(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrShapeList", a=[[3, 2], [6, 5, 4]], name="sl")
+      op = op_def_library.apply_op(
+          "AttrShapeList", a=[[3, 2], [6, 5, 4]], name="sl")
       self.assertProtoEquals("""
         name: 'sl' op: 'AttrShapeList'
         attr { key: 'a' value { list {
@@ -624,27 +622,28 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
           shape { dim { size: 6 } dim { size: 5 } dim { size: 4 } } } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrShapeList", a=[], name="esl")
+      op = op_def_library.apply_op("AttrShapeList", a=[], name="esl")
       self.assertProtoEquals("""
         name: 'esl' op: 'AttrShapeList' attr { key: 'a' value { list { } } }
         """, op.node_def)
 
   def testAttrPartialShape(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrPartialShape", a=[5], name="s1")
+      op = op_def_library.apply_op("AttrPartialShape", a=[5], name="s1")
       self.assertProtoEquals("""
         name: 's1' op: 'AttrPartialShape'
         attr { key: 'a' value { shape { dim { size: 5 } } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrPartialShape", a=(4, None, 2), name="s2")
+      op = op_def_library.apply_op(
+          "AttrPartialShape", a=(4, None, 2), name="s2")
       self.assertProtoEquals("""
         name: 's2' op: 'AttrPartialShape'
         attr { key: 'a' value {
           shape { dim { size: 4 } dim { size: -1 } dim { size: 2 } } } }
         """, op.node_def)
 
-      op = self._lib.apply_op(
+      op = op_def_library.apply_op(
           "AttrPartialShape", a=tensor_shape.TensorShape([3, None]), name="s3")
       self.assertProtoEquals("""
         name: 's3' op: 'AttrPartialShape'
@@ -652,7 +651,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
           shape { dim { size: 3 } dim { size: -1 } } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrPartialShape", a=[], name="s4")
+      op = op_def_library.apply_op("AttrPartialShape", a=[], name="s4")
       self.assertProtoEquals("""
         name: 's4' op: 'AttrPartialShape'
         attr { key: 'a' value { shape { } } }
@@ -661,7 +660,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       shape = tensor_shape_pb2.TensorShapeProto()
       shape.dim.add().size = -1
       shape.dim.add().size = 3
-      op = self._lib.apply_op("AttrPartialShape", a=shape, name="s5")
+      op = op_def_library.apply_op("AttrPartialShape", a=shape, name="s5")
       self.assertProtoEquals("""
         name: 's5' op: 'AttrPartialShape'
         attr { key: 'a' value {
@@ -670,17 +669,17 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
       # TODO(ebrevdo): Re-enable once we stop promoting scalars to shapes.
       # with self.assertRaises(TypeError) as cm:
-      #   self._lib.apply_op("AttrPartialShape", a=5)
+      #   op_def_library.apply_op("AttrPartialShape", a=5)
       # self.assertEqual(str(cm.exception),
       #                  "Don't know how to convert 5 to a TensorShapeProto for"
       #                  " argument 'a'")
 
       with self.assertRaises(TypeError):
-        self._lib.apply_op("AttrPartialShape", a="ABC")
+        op_def_library.apply_op("AttrPartialShape", a="ABC")
 
   def testAttrPartialShapeList(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op(
+      op = op_def_library.apply_op(
           "AttrPartialShapeList", a=[[3, 2], [6, None, 4]], name="sl")
       self.assertProtoEquals("""
         name: 'sl' op: 'AttrPartialShapeList'
@@ -689,7 +688,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
           shape { dim { size: 6 } dim { size: -1 } dim { size: 4 } } } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrPartialShapeList", a=[], name="esl")
+      op = op_def_library.apply_op("AttrPartialShapeList", a=[], name="esl")
       self.assertProtoEquals("""
         name: 'esl' op: 'AttrPartialShapeList' attr {
           key: 'a' value { list { } } }
@@ -697,31 +696,31 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testAttrDefault(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrDefault", a=None, name="d")
+      op = op_def_library.apply_op("AttrDefault", a=None, name="d")
       self.assertProtoEquals("""
         name: 'd' op: 'AttrDefault' attr { key: 'a' value { s: 'banana' } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrDefault", a="kiwi", name="c")
+      op = op_def_library.apply_op("AttrDefault", a="kiwi", name="c")
       self.assertProtoEquals("""
         name: 'c' op: 'AttrDefault' attr { key: 'a' value { s: 'kiwi' } }
         """, op.node_def)
 
   def testAttrListDefault(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrListDefault", a=None, name="b")
+      op = op_def_library.apply_op("AttrListDefault", a=None, name="b")
       self.assertProtoEquals("""
         name: 'b' op: 'AttrListDefault'
         attr { key: 'a' value { list { i: 5 i: 15 } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrListDefault", a=[3], name="a")
+      op = op_def_library.apply_op("AttrListDefault", a=[3], name="a")
       self.assertProtoEquals("""
         name: 'a' op: 'AttrListDefault'
         attr { key: 'a' value { list { i: 3 } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrListDefault", a=[], name="empty")
+      op = op_def_library.apply_op("AttrListDefault", a=[], name="empty")
       self.assertProtoEquals("""
         name: 'empty' op: 'AttrListDefault'
         attr { key: 'a' value { list { } } }
@@ -729,19 +728,19 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testAttrEmptyListDefault(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("AttrEmptyListDefault", a=None, name="b")
+      op = op_def_library.apply_op("AttrEmptyListDefault", a=None, name="b")
       self.assertProtoEquals("""
         name: 'b' op: 'AttrEmptyListDefault'
         attr { key: 'a' value { list { } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrEmptyListDefault", a=[3], name="a")
+      op = op_def_library.apply_op("AttrEmptyListDefault", a=[3], name="a")
       self.assertProtoEquals("""
         name: 'a' op: 'AttrEmptyListDefault'
         attr { key: 'a' value { list { f: 3 } } }
         """, op.node_def)
 
-      op = self._lib.apply_op("AttrEmptyListDefault", a=[], name="empty")
+      op = op_def_library.apply_op("AttrEmptyListDefault", a=[], name="empty")
       self.assertProtoEquals("""
         name: 'empty' op: 'AttrEmptyListDefault'
         attr { key: 'a' value { list { } } }
@@ -749,7 +748,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testReservedAttr(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("ReservedAttr", range_=7, name="x")
+      op = op_def_library.apply_op("ReservedAttr", range_=7, name="x")
       self.assertProtoEquals("""
         name: 'x' op: 'ReservedAttr' attr { key: 'range' value { i: 7 } }
         """, op.node_def)
@@ -757,7 +756,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
   def testDefaultAttrType(self):
     with ops.Graph().as_default():
       # Give an input whose type has no obvious output type.
-      op = self._lib.apply_op("AttrTypeDefault", a=[], name="n")
+      op = op_def_library.apply_op("AttrTypeDefault", a=[], name="n")
       self.assertProtoEquals("""
         name: 'n' op: 'AttrTypeDefault' input: 'n/a'
         attr { key: 'T' value { type: DT_INT32 } }
@@ -765,7 +764,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
       # Give an input whose type can be inferred as different
       # than the default.
-      op = self._lib.apply_op("AttrTypeDefault", a=[1.0], name="f")
+      op = op_def_library.apply_op("AttrTypeDefault", a=[1.0], name="f")
       self.assertProtoEquals("""
         name: 'f' op: 'AttrTypeDefault' input: 'f/a'
         attr { key: 'T' value { type: DT_FLOAT } }
@@ -775,7 +774,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       # Give an input whose type can be inferred as different
       # than the default.
-      op = self._lib.apply_op("AttrListTypeDefault", a=[1.0], b=[2.0], name="n")
+      op = op_def_library.apply_op(
+          "AttrListTypeDefault", a=[1.0], b=[2.0], name="n")
       self.assertProtoEquals("""
         name: 'n' op: 'AttrListTypeDefault' input: 'n/a_0' input: 'n/b_0'
         attr { key: 'T' value { type: DT_FLOAT } }
@@ -784,13 +784,13 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNIntsIn(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("NIntsIn", a=[1, 2], name="n")
+      op = op_def_library.apply_op("NIntsIn", a=[1, 2], name="n")
       self.assertProtoEquals("""
         name: 'n' op: 'NIntsIn' input: 'n/a_0' input: 'n/a_1'
         attr { key: 'N' value { i: 2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NIntsIn", a=[5, 4, 3, 2, 1], name="o")
+      op = op_def_library.apply_op("NIntsIn", a=[5, 4, 3, 2, 1], name="o")
       self.assertProtoEquals("""
         name: 'o' op: 'NIntsIn'
         input: 'o/a_0' input: 'o/a_1' input: 'o/a_2' input: 'o/a_3' input: 'o/a_4'
@@ -798,60 +798,63 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NIntsIn", a=["foo", "bar"])
+        op_def_library.apply_op("NIntsIn", a=["foo", "bar"])
       self.assertEqual(
           str(cm.exception),
           "Tensors in list passed to 'a' of 'NIntsIn' Op have types "
           "[string, string] that do not match expected type int32.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NIntsIn",
-                           a=[self.Tensor(dtypes.string),
-                              self.Tensor(dtypes.string)])
+        op_def_library.apply_op(
+            "NIntsIn",
+            a=[self.Tensor(dtypes.string),
+               self.Tensor(dtypes.string)])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'a' of 'NIntsIn' Op have "
                        "types [string, string] that do not match expected type "
                        "int32.")
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("NIntsIn", a=[99])
+        op_def_library.apply_op("NIntsIn", a=[99])
       self.assertEqual(str(cm.exception),
                        "List argument 'a' to 'NIntsIn' Op "
                        "with length 1 shorter than "
                        "minimum length 2.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NIntsIn", a=[38, "bar"])
+        op_def_library.apply_op("NIntsIn", a=[38, "bar"])
       self.assertEqual(
           str(cm.exception),
           "Tensors in list passed to 'a' of 'NIntsIn' Op have types "
           "[int32, string] that do not match expected type int32.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NIntsIn",
-                           a=[self.Tensor(dtypes.int32),
-                              self.Tensor(dtypes.string)])
+        op_def_library.apply_op(
+            "NIntsIn",
+            a=[self.Tensor(dtypes.int32),
+               self.Tensor(dtypes.string)])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'a' of 'NIntsIn' Op "
                        "have types [int32, string] that do not match expected "
                        "type int32.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NIntsIn", a=17)
+        op_def_library.apply_op("NIntsIn", a=17)
       self.assertStartsWith(str(cm.exception),
                             "Expected list for 'a' argument "
                             "to 'NIntsIn' Op, not ")
 
   def testNPolymorphicIn(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("NPolymorphicIn", a=[1, 2], name="n")
+      op = op_def_library.apply_op("NPolymorphicIn", a=[1, 2], name="n")
       self.assertProtoEquals("""
         name: 'n' op: 'NPolymorphicIn' input: 'n/a_0' input: 'n/a_1'
         attr { key: 'T' value { type: DT_INT32 } }
         attr { key: 'N' value { i: 2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NPolymorphicIn", a=[5, 4, 3, 2, 1], name="o")
+      op = op_def_library.apply_op(
+          "NPolymorphicIn", a=[5, 4, 3, 2, 1], name="o")
       self.assertProtoEquals("""
         name: 'o' op: 'NPolymorphicIn'
         input: 'o/a_0' input: 'o/a_1' input: 'o/a_2' input: 'o/a_3' input: 'o/a_4'
@@ -859,26 +862,30 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'N' value { i: 5 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NPolymorphicIn", a=["foo", "bar"], name="p")
+      op = op_def_library.apply_op("NPolymorphicIn", a=["foo", "bar"], name="p")
       self.assertProtoEquals("""
         name: 'p' op: 'NPolymorphicIn' input: 'p/a_0' input: 'p/a_1'
         attr { key: 'T' value { type: DT_STRING } }
         attr { key: 'N' value { i: 2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NPolymorphicIn",
-                              a=[1, self.Tensor(dtypes.float32, name="x")],
-                              name="q")
+      op = op_def_library.apply_op(
+          "NPolymorphicIn",
+          a=[1, self.Tensor(dtypes.float32, name="x")],
+          name="q")
       self.assertProtoEquals("""
         name: 'q' op: 'NPolymorphicIn' input: 'q/a_0' input: 'x'
         attr { key: 'T' value { type: DT_FLOAT } }
         attr { key: 'N' value { i: 2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NPolymorphicIn",
-                              a=[self.Tensor(dtypes.float32, name="y"),
-                                 self.Tensor(dtypes.float32_ref, name="z")],
-                              name="r")
+      op = op_def_library.apply_op(
+          "NPolymorphicIn",
+          a=[
+              self.Tensor(dtypes.float32, name="y"),
+              self.Tensor(dtypes.float32_ref, name="z")
+          ],
+          name="r")
       self.assertProtoEquals("""
         name: 'r' op: 'NPolymorphicIn' input: 'y' input: 'z'
         attr { key: 'T' value { type: DT_FLOAT } }
@@ -886,56 +893,56 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("NPolymorphicIn", a=[99])
+        op_def_library.apply_op("NPolymorphicIn", a=[99])
       self.assertEqual(str(cm.exception),
                        "List argument 'a' to 'NPolymorphicIn' Op with length 1 "
                        "shorter than minimum length 2.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NPolymorphicIn", a=[38, "bar"])
+        op_def_library.apply_op("NPolymorphicIn", a=[38, "bar"])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
                        "have types [int32, string] that don't all match.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NPolymorphicIn", a=[38, self.Tensor(dtypes.string)])
+        op_def_library.apply_op(
+            "NPolymorphicIn", a=[38, self.Tensor(dtypes.string)])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
                        "have types [int32, string] that don't all match.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NPolymorphicIn", a=[38, None])
+        op_def_library.apply_op("NPolymorphicIn", a=[38, None])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
                        "have types [int32, <NOT CONVERTIBLE TO TENSOR>] that "
                        "don't all match.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NPolymorphicIn",
-                           a=["abcd", self.Tensor(dtypes.int32)])
+        op_def_library.apply_op(
+            "NPolymorphicIn", a=["abcd", self.Tensor(dtypes.int32)])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
                        "have types [string, int32] that don't all match.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NPolymorphicIn", a=17)
+        op_def_library.apply_op("NPolymorphicIn", a=17)
       self.assertStartsWith(str(cm.exception),
                             "Expected list for 'a' argument "
                             "to 'NPolymorphicIn' Op, not ")
 
   def testNPolymorphicRestrictIn(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("NPolymorphicRestrictIn", a=["foo", "bar"],
-                              name="p")
+      op = op_def_library.apply_op(
+          "NPolymorphicRestrictIn", a=["foo", "bar"], name="p")
       self.assertProtoEquals("""
         name: 'p' op: 'NPolymorphicRestrictIn' input: 'p/a_0' input: 'p/a_1'
         attr { key: 'T' value { type: DT_STRING } }
         attr { key: 'N' value { i: 2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NPolymorphicRestrictIn",
-                              a=[False, True, False],
-                              name="b")
+      op = op_def_library.apply_op(
+          "NPolymorphicRestrictIn", a=[False, True, False], name="b")
       self.assertProtoEquals("""
         name: 'b' op: 'NPolymorphicRestrictIn'
         input: 'b/a_0' input: 'b/a_1' input: 'b/a_2'
@@ -944,7 +951,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NPolymorphicRestrictIn", a=[1, 2])
+        op_def_library.apply_op("NPolymorphicRestrictIn", a=[1, 2])
       self.assertEqual(
           str(cm.exception),
           "Value passed to parameter 'a' has DataType int32 not in "
@@ -952,20 +959,21 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNInTwice(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("NInTwice", a=[1, 2], b=["one", "two"], name="n")
+      op = op_def_library.apply_op(
+          "NInTwice", a=[1, 2], b=["one", "two"], name="n")
       self.assertProtoEquals("""
         name: 'n' op: 'NInTwice'
         input: 'n/a_0' input: 'n/a_1' input: 'n/b_0' input: 'n/b_1'
         attr { key: 'N' value { i: 2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NInTwice", a=[], b=[], name="o")
+      op = op_def_library.apply_op("NInTwice", a=[], b=[], name="o")
       self.assertProtoEquals("""
         name: 'o' op: 'NInTwice' attr { key: 'N' value { i: 0 } }
         """, op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("NInTwice", a=[1, 2, 3], b=["too short"])
+        op_def_library.apply_op("NInTwice", a=[1, 2, 3], b=["too short"])
       self.assertEqual(str(cm.exception),
                        "List argument 'b' to 'NInTwice' Op "
                        "with length 1 must match "
@@ -973,8 +981,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNInPolymorphicTwice(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("NInPolymorphicTwice", a=[1, 2], b=[3, 4],
-                              name="n")
+      op = op_def_library.apply_op(
+          "NInPolymorphicTwice", a=[1, 2], b=[3, 4], name="n")
       self.assertProtoEquals("""
         name: 'n' op: 'NInPolymorphicTwice'
         input: 'n/a_0' input: 'n/a_1' input: 'n/b_0' input: 'n/b_1'
@@ -983,23 +991,25 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("NInPolymorphicTwice", a=[1, 2, 3], b=[5])
+        op_def_library.apply_op("NInPolymorphicTwice", a=[1, 2, 3], b=[5])
       self.assertEqual(str(cm.exception),
                        "List argument 'b' to 'NInPolymorphicTwice' Op "
                        "with length 1 "
                        "must match length 3 of argument 'a'.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NInPolymorphicTwice", a=[1, 2], b=["one", "two"])
+        op_def_library.apply_op(
+            "NInPolymorphicTwice", a=[1, 2], b=["one", "two"])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'b' of 'NInPolymorphicTwice' "
                        "Op have types [string, string] that do not match type "
                        "int32 inferred from earlier arguments.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NInPolymorphicTwice",
-                           a=[self.Tensor(dtypes.int32)],
-                           b=[self.Tensor(dtypes.string)])
+        op_def_library.apply_op(
+            "NInPolymorphicTwice",
+            a=[self.Tensor(dtypes.int32)],
+            b=[self.Tensor(dtypes.string)])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'b' of "
                        "'NInPolymorphicTwice' Op have types [string] that do "
@@ -1007,10 +1017,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNInTwoTypeVariables(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("NInTwoTypeVariables",
-                              a=[1, 2],
-                              b=[True, False],
-                              name="n")
+      op = op_def_library.apply_op(
+          "NInTwoTypeVariables", a=[1, 2], b=[True, False], name="n")
       self.assertProtoEquals("""
         name: 'n' op: 'NInTwoTypeVariables'
         input: 'n/a_0' input: 'n/a_1' input: 'n/b_0' input: 'n/b_1'
@@ -1019,8 +1027,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'N' value { i: 2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NInTwoTypeVariables", a=[1, 2], b=[3, 4],
-                              name="o")
+      op = op_def_library.apply_op(
+          "NInTwoTypeVariables", a=[1, 2], b=[3, 4], name="o")
       self.assertProtoEquals("""
         name: 'o' op: 'NInTwoTypeVariables'
         input: 'o/a_0' input: 'o/a_1' input: 'o/b_0' input: 'o/b_1'
@@ -1029,10 +1037,11 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'N' value { i: 2 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("NInTwoTypeVariables",
-                              a=[self.Tensor(dtypes.int32, name="q")],
-                              b=[self.Tensor(dtypes.string, name="r")],
-                              name="p")
+      op = op_def_library.apply_op(
+          "NInTwoTypeVariables",
+          a=[self.Tensor(dtypes.int32, name="q")],
+          b=[self.Tensor(dtypes.string, name="r")],
+          name="p")
       self.assertProtoEquals("""
         name: 'p' op: 'NInTwoTypeVariables' input: 'q' input: 'r'
         attr { key: 'S' value { type: DT_INT32 } }
@@ -1041,7 +1050,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("NInTwoTypeVariables", a=[1, 2, 3], b=["5"])
+        op_def_library.apply_op("NInTwoTypeVariables", a=[1, 2, 3], b=["5"])
       self.assertEqual(str(cm.exception),
                        "List argument 'b' to 'NInTwoTypeVariables' Op "
                        "with length 1 "
@@ -1049,8 +1058,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testInPolymorphicTwice(self):
     with ops.Graph().as_default():
-      op = self._lib.apply_op("InPolymorphicTwice", a=[8], b=[3, 4, 5],
-                              name="n")
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[8], b=[3, 4, 5], name="n")
       self.assertProtoEquals("""
         name: 'n' op: 'InPolymorphicTwice'
         input: 'n/a_0' input: 'n/b_0' input: 'n/b_1' input: 'n/b_2'
@@ -1059,7 +1068,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'M' value { i: 3 } }
         """, op.node_def)
 
-      op = self._lib.apply_op("InPolymorphicTwice", a=[8], b=[], name="o")
+      op = op_def_library.apply_op("InPolymorphicTwice", a=[8], b=[], name="o")
       self.assertProtoEquals("""
         name: 'o' op: 'InPolymorphicTwice' input: 'o/a_0'
         attr { key: 'T' value { type: DT_INT32 } }
@@ -1067,14 +1076,37 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'M' value { i: 0 } }
         """, op.node_def)
 
-      with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("InPolymorphicTwice", a=[], b=[3, 4, 5])
-      self.assertEqual(str(cm.exception),
-                       "Don't know how to infer type variable from empty input "
-                       "list passed to input 'a' of 'InPolymorphicTwice' Op.")
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[3, 4], name="p")
+      self.assertProtoEquals("""
+        name: 'p' op: 'InPolymorphicTwice' input: 'p/b_0' input: 'p/b_1'
+        attr { key: 'T' value { type: DT_INT32 } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 2 } }
+        """, op.node_def)
+
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[3.0, 4.0], name="q")
+      self.assertProtoEquals("""
+        name: 'q' op: 'InPolymorphicTwice' input: 'q/b_0' input: 'q/b_1'
+        attr { key: 'T' value { type: DT_FLOAT } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 2 } }
+        """, op.node_def)
+
+      # Empty input lists: assume defaut type for T.
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[], name="r")
+      self.assertProtoEquals("""
+        name: 'r' op: 'InPolymorphicTwice'
+        attr { key: 'T' value { type: DT_INT32 } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 0 } }
+        """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("InPolymorphicTwice", a=[1, 2], b=["one", "two"])
+        op_def_library.apply_op(
+            "InPolymorphicTwice", a=[1, 2], b=["one", "two"])
       self.assertEqual(
           str(cm.exception),
           "Tensors in list passed to 'b' of 'InPolymorphicTwice' Op "
@@ -1082,9 +1114,10 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
           "inferred from earlier arguments.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("InPolymorphicTwice",
-                           a=[self.Tensor(dtypes.int32)],
-                           b=[self.Tensor(dtypes.string)])
+        op_def_library.apply_op(
+            "InPolymorphicTwice",
+            a=[self.Tensor(dtypes.int32)],
+            b=[self.Tensor(dtypes.string)])
       self.assertEqual(str(cm.exception),
                        "Tensors in list passed to 'b' of 'InPolymorphicTwice' "
                        "Op have types [string] that do not match type int32 "
@@ -1092,14 +1125,14 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNIntsOut(self):
     with ops.Graph().as_default():
-      out1, out2 = self._lib.apply_op("NIntsOut", N=2, name="n")
+      out1, out2 = op_def_library.apply_op("NIntsOut", N=2, name="n")
       self.assertEqual(dtypes.int32, out1.dtype)
       self.assertEqual(dtypes.int32, out2.dtype)
       self.assertProtoEquals("""
         name: 'n' op: 'NIntsOut' attr { key: 'N' value { i: 2 } }
         """, out1.op.node_def)
 
-      out1, out2, out3, out4, out5 = self._lib.apply_op(
+      out1, out2, out3, out4, out5 = op_def_library.apply_op(
           "NIntsOut", N=5, name="o")
       self.assertEqual(dtypes.int32, out1.dtype)
       self.assertEqual(dtypes.int32, out2.dtype)
@@ -1111,19 +1144,19 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, out5.op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("NIntsOut", N=1)
+        op_def_library.apply_op("NIntsOut", N=1)
       self.assertEqual(
           str(cm.exception),
           "Attr 'N' of 'NIntsOut' Op passed 1 less than minimum 2.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NIntsOut", N=[3])
+        op_def_library.apply_op("NIntsOut", N=[3])
       self.assertEqual(str(cm.exception),
                        "Expected int for argument 'N' not [3].")
 
   def testNIntsOutDefault(self):
     with ops.Graph().as_default():
-      out1, out2, out3 = self._lib.apply_op(
+      out1, out2, out3 = op_def_library.apply_op(
           "NIntsOutDefault", N=None, name="z")
       self.assertEqual(dtypes.int32, out1.dtype)
       self.assertEqual(dtypes.int32, out2.dtype)
@@ -1132,7 +1165,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         name: 'z' op: 'NIntsOutDefault' attr { key: 'N' value { i: 3 } }
         """, out1.op.node_def)
 
-      out1, out2 = self._lib.apply_op("NIntsOutDefault", N=2, name="y")
+      out1, out2 = op_def_library.apply_op("NIntsOutDefault", N=2, name="y")
       self.assertEqual(dtypes.int32, out1.dtype)
       self.assertEqual(dtypes.int32, out2.dtype)
       self.assertProtoEquals("""
@@ -1141,10 +1174,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNPolymorphicOut(self):
     with ops.Graph().as_default():
-      out1, out2 = self._lib.apply_op("NPolymorphicOut",
-                                      N=2,
-                                      T=dtypes.int32,
-                                      name="n")
+      out1, out2 = op_def_library.apply_op(
+          "NPolymorphicOut", N=2, T=dtypes.int32, name="n")
       self.assertEqual(dtypes.int32, out1.dtype)
       self.assertEqual(dtypes.int32, out2.dtype)
       self.assertProtoEquals("""
@@ -1153,7 +1184,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'N' value { i: 2 } }
         """, out1.op.node_def)
 
-      out1, out2, out3 = self._lib.apply_op(
+      out1, out2, out3 = op_def_library.apply_op(
           "NPolymorphicOut", T=dtypes.string, N=3, name="o")
       self.assertEqual(dtypes.string, out1.dtype)
       self.assertEqual(dtypes.string, out2.dtype)
@@ -1165,20 +1196,20 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, out3.op.node_def)
 
       with self.assertRaises(ValueError) as cm:
-        self._lib.apply_op("NPolymorphicOut", N=1, T=dtypes.string)
+        op_def_library.apply_op("NPolymorphicOut", N=1, T=dtypes.string)
       self.assertEqual(str(cm.exception),
                        "Attr 'N' of 'NPolymorphicOut' Op "
                        "passed 1 less than minimum 2.")
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NPolymorphicOut", N=3, T=[dtypes.string])
+        op_def_library.apply_op("NPolymorphicOut", N=3, T=[dtypes.string])
       self.assertEqual(
           str(cm.exception),
           "Expected DataType for argument 'T' not [tf.string].")
 
   def testNPolymorphicOutDefault(self):
     with ops.Graph().as_default():
-      out1, out2 = self._lib.apply_op(
+      out1, out2 = op_def_library.apply_op(
           "NPolymorphicOutDefault", N=None, T=None, name="r")
       self.assertEqual(dtypes.bool, out1.dtype)
       self.assertEqual(dtypes.bool, out2.dtype)
@@ -1188,7 +1219,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'N' value { i: 2 } }
         """, out1.op.node_def)
 
-      out1, out2, out3 = self._lib.apply_op(
+      out1, out2, out3 = op_def_library.apply_op(
           "NPolymorphicOutDefault", N=3, T=None, name="s")
       self.assertEqual(dtypes.bool, out1.dtype)
       self.assertEqual(dtypes.bool, out2.dtype)
@@ -1199,7 +1230,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'N' value { i: 3 } }
         """, out1.op.node_def)
 
-      out1, out2 = self._lib.apply_op(
+      out1, out2 = op_def_library.apply_op(
           "NPolymorphicOutDefault", N=None, T=dtypes.int32, name="t")
       self.assertEqual(dtypes.int32, out1.dtype)
       self.assertEqual(dtypes.int32, out2.dtype)
@@ -1209,7 +1240,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'N' value { i: 2 } }
         """, out1.op.node_def)
 
-      out1, out2, out3 = self._lib.apply_op(
+      out1, out2, out3 = op_def_library.apply_op(
           "NPolymorphicOutDefault", N=3, T=dtypes.int32, name="u")
       self.assertEqual(dtypes.int32, out1.dtype)
       self.assertEqual(dtypes.int32, out2.dtype)
@@ -1222,7 +1253,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNPolymorphicRestrictOut(self):
     with ops.Graph().as_default():
-      out1, out2, out3 = self._lib.apply_op(
+      out1, out2, out3 = op_def_library.apply_op(
           "NPolymorphicRestrictOut", N=3, T=dtypes.bool, name="u")
       self.assertEqual(dtypes.bool, out1.dtype)
       self.assertEqual(dtypes.bool, out2.dtype)
@@ -1234,21 +1265,21 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, out1.op.node_def)
 
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("NPolymorphicRestrictOut", N=2, T=dtypes.int32)
+        op_def_library.apply_op("NPolymorphicRestrictOut", N=2, T=dtypes.int32)
       self.assertEqual(str(cm.exception),
                        "Value passed to parameter 'T' has DataType int32 "
                        "not in list of allowed values: string, bool")
 
   def testRef(self):
     with ops.Graph().as_default():
-      out = self._lib.apply_op("RefOut", T=dtypes.bool, name="o")
+      out = op_def_library.apply_op("RefOut", T=dtypes.bool, name="o")
       self.assertEqual(dtypes.bool_ref, out.dtype)
       self.assertProtoEquals("""
         name: 'o' op: 'RefOut'
         attr { key: 'T' value { type: DT_BOOL } }
         """, out.op.node_def)
 
-      op = self._lib.apply_op("RefIn", a=out, name="i")
+      op = op_def_library.apply_op("RefIn", a=out, name="i")
       self.assertProtoEquals("""
         name: 'i' op: 'RefIn' input: 'o'
         attr { key: 'T' value { type: DT_BOOL } }
@@ -1256,23 +1287,23 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         """, op.node_def)
 
       # Can pass ref to non-ref input.
-      out = self._lib.apply_op("RefOut", T=dtypes.int32, name="r")
-      out = self._lib.apply_op("Simple", a=out, name="s")
+      out = op_def_library.apply_op("RefOut", T=dtypes.int32, name="r")
+      out = op_def_library.apply_op("Simple", a=out, name="s")
       self.assertProtoEquals("""
         name: 's' op: 'Simple' input: 'r'
         """, out.op.node_def)
 
       # Can't pass non-ref to ref input.
       with self.assertRaises(TypeError) as cm:
-        self._lib.apply_op("RefIn", a=2)
+        op_def_library.apply_op("RefIn", a=2)
       self.assertEqual(
           str(cm.exception),
           "'RefIn' Op requires that input 'a' be a mutable tensor " +
           "(e.g.: a tf.Variable)")
 
-      input_a = self._lib.apply_op("RefOut", T=dtypes.int32, name="t")
-      input_b = self._lib.apply_op("RefOut", T=dtypes.int32, name="u")
-      op = self._lib.apply_op("TwoRefsIn", a=input_a, b=input_b, name="v")
+      input_a = op_def_library.apply_op("RefOut", T=dtypes.int32, name="t")
+      input_b = op_def_library.apply_op("RefOut", T=dtypes.int32, name="u")
+      op = op_def_library.apply_op("TwoRefsIn", a=input_a, b=input_b, name="v")
       # NOTE(mrry): The order of colocation constraints is an implementation
       # detail.
       self.assertProtoEquals("""
@@ -1285,7 +1316,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     graph = ops.Graph()
     with graph.as_default():
       with graph.device("/job:ADevice"):
-        self._lib.apply_op("Simple", a=3)
+        op_def_library.apply_op("Simple", a=3)
       # We look at the whole graph here to make sure the Const op is also given
       # the specified device.
       graph_def = graph.as_graph_def()
@@ -1296,14 +1327,14 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
   def testStructuredOutputSingleList(self):
     with ops.Graph().as_default():
       for n_a in [0, 1, 3]:
-        a = self._lib.apply_op("SimpleStruct", n_a=n_a)
+        a = op_def_library.apply_op("SimpleStruct", n_a=n_a)
         self.assertTrue(isinstance(a, list))
         self.assertEqual(n_a, len(a))
 
   def testStructuredOutputListAndSingle(self):
     with ops.Graph().as_default():
       for n_a in [0, 1, 3]:
-        a, b = self._lib.apply_op("MixedStruct", n_a=n_a)
+        a, b = op_def_library.apply_op("MixedStruct", n_a=n_a)
         self.assertTrue(isinstance(a, list))
         self.assertEqual(n_a, len(a))
         self.assertTrue(all(x.dtype == dtypes.int32 for x in a))
@@ -1317,10 +1348,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
           for t_c in [[],
                       [dtypes.int32],
                       [dtypes.int32, dtypes.float32]]:
-            a, b, c = self._lib.apply_op("ComplexStruct",
-                                         n_a=n_a,
-                                         n_b=n_b,
-                                         t_c=t_c)
+            a, b, c = op_def_library.apply_op(
+                "ComplexStruct", n_a=n_a, n_b=n_b, t_c=t_c)
 
             self.assertEqual(n_a, len(a))
             self.assertTrue(all(x.dtype == dtypes.int32 for x in a))
@@ -1331,31 +1360,23 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
 class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
 
-  def setUp(self):
-    self._lib = test_ops._op_def_lib
-
-  def _add_op(self, ascii):  # pylint: disable=redefined-builtin
-    op_def = op_def_pb2.OpDef()
-    text_format.Merge(ascii, op_def)
-    self._lib.add_op(op_def)
-
   def testNoGraph(self):
-    out = self._lib.apply_op("Simple", a=3)
+    out = op_def_library.apply_op("Simple", a=3)
     self.assertEqual(out.graph, ops.get_default_graph())
 
   def testDefaultGraph(self):
     graph = ops.Graph()
     with graph.as_default():
-      out = self._lib.apply_op("Simple", a=3)
+      out = op_def_library.apply_op("Simple", a=3)
       self.assertEqual(out.graph, graph)
 
   def testDifferentGraphFails(self):
     with ops.Graph().as_default():
-      a = self._lib.apply_op("Simple", a=3)
+      a = op_def_library.apply_op("Simple", a=3)
     with ops.Graph().as_default():
-      b = self._lib.apply_op("Simple", a=4)
+      b = op_def_library.apply_op("Simple", a=4)
     with self.assertRaises(ValueError) as cm:
-      self._lib.apply_op("Binary", a=a, b=b)
+      op_def_library.apply_op("Binary", a=a, b=b)
     self.assertTrue("must be from the same graph" in str(cm.exception))
 
 

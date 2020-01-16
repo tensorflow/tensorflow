@@ -23,7 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -52,7 +52,7 @@ fractional components, and such that
 with `self.probs` and `self.total_count`."""
 
 
-@tf_export("distributions.Multinomial")
+@tf_export(v1=["distributions.Multinomial"])
 class Multinomial(distribution.Distribution):
   """Multinomial distribution.
 
@@ -266,7 +266,7 @@ class Multinomial(distribution.Distribution):
       x = math_ops.reduce_sum(array_ops.one_hot(x, depth=k), axis=-2)  # [n, k]
       return x
 
-    x = functional_ops.map_fn(
+    x = map_fn.map_fn(
         _sample_single, [flat_logits, flat_ndraws],
         dtype=self.dtype)  # [B1B2...Bm, n, k]
 

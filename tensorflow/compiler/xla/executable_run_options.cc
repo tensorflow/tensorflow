@@ -15,7 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 
+#include <atomic>
+
+#include "absl/strings/str_cat.h"
+
 namespace xla {
+
+RunId::RunId() {
+  static std::atomic<int64> counter{0};
+  data_ = counter.fetch_add(1);
+}
+
+bool operator==(const RunId& a, const RunId& b) { return a.data_ == b.data_; }
+
+std::string RunId::ToString() const { return absl::StrCat("RunId: ", data_); }
 
 ExecutableRunOptions& ExecutableRunOptions::set_device_ordinal(
     int device_ordinal) {
@@ -26,12 +39,13 @@ ExecutableRunOptions& ExecutableRunOptions::set_device_ordinal(
 int ExecutableRunOptions::device_ordinal() const { return device_ordinal_; }
 
 ExecutableRunOptions& ExecutableRunOptions::set_allocator(
-    DeviceMemoryAllocator* allocator) {
+    stream_executor::DeviceMemoryAllocator* allocator) {
   allocator_ = allocator;
   return *this;
 }
 
-DeviceMemoryAllocator* ExecutableRunOptions::allocator() const {
+stream_executor::DeviceMemoryAllocator* ExecutableRunOptions::allocator()
+    const {
   return allocator_;
 }
 
@@ -77,7 +91,7 @@ ExecutionProfile* ExecutableRunOptions::execution_profile() const {
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_device_assignment(
-    DeviceAssignment* device_assignment) {
+    const DeviceAssignment* device_assignment) {
   device_assignment_ = device_assignment;
   return *this;
 }
@@ -92,5 +106,12 @@ ExecutableRunOptions& ExecutableRunOptions::set_rng_seed(int rng_seed) {
 }
 
 int ExecutableRunOptions::rng_seed() const { return rng_seed_; }
+
+ExecutableRunOptions& ExecutableRunOptions::set_run_id(RunId id) {
+  run_id_ = id;
+  return *this;
+}
+
+RunId ExecutableRunOptions::run_id() const { return run_id_; }
 
 }  // namespace xla

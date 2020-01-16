@@ -68,7 +68,7 @@ Shape GetConvertedTupleShape(const Shape& shape, PrimitiveType from_type,
   std::vector<Shape> new_tuple_subshapes;
   for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     Shape subshape = ShapeUtil::GetTupleElementShape(shape, i);
-    CHECK(!ShapeUtil::IsTuple(subshape));
+    CHECK(!subshape.IsTuple());
     if (subshape.element_type() == from_type) {
       subshape = ShapeUtil::ChangeElementType(subshape, to_type);
     }
@@ -92,7 +92,7 @@ HloInstruction* ConvertTupleElements(HloInstruction* hlo,
     HloInstruction* element = computation->AddInstruction(
         HloInstruction::CreateGetTupleElement(ele_shape, hlo, i));
     const Shape& to_ele_shape = ShapeUtil::GetTupleElementShape(to_shape, i);
-    CHECK(!ShapeUtil::IsTuple(ele_shape));
+    CHECK(!ele_shape.IsTuple());
     if (ele_shape.element_type() != to_ele_shape.element_type()) {
       element = computation->AddInstruction(
           HloInstruction::CreateConvert(to_ele_shape, element));
@@ -127,6 +127,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // These are ops where it does not make sense to convert them.
       if (opcode == HloOpcode::kParameter || opcode == HloOpcode::kConstant ||
           opcode == HloOpcode::kTuple || opcode == HloOpcode::kConvert ||
+          opcode == HloOpcode::kBitcastConvert ||
           opcode == HloOpcode::kGetTupleElement ||
           opcode == HloOpcode::kInfeed || opcode == HloOpcode::kOutfeed) {
         continue;
@@ -141,12 +142,11 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // These are ops with embedded computations where it suffices to convert
       // the embedded computations instead of converting the ops themselves.
       if (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
-          opcode == HloOpcode::kCrossReplicaSum ||
-          opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
-          opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||
-          opcode == HloOpcode::kScatter ||
+          opcode == HloOpcode::kAllReduce || opcode == HloOpcode::kFusion ||
+          opcode == HloOpcode::kMap || opcode == HloOpcode::kReduce ||
+          opcode == HloOpcode::kReduceWindow || opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
-          opcode == HloOpcode::kConditional) {
+          opcode == HloOpcode::kSort || opcode == HloOpcode::kConditional) {
         continue;
       }
       TF_RET_CHECK(hlo->called_computations().empty()) << hlo->ToString();
@@ -191,7 +191,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
         TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         new_hlo = ToElementType(new_hlo, eliminate_type_);
-      } else if (ShapeUtil::IsTuple(hlo->shape())) {
+      } else if (hlo->shape().IsTuple()) {
         Shape old_shape = hlo->shape();
         Shape new_shape = GetConvertedTupleShape(hlo->shape(), eliminate_type_,
                                                  replace_with_type_);

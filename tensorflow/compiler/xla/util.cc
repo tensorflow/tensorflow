@@ -16,17 +16,26 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #include <stdarg.h>
+
+#include <cmath>
+#include <limits>
 #include <numeric>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
@@ -34,26 +43,49 @@ namespace xla {
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
-  VLOG(1) << tensorflow::CurrentStackTrace();
+  VLOG(2) << tensorflow::CurrentStackTrace();
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
-    : enabled(enabled), label(label) {
-  if (enabled) {
-    start_micros = tensorflow::Env::Default()->NowMicros();
+ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
+                                       const char* file, int line,
+                                       TimerStats* timer_stats)
+    : enabled_(enabled),
+      file_(file),
+      line_(line),
+      label_(label),
+      timer_stats_(timer_stats) {
+  if (enabled_) {
+    start_micros_ = tensorflow::Env::Default()->NowMicros();
   }
 }
 
-ScopedLoggingTimer::~ScopedLoggingTimer() {
-  if (enabled) {
+void ScopedLoggingTimer::StopAndLog() {
+  if (enabled_) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
-    double secs = (end_micros - start_micros) / 1000000.0;
+    double secs = (end_micros - start_micros_) / 1000000.0;
 
-    LOG(INFO) << label << " time: "
-              << tensorflow::strings::HumanReadableElapsedTime(secs);
+    TimerStats& stats = *timer_stats_;
+    tensorflow::mutex_lock lock(stats.stats_mutex);
+    stats.cumulative_secs += secs;
+    if (secs > stats.max_secs) {
+      stats.max_secs = secs;
+    }
+    stats.times_called++;
+
+    LOG(INFO).AtLocation(file_, line_)
+        << label_
+        << " time: " << tensorflow::strings::HumanReadableElapsedTime(secs)
+        << " (cumulative: "
+        << tensorflow::strings::HumanReadableElapsedTime(stats.cumulative_secs)
+        << ", max: "
+        << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
+        << ", #called: " << stats.times_called << ")";
+    enabled_ = false;
   }
 }
+
+ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
@@ -80,13 +112,9 @@ bool IsPermutation(absl::Span<const int64> permutation, int64 rank) {
   if (rank != permutation.size()) {
     return false;
   }
-  std::vector<int64> output(permutation.size(), -1);
-  for (auto index : permutation) {
-    CHECK_GE(index, 0);
-    CHECK_LT(index, rank);
-    output[index] = 0;
-  }
-  return std::find(output.begin(), output.end(), -1) == output.end();
+  absl::InlinedVector<int64, 8> trivial_permutation(rank);
+  absl::c_iota(trivial_permutation, 0);
+  return absl::c_is_permutation(permutation, trivial_permutation);
 }
 
 std::vector<int64> InversePermutation(
@@ -94,7 +122,7 @@ std::vector<int64> InversePermutation(
   DCHECK(IsPermutation(input_permutation, input_permutation.size()));
   std::vector<int64> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
-    output_permutation[input_permutation[i]] = i;
+    output_permutation.at(input_permutation.at(i)) = i;
   }
   return output_permutation;
 }
@@ -104,7 +132,7 @@ std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
   CHECK_EQ(p1.size(), p2.size());
   std::vector<int64> output;
   for (size_t i = 0; i < p1.size(); ++i) {
-    output.push_back(p1[p2[i]]);
+    output.push_back(p1.at(p2.at(i)));
   }
   return output;
 }
@@ -116,6 +144,26 @@ bool IsIdentityPermutation(absl::Span<const int64> permutation) {
     }
   }
   return true;
+}
+
+string RoundTripFpToString(tensorflow::bfloat16 value) {
+  return absl::StrFormat("%.4g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(Eigen::half value) {
+  return absl::StrFormat("%.5g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(float value) {
+  char buffer[tensorflow::strings::kFastToBufferSize];
+  tensorflow::strings::FloatToBuffer(value, buffer);
+  return buffer;
+}
+
+string RoundTripFpToString(double value) {
+  char buffer[tensorflow::strings::kFastToBufferSize];
+  tensorflow::strings::DoubleToBuffer(value, buffer);
+  return buffer;
 }
 
 PaddingConfig MakeNoPaddingConfig(int64 rank) {
@@ -212,14 +260,14 @@ int64 Product(absl::Span<const int64> xs) {
                          std::multiplies<int64>());
 }
 
-std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
-                                                   absl::Span<const int64> b) {
+absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
+    absl::Span<const int64> a, absl::Span<const int64> b) {
   CHECK_EQ(Product(a), Product(b));
   if (0 == Product(a)) {
     return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
   }
 
-  std::vector<std::pair<int64, int64>> bounds;
+  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
   for (int64 i = 0, j = 0, prior_i = -1, prior_j = -1, partial_size_a = 1,
              partial_size_b = 1;
        ;) {
@@ -260,6 +308,49 @@ string SanitizeFileName(string file_name) {
     }
   }
   return file_name;
+}
+
+// Utility function to split a double-precision float (F64) into a pair of F32s.
+// For a p-bit number, and a splitting point (p/2) <= s <= (p - 1), the
+// algorithm produces a (p - s)-bit value 'hi' and a non-overlapping (s - 1)-bit
+// value 'lo'. See Theorem 4 in [1] (attributed to Dekker) or [2] for the
+// original theorem by Dekker.
+//
+// For double-precision F64s, which contain a 53 bit mantissa (52 of them
+// explicit), we can represent the most significant 49 digits as the unevaluated
+// sum of two single-precision floats 'hi' and 'lo'. The 'hi' float stores the
+// most significant 24 bits and the sign bit of 'lo' together with its mantissa
+// store the remaining 25 bits. The exponent of the resulting representation is
+// still restricted to 8 bits of F32.
+//
+// References:
+// [1] A. Thall, Extended-Precision Floating-Point Numbers for GPU Computation,
+//     SIGGRAPH Research Posters, 2006.
+//     (http://andrewthall.org/papers/df64_qf128.pdf)
+// [2] T. J. Dekker, A floating point technique for extending the available
+//     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
+std::pair<float, float> SplitF64ToF32(double x) {
+  const float x_f32 = static_cast<float>(x);
+  // Early return if x is an infinity or NaN.
+  if (!std::isfinite(x)) {
+    return std::make_pair(x_f32, 0.0f);
+  }
+
+  // Only values within the range of F32 are supported, unless it is infinity.
+  // Small values with large negative exponents would be rounded to zero.
+  CHECK(std::isfinite(x_f32)) << x;
+
+  // The high float is simply the double rounded to the nearest float. Because
+  // we are rounding to nearest with ties to even, the error introduced in
+  // rounding is less than half an ULP in the high ULP.
+  const float hi = x_f32;
+  // We can compute the low term using Sterbenz' lemma: If a and b are two
+  // positive floating point numbers and a/2 ≤ b ≤ 2a, then their difference can
+  // be computed exactly.
+  // Note: the difference is computed exactly but is rounded to the nearest
+  // float which will introduce additional error.
+  const float lo = static_cast<float>(x - static_cast<double>(hi));
+  return std::make_pair(hi, lo);
 }
 
 }  // namespace xla

@@ -26,7 +26,7 @@ def _wrap_bash_cmd(ctx, cmd):
         bazel_sh = _get_env_var(ctx, "BAZEL_SH")
         if not bazel_sh:
             fail("BAZEL_SH environment variable is not set")
-        cmd = [bazel_sh, "-l", "-c", " ".join(cmd)]
+        cmd = [bazel_sh, "-l", "-c", " ".join(["\"%s\"" % s for s in cmd])]
     return cmd
 
 def _get_env_var(ctx, name):
@@ -47,11 +47,11 @@ def _use_system_lib(ctx, name):
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
 def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
-    result = repo_ctx.execute(cmd_and_args, timeout = 10)
+    result = repo_ctx.execute(cmd_and_args, timeout = 60)
     if result.return_code != 0:
         fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n" +
               "Stderr: {3}").format(
-            " ".join(cmd_and_args),
+            " ".join([str(x) for x in cmd_and_args]),
             result.return_code,
             result.stdout,
             result.stderr,
@@ -61,15 +61,10 @@ def _repos_are_siblings():
     return Label("@foo//bar").workspace_root.startswith("../")
 
 # Apply a patch_file to the repository root directory
-# Runs 'patch -p1'
+# Runs 'patch -p1' on both Windows and Unix.
 def _apply_patch(ctx, patch_file):
-    # Don't check patch on Windows, because patch is only available under bash.
-    if not _is_windows(ctx) and not ctx.which("patch"):
-        fail("patch command is not found, please install it")
-    cmd = _wrap_bash_cmd(
-        ctx,
-        ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)],
-    )
+    patch_command = ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)]
+    cmd = _wrap_bash_cmd(ctx, patch_command)
     _execute_and_check_ret_code(ctx, cmd)
 
 def _apply_delete(ctx, paths):
@@ -82,16 +77,25 @@ def _apply_delete(ctx, paths):
     _execute_and_check_ret_code(ctx, cmd)
 
 def _tf_http_archive(ctx):
-    if ("mirror.bazel.build" not in ctx.attr.urls[0] and
+    if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST)):
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
-             "mirror.bazel.build URL must be present and it must come first. " +
+             "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
              "put the correctly formatted mirror URL there anyway, because " +
              "someone will come along shortly thereafter and mirror the file.")
 
     use_syslib = _use_system_lib(ctx, ctx.attr.name)
+
+    # Work around the bazel bug that redownloads the whole library.
+    # Remove this after https://github.com/bazelbuild/bazel/issues/10515 is fixed.
+    if ctx.attr.additional_build_files:
+        for internal_src in ctx.attr.additional_build_files:
+            _ = ctx.path(Label(internal_src))
+
+    # End of workaround.
+
     if not use_syslib:
         ctx.download_and_extract(
             ctx.attr.urls,
@@ -123,11 +127,17 @@ def _tf_http_archive(ctx):
         for internal_src, external_dest in ctx.attr.system_link_files.items():
             ctx.symlink(Label(internal_src), ctx.path(external_dest))
 
+    if ctx.attr.additional_build_files:
+        for internal_src, external_dest in ctx.attr.additional_build_files.items():
+            ctx.symlink(Label(internal_src), ctx.path(external_dest))
+
 tf_http_archive = repository_rule(
-    implementation = _tf_http_archive,
     attrs = {
         "sha256": attr.string(mandatory = True),
-        "urls": attr.string_list(mandatory = True, allow_empty = False),
+        "urls": attr.string_list(
+            mandatory = True,
+            allow_empty = False,
+        ),
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "delete": attr.string_list(),
@@ -135,11 +145,14 @@ tf_http_archive = repository_rule(
         "build_file": attr.label(),
         "system_build_file": attr.label(),
         "system_link_files": attr.string_dict(),
+        "additional_build_files": attr.string_dict(),
     },
     environ = [
         "TF_SYSTEM_LIBS",
     ],
+    implementation = _tf_http_archive,
 )
+
 """Downloads and creates Bazel repos for dependencies.
 
 This is a swappable replacement for both http_archive() and
@@ -148,11 +161,11 @@ ensure best practices are followed.
 """
 
 def _third_party_http_archive(ctx):
-    if ("mirror.bazel.build" not in ctx.attr.urls[0] and
+    if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST)):
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
-             "mirror.bazel.build URL must be present and it must come first. " +
+             "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
              "put the correctly formatted mirror URL there anyway, because " +
              "someone will come along shortly thereafter and mirror the file.")
@@ -185,7 +198,7 @@ def _third_party_http_archive(ctx):
             _apply_patch(ctx, ctx.attr.patch_file)
         ctx.symlink(Label(ctx.attr.build_file), buildfile_path)
 
-    link_dict = dict()
+    link_dict = {}
     if use_syslib:
         link_dict.update(ctx.attr.system_link_files)
 
@@ -204,10 +217,12 @@ def _third_party_http_archive(ctx):
 # For link_files, specify each dict entry as:
 # "//path/to/source:file": "localfile"
 third_party_http_archive = repository_rule(
-    implementation = _third_party_http_archive,
     attrs = {
         "sha256": attr.string(mandatory = True),
-        "urls": attr.string_list(mandatory = True, allow_empty = False),
+        "urls": attr.string_list(
+            mandatory = True,
+            allow_empty = False,
+        ),
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "delete": attr.string_list(),
@@ -220,4 +235,5 @@ third_party_http_archive = repository_rule(
     environ = [
         "TF_SYSTEM_LIBS",
     ],
+    implementation = _third_party_http_archive,
 )
