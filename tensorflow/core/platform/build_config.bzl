@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow/core/platform/default:build_config.bzl",
+    _if_llvm_aarch64_available = "if_llvm_aarch64_available",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
     _tf_additional_binary_deps = "tf_additional_binary_deps",
@@ -80,3 +81,4 @@ tf_protos_profiler_impl = _tf_protos_profiler_impl
 tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps
+if_llvm_aarch64_available = _if_llvm_aarch64_available

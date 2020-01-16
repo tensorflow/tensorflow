@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "llvm-c/Target.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/aot/flags.h"
@@ -56,88 +55,6 @@ const char kUsageHeader[] =
     "--cpp_class=\"mynamespace::MyComputation\"\n"
     "\n";
 
-Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
-  if (absl::EndsWith(fname, ".pbtxt")) {
-    return ReadTextProto(Env::Default(), fname, proto);
-  } else {
-    return ReadBinaryProto(Env::Default(), fname, proto);
-  }
-}
-
-Status Main(const MainFlags& flags) {
-  // Initialize all LLVM targets so we can cross compile.
-  LLVMInitializeAArch64Target();
-  LLVMInitializeAArch64TargetInfo();
-  LLVMInitializeAArch64TargetMC();
-  LLVMInitializeAArch64AsmPrinter();
-  LLVMInitializeARMTarget();
-  LLVMInitializeARMTargetInfo();
-  LLVMInitializeARMTargetMC();
-  LLVMInitializeARMAsmPrinter();
-  LLVMInitializePowerPCTarget();
-  LLVMInitializePowerPCTargetInfo();
-  LLVMInitializePowerPCTargetMC();
-  LLVMInitializePowerPCAsmPrinter();
-  LLVMInitializeX86Target();
-  LLVMInitializeX86TargetInfo();
-  LLVMInitializeX86TargetMC();
-  LLVMInitializeX86AsmPrinter();
-
-  // Process config.
-  tf2xla::Config config;
-  if (flags.config.empty()) {
-    return errors::InvalidArgument("Must specify --config");
-  }
-  TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
-  TF_RETURN_IF_ERROR(ValidateConfig(config));
-  if (flags.dump_fetch_nodes) {
-    std::set<string> nodes;
-    for (const tf2xla::Fetch& fetch : config.fetch()) {
-      nodes.insert(fetch.id().node_name());
-    }
-    std::cout << absl::StrJoin(nodes, ",");
-    return Status::OK();
-  }
-
-  // Read and initialize the graph.
-  if (flags.graph.empty()) {
-    return errors::InvalidArgument("Must specify --graph");
-  }
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
-  CompileResult compile_result;
-  TF_RETURN_IF_ERROR(CompileGraph(graph_def, config, flags, &compile_result));
-
-  // Write output files.
-  Env* env = Env::Default();
-  const std::vector<char>& obj = compile_result.aot->object_file_data();
-  TF_RETURN_IF_ERROR(
-      WriteStringToFile(env, flags.out_function_object,
-                        absl::string_view(obj.data(), obj.size())));
-  CodegenOpts codegen_opts;
-  codegen_opts.gen_name_to_index = flags.gen_name_to_index;
-  codegen_opts.gen_program_shape = flags.gen_program_shape;
-  codegen_opts.target_triple = flags.target_triple;
-  if (flags.cpp_class.empty()) {
-    return errors::InvalidArgument("Must specify --cpp_class");
-  }
-  codegen_opts.gen_hlo_profile_printer_data =
-      xla::GetDebugOptionsFromFlags().xla_hlo_profile();
-  TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
-                                   &codegen_opts.namespaces));
-
-  MetadataResult metadata_result;
-  TF_RETURN_IF_ERROR(
-      GenerateMetadata(codegen_opts, compile_result, &metadata_result));
-  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_metadata_object,
-                                       metadata_result.object_file_data));
-  string header;
-  TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
-                                    metadata_result, &header));
-  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
-  return Status::OK();
-}
-
 }  // end namespace tfcompile
 }  // end namespace tensorflow
 
@@ -148,6 +65,7 @@ int main(int argc, char** argv) {
   flags.out_metadata_object = "out_helper.o";
   flags.out_header = "out.h";
   flags.entry_point = "entry";
+  flags.tensorflow_header_root = "third_party/tensorflow";
 
   std::vector<tensorflow::Flag> flag_list;
   AppendMainFlags(&flag_list, &flags);

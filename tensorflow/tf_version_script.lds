@@ -8,6 +8,7 @@ tensorflow {
     *TFE_*;
     *nsync_*;
     *stream_executor*;
+    *xla*;
   local:
     *;
 };

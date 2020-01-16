@@ -770,3 +770,8 @@ def tf_google_mobile_srcs_no_runtime():
 
 def tf_google_mobile_srcs_only_runtime():
     return []
+
+def if_llvm_aarch64_available(then, otherwise = []):
+    # TODO(b/...): The TF XLA build fails when adding a dependency on
+    # @llvm/llvm-project/llvm:aarch64_target.
+    return otherwise
