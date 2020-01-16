@@ -229,9 +229,7 @@ class SingleOpModel {
     std::vector<int8_t> quantized_output(num_inputs);
     std::vector<float> scales_inv(num_channel);
     for (int i = 0; i < num_channel; ++i) {
-      const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                                   : params->scale->data[i];
-      scales_inv[i] = 1.0f / scale;
+      scales_inv[i] = 1.0f / params->scale->data[i];
     }
     optimize::utils::SymmetricPerChannelQuantizeValues(
         input_data.data(), scales_inv, shape, channel_index, &quantized_output);
@@ -248,9 +246,7 @@ class SingleOpModel {
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
     for (int i = 0; i < num_inputs; ++i) {
-      const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                                   : params->scale->data[i];
-      quantized_output[i] = input_data[i] / scale;
+      quantized_output[i] = input_data[i] / params->scale->data[i];
     }
     PopulateTensor(index, /*offset=*/0, quantized_output.data(),
                    quantized_output.data() + quantized_output.size());
