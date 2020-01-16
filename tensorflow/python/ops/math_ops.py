@@ -3249,17 +3249,30 @@ def _accumulate_n_grad(op, grad):
 
 @tf_export("math.sigmoid", "nn.sigmoid", "sigmoid")
 def sigmoid(x, name=None):
-  """Computes sigmoid of `x` element-wise.
+  r"""Computes sigmoid of `x` element-wise.
 
-  Specifically, `y = 1 / (1 + exp(-x))`.
+  Formula for calculating sigmoid(x): `y = 1 / (1 + exp(-x))`.
+
+  For x \in (-inf, inf) => sigmoid(x) \in (0, 1)
 
   Example Usage:
 
-  >>> x = tf.constant([0.0, 0.2, 0.3, 0.5, 0.7, 1.0])
+  If a positive number is large, then its sigmoid will approach to 1 since the
+  formula will be `y = <large_num> / (1 + <large_num>)`
+
+  >>> x = tf.constant([0.0, 1.0, 50.0, 100.0])
   >>> tf.math.sigmoid(x)
-  <tf.Tensor: shape=(6,), dtype=float32, numpy=
-  array([0.5       , 0.54983395, 0.5744425 , 0.62245935, 0.66818774,
-         0.7310586 ], dtype=float32)>
+  <tf.Tensor: shape=(4,), dtype=float32,
+  numpy=array([0.5      , 0.7310586, 1.       , 1.       ], dtype=float32)>
+
+  If a negative number is large, its sigmoid will approach to 0 since the
+  formula will be `y = 1 / (1 + <large_num>)`
+
+  >>> x = tf.constant([-100.0, -50.0, -1.0, 0.0])
+  >>> tf.math.sigmoid(x)
+  <tf.Tensor: shape=(4,), dtype=float32, numpy=
+  array([0.0000000e+00, 1.9287499e-22, 2.6894143e-01, 0.5],
+        dtype=float32)>
 
   Args:
     x: A Tensor with type `float16`, `float32`, `float64`, `complex64`, or
