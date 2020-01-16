@@ -753,5 +753,20 @@ def tf_logging_deps():
 def tf_monitoring_deps():
     return ["//tensorflow/core/platform/default:monitoring"]
 
-def tf_legacy_srcs_no_runtime_google():
+def tf_portable_deps_no_runtime():
+    return [
+        "@com_google_protobuf//:protobuf",
+        "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
+        "@nsync//:nsync_cpp",
+        "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/core:mobile_additional_lib_deps",
+        "//tensorflow/core:protos_all_cc_impl",
+        "@farmhash_archive//:farmhash",
+    ]
+
+def tf_google_mobile_srcs_no_runtime():
+    return []
+
+def tf_google_mobile_srcs_only_runtime():
     return []

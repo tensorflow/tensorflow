@@ -195,6 +195,8 @@ def if_ios_x86_64(a):
 def if_mobile(a):
     return select({
         clean_dep("//tensorflow:android"): a,
+        clean_dep("//tensorflow:chromiumos"): a,
+        clean_dep("//tensorflow:emscripten"): a,
         clean_dep("//tensorflow:ios"): a,
         "//conditions:default": [],
     })
@@ -202,6 +204,8 @@ def if_mobile(a):
 def if_not_mobile(a):
     return select({
         clean_dep("//tensorflow:android"): [],
+        clean_dep("//tensorflow:chromiumos"): [],
+        clean_dep("//tensorflow:emscripten"): [],
         clean_dep("//tensorflow:ios"): [],
         "//conditions:default": a,
     })
@@ -344,6 +348,18 @@ def tf_opts_nortti_if_emscripten():
         "-fno-rtti",
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+    ])
+
+def tf_defines_nortti_if_android():
+    return if_android([
+        "GOOGLE_PROTOBUF_NO_RTTI",
+        "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+    ])
+
+def tf_defines_nortti_if_emscripten():
+    return if_emscripten([
+        "GOOGLE_PROTOBUF_NO_RTTI",
+        "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ])
 
 def tf_features_nomodules_if_android():

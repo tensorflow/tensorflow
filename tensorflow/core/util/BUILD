@@ -85,25 +85,77 @@ exports_files(
     ],
 )
 
-# The following filegroups are needed since globbing across packages boundaries
-# will just fail silently (see 3rd caveat at
-# https://docs.bazel.build/versions/master/be/functions.html#glob).
-# Files needed for core:framework_internal_impl.
+# Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "mobile_srcs_no_runtime",
-    srcs = glob(
-        [
-            "*.cc",
-            "*.h",
-        ],
-        exclude = [
-            "*_test.*",
-            "debug_events_writer.*",
-            "stats_calculator.*",
-            "events_writer.*",
-            "reporter.*",
-        ],
-    ),
+    srcs = [
+        "overflow.h",
+    ],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "batch_util.cc",
+        "batch_util.h",
+        "bcast.cc",
+        "bcast.h",
+        "command_line_flags.cc",
+        "command_line_flags.h",
+        "device_name_utils.cc",
+        "device_name_utils.h",
+        "dump_graph.cc",
+        "dump_graph.h",
+        "einsum_op_util.cc",
+        "einsum_op_util.h",
+        "env_var.cc",
+        "env_var.h",
+        "equal_graph_def.cc",
+        "equal_graph_def.h",
+        "example_proto_fast_parsing.cc",
+        "example_proto_fast_parsing.h",
+        "example_proto_helper.cc",
+        "example_proto_helper.h",
+        "guarded_philox_random.cc",
+        "guarded_philox_random.h",
+        "matmul_autotune.cc",
+        "matmul_autotune.h",
+        "matmul_bcast.cc",
+        "matmul_bcast.h",
+        "mirror_pad_mode.cc",
+        "mirror_pad_mode.h",
+        "padding.cc",
+        "padding.h",
+        "port.cc",
+        "port.h",
+        "presized_cuckoo_map.h",
+        "ptr_util.h",
+        "reffed_status_callback.h",
+        "saved_tensor_slice_util.cc",
+        "saved_tensor_slice_util.h",
+        "stat_summarizer.cc",
+        "stat_summarizer.h",
+        "strided_slice_op.cc",
+        "strided_slice_op.h",
+        "tensor_format.cc",
+        "tensor_format.h",
+        "tensor_ops_util.h",
+        "tensor_slice_reader.cc",
+        "tensor_slice_reader.h",
+        "tensor_slice_reader_cache.cc",
+        "tensor_slice_reader_cache.h",
+        "tensor_slice_set.cc",
+        "tensor_slice_set.h",
+        "tensor_slice_util.h",
+        "tensor_slice_writer.cc",
+        "tensor_slice_writer.h",
+        "use_cudnn.cc",
+        "use_cudnn.h",
+        "util.cc",
+        "util.h",
+        "work_sharder.cc",
+        "work_sharder.h",
+    ],
 )
 
 filegroup(

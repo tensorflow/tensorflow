@@ -92,6 +92,23 @@ cc_library(
     alwayslink = 1,
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "distribution_sampler.cc",
+        "distribution_sampler.h",
+        "exact_uniform_int.h",
+        "philox_random.h",
+        "random.h",
+        "random_distributions.h",
+        "simple_philox.cc",
+        "simple_philox.h",
+        "weighted_picker.cc",
+        "weighted_picker.h",
+    ],
+)
+
 filegroup(
     name = "legacy_lib_random_headers",
     srcs = [
@@ -132,17 +149,6 @@ filegroup(
         "random_distributions.h",
         "simple_philox.h",
         "weighted_picker.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_random_all_srcs",
-    srcs = [
-        "distribution_sampler.cc",
-        "random_distributions.cc",
-        "simple_philox.cc",
-        "weighted_picker.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

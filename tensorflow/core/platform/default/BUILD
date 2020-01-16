@@ -472,8 +472,41 @@ bzl_library(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "legacy_mobile_srcs",
+    name = "additional_mobile_srcs_no_runtime",
+    visibility = ["//tensorflow/core/platform:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "context.h",
+        "dynamic_annotations.h",
+        "env.cc",
+        "integral_types.h",
+        "load_library.cc",
+        "port.cc",
+        "posix_file_system.cc",
+        "posix_file_system.h",
+        "stacktrace.h",
+        "tracing_impl.h",
+    ],
+    visibility = ["//tensorflow/core/platform:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "casts.h",
+        "cord.h",
+        "monitoring.cc",
+        "mutex.h",
+        "mutex_data.h",
+        "notification.h",
+        "unbounded_work_queue.cc",
+        "unbounded_work_queue.h",
+    ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )
 
