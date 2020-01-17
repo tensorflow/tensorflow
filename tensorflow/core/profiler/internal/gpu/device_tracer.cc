@@ -61,13 +61,11 @@ void CreateXEvent(const CuptiTracerEvent& event, uint64 offset_ns,
   xevent.SetTimestampNs(event.start_time_ns + offset_ns);
   xevent.SetEndTimestampNs(event.end_time_ns + offset_ns);
   if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
-    xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                            GetStatTypeStr(StatType::kCorrelationId)),
-                        event.correlation_id);
+    xevent.AddStatValue(StatType::kCorrelationId, event.correlation_id);
   }
   if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
     xevent.AddStatValue(
-        *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
+        StatType::kContextId,
         absl::StrCat("$$", static_cast<uint64>(event.context_id)));
   }
   if (event.type == CuptiTracerEventType::Kernel) {
@@ -78,9 +76,7 @@ void CreateXEvent(const CuptiTracerEvent& event, uint64 offset_ns,
                         event.kernel_info.grid_x, event.kernel_info.grid_y,
                         event.kernel_info.grid_z, event.kernel_info.block_x,
                         event.kernel_info.block_y, event.kernel_info.block_z);
-    xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                            GetStatTypeStr(StatType::kKernelDetails)),
-                        kernel_details);
+    xevent.AddStatValue(StatType::kKernelDetails, kernel_details);
   }
   if (event.type == CuptiTracerEventType::MemcpyH2D ||
       event.type == CuptiTracerEventType::MemcpyD2H ||
@@ -91,23 +87,19 @@ void CreateXEvent(const CuptiTracerEvent& event, uint64 offset_ns,
     std::string memcpy_details =
         absl::StrFormat("size:%u dest:%u async:%u", memcpy_info.num_bytes,
                         memcpy_info.destination, memcpy_info.async);
-    xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                            GetStatTypeStr(StatType::kMemcpyDetails)),
-                        memcpy_details);
+    xevent.AddStatValue(StatType::kMemcpyDetails, memcpy_details);
   }
   if (event.type == CuptiTracerEventType::MemoryAlloc) {
     std::string memalloc_details =
         absl::StrFormat("num_bytes:%u", event.memalloc_info.num_bytes);
-    xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                            GetStatTypeStr(StatType::kMemallocDetails)),
-                        memalloc_details);
+    xevent.AddStatValue(StatType::kMemallocDetails, memalloc_details);
   }
 
   std::vector<Annotation> annotation_stack =
       ParseAnnotationStack(event.annotation);
   for (int i = 0; i < annotation_stack.size(); ++i) {
     xevent.AddStatValue(
-        *plane->GetOrCreateStatMetadata(absl::StrCat("level ", i)),
+        plane->GetOrCreateStatMetadata(absl::StrCat("level ", i))->id(),
         annotation_stack[i].name);
   }
   // If multiple metadata have the same key name, show the values from the top
@@ -121,7 +113,7 @@ void CreateXEvent(const CuptiTracerEvent& event, uint64 offset_ns,
         continue;  // ignored, obtained from HLO proto via DebugInfoMap
       } else if (key_set.insert(metadata.key).second) {
         xevent.ParseAndAddStatValue(
-            *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
+            plane->GetOrCreateStatMetadata(metadata.key)->id(), metadata.value);
       }
     }
   }
@@ -336,19 +328,14 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       auto clock_rate_in_khz =
           GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_CLOCK_RATE);
       if (clock_rate_in_khz) {
-        device_plane->AddStatValue(
-            *device_plane->GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kDevCapClockRateKHz)),
-            *clock_rate_in_khz);
+        device_plane->AddStatValue(StatType::kDevCapClockRateKHz,
+                                   *clock_rate_in_khz);
       }
 
       auto core_count =
           GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT);
       if (core_count) {
-        device_plane->AddStatValue(
-            *device_plane->GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kDevCapCoreCount)),
-            *core_count);
+        device_plane->AddStatValue(StatType::kDevCapCoreCount, *core_count);
       }
 
       auto mem_clock_khz =
@@ -360,35 +347,27 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         // data lane.
         auto memory_bandwidth =
             2ULL * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
-        device_plane->AddStatValue(
-            *device_plane->GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
-            memory_bandwidth);
+        device_plane->AddStatValue(StatType::kDevCapMemoryBandwidth,
+                                   memory_bandwidth);
       }
 
       size_t total_memory = 0;
       if (cuDeviceTotalMem(&total_memory, device) == CUDA_SUCCESS) {
-        device_plane->AddStatValue(
-            *device_plane->GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kDevCapMemorySize)),
-            static_cast<uint64>(total_memory));
+        device_plane->AddStatValue(StatType::kDevCapMemorySize,
+                                   static_cast<uint64>(total_memory));
       }
 
       auto compute_capability_major = GetDeviceAttribute(
           device, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR);
       if (compute_capability_major) {
-        device_plane->AddStatValue(
-            *device_plane->GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kDevCapComputeCapMajor)),
-            *compute_capability_major);
+        device_plane->AddStatValue(StatType::kDevCapComputeCapMajor,
+                                   *compute_capability_major);
       }
       auto compute_capability_minor = GetDeviceAttribute(
           device, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR);
       if (compute_capability_minor) {
-        device_plane->AddStatValue(
-            *device_plane->GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kDevCapComputeCapMinor)),
-            *compute_capability_minor);
+        device_plane->AddStatValue(StatType::kDevCapComputeCapMinor,
+                                   *compute_capability_minor);
       }
     }
 

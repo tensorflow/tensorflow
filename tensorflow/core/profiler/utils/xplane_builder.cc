@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -26,10 +28,23 @@ XPlaneBuilder::XPlaneBuilder(XPlane* plane)
         std::max<int64>(last_event_metadata_id_, iter.second.id());
     event_metadata_by_name_.try_emplace(iter.second.name(), &iter.second);
   }
-  for (auto& iter : *plane->mutable_stat_metadata()) {
-    last_stat_metadata_id_ =
-        std::max<int64>(last_stat_metadata_id_, iter.second.id());
-    stat_metadata_by_name_.try_emplace(iter.second.name(), &iter.second);
+  if (plane->stat_metadata_size() == 0) {
+    // Add reserved stat metadata.
+    for (const auto& stat_name_and_type : GetStatTypeMap()) {
+      XStatMetadata* metadata =
+          GetOrCreateStatMetadata(stat_name_and_type.second);
+      metadata->set_name(std::string(stat_name_and_type.first));
+      stat_metadata_by_name_.try_emplace(stat_name_and_type.first, metadata);
+    }
+    last_stat_metadata_id_ = kLastStatType;
+  } else {
+    // If plane is not empty, reserved stat metadata should have been added
+    // the first time XPlaneBuilder was called.
+    for (auto& iter : *plane->mutable_stat_metadata()) {
+      last_stat_metadata_id_ =
+          std::max<int64>(last_stat_metadata_id_, iter.second.id());
+      stat_metadata_by_name_.try_emplace(iter.second.name(), &iter.second);
+    }
   }
   for (XLine& line : *plane->mutable_lines()) {
     lines_by_id_.try_emplace(line.id(), &line);

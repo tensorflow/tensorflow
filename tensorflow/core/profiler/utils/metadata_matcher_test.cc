@@ -26,7 +26,6 @@ namespace {
 
 using ::tensorflow::profiler::XEventMetadata;
 using ::tensorflow::profiler::XPlane;
-using ::tensorflow::profiler::XStatMetadata;
 
 TEST(MetadataMatcherTest, GetHostEventTypeTest) {
   for (int event_type = HostEventType::kFirstHostEventType;
@@ -38,29 +37,10 @@ TEST(MetadataMatcherTest, GetHostEventTypeTest) {
         GetHostEventTypeStr(static_cast<HostEventType>(event_type))));
     MetadataMatcher metadata_matcher(
         xplane,
-        {{GetHostEventTypeStrMap(), HostEventType::kFirstHostEventType}},
-        GetStatTypeStrMap());
+        {{GetHostEventTypeStrMap(), HostEventType::kFirstHostEventType}});
     XEvent event;
     event.set_metadata_id(0);
     EXPECT_EQ(metadata_matcher.GetEventType(event), event_type);
-  }
-}
-
-TEST(MetadataMatcherTest, GetStatTypeTest) {
-  for (int stat_type = StatType::kFirstStatType;
-       stat_type <= StatType::kLastStatType; ++stat_type) {
-    XPlane xplane;
-    XStatMetadata& metadata = (*xplane.mutable_stat_metadata())[0];
-    metadata.set_id(0);
-    metadata.set_name(
-        std::string(GetStatTypeStr(static_cast<StatType>(stat_type))));
-    MetadataMatcher metadata_matcher(
-        xplane,
-        {{GetHostEventTypeStrMap(), HostEventType::kFirstHostEventType}},
-        GetStatTypeStrMap());
-    XStat stat;
-    stat.set_metadata_id(0);
-    EXPECT_EQ(metadata_matcher.GetStatType(stat), stat_type);
   }
 }
 

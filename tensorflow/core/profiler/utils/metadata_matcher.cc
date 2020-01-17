@@ -21,9 +21,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::XEvent;
 using ::tensorflow::profiler::XPlane;
-using ::tensorflow::profiler::XStat;
 
 absl::flat_hash_map<int64, int> CreateEventMetadataMap(
     const XPlane& xplane,
@@ -51,95 +49,17 @@ absl::flat_hash_map<int64, int> CreateEventMetadataMap(
   return id_to_event_type_map;
 }
 
-absl::flat_hash_map<int64, int> CreateStatMetadataMap(
-    const XPlane& xplane,
-    const absl::Span<const absl::string_view> stat_type_str_map) {
-  absl::flat_hash_map<int64, int> id_to_stat_type_map;
-  for (const auto& id_and_stat_metadata : xplane.stat_metadata()) {
-    int64 id = id_and_stat_metadata.first;
-    absl::string_view stat_name = id_and_stat_metadata.second.name();
-    for (int stat_type = 0; stat_type < stat_type_str_map.size(); ++stat_type) {
-      if (stat_type_str_map[stat_type] == stat_name) {
-        id_to_stat_type_map[id] = stat_type;
-        break;
-      }
-    }
-  }
-  return id_to_stat_type_map;
-}
-
 }  // namespace
 
 MetadataMatcher::MetadataMatcher(
     const XPlane& xplane,
     const std::vector<std::pair<const absl::Span<const absl::string_view>,
                                 /*first_event_type*/ int>>&
-        event_type_metadata_maps,
-    const absl::Span<const absl::string_view> stat_type_str_map)
+        event_type_metadata_maps)
     : id_to_event_type_map_(
           CreateEventMetadataMap(xplane, event_type_metadata_maps)),
-      id_to_stat_type_map_(CreateStatMetadataMap(xplane, stat_type_str_map)),
       event_type_to_id_map_(gtl::ReverseMap<decltype(event_type_to_id_map_)>(
-          id_to_event_type_map_)),
-      stat_type_to_id_map_(gtl::ReverseMap<decltype(stat_type_to_id_map_)>(
-          id_to_stat_type_map_)) {}
-
-const XStat* MetadataMatcher::GetStat(const XEvent& event,
-                                      int stat_type) const {
-  for (const auto& stat : event.stats()) {
-    if (GetStatType(stat) == stat_type) {
-      return &stat;
-    }
-  }
-  return nullptr;
-}
-
-absl::optional<std::tuple<const XStat*, const XStat*>>
-MetadataMatcher::GetStats(const XEvent& event, int first_stat_type,
-                          int second_stat_type) const {
-  const XStat* first_stat = nullptr;
-  const XStat* second_stat = nullptr;
-  for (const auto& stat : event.stats()) {
-    if (GetStatType(stat) == first_stat_type) {
-      first_stat = &stat;
-    } else if (GetStatType(stat) == second_stat_type) {
-      second_stat = &stat;
-    }
-  }
-  if (first_stat && second_stat) {
-    return std::make_tuple(first_stat, second_stat);
-  }
-  return absl::nullopt;
-}
-
-absl::optional<std::tuple<const XStat*, const XStat*, const XStat*>>
-MetadataMatcher::GetStats(const XEvent& event, int first_stat_type,
-                          int second_stat_type, int third_stat_type) const {
-  const XStat* first_stat = nullptr;
-  const XStat* second_stat = nullptr;
-  const XStat* third_stat = nullptr;
-  for (const auto& stat : event.stats()) {
-    if (GetStatType(stat) == first_stat_type) {
-      first_stat = &stat;
-    } else if (GetStatType(stat) == second_stat_type) {
-      second_stat = &stat;
-    } else if (GetStatType(stat) == third_stat_type) {
-      third_stat = &stat;
-    }
-  }
-  if (first_stat && second_stat && third_stat) {
-    return std::make_tuple(first_stat, second_stat, third_stat);
-  }
-  return absl::nullopt;
-}
-
-absl::optional<int64> MetadataMatcher::GetIntStatValue(const XEvent& event,
-                                                       int stat_type) const {
-  if (const XStat* stat = GetStat(event, stat_type)) {
-    return stat->int64_value();
-  }
-  return absl::nullopt;
-}
+          id_to_event_type_map_)) {}
 
 }  // namespace profiler
 }  // namespace tensorflow

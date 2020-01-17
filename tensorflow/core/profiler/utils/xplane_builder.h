@@ -31,26 +31,26 @@ class XStatsBuilder {
  public:
   explicit XStatsBuilder(T* stats_owner) : stats_owner_(stats_owner) {}
 
-  void AddStatValue(const XStatMetadata& metadata, uint32 value) {
-    AddStat(metadata)->set_uint64_value(value);
+  void AddStatValue(int64 metadata_id, uint32 value) {
+    AddStat(metadata_id)->set_uint64_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, uint64 value) {
-    AddStat(metadata)->set_uint64_value(value);
+  void AddStatValue(int64 metadata_id, uint64 value) {
+    AddStat(metadata_id)->set_uint64_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, int32 value) {
-    AddStat(metadata)->set_int64_value(value);
+  void AddStatValue(int64 metadata_id, int32 value) {
+    AddStat(metadata_id)->set_int64_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, int64 value) {
-    AddStat(metadata)->set_int64_value(value);
+  void AddStatValue(int64 metadata_id, int64 value) {
+    AddStat(metadata_id)->set_int64_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, double value) {
-    AddStat(metadata)->set_double_value(value);
+  void AddStatValue(int64 metadata_id, double value) {
+    AddStat(metadata_id)->set_double_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, absl::string_view value) {
-    AddStat(metadata)->set_str_value(string(value));
+  void AddStatValue(int64 metadata_id, absl::string_view value) {
+    AddStat(metadata_id)->set_str_value(string(value));
   }
-  void AddStatValue(const XStatMetadata& metadata, string&& value) {
-    AddStat(metadata)->set_str_value(std::move(value));
+  void AddStatValue(int64 metadata_id, string&& value) {
+    AddStat(metadata_id)->set_str_value(std::move(value));
   }
 
   void AddStat(const XStatMetadata& metadata, const XStat& stat) {
@@ -58,19 +58,18 @@ class XStatsBuilder {
     *stats_owner_->add_stats() = stat;
   }
 
-  void ParseAndAddStatValue(const XStatMetadata& metadata,
-                            absl::string_view value) {
+  void ParseAndAddStatValue(int64 metadata_id, absl::string_view value) {
     int64 int_value;
     uint64 uint_value;
     double double_value;
     if (absl::SimpleAtoi(value, &int_value)) {
-      AddStatValue(metadata, int_value);
+      AddStatValue(metadata_id, int_value);
     } else if (absl::SimpleAtoi(value, &uint_value)) {
-      AddStatValue(metadata, uint_value);
+      AddStatValue(metadata_id, uint_value);
     } else if (absl::SimpleAtod(value, &double_value)) {
-      AddStatValue(metadata, double_value);
+      AddStatValue(metadata_id, double_value);
     } else {
-      AddStatValue(metadata, value);
+      AddStatValue(metadata_id, value);
     }
   }
   void ReserveStats(size_t num_stats) {
@@ -78,9 +77,9 @@ class XStatsBuilder {
   }
 
  private:
-  XStat* AddStat(const XStatMetadata& metadata) {
+  XStat* AddStat(int64 metadata_id) {
     XStat* stat = stats_owner_->add_stats();
-    stat->set_metadata_id(metadata.id());
+    stat->set_metadata_id(metadata_id);
     return stat;
   }
 
