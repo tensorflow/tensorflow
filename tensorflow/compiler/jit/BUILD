@@ -78,19 +78,6 @@ cc_library(
 )
 
 cc_library(
-    name = "xla_mlir_gpu_jit",
-    visibility = ["//visibility:public"],
-    deps = if_cuda_or_rocm([
-        ":jit_compilation_passes",
-        "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
-        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
-    ]),
-    alwayslink = 1,
-)
-
-cc_library(
     name = "xla_cpu_device",
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
