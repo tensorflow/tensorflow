@@ -95,4 +95,10 @@ endif
 
 endif # USE_EMBARC_MLI
 
+# These are microcontroller-specific rules for converting the ELF output
+# of the linker into a binary image that can be loaded directly.
+
+# Not applicable for ARC, leaving it empty.
+$(BINDIR)%.bin:
+
 endif
