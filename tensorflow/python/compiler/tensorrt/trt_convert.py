@@ -190,6 +190,9 @@ class TrtConversionParams(object):
         setattr(trt_conversion_params, k, v)
     return trt_conversion_params
 
+  def __repr__(self):
+    return "TrtConversionParams" + str(vars(self))
+
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams()
 
