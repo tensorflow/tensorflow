@@ -94,10 +94,10 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
 }
 
 StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
-  int64 correlation_id = -1;
-  int64 group_id = -1;
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
+    int64 correlation_id = -1;
+    int64 group_id = -1;
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
