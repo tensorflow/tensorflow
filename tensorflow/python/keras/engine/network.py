@@ -964,18 +964,7 @@ class Network(base_layer.Layer):
         config, custom_objects)
     model = cls(inputs=input_tensors, outputs=output_tensors,
                 name=config.get('name'))
-
-    # Layers not connected to outputs, such as those added in `add_loss`.
-    ancillary_layers = [
-        layer for layer in created_layers.values() if layer not in model.layers
-    ]
-    if ancillary_layers:
-      relevant_nodes = nest.flatten([
-          layer.inbound_nodes[1:]
-          if _should_skip_first_node(layer) else layer.inbound_nodes
-          for layer in created_layers.values()
-      ])
-      model._insert_layers(ancillary_layers, relevant_nodes)
+    connect_ancillary_layers(model, created_layers)
     return model
 
   def save(self,
@@ -1003,6 +992,11 @@ class Network(base_layer.Layer):
     Models built with the Sequential and Functional API can be saved to both the
     HDF5 and SavedModel formats. Subclassed models can only be saved with the
     SavedModel format.
+
+    Note that the model weights may have different scoped names after being
+    loaded. Scoped names include the model/layer names, such as
+    "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+     access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
         filepath: String, path to SavedModel or H5 file to save the model.
@@ -1789,6 +1783,22 @@ def _deserialize_keras_tensors(kwargs, layer_map):
 
   kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
   return nest.map_structure(_deserialize_keras_tensor, kwargs)
+
+
+def connect_ancillary_layers(model, created_layers):
+  """Adds layers that are not connected to the outputs to the model."""
+  # Layers not connected to outputs, such as those added in `add_loss`.
+  ancillary_layers = [
+      layer for layer in created_layers.values() if layer not in model.layers
+  ]
+  if ancillary_layers:
+    relevant_nodes = nest.flatten([
+        layer.inbound_nodes[1:]
+        if _should_skip_first_node(layer) else layer.inbound_nodes
+        for layer in created_layers.values()
+    ])
+    model._insert_layers(ancillary_layers, relevant_nodes)
+  return model
 
 
 def reconstruct_from_config(config, custom_objects=None, created_layers=None):
