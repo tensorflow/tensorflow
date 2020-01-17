@@ -100,29 +100,6 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                                              std::move(py_buffer_ref),
                                              std::move(client), device->id());
           })
-      .def_static(
-          "from_python",
-          [](const pybind11::object& argument,
-             std::shared_ptr<PyTpuClient> client,
-             int device_ordinal) -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
-            GlobalPyRefManager()->CollectGarbage();
-            TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
-                                GetPythonBufferTree(argument));
-            std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-                GlobalPyRefManager()->ManageReferences(
-                    absl::MakeSpan(tree.arrays));
-            tree.arrays.clear();
-
-            std::vector<BorrowingLiteral> leaves;
-            leaves.insert(leaves.end(),
-                          std::make_move_iterator(tree.leaves.begin()),
-                          std::make_move_iterator(tree.leaves.end()));
-
-            py::gil_scoped_release gil_release;
-            return PyTpuBuffer::FromLiterals(std::move(leaves), tree.shape,
-                                             std::move(py_buffer_ref),
-                                             std::move(client), device_ordinal);
-          })
       .def_static("make_tuple",
                   [](const std::vector<PyTpuBuffer*> buffers,
                      std::shared_ptr<PyTpuClient> client,
@@ -138,19 +115,12 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                     return PyTpuBuffer::MakeTuple(buffers, client,
                                                   device->id());
                   })
-      .def_static("make_tuple", &PyTpuBuffer::MakeTuple)
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, std::shared_ptr<Device> dst_device) {
              CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return buffer->CopyToDevice(dst_device->id());
-           })
-      .def("copy_to_device",
-           [](PyTpuBuffer* buffer, int dst_device_ordinal) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(dst_device_ordinal);
            })
       .def("delete", &PyTpuBuffer::Delete)
       .def("destructure", &PyTpuBuffer::DestructureTuple)
@@ -177,8 +147,6 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            [](PyTpuBuffer* buffer) -> std::shared_ptr<Device> {
              return buffer->client()->local_devices()[buffer->device_ordinal()];
            })
-      // TODO(skyewm): get rid of `device_ordinal` once everything uses `device`
-      .def("device_ordinal", &PyTpuBuffer::device_ordinal)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted", [](const PyTpuBuffer& buffer) {
         return buffer.DeviceBuffer() == nullptr;
@@ -188,15 +156,6 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def_static("Compile", &PyTpuExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
       .def("local_devices", &PyTpuExecutable::local_devices)
-      // TODO(skyewm): get rid of this once everything uses `local_devices`
-      .def("DeviceOrdinals",
-           [](const PyTpuExecutable& executable) {
-             std::vector<int> device_ordinals;
-             for (std::shared_ptr<Device> device : executable.local_devices()) {
-               device_ordinals.push_back(device->id());
-             }
-             return device_ordinals;
-           })
       .def("SizeOfGeneratedCodeInBytes",
            &PyTpuExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyTpuExecutable::Delete)
