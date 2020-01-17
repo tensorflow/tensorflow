@@ -2456,12 +2456,13 @@ filegroup(
 
 exports_files(
     [
-        "include/mlir/Dialect/StandardOps/Ops.td",
-        "include/mlir/Analysis/CallInterfaces.td",
-        "include/mlir/Transforms/InliningUtils.h",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/IR/OpAsmInterface.td",
         "include/mlir/Analysis/CallInterfaces.h",
+        "include/mlir/Analysis/CallInterfaces.td",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/Dialect/StandardOps/Ops.td",
+        "include/mlir/IR/OpAsmInterface.td",
+        "include/mlir/IR/OpBase.td",
+        "include/mlir/Transforms/InliningUtils.h",
     ],
     visibility = ["@llvm-project//mlir:friends"],
 )
