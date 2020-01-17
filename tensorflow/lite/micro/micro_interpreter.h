@@ -39,8 +39,6 @@ class MicroInterpreter {
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
 
-  ~MicroInterpreter();
-
   // Runs through the model and allocates all necessary input, output and
   // intermediate tensors.
   TfLiteStatus AllocateTensors();
@@ -111,7 +109,7 @@ class MicroInterpreter {
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
 
-  NodeAndRegistration* node_and_registrations_ = nullptr;
+  NodeAndRegistration* node_and_registrations_;
 
   const Model* model_;
   const OpResolver& op_resolver_;
