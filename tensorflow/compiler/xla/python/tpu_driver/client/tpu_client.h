@@ -275,7 +275,9 @@ class PyTpuExecutable {
       xla::Shape result_shape);
   virtual ~PyTpuExecutable() {
     for (size_t idx = 0; idx < executables_.size(); ++idx) {
-      client_->driver()->UnloadProgram(std::move(executables_[idx]), {});
+      if (executables_[idx] != nullptr) {
+        client_->driver()->UnloadProgram(std::move(executables_[idx]), {});
+      }
     }
   }
 

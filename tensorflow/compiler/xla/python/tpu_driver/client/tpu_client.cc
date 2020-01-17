@@ -135,16 +135,29 @@ StatusOr<Literal> PyTpuClient::TransferFromOutfeed(const Shape& shape,
 
 StatusOr<DeviceAssignment> PyTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
+  if (num_partitions > 1) {
+    return InvalidArgument("Num partitions greater than 1, is not supported.");
+  }
+  if (num_replicas * num_partitions <= local_device_count()) {
+    DeviceAssignment assignment(num_replicas, num_partitions);
+    for (int replica = 0; replica < num_replicas; ++replica) {
+      for (int partition = 0; partition < num_partitions; ++partition) {
+        assignment(replica, partition) = local_devices_[replica]->id();
+      }
+    }
+    return assignment;
+  }
+
+  // Fallback to default global device assignment if we can't run locally.
   xla::ComputationPlacer placer;
   return placer.AssignDevices(num_replicas, num_partitions);
 }
 
 Status PyTpuClient::CheckDeviceOrdinal(int device_ordinal,
                                        absl::string_view caller_name) {
-  if (device_ordinal < 0 || device_ordinal >= local_device_count()) {
-    return InvalidArgument(
-        "%s got bad device_ordinal: %d (num_local_devices=%d)", caller_name,
-        device_ordinal, local_device_count());
+  if (device_ordinal < 0 || device_ordinal >= device_count()) {
+    return InvalidArgument("%s got bad device_ordinal: %d (num_devices=%d)",
+                           caller_name, device_ordinal, device_count());
   }
   return Status::OK();
 }
@@ -514,7 +527,7 @@ PyTpuExecutable::PyTpuExecutable(
     }
   }
   CHECK_GE(local_devices_.size(), 1);
-  CHECK_EQ(local_devices_.size(), executables_.size());
+  CHECK_LE(executables_.size(), client_->device_count());
   CHECK_LE(local_devices_.size(), client_->local_device_count())
       << "Inconsistent local device count.";
 }
@@ -768,14 +781,20 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     }
     result_layout = ::xla::Shape(program_shape_proto.result());
   }
-  VLOG(1) << "Got result shape: " << result_layout.DebugString();
+  VLOG(1) << "Got result shape: " << result_layout.DebugString()
+          << ". DeviceAssignment:" << device_assignment->ToString();
 
+  // TODO(henrytan): refactor this to use map so that we don't create unused
+  // indexes.
   std::vector<std::unique_ptr<tpu_driver::LoadedProgramHandle>> loaded_programs;
   loaded_programs.resize(options.num_replicas());
   for (int replica = 0; replica < options.num_replicas(); ++replica) {
     const int device_id = (*device_assignment)(replica, 0);
     std::shared_ptr<Device> device = LookupDevice(*client, device_id);
-    CHECK_EQ(device->host_id(), client->host_id());
+    if (device->host_id() != client->host_id()) {
+      VLOG(3) << "Non-local device: " << device_id;
+      continue;
+    }
     int device_ordinal = device->id();
     loaded_programs[replica] = client->driver()->LoadProgram(
         device_ordinal, compiled_program.get(), {});
