@@ -166,7 +166,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(False, trt_optimizer.parameter_map["use_calibration"].b)
     self.assertEqual(True, trt_optimizer.parameter_map["use_implicit_batch"].b)
 
-  def testProfiles(self):
+  def testOptimizationProfiles(self):
     """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
     if not is_tensorrt_enabled():
       return
