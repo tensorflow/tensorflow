@@ -22,6 +22,16 @@ limitations under the License.
 
 namespace tflite {
 
+SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(uint8_t* buffer,
+                                                          size_t buffer_size) {
+  SimpleMemoryAllocator tmp = SimpleMemoryAllocator(buffer, buffer_size);
+  SimpleMemoryAllocator* in_place_allocator =
+      reinterpret_cast<SimpleMemoryAllocator*>(tmp.AllocateFromTail(
+          sizeof(SimpleMemoryAllocator), alignof(SimpleMemoryAllocator)));
+  *in_place_allocator = tmp;
+  return in_place_allocator;
+}
+
 uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
                                                  size_t alignment) {
   if (has_child_allocator_) {
