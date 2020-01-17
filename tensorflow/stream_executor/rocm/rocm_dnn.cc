@@ -60,6 +60,7 @@ const int kConvDebugVlogLevel = 3;
 
 namespace stream_executor {
 
+using dnn::AlgorithmDesc;
 using dnn::BatchDescriptor;
 using dnn::ConvolutionDescriptor;
 using dnn::DropoutDescriptor;
@@ -109,6 +110,12 @@ string ToString(miopenConvAlgorithm_t algorithm) {
       break;
     case miopenConvolutionAlgoWinograd:
       s = "Winograd";
+      break;
+    case miopenConvolutionAlgoImplicitGEMM:
+      s = "Implicit GEMM";
+      break;
+    case miopenConvolutionAlgoStaticCompiledGEMM:
+      s = "Static Compiled GEMM";
       break;
   }
   return s;
@@ -437,64 +444,11 @@ std::set<uint64> CachedFusionPlans::unsupported_plans;
 dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
-  profile_result.set_algorithm({solution.solution_id, false});
+  profile_result.set_algorithm(
+      {static_cast<AlgorithmDesc::Index>(solution.solution_id), false});
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
-}
-
-}  // namespace
-
-namespace {
-
-miopenHandle_t ToHandle(void* opaque_handle) {
-  return static_cast<miopenHandle_t>(opaque_handle);
-}
-
-miopenConvFwdAlgorithm_t ToConvForwardAlgo(dnn::AlgorithmDesc algorithm) {
-  miopenConvFwdAlgorithm_t algo = miopenConvFwdAlgorithm_t(algorithm.algo_id());
-  switch (algo) {
-    case miopenConvolutionFwdAlgoGEMM:
-    case miopenConvolutionFwdAlgoDirect:
-    case miopenConvolutionFwdAlgoFFT:
-    case miopenConvolutionFwdAlgoWinograd:
-      return algo;
-    default:
-      LOG(FATAL) << "Unsupported MIOpen convolution forward algorithm: "
-                 << algorithm.algo_id();
-  }
-}
-
-miopenConvBwdDataAlgorithm_t ToConvBackwardDataAlgo(
-    dnn::AlgorithmDesc algorithm) {
-  miopenConvBwdDataAlgorithm_t algo =
-      miopenConvBwdDataAlgorithm_t(algorithm.algo_id());
-  switch (algo) {
-    case miopenConvolutionBwdDataAlgoGEMM:
-    case miopenConvolutionBwdDataAlgoDirect:
-    case miopenConvolutionBwdDataAlgoFFT:
-    case miopenConvolutionBwdDataAlgoWinograd:
-      return algo;
-    default:
-      LOG(FATAL)
-          << "Unsupported MIOpen convolution backward algorithm for data: "
-          << algorithm.algo_id();
-  }
-}
-
-miopenConvBwdWeightsAlgorithm_t ToConvBackwardFilterAlgo(
-    dnn::AlgorithmDesc algorithm) {
-  miopenConvBwdWeightsAlgorithm_t algo =
-      miopenConvBwdWeightsAlgorithm_t(algorithm.algo_id());
-  switch (algo) {
-    case miopenConvolutionBwdWeightsAlgoGEMM:
-    case miopenConvolutionBwdWeightsAlgoDirect:
-      return algo;
-    default:
-      LOG(FATAL)
-          << "Unsupported MIOpen convolution backward algorithm for filter: "
-          << algorithm.algo_id();
-  }
 }
 
 }  // namespace
@@ -1714,19 +1668,6 @@ miopenRNNMode_t ToMIOpenRnnMode(dnn::RnnMode rnn_mode) {
       return miopenGRU;
     default:
       LOG(FATAL) << "Invalid RNN Mode: " << static_cast<int>(rnn_mode);
-  }
-}
-
-int MIOpenDataTypeToByteSize(miopenDataType_t data_type) {
-  switch (data_type) {
-    case miopenFloat:
-      return sizeof(float);
-    case miopenHalf:
-      return sizeof(Eigen::half);
-    case dnn::DataType::kBFloat16:
-      return sizeof(tensorflow::bfloat16);
-    default:
-      LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
 }
 
@@ -2972,11 +2913,6 @@ port::Status MIOpenSupport::DoConvolve(
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
 
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
   const bool is_profiling = output_profile_result != nullptr;
 
   std::unique_ptr<GpuTimer> timer;
@@ -3177,7 +3113,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
       VLOG(kConvDebugVlogLevel)
           << "Number of conv solutions actual: " << solutionCount;
 
-      for (int i = 0; i < solutionCount; i++) {
+      for (size_t i = 0; i < solutionCount; i++) {
         miopenConvSolution_t solution = solutions[i];
 
         VLOG(kConvDebugVlogLevel)
@@ -3216,7 +3152,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
       VLOG(kConvDebugVlogLevel)
           << "Number of conv solutions actual: " << solutionCount;
 
-      for (int i = 0; i < solutionCount; i++) {
+      for (size_t i = 0; i < solutionCount; i++) {
         miopenConvSolution_t solution = solutions[i];
 
         VLOG(kConvDebugVlogLevel)
@@ -3254,7 +3190,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
       VLOG(kConvDebugVlogLevel)
           << "Number of conv solutions actual: " << solutionCount;
 
-      for (int i = 0; i < solutionCount; i++) {
+      for (size_t i = 0; i < solutionCount; i++) {
         miopenConvSolution_t solution = solutions[i];
 
         VLOG(kConvDebugVlogLevel)
