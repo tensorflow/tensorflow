@@ -822,6 +822,8 @@ cc_library(
     srcs = ["lib/core/py_seq_tensor.cc"],
     hdrs = ["lib/core/py_seq_tensor.h"],
     deps = [
+        ":ndarray_tensor",
+        ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":py_util",
         ":safe_ptr",
