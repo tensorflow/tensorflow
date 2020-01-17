@@ -386,17 +386,11 @@ cc_library(
     hdrs = ["transitive_fanin.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all_cc",
-        ],
-    }),
+    ],
 )
 
 tf_cc_test(

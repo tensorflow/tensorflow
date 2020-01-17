@@ -119,12 +119,22 @@ struct ReluGrad<Device, Eigen::half> {
 };
 #endif  // GOOGLE_CUDA
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 __global__ void Relu_int8x4_kernel(int vect_count,
                                    const int32* __restrict__ input,
                                    int32* __restrict__ output) {
   CUDA_1D_KERNEL_LOOP(index, vect_count) {
+#if GOOGLE_CUDA
     output[index] = __vmaxs4(input[index], 0);
+#else
+    uint32 signs = (~input[index]) & 0x80808080;
+    signs = signs >> 7;
+    signs |= signs << 1;
+    signs |= signs << 2;
+    signs |= signs << 4;
+    signs &= 0x7f7f7f7f;
+    output[index] = input[index] & signs;
+#endif
   }
 }
 
@@ -168,7 +178,7 @@ struct Relu<Device, qint8> {
   template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template struct functor::Relu<GPUDevice, qint8>;
 #endif  // GOOGLE_CUDA
 

@@ -16,6 +16,15 @@ cc_library(
     ],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "math_util.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
 exports_files([
     "math_util.h",
     "math_util_test.cc",

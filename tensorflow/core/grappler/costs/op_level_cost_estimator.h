@@ -54,77 +54,6 @@ class OpLevelCostEstimator {
                                 double output_io_bytes,
                                 const OpInfo& op_info) const;
 
-  // This family of routines counts the number of operations to perform the
-  // specified TensorFlow Op.
-  struct MatMulDimensions {
-    int m;
-    int n;
-    int k;
-  };
-  struct BatchMatMulDimensions {
-    std::vector<int> batch_dims;
-    MatMulDimensions matmul_dims;
-  };
-  struct ConvolutionDimensions {
-    int64 batch;      // Batch size.
-    int64 ix;         // Input size x.
-    int64 iy;         // Input size y.
-    int64 iz;         // Input depth.
-    int64 kx;         // Kernel x.
-    int64 ky;         // Kernel y.
-    int64 kz;  // Kernel depth (in case of group convolution, this will be
-               // smaller than input depth).
-    int64 oz;         // Output depth.
-    int64 ox;         // Output size x.
-    int64 oy;         // Output size y.
-    int64 sx;         // Stride x.
-    int64 sy;         // Stride y.
-    Padding padding;  // SAME or VALID.
-  };
-  int64 CountConv2DOperations(const OpInfo& op_info,
-                              bool* found_unknown_shapes) const;
-  int64 CountConv2DOperations(const OpInfo& op_info,
-                              ConvolutionDimensions* conv_info,
-                              bool* found_unknown_shapes) const;
-  int64 CountMatMulOperations(const OpInfo& op_info,
-                              bool* found_unknown_shapes) const;
-  int64 CountMatMulOperations(const OpInfo& op_info, MatMulDimensions* mat_mul,
-                              bool* found_unknown_shapes) const;
-  int64 CountBatchMatMulOperations(const OpInfo& op_info,
-                                   bool* found_unknown_shapes) const;
-  int64 CountBatchMatMulOperations(const OpInfo& op_info,
-                                   BatchMatMulDimensions* batch_mat_mul,
-                                   bool* found_unknown_shapes) const;
-  int64 CountConv2DBackpropInputOperations(
-      const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
-      bool* found_unknown_shapes) const;
-  int64 CountConv2DBackpropFilterOperations(
-      const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
-      bool* found_unknown_shapes) const;
-
-  // Calculate the element count of an input/output tensor.
-  int64 CalculateTensorElementCount(const OpInfo::TensorProperties& tensor,
-                                    bool* found_unknown_shapes) const;
-
-  // Calculate the total size in bytes of an input/output tensor.
-  int64 CalculateTensorSize(const OpInfo::TensorProperties& tensor,
-                            bool* found_unknown_shapes) const;
-
-  // Calculate the element count of the largest
-  // input of specified TensorFlow op.
-  int64 CalculateLargestInputCount(const OpInfo& op_info,
-                                   bool* found_unknown_shapes) const;
-
-  // Calculate the total size in bytes of the all
-  // the inputs of specified TensorFlow op.
-  int64 CalculateInputSize(const OpInfo& op_info,
-                           bool* found_unknown_shapes) const;
-
-  // Calculate the total size in bytes of the all
-  // the outputs of specified TensorFlow op.
-  int64 CalculateOutputSize(const OpInfo& op_info,
-                            bool* found_unknown_shapes) const;
-
   // This family of routines predicts the costs to
   // perform the specified TensorFlow Op on the
   // device represented by a subclass. The default
@@ -171,6 +100,78 @@ class OpLevelCostEstimator {
     }
   }
 
+  // This family of routines counts the number of operations to perform the
+  // specified TensorFlow Op.
+  struct MatMulDimensions {
+    int m;
+    int n;
+    int k;
+  };
+  struct BatchMatMulDimensions {
+    std::vector<int> batch_dims;
+    MatMulDimensions matmul_dims;
+  };
+  struct ConvolutionDimensions {
+    int64 batch;  // Batch size.
+    int64 ix;     // Input size x.
+    int64 iy;     // Input size y.
+    int64 iz;     // Input depth.
+    int64 kx;     // Kernel x.
+    int64 ky;     // Kernel y.
+    int64 kz;     // Kernel depth (in case of group convolution, this will be
+                  // smaller than input depth).
+    int64 oz;     // Output depth.
+    int64 ox;     // Output size x.
+    int64 oy;     // Output size y.
+    int64 sx;     // Stride x.
+    int64 sy;     // Stride y.
+    Padding padding;  // SAME or VALID.
+  };
+  static int64 CountConv2DOperations(const OpInfo& op_info,
+                                     bool* found_unknown_shapes);
+  static int64 CountConv2DOperations(const OpInfo& op_info,
+                                     ConvolutionDimensions* conv_info,
+                                     bool* found_unknown_shapes);
+  static int64 CountMatMulOperations(const OpInfo& op_info,
+                                     bool* found_unknown_shapes);
+  static int64 CountMatMulOperations(const OpInfo& op_info,
+                                     MatMulDimensions* mat_mul,
+                                     bool* found_unknown_shapes);
+  static int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                          bool* found_unknown_shapes);
+  static int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                          BatchMatMulDimensions* batch_mat_mul,
+                                          bool* found_unknown_shapes);
+  static int64 CountConv2DBackpropInputOperations(
+      const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
+      bool* found_unknown_shapes);
+  static int64 CountConv2DBackpropFilterOperations(
+      const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
+      bool* found_unknown_shapes);
+
+  // Calculate the element count of an input/output tensor.
+  static int64 CalculateTensorElementCount(
+      const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes);
+
+  // Calculate the total size in bytes of an input/output tensor.
+  static int64 CalculateTensorSize(const OpInfo::TensorProperties& tensor,
+                                   bool* found_unknown_shapes);
+
+  // Calculate the element count of the largest
+  // input of specified TensorFlow op.
+  static int64 CalculateLargestInputCount(const OpInfo& op_info,
+                                          bool* found_unknown_shapes);
+
+  // Calculate the total size in bytes of the all
+  // the inputs of specified TensorFlow op.
+  static int64 CalculateInputSize(const OpInfo& op_info,
+                                  bool* found_unknown_shapes);
+
+  // Calculate the total size in bytes of the all
+  // the outputs of specified TensorFlow op.
+  static int64 CalculateOutputSize(const OpInfo& op_info,
+                                   bool* found_unknown_shapes);
+
   // For convolution and its grad ops.
   static ConvolutionDimensions ConvolutionDimensionsFromInputs(
       const TensorShapeProto& original_image_shape,
@@ -192,11 +193,6 @@ class OpLevelCostEstimator {
   // Helper to construct tensor shapes.
   static OpInfo::TensorProperties DescribeTensor(
       DataType type, const std::vector<int64>& dims);
-
-  // This method calculates the execution time depending on whether IO can
-  // overlap with computation. It assumes the memory and the compute times have
-  // already been calculated.
-  void CombineCostsAndUpdateExecutionTime(Costs* costs) const;
 
  protected:
   std::map<string, int> elementwise_ops_;

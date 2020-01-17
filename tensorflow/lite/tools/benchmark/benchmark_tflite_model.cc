@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -27,6 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 #if defined(__ANDROID__)
@@ -50,10 +52,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
-
-#ifdef GEMMLOWP_PROFILING
-#include "profiling/profiler.h"
-#endif
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -81,9 +79,15 @@ class ProfilingListener : public BenchmarkListener {
       : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
+
+    // We start profiling here in order to catch events that are recorded during
+    // the benchmark run preparation stage where TFLite interpreter is
+    // initialized and model graph is prepared.
     profiler_.Reset();
     profiler_.StartProfiling();
   }
+
+  void OnBenchmarkStart(const BenchmarkParams& params) override;
 
   void OnSingleRunStart(RunType run_type) override;
 
@@ -94,55 +98,62 @@ class ProfilingListener : public BenchmarkListener {
  private:
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
-  profiling::ProfileSummarizer summarizer_;
+  profiling::ProfileSummarizer run_summarizer_;
+  profiling::ProfileSummarizer init_summarizer_;
 };
 
-// Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
-class GemmlowpProfilingListener : public BenchmarkListener {
+// Dumps ruy profiling events if the ruy profiler is enabled.
+class RuyProfileListener : public BenchmarkListener {
  public:
   void OnBenchmarkStart(const BenchmarkParams& params) override;
 
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
+
+ private:
+  std::unique_ptr<ruy::profiler::ScopeProfile> ruy_profile_;
 };
 
+void ProfilingListener::OnBenchmarkStart(const BenchmarkParams& params) {
+  // At this point, we have completed the prepration for benchmark runs
+  // including TFLite interpreter initialization etc. So we are going to process
+  // profiling events recorded during this stage.
+  profiler_.StopProfiling();
+  auto profile_events = profiler_.GetProfileEvents();
+  init_summarizer_.ProcessProfiles(profile_events, *interpreter_);
+  profiler_.Reset();
+}
+
 void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  // Note: we have started profiling when this listener is created. In order
-  // not to count events during the WARMUP phase, we need to stop profiling and
-  // process already-recorded profile events when the WARMUP run starts and
-  // restart profiling at the REGULAR run.
-  if (run_type == WARMUP) {
-    OnSingleRunEnd();
-  } else if (run_type == REGULAR) {
+  if (run_type == REGULAR) {
     profiler_.Reset();
     profiler_.StartProfiling();
   }
 }
 
 void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO) << summarizer_.GetOutputString();
+  if (init_summarizer_.HasProfiles()) {
+    TFLITE_LOG(INFO) << "Profiling Info for Benchmark Initialization:";
+    TFLITE_LOG(INFO) << init_summarizer_.GetOutputString();
+  }
+  if (run_summarizer_.HasProfiles()) {
+    TFLITE_LOG(INFO)
+        << "Operator-wise Profiling Info for Regular Benchmark Runs:";
+    TFLITE_LOG(INFO) << run_summarizer_.GetOutputString();
   }
 }
 
 void ProfilingListener::OnSingleRunEnd() {
   profiler_.StopProfiling();
   auto profile_events = profiler_.GetProfileEvents();
-  summarizer_.ProcessProfiles(profile_events, *interpreter_);
+  run_summarizer_.ProcessProfiles(profile_events, *interpreter_);
 }
 
-void GemmlowpProfilingListener::OnBenchmarkStart(
-    const BenchmarkParams& params) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::RegisterCurrentThreadForProfiling();
-  gemmlowp::StartProfiling();
-#endif
+void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
+  ruy_profile_.reset(new ruy::profiler::ScopeProfile);
 }
 
-void GemmlowpProfilingListener::OnBenchmarkEnd(
-    const BenchmarkResults& results) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::FinishProfiling();
-#endif
+void RuyProfileListener::OnBenchmarkEnd(const BenchmarkResults& results) {
+  ruy_profile_ = nullptr;
 }
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
@@ -206,8 +217,7 @@ TfLiteStatus PopulateInputLayerInfo(
 
   // Populate input value range if it's specified.
   std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
-  std::vector<int> tmp_range;
-  for (const auto val : value_ranges) {
+  for (const auto& val : value_ranges) {
     std::vector<std::string> name_range = Split(val, ',');
     if (name_range.size() != 3) {
       TFLITE_LOG(FATAL) << "Wrong input value range item specified: " << val;
@@ -264,6 +274,7 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_value_range",
                           BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("nnapi_execution_preference",
                           BenchmarkParam::Create<std::string>(""));
@@ -314,6 +325,7 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
         "layers. Each item is separated by ':', and the item value consists of "
         "input layer name and integer-only range values (both low and high are "
         "inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
+    CreateFlag<bool>("use_hexagon", &params_, "Use Hexagon delegate api"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
     CreateFlag<std::string>(
         "nnapi_execution_preference", &params_,
@@ -358,6 +370,8 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<std::string>("input_layer_value_range")
                    << "]";
 #if defined(__ANDROID__)
+  TFLITE_LOG(INFO) << "Use Hexagon : [" << params_.Get<bool>("use_hexagon")
+                   << "]";
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
   if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
     TFLITE_LOG(INFO) << "nnapi execution preference: ["
@@ -419,6 +433,12 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
     total_input_bytes += t->bytes;
   }
   return total_input_bytes;
+}
+
+int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
+  std::ifstream in_file(params_.Get<std::string>("graph"),
+                        std::ios::binary | std::ios::ate);
+  return in_file.tellg();
 }
 
 TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
@@ -536,13 +556,7 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::Init() {
-  std::string graph = params_.Get<std::string>("graph");
-  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
-  if (!model_) {
-    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
-    return kTfLiteError;
-  }
-  TFLITE_LOG(INFO) << "Loaded model " << graph;
+  TF_LITE_ENSURE_STATUS(LoadModel());
 
   auto resolver = GetOpResolver();
 
@@ -552,6 +566,12 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     TFLITE_LOG(ERROR) << "Failed to construct interpreter";
     return kTfLiteError;
   }
+
+  // Install profilers if necessary right after interpreter is created so that
+  // any memory allocations inside the TFLite runtime could be recorded if the
+  // installed profiler profile memory usage information.
+  profiling_listener_ = MayCreateProfilingListener();
+  if (profiling_listener_) AddListener(profiling_listener_.get());
 
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
@@ -590,8 +610,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   if (!inputs_.empty()) {
     TFLITE_BENCHMARK_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
-        << "Inputs mismatch: Model inputs #:" << interpreter_inputs.size()
-        << " expected: " << inputs_.size();
+        << "Inputs mismatch: Model inputs #:" << inputs_.size()
+        << " expected: " << interpreter_inputs.size();
   }
 
   // Check if the tensor names match, and log a warning if it doesn't.
@@ -617,26 +637,25 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     }
   }
 
-  // Install profilers if necessary but *before* any memory allocations inside
-  // the TFLite interpreter because the installed profiler might profile memory
-  // usage information.
-  if (params_.Get<bool>("enable_op_profiling")) {
-    profiling_listener_.reset(new ProfilingListener(
-        interpreter_.get(),
-        params_.Get<int32_t>("max_profiling_buffer_entries")));
-    AddListener(profiling_listener_.get());
-  }
-
   if (interpreter_->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
     return kTfLiteError;
   }
 
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
-  AddListener(gemmlowp_profiling_listener_.get());
-#endif
+  ruy_profiling_listener_.reset(new RuyProfileListener());
+  AddListener(ruy_profiling_listener_.get());
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
+  std::string graph = params_.Get<std::string>("graph");
+  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
+  if (!model_) {
+    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
+    return kTfLiteError;
+  }
+  TFLITE_LOG(INFO) << "Loaded model " << graph;
   return kTfLiteOk;
 }
 
@@ -656,7 +675,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
           TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
     }
     Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
+        evaluation::CreateGPUDelegate(&gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)
     TFLGpuDelegateOptions gpu_opts = {0};
     gpu_opts.allow_precision_loss =
@@ -682,8 +701,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 #else
     TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
                         "to be benchmarked on Android or iOS platforms.";
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get());
+    Interpreter::TfLiteDelegatePtr delegate = evaluation::CreateGPUDelegate();
 #endif
 
     if (!delegate) {
@@ -744,6 +762,22 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
                      << params_.Get<std::string>("nnapi_execution_preference")
                      << ") to be used.";
   }
+
+  if (params_.Get<bool>("use_hexagon")) {
+    const std::string libhexagon_path("/data/local/tmp");
+    Interpreter::TfLiteDelegatePtr delegate =
+        evaluation::CreateHexagonDelegate(libhexagon_path);
+    if (!delegate) {
+      // Refer to the Tensorflow Lite Hexagon delegate documentation for more
+      // information about how to get the required libraries.
+      TFLITE_LOG(WARN)
+          << "Could not create Hexagon delegate: platform may not support "
+             "delegate or required libraries are missing";
+    } else {
+      delegates.emplace("Hexagon", std::move(delegate));
+    }
+  }
+
   return delegates;
 }
 
@@ -752,6 +786,14 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   auto resolver = new tflite::ops::builtin::BuiltinOpResolver();
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
+}
+
+std::unique_ptr<BenchmarkListener>
+BenchmarkTfLiteModel::MayCreateProfilingListener() const {
+  if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
+  return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
+      interpreter_.get(),
+      params_.Get<int32_t>("max_profiling_buffer_entries")));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }

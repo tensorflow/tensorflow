@@ -48,6 +48,7 @@ CONVERSION_RULES = (
 
     # Known libraries
     DoNotConvert('numpy'),
+    DoNotConvert('pandas'),
     DoNotConvert('tensorflow'),
     DoNotConvert('PIL'),
 

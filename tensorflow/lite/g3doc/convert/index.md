@@ -5,7 +5,7 @@ TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/) file
 (`.tflite`). The converter supports
 [SavedModel directories](https://www.tensorflow.org/guide/saved_model),
 [`tf.keras` models](https://www.tensorflow.org/guide/keras/overview), and
-[concrete functions](concrete_function.md).
+[concrete functions](https://tensorflow.org/guide/concrete_function).
 
 Note: This page contains documentation on the converter API for TensorFlow 2.0.
 The API for TensorFlow 1.X is available

@@ -232,17 +232,17 @@ class XlaBuilder {
   // added operation.
   //
   // `remove_dynamic_dimensions` tells the builder whether to remove the
-  // dyanmic dimensions information in all ops.
+  // dynamic dimensions information in all ops.
   //
   // TODO(b/121223198): Delete `remove_dynamic_dimensions` and keeps the
   // dynamic dimensions information when XLA backend can handle dynamic
   // dimensions.
-  StatusOr<XlaComputation> Build(bool remove_dynamic_dimensions = true);
+  StatusOr<XlaComputation> Build(bool remove_dynamic_dimensions = false);
 
   // Overload of Build which specifies a particular root instruction for the
   // computation.
   StatusOr<XlaComputation> Build(XlaOp root,
-                                 bool remove_dynamic_dimensions = true);
+                                 bool remove_dynamic_dimensions = false);
 
   // Builds the computation with the requested operations, or notes an error in
   // the parent XlaBuilder and returns an empty computation if building failed.
@@ -514,7 +514,8 @@ class XlaBuilder {
   XlaOp AllReduce(
       XlaOp operand, const XlaComputation& computation,
       absl::Span<const ReplicaGroup> replica_groups = {},
-      const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
+      const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+      const absl::optional<Shape>& shape_with_layout = absl::nullopt);
 
   XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                  int64 split_count,
@@ -922,7 +923,8 @@ class XlaBuilder {
                                absl::Span<const ReplicaGroup> replica_groups);
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
-                         const absl::optional<ChannelHandle>& channel_id);
+                         const absl::optional<ChannelHandle>& channel_id,
+                         const absl::optional<Shape>& shape_with_layout);
   friend XlaOp AllToAll(XlaOp operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups);
@@ -1192,7 +1194,7 @@ XlaOp Broadcast(XlaOp operand, absl::Span<const int64> broadcast_sizes);
 //
 // For example, say operand = {1, 2}, i.e., a 1D tensor in shape s32[2]; the
 // output shape is s32[2,2]:
-// - Specifying {1} as brodcast_dimension will generate output
+// - Specifying {1} as broadcast_dimension will generate output
 //   {{1, 2},
 //    {1, 2}}
 // - On the other hand, specifying {0} as broadcast_dimension
@@ -1467,7 +1469,7 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
 // two minor dimensions equal.
 // If `lower` is true, the data from the lower triangle is used; if false, the
 // upper triangle is used. The input data in the other triangle of the input
-// does not affect the output. Returns the output in the same lower/uppper
+// does not affect the output. Returns the output in the same lower/upper
 // triangle. The data returned in the other output triangle is arbitrary and
 // implementation-defined.
 //
@@ -1666,10 +1668,14 @@ XlaOp CrossReplicaSum(XlaOp operand,
 // - `channel_id`: for Allreduce nodes from different modules, if they have the
 // same channel_id, they will be 'AllReduce'd. If empty, AllReduce will not be
 // applied cross modules.
-XlaOp AllReduce(
-    XlaOp operand, const XlaComputation& computation,
-    absl::Span<const ReplicaGroup> replica_groups = {},
-    const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
+//
+// - `shape_with_layout`: forces the layout of the AllReduce to the given
+// layout. This is used to guarantee the same layout for a group of AllReduce
+// ops compiled separately.
+XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
+                absl::Span<const ReplicaGroup> replica_groups = {},
+                const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+                const absl::optional<Shape>& shape_with_layout = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
 XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,

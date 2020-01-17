@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/algorithm.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
@@ -60,6 +61,7 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_value_range",
                   BenchmarkParam::Create<std::string>(""));
+  params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(false));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   params.AddParam("require_full_delegation",
@@ -109,6 +111,24 @@ TEST(BenchmarkTest, DoesntCrashInt8Model) {
 
   BenchmarkTfLiteModel benchmark(CreateInt8Params());
   benchmark.Run();
+}
+
+TEST(BenchmarkTest, DoesntCrashMultiPerfOptions) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+
+  BenchmarkTfLiteModel benchmark(CreateFp32Params());
+  BenchmarkPerformanceOptions all_options_benchmark(&benchmark);
+  all_options_benchmark.Run();
+}
+
+TEST(BenchmarkTest, DoesntCrashMultiPerfOptionsWithProfiling) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+
+  BenchmarkParams params = CreateFp32Params();
+  params.Set<bool>("enable_op_profiling", true);
+  BenchmarkTfLiteModel benchmark(std::move(params));
+  BenchmarkPerformanceOptions all_options_benchmark(&benchmark);
+  all_options_benchmark.Run();
 }
 
 TEST(BenchmarkTest, DoesntCrashWithExplicitInputFp32Model) {

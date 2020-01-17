@@ -52,32 +52,7 @@ LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
 }
 
 Status LocalExecutable::ValidateExecutionOptions(
-    const absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableRunOptions& run_options, const Backend& backend) {
-  const ComputationLayout& computation_layout =
-      executable_->module_config().entry_computation_layout();
-
-  // Check argument number, shapes, and layouts.
-  if (arguments.size() != computation_layout.parameter_count()) {
-    return InvalidArgument(
-        "invalid number of arguments for computation: expected %d, got %u",
-        computation_layout.parameter_count(), arguments.size());
-  }
-  for (int i = 0; i < arguments.size(); ++i) {
-    if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
-            arguments[i]->on_host_shape())) {
-      return InvalidParameterArgument(
-          executable_.get(), i,
-          "Argument does not match host shape or layout of computation "
-          "parameter "
-          "%d: want %s, got %s",
-          i,
-          ShapeUtil::HumanStringWithLayout(
-              computation_layout.parameter_layout(i).shape()),
-          ShapeUtil::HumanStringWithLayout(arguments[i]->on_host_shape()));
-    }
-  }
-
   if (run_options.stream() != nullptr) {
     if (!run_options.stream()->ok()) {
       return InvalidArgument("stream is uninitialized or in an error state");
@@ -141,11 +116,33 @@ Status LocalExecutable::ValidateExecutionOptions(
 }
 
 StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
-LocalExecutable::RunHelper(
-    const absl::Span<const ShapedBuffer* const> arguments,
-    ExecutableRunOptions run_options) {
-  TF_RETURN_IF_ERROR(
-      ValidateExecutionOptions(arguments, run_options, *backend_));
+LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
+                           ExecutableRunOptions run_options) {
+  const ComputationLayout& computation_layout =
+      executable_->module_config().entry_computation_layout();
+
+  // Check argument number, shapes, and layouts.
+  if (argument_shapes.size() != computation_layout.parameter_count()) {
+    return InvalidArgument(
+        "invalid number of arguments for computation: expected %d, got %u",
+        computation_layout.parameter_count(), argument_shapes.size());
+  }
+  for (int i = 0; i < argument_shapes.size(); ++i) {
+    if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
+            *argument_shapes[i])) {
+      return InvalidParameterArgument(
+          executable_.get(), i,
+          "Argument does not match host shape or layout of computation "
+          "parameter "
+          "%d: want %s, got %s",
+          i,
+          ShapeUtil::HumanStringWithLayout(
+              computation_layout.parameter_layout(i).shape()),
+          ShapeUtil::HumanStringWithLayout(*argument_shapes[i]));
+    }
+  }
+
+  TF_RETURN_IF_ERROR(ValidateExecutionOptions(run_options, *backend_));
 
   StreamPool::Ptr stream;
   if (run_options.stream() == nullptr) {
@@ -174,8 +171,13 @@ LocalExecutable::RunHelper(
 StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
     const absl::Span<const ShapedBuffer* const> arguments,
     ExecutableRunOptions run_options) {
+  std::vector<const Shape*> argument_shapes;
+  argument_shapes.reserve(arguments.size());
+  for (const ShapedBuffer* const arg : arguments) {
+    argument_shapes.push_back(&arg->on_host_shape());
+  }
   TF_ASSIGN_OR_RETURN(auto options_and_stream,
-                      RunHelper(arguments, run_options));
+                      RunHelper(argument_shapes, run_options));
   ExecutableRunOptions options = options_and_stream.first.run_options();
   options.set_device_ordinal(-1);
   auto result = RunAsync(arguments, options);
@@ -185,31 +187,62 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   return result;
 }
 
+static std::shared_ptr<HloSnapshot> DumpArguments(
+    const Backend* backend, const Executable* executable,
+    const absl::Span<const ShapedBuffer* const> arguments, se::Stream* stream) {
+  auto snapshot = std::make_shared<HloSnapshot>();
+  snapshot->set_execution_platform(backend->platform()->Name());
+  *snapshot->mutable_hlo() = *executable->hlo_proto();
+  for (const ShapedBuffer* arg : arguments) {
+    auto literal = std::make_shared<Literal>(arg->on_host_shape());
+    backend->transfer_manager()->TransferLiteralFromDevice(
+        stream, *arg, literal.get(), [snapshot, literal](Status status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "TransferLiteralFromDevice for HLO snapshot inputs "
+                          "failed: "
+                       << status;
+            return;
+          }
+          *snapshot->add_arguments() = literal->ToProto();
+        });
+  }
+  return snapshot;
+}
+
+static void DumpOutputsAndSaveSnapshot(const Backend* backend,
+                                       const ShapedBuffer& outputs,
+                                       std::shared_ptr<HloSnapshot> snapshot,
+                                       se::Stream* stream) {
+  auto literal = std::make_shared<Literal>(outputs.on_host_shape());
+  backend->transfer_manager()->TransferLiteralFromDevice(
+      stream, outputs, literal.get(),
+      [snapshot{std::move(snapshot)}, literal](Status status) {
+        if (status.ok()) {
+          *snapshot->mutable_result() = literal->ToProto();
+        } else {
+          LOG(ERROR)
+              << "TransferLiteralFromDevice for HLO snapshot outputs failed: "
+              << status;
+        }
+        DumpHloSnapshotIfEnabled(*snapshot, GetDebugOptionsFromFlags());
+      });
+}
+
 StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
     const absl::Span<const ShapedBuffer* const> arguments,
     ExecutableRunOptions run_options) {
+  std::vector<const Shape*> argument_shapes;
+  argument_shapes.reserve(arguments.size());
+  for (const ShapedBuffer* const arg : arguments) {
+    argument_shapes.push_back(&arg->on_host_shape());
+  }
   TF_ASSIGN_OR_RETURN(auto options_and_stream,
-                      RunHelper(arguments, run_options));
+                      RunHelper(argument_shapes, run_options));
   se::Stream* stream = run_options.stream();
 
   std::shared_ptr<HloSnapshot> snapshot;
   if (executable_->dumping_snapshot()) {
-    snapshot = std::make_shared<HloSnapshot>();
-    snapshot->set_execution_platform(backend_->platform()->Name());
-    *snapshot->mutable_hlo() = *executable_->hlo_proto();
-    for (const ShapedBuffer* arg : arguments) {
-      auto literal = std::make_shared<Literal>(arg->on_host_shape());
-      backend_->transfer_manager()->TransferLiteralFromDevice(
-          stream, *arg, literal.get(), [snapshot, literal](Status status) {
-            if (!status.ok()) {
-              LOG(ERROR) << "TransferLiteralFromDevice for HLO snapshot inputs "
-                            "failed: "
-                         << status;
-              return;
-            }
-            *snapshot->add_arguments() = literal->ToProto();
-          });
-    }
+    snapshot = DumpArguments(backend_, executable_.get(), arguments, stream);
   }
 
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer outputs,
@@ -218,18 +251,63 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
 
   // Transfer the outputs and save the snapshot to disk.
   if (snapshot) {
-    auto literal = std::make_shared<Literal>(outputs.on_host_shape());
-    backend_->transfer_manager()->TransferLiteralFromDevice(
-        stream, outputs, literal.get(), [snapshot, literal](Status status) {
-          if (status.ok()) {
-            *snapshot->mutable_result() = literal->ToProto();
-          } else {
-            LOG(ERROR)
-                << "TransferLiteralFromDevice for HLO snapshot outputs failed: "
-                << status;
-          }
-          DumpHloSnapshotIfEnabled(*snapshot, GetDebugOptionsFromFlags());
-        });
+    DumpOutputsAndSaveSnapshot(backend_, outputs, std::move(snapshot), stream);
+  }
+
+  return std::move(outputs);
+}
+
+static ShapedBuffer MaybeOwningShapeTreeToShapedBuffer(
+    Shape const& on_host_shape, const ShapeTree<MaybeOwningDeviceMemory>& tree,
+    se::Platform* platform, int device_ordinal) {
+  ShapedBuffer result(on_host_shape, tree.shape(), platform, device_ordinal);
+  auto it = tree.begin();
+  auto out_it = result.buffers().begin();
+  for (; it != tree.end(); ++it, ++out_it) {
+    out_it->second = it->second.AsDeviceMemoryBase();
+  }
+  return result;
+}
+
+StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
+    absl::Span<Shape const* const> argument_host_shapes,
+    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+    ExecutableRunOptions run_options) {
+  if (argument_host_shapes.size() != arguments.size()) {
+    return InvalidArgument(
+        "Number of argument host shapes not equal to number of arguments (%d "
+        "vs %d)",
+        argument_host_shapes.size(), arguments.size());
+  }
+  TF_ASSIGN_OR_RETURN(auto options_and_stream,
+                      RunHelper(argument_host_shapes, run_options));
+  se::Stream* stream = run_options.stream();
+
+  std::shared_ptr<HloSnapshot> snapshot;
+  if (executable_->dumping_snapshot()) {
+    std::vector<ShapedBuffer> shaped_buffers;
+    std::vector<const ShapedBuffer*> shaped_buffer_ptrs;
+    shaped_buffers.reserve(arguments.size());
+    shaped_buffer_ptrs.reserve(arguments.size());
+    for (size_t i = 0; i < arguments.size(); ++i) {
+      shaped_buffers.push_back(MaybeOwningShapeTreeToShapedBuffer(
+          *argument_host_shapes[i], arguments[i], backend_->platform(),
+          stream->parent()->device_ordinal()));
+      shaped_buffer_ptrs.push_back(&shaped_buffers.back());
+    }
+
+    snapshot =
+        DumpArguments(backend_, executable_.get(), shaped_buffer_ptrs, stream);
+  }
+
+  TF_ASSIGN_OR_RETURN(ExecutionOutput outputs,
+                      executable_->ExecuteAsyncOnStreamWrapper(
+                          &options_and_stream.first, std::move(arguments)));
+
+  // Transfer the outputs and save the snapshot to disk.
+  if (snapshot) {
+    DumpOutputsAndSaveSnapshot(backend_, outputs.Result(), std::move(snapshot),
+                               stream);
   }
 
   return std::move(outputs);
@@ -272,9 +350,9 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       local_service_->CompileExecutable(
                           computation, argument_layouts, updated_options));
-  return absl::WrapUnique(new LocalExecutable(std::move(executable),
-                                              local_service_->mutable_backend(),
-                                              updated_options));
+  return absl::make_unique<LocalExecutable>(std::move(executable),
+                                            local_service_->mutable_backend(),
+                                            updated_options);
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
@@ -329,15 +407,14 @@ StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {
 }
 
 StatusOr<TransferToServerResponse> LocalClient::TransferToLocalServer(
-    const ::xla::BorrowingLiteral& literal, int device_oridinal) {
+    const ::xla::BorrowingLiteral& literal, int device_ordinal) {
   const ::xla::Shape& shape = literal.shape();
 
-  TF_ASSIGN_OR_RETURN(
-      ::xla::ScopedShapedBuffer shaped_buffer,
-      backend().transfer_manager()->AllocateScopedShapedBuffer(
-          shape, backend().memory_allocator(), device_oridinal));
+  TF_ASSIGN_OR_RETURN(::xla::ScopedShapedBuffer shaped_buffer,
+                      backend().transfer_manager()->AllocateScopedShapedBuffer(
+                          shape, backend().memory_allocator(), device_ordinal));
   TF_ASSIGN_OR_RETURN(auto stream,
-                      mutable_backend()->BorrowStream(device_oridinal));
+                      mutable_backend()->BorrowStream(device_ordinal));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
       stream.get(), literal, shaped_buffer));
   std::vector<::xla::ScopedShapedBuffer> replicated_buffer;

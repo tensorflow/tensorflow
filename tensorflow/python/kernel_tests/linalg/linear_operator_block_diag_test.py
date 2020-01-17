@@ -70,9 +70,9 @@ class SquareLinearOperatorBlockDiagTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  @property
-  def operator_shape_infos(self):
-    shape_info = linear_operator_test_util.OperatorShapeInfo
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
     return [
         shape_info((0, 0)),
         shape_info((1, 1)),
@@ -213,20 +213,16 @@ class SquareLinearOperatorBlockDiagTest(
     self.assertEqual(2, len(inverse.operators))
 
   def test_tape_safe(self):
-    matrix = variables_module.Variable([[1., 0.], [0., 1.]])
+    matrices = []
+    for _ in range(4):
+      matrices.append(variables_module.Variable(
+          linear_operator_test_util.random_positive_definite_matrix(
+              [2, 2], dtype=dtypes.float32, force_well_conditioned=True)))
+
     operator = block_diag.LinearOperatorBlockDiag(
-        [
-            linalg.LinearOperatorFullMatrix(
-                matrix,
-                is_self_adjoint=True,
-                is_positive_definite=True,
-            ),
-            linalg.LinearOperatorFullMatrix(
-                matrix,
-                is_self_adjoint=True,
-                is_positive_definite=True,
-            ),
-        ],
+        [linalg.LinearOperatorFullMatrix(
+            matrix, is_self_adjoint=True,
+            is_positive_definite=True) for matrix in matrices],
         is_self_adjoint=True,
         is_positive_definite=True,
     )

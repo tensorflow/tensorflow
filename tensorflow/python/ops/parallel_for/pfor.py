@@ -121,7 +121,7 @@ class WhileOp(object):
     """
     self._pfor_config = pfor_config
     self._pfor_ops = set(pfor_ops)
-    self._pfor_op_ids = set([x._id for x in pfor_ops])
+    self._pfor_op_ids = set(x._id for x in pfor_ops)
     assert isinstance(exit_node, ops.Tensor)
     self._while_context = exit_node.op._get_control_flow_context()
     assert isinstance(self._while_context, control_flow_ops.WhileContext)
@@ -1176,7 +1176,7 @@ class PFor(object):
     self._conversion_map = object_identity.ObjectIdentityDictionary()
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
     self._pfor_ops = set(pfor_ops)
-    self._pfor_op_ids = set([x._id for x in pfor_ops])
+    self._pfor_op_ids = set(x._id for x in pfor_ops)
     self._pfor_config = pfor_config
 
   def op_is_inside_loop(self, op):
@@ -2564,6 +2564,7 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("TruncateMod", math_ops.truncate_mod)
 @RegisterPForWithArgs("Xdivy", math_ops.xdivy)
 @RegisterPForWithArgs("Xlogy", math_ops.xlogy)
+@RegisterPForWithArgs("Xlog1py", math_ops.xlog1py)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
 def _convert_cwise(pfor_input, op_type, op_func):
   # Note that ops handled here do not have attributes except those listed below

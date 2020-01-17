@@ -70,8 +70,8 @@ namespace {
 
 using python_utils::PyDecrefDeleter;
 
-std::unique_ptr<tflite::Interpreter> CreateInterpreter(
-    const tflite::FlatBufferModel* model,
+std::unique_ptr<tflite_api_dispatcher::Interpreter> CreateInterpreter(
+    const tflite_api_dispatcher::TfLiteModel* model,
     const tflite::ops::builtin::BuiltinOpResolver& resolver) {
   if (!model) {
     return nullptr;
@@ -79,8 +79,9 @@ std::unique_ptr<tflite::Interpreter> CreateInterpreter(
 
   ::tflite::python::ImportNumpy();
 
-  std::unique_ptr<tflite::Interpreter> interpreter;
-  if (tflite::InterpreterBuilder(*model, resolver)(&interpreter) != kTfLiteOk) {
+  std::unique_ptr<tflite_api_dispatcher::Interpreter> interpreter;
+  if (tflite_api_dispatcher::InterpreterBuilder(
+          *model, resolver)(&interpreter) != kTfLiteOk) {
     return nullptr;
   }
   return interpreter;
@@ -146,7 +147,7 @@ bool RegisterCustomOpByName(const char* registerer_name,
 }  // namespace
 
 InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
-    std::unique_ptr<tflite::FlatBufferModel> model,
+    std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
     std::unique_ptr<PythonErrorReporter> error_reporter,
     const std::vector<std::string>& registerers, std::string* error_msg) {
   if (!model) {
@@ -172,10 +173,10 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
 }
 
 InterpreterWrapper::InterpreterWrapper(
-    std::unique_ptr<tflite::FlatBufferModel> model,
+    std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
     std::unique_ptr<PythonErrorReporter> error_reporter,
     std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
-    std::unique_ptr<tflite::Interpreter> interpreter)
+    std::unique_ptr<tflite_api_dispatcher::Interpreter> interpreter)
     : model_(std::move(model)),
       error_reporter_(std::move(error_reporter)),
       resolver_(std::move(resolver)),
@@ -387,6 +388,14 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
   }
 
   if (tensor->type != kTfLiteString) {
+    if (tensor->data.raw == nullptr) {
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor:"
+                   " Tensor is unallocated. Try calling allocate_tensors()"
+                   " first");
+      return nullptr;
+    }
+
     size_t size = PyArray_NBYTES(array);
     if (size != tensor->bytes) {
       PyErr_Format(PyExc_ValueError,
@@ -455,8 +464,9 @@ namespace {
 
 // Checks to see if a tensor access can succeed (returns nullptr on error).
 // Otherwise returns Py_None.
-PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
-                             TfLiteTensor** tensor, int* type_num) {
+PyObject* CheckGetTensorArgs(tflite_api_dispatcher::Interpreter* interpreter_,
+                             int tensor_index, TfLiteTensor** tensor,
+                             int* type_num) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_TENSOR_BOUNDS_CHECK(tensor_index);
 
@@ -473,7 +483,9 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
   }
 
   if (!(*tensor)->data.raw) {
-    PyErr_SetString(PyExc_ValueError, "Tensor data is null.");
+    PyErr_SetString(PyExc_ValueError,
+                    "Tensor data is null."
+                    " Run allocate_tensors() first");
     return nullptr;
   }
 
@@ -565,8 +577,9 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const char* model_path, const std::vector<std::string>& registerers,
     std::string* error_msg) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromFile(model_path, error_reporter.get());
+  std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model =
+      tflite_api_dispatcher::TfLiteModel::BuildFromFile(model_path,
+                                                        error_reporter.get());
   return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
                                   registerers, error_msg);
 }
@@ -581,9 +594,9 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;
   }
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromBuffer(buf, length,
-                                               error_reporter.get());
+  std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model =
+      tflite_api_dispatcher::TfLiteModel::BuildFromBuffer(buf, length,
+                                                          error_reporter.get());
   return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
                                   registerers, error_msg);
 }

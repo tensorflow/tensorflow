@@ -473,6 +473,8 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->deviceId;
   event.memcpy_info.async = memcpy->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
+  event.memcpy_info.src_mem_kind = memcpy->srcKind;
+  event.memcpy_info.dst_mem_kind = memcpy->dstKind;
   collector->AddEvent(std::move(event));
 }
 
@@ -495,6 +497,8 @@ void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
   event.memcpy_info.num_bytes = memcpy2->bytes;
   event.memcpy_info.destination = memcpy2->dstDeviceId;
   event.memcpy_info.async = memcpy2->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
+  event.memcpy_info.src_mem_kind = memcpy2->srcKind;
+  event.memcpy_info.dst_mem_kind = memcpy2->dstKind;
   collector->AddEvent(std::move(event));
 }
 
@@ -640,6 +644,7 @@ struct MemcpyRecord {
   CUcontext context;
   CUstream stream;
   uint32 correlation_id;
+  bool async;
   CUevent start_event;
   CUevent stop_event;
   uint64 start_timestamp;
@@ -740,9 +745,10 @@ class CudaEventRecorder {
   // Registers the start of a copy operation. The returned index should be
   // passed to StopMemcpy() after the memcpy has completed.
   size_t StartMemcpy(CuptiTracerEventType type, size_t size_bytes,
-                     CUcontext context, CUstream stream,
-                     uint32 correlation_id) {
-    MemcpyRecord record = {type, size_bytes, context, stream, correlation_id};
+                     CUcontext context, CUstream stream, uint32 correlation_id,
+                     bool async) {
+    MemcpyRecord record = {type,   size_bytes,     context,
+                           stream, correlation_id, async};
     record.start_timestamp = CuptiTracer::GetTimestamp();
     LogIfError(CreateAndRecordEvent(&record.start_event, stream));
     absl::MutexLock lock(&mutex_);
@@ -949,8 +955,8 @@ class CudaEventRecorder {
     event.memcpy_info.num_bytes = record.size_bytes;
     // TODO: support MemcpyD2D where destination != source;
     event.memcpy_info.destination = ordinal_;
-    // TODO: support differentiate sync and async memcpy.
-    event.memcpy_info.async = false;
+    event.memcpy_info.async = record.async;
+    // TODO: set src_mem_kind and dst_mem_kind.
     collector_->AddEvent(std::move(event));
     return Status::OK();
   }
@@ -1168,16 +1174,16 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     auto params = static_cast<const T *>(cbdata->functionParams);
     *cbdata->correlationData =
         recorder->StartMemcpy(type, params->ByteCount, cbdata->context, nullptr,
-                              cbdata->correlationId);
+                              cbdata->correlationId, /*async*/ false);
   }
   template <typename T>
   static void StartMemcpyAsync(CuptiTracerEventType type,
                                const CUpti_CallbackData *cbdata,
                                CudaEventRecorder *recorder) {
     auto params = static_cast<const T *>(cbdata->functionParams);
-    *cbdata->correlationData =
-        recorder->StartMemcpy(type, params->ByteCount, cbdata->context,
-                              params->hStream, cbdata->correlationId);
+    *cbdata->correlationData = recorder->StartMemcpy(
+        type, params->ByteCount, cbdata->context, params->hStream,
+        cbdata->correlationId, /*async*/ true);
   }
 
   static CUmemorytype GetMemoryType(CUdeviceptr ptr) {

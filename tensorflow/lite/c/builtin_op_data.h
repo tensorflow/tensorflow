@@ -75,12 +75,16 @@ typedef enum {
 } TfLiteFusedActivation;
 
 typedef struct {
+  // Parameters for CONV_2D version 1.
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  TfLiteFusedActivation activation;
+
+  // Parameters for CONV_2D version 2.
+  // Note: Version 2 supports dilation values not equal to 1.
   int dilation_width_factor;
   int dilation_height_factor;
-  TfLiteFusedActivation activation;
 } TfLiteConvParams;
 
 typedef struct {

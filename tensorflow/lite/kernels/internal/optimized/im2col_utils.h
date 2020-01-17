@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_IM2COL_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_IM2COL_UTILS_H_
 
-#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -30,7 +30,7 @@ inline void ExtractPatchIntoBufferColumn(const RuntimeShape& input_shape, int w,
                                          int in_depth, int single_buffer_length,
                                          int buffer_id, const T* in_data,
                                          T* conv_buffer_data, uint8 zero_byte) {
-  gemmlowp::ScopedProfilingLabel label("ExtractPatchIntoBufferColumn");
+  ruy::profiler::ScopeLabel label("ExtractPatchIntoBufferColumn");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   // This chunk of code reshapes all the inputs corresponding to
   // output (b, h, w) to a column vector in conv_buffer(:, buffer_id).
@@ -129,7 +129,7 @@ void DilatedIm2col(const ConvParams& params, uint8 zero_byte,
   // For dilated convolution, the input pixels are not contiguous therefore we
   // can't use the same opitimizations as Im2Col(). Though note this code would
   // work fine for the non-dilated case too (though likely a bit slower).
-  gemmlowp::ScopedProfilingLabel label("DilatedIm2col");
+  ruy::profiler::ScopeLabel label("DilatedIm2col");
   TFLITE_DCHECK(dilation_width_factor != 1 || dilation_height_factor != 1);
   TFLITE_DCHECK(im2col_data);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -198,7 +198,7 @@ template <typename T>
 void Im2col(const ConvParams& params, int kheight, int kwidth, uint8 zero_byte,
             const RuntimeShape& input_shape, const T* input_data,
             const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Im2col");
+  ruy::profiler::ScopeLabel label("Im2col");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -234,7 +234,7 @@ void Im2col(const ConvParams& params, int kheight, int kwidth,
             const int32_t* input_offsets, const int input_offsets_size,
             const RuntimeShape& input_shape, const T* input_data,
             const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Im2col");
+  ruy::profiler::ScopeLabel label("Im2col");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;

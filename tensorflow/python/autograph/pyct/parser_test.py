@@ -136,16 +136,29 @@ string""")
 
   def test_unparse(self):
     node = gast.If(
-        test=gast.Num(1),
+        test=gast.Constant(1, kind=None),
         body=[
             gast.Assign(
-                targets=[gast.Name('a', gast.Store(), None)],
-                value=gast.Name('b', gast.Load(), None))
+                targets=[
+                    gast.Name(
+                        'a',
+                        ctx=gast.Store(),
+                        annotation=None,
+                        type_comment=None)
+                ],
+                value=gast.Name(
+                    'b', ctx=gast.Load(), annotation=None, type_comment=None))
         ],
         orelse=[
             gast.Assign(
-                targets=[gast.Name('a', gast.Store(), None)],
-                value=gast.Str('c'))
+                targets=[
+                    gast.Name(
+                        'a',
+                        ctx=gast.Store(),
+                        annotation=None,
+                        type_comment=None)
+                ],
+                value=gast.Constant('c', kind=None))
         ])
 
     source = parser.unparse(node, indentation='  ')
@@ -153,9 +166,9 @@ string""")
         textwrap.dedent("""
             # coding=utf-8
             if 1:
-              a = b
+                a = b
             else:
-              a = 'c'
+                a = 'c'
         """).strip(), source.strip())
 
 

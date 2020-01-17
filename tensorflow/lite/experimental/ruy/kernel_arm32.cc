@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 
 namespace ruy {
 
@@ -80,7 +80,7 @@ void CheckOffsetsInKernelParamsFloat32(const Params&) {
 // tuned. It is meant to run on out-of-order CPUs like the Krait 400 or A9.
 void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
   CheckOffsetsInKernelParamsFloat32(params);
-  gemmlowp::ScopedProfilingLabel label(
+  profiler::ScopeLabel label(
       "Kernel (kNeon, optimized for out-of-order cores)");
 
   const float* lhs_ptr = params.lhs_base_ptr;
@@ -595,7 +595,7 @@ void CheckOffsetsInKernelParams8bit(const Params&) {
 // Relevant target CPUs for this kernel include Krait 400 and A9,
 // since these are 32-bit, out-of-order CPUs.
 void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
-  gemmlowp::ScopedProfilingLabel label(
+  profiler::ScopeLabel label(
       "Kernel (kNeon, optimized for out-of-order cores)");
 
   CheckOffsetsInKernelParams8bit(params);
@@ -1575,7 +1575,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
 // Fast-int8 true "GEMV" kernel (RHS has 1 column). We assume the RHS
 // is still packed as if it has two columns
 void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 2>& params) {
-  gemmlowp::ScopedProfilingLabel label(
+  profiler::ScopeLabel label(
       "Kernel (kNeon, optimized for out-of-order cores)");
 
   CheckOffsetsInKernelParams8bit(params);

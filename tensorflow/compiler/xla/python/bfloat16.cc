@@ -608,7 +608,7 @@ int NPyBfloat16_ArgMinFunc(void* data, npy_intp n, npy_intp* min_ind,
 
 // NumPy casts
 
-template <typename T>
+template <typename T, typename Enable = void>
 struct TypeDescriptor {
   // typedef ... T;  // Representation type in memory for NumPy values of type
   // static int Dtype() { return NPY_...; }  // Numpy type number for T.
@@ -621,14 +621,56 @@ struct TypeDescriptor<bfloat16> {
 };
 
 template <>
+struct TypeDescriptor<uint8> {
+  typedef uint8 T;
+  static int Dtype() { return NPY_UINT8; }
+};
+
+template <>
+struct TypeDescriptor<uint16> {
+  typedef uint16 T;
+  static int Dtype() { return NPY_UINT16; }
+};
+
+template <>
+struct TypeDescriptor<uint32> {
+  typedef uint32 T;
+  static int Dtype() { return NPY_UINT32; }
+};
+
+template <typename Uint64Type>
+struct TypeDescriptor<
+    Uint64Type, typename std::enable_if<std::is_integral<Uint64Type>::value &&
+                                        !std::is_signed<Uint64Type>::value &&
+                                        sizeof(Uint64Type) == 8>::type> {
+  typedef Uint64Type T;
+  static int Dtype() { return NPY_UINT64; }
+};
+
+template <>
+struct TypeDescriptor<int8> {
+  typedef int8 T;
+  static int Dtype() { return NPY_INT8; }
+};
+
+template <>
+struct TypeDescriptor<int16> {
+  typedef int16 T;
+  static int Dtype() { return NPY_INT16; }
+};
+
+template <>
 struct TypeDescriptor<int32> {
   typedef int32 T;
   static int Dtype() { return NPY_INT32; }
 };
 
-template <>
-struct TypeDescriptor<int64> {
-  typedef int64 T;
+template <typename Int64Type>
+struct TypeDescriptor<
+    Int64Type, typename std::enable_if<std::is_integral<Int64Type>::value &&
+                                       std::is_signed<Int64Type>::value &&
+                                       sizeof(Int64Type) == 8>::type> {
+  typedef Int64Type T;
   static int Dtype() { return NPY_INT64; }
 };
 
@@ -1297,6 +1339,24 @@ bool Initialize() {
     return false;
   }
   if (!RegisterBfloat16Cast<bool>(NPY_BOOL, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<uint8>(NPY_UINT8, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<uint16>(NPY_UINT16, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<uint32>(NPY_UINT32, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<uint64>(NPY_UINT64, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<int8>(NPY_INT8, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<int16>(NPY_INT16, /*cast_is_safe=*/false)) {
     return false;
   }
   if (!RegisterBfloat16Cast<int32>(NPY_INT32, /*cast_is_safe=*/false)) {

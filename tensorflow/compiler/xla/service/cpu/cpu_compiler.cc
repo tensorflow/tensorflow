@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -120,12 +119,13 @@ using BufferInfo = cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     string triple, string cpu_name, string features, string entry_point_name,
-    RelocationModel relocation_model)
+    RelocationModel relocation_model, string tensorflow_header_root)
     : triple_(std::move(triple)),
       cpu_name_(std::move(cpu_name)),
       features_(std::move(features)),
       entry_point_name_(std::move(entry_point_name)),
-      relocation_model_(relocation_model) {}
+      relocation_model_(relocation_model),
+      tensorflow_header_root_(std::move(tensorflow_header_root)) {}
 
 CpuAotCompilationOptions::~CpuAotCompilationOptions() = default;
 
@@ -248,7 +248,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ZeroSizedHloElimination>();
 
   pipeline.AddPass<DynamicIndexSplitter>();
-  pipeline.AddPass<CpuHloSupportChecker>();
 
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
@@ -350,7 +349,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "simplification after layout assignement");
+        "simplification after layout assignment");
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,

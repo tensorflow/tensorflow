@@ -238,6 +238,10 @@ build:linux --copt=-w
 build:macos --copt=-w
 build:windows --copt=/w
 
+# Tensorflow uses M_* math constants that only get defined by MSVC headers if
+# _USE_MATH_DEFINES is defined.
+build:windows --copt=/D_USE_MATH_DEFINES
+
 # Default paths for TF_SYSTEM_LIBS
 build:linux --define=PREFIX=/usr
 build:linux --define=LIBDIR=$(PREFIX)/lib
@@ -258,6 +262,9 @@ build:windows --host_cxxopt=/std:c++14
 # On windows, we still link everything into a single DLL.
 build:windows --config=monolithic
 
+# On linux, we dynamically link small amount of kernels
+build:linux --config=dynamic_kernels
+
 # Make sure to include as little of windows.h as possible
 build:windows --copt=-DWIN32_LEAN_AND_MEAN
 build:windows --host_copt=-DWIN32_LEAN_AND_MEAN
@@ -272,7 +279,6 @@ build:windows --host_linkopt=/OPT:REF
 build:windows --linkopt=/OPT:ICF
 build:windows --host_linkopt=/OPT:ICF
 build:windows --experimental_strict_action_env=true
-build:windows --incompatible_windows_native_test_wrapper
 
 # Verbose failure logs when something goes wrong
 build:windows --verbose_failures
@@ -374,9 +380,9 @@ build:rbe_linux_py3 --python_path="/usr/bin/python3"
 build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/py3"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_026:toolchain"
+build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_121:toolchain"
 build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
-build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_026:cc-toolchain-x64_windows"
+build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_121:cc-toolchain-x64_windows"
 build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win_1803:windows_jdk8"
 build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
 build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win_1803:windows_jdk8"

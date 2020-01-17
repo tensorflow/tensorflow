@@ -29,6 +29,7 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 
+TfLiteRegistration* Register_DEPTHWISE_CONV_2D_UINT8();
 TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_REF();
 TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT();
 TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_NEON_OPT();
@@ -610,10 +611,18 @@ class QuantizedDepthwiseConvolutionOpModel
   }
 };
 
+const auto kQuantizedKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_DEPTHWISE_CONVOLUTION_REF()},
+    {"GenericOptimized",
+     ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT()},
+    {"NeonOptimized", ops::builtin::Register_DEPTHWISE_CONVOLUTION_NEON_OPT()},
+    {"Uint8", ops::builtin::Register_DEPTHWISE_CONV_2D_UINT8()},
+});
+
 class QuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMap;
+    return *kQuantizedKernelMap;
   }
 };
 
@@ -699,7 +708,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleTestQuantized) {
                              }));
 }
 
-TEST_P(QuantizedDepthwiseConvolutionOpTest,
+TEST_P(DepthwiseConvolutionOpTest,
        SimpleTestQuantizedFilterMultiplierGreaterThan1) {
   QuantizedDepthwiseConvolutionOpModel quant_op(
       GetRegistration(), {TensorType_UINT8, {1, 3, 2, 2}, -63.5, 64},
@@ -737,7 +746,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
               ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
 }
 
-TEST_P(QuantizedDepthwiseConvolutionOpTest,
+TEST_P(DepthwiseConvolutionOpTest,
        SimpleTestQuantizedOutputMultiplierGreaterThan1) {
   QuantizedDepthwiseConvolutionOpModel quant_op(
       GetRegistration(), {TensorType_UINT8, {1, 3, 2, 2}, -128.5, 128},
@@ -1833,7 +1842,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 INSTANTIATE_TEST_SUITE_P(
     QuantizedDepthwiseConvolutionOpTest, QuantizedDepthwiseConvolutionOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kQuantizedKernelMap)));
 
 INSTANTIATE_TEST_SUITE_P(
     PerChannelQuantizedDepthwiseConvolutionOpTest,

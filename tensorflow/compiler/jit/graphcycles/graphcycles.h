@@ -123,7 +123,7 @@ class GraphCycles {
   absl::Span<const int32> Successors(int32 node) const;
   absl::Span<const int32> Predecessors(int32 node) const;
 
-  // Return a copy of the sucessors set. This is needed for code using the
+  // Return a copy of the successors set. This is needed for code using the
   // collection while modifying the GraphCycles.
   std::vector<int32> SuccessorsCopy(int32 node) const;
   // Return a copy of the predecessors set. This is needed for code using the

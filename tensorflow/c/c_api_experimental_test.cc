@@ -73,6 +73,21 @@ protocol: "grpc"
   TF_DeleteStatus(status);
 }
 
+TEST(CAPI_EXPERIMENTAL, InitializeTPUSystemTest) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+  TF_Buffer* buf = TF_NewBuffer();
+  TFE_InitializeTPUSystem(ctx, "localhost", buf, status);
+  // Note that this assumes TPUs are not available for this test.
+  CHECK_EQ(TF_NOT_FOUND, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteBuffer(buf);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
 TEST(CAPI_EXPERIMENTAL, IsStateful) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);

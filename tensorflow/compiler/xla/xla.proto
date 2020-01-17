@@ -252,7 +252,9 @@ message DebugOptions {
   // Blacklist for cuDNN convolutions.
   string xla_gpu_algorithm_blacklist_path = 128;
 
-  // Next id: 130
+  // Guarantee run-to-run determinism from reductions on XLA:GPU.
+  bool xla_gpu_deterministic_reductions = 130;
+  // Next id: 131
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

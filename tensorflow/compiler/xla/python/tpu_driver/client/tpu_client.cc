@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/python/semaphore.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,15 +35,34 @@ limitations under the License.
 
 namespace xla {
 
+constexpr char kTpuPlatform[] = "tpu";
+
+TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
+                     int core_on_chip)
+    : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform, host_id),
+      coords_(coords),
+      core_on_chip_(core_on_chip) {}
+
 std::string TpuDevice::DebugString() const {
-  return absl::StrCat("TPU_", id());
+  return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), host_id(),
+                         coords_[0], coords_[1], coords_[2], core_on_chip_);
 }
 
-static std::shared_ptr<Device> MakeDevice(const std::string& platform_name,
-                                          int id, int local_device_ordinal) {
-  CHECK_EQ(platform_name, "tpu");
-  CHECK_EQ(id, local_device_ordinal);  // Every device must be local for now.
-  return std::make_shared<TpuDevice>(id, local_device_ordinal, "tpu");
+xla::StatusOr<std::vector<std::shared_ptr<xla::Device>>>
+TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
+  std::vector<std::shared_ptr<Device>> devices;
+  for (const auto& chip : system_info.tpu_chip()) {
+    auto& coord = chip.chip_coord();
+    std::array<int, 3> coords_array = {coord.x(), coord.y(), coord.z()};
+    int host_id = chip.host_id();
+    for (const auto& core : chip.core()) {
+      auto device = std::make_shared<TpuDevice>(
+          core.id(), host_id, coords_array, core.core_on_chip_index());
+      devices.push_back(device);
+    }
+  }
+
+  return devices;
 }
 
 StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
@@ -50,7 +70,6 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
   tpu_driver::TpuDriverConfig driver_config;
   driver_config.set_worker(worker);
   auto client_status = tpu_driver::TpuDriverRegistry::Open(driver_config);
-
   if (!client_status.ok()) {
     return client_status.status();
   }
@@ -59,19 +78,13 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
 
   tpu_driver::SystemInfo system_info;
   client->QuerySystemInfo(&system_info);
-  int num_cores =
-      system_info.tpu_chip_size() * system_info.tpu_chip(0).core_size();
 
-  std::vector<std::shared_ptr<Device>> devices;
-  CHECK_GE(num_cores, 1);
-  LOG(INFO) << "Creating " << num_cores << " TPU device(s).";
-  devices.reserve(num_cores);
-  for (int i = 0; i < num_cores; ++i) {
-    devices.push_back(MakeDevice("tpu", i, i));
-  }
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<Device>> devices,
+                      TpuDevice::GetTpuDevices(system_info));
 
-  return std::make_shared<PyTpuClient>("tpu", std::move(client),
-                                       std::move(devices), /*host_id=*/0);
+  return std::make_shared<PyTpuClient>(kTpuPlatform, std::move(client),
+                                       std::move(devices),
+                                       system_info.host_id());
 }
 
 PyTpuClient::PyTpuClient(std::string platform_name,
@@ -82,18 +95,21 @@ PyTpuClient::PyTpuClient(std::string platform_name,
       driver_(std::move(driver)),
       devices_(std::move(devices)),
       host_id_(host_id) {
-  local_devices_.resize(devices_.size());
   for (const std::shared_ptr<Device>& device : devices_) {
     CHECK(id_to_device_.insert({device->id(), device}).second)
         << "Duplicate device id: " << device->id();
 
-    if (device->local_device_ordinal() != -1) {
-      int idx = device->local_device_ordinal();
-      CHECK(local_devices_[idx] == nullptr) << idx;
-      CHECK_LT(idx, local_devices_.size());
-      local_devices_[idx] = device;
+    if (device->host_id() == host_id_) {
+      LOG(INFO) << "Detected local device, host-id: " << host_id_
+                << ". core-id: " << device->id();
+      local_devices_.push_back(device);
+    } else {
+      VLOG(2) << "Other devices, id: " << device->id();
     }
   }
+  CHECK_GE(local_devices_.size(), 1);
+  LOG(INFO) << "Creating " << local_devices_.size() << " TPU device(s).";
+
   for (int idx = 0; idx < local_devices_.size(); ++idx) {
     CHECK(local_devices_[idx] != nullptr) << idx;
   }
@@ -116,15 +132,9 @@ StatusOr<Literal> PyTpuClient::TransferFromOutfeed(const Shape& shape,
 }
 
 StatusOr<DeviceAssignment> PyTpuClient::GetDefaultDeviceAssignment(
-    int num_replicas) const {
-  // Copied from xla::ComputationPlace::AssignDevices assuming computation_count
-  // = 1. Assign devices for each computation. Replicas are assigned to each
-  // device in order.
-  DeviceAssignment assignment(num_replicas, 1);
-  for (int replica = 0; replica < num_replicas; ++replica) {
-    assignment(replica, 0) = replica;
-  }
-  return std::move(assignment);
+    int num_replicas, int num_partitions) const {
+  xla::ComputationPlacer placer;
+  return placer.AssignDevices(num_replicas, num_partitions);
 }
 
 Status PyTpuClient::CheckDeviceOrdinal(int device_ordinal,
@@ -218,8 +228,8 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::MakeTuple(
     std::shared_ptr<TpuSharedBuffer> child_device_buffer =
         child_buffer->DeviceBuffer();
     // Merge all definition events from all children, so that anyone using this
-    // tuple must wait for all its children to finish receiving transfers.
-    // This works recursively up a nested tuple tree as well.
+    // tuple must wait for all its children to finish receiving transfers. This
+    // works recursively up a nested tuple tree as well.
     for (std::shared_ptr<tpu_driver::Event> child_event :
          child_device_buffer->wait_for_use) {
       child_events.push_back(std::move(child_event));
@@ -345,7 +355,7 @@ PyTpuBuffer::DestructureTuple() {
   tensorflow::profiler::TraceMe traceme("PyTpuBuffer::DestructureTuple");
   if (!on_host_shape_.IsTuple()) {
     return InvalidArgument(
-        "Attemped to destructure a PyTpuBuffer that did not have a tuple "
+        "Attempted to destructure a PyTpuBuffer that did not have a tuple "
         "shape; shape: %s",
         ShapeUtil::HumanString(on_host_shape_));
   }
@@ -488,30 +498,35 @@ PyTpuExecutable::PyTpuExecutable(
       device_assignment_(std::move(device_assignment)),
       result_shape_(std::move(result_shape)) {
   const int num_replicas = device_assignment_.replica_count();
+  const int num_partitions = device_assignment_.computation_count();
   for (int replica = 0; replica < num_replicas; ++replica) {
-    const int device_id = device_assignment_(replica, 0);
-    std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
-    if (device->host_id() != client_->host_id()) {
-      VLOG(3) << "Non-local device: " << device_id;
-      continue;
+    for (int partition = 0; partition < num_partitions; ++partition) {
+      int device_id = device_assignment_(replica, partition);
+      std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
+      if (device->host_id() != client_->host_id()) {
+        VLOG(3) << "Non-local device: " << device_id;
+        continue;
+      }
+      local_logical_devices_.emplace_back(replica, partition);
+      local_devices_.push_back(device);
     }
-    local_replicas_.push_back(replica);
-    local_devices_.push_back(device);
   }
-  CHECK_GE(local_replicas_.size(), 1);
-  CHECK_EQ(local_replicas_.size(), executables_.size());
+  CHECK_GE(local_devices_.size(), 1);
+  CHECK_EQ(local_devices_.size(), executables_.size());
+  CHECK_LE(local_devices_.size(), client_->local_device_count())
+      << "Inconsistent local device count.";
 }
 
 PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
     absl::Span<const std::vector<PyTpuBuffer*>> all_core_arguments,
     absl::Span<PyTpuBuffer* const> this_core_arguments, int replica,
-    const RunId& run_id) {
-  const int device_id = device_assignment_(replica, 0);
+    int partition, const RunId& run_id) {
+  const int device_id = device_assignment_(replica, partition);
   std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
   CHECK_EQ(device->host_id(), client_->host_id());
-  int device_ordinal = device->local_device_ordinal();
+  int device_ordinal = device->id();
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Execute");
-  VLOG(3) << "Replica " << replica
+  VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
   std::unique_ptr<::xla::PyTpuBuffer> output_buffer =
@@ -586,13 +601,18 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuExecutable::Execute(
         "Attempted to execute computation with %d replicas using Execute()",
         num_replicas());
   }
+  if (num_partitions() != 1) {
+    return InvalidArgument(
+        "Attempted to execute computation with %d partitions using Execute()",
+        num_partitions());
+  }
 
   std::vector<PyTpuBuffer*> all_core_arguments(argument_handles.begin(),
                                                argument_handles.end());
 
   ExecuteResult result =
       ExecuteHelper(absl::MakeSpan(&all_core_arguments, 1), argument_handles,
-                    /*replica=*/0, RunId());
+                    /*replica=*/0, /*partition=*/0, RunId());
 
   Status status = WaitForExecuteEvent(result.on_execute_finished.get());
 
@@ -608,26 +628,37 @@ StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>>
 PyTpuExecutable::ExecutePerReplica(
     absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::ExecutePerReplica");
-  int num_local_replicas = local_replicas_.size();
-  const int num_local_devices = client_->local_device_count();
-
-  if (argument_handles.size() != num_local_replicas) {
+  if (num_partitions() != 1) {
     return InvalidArgument(
-        "Attempted to execute with %d local replicas when local replica count "
-        "is %d (total replica count: %d)",
-        argument_handles.size(), num_local_replicas, num_replicas());
+        "Attempted to execute computation with %d partitions using "
+        "ExecutePerReplica()",
+        num_partitions());
   }
-  if (argument_handles.size() > num_local_devices) {
+  return ExecuteOnLocalDevices(argument_handles);
+}
+
+StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>>
+PyTpuExecutable::ExecuteOnLocalDevices(
+    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
+  tensorflow::profiler::TraceMe traceme(
+      "PyTpuExecutable::ExecuteOnLocalDevices");
+
+  const int num_local_devices = local_devices_.size();
+
+  if (argument_handles.size() != num_local_devices) {
     return InvalidArgument(
-        "Attempted to execute with %d replicas when device count is %d",
-        argument_handles.size(), num_local_devices);
+        "Attempted to execute with %d argument lists when local device "
+        "count is %d (total replica count: %d, partition count: %d)",
+        argument_handles.size(), num_local_devices, num_replicas(),
+        num_partitions());
   }
 
-  VLOG(1) << "Executing replicated computation; num_replicas=" << num_replicas()
-          << " num_local_replicas=" << num_local_replicas;
+  VLOG(1) << "Executing computation; num_replicas=" << num_replicas()
+          << " num_partitions=" << num_partitions()
+          << " num_local_devices=" << num_local_devices;
 
   absl::Mutex results_lock;
-  std::vector<ExecuteResult> results(num_local_replicas);
+  std::vector<ExecuteResult> results(num_local_devices);
 
   auto* thread_pool = client_->GetThreadPool();
 
@@ -635,23 +666,23 @@ PyTpuExecutable::ExecutePerReplica(
   Status first_failure_status;
 
   xla::Semaphore execute_semaphore(0);
-  for (int i = 0; i < num_local_replicas; ++i) {
+  for (int i = 0; i < num_local_devices; ++i) {
     // We are scheduling Execute on a thread pool as ExecuteHelper can take a
     // long time and we want all cores to be scheduled in parallel.
     thread_pool->Schedule([this, i, argument_handles, &results, &results_lock,
                            &execute_semaphore]() {
-      const int replica = local_replicas_[i];
+      const auto [replica, partition] = local_logical_devices_[i];
       RunId run_id;
-      auto result =
-          ExecuteHelper(argument_handles, argument_handles[i], replica, run_id);
+      auto result = ExecuteHelper(argument_handles, argument_handles[i],
+                                  replica, partition, run_id);
       results[i] = std::move(result);
       execute_semaphore.Release(1);
     });
   }
 
-  execute_semaphore.Acquire(num_local_replicas);
+  execute_semaphore.Acquire(num_local_devices);
 
-  for (int i = 0; i < num_local_replicas; ++i) {
+  for (int i = 0; i < num_local_devices; ++i) {
     auto s = WaitForExecuteEvent(results[i].on_execute_finished.get());
     if (!s.ok()) {
       if (failed == 0) {
@@ -666,8 +697,8 @@ PyTpuExecutable::ExecutePerReplica(
   }
   VLOG(1) << "Replicated execution complete.";
 
-  std::vector<std::unique_ptr<PyTpuBuffer>> wrapped_results(num_local_replicas);
-  for (int i = 0; i < num_local_replicas; ++i) {
+  std::vector<std::unique_ptr<PyTpuBuffer>> wrapped_results(num_local_devices);
+  for (int i = 0; i < num_local_devices; ++i) {
     wrapped_results[i] = std::move(results[i].buffer);
   }
   return wrapped_results;
@@ -703,8 +734,9 @@ PyTpuExecutable::ExecutePerReplica(
           device_assignment->computation_count());
     }
   } else {
-    TF_ASSIGN_OR_RETURN(device_assignment, client->GetDefaultDeviceAssignment(
-                                               options.num_replicas()));
+    TF_ASSIGN_OR_RETURN(device_assignment,
+                        client->GetDefaultDeviceAssignment(
+                            options.num_replicas(), options.num_partitions()));
   }
   CHECK_GE(options.num_replicas(), 1);
   CHECK_EQ(options.num_replicas(), device_assignment->replica_count());
@@ -742,7 +774,7 @@ PyTpuExecutable::ExecutePerReplica(
     const int device_id = (*device_assignment)(replica, 0);
     std::shared_ptr<Device> device = LookupDevice(*client, device_id);
     CHECK_EQ(device->host_id(), client->host_id());
-    int device_ordinal = device->local_device_ordinal();
+    int device_ordinal = device->id();
     loaded_programs[replica] = client->driver()->LoadProgram(
         device_ordinal, compiled_program.get(), {});
   }

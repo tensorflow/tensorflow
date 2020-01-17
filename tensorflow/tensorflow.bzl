@@ -4,6 +4,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
+    "register_extension_info",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
     "tf_exec_compatible_with",
@@ -15,7 +16,7 @@ load(
     "if_tensorrt",
 )
 load(
-    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -47,15 +48,17 @@ load(
     "if_ngraph",
 )
 
-def register_extension_info(**kwargs):
-    pass
-
 # version for the shared libraries, can
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 VERSION_MAJOR = VERSION.split(".")[0]
+
+# Sanitize a dependency so that it works correctly from code that includes
+# TensorFlow as a submodule.
+def clean_dep(dep):
+    return str(Label(dep))
 
 def if_v2(a):
     return select({
@@ -77,6 +80,12 @@ def if_nvcc(a):
 
 def if_cuda_is_configured_compat(x):
     return if_cuda_is_configured(x)
+
+def if_xla_available(if_true, if_false = []):
+    return select({
+        clean_dep("//tensorflow:with_xla_support"): if_true,
+        "//conditions:default": if_false,
+    })
 
 # Given a source file, generate a test name.
 # i.e. "common_runtime/direct_session_test.cc" becomes
@@ -114,11 +123,6 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
 def tf_portable_proto_library(name, proto_deps, deps = [], **kwargs):
     _ignore = [kwargs]
     native.cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
-
-# Sanitize a dependency so that it works correctly from code that includes
-# TensorFlow as a submodule.
-def clean_dep(dep):
-    return str(Label(dep))
 
 def if_android_x86(a):
     return select({
@@ -170,6 +174,12 @@ def if_emscripten(a):
         "//conditions:default": [],
     })
 
+def if_chromiumos(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow:chromiumos"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_macos(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:macos"): a,
@@ -191,6 +201,8 @@ def if_ios_x86_64(a):
 def if_mobile(a):
     return select({
         clean_dep("//tensorflow:android"): a,
+        clean_dep("//tensorflow:chromiumos"): a,
+        clean_dep("//tensorflow:emscripten"): a,
         clean_dep("//tensorflow:ios"): a,
         "//conditions:default": [],
     })
@@ -198,6 +210,8 @@ def if_mobile(a):
 def if_not_mobile(a):
     return select({
         clean_dep("//tensorflow:android"): [],
+        clean_dep("//tensorflow:chromiumos"): [],
+        clean_dep("//tensorflow:emscripten"): [],
         clean_dep("//tensorflow:ios"): [],
         "//conditions:default": a,
     })
@@ -263,6 +277,8 @@ def get_win_copts(is_external = False):
         # "/EHs-c-",
         "/wd4577",
         "/DNOGDI",
+        # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
+        # where we set some other options globally.
     ]
     if is_external:
         return WINDOWS_COPTS + ["/UTF_COMPILE_LIBRARY"]
@@ -294,6 +310,7 @@ def tf_copts(
         (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
         if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
+        if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
@@ -338,6 +355,18 @@ def tf_opts_nortti_if_emscripten():
         "-fno-rtti",
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+    ])
+
+def tf_defines_nortti_if_android():
+    return if_android([
+        "GOOGLE_PROTOBUF_NO_RTTI",
+        "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+    ])
+
+def tf_defines_nortti_if_emscripten():
+    return if_emscripten([
+        "GOOGLE_PROTOBUF_NO_RTTI",
+        "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ])
 
 def tf_features_nomodules_if_android():
@@ -469,7 +498,8 @@ def tf_shared_library_deps():
 def tf_binary_dynamic_kernel_dsos():
     return if_dynamic_kernels(
         extra_deps = [
-            "//tensorflow/core/kernels:libtfkernel_all_kernels.so",
+            # TODO(gunan): Remove dependencies on these, and make them load dynamically.
+            # "//tensorflow/core/kernels:libtfkernel_all_kernels.so",
         ],
         otherwise = [],
     )
@@ -1172,7 +1202,8 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}_gpu",
 )
 
-# Create a cc_test for each of the tensorflow tests listed in "tests"
+# Create a cc_test for each of the tensorflow tests listed in "tests", along
+# with a test suite of the given name, if provided.
 def tf_cc_tests(
         srcs,
         deps,
@@ -1182,10 +1213,14 @@ def tf_cc_tests(
         size = "medium",
         args = None,
         linkopts = [],
-        kernels = []):
+        kernels = [],
+        create_named_test_suite = False,
+        visibility = None):
+    test_names = []
     for src in srcs:
+        test_name = src_to_test_name(src)
         tf_cc_test(
-            name = src_to_test_name(src),
+            name = test_name,
             size = size,
             srcs = [src],
             args = args,
@@ -1194,6 +1229,17 @@ def tf_cc_tests(
             linkstatic = linkstatic,
             tags = tags,
             deps = deps,
+            visibility = visibility,
+        )
+        test_names.append(test_name)
+
+    # Add a test suite with the generated tests if a name was provided and
+    # it does not conflict any of the test names.
+    if create_named_test_suite:
+        native.test_suite(
+            name = name,
+            tests = test_names,
+            visibility = visibility,
         )
 
 def tf_cc_test_mkl(
@@ -1379,7 +1425,7 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
         ]) + if_rocm_is_configured(cuda_deps + [
             "@local_config_rocm//rocm:rocm_headers",
         ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
 
@@ -2044,9 +2090,9 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
         }),
         data = data + select({
-            "//conditions:default": [],
+            "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
-        }) + tf_binary_dynamic_kernel_dsos(),
+        }),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         **kwargs
     )
@@ -2090,7 +2136,6 @@ def tf_py_test(
         args = [],
         tags = [],
         shard_count = 1,
-        additional_deps = [],
         additional_visibility = [],
         kernels = [],
         flaky = 0,
@@ -2100,6 +2145,9 @@ def tf_py_test(
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
+    if "additional_deps" in kwargs:
+        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
+    deps = kwargs.pop("deps", [])
 
     # xla_enable_strict_auto_jit is used to run Tensorflow unit tests with all XLA compilable
     # kernels compiled with XLA.
@@ -2107,9 +2155,9 @@ def tf_py_test(
         xla_enabled = True
         xla_test_true_list += ["//tensorflow/python:is_xla_test_true"]
     if xla_enabled:
-        additional_deps = additional_deps + tf_additional_xla_deps_py()
+        deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
-        additional_deps = additional_deps + tf_additional_grpc_deps_py()
+        deps = deps + tf_additional_grpc_deps_py()
 
     # Python version placeholder
     kwargs.setdefault("srcs_version", "PY2AND3")
@@ -2129,13 +2177,13 @@ def tf_py_test(
         deps = depset([
             clean_dep("//tensorflow/python:extra_py_tests_deps"),
             clean_dep("//tensorflow/python:gradient_checker"),
-        ] + additional_deps + xla_test_true_list),
+        ] + deps + xla_test_true_list),
         **kwargs
     )
 
 register_extension_info(
     extension_name = "tf_py_test",
-    label_regex_map = {"additional_deps": "deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def gpu_py_test(
@@ -2146,7 +2194,6 @@ def gpu_py_test(
         main = None,
         args = [],
         shard_count = 1,
-        additional_deps = [],
         kernels = [],
         tags = [],
         flaky = 0,
@@ -2159,6 +2206,8 @@ def gpu_py_test(
     _ignored = [xla_enable_strict_auto_jit]
     if main == None:
         main = name + ".py"
+    if "additional_deps" in kwargs:
+        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
     for config in ["cpu", "gpu"]:
         test_name = name
         test_tags = tags
@@ -2169,7 +2218,6 @@ def gpu_py_test(
             name = test_name,
             size = size,
             srcs = srcs,
-            additional_deps = additional_deps,
             args = args,
             data = data,
             flaky = flaky,
@@ -2185,7 +2233,7 @@ def gpu_py_test(
 
 register_extension_info(
     extension_name = "gpu_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 # terminology changes: saving cuda_* definition for compatibility
@@ -2194,7 +2242,7 @@ def cuda_py_test(*args, **kwargs):
 
 register_extension_info(
     extension_name = "cuda_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def sycl_py_test(
@@ -2205,18 +2253,19 @@ def sycl_py_test(
         main = None,
         args = [],
         shard_count = 1,
-        additional_deps = [],
         kernels = [],
         tags = [],
         flaky = 0,
         xla_enabled = False,
-        grpc_enabled = False):
+        grpc_enabled = False,
+        **kwargs):
     test_tags = tags + tf_sycl_tests_tags()
+    if "additional_deps" in kwargs:
+        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
     tf_py_test(
         name = name,
         size = size,
         srcs = srcs,
-        additional_deps = additional_deps,
         args = args,
         data = data,
         flaky = flaky,
@@ -2226,18 +2275,18 @@ def sycl_py_test(
         shard_count = shard_count,
         tags = test_tags,
         xla_enabled = xla_enabled,
+        **kwargs
     )
 
 register_extension_info(
     extension_name = "sycl_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def py_tests(
         name,
         srcs,
         size = "medium",
-        additional_deps = [],
         kernels = [],
         data = [],
         tags = [],
@@ -2247,6 +2296,8 @@ def py_tests(
         xla_enabled = False,
         grpc_enabled = False,
         **kwargs):
+    if "additional_deps" in kwargs:
+        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
     for src in srcs:
         test_name = src.split("/")[-1].split(".")[0]
         if prefix:
@@ -2255,7 +2306,6 @@ def py_tests(
             name = test_name,
             size = size,
             srcs = [src],
-            additional_deps = additional_deps,
             data = data,
             grpc_enabled = grpc_enabled,
             kernels = kernels,
@@ -2271,7 +2321,6 @@ def gpu_py_tests(
         name,
         srcs,
         size = "medium",
-        additional_deps = [],
         kernels = [],
         data = [],
         shard_count = 1,
@@ -2285,11 +2334,12 @@ def gpu_py_tests(
     # XLA tests once enough compute resources are available.
     _ignored = [xla_enable_strict_auto_jit]
     test_tags = tags + tf_gpu_tests_tags()
+    if "additional_deps" in kwargs:
+        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
     py_tests(
         name = name,
         size = size,
         srcs = srcs,
-        additional_deps = additional_deps,
         data = data,
         grpc_enabled = grpc_enabled,
         kernels = kernels,
@@ -2375,7 +2425,7 @@ def tf_py_build_info_genrule(name, out, **kwargs):
             " --is_config_rocm " + if_rocm("True", "False") +
             " --key_value " +
             if_cuda(" cuda_version_number=$${TF_CUDA_VERSION:-} cudnn_version_number=$${TF_CUDNN_VERSION:-} ", "") +
-            if_windows(" msvcp_dll_name=msvcp140.dll ", "") +
+            if_windows(" msvcp_dll_names=msvcp140.dll,msvcp140_1.dll ", "") +
             if_windows_cuda(" ".join([
                 "nvcuda_dll_name=nvcuda.dll",
                 "cudart_dll_name=cudart64_$$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
@@ -2415,6 +2465,7 @@ def pybind_extension(
         copts = [],
         linkopts = [],
         deps = [],
+        defines = [],
         visibility = None,
         testonly = None,
         licenses = None,
@@ -2458,7 +2509,15 @@ def pybind_extension(
         name = so_file,
         srcs = srcs + hdrs,
         data = data,
-        copts = copts + ["-fexceptions"],
+        copts = copts + [
+            "-fno-strict-aliasing",
+            "-fexceptions",
+        ] + select({
+            clean_dep("//tensorflow:windows"): [],
+            "//conditions:default": [
+                "-fvisibility=hidden",
+            ],
+        }),
         linkopts = linkopts + _rpath_linkopts(name) + select({
             "@local_config_cuda//cuda:darwin": [
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
@@ -2473,6 +2532,7 @@ def pybind_extension(
             exported_symbols_file,
             version_script_file,
         ],
+        defines = defines,
         features = features + ["-use_header_modules"],
         linkshared = 1,
         testonly = testonly,
@@ -2518,6 +2578,7 @@ def tf_python_pybind_extension(
         copts = [],
         hdrs = [],
         deps = [],
+        defines = [],
         visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
@@ -2532,8 +2593,19 @@ def tf_python_pybind_extension(
         copts = copts,
         hdrs = hdrs,
         deps = deps + tf_binary_pybind_deps() + mkl_deps(),
+        defines = defines,
         visibility = visibility,
     )
+
+def tf_pybind_cc_library_wrapper(name, deps, visibility = None):
+    """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.
+
+    This wrapper ensures that cc libraries' and protos' headers are made
+    available to pybind code, without creating ODR violations in the dynamically
+    linked case.  The symbols in these deps symbols should be linked to, and
+    exported by, the core pywrap_tensorflow_internal.so
+    """
+    cc_header_only_library(name = name, deps = deps, visibility = visibility)
 
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.
@@ -2570,8 +2642,8 @@ def tf_jit_compilation_passes_extra_deps():
 
 def if_mlir(if_true, if_false = []):
     return select({
+        str(Label("//tensorflow:with_mlir_support")): if_true,
         "//conditions:default": if_false,
-        "//tensorflow:with_mlir_support": if_true,
     })
 
 def tfcompile_extra_flags():

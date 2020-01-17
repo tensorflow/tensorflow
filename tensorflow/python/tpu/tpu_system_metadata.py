@@ -199,7 +199,7 @@ def master_job(master, cluster_def):
 
   if (not cluster_def or not cluster_def.job):
     return _DEFAULT_JOB_NAME
-  job_names = set([job.name for job in cluster_def.job])
+  job_names = set(job.name for job in cluster_def.job)
   if _DEFAULT_JOB_NAME in job_names:
     # b/37868888 tracks allowing ClusterSpec propagation to reuse job names.
     raise ValueError('Currently, tpu_worker is not an allowed job name.')
@@ -210,6 +210,4 @@ def master_job(master, cluster_def):
       job_names.remove(_DEFAULT_COORDINATOR_JOB_NAME)
       return job_names.pop()
     # TODO(b/67716447): Include more sophisticated heuristics.
-  raise ValueError(
-      'Could not infer TPU job name. Please specify a tpu_job_name as part '
-      'of your TPUConfig.')
+  raise ValueError('Could not infer TPU job name.')

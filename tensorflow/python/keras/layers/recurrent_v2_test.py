@@ -21,11 +21,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
+import os
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -100,6 +101,18 @@ class RNNV2Test(keras_parameterized.TestCase):
         layer(128, stateful=True, return_sequences=True, dropout=0.2,
               batch_input_shape=[32, None, 5], recurrent_dropout=0.2)
     ])
+
+  def test_recurrent_dropout_saved_model(self):
+    if not context.executing_eagerly():
+      self.skipTest('v2-only test')
+    inputs = keras.Input(shape=(784, 3), name='digits')
+    x = keras.layers.GRU(64, activation='relu', name='GRU', dropout=0.1)(inputs)
+    x = keras.layers.Dense(64, activation='relu', name='dense')(x)
+    outputs = keras.layers.Dense(
+        10, activation='softmax', name='predictions')(
+            x)
+    model = keras.Model(inputs=inputs, outputs=outputs, name='3_layer')
+    model.save(os.path.join(self.get_temp_dir(), 'model'), save_format='tf')
 
 
 if __name__ == '__main__':

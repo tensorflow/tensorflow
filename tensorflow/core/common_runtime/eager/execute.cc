@@ -25,12 +25,14 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -73,11 +75,6 @@ namespace tensorflow {
 
 namespace {
 
-// Copy of the definition in third_party/tensorflow/compiler/jit/defs.h
-// Copied here because we don't currently compile XLA on windows. So, can't
-// depend on it directly.
-const char* const kXlaCompileAttr = "_XlaCompile";
-
 // Using absl::StrJoin with lambda does not work in tf-lite builds.
 std::vector<string> DevicesToString(const std::vector<Device*> devices) {
   std::vector<string> v;
@@ -86,30 +83,6 @@ std::vector<string> DevicesToString(const std::vector<Device*> devices) {
     v.push_back(d->name());
   }
   return v;
-}
-
-// Initializes the step stats if needed.
-void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
-  // Lazily initialize the RunMetadata with information about all devices if
-  // this is the first call.
-  while (step_stats->dev_stats_size() < ctx->devices()->size()) {
-    int device_idx = step_stats->dev_stats_size();
-    auto* dev_stats = step_stats->add_dev_stats();
-    dev_stats->set_device(ctx->devices()->at(device_idx)->name());
-  }
-}
-
-int StepStatsDeviceIndex(StepStats* step_stats, EagerContext* ctx,
-                         Device* device) {
-  // Find the current device's index.
-  for (int i = 0; i < ctx->devices()->size(); ++i) {
-    if (ctx->devices()->at(i) == device ||
-        ctx->devices()->at(i)->name() == device->name()) {
-      return i;
-    }
-  }
-  // TODO(apassos) do not fall back to host CPU if device is unknown.
-  return 0;
 }
 
 const string& DeviceNameOrUnspecified(Device* device) {
@@ -379,8 +352,8 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
   }
 }
 
-Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
-                            bool* compile_with_xla) {
+Status MustCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
+                          bool* compile_with_xla) {
   if (!op->is_function()) {
     *compile_with_xla = false;
     return Status::OK();
@@ -395,7 +368,7 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
   }
 
   // Does node have an explicit request to compile or not?
-  Status status = op->Attrs().Get(kXlaCompileAttr, compile_with_xla);
+  Status status = op->Attrs().Get(kXlaMustCompileAttr, compile_with_xla);
   if (status.ok()) {
     DVLOG(2) << "Caller explicitly requested "
              << (*compile_with_xla ? "" : "not ")
@@ -410,7 +383,7 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
 
-  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaCompileAttr,
+  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaMustCompileAttr,
                        compile_with_xla);
   if (status.ok()) {
     DVLOG(2) << "Function definition explicitly specifies "
@@ -536,15 +509,14 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     DVLOG(2) << "Creating new kernel for " << op->Name() << " on device "
              << DeviceNameOrUnspecified(op->Device());
     bool run_function_with_flr = false;
-    bool compile_with_xla = false;
     if (op->is_function()) {
       bool compile_with_xla;
-      TF_RETURN_IF_ERROR(ShouldCompileWithXLA(op, ctx, &compile_with_xla));
+      TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       if (compile_with_xla) {
         // Note that it is not ideal, but currently correct, to set this
         // attribute after computing the kernel cache key above.
         // Note: If the attribute is already set to true, this is a noop.
-        op->MutableAttrs()->Set(kXlaCompileAttr, true);
+        op->MutableAttrs()->Set(kXlaMustCompileAttr, true);
       } else {
         run_function_with_flr = true;
       }
@@ -585,8 +557,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       // that we don't support legitimate sending/receiving across function
       // boundary.
       DVLOG(2) << "Running " << ndef.op() << " using multi-device function. "
-               << "compile_with_xla=" << compile_with_xla
-               << ". Full node_def=" << ndef.DebugString();
+               << "Full node_def=" << ndef.DebugString();
       std::function<int64()> get_op_id = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
       if (ctx->LazyCopyFunctionRemoteInputs()) {
@@ -601,12 +572,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
           get_op_id));
     } else {
       DVLOG(2) << "Running " << ndef.op() << " using op kernel. "
-               << "compile_with_xla=" << compile_with_xla
                << ". Full node_def=" << ndef.DebugString();
-      kernel.reset(new KernelAndDeviceOp(ctx->GetRendezvous(), ctx->LogMemory(),
-                                         flr, runner,
-                                         ctx->GetCollectiveExecutorHandle(),
-                                         ctx->HostCPU(), compile_with_xla));
+      kernel.reset(new KernelAndDeviceOp(
+          ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU()));
     }
 
     TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
@@ -723,11 +692,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (op->Device() == nullptr) {
     tensorflow::Device* device = nullptr;
     string device_name = op->GetDeviceName();
-    TF_RETURN_IF_ERROR(ctx->FindDeviceByName(device_name, &device));
+    TF_RETURN_IF_ERROR(ctx->FindDeviceFromName(device_name.c_str(), &device));
     op->SetDevice(device);
   }
 
-  eager::EagerClient* eager_client = nullptr;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   uint64 context_id = ctx->GetContextId();
   TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceParsedName(), &eager_client));
   string remote_task;
@@ -860,7 +829,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
            << " (is async?: " << executor.Async() << ").";
 
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-      std::move(request), op_device, eager_client,
+      std::move(request), op_device, eager_client.get(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext()->FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
   Status s = executor.AddOrExecute(std::move(node));

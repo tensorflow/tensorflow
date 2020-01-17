@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
@@ -97,6 +98,9 @@ constexpr double kCyclePrefetchFactor = 2.0L;
 // results that will be prefetched ahead of time. The `+ 1` is to match the
 // behavior of the original autotune implementation.
 constexpr double kPerIteratorPrefetchFactor = 2.0L;
+
+// Period between reporting dataset statistics.
+constexpr int kStatsReportingPeriodMillis = 1000;
 
 // The motivation for creating an alternative implementation of parallel
 // interleave is to decouple the degree of parallelism from the cycle length.
@@ -242,12 +246,15 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // scheduled into the shared threadpool. The threadpool is guaranteed to
       // support `num_threads` concurrent tasks without blocking indefinitely.
       //
-      // Allocate one thread for the worker manager, `cycle_length_` threads for
-      // the current workers, and `future_elements_prefetch_` for the future
-      // workers.
+      // Allocate one thread for the worker manager, one thread for stats
+      // collection, `cycle_length_` threads for the current workers, and
+      // `future_elements_prefetch_` for the future workers.
       int max_current_workers = dataset()->cycle_length_;
       int future_workers = future_elements_prefetch_ + dataset()->cycle_length_;
-      const int num_threads = 1 + max_current_workers + future_workers;
+      int num_threads = 1 + max_current_workers + future_workers;
+      if (ctx->stats_aggregator()) {
+        num_threads++;
+      }
       thread_pool_ = ctx->CreateThreadPool(kTfDataParallelInterleaveWorkerPool,
                                            num_threads);
       if (num_parallel_calls_->value == model::kAutotune) {
@@ -332,13 +339,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       VLOG(4) << "State before save:\n" << DebugString();
       TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kBlockIndex), block_index_));
+          writer->WriteScalar(prefix(), kBlockIndex, block_index_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kCycleIndex), cycle_index_));
+          writer->WriteScalar(prefix(), kCycleIndex, cycle_index_));
       if (end_of_input_) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kEndOfInput), ""));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kEndOfInput, ""));
       }
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kElementIdCounter),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kElementIdCounter,
                                              element_id_counter_));
       TF_RETURN_IF_ERROR(WriteCurrentElements(writer));
       TF_RETURN_IF_ERROR(WriteFutureElements(writer));
@@ -350,19 +357,22 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      mutex_lock l(*mu_);
-      DCHECK(!threads_initialized_);
-      DCHECK(!initial_elements_created_);
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kBlockIndex), &block_index_));
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kCycleIndex), &cycle_index_));
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kElementIdCounter),
-                                            &element_id_counter_));
-      end_of_input_ = reader->Contains(full_name(kEndOfInput));
+      {
+        mutex_lock l(*mu_);
+        DCHECK(!threads_initialized_);
+        DCHECK(!initial_elements_created_);
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kBlockIndex, &block_index_));
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kCycleIndex, &cycle_index_));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kElementIdCounter,
+                                              &element_id_counter_));
+        end_of_input_ = reader->Contains(prefix(), kEndOfInput);
+      }
       TF_RETURN_IF_ERROR(ReadCurrentElements(ctx, reader));
       TF_RETURN_IF_ERROR(ReadFutureElements(ctx, reader));
+      mutex_lock l(*mu_);
       initial_elements_created_ = false;
       for (int i = 0; i < current_elements_.size(); ++i) {
         int index = (cycle_index_ + i) % current_elements_.size();
@@ -456,6 +466,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       current_workers_cond_var_.notify_all();
       future_workers_cond_var_.notify_all();
       num_parallel_calls_cond_var_->notify_all();
+      stats_thread_cond_var_.notify_all();
       while (wait && outstanding_threads_ > 0) {
         outstanding_threads_finished_cond_var_.wait(l);
       }
@@ -482,6 +493,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (!threads_initialized_) {
         IncrementOutstandingThreads();
         thread_pool_->Schedule([this]() { WorkerManagerThread(); });
+        if (ctx_->stats_aggregator()) {
+          thread_pool_->Schedule([this]() { StatsThread(); });
+        }
         threads_initialized_ = true;
       }
     }
@@ -941,12 +955,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     inline void IncrementCurrentActiveWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       num_current_active_workers_++;
-      UpdateThreadUtilizationStats();
     }
 
     inline void DecrementCurrentActiveWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       num_current_active_workers_--;
-      UpdateThreadUtilizationStats();
     }
 
     inline void IncrementOutstandingThreads() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -960,42 +972,59 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    inline void UpdateThreadUtilizationStats() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      const auto& stats_aggregator = ctx_->stats_aggregator();
-      if (stats_aggregator) {
-        stats_aggregator->AddScalar(
+    void StatsThread() {
+      for (int64 step = 0;; ++step) {
+        int num_current_active_workers;
+        int num_current_workers;
+        {
+          mutex_lock l(*mu_);
+          if (step != 0 && !cancelled_) {
+            stats_thread_cond_var_.wait_for(
+                l, std::chrono::milliseconds(kStatsReportingPeriodMillis));
+          }
+          if (cancelled_) {
+            break;
+          }
+          num_current_active_workers = num_current_active_workers_;
+          num_current_workers = num_current_workers_;
+        }
+        if (num_current_workers == 0) {
+          // Avoid division by zero.
+          num_current_workers = 1;
+        }
+        ctx_->stats_aggregator()->AddScalar(
             stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
-            static_cast<float>(num_current_active_workers_) /
-                static_cast<float>(num_parallel_calls_->value),
-            num_elements());
+            static_cast<float>(num_current_active_workers) /
+                static_cast<float>(num_current_workers),
+            step);
       }
     }
 
     Status WriteStatusLocked(IteratorStateWriter* writer,
-                             const string& key_prefix, size_t idx,
+                             const string& iterator_name, size_t idx,
                              const Status& status)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          CodeKey(key_prefix, idx), static_cast<int64>(status.code())));
+          iterator_name, CodeKey(idx), static_cast<int64>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(key_prefix, idx),
-                                               status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            iterator_name, ErrorMessageKey(idx), status.error_message()));
       }
       return Status::OK();
     }
 
     Status ReadStatusLocked(IteratorStateReader* reader,
-                            const string& key_prefix, size_t idx,
+                            const string& iterator_name, size_t idx,
                             Status* status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64 code_int;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(CodeKey(key_prefix, idx), &code_int));
+          reader->ReadScalar(iterator_name, CodeKey(idx), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
         tstring error_message;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(ErrorMessageKey(key_prefix, idx),
-                                              &error_message));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            iterator_name, ErrorMessageKey(idx), &error_message));
         *status = Status(code, error_message);
       } else {
         *status = Status::OK();
@@ -1003,65 +1032,58 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    string CodeKey(const string& key_prefix, size_t idx) {
-      return full_name(strings::StrCat(key_prefix, kResultsSuffix, "[", idx,
-                                       "]", kCodeSuffix));
+    string CodeKey(size_t idx) {
+      return absl::StrCat(kResultsSuffix, "[", idx, "]", kCodeSuffix);
     }
 
-    string ErrorMessageKey(const string& key_prefix, size_t idx) {
-      return full_name(strings::StrCat(key_prefix, kResultsSuffix, "[", idx,
-                                       "]", kErrorMessageSuffix));
+    string ErrorMessageKey(size_t idx) {
+      return absl::StrCat(kResultsSuffix, "[", idx, "]", kErrorMessageSuffix);
     }
 
     Status WriteElement(std::shared_ptr<Element> element, int idx,
                         const string& key_prefix, IteratorStateWriter* writer)
         EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+      const auto& iterator_name =
+          absl::StrCat(prefix(), "::", key_prefix, "::", idx);
       if (element->iterator) {
         TF_RETURN_IF_ERROR(SaveInput(writer, element->iterator));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(iterator_name, kIdSuffix, element->id));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(key_prefix, "[", idx, "]", kIdSuffix)),
-            element->id));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(key_prefix, "[", idx, "]", kInputsSuffix,
-                                      kSizeSuffix)),
+            iterator_name, absl::StrCat(kInputsSuffix, kSizeSuffix),
             element->inputs->size()));
         for (int i = 0; i < element->inputs->size(); i++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(strings::StrCat(key_prefix, "[", idx, "]",
-                                        kInputsSuffix, "[", i, "]")),
+              iterator_name, absl::StrCat(kInputsSuffix, "[", i, "]"),
               element->inputs->at(i)));
         }
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat(key_prefix, "[", idx, "]", kResultsSuffix,
-                                    kSizeSuffix)),
+          iterator_name, absl::StrCat(kResultsSuffix, kSizeSuffix),
           element->results.size()));
       for (size_t i = 0; i < element->results.size(); i++) {
         std::shared_ptr<Result> result = element->results[i];
-        TF_RETURN_IF_ERROR(WriteStatusLocked(
-            writer, strings::StrCat(key_prefix, "[", idx, "]"), i,
-            result->status));
+        TF_RETURN_IF_ERROR(
+            WriteStatusLocked(writer, iterator_name, i, result->status));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(key_prefix, "[", idx, "]", kResultsSuffix,
-                                      "[", i, "]", kSizeSuffix)),
+            iterator_name,
+            absl::StrCat(kResultsSuffix, "[", i, "]", kSizeSuffix),
             result->return_values.size()));
         for (size_t j = 0; j < result->return_values.size(); j++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(strings::StrCat(key_prefix, "[", idx, "]",
-                                        kResultsSuffix, "[", i, "][", j, "]")),
+              iterator_name, absl::StrCat(kResultsSuffix, "[", i, "][", j, "]"),
               result->return_values[j]));
         }
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(key_prefix, "[", idx, "]", kResultsSuffix,
-                                      "[", i, "]", kIsReadySuffix)),
-            ""));
+            iterator_name,
+            absl::StrCat(kResultsSuffix, "[", i, "]", kIsReadySuffix), ""));
       }
       return Status::OK();
     }
 
     Status WriteCurrentElements(IteratorStateWriter* writer)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentElementsSize),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentElementsSize,
                                              current_elements_.size()));
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         if (current_elements_[idx]) {
@@ -1074,7 +1096,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status WriteFutureElements(IteratorStateWriter* writer)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kFutureElementsSize),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kFutureElementsSize,
                                              future_elements_.size()));
       for (int idx = 0; idx < future_elements_.size(); idx++) {
         if (future_elements_[idx]) {
@@ -1087,93 +1109,139 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status ReadElement(IteratorContext* ctx, IteratorStateReader* reader,
                        int idx, const string& key_prefix,
-                       std::shared_ptr<Element>* out)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (!reader->Contains(full_name(strings::StrCat(
-              key_prefix, "[", idx, "]", kResultsSuffix, kSizeSuffix)))) {
-        return Status::OK();
-      }
+                       std::shared_ptr<Element>* out) {
+      std::unique_ptr<IteratorBase> iterator;
       auto element = std::make_shared<Element>();
-      int64 results_size;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(key_prefix, "[", idx, "]", kResultsSuffix,
-                                    kSizeSuffix)),
-          &results_size));
-      element->results.resize(results_size);
-      for (size_t i = 0; i < results_size; i++) {
-        auto result = std::make_shared<Result>();
-        TF_RETURN_IF_ERROR(
-            ReadStatusLocked(reader, strings::StrCat(key_prefix, "[", idx, "]"),
-                             i, &result->status));
-        int64 num_return_values;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(key_prefix, "[", idx, "]", kResultsSuffix,
-                                      "[", i, "]", kSizeSuffix)),
-            &num_return_values));
-        result->return_values.reserve(num_return_values);
-        for (size_t j = 0; j < num_return_values; j++) {
-          result->return_values.emplace_back();
-          TF_RETURN_IF_ERROR(reader->ReadTensor(
-              full_name(strings::StrCat(key_prefix, "[", idx, "]",
-                                        kResultsSuffix, "[", i, "][", j, "]")),
-              &result->return_values.back()));
+      {
+        mutex_lock l(*mu_);
+        const auto& iterator_name =
+            absl::StrCat(prefix(), "::", key_prefix, "::", idx);
+        if (!reader->Contains(iterator_name,
+                              absl::StrCat(kResultsSuffix, kSizeSuffix))) {
+          return Status::OK();
         }
-        element->results[i] = std::move(result);
+        int64 results_size;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            iterator_name, absl::StrCat(kResultsSuffix, kSizeSuffix),
+            &results_size));
+        element->results.resize(results_size);
+        for (size_t i = 0; i < results_size; i++) {
+          auto result = std::make_shared<Result>();
+          TF_RETURN_IF_ERROR(
+              ReadStatusLocked(reader, iterator_name, i, &result->status));
+          int64 num_return_values;
+          TF_RETURN_IF_ERROR(reader->ReadScalar(
+              iterator_name,
+              absl::StrCat(kResultsSuffix, "[", i, "]", kSizeSuffix),
+              &num_return_values));
+          result->return_values.reserve(num_return_values);
+          for (size_t j = 0; j < num_return_values; j++) {
+            result->return_values.emplace_back();
+            TF_RETURN_IF_ERROR(reader->ReadTensor(
+                iterator_name,
+                absl::StrCat(kResultsSuffix, "[", i, "][", j, "]"),
+                &result->return_values.back()));
+          }
+          element->results[i] = std::move(result);
+        }
+        if (!reader->Contains(iterator_name,
+                              absl::StrCat(kInputsSuffix, kSizeSuffix))) {
+          element->iterator.reset();
+          *out = std::move(element);
+          return Status::OK();
+        }
+        int64 inputs_size;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            iterator_name, absl::StrCat(kInputsSuffix, kSizeSuffix),
+            &inputs_size));
+        element->inputs = std::make_unique<std::vector<Tensor>>(inputs_size);
+        for (int i = 0; i < inputs_size; i++) {
+          TF_RETURN_IF_ERROR(reader->ReadTensor(
+              iterator_name, absl::StrCat(kInputsSuffix, "[", i, "]"),
+              &element->inputs->at(i)));
+        }
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(iterator_name, kIdSuffix, &element->id));
+        TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
+            ctx, *element->inputs, element->id,
+            *instantiated_captured_func_.get(), prefix(), &iterator));
       }
-      if (!reader->Contains(full_name(strings::StrCat(
-              key_prefix, "[", idx, "]", kInputsSuffix, kSizeSuffix)))) {
-        element->iterator.reset();
-        *out = std::move(element);
-        return Status::OK();
-      }
-      int64 inputs_size;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(key_prefix, "[", idx, "]", kInputsSuffix,
-                                    kSizeSuffix)),
-          &inputs_size));
-      element->inputs = std::make_unique<std::vector<Tensor>>(inputs_size);
-      for (int i = 0; i < inputs_size; i++) {
-        TF_RETURN_IF_ERROR(reader->ReadTensor(
-            full_name(strings::StrCat(key_prefix, "[", idx, "]", kInputsSuffix,
-                                      "[", i, "]")),
-            &element->inputs->at(i)));
-      }
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(key_prefix, "[", idx, "]", kIdSuffix)),
-          &element->id));
-      TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-          ctx, *element->inputs, element->id,
-          *instantiated_captured_func_.get(), prefix(), &element->iterator));
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, element->iterator));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
+      mutex_lock l(*mu_);
+      element->iterator = std::move(iterator);
       *out = std::move(element);
       return Status::OK();
     }
 
     Status ReadCurrentElements(IteratorContext* ctx,
-                               IteratorStateReader* reader)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                               IteratorStateReader* reader) {
       int64 size;
+      {
+        mutex_lock l(*mu_);
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kCurrentElementsSize, &size));
+        DCHECK_EQ(current_elements_.size(), size);
+      }
+      if (size == 0) {
+        return Status::OK();
+      }
+      std::vector<std::shared_ptr<Element>> elements;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kCurrentElementsSize), &size));
-      DCHECK_EQ(current_elements_.size(), size);
-      for (int idx = 0; idx < current_elements_.size(); idx++) {
-        TF_RETURN_IF_ERROR(ReadElement(ctx, reader, idx, kCurrentElements,
-                                       &current_elements_[idx]));
+          ReadElementsParallel(ctx, reader, size, kCurrentElements, &elements));
+      mutex_lock l(*mu_);
+      for (int idx = 0; idx < size; ++idx) {
+        current_elements_[idx] = std::move(elements[idx]);
       }
       return Status::OK();
     }
 
-    Status ReadFutureElements(IteratorContext* ctx, IteratorStateReader* reader)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    Status ReadFutureElements(IteratorContext* ctx,
+                              IteratorStateReader* reader) {
       int64 size;
+      {
+        mutex_lock l(*mu_);
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kFutureElementsSize, &size));
+        future_elements_.resize(size);
+      }
+      if (size == 0) {
+        return Status::OK();
+      }
+      std::vector<std::shared_ptr<Element>> elements;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kFutureElementsSize), &size));
-      future_elements_.resize(size);
-      for (int idx = 0; idx < future_elements_.size(); idx++) {
-        TF_RETURN_IF_ERROR(ReadElement(ctx, reader, idx, kFutureElements,
-                                       &future_elements_[idx]));
+          ReadElementsParallel(ctx, reader, size, kFutureElements, &elements));
+      mutex_lock l(*mu_);
+      for (int idx = 0; idx < size; ++idx) {
+        future_elements_[idx] = std::move(elements[idx]);
       }
       return Status::OK();
+    }
+
+    Status ReadElementsParallel(
+        IteratorContext* ctx, IteratorStateReader* reader, int64 size,
+        const string& name, std::vector<std::shared_ptr<Element>>* elements) {
+      elements->resize(size);
+      std::unique_ptr<thread::ThreadPool> threadpool =
+          ctx->CreateThreadPool(absl::StrCat("read_", name), size);
+      Status s = Status::OK();
+      BlockingCounter counter(size);
+      for (int idx = 0; idx < size; ++idx) {
+        threadpool->Schedule(
+            [this, ctx, reader, idx, name, &s, &counter, elements] {
+              std::shared_ptr<Element> elem;
+              Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
+              mutex_lock l(*mu_);
+              if (!ret_status.ok()) {
+                s.Update(ret_status);
+                counter.DecrementCount();
+                return;
+              }
+              (*elements)[idx] = elem;
+              counter.DecrementCount();
+            });
+      }
+      counter.Wait();
+      return s;
     }
 
     std::string DebugString() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1239,6 +1307,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Condition variable for waking up future workers.
     condition_variable future_workers_cond_var_;
+
+    // Condition variable for waking up the stats thread.
+    condition_variable stats_thread_cond_var_;
 
     // Number of active worker threads which might be processing elements,
     // including both current workers and future workers. Used by

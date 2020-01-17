@@ -14,6 +14,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "distribute_strategy"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dtype"
     mtype: "<type \'property\'>"
   }
@@ -135,7 +139,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'units\', \'activation\', \'use_bias\', \'kernel_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'bias_regularizer\'], varargs=None, keywords=kwargs, defaults=[\'1\', \'None\', \'True\', \'glorot_uniform\', \'zeros\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'units\', \'activation\', \'use_bias\', \'kernel_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'bias_regularizer\'], varargs=None, keywords=kwargs, defaults=[\'1\', \'None\', \'True\', \'zeros\', \'zeros\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -171,7 +175,7 @@ tf_class {
   }
   member_method {
     name: "compile"
-    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\', \'target_tensors\', \'distribute\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"

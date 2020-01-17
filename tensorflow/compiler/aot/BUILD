@@ -1,6 +1,13 @@
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available")
+
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
@@ -27,9 +34,14 @@ cc_library(
         "compile.h",
         "flags.h",
     ],
+    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]),
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/tf2xla",
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
@@ -53,10 +65,43 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:arm_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:target",
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
+    ] + if_llvm_aarch64_available([
+        "//third_party/llvm/llvm-project/llvm:aarch64_target",  # fixdeps: keep
+    ]),
+)
+
+# Necessary for the pywrap inclusion below.
+tf_pybind_cc_library_wrapper(
+    name = "tfcompile_headers_lib",
+    deps = [
+        ":tfcompile_lib",
     ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tfcompile",
+    srcs = ["tfcompile_wrapper.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_tfcompile",
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        ":tfcompile_headers_lib",
+        "@pybind11",
+        "//third_party/python_runtime:headers",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:pybind11_status",
+        # These headers cannot be brought in via cc_header_only_library
+        "@llvm-project//llvm:arm_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:target",
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
+    ] + if_llvm_aarch64_available([
+        "//third_party/llvm/llvm-project/llvm:aarch64_target",  # fixdeps: keep
+    ]),
 )
 
 tf_cc_test(
@@ -75,8 +120,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",  # fixdeps: keep
-        "@llvm//:x86_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:support",  # fixdeps: keep
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -104,11 +149,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
-        "@llvm//:aarch64_code_gen",  # fixdeps: keep
-        "@llvm//:arm_code_gen",  # fixdeps: keep
-        "@llvm//:powerpc_code_gen",  # fixdeps: keep
-        "@llvm//:target",
-        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -205,17 +245,22 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
-        "@llvm//:target",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:target",
     ],
 )
 
 cc_library(
     name = "aot_only_var_handle_op",
     srcs = ["aot_only_var_handle_op.cc"],
+    hdrs = ["aot_only_var_handle_op.h"],
+    visibility = [
+        "//tensorflow/compiler/tf2xla:__pkg__",
+    ],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
     ],
     alwayslink = 1,
 )

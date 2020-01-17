@@ -33,8 +33,29 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::string GetPaddingCode() {
+std::string GetPaddingCode(bool add_reflection) {
   const std::string channels[] = {".x", ".y", ".z", ".w"};
+  std::string reflection = "";
+  if (add_reflection) {
+    reflection = R"(
+      if (s_x < 0) {
+        s_x *= -1;
+      }
+
+      if (s_y < 0) {
+        s_y *= -1;
+      }
+
+      if (s_x >= params.src_size.x) {
+        int diff = s_x - params.src_size.x;
+        s_x = params.src_size.x - 1 - diff - 1;
+      }
+
+      if (s_y >= params.src_size.y) {
+        int diff = s_y - params.src_size.y;
+        s_y = params.src_size.y - 1 - diff - 1;
+      })";
+  }
   std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -57,6 +78,8 @@ std::string GetPaddingCode() {
       FLT4 value = FLT4(0.0f);
       int s_x = static_cast<int>(gid.x) - params.padding.x;
       int s_y = static_cast<int>(gid.y) - params.padding.y;
+      )" + reflection +
+                     R"(
       bool inside_x = s_x >= 0 && s_x < params.src_size.x;
       bool inside_y = s_y >= 0 && s_y < params.src_size.y;
       if (inside_x && inside_y) {
@@ -96,7 +119,8 @@ std::vector<ComputeTaskDescriptorPtr> Padding(int id, ValueId input_id,
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  desc->shader_source = GetPaddingCode();
+  desc->shader_source =
+      GetPaddingCode(attr.type == PaddingContentType::REFLECT);
 
   desc->input_buffers = {
       {input_id, "device FLT4* const src_buffer"},

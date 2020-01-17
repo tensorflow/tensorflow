@@ -139,7 +139,6 @@ void PickReasonableMultiplier(
   }
 }
 
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
 // The reference implementation & the fast kernel have different rounding
 // mechanism, so we loosely compare the difference.
 void CompareRoundingResults(int flat_size, const int depth_multiplier,
@@ -187,7 +186,6 @@ void CompareRoundingResults(int flat_size, const int depth_multiplier,
               std::abs(min_diff) <= diff_mean_tolerance &&
               std::abs(max_diff) <= diff_mean_tolerance);
 }
-#endif
 
 bool GenerateValidShapeConfigurations(
     int filter_width, int filter_height, int depth_multiplier,
@@ -325,7 +323,11 @@ void TryTestOneDepthwiseConv3x3Filter() {
       /*thread_start=*/0,
       /*thread_end=*/output_shape_inference.Dims(1), /*thread_dim=*/1);
 
-  EXPECT_EQ(reference_output_data, neon_output_data);
+  // We have changed our rounding strategy to the ARM rounding-right-shift
+  // instruction: breaking tie upward as it's much simpler.
+  // So we allow some difference for the neon output VS. the reference output.
+  CompareRoundingResults(output_buffer_size, depth_multiplier,
+                         reference_output_data.data(), neon_output_data.data());
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
   std::vector<std::int8_t> fast_kernel_output_data(output_buffer_size);

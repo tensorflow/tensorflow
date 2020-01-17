@@ -22,8 +22,9 @@ from __future__ import print_function
 import enum
 import warnings
 
+from absl import logging
 import six
-from six import PY3
+from six import PY2
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
@@ -74,6 +75,10 @@ from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
+
+
+# The default value of `experimental_new_converter`.
+_USE_EXPERIMENTAL_NEW_CONVERTER = False
 
 
 @_tf_export("lite.Optimize")
@@ -167,7 +172,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_new_converter = False
+    self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
     self.experimental_new_quantizer = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
     # in the `GraphDef` to the converter.
@@ -466,6 +471,17 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     converter_kwargs = self._get_base_converter_args()
 
+    if not self.experimental_new_converter:
+      logging.warning(
+          "Please consider switching to use new converter by setting "
+          "experimental_new_converter to true. "
+          "Old converter (TOCO) is deprecated and flow will be switched on "
+          "by default to use new converter soon.")
+    else:
+      logging.info("Using experimental converter: If you encountered a problem "
+                   "please file a bug. You can opt-out "
+                   "by setting experimental_new_converter=False")
+
     # Converts model.
     result = _toco_convert_impl(
         input_data=graph_def,
@@ -711,10 +727,10 @@ class TFLiteConverter(TFLiteConverterBase):
             print("Ignore 'tcmalloc: large alloc' warnings.")
 
             if not isinstance(file_content, str):
-              if PY3:
-                file_content = six.ensure_text(file_content, "utf-8")
-              else:
+              if PY2:
                 file_content = six.ensure_binary(file_content, "utf-8")
+              else:
+                file_content = six.ensure_text(file_content, "utf-8")
             graph_def = _graph_pb2.GraphDef()
             _text_format.Merge(file_content, graph_def)
           except (_text_format.ParseError, DecodeError):
@@ -982,7 +998,12 @@ class TFLiteConverter(TFLiteConverterBase):
           "are not enabled.")
 
     optimized_graph = self._graph_def
-    if self.inference_type != constants.QUANTIZED_UINT8:
+    # if it is not uint8 or int8 with post-training quantization, it is not
+    # quantization aware training, then graph optimization is applied.
+    # Graph optimization is disabled for quantization aware training.
+    if (self.inference_type != constants.QUANTIZED_UINT8 or
+        (self.inference_type == constants.INT8 and
+         (post_training_optimize or weight_only_quantize))):
       try:
         optimized_graph = _run_graph_optimizations(
             self._graph_def,
@@ -1009,6 +1030,17 @@ class TFLiteConverter(TFLiteConverterBase):
         "conversion_summary_dir": self.conversion_summary_dir,
         "custom_opdefs": self._custom_opdefs,
     })
+
+    if not self.experimental_new_converter:
+      logging.warning(
+          "Please consider switching to use new converter by setting "
+          "experimental_new_converter to true. "
+          "Old converter (TOCO) is deprecated and flow will be switched on "
+          "by default to use new converter soon.")
+    else:
+      logging.info("Using experimental converter: If you encountered a problem "
+                   "please file a bug. You can opt-out "
+                   "by setting experimental_new_converter=False")
 
     # Converts model.
     if self._has_valid_tensors():

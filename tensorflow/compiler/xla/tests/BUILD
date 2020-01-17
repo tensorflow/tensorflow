@@ -175,7 +175,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -255,7 +255,7 @@ cc_library(
     srcs = ["filecheck.cc"],
     hdrs = ["filecheck.h"],
     data = [
-        "@llvm//:FileCheck",
+        "@llvm-project//llvm:FileCheck",
     ],
     deps = [
         "//tensorflow/compiler/xla:statusor",
@@ -316,6 +316,25 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "buffer_donation_test",
+    srcs = ["buffer_donation_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:backend",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2136,7 +2155,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 

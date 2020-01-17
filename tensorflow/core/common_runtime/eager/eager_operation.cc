@@ -16,16 +16,25 @@ limitations under the License.
 
 namespace tensorflow {
 
-tensorflow::Status EagerOperation::SetDeviceName(const char* device) {
+tensorflow::Status EagerOperation::SetDeviceName(const char* device,
+                                                 const bool reset) {
   if (device != nullptr && strlen(device) > 0) {
-    if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name_)) {
-      return errors::InvalidArgument("Malformed device specification '", device,
-                                     "' in eager op: ", DebugString());
+    if (device != raw_device_name_) {
+      if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name_)) {
+        return errors::InvalidArgument("Malformed device specification '",
+                                       device,
+                                       "' in eager op: ", DebugString());
+      }
+      raw_device_name_ = device;
+      device_name_ =
+          DeviceNameUtils::HasSomeDetails(device_parsed_name_)
+              ? DeviceNameUtils::ParsedNameToString(device_parsed_name_)
+              : "";
     }
-    device_name_ =
-        DeviceNameUtils::HasSomeDetails(device_parsed_name_)
-            ? DeviceNameUtils::ParsedNameToString(device_parsed_name_)
-            : "";
+  } else if (reset) {
+    raw_device_name_.clear();
+    device_name_.clear();
+    device_parsed_name_.Clear();
   }
   return Status::OK();
 }

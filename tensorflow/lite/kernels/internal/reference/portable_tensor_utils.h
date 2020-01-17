@@ -144,19 +144,9 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   PortableApplySigmoid(input, n_batch, n_input, output);
 }
 
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh0(input, n_batch, n_input, output);
-}
-
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh3(input, n_batch, n_input, output);
-}
-
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh4(input, n_batch, n_input, output);
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output) {
+  PortableApplyTanh(integer_bits, input, n_batch, n_input, output);
 }
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -186,15 +176,12 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
   PortableCwiseClipping(input, clipping_value, n_batch, n_input);
 }
 
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result) {
-  PortableVectorVectorCwiseProduct(vector1, vector2, v_size, result);
-}
-
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result) {
-  PortableVectorVectorCwiseProductAccumulate(vector1, vector2, v_size, result);
+void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
+                                             const int16_t* batch_vector,
+                                             int n_batch, int32_t multiplier,
+                                             int shift, int16_t* result) {
+  PortableVectorBatchVectorCwiseProductAccumulate(
+      vector, v_size, batch_vector, n_batch, multiplier, shift, result);
 }
 
 float VectorVectorDotProduct(const float* vector1, const float* vector2,

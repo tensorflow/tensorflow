@@ -38,7 +38,6 @@ limitations under the License.
 #include <limits>  // IWYU pragma: keep
 #include <type_traits>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/pack.h"
 #include "tensorflow/lite/experimental/ruy/pack_common.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
@@ -109,6 +109,7 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
 
 template <typename Spec, typename DstScalar>
 void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
+  static_assert(std::is_same<typename Spec::DstScalar, DstScalar>::value, "");
   if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) return;
 
   // If user is looking for the raw accumulator, zero_point and all the other
@@ -336,7 +337,7 @@ template <typename LhsScalar, typename RhsScalar, typename DstScalar,
           typename Spec>
 void ReferenceMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
                   const Spec& spec, Matrix<DstScalar>* dst) {
-  gemmlowp::ScopedProfilingLabel label("ReferenceMul");
+  profiler::ScopeLabel label("ReferenceMul");
   for (int i = 0; i < lhs.layout.rows; i++) {
     for (int j = 0; j < rhs.layout.cols; j++) {
       using AccumScalar = typename Spec::AccumScalar;
@@ -382,13 +383,15 @@ struct CompileTimeEnabledReferenceMul</*ReferenceMulIsEnabled=*/false> {
   }
 };
 
-inline void HandlePrepackedCaching(TrMulParams* params, Context* context) {
+inline void HandlePrepackedCaching(TrMulParams* params,
+                                   const SidePair<bool>& cacheable,
+                                   Context* context) {
   if (context->cache_policy == CachePolicy::kNoCache) {
     return;
   }
 
   if (context->cache_policy == CachePolicy::kCacheLHSOnGemV) {
-    if (params->dst.layout.cols != 1) {
+    if (!cacheable[Side::kLhs] || params->dst.layout.cols != 1) {
       return;
     }
     PrepackedCache* prepacked_cache = context->GetPrepackedCache();
@@ -426,7 +429,10 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   static_assert((CompiledPaths & ~kAllPaths) == Path::kNone,
                 "CompiledPaths must be a subset of ruy::kAllPaths");
 
-  gemmlowp::ScopedProfilingLabel label("Mul");
+  profiler::ScopeLabel mul_label("Mul");
+  profiler::ScopeLabel shape_specific_label("matmul shape: %dx%dx%d",
+                                            lhs.layout.rows, lhs.layout.cols,
+                                            rhs.layout.cols);
 
   EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
   EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
@@ -465,9 +471,8 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   TrMulParams params;
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
-#ifdef RUY_ENABLE_PREPACKED_CACHE
-  HandlePrepackedCaching(&params, context);
-#endif
+  SidePair<bool> cacheable(lhs.cacheable, rhs.cacheable);
+  HandlePrepackedCaching(&params, cacheable, context);
   TrMul(&params, context);
 }
 

@@ -18,17 +18,15 @@ limitations under the License.
 
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 // Error utilities for MLIR when interacting with code using Status returns.
 namespace mlir {
 
 // TensorFlow's Status is used for error reporting back to callers.
-using stream_executor::port::StatusOr;
 using tensorflow::Status;
 
 // Diagnostic handler that collects all the diagnostics reported and can produce

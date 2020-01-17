@@ -25,15 +25,15 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -109,13 +109,13 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     return parent_module.emitError(CreateMissingAttributeMsg(kVersionsAttr));
 
   module_for_func.get().getOperation()->setAttr(kVersionsAttr, versions_attr);
-  ModuleManager module_manager(module_for_func.get());
+  SymbolTable symbol_table(module_for_func.get());
 
   while (!referenced.empty()) {
     auto func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (module_manager.lookupSymbol<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -138,7 +138,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // should be no other reference to it.
       clone.setName("main");
     }
-    module_manager.insert(clone);
+    symbol_table.insert(clone);
   }
 
   // Serialize module and return.
@@ -277,7 +277,7 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
   // TODO(b/139377366): When shape inference is ready, we can use compile time
   // shape inference to get inputs that have static shapes and only use shape
   // ops for the rest.
-  llvm::SmallVector<Value*, 4> compile_op_operands;
+  llvm::SmallVector<Value, 4> compile_op_operands;
   compile_op_operands.reserve(launch_func.getNumOperands());
 
   for (auto operand_and_idx : llvm::enumerate(launch_func.getOperands())) {
@@ -332,7 +332,7 @@ Operation* BuildExecuteOp(Operation* compile_op,
                           OpBuilder* builder) {
   // TPUExecute inherits all launch_func inputs, and takes an additional input
   // for compilation cache key.
-  llvm::SmallVector<Value*, 4> tensor_inputs(launch_func.getOperands());
+  llvm::SmallVector<Value, 4> tensor_inputs(launch_func.getOperands());
   tensor_inputs.push_back(compile_op->getResult(1));
 
   // TODO(b/139377366): Need to snapshot all resource variable inputs in
@@ -457,7 +457,7 @@ LogicalResult Rewrite(
   // the other ops that are intended to consume the compile result.
   Block* block = launch_func.getOperation()->getBlock();
   for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
-    compile_result_op.output()->replaceAllUsesWith(compile_op->getResult(0));
+    compile_result_op.output().replaceAllUsesWith(compile_op->getResult(0));
 
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
 

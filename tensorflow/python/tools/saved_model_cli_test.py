@@ -35,6 +35,8 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_cli
@@ -148,7 +150,7 @@ signature_def['serving_default']:
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
-  def testShowAllWithConcreteFunctions(self):
+  def testShowAllWithFunctions(self):
 
     class DummyModel(tracking.AutoTrackable):
       """Model with callable polymorphic functions specified."""
@@ -237,6 +239,73 @@ Defined Functions:
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
+  def testShowAllWithPureConcreteFunction(self):
+
+    class DummyModel(tracking.AutoTrackable):
+      """Model with a callable concrete function."""
+
+      def __init__(self):
+        function = def_function.function(
+            self.multiply,
+            input_signature=[
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+            ])
+        self.pure_concrete_function = function.get_concrete_function()
+        super(DummyModel, self).__init__()
+
+      def multiply(self, a, b):
+        return a * b
+
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = DummyModel()
+    save.save(dummy_model, saved_model_dir)
+    self.parser = saved_model_cli.create_parser()
+    args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
+    with captured_output() as (out, err):
+      saved_model_cli.show(args)
+    output = out.getvalue().strip()
+    exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
+
+signature_def['__saved_model_init_op']:
+  The given SavedModel SignatureDef contains the following input(s):
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['__saved_model_init_op'] tensor_info:
+        dtype: DT_INVALID
+        shape: unknown_rank
+        name: NoOp
+  Method name is: 
+
+signature_def['serving_default']:
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['a'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: serving_default_a:0
+    inputs['b'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: serving_default_b:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['output_0'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: PartitionedCall:0
+  Method name is: tensorflow/serving/predict
+
+Defined Functions:
+  Function Name: 'pure_concrete_function'
+    Option #1
+      Callable with:
+        Argument #1
+          a: TensorSpec(shape=(), dtype=tf.float32, name='a')
+        Argument #2
+          b: TensorSpec(shape=(), dtype=tf.float32, name='b')
+""".strip()  # pylint: enable=line-too-long
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
+    self.assertMultiLineEqual(output, exp_out)
+    self.assertEqual(err.getvalue().strip(), '')
+
   def testShowCommandTags(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     self.parser = saved_model_cli.create_parser()
@@ -244,7 +313,7 @@ Defined Functions:
     with captured_output() as (out, err):
       saved_model_cli.show(args)
     output = out.getvalue().strip()
-    exp_out = 'The given SavedModel contains the following tag-sets:\nserve'
+    exp_out = 'The given SavedModel contains the following tag-sets:\n\'serve\''
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
@@ -641,6 +710,63 @@ Defined Functions:
     saved_model_cli._OP_BLACKLIST = op_blacklist
     output = out.getvalue().strip()
     self.assertTrue('\'VariableV2\'' in output)
+
+  def testAOTCompileCPUWrongSignatureDefKey(self):
+    if not test.is_built_with_xla():
+      self.skipTest('Skipping test because XLA is not compiled in.')
+
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    output_dir = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir')
+    args = self.parser.parse_args(
+        ['aot_compile_cpu', '--dir', base_path, '--tag_set', 'serve',
+         '--output_prefix', output_dir,
+         '--cpp_class', 'Compiled',
+         '--signature_def_key', 'MISSING'])
+    with self.assertRaisesRegexp(ValueError, 'Unable to find signature_def'):
+      saved_model_cli.aot_compile_cpu(args)
+
+  def testAOTCompileCPUFreezesAndCompiles(self):
+    if not test.is_built_with_xla():
+      self.skipTest('Skipping test because XLA is not compiled in.')
+
+    class DummyModel(tracking.AutoTrackable):
+      """Model compatible with XLA compilation."""
+
+      def __init__(self):
+        self.var = variables.Variable(1.0, name='my_var')
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32)
+      ])
+      def func2(self, x):
+        return {'res': x + self.var}
+
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = DummyModel()
+    with self.cached_session():
+      self.evaluate(dummy_model.var.initializer)
+      save.save(dummy_model, saved_model_dir)
+
+    self.parser = saved_model_cli.create_parser()
+    output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
+    args = self.parser.parse_args(
+        ['aot_compile_cpu', '--dir', saved_model_dir, '--tag_set', 'serve',
+         '--output_prefix', output_prefix,
+         '--cpp_class', 'Generated'])  # Use the default seving signature_key.
+    saved_model_cli.aot_compile_cpu(args)
+    self.assertTrue(file_io.file_exists('{}.o'.format(output_prefix)))
+    self.assertTrue(file_io.file_exists('{}.h'.format(output_prefix)))
+    self.assertTrue(file_io.file_exists('{}_metadata.o'.format(output_prefix)))
+    self.assertTrue(
+        file_io.file_exists('{}_makefile.inc'.format(output_prefix)))
+    header_contents = file_io.read_file_to_string('{}.h'.format(output_prefix))
+    self.assertIn('class Generated', header_contents)
+    self.assertIn('arg_x_data', header_contents)
+    self.assertIn('result_res_data', header_contents)
+    makefile_contents = file_io.read_file_to_string(
+        '{}_makefile.inc'.format(output_prefix))
+    self.assertIn('-D_GLIBCXX_USE_CXX11_ABI=', makefile_contents)
 
 
 if __name__ == '__main__':

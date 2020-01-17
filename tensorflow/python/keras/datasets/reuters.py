@@ -99,7 +99,7 @@ def load_data(path='reuters.npz',
     xs, labels = _remove_long_seq(maxlen, xs, labels)
 
   if not num_words:
-    num_words = max([max(x) for x in xs])
+    num_words = max(max(x) for x in xs)
 
   # by convention, use 2 as OOV word
   # reserve 'index_from' (=3 by default) characters:

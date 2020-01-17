@@ -253,7 +253,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleCustomCall(HloInstruction* custom_call) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
-  // expanded in a semantic-preserving way into other HLOs by adding exanpsion
+  // expanded in a semantic-preserving way into other HLOs by adding expansion
   // HLO pass to the HLO optimization pass during compilation, which can then be
   // handled by the evaluator.
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
@@ -304,7 +304,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   //
   // TODO(b/35950897): have better memory management here to free instructions
   // that are no longer a parent for any other subsequent instruction in
-  // post-orderring.
+  // post-ordering.
   //
   // Must be cleared for each evaluation.
   //

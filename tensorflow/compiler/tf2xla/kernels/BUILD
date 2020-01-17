@@ -48,6 +48,7 @@ tf_kernel_library(
         "function_ops.cc",
         "gather_op.cc",
         "gather_op_helpers.h",
+        "gather_scatter_ops.cc",
         "identity_op.cc",
         "image_ops.cc",
         "image_resize_ops.cc",

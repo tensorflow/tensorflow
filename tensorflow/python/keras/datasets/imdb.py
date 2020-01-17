@@ -113,7 +113,7 @@ def load_data(path='imdb.npz',
                        str(maxlen) + ', no sequence was kept. '
                        'Increase maxlen.')
   if not num_words:
-    num_words = max([max(x) for x in xs])
+    num_words = max(max(x) for x in xs)
 
   # by convention, use 2 as OOV word
   # reserve 'index_from' (=3 by default) characters:

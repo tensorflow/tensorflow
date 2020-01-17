@@ -811,18 +811,51 @@ class History(Callback):
 
 @keras_export('keras.callbacks.ModelCheckpoint')
 class ModelCheckpoint(Callback):
-  """Save the model after every epoch.
+  """Callback to save the Keras model or model weights at some frequency.
 
-  `filepath` can contain named formatting options,
-  which will be filled the value of `epoch` and
-  keys in `logs` (passed in `on_epoch_end`).
+  `ModelCheckpoint` callback is used in conjunction with training using
+  `model.fit()` to save a model or weights (in a checkpoint file) at some
+  interval, so the model or weights can be loaded later to continue the training
+  from the state saved.
 
-  For example: if `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`,
-  then the model checkpoints will be saved with the epoch number and
-  the validation loss in the filename.
+  A few options this callback provides include:
+
+  - Whether to only keep the model that has achieved the "best performance" so
+    far, or whether to save the model at the end of every epoch regardless of
+    performance.
+  - Definition of 'best'; which quantity to monitor and whether it should be
+    maximized or minimized.
+  - The frequency it should save at. Currently, the callback supports saving at
+    the end of every epoch, or after a fixed number of training samples.
+  - Whether only weights are saved, or the whole model is saved.
+
+  Example:
+
+  ```python
+  EPOCHS = 10
+  checkpoint_filepath = '/tmp/checkpoint'
+  model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+      filepath=checkpoint_filepath,
+      save_weights_only=True,
+      monitor='val_acc',
+      mode='max',
+      save_best_only=True)
+
+  # Model weights are saved at the end of every epoch, if it's the best seen
+  # so far.
+  model.fit(epochs=EPOCHS, callbacks=[model_checkpoint_callback])
+
+  # The model weights (that are considered the best) are loaded into the model.
+  model.load_weights(checkpoint_filepath)
+  ```
 
   Arguments:
-      filepath: string, path to save the model file.
+      filepath: string, path to save the model file. `filepath` can contain
+        named formatting options, which will be filled the value of `epoch` and
+        keys in `logs` (passed in `on_epoch_end`). For example: if `filepath` is
+        `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model checkpoints
+        will be saved with the epoch number and the validation loss in the
+        filename.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
       save_best_only: if `save_best_only=True`, the latest best model according
@@ -1052,7 +1085,14 @@ class ModelCheckpoint(Callback):
     # pylint: disable=protected-access
     if not self.model._in_multi_worker_mode(
     ) or multi_worker_util.should_save_checkpoint():
-      return self.filepath.format(epoch=epoch + 1, **logs)
+      try:
+        # `filepath` may contain placeholders such as `{epoch:02d}` and
+        # `{mape:.2f}`. A mismatch between logged metrics and the path's
+        # placeholders can cause formatting to fail.
+        return self.filepath.format(epoch=epoch + 1, **logs)
+      except KeyError as e:
+        raise KeyError('Failed to format this callback filepath: "{}". '
+                       'Reason: {}'.format(self.filepath, e))
     else:
       # If this is multi-worker training, and this worker should not
       # save checkpoint, we use a temp filepath to store a dummy checkpoint, so
@@ -1419,6 +1459,13 @@ class TensorBoard(Callback):
 
   You can find more information about TensorBoard
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
+
+  Example:
+  ```python
+  tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
+  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
+  #run the tensorboard command to view the visualizations
+  ```
 
   Arguments:
       log_dir: the path of the directory where to save the log files to be

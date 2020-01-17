@@ -36,9 +36,14 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:annotation_stack",
         "//tensorflow/core/profiler/internal:parse_annotation",
+        "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = 1,
 )
@@ -69,6 +74,9 @@ tf_cc_test_gpu(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
     ],
 )
 

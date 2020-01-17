@@ -233,33 +233,15 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
 
 // Apply Tanh to a quantized vector.
 // Parameters:
+//     - integer_bits: the integer bits of the input.
+//                     Currently supports 0, 1, 2, 3, 4, 5, 6.
 //     - input: batch vector of size n_batch * n_input; 16 bit.
 //     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
-// The input is in Q0.15 format and the output is in Q0.15 format.
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
-
-// Apply Tanh to a quantized vector.
-// Parameters:
-//     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batches.
-//     - n_input: the size for input and output.
-//     - output:  the 16 bit output
-// The input is in Q3.12 format and the output is in Q0.15 format.
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
-
-// Apply Tanh to a quantized vector.
-// Parameters:
-//     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batches.
-//     - n_input: the size for input and output.
-//     - output:  the 16 bit output
-// The input is in Q4.11 format and the output is in Q0.15 format.
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
+// The input is in Qm.15-m format and the output is in Q0.15 format.
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output);
 
 // Element-wise multiplication of two quantized vectors.
 // Parameters:
@@ -332,14 +314,26 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input);
 
 // Cwise product of two vectors.
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result);
+template <typename T>
+inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
+                                     const T* __restrict__ vector2, int v_size,
+                                     T* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    *result++ = *vector1++ * *vector2++;
+  }
+}
 
 // Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
 // assumption here is that result array is initialized to valid values.
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result);
+template <typename T>
+inline void VectorVectorCwiseProductAccumulate(const T* __restrict__ vector1,
+                                               const T* __restrict__ vector2,
+                                               int v_size,
+                                               T* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    *result++ += *vector1++ * *vector2++;
+  }
+}
 
 // Dot product of two vectors.
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -405,6 +399,12 @@ inline void VectorBatchVectorCwiseProductAccumulate(const T* vector, int v_size,
     batch_vector += v_size;
   }
 }
+
+// Same as above, but inputs are 16bit integer and output is 16bit integer.
+void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
+                                             const int16_t* batch_vector,
+                                             int n_batch, int32_t multiplier,
+                                             int shift, int16_t* result);
 
 // Add another vector for each batch in the batch vector.
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,

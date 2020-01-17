@@ -26,18 +26,20 @@ cc_library(
     alwayslink = True,
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "legacy_lib_histogram_all_headers",
+    name = "mobile_srcs_only_runtime",
     srcs = [
+        "histogram.cc",
         "histogram.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
-    name = "legacy_lib_histogram_all_srcs",
+    name = "legacy_lib_histogram_all_headers",
     srcs = [
-        "histogram.cc",
+        "histogram.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

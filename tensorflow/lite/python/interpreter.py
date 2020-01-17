@@ -120,7 +120,7 @@ class Delegate(object):
       raise ValueError(capture.message)
 
   def __del__(self):
-    # __del__ can be called multiple times, so if the delegate is destroyed.
+    # __del__ can not be called multiple times, so if the delegate is destroyed.
     # don't try to destroy it twice.
     if self._library is not None:
       self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
@@ -157,11 +157,6 @@ def load_delegate(library, options=None):
     ValueError: Delegate failed to load.
     RuntimeError: If delegate loading is used on unsupported platform.
   """
-
-  # TODO(b/137299813): Fix darwin support for delegates.
-  if sys.platform == 'darwin':
-    raise RuntimeError('Dynamic loading of delegates on Darwin not supported.')
-
   try:
     delegate = Delegate(library, options)
   except ValueError as e:

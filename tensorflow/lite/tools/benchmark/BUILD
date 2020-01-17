@@ -9,6 +9,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["logging.h"])
+
 common_copts = ["-Wall"] + tflite_copts()
 
 cc_library(
@@ -27,6 +29,7 @@ cc_binary(
         "//tensorflow:android": [
             "-pie",  # Android 5.0 and later supports only PIE
             "-lm",  # some builtin ops, e.g., tanh, need -lm
+            "-Wl,--rpath=/data/local/tmp/",  # Hexagon delegate libraries should be in /data/local/tmp
         ],
         "//conditions:default": [],
     }),
@@ -93,6 +96,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",
@@ -118,7 +122,7 @@ cc_library(
         ":logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@gemmlowp",
+        "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -149,7 +153,7 @@ cc_library(
         ":benchmark_params",
         ":benchmark_utils",
         ":logging",
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:time",
@@ -183,7 +187,7 @@ cc_library(
         ":benchmark_params",
         ":benchmark_utils",
         ":logging",
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:memory_info",

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
+#include <list>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -25,7 +26,8 @@ limitations under the License.
 namespace tflite {
 namespace {
 template <typename T>
-void TestOneResizeBilinear(int batch, int depth, int input_width,
+void TestOneResizeBilinear(const tflite::ResizeBilinearParams& op_params,
+                           int batch, int depth, int input_width,
                            int input_height, int output_width,
                            int output_height, float error_threshold) {
   RuntimeShape input_dims_inference({batch, input_height, input_width, depth});
@@ -47,9 +49,6 @@ void TestOneResizeBilinear(int batch, int depth, int input_width,
 
   RuntimeShape output_size_dims({1, 1, 1, 2});
   std::vector<int32> output_size_data = {output_height, output_width};
-
-  tflite::ResizeBilinearParams op_params;
-  op_params.align_corners = false;
 
   reference_ops::ResizeBilinear(op_params, input_dims_inference,
                                 input_data.data(), output_size_dims,
@@ -75,9 +74,15 @@ void TestOneResizeBilinear(int batch, int depth, int input_width,
   }
 }
 
-TEST(ResizeBilinear, TestResizeBilinear8Bit) {
+class ResizeBilinearImplTest
+    : public ::testing::Test,
+      public ::testing::WithParamInterface<tflite::ResizeBilinearParams> {};
+
+TEST_P(ResizeBilinearImplTest, TestResizeBilinear8Bit) {
   RandomEngine().seed(38291);
   const int kTestsToRun = 1000;
+  const tflite::ResizeBilinearParams op_params = GetParam();
+
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = UniformRandomInt(1, 2);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
@@ -86,14 +91,17 @@ TEST(ResizeBilinear, TestResizeBilinear8Bit) {
     const int output_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
     const int output_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
 
-    TestOneResizeBilinear<uint8>(batch, depth, input_width, input_height,
-                                 output_width, output_height, 0.025);
+    TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
+                                 input_height, output_width, output_height,
+                                 0.025);
   }
 }
 
-TEST(ResizeBilinear2x2, TestResizeBilinear8Bit) {
+TEST_P(ResizeBilinearImplTest, TestResizeBilinear8Bit_2x2) {
   RandomEngine().seed(38291);
   const int kTestsToRun = 1000;
+  const tflite::ResizeBilinearParams op_params = GetParam();
+
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = UniformRandomInt(1, 2);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
@@ -102,14 +110,23 @@ TEST(ResizeBilinear2x2, TestResizeBilinear8Bit) {
     const int output_width = input_width * 2;
     const int output_height = input_height * 2;
 
-    TestOneResizeBilinear<uint8>(batch, depth, input_width, input_height,
-                                 output_width, output_height, 1e-5);
+    float error_threshold = 1e-5;
+    if (op_params.align_corners) {
+      // Align_corners causes small discrepencies between reference & optimized
+      // versions.
+      error_threshold = 3e-4;
+    }
+    TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
+                                 input_height, output_width, output_height,
+                                 error_threshold);
   }
 }
 
-TEST(ResizeBilinear, TestResizeBilinear) {
+TEST_P(ResizeBilinearImplTest, TestResizeBilinear) {
   RandomEngine().seed(38291);
   const int kTestsToRun = 1000;
+  const tflite::ResizeBilinearParams op_params = GetParam();
+
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = UniformRandomInt(1, 2);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
@@ -118,14 +135,23 @@ TEST(ResizeBilinear, TestResizeBilinear) {
     const int output_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
     const int output_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
 
-    TestOneResizeBilinear<float>(batch, depth, input_width, input_height,
-                                 output_width, output_height, 1e-5);
+    float error_threshold = 1e-5;
+    if (op_params.align_corners) {
+      // align_corners causes small discrepencies between reference & optimized
+      // versions.
+      error_threshold = 1e-4;
+    }
+    TestOneResizeBilinear<float>(op_params, batch, depth, input_width,
+                                 input_height, output_width, output_height,
+                                 error_threshold);
   }
 }
 
-TEST(ResizeBilinear2x2, TestResizeBilinear) {
+TEST_P(ResizeBilinearImplTest, TestResizeBilinear_2x2) {
   RandomEngine().seed(38291);
   const int kTestsToRun = 1000;
+  const tflite::ResizeBilinearParams op_params = GetParam();
+
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = UniformRandomInt(1, 2);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
@@ -134,9 +160,134 @@ TEST(ResizeBilinear2x2, TestResizeBilinear) {
     const int output_width = input_width * 2;
     const int output_height = input_height * 2;
 
-    TestOneResizeBilinear<float>(batch, depth, input_width, input_height,
-                                 output_width, output_height, 1e-5);
+    float error_threshold = 1e-5;
+    if (op_params.align_corners) {
+      // Align_corners causes small discrepencies between reference & optimized
+      // versions.
+      error_threshold = 1e-4;
+    }
+    TestOneResizeBilinear<float>(op_params, batch, depth, input_width,
+                                 input_height, output_width, output_height,
+                                 error_threshold);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    ResizeBilinear, ResizeBilinearImplTest,
+    ::testing::ValuesIn(std::list<tflite::ResizeBilinearParams>({
+        {/**align_corners**/ false, /**half_pixel_centers**/ false},
+        {/**align_corners**/ false, /**half_pixel_centers**/ true},
+        {/**align_corners**/ true, /**half_pixel_centers**/ false},
+    })));
+
+// A couple of tests to ensure the math behind half_pixel_centers works fine.
+
+TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_3x3to2x2) {
+  // Input: 3x3
+  RuntimeShape input_dims_inference({1, 3, 3, 1});
+  // clang-format off
+  std::vector<float> input_data = {1, 2, 3,
+                                   4, 5, 6,
+                                   7, 8, 9};
+  // clang-format on
+
+  // Output: 2x2
+  RuntimeShape output_dims_inference({1, 2, 2, 1});
+  // Initialize the output data with something other than zero, so we can catch
+  // issue with kernels failing to initialize the output.
+  const int output_buffer_size = output_dims_inference.FlatSize();
+  std::vector<float> output_data(output_buffer_size, 3);
+
+  RuntimeShape output_size_dims({1, 1, 1, 2});
+  std::vector<int32> output_size_data = {2, 2};
+
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = false;
+  op_params.half_pixel_centers = false;
+
+  // Test with half_pixel_centers = false.
+  reference_ops::ResizeBilinear(
+      op_params, input_dims_inference, input_data.data(), output_size_dims,
+      output_size_data.data(), output_dims_inference, output_data.data());
+  // clang-format off
+  std::vector<float> reference_half_pixel_centers_false = {1, 2.5,
+                                                           5.5, 7};
+  // clang-format on
+  for (int i = 0; i < output_buffer_size; i++) {
+    EXPECT_EQ(static_cast<float>(output_data[i]),
+              static_cast<float>(reference_half_pixel_centers_false[i]));
+  }
+
+  // Test with half_pixel_centers = true.
+  op_params.half_pixel_centers = true;
+  reference_ops::ResizeBilinear(
+      op_params, input_dims_inference, input_data.data(), output_size_dims,
+      output_size_data.data(), output_dims_inference, output_data.data());
+  // clang-format off
+  std::vector<float> reference_half_pixel_centers_true = {2, 3.5,
+                                                          6.5, 8};
+  // clang-format on
+  for (int i = 0; i < output_buffer_size; i++) {
+    EXPECT_EQ(static_cast<float>(output_data[i]),
+              static_cast<float>(reference_half_pixel_centers_true[i]));
+  }
+}
+
+TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x4) {
+  // Input: 2x2
+  RuntimeShape input_dims_inference({1, 2, 2, 1});
+  // clang-format off
+  std::vector<float> input_data = {1, 2,
+                                   3, 4};
+  // clang-format on
+
+  // Output: 2x2
+  RuntimeShape output_dims_inference({1, 4, 4, 1});
+  // Initialize the output data with something other than zero, so we can catch
+  // issue with kernels failing to initialize the output.
+  const int output_buffer_size = output_dims_inference.FlatSize();
+  std::vector<float> output_data(output_buffer_size, 3);
+
+  RuntimeShape output_size_dims({1, 1, 1, 2});
+  std::vector<int32> output_size_data = {4, 4};
+
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = false;
+  op_params.half_pixel_centers = false;
+
+  // Test with half_pixel_centers = false.
+  reference_ops::ResizeBilinear(
+      op_params, input_dims_inference, input_data.data(), output_size_dims,
+      output_size_data.data(), output_dims_inference, output_data.data());
+  // clang-format off
+  std::vector<float> reference_half_pixel_centers_false =
+      {1,  1.5, 2, 2,
+       2,  2.5, 3, 3,
+       3,  3.5, 4, 4,
+       3,  3.5, 4, 4};
+  // clang-format on
+  for (int i = 0; i < output_buffer_size; i++) {
+    EXPECT_EQ(static_cast<float>(output_data[i]),
+              static_cast<float>(reference_half_pixel_centers_false[i]));
+  }
+
+  // Test with half_pixel_centers = true.
+  op_params.half_pixel_centers = true;
+  reference_ops::ResizeBilinear(
+      op_params, input_dims_inference, input_data.data(), output_size_dims,
+      output_size_data.data(), output_dims_inference, output_data.data());
+  // clang-format off
+  std::vector<float> reference_half_pixel_centers_true =
+      {1,    1.25, 1.75, 2,
+       1.5,  1.75, 2.25, 2.5,
+       2.5,  2.75, 3.25, 3.5,
+       3,    3.25, 3.75, 4};
+  // clang-format on
+  for (int i = 0; i < output_buffer_size; i++) {
+    EXPECT_EQ(static_cast<float>(output_data[i]),
+              static_cast<float>(reference_half_pixel_centers_true[i]));
+  }
+}
+
 }  // namespace
 }  // namespace tflite

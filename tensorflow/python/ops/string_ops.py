@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,6 +77,10 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 @dispatch.add_dispatch_support
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
+
+  >>> tf.strings.regex_replace("Text with tags.<br /><b>contains html</b>",
+  ...                          "<[^>]+>", " ")
+  <tf.Tensor: shape=(), dtype=string, numpy=b'Text with tags.  contains html '>
 
   Args:
     input: string `Tensor`, the source strings to process.
@@ -390,16 +395,39 @@ reduce_join.__doc__ = reduce_join_v2.__doc__
 @tf_export(v1=["strings.length"])
 @dispatch.add_dispatch_support
 def string_length(input, name=None, unit="BYTE"):
+  """Computes the length of each string given in the input tensor.
+
+  >>> strings = tf.constant(['Hello','TensorFlow', '🙂'])
+  >>> tf.strings.length(strings).numpy() # default counts bytes
+  array([ 5, 10, 4], dtype=int32)
+  >>> tf.strings.length(strings, unit="UTF8_CHAR").numpy()
+  array([ 5, 10, 1], dtype=int32)
+
+  Args:
+    input: A `Tensor` of type `string`. The strings for which to compute the
+      length for each element.
+    name: A name for the operation (optional).
+    unit: An optional `string` from: `"BYTE", "UTF8_CHAR"`. Defaults to
+      `"BYTE"`. The unit that is counted to compute string length.  One of:
+        `"BYTE"` (for the number of bytes in each string) or `"UTF8_CHAR"` (for
+        the number of UTF-8 encoded Unicode code points in each string). Results
+        are undefined if `unit=UTF8_CHAR` and the `input` strings do not contain
+        structurally valid UTF-8.
+
+  Returns:
+    A `Tensor` of type `int32`, containing the length of the input string in
+    the same element of the input tensor.
+  """
   return gen_string_ops.string_length(input, unit=unit, name=name)
 
 
 @tf_export("strings.length", v1=[])
 @dispatch.add_dispatch_support
 def string_length_v2(input, unit="BYTE", name=None):
-  return string_length(input, name, unit)
+  return gen_string_ops.string_length(input, unit=unit, name=name)
 
 
-string_length.__doc__ = gen_string_ops.string_length.__doc__
+string_length_v2.__doc__ = gen_string_ops.string_length.__doc__
 
 
 @tf_export(v1=["substr"])
@@ -508,3 +536,35 @@ def string_to_hash_bucket_v1(
   return gen_string_ops.string_to_hash_bucket(string_tensor, num_buckets, name)
 
 string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__
+
+
+@tf_export("strings.join", v1=["strings.join", "string_join"])
+@deprecation.deprecated_endpoints("string_join")
+@dispatch.add_dispatch_support
+def string_join(inputs, separator="", name=None):
+  """Perform element-wise concatenation of a list of string tensors.
+
+  Given a list of string tensors of same shape, performs element-wise
+  concatenation of the strings of the same index in all tensors.
+
+
+  >>> tf.strings.join(['abc','def']).numpy()
+  b'abcdef'
+  >>> tf.strings.join([['abc','123'],
+  ...                  ['def','456'],
+  ...                  ['ghi','789']]).numpy()
+  array([b'abcdefghi', b'123456789'], dtype=object)
+  >>> tf.strings.join([['abc','123'],
+  ...                  ['def','456']],
+  ...                  separator=" ").numpy()
+  array([b'abc def', b'123 456'], dtype=object)
+
+  Args:
+    inputs: A list of `tf.Tensor` objects of same size and `tf.string` dtype.
+    separator: A string added between each string being joined.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.string` tensor.
+  """
+  return gen_string_ops.string_join(inputs, separator=separator, name=name)

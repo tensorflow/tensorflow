@@ -30,9 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfgather_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfsplits_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tftop_k_mlir_bridge.h"
 #else
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
@@ -167,8 +172,6 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
 }
 
-// TODO(bixia): the following tests failed with MLIR bridge.
-#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Cond) {
   CondComp cond;
   EXPECT_EQ(cond.arg0_data(), cond.arg_data(0));
@@ -233,7 +236,6 @@ TEST(TFCompileTest, Gather) {
     EXPECT_EQ(gather_const.result0_data(), gather.results()[0]);
   }
 }
-#endif
 
 TEST(TFCompileTest, MatMul2) {
   Eigen::ThreadPool tp(2);
@@ -439,6 +441,7 @@ TEST(TFCompileTest, Function) {
   EXPECT_EQ(add_fn.result0_data()[0], 3);
   EXPECT_EQ(add_fn.result0_data(), add_fn.results()[0]);
 }
+#endif
 
 TEST(TFCompileTest, Splits) {
   Eigen::ThreadPool tp(1);
@@ -492,6 +495,8 @@ TEST(TFCompileTest, TopK) {
   EXPECT_EQ(expected_indices[1], fn.result1(1));
 }
 
+// TODO(bixia): the following tests failed with MLIR bridge.
+#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Variable) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
@@ -564,6 +569,7 @@ TEST(TFCompileTest, VariableSequentialUpdatesNoAlloc) {
   fn.Run();
   EXPECT_NEAR(x, 0.594322f, 1e-6);
 }
+#endif
 
 TEST(TFCompileTest, AssertEqAndReturnDiff) {
   // Assert is converted into a no-op in XLA, so there is no failure even if the
@@ -665,6 +671,11 @@ TEST(TFCompileTest, HloProfiling) {
                            /*clock_rate_ghz=*/1.0);
   VLOG(1) << "Original HLO profile string:\n" << hlo_profile_as_string;
 
+  // Replace Arg_n with argn when the MLIR bridge is used.
+#if defined(ENABLE_MLIR_BRIDGE_TEST)
+  RE2::GlobalReplace(&hlo_profile_as_string, "(Arg_)([0-9].)", "arg\\2");
+#endif
+
   // Strip away identifier details from the profile string to avoid this test
   // being a change detector for xla internals. Identifiers such as '%dot.0.7'
   // just become '%dot'.
@@ -690,7 +701,6 @@ TEST(TFCompileTest, HloProfiling) {
               IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,
                             add_profile_line, tuple_profile_line}));
 }
-#endif
 
 }  // namespace
 }  // namespace tfcompile

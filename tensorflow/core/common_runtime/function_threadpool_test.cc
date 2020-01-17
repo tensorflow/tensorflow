@@ -171,7 +171,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       opts.runner = nullptr;
     }
     Notification done;
-    std::vector<Tensor> out;
     Status status;
     flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
       status = s;

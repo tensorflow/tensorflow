@@ -71,6 +71,10 @@ void RewriteCalls(
     fn = new_fn;
   }
 
+  // Other libraries using tfcompile could also have generated a function with
+  // the same name and body.  Tell the linker to discard all but one instance.
+  fn->setLinkage(llvm::GlobalVariable::LinkOnceODRLinkage);
+
   llvm::LLVMContext* context = &module->getContext();
 
   llvm::BasicBlock* fn_body = llvm::BasicBlock::Create(*context, "body", fn);
@@ -102,13 +106,19 @@ void RewriteCalls(
   // TODO(b/73081976): Should we avoid inlining these in some cases?
   std::vector<llvm::CallInst*> calls_to_inline;
   for (auto* user : fn->users()) {
-    calls_to_inline.push_back(llvm::cast<llvm::CallInst>(user));
+    if (auto* call = llvm::dyn_cast<llvm::CallInst>(user)) {
+      calls_to_inline.push_back(call);
+    }
   }
   for (auto* call_to_inline : calls_to_inline) {
     llvm::InlineFunctionInfo inline_function_info;
-    CHECK(llvm::InlineFunction(call_to_inline, inline_function_info));
+    CHECK(
+        llvm::InlineFunction(call_to_inline, inline_function_info).isSuccess());
   }
-  fn->eraseFromParent();
+  // Delete the function if all uses have been inlined.
+  if (fn->use_empty()) {
+    fn->eraseFromParent();
+  }
 }
 
 llvm::Value* GenerateVF32Tanh(llvm::IRBuilder<>* b, llvm::Value* input,
@@ -185,7 +195,7 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   // value of n clamped to [-127, 127]. In the case where n' = 127, `a` can grow
   // up to as large as 88.8 - 127 * log(2) which is about 0.7703. Even though
   // this value of `a` is outside our previously specified range, e^a will still
-  // only have a relative error of approximetely 2^-16 at worse. In practice
+  // only have a relative error of approximately 2^-16 at worse. In practice
   // this seems to work well enough; it passes our exhaustive tests, breaking
   // only one result, and by one ulp (we return exp(88.7228394) = max-float but
   // we should return inf).

@@ -91,5 +91,25 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16
       << HloOpcodeString(reshape_2->opcode()) << " vs Reshape";
 }
 
+TEST_F(DepthwiseConvolutionConverterTest,
+       OutputFeatureNotEqualBatchGroupCount) {
+  string hlo_string = R"(HloModule Convolve1D1Window_0_module
+  ENTRY %Convolve1D1Window_0.v3 (input: f32[4,6,6,48]{3,2,1,0}, filter: f32[4,6,6,96]{3,2,1,0}) -> f32[1,1,96,1]{3,2,1,0} {
+    %input = f32[4,6,6,48]{3,2,1,0} parameter(0)
+    %filter = f32[4,6,6,96]{3,2,1,0} parameter(1)
+
+    ROOT %convolution = f32[1,1,96,1]{3,2,1,0} convolution(f32[4,6,6,48]{3,2,1,0} %input, f32[4,6,6,96]{3,2,1,0} %filter), window={size=6x6 stride=2x2}, dim_labels=f01b_i01o->01fb, batch_group_count=48
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
+  auto cost_model = [](HloInstruction*) { return false; };
+  DepthwiseConvolutionConverter converter(cost_model);
+  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace xla

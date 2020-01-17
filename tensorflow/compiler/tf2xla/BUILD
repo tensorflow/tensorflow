@@ -1,10 +1,11 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
 load(
-    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
     "tf_proto_library_cc",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
@@ -62,7 +63,7 @@ tf_cc_binary(
     deps = [":tf2xla_supported_ops_lib"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,
@@ -140,6 +141,7 @@ cc_library(
         ":tf2xla_proto_cc",
         ":tf2xla_util",
         ":xla_compiler",
+        "//tensorflow/compiler/aot:aot_only_var_handle_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -627,7 +629,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:session_options",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
     alwayslink = 1,
 )
