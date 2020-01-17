@@ -205,9 +205,18 @@ def _verify_tf_loop_vars(init_vars,
   else:
     shape_invariants = nest.map_structure(lambda _: None, iter_entry_vars)
 
-  named_vars = zip(symbol_names, init_vars, iter_entry_vars, iter_exit_vars,
-                   shape_invariants)
-  for name, init, entry, exit_, invariant in named_vars:
+  assert len(symbol_names) == len(shape_invariants)
+  assert len(symbol_names) == len(init_vars)
+  assert len(symbol_names) == len(iter_entry_vars)
+  assert len(symbol_names) == len(iter_exit_vars)
+
+  for i in range(len(symbol_names)):
+    name = symbol_names[i]
+    init = init_vars[i]
+    entry = iter_entry_vars[i]
+    exit_ = iter_exit_vars[i]
+    invariant = shape_invariants[i]
+
     try:
       nest.assert_same_structure(init, entry, expand_composites=True)
       nest.assert_same_structure(entry, exit_, expand_composites=True)
@@ -506,9 +515,7 @@ def _tf_range_for_stmt(
 def _tf_iterator_for_stmt(
     iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """Overload of for_stmt that iterates over TF Iterators. See for_loop."""
-  init_vars = get_state()
-  _disallow_undefs_into_loop(*init_vars)
-
+  symbol_names = ('<internal has_next>',) + symbol_names
   has_next = compat_util.BasicRef(True)
 
   def aug_get_state():
@@ -519,24 +526,27 @@ def _tf_iterator_for_stmt(
     has_next.value, loop_vars = aug_loop_vars[0], aug_loop_vars[1:]
     set_state(loop_vars)
 
+  init_vars = aug_get_state()
+  _disallow_undefs_into_loop(*init_vars)
+
   def aug_body():
     """Main body passed to _tf_while_stmt."""
     opt_iterate = iterator_ops.get_next_as_optional(iter_)
     has_next.value = opt_iterate.has_value()
-    loop_vars = get_state()  # previously set by set_state() in _tf_while_loop.
+    loop_vars = aug_get_state()  # updated by set_state() in _tf_while_loop.
 
     def main_path():
       body(opt_iterate.get_value())
-      new_loop_vars = get_state()
+      new_loop_vars = aug_get_state()
       # Note: this verification duplicates the one performed in tf_while_stmt,
       # but needs to be done earlier to prevent the tf.cond from blowing up
       # first.
       _verify_tf_loop_vars(
           init_vars, loop_vars, new_loop_vars, symbol_names, opts)
-      return (True,) + new_loop_vars
+      return new_loop_vars
 
     def noop_path():
-      return (False,) + loop_vars
+      return loop_vars
 
     # TODO(mdan): If tf.while_loop supported Optional, this could be avoided.
     # Calling set_state so that get_state() _tf_while_loop sees the conditional
@@ -558,7 +568,7 @@ def _tf_iterator_for_stmt(
       aug_body,
       aug_get_state,
       aug_set_state,
-      ('<internal has_next>',) + symbol_names,
+      symbol_names,
       opts)
 
 
@@ -658,6 +668,10 @@ def _tf_distributed_iterable_for_stmt(
 
   init_vars = get_state()
   _disallow_undefs_into_loop(init_vars)
+
+  if 'shape_invariants' in opts:
+    opts['shape_invariants'] = _shape_invariants_mapping_to_positional_list(
+        opts['shape_invariants'], init_vars)
 
   def reduce_body(loop_vars, iterate):
     set_state(loop_vars)
