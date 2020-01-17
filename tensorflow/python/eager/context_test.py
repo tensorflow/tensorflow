@@ -23,10 +23,12 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu
+from tensorflow.python.training import server_lib
 
 
 class ContextTest(test.TestCase):
@@ -120,6 +122,19 @@ class ContextTest(test.TestCase):
     topology, = ctx.tpu_topologies
     self.assertGreater(topology.num_tasks, 0)
     self.assertGreater(topology.num_tpus_per_task, 0)
+
+  def testTPUInitializationMultiHost(self):
+    ctx = context.context()
+    if not ctx.list_physical_devices('TPU'):
+      self.assertEmpty(ctx.tpu_topologies_by_job)
+      self.skipTest('A TPU is required to run this test.')
+    self.assertEqual(['localhost'], list(ctx.tpu_topologies_by_job.keys()))
+    server = server_lib.Server.create_local_server()
+    target = server.target[len('grpc://'):]
+    remote.connect_to_remote_host([target])
+    self.assertIn('localhost', ctx.tpu_topologies_by_job)
+    self.assertIn('worker', ctx.tpu_topologies_by_job)
+    self.assertLen(ctx.tpu_topologies, 2)
 
 
 if __name__ == '__main__':

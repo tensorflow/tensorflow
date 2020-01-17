@@ -820,13 +820,19 @@ void MakeTPUInitializationFunctionDef(
   tensorflow::OpDef_ArgDef* arg_def(signature_def->add_output_arg());
   arg_def->set_name("topology_proto");
   arg_def->set_type(tensorflow::DataType::DT_STRING);
-  tensorflow::NodeDef* node_def(function_def->add_node_def());
-  node_def->set_name("ConfigureDistributedTPU");
-  node_def->set_op("ConfigureDistributedTPU");
-  (*node_def->mutable_attr())["compilation_failure_closes_chips"].set_b(false);
-  node_def->set_device(tpu_system_device_name);
-  (*function_def->mutable_ret())["topology_proto"] =
-      "ConfigureDistributedTPU:topology:0";
+  tensorflow::NodeDef* configure_node_def(function_def->add_node_def());
+  configure_node_def->set_name("ConfigureDistributedTPU");
+  configure_node_def->set_op("ConfigureDistributedTPU");
+  (*configure_node_def->mutable_attr())["compilation_failure_closes_chips"]
+      .set_b(false);
+  configure_node_def->set_device(tpu_system_device_name);
+  tensorflow::NodeDef* identity_node_def(function_def->add_node_def());
+  identity_node_def->set_name("Identity");
+  identity_node_def->set_op("Identity");
+  identity_node_def->add_input("ConfigureDistributedTPU:topology:0");
+  (*identity_node_def->mutable_attr())["T"].set_type(
+      tensorflow::DataType::DT_STRING);
+  (*function_def->mutable_ret())["topology_proto"] = "Identity:output:0";
   (*function_def->mutable_control_ret())["ConfigureDistributedTPU"] =
       "ConfigureDistributedTPU";
 }
