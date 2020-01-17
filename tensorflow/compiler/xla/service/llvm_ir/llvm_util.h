@@ -45,10 +45,6 @@ class TargetOptions;
 namespace xla {
 namespace llvm_ir {
 
-inline string AsString(const std::string& str) {
-  return string(str.data(), str.length());
-}
-
 // Convert a absl::string_view to a llvm::StringRef. Note: both
 // absl::string_view and llvm::StringRef are non-owning pointers into a
 // string in memory. This method is used to feed strings to LLVM
