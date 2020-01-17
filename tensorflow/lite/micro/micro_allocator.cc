@@ -77,6 +77,23 @@ class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
+TfLiteStatus AllocateVariables(
+    const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* flatbuffer_tensors,
+    TfLiteTensor* runtime_tensors, SimpleMemoryAllocator* allocator) {
+  for (size_t i = 0; i < flatbuffer_tensors->size(); ++i) {
+    if (flatbuffer_tensors->Get(i)->is_variable()) {
+      runtime_tensors[i].data.uint8 = allocator->AllocateFromTail(
+          runtime_tensors[i].bytes, kBufferAlignment);
+      // Allocation failure.
+      if (runtime_tensors[i].data.uint8 == nullptr) {
+        return kTfLiteError;
+      }
+    }
+    tflite::ResetVariableTensor(&(runtime_tensors[i]));
+  }
+  return kTfLiteOk;
+}
+
 }  // namespace
 
 MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
@@ -207,156 +224,147 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
                                 error_reporter_, &context_->tensors[i]));
   }
 
-  // tensor_info is only used in this function.
-  SimpleMemoryAllocator tmp_allocator =
-      memory_allocator_.CreateChildAllocator();
-  TensorInfo* tensor_info =
-      reinterpret_cast<TensorInfo*>(tmp_allocator.AllocateFromTail(
-          sizeof(TensorInfo) * tensors_->size(), alignof(TensorInfo)));
-  if (tensor_info == nullptr) {
-    error_reporter_->Report(
-        "Failed to allocate memory for tensor_info, %d bytes required",
-        sizeof(TfLiteTensor) * context_->tensors_size);
-    return kTfLiteError;
-  }
-
-  // Set up the runtime data structures for all tensors.
-  for (size_t i = 0; i < tensors_->size(); ++i) {
-    TensorInfo* current = &tensor_info[i];
-    current->flatbuffer_tensor = &(*(tensors_->Get(i)));
-    current->runtime_tensor = &context_->tensors[i];
-    const bool is_variable = current->flatbuffer_tensor->is_variable();
-    if (is_variable) {
-      current->first_created = 0;
-      current->last_used = operators_->size();
-    } else {
-      current->first_created = -1;
-      current->last_used = -1;
-    }
-    current->needs_allocating = false;
-  }
-
-  // First go through the inputs and figure out if they need to be allocated.
-  for (size_t i = 0; i < subgraph_->inputs()->size(); ++i) {
-    const int tensor_index = subgraph_->inputs()->Get(i);
-    TensorInfo* current = &tensor_info[tensor_index];
-    // Check for pre-allocated inputs.
-    current->needs_allocating = (current->runtime_tensor->data.raw == nullptr);
-    current->first_created = 0;
-  }
-
-  // Mark all outputs as persistent to the end of the invocation.
-  for (size_t i = 0; i < subgraph_->outputs()->size(); ++i) {
-    const int tensor_index = subgraph_->outputs()->Get(i);
-    TensorInfo* current = &tensor_info[tensor_index];
-    current->last_used = operators_->size() - 1;
-  }
-
-  // Figure out when the first and last use of each tensor is.
-  for (int i = (operators_->size() - 1); i >= 0; --i) {
-    const auto* op = operators_->Get(i);
-    for (size_t n = 0; n < op->inputs()->size(); ++n) {
-      const int tensor_index = op->inputs()->Get(n);
-      TensorInfo* current = &tensor_info[tensor_index];
-      if (!current->flatbuffer_tensor->is_variable() &&
-          ((current->last_used == -1) || (current->last_used > i))) {
-        current->last_used = i;
-      }
-    }
-    for (size_t n = 0; n < op->outputs()->size(); ++n) {
-      const int tensor_index = op->outputs()->Get(n);
-      TensorInfo* current = &tensor_info[tensor_index];
-      if ((current->first_created == -1) || (current->first_created < i)) {
-        current->first_created = i;
-      }
-    }
-  }
-
-  // Work out which tensors need to be allocated.
-  for (size_t i = 0; i < tensors_->size(); ++i) {
-    TensorInfo* current = &tensor_info[i];
-    const bool is_read_only =
-        (current->first_created == -1) && (current->last_used != -1);
-    const bool is_preallocated_input =
-        (current->runtime_tensor->data.raw != nullptr);
-    const bool has_partial_lifetime =
-        !is_read_only &&
-        ((current->first_created == -1) || (current->last_used == -1));
-    if (has_partial_lifetime) {
+  // Create static memory plan. TensorInfo is needed for creating the plan but
+  // is thrown away afterwards.
+  {
+    SimpleMemoryAllocator tmp_allocator =
+        memory_allocator_.CreateChildAllocator();
+    TensorInfo* tensor_info =
+        reinterpret_cast<TensorInfo*>(tmp_allocator.AllocateFromTail(
+            sizeof(TensorInfo) * tensors_->size(), alignof(TensorInfo)));
+    if (tensor_info == nullptr) {
       error_reporter_->Report(
-          "Logic error in memory planner, tensor %d has an invalid lifetime",
-          i);
+          "Failed to allocate memory for tensor_info, %d bytes required",
+          sizeof(TfLiteTensor) * context_->tensors_size);
       return kTfLiteError;
     }
-    if (!is_read_only && !is_preallocated_input) {
-      current->needs_allocating = true;
+
+    // Set up the runtime data structures for all tensors.
+    for (size_t i = 0; i < tensors_->size(); ++i) {
+      TensorInfo* current = &tensor_info[i];
+      current->flatbuffer_tensor = &(*(tensors_->Get(i)));
+      current->runtime_tensor = &context_->tensors[i];
+      current->first_created = -1;
+      current->last_used = -1;
+      current->needs_allocating =
+          (current->runtime_tensor->data.raw == nullptr) &&
+          (!current->flatbuffer_tensor->is_variable());
     }
-  }
 
-  uint8_t* aligned_arena = AlignPointerUp(arena_, kBufferAlignment);
-  const size_t alignment_loss = (aligned_arena - arena_);
-
-  // Remaining arena size that memory planner can use for calculating offsets.
-  int remaining_arena_size =
-      arena_size_ - (tmp_allocator.GetDataSize() + alignment_loss);
-  GreedyMemoryPlanner planner(aligned_arena, remaining_arena_size);
-
-  // Add the tensors to our allocation plan.
-  for (size_t i = 0; i < tensors_->size(); ++i) {
-    TensorInfo* current = &tensor_info[i];
-    if (current->needs_allocating) {
-      size_t bytes_required;
-      size_t type_size;
-      TF_LITE_ENSURE_STATUS(BytesRequiredForTensor(*current->flatbuffer_tensor,
-                                                   &bytes_required, &type_size,
-                                                   error_reporter_));
-      size_t aligned_bytes_required =
-          AlignSizeUp(bytes_required, kBufferAlignment);
-      TF_LITE_ENSURE_STATUS(
-          planner.AddBuffer(error_reporter_, aligned_bytes_required,
-                            current->first_created, current->last_used));
+    // First go through the inputs and set lifetime correctly.
+    for (size_t i = 0; i < subgraph_->inputs()->size(); ++i) {
+      const int tensor_index = subgraph_->inputs()->Get(i);
+      TensorInfo* current = &tensor_info[tensor_index];
+      current->first_created = 0;
     }
-  }
 
-  // Actual size available for placing tensors. This includes memory held by the
-  // tensor info array, which will be released.
-  int actual_available_arena_size =
-      arena_size_ - (memory_allocator_.GetDataSize() + alignment_loss);
-  // Make sure we have enough room.
-  if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
-    error_reporter_->Report(
-        "Arena size is too small for activation buffers. Needed %d but only %d "
-        "was available.",
-        planner.GetMaximumMemorySize(), remaining_arena_size);
-    return kTfLiteError;
-  }
-
-  // Figure out the actual memory addresses for each buffer, based on the plan.
-  int planner_index = 0;
-  for (size_t i = 0; i < tensors_->size(); ++i) {
-    TensorInfo* current = &tensor_info[i];
-    if (current->needs_allocating) {
-      int offset;
-      TF_LITE_ENSURE_STATUS(
-          planner.GetOffsetForBuffer(error_reporter_, planner_index, &offset));
-      current->runtime_tensor->data.uint8 = aligned_arena + offset;
-      ++planner_index;
+    // Mark all outputs as persistent to the end of the invocation.
+    for (size_t i = 0; i < subgraph_->outputs()->size(); ++i) {
+      const int tensor_index = subgraph_->outputs()->Get(i);
+      TensorInfo* current = &tensor_info[tensor_index];
+      current->last_used = operators_->size() - 1;
     }
-  }
 
-  // Copy default value for variable tensors. Note that this will overwrite
-  // the arena planner data so GetOffsetForBuffer will return wrong
-  // result.
-  for (size_t i = 0; i < tensors_->size(); ++i) {
-    TensorInfo* current = &tensor_info[i];
-    // Set default value for variable tensors:
-    if (current->flatbuffer_tensor->is_variable()) {
-      if (current->runtime_tensor->data.uint8 == nullptr) {
-        error_reporter_->Report("Variable is not allocated");
+    // Figure out when the first and last use of each tensor is.
+    for (int i = (operators_->size() - 1); i >= 0; --i) {
+      const auto* op = operators_->Get(i);
+      for (size_t n = 0; n < op->inputs()->size(); ++n) {
+        const int tensor_index = op->inputs()->Get(n);
+        TensorInfo* current = &tensor_info[tensor_index];
+        if (((current->last_used == -1) || (current->last_used > i))) {
+          current->last_used = i;
+        }
+      }
+      for (size_t n = 0; n < op->outputs()->size(); ++n) {
+        const int tensor_index = op->outputs()->Get(n);
+        TensorInfo* current = &tensor_info[tensor_index];
+        if ((current->first_created == -1) || (current->first_created < i)) {
+          current->first_created = i;
+        }
+      }
+    }
+
+    // Work out which tensors need to be allocated.
+    for (size_t i = 0; i < tensors_->size(); ++i) {
+      TensorInfo* current = &tensor_info[i];
+      const bool is_read_only =
+          (current->first_created == -1) && (current->last_used != -1);
+      if (is_read_only) {
+        current->needs_allocating = false;
+      }
+      const bool has_partial_lifetime =
+          !is_read_only &&
+          ((current->first_created == -1) || (current->last_used == -1));
+      if (has_partial_lifetime && current->needs_allocating) {
+        error_reporter_->Report(
+            "Logic error in memory planner, tensor %d has an invalid lifetime: "
+            "first_created: %d, last_used: %d",
+            i, current->first_created, current->last_used);
         return kTfLiteError;
       }
-      tflite::ResetVariableTensor(current->runtime_tensor);
     }
+
+    uint8_t* aligned_arena = AlignPointerUp(arena_, kBufferAlignment);
+    const size_t alignment_loss = (aligned_arena - arena_);
+
+    // Remaining arena size that memory planner can use for calculating offsets.
+    int remaining_arena_size =
+        arena_size_ - (tmp_allocator.GetDataSize() + alignment_loss);
+    GreedyMemoryPlanner planner(aligned_arena, remaining_arena_size);
+
+    // Add the tensors to our allocation plan.
+    for (size_t i = 0; i < tensors_->size(); ++i) {
+      TensorInfo* current = &tensor_info[i];
+      if (current->needs_allocating) {
+        size_t bytes_required;
+        size_t type_size;
+        TF_LITE_ENSURE_STATUS(
+            BytesRequiredForTensor(*current->flatbuffer_tensor, &bytes_required,
+                                   &type_size, error_reporter_));
+        size_t aligned_bytes_required =
+            AlignSizeUp(bytes_required, kBufferAlignment);
+        TF_LITE_ENSURE_STATUS(
+            planner.AddBuffer(error_reporter_, aligned_bytes_required,
+                              current->first_created, current->last_used));
+      }
+    }
+
+    // Actual size available for placing tensors. This includes memory held by
+    // the tensor info array, which will be released.
+    int actual_available_arena_size =
+        arena_size_ - (memory_allocator_.GetDataSize() + alignment_loss);
+    // Make sure we have enough room.
+    if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
+      error_reporter_->Report(
+          "Arena size is too small for activation buffers. Needed %d but only "
+          "%d "
+          "was available.",
+          planner.GetMaximumMemorySize(), remaining_arena_size);
+      return kTfLiteError;
+    }
+
+    // Figure out the actual memory addresses for each buffer, based on the
+    // plan.
+    int planner_index = 0;
+    for (size_t i = 0; i < tensors_->size(); ++i) {
+      TensorInfo* current = &tensor_info[i];
+      if (current->needs_allocating) {
+        int offset;
+        TF_LITE_ENSURE_STATUS(planner.GetOffsetForBuffer(
+            error_reporter_, planner_index, &offset));
+        current->runtime_tensor->data.uint8 = aligned_arena + offset;
+        ++planner_index;
+      }
+    }
+  }
+
+  // Data in variables need to be kept for the next invocation so allocating
+  // them from the tail (persistent area).
+  if (AllocateVariables(tensors_, context_->tensors, &memory_allocator_) !=
+      kTfLiteOk) {
+    error_reporter_->Report(
+        "Failed to allocate variables. Please increase arena size.");
+    return kTfLiteError;
   }
 
   active_ = false;

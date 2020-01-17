@@ -45,7 +45,6 @@ SimpleMemoryAllocator SimpleMemoryAllocator::CreateChildAllocator() {
   // is not what we expected.
   SimpleMemoryAllocator child = *this;
   child.parent_allocator_ = this;
-  // With C++ copy elision, &child should be available after return.
   has_child_allocator_ = true;
   return child;
 }
