@@ -626,12 +626,13 @@ class Layer(module.Module):
     # carry over the input mask
     return mask
 
-  def __call__(self, *args, **kwargs):
+  def __call__(self, inputs, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
     Arguments:
-      *args: Positional arguments to be passed to `self.call`.
-      **kwargs: Keyword arguments to be passed to `self.call`.
+      inputs: input tensor(s).
+      *args: additional positional arguments to be passed to `self.call`.
+      **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
@@ -650,16 +651,6 @@ class Layer(module.Module):
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
-    # Grab the first positional or keyword argument.
-    if args:
-      inputs = args[0]
-      args = args[1:]
-    elif self._call_fn_args[0] in kwargs:
-      inputs = kwargs.pop(self._call_fn_args[0])
-    else:
-      raise ValueError(
-          'The first argument to `Layer.call` must always be passed.')
-
     call_context = base_layer_utils.call_context()
     input_list = nest.flatten(inputs)
 
