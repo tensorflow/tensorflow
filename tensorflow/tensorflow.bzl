@@ -350,30 +350,14 @@ def tf_opts_nortti_if_android():
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ])
 
-def tf_opts_nortti_if_emscripten():
-    return if_emscripten([
-        "-fno-rtti",
-        "-DGOOGLE_PROTOBUF_NO_RTTI",
-        "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-    ])
-
 def tf_defines_nortti_if_android():
     return if_android([
         "GOOGLE_PROTOBUF_NO_RTTI",
         "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ])
 
-def tf_defines_nortti_if_emscripten():
-    return if_emscripten([
-        "GOOGLE_PROTOBUF_NO_RTTI",
-        "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-    ])
-
 def tf_features_nomodules_if_android():
     return if_android(["-use_header_modules"])
-
-def tf_features_nomodules_if_emscripten():
-    return if_emscripten(["-use_header_modules"])
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.

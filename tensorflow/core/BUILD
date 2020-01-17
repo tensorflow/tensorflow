@@ -68,7 +68,6 @@ load(
     "cc_header_only_library",
     "if_android",
     "if_chromiumos",
-    "if_emscripten",
     "if_ios",
     "if_mobile",
     "if_not_windows",
@@ -80,14 +79,11 @@ load(
     "tf_copts",
     "tf_cuda_library",
     "tf_defines_nortti_if_android",
-    "tf_defines_nortti_if_emscripten",
     "tf_features_nomodules_if_android",
-    "tf_features_nomodules_if_emscripten",
     "tf_gen_op_libs",
     "tf_genrule_cmd_append_to_srcs",
     "tf_openmp_copts",
     "tf_opts_nortti_if_android",
-    "tf_opts_nortti_if_emscripten",
     "transitive_hdrs",
 )
 
@@ -111,9 +107,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
 # Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 # For platform specific build config
 load(
@@ -4581,31 +4574,7 @@ transitive_hdrs(
     ],
 )
 
-genrule(
-    name = "emscripten_proto_config_lite_runtime",
-    outs = ["emscripten_proto_config_lite_runtime.asciipb"],
-    cmd = tf_genrule_cmd_append_to_srcs("optimize_mode:LITE_RUNTIME"),
-    visibility = ["//visibility:private"],
-)
-
 # Normalize CORE_PROTO_SRCS to generate valid output file names.
 PORTABLE_PROTO_HEADERS_OUT = tf_android_core_proto_headers(CORE_PROTO_SRCS) + [
     "//google/protobuf/any.proto.h",
 ]
-
-tf_portable_proto_library(
-    name = "emscripten_proto_lib_no_rtti_lite_runtime",
-    config = ":emscripten_proto_config_lite_runtime",
-    copts = tf_opts_nortti_if_emscripten(),
-    features = tf_features_nomodules_if_emscripten(),
-    header_outs = PORTABLE_PROTO_HEADERS_OUT,
-    link_full_protobuf = False,
-    prefix_dir = "emscripten_proto_no_rtti",
-    proto_deps = [
-        ":core_protos",
-        "//tensorflow/core/framework:protos_all",
-        "//tensorflow/core/util:protos_all",
-    ],
-    visibility = ["//visibility:public"],
-    deps = ["@com_google_protobuf//:protobuf"],
-)
