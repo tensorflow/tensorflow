@@ -483,7 +483,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.fused_matmul, csinfo_.mkl_fused_matmul,
-                      CopyAttrsAll, FusedMatMulRewrite});
+                      CopyAttrsAllCheckConstFilter, FusedMatMulRewrite});
 
 #ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.identity,
@@ -1877,6 +1877,9 @@ rinfo_.push_back({csinfo_.tanh_grad,
   // NOTE: names are alphabetically sorted.
   static void CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
                            bool change_format = false);
+  static void CopyAttrsAllCheckConstFilter(const Node* orig_node,
+                                           NodeBuilder* nb,
+                                           bool change_format = false);
 
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
@@ -2466,6 +2469,18 @@ void MklLayoutRewritePass::CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
     nb->Attr(name, attr);
     ++iter;
   }
+}
+
+// Generic function to copy all attributes and check if filter is const.
+void MklLayoutRewritePass::CopyAttrsAllCheckConstFilter(const Node* orig_node,
+                                                        NodeBuilder* nb,
+                                                        bool change_format) {
+  CopyAttrsAll(orig_node, nb, change_format);
+
+  // Check and set filter attribute.
+  Node* filter_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
+  nb->Attr("is_filter_const", filter_node->IsConstant());
 }
 
 void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
