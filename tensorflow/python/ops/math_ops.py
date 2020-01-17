@@ -2667,10 +2667,16 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
     reduce_dim = _ReductionDims(input_tensor, axis)
     raw_max = reduce_max_with_dims(
         input_tensor, axis=axis, keepdims=True, dims=reduce_dim)
-    my_max = array_ops.stop_gradient(
-        gen_math_ops.select(
-            gen_math_ops.is_finite(raw_max), raw_max,
-            gen_array_ops.zeros_like(raw_max)))
+    if compat.forward_compatible(2020, 3, 14):
+        my_max = array_ops.stop_gradient(
+            gen_math_ops.select_v2(
+                gen_math_ops.is_finite(raw_max), raw_max,
+                gen_array_ops.zeros_like(raw_max)))
+    else:
+        my_max = array_ops.stop_gradient(
+            gen_math_ops.select(
+                gen_math_ops.is_finite(raw_max), raw_max,
+                gen_array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum_with_dims(
             gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
