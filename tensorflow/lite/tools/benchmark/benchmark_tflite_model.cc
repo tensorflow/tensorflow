@@ -275,6 +275,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("input_layer_value_range",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("hexagon_profiling",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("nnapi_execution_preference",
                           BenchmarkParam::Create<std::string>(""));
@@ -326,6 +328,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
         "input layer name and integer-only range values (both low and high are "
         "inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
     CreateFlag<bool>("use_hexagon", &params_, "Use Hexagon delegate api"),
+    CreateFlag<bool>("hexagon_profiling", &params_,
+                     "Enables Hexagon profiling"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
     CreateFlag<std::string>(
         "nnapi_execution_preference", &params_,
@@ -765,8 +769,9 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 
   if (params_.Get<bool>("use_hexagon")) {
     const std::string libhexagon_path("/data/local/tmp");
+    const bool profiling = params_.Get<bool>("hexagon_profiling");
     Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateHexagonDelegate(libhexagon_path);
+        evaluation::CreateHexagonDelegate(libhexagon_path, profiling);
     if (!delegate) {
       // Refer to the Tensorflow Lite Hexagon delegate documentation for more
       // information about how to get the required libraries.
