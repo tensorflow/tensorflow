@@ -531,6 +531,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       // Just collect the input shape info and return. The shapes are used to
       // generate optimization profiles during engine creation.
       cache_res->profiles_.addShape(input_concrete_shapes);
+      VLOG(1) << "Native segment is used during collecting shapes for profiles";
       ExecuteNativeSegment(ctx, helper);
       return;
     } else if (cache_res->profiles_.GetNumProfiles() == 0) {

@@ -185,7 +185,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return SimpleModel()
 
     root = _model()
-    input_saved_model_dir = "test_profiles_saved_model_dir"
+    input_saved_model_dir = self.mkdtemp()
     save.save(root, input_saved_model_dir,
               {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: root.run})
 
@@ -215,7 +215,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     converter.build(input_fn=my_input_fn)
 
-    output_saved_model_dir = "test_profiles_output_saved_model_dir"
+    output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir=output_saved_model_dir)
 
     saved_model_loaded = load.load(

@@ -39,7 +39,7 @@ void TrtShapeOptimizationProfile::initProfiles() {
                "You have to enable profile generation mode first (build).";
   } else {
     VLOG(1) << "Creating profiles with startegy of one profile "
-            << "for each input shape (min=opt=max).";
+            << "for each input (min=opt=max).";
   }
   for (auto& shape_vec: input_shapes_) {
     std::vector<nvinfer1::Dims> dimvec;
