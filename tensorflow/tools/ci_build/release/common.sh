@@ -57,6 +57,27 @@ function set_bazel_outdir {
   export TEST_TMPDIR=/tmpfs/bazel_output
 }
 
+# Downloads bazelisk to ~/bin as `bazel`.
+function install_bazelisk {
+  date
+  case "$(uname -s)" in
+    Darwin) local name=bazelisk-darwin-amd64 ;;
+    Linux)  local name=bazelisk-linux-amd64  ;;
+    *) die "Unknown OS: $(uname -s)" ;;
+  esac
+  mkdir -p "$HOME/bin"
+  wget --no-verbose -O "$HOME/bin/bazel" \
+      "https://github.com/bazelbuild/bazelisk/releases/download/v1.2.1/$name"
+  chmod u+x "$HOME/bin/bazel"
+  if [[ ! ":$PATH:" =~ :"$HOME"/bin/?: ]]; then
+    PATH="$HOME/bin:$PATH"
+  fi
+  set_bazel_outdir
+  which bazel
+  bazel version
+  date
+}
+
 # Install the given bazel version on linux
 function update_bazel_linux {
   if [[ -z "$1" ]]; then
