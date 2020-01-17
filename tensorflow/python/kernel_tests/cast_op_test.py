@@ -213,6 +213,13 @@ class CastOpTest(test.TestCase):
           err = gradient_checker.compute_gradient_error(x, [], y, [])
           self.assertLess(err, 1e-3)
 
+  def testPythonDataTypes(self):
+    with self.cached_session():
+      # GitHub issue 35938, a of 0.2 is for python native type.
+      a = 0.2
+      b = math_ops.cast(a, dtypes.float64)
+      self.assertAllEqual(a, self.evaluate(b))
+
 
 class SparseTensorCastTest(test.TestCase):
 
