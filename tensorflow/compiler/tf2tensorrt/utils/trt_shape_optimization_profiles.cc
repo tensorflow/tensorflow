@@ -176,6 +176,7 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
       cfg.max.push_back(max);
       cfg.opt.push_back(opt);
     }
+    VLOG(2) << "Restored profile " << cfg.DebugString();
     profiles_.push_back(std::move(cfg));
   }
   return Status::OK();
