@@ -446,8 +446,9 @@ cc_library(
     srcs = ["tensor_format.cc"],
     hdrs = ["tensor_format.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/lib/gtl:array_slice",
+        "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -470,9 +471,9 @@ cc_library(
     srcs = ["einsum_op_util.cc"],
     hdrs = ["einsum_op_util.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/gtl:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
 )

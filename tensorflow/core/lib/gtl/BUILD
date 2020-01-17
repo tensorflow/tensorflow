@@ -10,6 +10,8 @@ package(
         "//tensorflow/core/lib/histogram:__pkg__",
         # tensorflow/core/framework uses array_slice, map_util, and flatmap
         "//tensorflow/core/framework:__pkg__",
+        # tensorflow/core/util uses array_slice, inlined_vector
+        "//tensorflow/core/util:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
