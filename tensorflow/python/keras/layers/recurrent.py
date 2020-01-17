@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import collections
 
 import numpy as np
@@ -808,7 +809,11 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if (isinstance(inputs, collections.abc.Sequence)
+    if sys.version_info[0] < 3:
+      dtype_sequence = collections.Sequence  # py2
+    else:
+      dtype_sequence = collections.abc.Sequence  # py3.9
+    if (isinstance(inputs, dtype_sequence)
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
