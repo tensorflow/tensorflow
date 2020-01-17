@@ -99,10 +99,6 @@ std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g) {
                  return;
                }
 
-               if (first_side_effecting_node_on_path != nullptr) {
-                 return;
-               }
-
                first_side_effecting_node_on_path = n;
                string original_node_name;
                TF_CHECK_OK(GetNodeAttr(n->def(),
