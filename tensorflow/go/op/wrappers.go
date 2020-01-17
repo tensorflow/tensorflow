@@ -27196,8 +27196,10 @@ func StringLowerEncoding(value string) StringLowerAttr {
 // Converts all uppercase characters into their respective lowercase replacements.
 //
 // Example:
+//
 // >>> tf.strings.lower("CamelCase string and ALL CAPS")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
+//
 func StringLower(scope *Scope, input tf.Output, optional ...StringLowerAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -33719,8 +33721,10 @@ func StringUpperEncoding(value string) StringUpperAttr {
 // Converts all lowercase characters into their respective uppercase replacements.
 //
 // Example:
+//
 // >>> tf.strings.upper("CamelCase string and ALL CAPS")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'CAMELCASE STRING AND ALL CAPS'>
+//
 func StringUpper(scope *Scope, input tf.Output, optional ...StringUpperAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
