@@ -46,7 +46,6 @@ exports_files(
         "model.h",
         "node_def_builder.h",
         "numeric_op.h",
-        "op.h",
         "op_kernel.h",
         "op_segment.h",
         "ops_util.h",
@@ -61,7 +60,6 @@ exports_files(
         "resource_var.h",
         "run_handler.h",
         "run_handler_util.h",
-        "selective_registration.h",
         "session_state.h",
         "shared_ptr_variant.h",
         "stats_aggregator.h",
@@ -235,7 +233,6 @@ filegroup(
         "memory_types.cc",
         "model.cc",
         "node_def_builder.cc",
-        "op.cc",
         "op_kernel.cc",
         "op_segment.cc",
         "ops_util.cc",
@@ -875,6 +872,34 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "selective_registration",
+    hdrs = ["selective_registration.h"],
+)
+
+cc_library(
+    name = "op",
+    srcs = ["op.cc"],
+    hdrs = ["op.h"],
+    deps = [
+        ":op_def_builder",
+        ":op_def_util",
+        ":selective_registration",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/gtl:map_util",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
     ],
 )
 
