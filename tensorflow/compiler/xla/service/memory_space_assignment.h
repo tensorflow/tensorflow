@@ -61,12 +61,14 @@ class MemorySpaceAssignmentCostAnalysis {
   MemorySpaceAssignmentCostAnalysis(
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
-      float alternate_mem_bandwidth_bytes_per_second)
+      float alternate_mem_bandwidth_bytes_per_second,
+      const HloLiveRange& hlo_live_range)
       : cost_analysis_(cost_analysis),
         async_copy_bandwidth_bytes_per_second_(
             async_copy_bandwidth_bytes_per_second),
         alternate_mem_bandwidth_bytes_per_second_(
-            alternate_mem_bandwidth_bytes_per_second) {}
+            alternate_mem_bandwidth_bytes_per_second),
+        hlo_live_range_(hlo_live_range) {}
 
   const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
 
@@ -103,10 +105,13 @@ class MemorySpaceAssignmentCostAnalysis {
   // from default to alternate memory space (or vice versa).
   float GetAsyncCopyElapsed(const Shape& shape) const;
 
+  int64 GetScheduleEndTime() const;
+
  private:
   const HloCostAnalysis& cost_analysis_;
   float async_copy_bandwidth_bytes_per_second_;
   float alternate_mem_bandwidth_bytes_per_second_;
+  const HloLiveRange& hlo_live_range_;
 };
 
 // Abstract base class that memory space assignment uses to pick prefetch
@@ -117,6 +122,11 @@ class PrefetchIntervalPicker {
   virtual ~PrefetchIntervalPicker() = default;
 
   // Sets the instruction schedule.
+  // TODO(yuemmawang) Get rid of this method, and perform the operations in
+  // CostAnalysisPrefetchIntervalPicker::SetInstructionSchedule in
+  // CostAnalysisPrefetchIntervalPicker's constructor.
+  // CostAnalysisPrefetchIntervalPicker can now use its
+  // cost_analysis_.hlo_live_range_ to get the instruction schedule.
   virtual void SetInstructionSchedule(
       const absl::flat_hash_map<const HloInstruction*, int64>&
           instruction_schedule) {
@@ -471,7 +481,8 @@ class MemorySpaceAssignment {
 
   // Runs the MemorySpaceAssignment pass.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
-      HloModule* module, const Options& options);
+      HloModule* module, const HloLiveRange& hlo_live_range,
+      const HloAliasAnalysis& alias_analysis, const Options& options);
 
   // Returns the maximum number of outstanding asynchronous copies in the
   // module.

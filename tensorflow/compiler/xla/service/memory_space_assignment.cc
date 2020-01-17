@@ -92,6 +92,10 @@ float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
          async_copy_bandwidth_bytes_per_second_;
 }
 
+int64 MemorySpaceAssignmentCostAnalysis::GetScheduleEndTime() const {
+  return hlo_live_range_.schedule_end_time();
+}
+
 bool InstructionCountPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
     const Shape& shape, int64 start_time, int64 end_time) const {
   return end_time - start_time <= max_overlap_count_;
@@ -1096,6 +1100,16 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
       float alternate_mem_slowdown =
           cost_analysis.GetInstructionElapsedDueToMemorySlowdown(interval.size);
 
+      // Scale the slowdown based on the time of this buffer. We would want
+      // earlier buffers have lower slowdown values, because they are less
+      // likely to overlap with other HLOs.
+      // TODO (yuemmawang) We may want a piecewise function, where a lower
+      // slowdown for early HLOs, and full slowdown for mid-to-late HLOs.
+      // TODO (yuemmawang) Further in a smarter way, we want buffers overlapped
+      // with more HLOs have higher slowdown, and vice versa.
+      float scale = interval.start * 1.0 / cost_analysis.GetScheduleEndTime();
+      alternate_mem_slowdown *= scale;
+
       return alternate_mem_benefit - alternate_mem_slowdown;
     };
 
@@ -1111,29 +1125,25 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
 }
 
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
-MemorySpaceAssignment::Run(HloModule* module, const Options& options) {
+MemorySpaceAssignment::Run(HloModule* module,
+                           const HloLiveRange& hlo_live_range,
+                           const HloAliasAnalysis& alias_analysis,
+                           const Options& options) {
   CHECK(module->has_schedule());
   VLOG(4) << "Module before memory space assignment: ";
   XLA_VLOG_LINES(4, module->ToString());
   VLOG(4) << "Schedule: " << module->schedule().ToString();
-  TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
-
-  const HloComputation* entry_computation = module->entry_computation();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                      HloLiveRange::Run(module->schedule(), *alias_analysis,
-                                        entry_computation));
   MemorySpaceAssignment memory_space_assignment(
-      module, options.alternate_memory_space, *hlo_live_range);
+      module, options.alternate_memory_space, hlo_live_range);
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
-      &memory_space_assignment.allocation_map_, options, *alias_analysis,
-      *hlo_live_range);
+      &memory_space_assignment.allocation_map_, options, alias_analysis,
+      hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module,
-                                        module->schedule(),
-                                        *alias_analysis.get(), options.size_fn,
-                                        heap_simulator_options)
+                                        module->schedule(), alias_analysis,
+                                        options.size_fn, heap_simulator_options)
                          .status());
 
   TF_RETURN_IF_ERROR(memory_space_assignment.Process());
