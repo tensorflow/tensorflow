@@ -373,10 +373,15 @@ class MaxPooling2D(Pooling2D):
              
   Usage Example:
   
+  >>> input_image = np.random.normal(0.5,0.1,(1,28,28,1))
+  >>> output = np.random.normal(0.5,0.1,(1,13,13,16))
   >>> model = tf.keras.models.Sequential()
-  >>> model.add(tf.keras.layers.Conv2D(32, kernel_size=(3, 3), 
+  >>> model.add(tf.keras.layers.Conv2D(16, kernel_size=(3, 3), 
   ...    input_shape=(28,28,1)))
   >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
+  >>> model.compile('adam', 'mean_squared_error')
+  >>> model.fit(input_image, output)
+  <tensorflow.python.keras.callbacks.History at 0x7f851d526e48>
 
   For example, for stride=(1,1) and padding="same":
 
