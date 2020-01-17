@@ -121,7 +121,7 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Get engine for the input shape
   StatusOr<std::pair<EngineContext*, int>> GetEngine(
-      const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx,
+      const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
       TRTEngineCacheResource* cache_res);
 
   // Verify that the input shapes are consistent and can be handled by this op.
@@ -314,6 +314,24 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                     "profile_generation_mode_=true is only supported if "
                     "use_implicit_batch=false"));
   }
+  if (use_implicit_batch_) {
+    VLOG(1) << "Attribute input_shapes it not set. This happens probably "
+            << "because you are using a model that is already converted "
+            << "to TensorRT (i.e. includes TRTEngineOp in graph). If you "
+            << "convert the original model again to TensorRT, the "
+            << "attributes input_shapes will be set automatically.";
+  } else {
+    OP_REQUIRES(context, input_partial_shapes_.size() > 0,
+                errors::InvalidArgument(
+                    "Explicit batch mode requires attribute input_shapes "
+                    "to be set. If you are using a model that is already "
+                    "converted to TensorRT (i.e. includes TRTEngineOp in graph), "
+                    "then you need to convert the original model again to "
+                    "TensorRT in order to set the attribute input_shapes."));
+    OP_REQUIRES(context, !calibration_mode_,
+                errors::InvalidArgument(
+                    "Explicit batch mode does not support calibration"));
+  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -396,49 +414,55 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   ExecuteNativeSegment(ctx, helper);
 }
 
-Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& shapes) {
-  if (shapes.empty()) {
+Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& input_concrete_shapes) {
+  if (input_concrete_shapes.empty()) {
     return errors::InvalidArgument("Input shapes are empty, for ", name());
   }
 
-  bool is_match_partial_shapes = true;
-  if (shapes.size() != input_partial_shapes_.size()) {
-    is_match_partial_shapes = false;
-  }
-  for (int i = 0; i < shapes.size() && is_match_partial_shapes; i++) {
-    if (shapes[i].dims() != input_partial_shapes_[i].dims()) {
-      is_match_partial_shapes = false;
+  if (input_partial_shapes_.size() == 0) {
+    if (!use_implicit_batch_) {
+      return errors::InvalidArgument(
+          "Explicit batch mode requires input_partial_shapes_ ",
+          "to contain the dynamic input shapes to TRTEngineOp");
     }
-  }
-  for (int i = 0; i < shapes.size() && is_match_partial_shapes; i++) {
-    for (int d = 0; d < shapes[i].dims(); d++) {
-      if (input_partial_shapes_[i].dim_size(d) != -1) {
-        if (shapes[i].dim_size(d) != input_partial_shapes_[i].dim_size(d)) {
-          is_match_partial_shapes = false;
+  } else {
+    const string error_msg = string("Input shapes do not match input partial "
+                                    "shapes stored in graph, for ") +
+                             name() + string(": ") +
+                             DebugString(input_concrete_shapes) + " != " +
+                             DebugString(input_partial_shapes_);
+    if (input_concrete_shapes.size() != input_partial_shapes_.size()) {
+      return errors::InvalidArgument(error_msg);
+    }
+    for (int i = 0; i < input_concrete_shapes.size(); i++) {
+      if (input_concrete_shapes[i].dims() != input_partial_shapes_[i].dims()) {
+        return errors::InvalidArgument(error_msg);
+      }
+    }
+    for (int i = 0; i < input_concrete_shapes.size(); i++) {
+      for (int d = 0; d < input_concrete_shapes[i].dims(); d++) {
+        if (input_partial_shapes_[i].dim_size(d) != -1) {
+          if (input_concrete_shapes[i].dim_size(d) != input_partial_shapes_[i].dim_size(d)) {
+            return errors::InvalidArgument(error_msg);
+          }
         }
       }
     }
   }
-  if (!is_match_partial_shapes) {
-    return errors::InvalidArgument("Input shapes do not match input partial shapes ",
-                                   "stored in graph, for ", name(), ": ",
-                                   DebugString(shapes), " != ",
-                                   DebugString(input_partial_shapes_));
-  }
 
-  if (shapes[0].dims() < 1) {
+  if (input_concrete_shapes[0].dims() < 1) {
     return errors::InvalidArgument("Input shapes contain scalar, for ", name(),
                                    ": ",
-                                   TensorShapeUtils::ShapeListString(shapes));
+                                   TensorShapeUtils::ShapeListString(input_concrete_shapes));
   }
 
   if (use_implicit_batch_) {
-    const int batch_size = shapes[0].dim_size(0);
-    for (const TensorShape& shape : shapes) {
+    const int batch_size = input_concrete_shapes[0].dim_size(0);
+    for (const TensorShape& shape : input_concrete_shapes) {
       if (shape.dims() < 1 || batch_size != shape.dim_size(0)) {
         return errors::InvalidArgument(
             "Input shapes are inconsistent on the batch dimension, for ", name(),
-            ": ", TensorShapeUtils::ShapeListString(shapes));
+            ": ", TensorShapeUtils::ShapeListString(input_concrete_shapes));
       }
     }
   }
@@ -488,13 +512,13 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 
   // Get shapes of inputs to engine.
-  std::vector<TensorShape> input_shapes;
-  input_shapes.reserve(ctx->num_inputs());
+  std::vector<TensorShape> input_concrete_shapes;
+  input_concrete_shapes.reserve(ctx->num_inputs());
   for (int i = 0; i < ctx->num_inputs(); ++i) {
-    input_shapes.push_back(ctx->input(i).shape());
+    input_concrete_shapes.push_back(ctx->input(i).shape());
   }
 
-  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_shapes), *helper);
+  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_concrete_shapes), *helper);
 
   if (!use_implicit_batch_) {
     if (profile_generation_mode_) {
@@ -506,7 +530,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                         "profiles are already created."));
       // Just collect the input shape info and return. The shapes are used to
       // generate optimization profiles during engine creation.
-      cache_res->profiles_.addShape(input_shapes);
+      cache_res->profiles_.addShape(input_concrete_shapes);
       ExecuteNativeSegment(ctx, helper);
       return;
     } else if (cache_res->profiles_.GetNumProfiles() == 0) {
@@ -515,14 +539,14 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     }
   }
   StatusOr<std::pair<EngineContext*, int>> status = GetEngine(
-      input_shapes, ctx, cache_res);
+      input_concrete_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), *helper);
 
   EngineContext* engine_context = status.ValueOrDie().first;
   int trt_context_idx = status.ValueOrDie().second;
   if (!engine_context->cuda_engine) {
     VLOG(1) << "Engine retrieval for input shapes: "
-            << TensorShapeUtils::ShapeListString(input_shapes)
+            << TensorShapeUtils::ShapeListString(input_concrete_shapes)
             << " failed. Running native segment for " << name();
     ExecuteNativeSegment(ctx, helper);
     return;
@@ -800,7 +824,7 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
 }
 
 StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
-    const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx,
+    const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
     TRTEngineCacheResource* cache_res) {
   static EngineContext empty_context;
 
@@ -809,7 +833,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
   // verified that. Although this is not needed for explicit batch mode, but
   // we still have to pass it to ConvertGraphDefToEngine until the requirement
   // is removed from that function.
-  const int batch_size = input_shapes[0].dim_size(0);
+  const int batch_size = input_concrete_shapes[0].dim_size(0);
   auto& cache = cache_res->cache_;
   auto allocator = cache_res->allocator_.get();
   if (allocator == nullptr) {
@@ -823,7 +847,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       // TODO(laigd): need a better shape compatibility check for the case where
       // implicit batch is disabled.
       if (!use_implicit_batch_ ||
-          AreShapesCompatible(input_shapes, cache.begin()->first)) {
+          AreShapesCompatible(input_concrete_shapes, cache.begin()->first)) {
         return std::pair<EngineContext*, int>(cache.begin()->second.get(), 0);
       }
       return std::pair<EngineContext*, int>(&empty_context, 0);
@@ -841,11 +865,9 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
     // Static engine will have max_batch_size for batch size so that all inputs
     // will map to this single engine.
-    std::vector<TensorShape> engine_input_shapes(input_shapes);
-    if (use_implicit_batch_) {
-      for (int i = 0; i < engine_input_shapes.size(); i++) {
-        engine_input_shapes[i].set_dim(0, max_batch_size);
-      }
+    std::vector<TensorShape> engine_input_shapes(input_concrete_shapes);
+    for (int i = 0; i < engine_input_shapes.size(); i++) {
+      engine_input_shapes[i].set_dim(0, max_batch_size);
     }
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
@@ -870,7 +892,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 
   int profile_id = -1;
   if (!use_implicit_batch_) {
-    profile_id = cache_res->profiles_.getProfileNumber(input_shapes);
+    profile_id = cache_res->profiles_.getProfileNumber(input_concrete_shapes);
     // Since all profiles are already created at this point,
     // finding no compatible profiles results in falling back
     // to native TF.
@@ -881,7 +903,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 
   EngineContext* engine_contexts;
   if (use_implicit_batch_) {
-    engine_contexts = cache_res->GetEngineContext(input_shapes);
+    engine_contexts = cache_res->GetEngineContext(input_concrete_shapes);
   } else {
     engine_contexts = cache_res->GetEngineContext(profile_id);
   }
@@ -893,7 +915,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()
               << " with input shapes: "
-              << TensorShapeUtils::ShapeListString(input_shapes);
+              << TensorShapeUtils::ShapeListString(input_concrete_shapes);
 
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
@@ -908,17 +930,17 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
                    << "Reason: " << status;
       // Store an empty engine in the cache for these input shapes so we don't
       // try to build the same failing engine again.
-      cache.emplace(input_shapes, absl::make_unique<EngineContext>());
+      cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
     std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> exec_context;
     cache_res->profiles_.createExecutionContexts(engine.get(), exec_context);
-    cache.emplace(input_shapes,
+    cache.emplace(input_concrete_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_context)));
     VLOG(1) << "Added new engine to cache of " << name()
             << ". Cache size: " << cache.size();
-    engine_contexts = cache.at(input_shapes).get();
+    engine_contexts = cache.at(input_concrete_shapes).get();
   }
   return std::pair<EngineContext*, int>(
     engine_contexts, use_implicit_batch_ ? 0 : profile_id);
