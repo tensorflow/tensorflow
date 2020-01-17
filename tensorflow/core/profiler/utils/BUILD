@@ -117,7 +117,6 @@ cc_library(
     deps = [
         ":tf_op_utils",
         ":time_utils",
-        ":xplane_schema",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",

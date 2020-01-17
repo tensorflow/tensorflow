@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -94,7 +95,6 @@ static const absl::string_view kStatTypeStrMap[] = {
     "memcpy_details",
     "memalloc_details",
     "kernel_details",
-    "stream",
     "group_id",
     "step_name",
     "level 0",
@@ -120,8 +120,6 @@ absl::Span<const absl::string_view> GetHostEventTypeStrMap() {
 absl::Span<const absl::string_view> GetStatTypeStrMap() {
   return absl::MakeConstSpan(kStatTypeStrMap, kNumStatTypes);
 }
-
-int GetNumStatTypes() { return kNumStatTypes; }
 
 const absl::flat_hash_map<absl::string_view, StatType>& GetStatTypeMap() {
   static absl::flat_hash_map<absl::string_view, StatType>* stats_type_map =
@@ -155,7 +153,6 @@ const absl::flat_hash_map<absl::string_view, StatType>& GetStatTypeMap() {
           {"memcpy_details", kMemcpyDetails},
           {"memalloc_details", kMemallocDetails},
           {"kernel_details", kKernelDetails},
-          {"stream", kStream},
           // Stats added when processing traces.
           {"group_id", kGroupId},
           {"step_name", kStepName},

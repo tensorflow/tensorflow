@@ -96,7 +96,7 @@ void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
               xplane.GetOrCreateStatMetadata(xstat_metadata_by_name.size());
           xstat_metadata->set_name(string(metadata.key));
         }
-        xevent.ParseAndAddStatValue(xstat_metadata->id(), metadata.value);
+        xevent.ParseAndAddStatValue(*xstat_metadata, metadata.value);
       }
     }
   }

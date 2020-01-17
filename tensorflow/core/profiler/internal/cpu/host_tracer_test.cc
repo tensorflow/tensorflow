@@ -130,7 +130,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   ASSERT_EQ(plane.name(), kHostThreads);
   ASSERT_EQ(plane.lines_size(), 1);
   ASSERT_EQ(plane.event_metadata_size(), 6);
-  ASSERT_EQ(plane.stat_metadata_size(), GetNumStatTypes() + 2);
+  ASSERT_EQ(plane.stat_metadata_size(), 2);
   const auto& event_metadata = plane.event_metadata();
   const auto& stat_metadata = plane.stat_metadata();
   const auto& line = plane.lines(0);
