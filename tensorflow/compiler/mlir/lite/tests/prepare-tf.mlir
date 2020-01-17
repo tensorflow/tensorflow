@@ -414,6 +414,14 @@ func @CheckNumerics(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   // CHECK:  return %arg0 : tensor<3xf32>
 }
 
+func @placeholder_with_default(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %0 = "tf.PlaceholderWithDefault"(%arg0): (tensor<3xf32>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+  // Should be converted to Identity and then from Identity to value
+  // CHECK-LABEL: placeholder_with_default
+  // CHECK:  return %arg0 : tensor<3xf32>
+}
+
 // CHECK-LABEL: @NoPadStridedSliceNonNewAxisMask
 func @NoPadStridedSliceNonNewAxisMask(%arg0: tensor<1x2x3x1xf32>) -> tensor<1x2x3x1xf32> {
   %cst = constant dense<0> : tensor<4xi32>
