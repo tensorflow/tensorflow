@@ -24,8 +24,8 @@ limitations under the License.
 
 // Import the relevant interpreter and model files.
 #if TFLITE_EXPERIMENTAL_RUNTIME
-#include "tensorflow/lite/experimental/tf_runtime/interpreter.h"
-#include "tensorflow/lite/experimental/tf_runtime/model.h"
+#include "tensorflow/lite/experimental/tf_runtime/lib/model.h"
+#include "tensorflow/lite/experimental/tf_runtime/public/interpreter.h"
 #else
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
