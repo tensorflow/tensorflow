@@ -132,14 +132,20 @@ std::string InstructionCountPrefetchIntervalPicker::ToNoCopyDebugString(
   return absl::StrCat("Overlapped HLOs = ", end_time - start_time);
 }
 
-void CostAnalysisPrefetchIntervalPicker::SetInstructionSchedule(
-    const absl::flat_hash_map<const HloInstruction*, int64>&
-        instruction_schedule) {
-  // First create a vector of elapsed times of HLO instructions.
-  std::vector<float> instructions_elapsed_time(instruction_schedule.size(),
-                                               0.0);
+CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    float min_async_copy_to_overlap_ratio,
+    float max_async_copy_to_overlap_ratio)
+    : cost_analysis_(cost_analysis),
+      min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
+      max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio) {
+  instruction_schedule_ =
+      &cost_analysis_.hlo_live_range().instruction_schedule();
 
-  for (const auto& instruction_and_logical_time : instruction_schedule) {
+  // First create a vector of elapsed times of HLO instructions.
+  std::vector<float> instructions_elapsed_time(instruction_schedule_->size(),
+                                               0.0);
+  for (const auto& instruction_and_logical_time : *instruction_schedule_) {
     float elapsed_time = cost_analysis_.cost_analysis().optimal_seconds(
         *instruction_and_logical_time.first);
     int64 logical_time = instruction_and_logical_time.second;
@@ -321,8 +327,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
           << options_.max_size_in_bytes;
 
   AddInputAndOutputRequiredAssignments();
-  options_.prefetch_interval_picker->SetInstructionSchedule(
-      hlo_live_range_.instruction_schedule());
 
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {

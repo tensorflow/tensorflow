@@ -107,6 +107,8 @@ class MemorySpaceAssignmentCostAnalysis {
 
   int64 GetScheduleEndTime() const;
 
+  const HloLiveRange& hlo_live_range() const { return hlo_live_range_; }
+
  private:
   const HloCostAnalysis& cost_analysis_;
   float async_copy_bandwidth_bytes_per_second_;
@@ -120,18 +122,6 @@ class PrefetchIntervalPicker {
  public:
   PrefetchIntervalPicker() = default;
   virtual ~PrefetchIntervalPicker() = default;
-
-  // Sets the instruction schedule.
-  // TODO(yuemmawang) Get rid of this method, and perform the operations in
-  // CostAnalysisPrefetchIntervalPicker::SetInstructionSchedule in
-  // CostAnalysisPrefetchIntervalPicker's constructor.
-  // CostAnalysisPrefetchIntervalPicker can now use its
-  // cost_analysis_.hlo_live_range_ to get the instruction schedule.
-  virtual void SetInstructionSchedule(
-      const absl::flat_hash_map<const HloInstruction*, int64>&
-          instruction_schedule) {
-    instruction_schedule_ = &instruction_schedule;
-  }
 
   // Returns true if the buffer can be allocated in alternate memory space
   // without any copies (prefetches).
@@ -218,14 +208,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
       float min_async_copy_to_overlap_ratio,
-      float max_async_copy_to_overlap_ratio)
-      : cost_analysis_(cost_analysis),
-        min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
-        max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio) {}
-
-  void SetInstructionSchedule(
-      const absl::flat_hash_map<const HloInstruction*, int64>&
-          instruction_schedule) override;
+      float max_async_copy_to_overlap_ratio);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
                                           int64 end_time) const override;
