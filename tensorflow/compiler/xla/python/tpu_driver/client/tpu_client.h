@@ -39,11 +39,10 @@ namespace xla {
 class TpuDevice : public Device {
  public:
   TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
-            int core_on_chip, int core_on_host);
+            int core_on_chip);
 
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_on_chip_; }
-  int core_on_host() const { return core_on_host_; }
 
   std::string DebugString() const override;
 
@@ -54,8 +53,6 @@ class TpuDevice : public Device {
   const std::array<int, 3> coords_;
   // Index of the core of the same chip.
   int core_on_chip_;
-  // Index of the core of the same host.
-  int core_on_host_;
 };
 
 // Encapsulates the state of Python session with XLA.
@@ -270,14 +267,12 @@ class PyTpuExecutable {
       absl::optional<DeviceAssignment> device_assignment);
 
   PyTpuExecutable(
-      std::vector<std::unique_ptr<tpu_driver::LoadedProgramHandle>> executables,
+      std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program,
       DeviceAssignment device_assignment, std::shared_ptr<PyTpuClient> client,
       xla::Shape result_shape);
   virtual ~PyTpuExecutable() {
-    for (size_t idx = 0; idx < executables_.size(); ++idx) {
-      if (executables_[idx] != nullptr) {
-        client_->driver()->UnloadProgram(std::move(executables_[idx]), {});
-      }
+    for (auto it = executables_.begin(); it != executables_.end(); ++it) {
+      client_->driver()->UnloadProgram(std::move(it->second), {});
     }
   }
 
@@ -290,7 +285,8 @@ class PyTpuExecutable {
   int num_partitions() const { return device_assignment_.computation_count(); }
 
   int64 SizeOfGeneratedCodeInBytes() const {
-    return executables_[0]->size_in_bytes();
+    CHECK_GE(executables_.size(), 1);
+    return executables_.begin()->second->size_in_bytes();
   }
 
   const DeviceAssignment& device_assignment() const {
@@ -336,7 +332,7 @@ class PyTpuExecutable {
       int partition, const RunId& run_id);
 
   std::shared_ptr<PyTpuClient> const client_;
-  std::vector<std::unique_ptr<tpu_driver::LoadedProgramHandle>> executables_;
+  std::map<int, std::unique_ptr<tpu_driver::LoadedProgramHandle>> executables_;
   const DeviceAssignment device_assignment_;
 
   // The replica and partition indices of device_assignment_ to be run by this

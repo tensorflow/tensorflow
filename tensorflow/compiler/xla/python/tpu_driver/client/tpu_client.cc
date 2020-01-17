@@ -38,11 +38,10 @@ namespace xla {
 constexpr char kTpuPlatform[] = "tpu";
 
 TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
-                     int core_on_chip, int core_on_host)
+                     int core_on_chip)
     : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform, host_id),
       coords_(coords),
-      core_on_chip_(core_on_chip),
-      core_on_host_(core_on_host) {}
+      core_on_chip_(core_on_chip) {}
 
 std::string TpuDevice::DebugString() const {
   return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), host_id(),
@@ -58,8 +57,7 @@ TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
     int host_id = chip.host_id();
     for (const auto& core : chip.core()) {
       auto device = std::make_shared<TpuDevice>(
-          core.id(), host_id, coords_array, core.core_on_chip_index(),
-          core.core_on_host_index());
+          core.id(), host_id, coords_array, core.core_on_chip_index());
       devices.push_back(device);
     }
   }
@@ -103,10 +101,10 @@ PyTpuClient::PyTpuClient(std::string platform_name,
 
     if (device->host_id() == host_id_) {
       LOG(INFO) << "Detected local device, host-id: " << host_id_
-                << ". core-id: " << device->id();
+                << ". device-id: " << device->id();
       local_devices_.push_back(device);
     } else {
-      VLOG(2) << "Other devices, id: " << device->id();
+      VLOG(2) << "Other devices, device-id: " << device->id();
     }
   }
   CHECK_GE(local_devices_.size(), 1);
@@ -505,15 +503,16 @@ static std::shared_ptr<Device> LookupDevice(const PyTpuClient& client,
 }
 
 PyTpuExecutable::PyTpuExecutable(
-    std::vector<std::unique_ptr<tpu_driver::LoadedProgramHandle>> executables,
+    std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program,
     DeviceAssignment device_assignment, std::shared_ptr<PyTpuClient> client,
     xla::Shape result_shape)
     : client_(std::move(client)),
-      executables_(std::move(executables)),
       device_assignment_(std::move(device_assignment)),
       result_shape_(std::move(result_shape)) {
+  VLOG(1) << "DeviceAssignment. " << device_assignment_.ToString();
   const int num_replicas = device_assignment_.replica_count();
   const int num_partitions = device_assignment_.computation_count();
+  CHECK_EQ(num_partitions, 1) << "partition count > 1 is not supported.";
   for (int replica = 0; replica < num_replicas; ++replica) {
     for (int partition = 0; partition < num_partitions; ++partition) {
       int device_id = device_assignment_(replica, partition);
@@ -522,6 +521,13 @@ PyTpuExecutable::PyTpuExecutable(
         VLOG(3) << "Non-local device: " << device_id;
         continue;
       }
+      // TODO(b/147895917): support replica + partition natively.
+      bool insert_success =
+          executables_
+              .insert({replica, client_->driver()->LoadProgram(
+                                    device_id, compiled_program.get(), {})})
+              .second;
+      CHECK(insert_success) << "Inserting duplicate replica:" << replica;
       local_logical_devices_.emplace_back(replica, partition);
       local_devices_.push_back(device);
     }
@@ -539,13 +545,12 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
   const int device_id = device_assignment_(replica, partition);
   std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
   CHECK_EQ(device->host_id(), client_->host_id());
-  int device_ordinal = device->id();
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Execute");
   VLOG(3) << "Replica " << replica << ", partition " << partition
-          << " mapped to device ordinal for execution: " << device_ordinal;
+          << " mapped to device id for execution: " << device_id;
 
   std::unique_ptr<::xla::PyTpuBuffer> output_buffer =
-      ::xla::PyTpuBuffer::AllocateBuffer(result_shape_, client_, device_ordinal)
+      ::xla::PyTpuBuffer::AllocateBuffer(result_shape_, client_, device_id)
           .ValueOrDie();
   VLOG(1) << "Created output buffer: " << result_shape_.DebugString();
 
@@ -781,27 +786,10 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     }
     result_layout = ::xla::Shape(program_shape_proto.result());
   }
-  VLOG(1) << "Got result shape: " << result_layout.DebugString()
-          << ". DeviceAssignment:" << device_assignment->ToString();
-
-  // TODO(henrytan): refactor this to use map so that we don't create unused
-  // indexes.
-  std::vector<std::unique_ptr<tpu_driver::LoadedProgramHandle>> loaded_programs;
-  loaded_programs.resize(options.num_replicas());
-  for (int replica = 0; replica < options.num_replicas(); ++replica) {
-    const int device_id = (*device_assignment)(replica, 0);
-    std::shared_ptr<Device> device = LookupDevice(*client, device_id);
-    if (device->host_id() != client->host_id()) {
-      VLOG(3) << "Non-local device: " << device_id;
-      continue;
-    }
-    int device_ordinal = device->id();
-    loaded_programs[replica] = client->driver()->LoadProgram(
-        device_ordinal, compiled_program.get(), {});
-  }
+  VLOG(1) << "Got result shape: " << result_layout.DebugString();
 
   return absl::make_unique<PyTpuExecutable>(
-      std::move(loaded_programs), std::move(*device_assignment),
+      std::move(compiled_program), std::move(*device_assignment),
       std::move(client), std::move(result_layout));
 }
 
