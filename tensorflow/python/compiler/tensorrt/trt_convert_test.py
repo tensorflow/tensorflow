@@ -208,9 +208,11 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                     conversion_params=conversion_params)
     converter.convert()
 
+    input_shapes = [(2, 4), (3, 9), (64, 128)]
     def my_input_fn():
-      inp1 = np.random.normal(size=(2, 4)).astype(np.float32)
-      yield inp1,
+      for x in input_shapes:
+        yield (np.random.normal(size=x).astype(np.float32),)
+
     converter.build(input_fn=my_input_fn)
 
     output_saved_model_dir = "test_profiles_output_saved_model_dir"
@@ -220,9 +222,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         output_saved_model_dir, tags=[tag_constants.SERVING])
     graph_func = saved_model_loaded.signatures[
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-    input = ops.convert_to_tensor(
-        np.random.normal(size=(2, 4)).astype(np.float32))
-    graph_func(input)
+    for x in input_shapes:
+      input = ops.convert_to_tensor(
+        np.random.normal(size=x).astype(np.float32))
+      graph_func(input)
 
   def _GetConfigProto(self, rewriter_config=None):
     """Get ConfigProto for session creation."""
