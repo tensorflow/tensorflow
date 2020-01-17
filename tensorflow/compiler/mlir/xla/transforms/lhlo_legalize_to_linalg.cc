@@ -58,9 +58,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     auto loc = lhlo_op.getLoc();
     auto argType =
         lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
-    if (!argType || !argType.hasStaticShape()) {
-      emitError(loc,
-                "lhlo to linalg conversion expects statically shaped args");
+    if (!argType || !argType.hasRank()) {
+      emitError(loc, "lhlo to linalg conversion expects ranked args");
       return ConversionPattern::matchFailure();
     }
     if (!argType || !argType.getElementType().isIntOrFloat()) {
