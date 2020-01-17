@@ -73,24 +73,6 @@ $(PRJDIR)$(3)/$(1)/third_party/%: tensorflow/lite/micro/tools/make/downloads/% t
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@
 
-ifeq ($(TARGET_ARCH), arc)
-$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/Makefile.tpl
-	@mkdir -p $$(dir $$@)
-	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
-	sed -E '1 i\CC = ccac\nCXX = ccac\nLD = ccac\n' | \
-	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
-	sed -E 's#\%\{LINKER_FLAGS\}\%#$(6)#g' | \
-	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
-	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
-
-# Special rule to copy TCF in case the local filesystem file name has been defined
-ifneq ($(TCF_FILE_NAME), )
-$(PRJDIR)$(3)/$(1)/$(TCF_FILE_NAME): $(TCF_FILE)
-	@cp $$< $$@
-endif
-
-endif
-
 $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/%.tpl
 	@mkdir -p $$(dir $$@)
 	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
