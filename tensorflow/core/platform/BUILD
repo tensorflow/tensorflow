@@ -92,6 +92,8 @@ exports_files(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+exports_files(["rocm_rocdl_path.h"])
+
 cc_library(
     name = "abi",
     srcs = ["abi.cc"],
