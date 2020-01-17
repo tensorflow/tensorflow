@@ -67,7 +67,7 @@ class Nadam(optimizer_v2.OptimizerV2):
     >>> model.add(tf.keras.layers.Dense(12, activation="relu"))
     >>> model.add(tf.keras.layers.Dense(8, activation="relu"))
     >>> model.add(tf.keras.layers.Dense(1, activation="sigmoid"))
-    >>> model.compile(optimizer=tf.keras.optimizer.Nadam(), 
+    >>> model.compile(optimizer=tf.keras.optimizers.Nadam(), 
     ...               loss="binary_crossentropy")
     ```
   """
