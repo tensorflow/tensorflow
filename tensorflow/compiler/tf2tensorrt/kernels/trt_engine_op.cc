@@ -918,6 +918,14 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
               << " with input shapes: "
               << TensorShapeUtils::ShapeListString(input_concrete_shapes);
 
+    // Use concrete shapes for implicit batch mode and
+    // use partial shapes for explicit batch mode.
+    const std::vector<PartialTensorShape>& input_engine_shapes =
+        use_implicit_batch_ ?
+        std::vector<PartialTensorShape>(input_concrete_shapes.begin(),
+                                        input_concrete_shapes.end()) :
+        input_partial_shapes_;
+
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
