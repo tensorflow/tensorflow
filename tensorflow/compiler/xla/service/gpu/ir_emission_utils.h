@@ -197,6 +197,7 @@ std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions);
 
 // Emits call to "vprintf" with given format and arguments.
+// TODO(b/147893680): %f format specifier produces incorrect output, use %d.
 llvm::Value* EmitPrintf(absl::string_view fmt,
                         absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder);
