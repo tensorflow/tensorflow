@@ -396,7 +396,7 @@ class OptimizerV2(trackable.Trackable):
                            "Common ops without gradient: "
                            "K.argmax, K.round, K.eval.".format(param))
       if hasattr(self, "clipnorm"):
-        grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
+        grads, _ = clip_ops.clip_by_global_norm(grads, self.clipnorm)
       if hasattr(self, "clipvalue"):
         grads = [
             clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
