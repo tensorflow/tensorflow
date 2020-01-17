@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
@@ -1887,18 +1888,14 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (TF_PREDICT_FALSE(item.is_noop)) {
           nodestats::SetOpEnd(stats);
         } else if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
-          absl::string_view op_name = op_kernel->name_view();
-          const string kernel_label =
-              strings::StrCat(op_name, ":", op_kernel->type_string_view());
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                                       op_name);
-          absl::string_view kernel_label_view(kernel_label);
-          // 'TraceMe' will trace the OpKernel scheduling time.
-          profiler::TraceMe activity(
-              kernel_label_view,
+                                       op_kernel->name_view());
+          profiler::AnnotatedTraceMe activity(
+              [&] {
+                return strings::StrCat(op_kernel->name_view(), ":",
+                                       op_kernel->type_string_view());
+              },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
-          // 'ScopedAnnotation' will trace the OpKernel execution time.
-          profiler::ScopedAnnotation annotation(kernel_label_view);
           device->Compute(op_kernel, &ctx);
           nodestats::SetOpEnd(stats);
           s = ProcessOutputs(item, &ctx, &outputs, stats);

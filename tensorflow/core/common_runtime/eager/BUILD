@@ -216,8 +216,8 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/profiler/lib:annotated_traceme",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/core/profiler/lib:scoped_annotation",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
