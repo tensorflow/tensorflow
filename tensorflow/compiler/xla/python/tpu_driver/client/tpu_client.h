@@ -39,10 +39,11 @@ namespace xla {
 class TpuDevice : public Device {
  public:
   TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
-            int core_on_chip);
+            int core_on_chip, int core_on_host);
 
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_on_chip_; }
+  int core_on_host() const { return core_on_host_; }
 
   std::string DebugString() const override;
 
@@ -53,6 +54,8 @@ class TpuDevice : public Device {
   const std::array<int, 3> coords_;
   // Index of the core of the same chip.
   int core_on_chip_;
+  // Index of the core of the same host.
+  int core_on_host_;
 };
 
 // Encapsulates the state of Python session with XLA.

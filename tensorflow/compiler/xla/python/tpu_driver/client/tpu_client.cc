@@ -38,10 +38,11 @@ namespace xla {
 constexpr char kTpuPlatform[] = "tpu";
 
 TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
-                     int core_on_chip)
+                     int core_on_chip, int core_on_host)
     : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform, host_id),
       coords_(coords),
-      core_on_chip_(core_on_chip) {}
+      core_on_chip_(core_on_chip),
+      core_on_host_(core_on_host) {}
 
 std::string TpuDevice::DebugString() const {
   return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), host_id(),
@@ -57,7 +58,8 @@ TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
     int host_id = chip.host_id();
     for (const auto& core : chip.core()) {
       auto device = std::make_shared<TpuDevice>(
-          core.id(), host_id, coords_array, core.core_on_chip_index());
+          core.id(), host_id, coords_array, core.core_on_chip_index(),
+          core.core_on_host_index());
       devices.push_back(device);
     }
   }
