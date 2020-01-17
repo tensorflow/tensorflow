@@ -365,7 +365,7 @@ def make_csv_dataset_v2(
     num_epochs=1)
   features_batch, labels_batch = next(iter(train_dataset))
   print(features_batch)
-  >> <OrderedDict([(..., <tf.Tensor: shape=(32,), dtype=float32, numpy=
+  # <OrderedDict([(..., <tf.Tensor: shape=(32,), dtype=float32, numpy=
      array( [...], dtype=float32)>)])>
   ```
 
