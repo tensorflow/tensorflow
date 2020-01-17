@@ -85,9 +85,21 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
     if (!delegate) {
       LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
     } else {
-      delegates.emplace("NNAPI", evaluation::CreateNNAPIDelegate());
+      delegates.emplace("NNAPI", std::move(delegate));
     }
   }
+
+  if (s->hexagon_delegate) {
+    const std::string libhexagon_path("/data/local/tmp");
+    auto delegate = evaluation::CreateHexagonDelegate(libhexagon_path);
+
+    if (!delegate) {
+      LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
+    } else {
+      delegates.emplace("Hexagon", std::move(delegate));
+    }
+  }
+
   return delegates;
 }
 
@@ -326,6 +338,7 @@ void display_usage() {
       << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
       << "--gl_backend, -g: use GL GPU Delegate on Android\n"
+      << "--hexagon_delegate: use Hexagon Delegate on Android\n"
       << "--input_mean, -b: input mean\n"
       << "--input_std, -s: input standard deviation\n"
       << "--image, -i: image_name.bmp\n"
@@ -361,13 +374,14 @@ int Main(int argc, char** argv) {
         {"max_profiling_buffer_entries", required_argument, nullptr, 'e'},
         {"warmup_runs", required_argument, nullptr, 'w'},
         {"gl_backend", required_argument, nullptr, 'g'},
+        {"hexagon_delegate", required_argument, nullptr, 'j'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
     c = getopt_long(argc, argv,
-                    "a:b:c:d:e:f:g:i:l:m:p:r:s:t:v:w:", long_options,
+                    "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -402,6 +416,9 @@ int Main(int argc, char** argv) {
         break;
       case 'i':
         s.input_bmp_name = optarg;
+        break;
+      case 'j':
+        s.hexagon_delegate = optarg;
         break;
       case 'l':
         s.labels_file_name = optarg;
