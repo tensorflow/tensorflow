@@ -74,10 +74,11 @@ struct TFE_TensorHandle {
     if (!s->status.ok()) {
       return nullptr;
     }
-    return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
+    return new TFE_TensorHandle{
+        std::make_unique<tensorflow::TensorHandleInterface>(handle)};
   }
 
-  tensorflow::TensorHandleInterface handle;
+  std::unique_ptr<AbstractTensorHandleInterface> handle;
 };
 
 struct TFE_TensorDebugInfo {

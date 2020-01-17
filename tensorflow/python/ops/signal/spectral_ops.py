@@ -329,9 +329,13 @@ def mdct(signals, frame_length, window_fn=window_ops.vorbis_window,
     frame_length.shape.assert_has_rank(0)
     # Assert that frame_length is divisible by 4.
     frame_length_static = tensor_util.constant_value(frame_length)
-    if frame_length_static is not None and frame_length_static % 4 != 0:
-      raise ValueError('The frame length must be a multiple of 4.')
-    frame_step = frame_length // 2
+    if frame_length_static is not None:
+      if frame_length_static % 4 != 0:
+        raise ValueError('The frame length must be a multiple of 4.')
+      frame_step = ops.convert_to_tensor(frame_length_static // 2,
+                                         dtype=frame_length.dtype)
+    else:
+      frame_step = frame_length // 2
 
     framed_signals = shape_ops.frame(
         signals, frame_length, frame_step, pad_end=pad_end)

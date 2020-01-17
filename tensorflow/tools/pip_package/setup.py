@@ -51,7 +51,7 @@ _VERSION = '2.1.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
-    'astor >= 0.6.0',
+    'astunparse == 1.6.3',
     'backports.weakref >= 1.0rc1;python_version<"3.4"',
     'enum34 >= 1.1.6;python_version<"3.4"',
     'gast == 0.3.2',
@@ -245,6 +245,7 @@ else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (
+    list(find_files('*.h', 'tensorflow_core/compiler')) +
     list(find_files('*.h', 'tensorflow_core/core')) +
     list(find_files('*.h', 'tensorflow_core/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +

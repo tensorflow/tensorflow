@@ -56,13 +56,37 @@ class XStatVisitor {
 
   const XStat& RawStat() const { return *stat_; }
 
+  std::string ToString() const;
+
  private:
   const XStat* stat_;
   const XStatMetadata* metadata_;
   const StatType type_;
 };
 
-class XEventVisitor {
+template <class T>
+class XStatsOwner {
+ public:
+  XStatsOwner(const XPlaneVisitor* metadata, const T* stats_owner)
+      : stats_owner_(stats_owner), metadata_(metadata) {}
+
+  // For each plane level stats, call the specified lambda.
+  template <typename ForEachStatFunc>
+  void ForEachStat(ForEachStatFunc&& for_each_stat) const {
+    for (const XStat& stat : stats_owner_->stats()) {
+      for_each_stat(XStatVisitor(metadata_, &stat));
+    }
+  }
+
+  // Shortcut to get a specfic stat type, nullptr if it is absent.
+  const XStat* GetStats(StatType stat_type) const;
+
+ private:
+  const T* stats_owner_;
+  const XPlaneVisitor* metadata_;
+};
+
+class XEventVisitor : public XStatsOwner<XEvent> {
  public:
   XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                 const XEvent* event);
@@ -98,13 +122,6 @@ class XEventVisitor {
   }
 
   int64 NumOccurrences() const { return event_->num_occurrences(); }
-
-  template <typename ForEachStatFunc>
-  void ForEachStat(ForEachStatFunc&& for_each_stat) const {
-    for (const XStat& stat : event_->stats()) {
-      for_each_stat(XStatVisitor(plane_, &stat));
-    }
-  }
 
   bool operator<(const XEventVisitor& other) const {
     return GetTimespan() < other.GetTimespan();
@@ -155,7 +172,7 @@ class XLineVisitor {
   const XLine* line_;
 };
 
-class XPlaneVisitor {
+class XPlaneVisitor : public XStatsOwner<XPlane> {
  public:
   explicit XPlaneVisitor(const XPlane* plane);
 
@@ -175,14 +192,27 @@ class XPlaneVisitor {
   // TODO(jiesun): use single map look up for both StatMetadata and StatType.
   const XStatMetadata* GetStatMetadata(int64 stat_metadata_id) const;
   StatType GetStatType(int64 stat_metadata_id) const;
+  absl::optional<int64> GetStatMetadataId(StatType stat_type) const;
   const XEventMetadata* GetEventMetadata(int64 event_metadata_id) const;
 
  private:
   const XPlane* plane_;
 
   absl::flat_hash_map<int64, std::pair<const XStatMetadata*, StatType>>
-      stat_metadata_;
+      stat_metadata_id_map_;  // Map with key of stat metadata id.
+  absl::flat_hash_map<StatType, const XStatMetadata*> stat_type_map_;
 };
+
+template <class T>
+const XStat* XStatsOwner<T>::GetStats(StatType stat_type) const {
+  absl::optional<int64> stat_metadata_id =
+      metadata_->GetStatMetadataId(stat_type);
+  if (!stat_metadata_id) return nullptr;  // type does not exist in the XPlane.
+  for (const XStat& stat : stats_owner_->stats()) {
+    if (stat.metadata_id() == *stat_metadata_id) return &stat;
+  }
+  return nullptr;  // type does not exist in this owner.
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

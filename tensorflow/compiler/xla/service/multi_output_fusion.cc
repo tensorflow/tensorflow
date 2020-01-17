@@ -377,9 +377,11 @@ bool MultiOutputFusion::Perform() {
       VLOG(1) << "Fuse!";
       VLOG(2) << "Before multi_output_fusion:";
       VLOG(2) << "instr1: " << instr1->ToString();
-      VLOG(2) << "\n"
-              << instr1->fused_instructions_computation()->ToString(
-                     HloPrintOptions().set_indent_amount(1));
+      if (instr1->opcode() == HloOpcode::kFusion) {
+        VLOG(2) << "\n"
+                << instr1->fused_instructions_computation()->ToString(
+                       HloPrintOptions().set_indent_amount(1));
+      }
       VLOG(2) << "instr2: " << instr2->ToString();
       if (instr2->opcode() == HloOpcode::kFusion) {
         VLOG(2) << "\n"

@@ -47,7 +47,7 @@ class AstUtilTest(test.TestCase):
 
     self.assertIsInstance(node.value.left.id, str)
     source = parser.unparse(node, include_encoding_marker=False)
-    self.assertEqual(source.strip(), 'renamed_a + b')
+    self.assertEqual(source.strip(), '(renamed_a + b)')
 
   def test_rename_symbols_attributes(self):
     node = parser.parse('b.c = b.c.d')
@@ -234,7 +234,7 @@ class AstUtilTest(test.TestCase):
     """))
     f = lambda x: x
     nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('(1)',))
+    self.assertLambdaNodes(nodes, ('1',))
 
   def test_find_matching_definitions_lambda_multiple_matches(self):
     node = parser.parse(
@@ -243,7 +243,7 @@ class AstUtilTest(test.TestCase):
     """))
     f = lambda x: x
     nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('(1)', '(2)'))
+    self.assertLambdaNodes(nodes, ('1', '2'))
 
   def test_find_matching_definitions_lambda_uses_arg_names(self):
     node = parser.parse(
@@ -252,11 +252,11 @@ class AstUtilTest(test.TestCase):
     """))
     f = lambda x: x
     nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('(1)',))
+    self.assertLambdaNodes(nodes, ('1',))
 
     f = lambda y: y
     nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('(2)',))
+    self.assertLambdaNodes(nodes, ('2',))
 
 
 if __name__ == '__main__':

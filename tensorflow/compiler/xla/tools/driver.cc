@@ -59,12 +59,12 @@ extern void EntryModule(char* result_buffer, char* run_opts, char** params,
 
 namespace {
 
-[[noreturn]] void ExitWithMsg(std::string msg) {
+[[noreturn]] void ExitWithMsg(const std::string& msg) {
   std::cerr << msg << std::endl;
   exit(1);
 }
 
-void Check(bool cond, std::string msg = "Precondition failed") {
+void Check(bool cond, const std::string& msg = "Precondition failed") {
   if (!cond) {
     ExitWithMsg(msg);
   }
@@ -104,7 +104,7 @@ const std::vector<std::string>& primitive_strings() {
 
 std::string ToString(PrimitiveType type) { return primitive_strings()[type]; }
 
-PrimitiveType PrimitiveTypeFromString(std::string s) {
+PrimitiveType PrimitiveTypeFromString(const std::string& s) {
   const auto& vec = primitive_strings();
   return static_cast<PrimitiveType>(
       std::distance(vec.begin(), std::find(vec.begin(), vec.end(), s)));
@@ -140,7 +140,7 @@ std::string ArrayShapeToString(ArrayShape shape) {
 }
 
 // Input: TYPE[D1,D2,...DN]
-ArrayShape ArrayShapeFromString(std::string s) {
+ArrayShape ArrayShapeFromString(const std::string& s) {
   Log("Array shape from string: " + s);
   Check(s.find('(') == std::string::npos, "Tuple shape is not supported");
   std::regex shape_r("([^\\[]+)\\[(.*)\\]");
@@ -255,7 +255,7 @@ class BufferTable {
 //  value: <1 y.1 @0> (size=4,offset=0): f32[]
 // allocation 5: 0x27017c46b970, size 4, output shape is f32[], thread-local:
 //  value: <2 add.1 @0> (size=4,offset=0): f32[]
-BufferAssignment ParseBufferAssignment(std::string fname) {
+BufferAssignment ParseBufferAssignment(const std::string& fname) {
   BufferAssignment assignment;
   std::ifstream infile(fname);
   std::string line;
@@ -303,7 +303,7 @@ BufferAssignment ParseBufferAssignment(std::string fname) {
   return assignment;
 }
 
-int GetNumElements(ArrayShape shape) {
+int GetNumElements(const ArrayShape& shape) {
   int num_elements = 1;
   for (int dim : shape.dimensions) {
     num_elements *= dim;
@@ -332,7 +332,7 @@ void FillFloatT(void* buffer, int num_elements) {
   }
 }
 
-void Fill(void* buffer, ArrayShape shape) {
+void Fill(void* buffer, const ArrayShape& shape) {
   int num_elements = GetNumElements(shape);
   Log("Number of elements = " + std::to_string(num_elements));
   Log("Shape type = " + ToString(shape.type));
@@ -368,8 +368,8 @@ template <typename T>
 #if defined(MEMORY_SANITIZER)
 __attribute__((no_sanitize_memory))
 #endif
-void DisplayT(void* buffer, int num_elements) {
-  T* casted = static_cast<T*>(buffer);
+void DisplayT(const void* buffer, int num_elements) {
+  const T* casted = static_cast<const T*>(buffer);
   for (int i = 0; i < num_elements; i++) {
     std::cout << casted[i];
     if (i != num_elements - 1) {
@@ -379,7 +379,7 @@ void DisplayT(void* buffer, int num_elements) {
   std::cout << std::endl;
 }
 
-void Display(void* buffer, ArrayShape shape) {
+void Display(const void* buffer, const ArrayShape& shape) {
   int num_elements = GetNumElements(shape);
   switch (shape.type) {
     case S16:
@@ -409,12 +409,12 @@ void Display(void* buffer, ArrayShape shape) {
   }
 }
 
-void Display(void* buffer, TupleShape shape) {
+void Display(const void* buffer, const TupleShape& shape) {
   if (shape.elements.size() == 1) {
     return Display(buffer, shape.elements[0]);
   }
   std::cout << "(" << std::endl;
-  void** casted = static_cast<void**>(buffer);
+  auto casted = static_cast<const void* const*>(buffer);
   for (int tuple_idx = 0; tuple_idx < shape.elements.size(); tuple_idx++) {
     ArrayShape array_shape = shape.elements[tuple_idx];
     Display(casted[tuple_idx], array_shape);

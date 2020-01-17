@@ -153,25 +153,25 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       tree_ensemble_handle = tree_ensemble.resource_handle
       resources.initialize_resources(resources.shared_resources()).run()
 
-      feature_ids = [0, 6]
-
       # Prepare feature inputs.
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([7.62], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([52], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-4.375]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[7.143]], dtype=np.float32)
-      feature1_inequality_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group1_feature_ids = [0]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([7.62], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([52], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-4.375]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[7.143]], dtype=np.float32)
+      group1_inequality_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Feature split with the highest gain.
-      feature2_nodes = np.array([0], dtype=np.int32)
-      feature2_gains = np.array([7.65], dtype=np.float32)
-      feature2_dimensions = np.array([1], dtype=np.int32)
-      feature2_thresholds = np.array([7], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[-4.89]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[5.3]], dtype=np.float32)
-      feature2_inequality_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
+      group2_feature_ids = [6]
+      group2_nodes = np.array([0], dtype=np.int32)
+      group2_gains = np.array([7.65], dtype=np.float32)
+      group2_dimensions = np.array([1], dtype=np.int32)
+      group2_thresholds = np.array([7], dtype=np.int32)
+      group2_left_node_contribs = np.array([[-4.89]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[5.3]], dtype=np.float32)
+      group2_inequality_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -180,19 +180,19 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # Tree will be finalized now, since we will reach depth 1.
           max_depth=1,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions, feature2_dimensions],
-          node_ids=[feature1_nodes, feature2_nodes],
-          gains=[feature1_gains, feature2_gains],
-          thresholds=[feature1_thresholds, feature2_thresholds],
+          feature_ids=[group1_feature_ids, group2_feature_ids],
+          dimension_ids=[group1_dimensions, group2_dimensions],
+          node_ids=[group1_nodes, group2_nodes],
+          gains=[group1_gains, group2_gains],
+          thresholds=[group1_thresholds, group2_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs
           ],
           split_types=[
-              feature1_inequality_split_types, feature2_inequality_split_types
+              group1_inequality_split_types, group2_inequality_split_types
           ])
       session.run(grow_op)
 
@@ -262,25 +262,25 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       tree_ensemble_handle = tree_ensemble.resource_handle
       resources.initialize_resources(resources.shared_resources()).run()
 
-      feature_ids = [0, 6]
-
       # Prepare feature inputs.
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([7.62], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([52], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-4.375]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[7.143]], dtype=np.float32)
-      feature1_inequality_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group1_feature_ids = [0]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([7.62], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([52], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-4.375]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[7.143]], dtype=np.float32)
+      group1_inequality_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Feature split with the highest gain.
-      feature2_nodes = np.array([0], dtype=np.int32)
-      feature2_gains = np.array([7.65], dtype=np.float32)
-      feature2_dimensions = np.array([1], dtype=np.int32)
-      feature2_thresholds = np.array([7], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[-4.89]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[5.3]], dtype=np.float32)
-      feature2_inequality_split_types = np.array([_EQUALITY_DEFAULT_RIGHT])
+      group2_feature_ids = [6]
+      group2_nodes = np.array([0], dtype=np.int32)
+      group2_gains = np.array([7.65], dtype=np.float32)
+      group2_dimensions = np.array([1], dtype=np.int32)
+      group2_thresholds = np.array([7], dtype=np.int32)
+      group2_left_node_contribs = np.array([[-4.89]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[5.3]], dtype=np.float32)
+      group2_inequality_split_types = np.array([_EQUALITY_DEFAULT_RIGHT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -289,19 +289,19 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # Tree will be finalized now, since we will reach depth 1.
           max_depth=1,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions, feature2_dimensions],
-          node_ids=[feature1_nodes, feature2_nodes],
-          gains=[feature1_gains, feature2_gains],
-          thresholds=[feature1_thresholds, feature2_thresholds],
+          feature_ids=[group1_feature_ids, group2_feature_ids],
+          dimension_ids=[group1_dimensions, group2_dimensions],
+          node_ids=[group1_nodes, group2_nodes],
+          gains=[group1_gains, group2_gains],
+          thresholds=[group1_thresholds, group2_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs
           ],
           split_types=[
-              feature1_inequality_split_types, feature2_inequality_split_types
+              group1_inequality_split_types, group2_inequality_split_types
           ],
       )
       session.run(grow_op)
@@ -372,27 +372,28 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       logits_dimension = 2
-      feature_ids = [0, 6]
 
       # Prepare feature inputs.
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([7.62], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([52], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-4.375, 5.11]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[7.143, 2.98]], dtype=np.float32)
-      feature1_inequality_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group1_feature_ids = [0]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([7.62], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([52], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-4.375, 5.11]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[7.143, 2.98]], dtype=np.float32)
+      group1_inequality_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Feature split with the highest gain.
-      feature2_nodes = np.array([0], dtype=np.int32)
-      feature2_gains = np.array([7.65], dtype=np.float32)
-      feature2_dimensions = np.array([1], dtype=np.int32)
-      feature2_thresholds = np.array([7], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[-4.89]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[5.3]], dtype=np.float32)
-      feature2_left_node_contribs = np.array([[-4.89, 6.31]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[5.3, -1.21]], dtype=np.float32)
-      feature2_inequality_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
+      group2_feature_ids = [6]
+      group2_nodes = np.array([0], dtype=np.int32)
+      group2_gains = np.array([7.65], dtype=np.float32)
+      group2_dimensions = np.array([1], dtype=np.int32)
+      group2_thresholds = np.array([7], dtype=np.int32)
+      group2_left_node_contribs = np.array([[-4.89]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[5.3]], dtype=np.float32)
+      group2_left_node_contribs = np.array([[-4.89, 6.31]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[5.3, -1.21]], dtype=np.float32)
+      group2_inequality_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -401,19 +402,19 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # Tree will be finalized now, since we will reach depth 1.
           max_depth=1,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions, feature2_dimensions],
-          node_ids=[feature1_nodes, feature2_nodes],
-          gains=[feature1_gains, feature2_gains],
-          thresholds=[feature1_thresholds, feature2_thresholds],
+          feature_ids=[group1_feature_ids, group2_feature_ids],
+          dimension_ids=[group1_dimensions, group2_dimensions],
+          node_ids=[group1_nodes, group2_nodes],
+          gains=[group1_gains, group2_gains],
+          thresholds=[group1_thresholds, group2_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs
           ],
           split_types=[
-              feature1_inequality_split_types, feature2_inequality_split_types
+              group1_inequality_split_types, group2_inequality_split_types
           ],
           logits_dimension=logits_dimension)
       session.run(grow_op)
@@ -765,74 +766,78 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
         }
       """, tree_ensemble_config)
 
-      # Create existing ensemble with one root split
+      # Create existing ensemble with one root split.
       tree_ensemble = boosted_trees_ops.TreeEnsemble(
           'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
       tree_ensemble_handle = tree_ensemble.resource_handle
       resources.initialize_resources(resources.shared_resources()).run()
 
-      # Prepare feature inputs.
-      # feature 1 only has a candidate for node 1, feature 2 has candidates
-      # for both nodes and feature 3 only has a candidate for node 2.
+      # Prepare group inputs.
+      # Feature 0 is selected to split node 1.
+      group1_feature_ids = [0]
+      group1_nodes = np.array([1], dtype=np.int32)
+      group1_gains = np.array([1.4], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([21], dtype=np.int32)
+      # left_leaf = 0.714 + 0.1 * (-6.0)
+      # right_leaf = 0.714 + 0.1 * (1.65)
+      group1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
-      feature_ids = [0, 1, 0]
-
-      feature1_nodes = np.array([1], dtype=np.int32)
-      feature1_gains = np.array([1.4], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([21], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
-
-      feature2_nodes = np.array([1, 2], dtype=np.int32)
-      feature2_gains = np.array([0.63, 2.7], dtype=np.float32)
-      feature2_dimensions = np.array([1, 3], dtype=np.int32)
-      feature2_thresholds = np.array([23, 7], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[-0.6], [-1.5]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[0.24], [2.3]], dtype=np.float32)
-      feature2_split_types = np.array(
+      # Feature 1 is selected to split node 2.
+      group2_feature_ids = [48, 1]
+      group2_nodes = np.array([1, 2], dtype=np.int32)
+      group2_gains = np.array([0.63, 2.7], dtype=np.float32)
+      group2_dimensions = np.array([1, 3], dtype=np.int32)
+      group2_thresholds = np.array([23, 7], dtype=np.int32)
+      # left_leaf = -0.4375 + 0.1 * (-1.5)
+      # right_leaf = -0.4375 + 0.1 * (2.3)
+      group2_left_node_contribs = np.array([[-0.6], [-1.5]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[0.24], [2.3]], dtype=np.float32)
+      group2_split_types = np.array(
           [_INEQUALITY_DEFAULT_RIGHT, _INEQUALITY_DEFAULT_RIGHT])
 
-      feature3_nodes = np.array([2], dtype=np.int32)
-      feature3_gains = np.array([1.7], dtype=np.float32)
-      feature3_dimensions = np.array([0], dtype=np.int32)
-      feature3_thresholds = np.array([3], dtype=np.int32)
-      feature3_left_node_contribs = np.array([[-0.75]], dtype=np.float32)
-      feature3_right_node_contribs = np.array([[1.93]], dtype=np.float32)
-      feature3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group3_feature_ids = [8]
+      group3_nodes = np.array([2], dtype=np.int32)
+      group3_gains = np.array([1.7], dtype=np.float32)
+      group3_dimensions = np.array([0], dtype=np.int32)
+      group3_thresholds = np.array([3], dtype=np.int32)
+      group3_left_node_contribs = np.array([[-0.75]], dtype=np.float32)
+      group3_right_node_contribs = np.array([[1.93]], dtype=np.float32)
+      group3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
           tree_ensemble_handle,
           learning_rate=0.1,
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
-          # tree is going to be finalized now, since we reach depth 2.
+          # Tree is going to be finalized now, since we reach depth 2.
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[
+              group1_feature_ids, group2_feature_ids, group3_feature_ids
+          ],
           dimension_ids=[
-              feature1_dimensions, feature2_dimensions, feature3_dimensions
+              group1_dimensions, group2_dimensions, group3_dimensions
           ],
-          node_ids=[feature1_nodes, feature2_nodes, feature3_nodes],
-          gains=[feature1_gains, feature2_gains, feature3_gains],
-          thresholds=[
-              feature1_thresholds, feature2_thresholds, feature3_thresholds
-          ],
+          node_ids=[group1_nodes, group2_nodes, group3_nodes],
+          gains=[group1_gains, group2_gains, group3_gains],
+          thresholds=[group1_thresholds, group2_thresholds, group3_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs,
-              feature3_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs,
+              group3_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs,
-              feature3_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs,
+              group3_right_node_contribs
           ],
           split_types=[
-              feature1_split_types, feature2_split_types, feature3_split_types
+              group1_split_types, group2_split_types, group3_split_types
           ])
       session.run(grow_op)
 
-      # Expect the split for node 1 to be chosen from feature 1 and
-      # the split for node 2 to be chosen from feature 2.
+      # Expect the split for node 1 to be chosen from feature 0 and
+      # the split for node 2 to be chosen from feature 1.
       # The grown tree should be finalized as max tree depth is 2 and we have
       # grown 2 layers.
       new_stamp, serialized = session.run(tree_ensemble.serialize())
@@ -977,35 +982,33 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       # Prepare feature inputs.
-      # feature 1 only has a candidate for node 1, feature 2 has candidates
-      # for both nodes and feature 3 only has a candidate for node 2.
+      group1_feature_ids = [0]
+      group1_nodes = np.array([1], dtype=np.int32)
+      group1_gains = np.array([1.4], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([21], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
-      feature_ids = [0, 1, 0]
-
-      feature1_nodes = np.array([1], dtype=np.int32)
-      feature1_gains = np.array([1.4], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([21], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
-
-      feature2_nodes = np.array([1, 2], dtype=np.int32)
-      feature2_gains = np.array([0.63, 2.7], dtype=np.float32)
-      feature2_dimensions = np.array([1, 3], dtype=np.int32)
-      feature2_thresholds = np.array([23, 7], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[-0.6], [-1.5]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[0.24], [2.3]], dtype=np.float32)
-      feature2_split_types = np.array(
+      group2_feature_ids = [12, 1]
+      group2_nodes = np.array([1, 2], dtype=np.int32)
+      group2_gains = np.array([0.63, 2.7], dtype=np.float32)
+      group2_dimensions = np.array([1, 3], dtype=np.int32)
+      group2_thresholds = np.array([23, 7], dtype=np.int32)
+      group2_left_node_contribs = np.array([[-0.6], [-1.5]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[0.24], [2.3]], dtype=np.float32)
+      group2_split_types = np.array(
           [_EQUALITY_DEFAULT_RIGHT, _EQUALITY_DEFAULT_RIGHT])
 
-      feature3_nodes = np.array([2], dtype=np.int32)
-      feature3_gains = np.array([1.7], dtype=np.float32)
-      feature3_dimensions = np.array([0], dtype=np.int32)
-      feature3_thresholds = np.array([3], dtype=np.int32)
-      feature3_left_node_contribs = np.array([[-0.75]], dtype=np.float32)
-      feature3_right_node_contribs = np.array([[1.93]], dtype=np.float32)
-      feature3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group3_feature_ids = [3]
+      group3_nodes = np.array([2], dtype=np.int32)
+      group3_gains = np.array([1.7], dtype=np.float32)
+      group3_dimensions = np.array([0], dtype=np.int32)
+      group3_thresholds = np.array([3], dtype=np.int32)
+      group3_left_node_contribs = np.array([[-0.75]], dtype=np.float32)
+      group3_right_node_contribs = np.array([[1.93]], dtype=np.float32)
+      group3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -1014,25 +1017,25 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # tree is going to be finalized now, since we reach depth 2.
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[
+              group1_feature_ids, group2_feature_ids, group3_feature_ids
+          ],
           dimension_ids=[
-              feature1_dimensions, feature2_dimensions, feature3_dimensions
+              group1_dimensions, group2_dimensions, group3_dimensions
           ],
-          node_ids=[feature1_nodes, feature2_nodes, feature3_nodes],
-          gains=[feature1_gains, feature2_gains, feature3_gains],
-          thresholds=[
-              feature1_thresholds, feature2_thresholds, feature3_thresholds
-          ],
+          node_ids=[group1_nodes, group2_nodes, group3_nodes],
+          gains=[group1_gains, group2_gains, group3_gains],
+          thresholds=[group1_thresholds, group2_thresholds, group3_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs,
-              feature3_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs,
+              group3_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs,
-              feature3_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs,
+              group3_right_node_contribs
           ],
           split_types=[
-              feature1_split_types, feature2_split_types, feature3_split_types
+              group1_split_types, group2_split_types, group3_split_types
           ],
       )
       session.run(grow_op)
@@ -1192,36 +1195,35 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
       logits_dimension = 2
       # Prepare feature inputs.
-      # feature 1 only has a candidate for node 1, feature 2 has candidates
-      # for both nodes and feature 3 only has a candidate for node 2.
-      feature_ids = [0, 1, 0]
+      group1_feature_ids = [0]
+      group1_nodes = np.array([1], dtype=np.int32)
+      group1_gains = np.array([1.4], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([21], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-6.0, .95]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[1.65, 0.1]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
-      feature1_nodes = np.array([1], dtype=np.int32)
-      feature1_gains = np.array([1.4], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([21], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-6.0, .95]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[1.65, 0.1]], dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
-
-      feature2_nodes = np.array([1, 2], dtype=np.int32)
-      feature2_gains = np.array([0.63, 2.7], dtype=np.float32)
-      feature2_dimensions = np.array([1, 3], dtype=np.int32)
-      feature2_thresholds = np.array([23, 7], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[-0.6, 2.1], [-1.5, 2.1]],
-                                             dtype=np.float32)
-      feature2_right_node_contribs = np.array([[0.24, -1.1], [2.3, 0.5]],
-                                              dtype=np.float32)
-      feature2_split_types = np.array(
+      group2_feature_ids = [12, 1]
+      group2_nodes = np.array([1, 2], dtype=np.int32)
+      group2_gains = np.array([0.63, 2.7], dtype=np.float32)
+      group2_dimensions = np.array([1, 3], dtype=np.int32)
+      group2_thresholds = np.array([23, 7], dtype=np.int32)
+      group2_left_node_contribs = np.array([[-0.6, 2.1], [-1.5, 2.1]],
+                                           dtype=np.float32)
+      group2_right_node_contribs = np.array([[0.24, -1.1], [2.3, 0.5]],
+                                            dtype=np.float32)
+      group2_split_types = np.array(
           [_INEQUALITY_DEFAULT_RIGHT, _INEQUALITY_DEFAULT_RIGHT])
 
-      feature3_nodes = np.array([2], dtype=np.int32)
-      feature3_gains = np.array([1.7], dtype=np.float32)
-      feature3_dimensions = np.array([0], dtype=np.int32)
-      feature3_thresholds = np.array([3], dtype=np.int32)
-      feature3_left_node_contribs = np.array([[-0.75, 3.2]], dtype=np.float32)
-      feature3_right_node_contribs = np.array([[1.93, -1.05]], dtype=np.float32)
-      feature3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group3_feature_ids = [3]
+      group3_nodes = np.array([2], dtype=np.int32)
+      group3_gains = np.array([1.7], dtype=np.float32)
+      group3_dimensions = np.array([0], dtype=np.int32)
+      group3_thresholds = np.array([3], dtype=np.int32)
+      group3_left_node_contribs = np.array([[-0.75, 3.2]], dtype=np.float32)
+      group3_right_node_contribs = np.array([[1.93, -1.05]], dtype=np.float32)
+      group3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -1230,25 +1232,25 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # tree is going to be finalized now, since we reach depth 2.
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[
+              group1_feature_ids, group2_feature_ids, group3_feature_ids
+          ],
           dimension_ids=[
-              feature1_dimensions, feature2_dimensions, feature3_dimensions
+              group1_dimensions, group2_dimensions, group3_dimensions
           ],
-          node_ids=[feature1_nodes, feature2_nodes, feature3_nodes],
-          gains=[feature1_gains, feature2_gains, feature3_gains],
-          thresholds=[
-              feature1_thresholds, feature2_thresholds, feature3_thresholds
-          ],
+          node_ids=[group1_nodes, group2_nodes, group3_nodes],
+          gains=[group1_gains, group2_gains, group3_gains],
+          thresholds=[group1_thresholds, group2_thresholds, group3_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs,
-              feature3_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs,
+              group3_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs,
-              feature3_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs,
+              group3_right_node_contribs
           ],
           split_types=[
-              feature1_split_types, feature2_split_types, feature3_split_types
+              group1_split_types, group2_split_types, group3_split_types
           ],
           logits_dimension=logits_dimension)
       session.run(grow_op)
@@ -1592,17 +1594,15 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       tree_ensemble_handle = tree_ensemble.resource_handle
       resources.initialize_resources(resources.shared_resources()).run()
 
-      # Prepare feature inputs.
-
-      feature_ids = [75]
-
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([-1.4], dtype=np.float32)
-      feature1_dimensions = np.array([1], dtype=np.int32)
-      feature1_thresholds = np.array([21], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
+      # Prepare inputs.
+      group1_feature_ids = [75]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([-1.4], dtype=np.float32)
+      group1_dimensions = np.array([1], dtype=np.int32)
+      group1_thresholds = np.array([21], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -1610,14 +1610,14 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           learning_rate=0.1,
           max_depth=2,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions],
-          node_ids=[feature1_nodes],
-          gains=[feature1_gains],
-          thresholds=[feature1_thresholds],
-          left_node_contribs=[feature1_left_node_contribs],
-          right_node_contribs=[feature1_right_node_contribs],
-          split_types=[feature1_split_types])
+          feature_ids=[group1_feature_ids],
+          dimension_ids=[group1_dimensions],
+          node_ids=[group1_nodes],
+          gains=[group1_gains],
+          thresholds=[group1_thresholds],
+          left_node_contribs=[group1_left_node_contribs],
+          right_node_contribs=[group1_right_node_contribs],
+          split_types=[group1_split_types])
       session.run(grow_op)
 
       # Expect a new tree added, with a split on feature 75
@@ -1751,17 +1751,15 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       tree_ensemble_handle = tree_ensemble.resource_handle
       resources.initialize_resources(resources.shared_resources()).run()
 
-      # Prepare feature inputs.
-
-      feature_ids = [75]
-
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([-1.4], dtype=np.float32)
-      feature1_dimensions = np.array([1], dtype=np.int32)
-      feature1_thresholds = np.array([21], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
-      feature1_split_types = np.array([_EQUALITY_DEFAULT_RIGHT])
+      # Prepare inputs.
+      group1_feature_ids = [75]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([-1.4], dtype=np.float32)
+      group1_dimensions = np.array([1], dtype=np.int32)
+      group1_thresholds = np.array([21], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
+      group1_split_types = np.array([_EQUALITY_DEFAULT_RIGHT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -1769,14 +1767,14 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           learning_rate=0.1,
           max_depth=2,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions],
-          node_ids=[feature1_nodes],
-          gains=[feature1_gains],
-          thresholds=[feature1_thresholds],
-          left_node_contribs=[feature1_left_node_contribs],
-          right_node_contribs=[feature1_right_node_contribs],
-          split_types=[feature1_split_types])
+          feature_ids=[group1_feature_ids],
+          dimension_ids=[group1_dimensions],
+          node_ids=[group1_nodes],
+          gains=[group1_gains],
+          thresholds=[group1_thresholds],
+          left_node_contribs=[group1_left_node_contribs],
+          right_node_contribs=[group1_right_node_contribs],
+          split_types=[group1_split_types])
       session.run(grow_op)
 
       # Expect a new tree added, with a split on feature 75
@@ -1925,16 +1923,15 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       logits_dimension = 2
-      # Prepare feature inputs.
-      feature_ids = [75]
-
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([-1.4], dtype=np.float32)
-      feature1_dimensions = np.array([1], dtype=np.int32)
-      feature1_thresholds = np.array([21], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-6.0, 1.1]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[1.65, 0.8]], dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
+      # Prepare inputs.
+      group1_feature_ids = [75]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([-1.4], dtype=np.float32)
+      group1_dimensions = np.array([1], dtype=np.int32)
+      group1_thresholds = np.array([21], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-6.0, 1.1]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[1.65, 0.8]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -1942,14 +1939,14 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           learning_rate=0.1,
           max_depth=2,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions],
-          node_ids=[feature1_nodes],
-          gains=[feature1_gains],
-          thresholds=[feature1_thresholds],
-          left_node_contribs=[feature1_left_node_contribs],
-          right_node_contribs=[feature1_right_node_contribs],
-          split_types=[feature1_split_types],
+          feature_ids=[group1_feature_ids],
+          dimension_ids=[group1_dimensions],
+          node_ids=[group1_nodes],
+          gains=[group1_gains],
+          thresholds=[group1_thresholds],
+          left_node_contribs=[group1_left_node_contribs],
+          right_node_contribs=[group1_right_node_contribs],
+          split_types=[group1_split_types],
           logits_dimension=logits_dimension)
       session.run(grow_op)
 
@@ -2214,7 +2211,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertProtoEquals(expected_result, tree_ensemble)
 
   @test_util.run_deprecated_v1
-  def testPrePruningMultiClass(self):
+  def testPrePruningMultiClassV2(self):
     """Test growing an existing ensemble with pre-pruning."""
     with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
@@ -2270,37 +2267,36 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       logits_dimension = 2
-      # Prepare feature inputs.
-      # feature 1 only has a candidate for node 1, feature 2 has candidates
-      # for both nodes and feature 3 only has a candidate for node 2.
-      feature_ids = [0, 1, 0]
+      # Prepare inputs.
+      group1_feature_ids = [0]
+      group1_nodes = np.array([1], dtype=np.int32)
+      group1_gains = np.array([-1.4], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([21], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-6.0, .95]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[1.65, 0.1]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
-      feature1_nodes = np.array([1], dtype=np.int32)
-      feature1_gains = np.array([-1.4], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([21], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-6.0, .95]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[1.65, 0.1]], dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
-
-      feature2_nodes = np.array([1, 2], dtype=np.int32)
-      feature2_gains = np.array([-0.63, 2.7], dtype=np.float32)
-      feature2_dimensions = np.array([1, 3], dtype=np.int32)
-      feature2_thresholds = np.array([23, 7], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[-0.6, 2.1], [-1.5, 2.1]],
-                                             dtype=np.float32)
-      feature2_right_node_contribs = np.array([[0.24, -1.1], [2.3, 0.5]],
-                                              dtype=np.float32)
-      feature2_split_types = np.array(
+      group2_feature_ids = [12, 1]
+      group2_nodes = np.array([1, 2], dtype=np.int32)
+      group2_gains = np.array([-0.63, 2.7], dtype=np.float32)
+      group2_dimensions = np.array([1, 3], dtype=np.int32)
+      group2_thresholds = np.array([23, 7], dtype=np.int32)
+      group2_left_node_contribs = np.array([[-0.6, 2.1], [-1.5, 2.1]],
+                                           dtype=np.float32)
+      group2_right_node_contribs = np.array([[0.24, -1.1], [2.3, 0.5]],
+                                            dtype=np.float32)
+      group2_split_types = np.array(
           [_INEQUALITY_DEFAULT_RIGHT, _INEQUALITY_DEFAULT_RIGHT])
 
-      feature3_nodes = np.array([2], dtype=np.int32)
-      feature3_gains = np.array([2.8], dtype=np.float32)
-      feature3_dimensions = np.array([0], dtype=np.int32)
-      feature3_thresholds = np.array([3], dtype=np.int32)
-      feature3_left_node_contribs = np.array([[-0.75, 3.2]], dtype=np.float32)
-      feature3_right_node_contribs = np.array([[1.93, -1.05]], dtype=np.float32)
-      feature3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group3_feature_ids = [0]
+      group3_nodes = np.array([2], dtype=np.int32)
+      group3_gains = np.array([2.8], dtype=np.float32)
+      group3_dimensions = np.array([0], dtype=np.int32)
+      group3_thresholds = np.array([3], dtype=np.int32)
+      group3_left_node_contribs = np.array([[-0.75, 3.2]], dtype=np.float32)
+      group3_right_node_contribs = np.array([[1.93, -1.05]], dtype=np.float32)
+      group3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -2309,25 +2305,25 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.PRE_PRUNING,
           # tree is going to be finalized now, since we reach depth 2.
           max_depth=3,
-          feature_ids=feature_ids,
+          feature_ids=[
+              group1_feature_ids, group2_feature_ids, group3_feature_ids
+          ],
           dimension_ids=[
-              feature1_dimensions, feature2_dimensions, feature3_dimensions
+              group1_dimensions, group2_dimensions, group3_dimensions
           ],
-          node_ids=[feature1_nodes, feature2_nodes, feature3_nodes],
-          gains=[feature1_gains, feature2_gains, feature3_gains],
-          thresholds=[
-              feature1_thresholds, feature2_thresholds, feature3_thresholds
-          ],
+          node_ids=[group1_nodes, group2_nodes, group3_nodes],
+          gains=[group1_gains, group2_gains, group3_gains],
+          thresholds=[group1_thresholds, group2_thresholds, group3_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs,
-              feature3_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs,
+              group3_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs,
-              feature3_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs,
+              group3_right_node_contribs
           ],
           split_types=[
-              feature1_split_types, feature2_split_types, feature3_split_types
+              group1_split_types, group2_split_types, group3_split_types
           ],
           logits_dimension=logits_dimension)
       session.run(grow_op)
@@ -3001,7 +2997,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertProtoEquals(expected_result, res_ensemble)
 
   @test_util.run_deprecated_v1
-  def testPostPruningOfSomeNodesMultiClass(self):
+  def testPostPruningOfSomeNodesMultiClassV2(self):
     """Test growing an ensemble with post-pruning."""
     with self.cached_session() as session:
       # Create empty ensemble.
@@ -3012,28 +3008,26 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
       resources.initialize_resources(resources.shared_resources()).run()
 
-      # Prepare inputs.
       logits_dimension = 2
+      # Prepare inputs.
+      group1_feature_ids = [0]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([-1.3], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([7], dtype=np.int32)
+      group1_left_node_contribs = np.array([[0.013, 0.14]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[0.0143, -0.2]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+
       # Second feature has larger (but still negative gain).
-      feature_ids = [0, 1]
-
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([-1.3], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([7], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[0.013, 0.14]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[0.0143, -0.2]],
-                                              dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
-
-      feature2_nodes = np.array([0], dtype=np.int32)
-      feature2_gains = np.array([-0.2], dtype=np.float32)
-      feature2_dimensions = np.array([3], dtype=np.int32)
-      feature2_thresholds = np.array([33], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[0.01, -0.3]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[0.0143, 0.121]],
-                                              dtype=np.float32)
-      feature2_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
+      group2_feature_ids = [1]
+      group2_nodes = np.array([0], dtype=np.int32)
+      group2_gains = np.array([-0.2], dtype=np.float32)
+      group2_dimensions = np.array([3], dtype=np.int32)
+      group2_thresholds = np.array([33], dtype=np.int32)
+      group2_left_node_contribs = np.array([[0.01, -0.3]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[0.0143, 0.121]], dtype=np.float32)
+      group2_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -3041,18 +3035,18 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=3,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions, feature2_dimensions],
-          node_ids=[feature1_nodes, feature2_nodes],
-          gains=[feature1_gains, feature2_gains],
-          thresholds=[feature1_thresholds, feature2_thresholds],
+          feature_ids=[group1_feature_ids, group2_feature_ids],
+          dimension_ids=[group1_dimensions, group2_dimensions],
+          node_ids=[group1_nodes, group2_nodes],
+          gains=[group1_gains, group2_gains],
+          thresholds=[group1_thresholds, group2_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs
           ],
-          split_types=[feature1_split_types, feature2_split_types],
+          split_types=[group1_split_types, group2_split_types],
           logits_dimension=logits_dimension)
 
       session.run(grow_op)
@@ -3122,16 +3116,16 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
       # Prepare the second layer.
       # Note that node 1 gain is negative and node 2 gain is positive.
-      feature_ids = [3]
-      feature1_nodes = np.array([1, 2], dtype=np.int32)
-      feature1_gains = np.array([-0.2, 0.5], dtype=np.float32)
-      feature1_dimensions = np.array([0, 2], dtype=np.int32)
-      feature1_thresholds = np.array([7, 5], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[0.07, 0.5], [0.041, 0.279]],
-                                             dtype=np.float32)
-      feature1_right_node_contribs = np.array([[0.083, 0.31], [0.064, -0.931]],
-                                              dtype=np.float32)
-      feature1_split_types = np.array(
+      group1_feature_ids = [3, 3]
+      group1_nodes = np.array([1, 2], dtype=np.int32)
+      group1_gains = np.array([-0.2, 0.5], dtype=np.float32)
+      group1_dimensions = np.array([0, 2], dtype=np.int32)
+      group1_thresholds = np.array([7, 5], dtype=np.int32)
+      group1_left_node_contribs = np.array([[0.07, 0.5], [0.041, 0.279]],
+                                           dtype=np.float32)
+      group1_right_node_contribs = np.array([[0.083, 0.31], [0.064, -0.931]],
+                                            dtype=np.float32)
+      group1_split_types = np.array(
           [_INEQUALITY_DEFAULT_LEFT, _INEQUALITY_DEFAULT_LEFT])
 
       # Grow tree ensemble.
@@ -3140,14 +3134,14 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=3,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions],
-          node_ids=[feature1_nodes],
-          gains=[feature1_gains],
-          thresholds=[feature1_thresholds],
-          left_node_contribs=[feature1_left_node_contribs],
-          right_node_contribs=[feature1_right_node_contribs],
-          split_types=[feature1_split_types],
+          feature_ids=[group1_feature_ids],
+          dimension_ids=[group1_dimensions],
+          node_ids=[group1_nodes],
+          gains=[group1_gains],
+          thresholds=[group1_thresholds],
+          left_node_contribs=[group1_left_node_contribs],
+          right_node_contribs=[group1_right_node_contribs],
+          split_types=[group1_split_types],
           logits_dimension=logits_dimension)
 
       session.run(grow_op)
@@ -3278,14 +3272,14 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       # 4,7,8 will be pruned out.
 
       # Prepare the third layer.
-      feature_ids = [92]
-      feature1_nodes = np.array([3], dtype=np.int32)
-      feature1_gains = np.array([-0.45], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([11], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[0.15, -0.32]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[0.5, 0.81]], dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group1_feature_ids = [92]
+      group1_nodes = np.array([3], dtype=np.int32)
+      group1_gains = np.array([-0.45], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([11], dtype=np.int32)
+      group1_left_node_contribs = np.array([[0.15, -0.32]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[0.5, 0.81]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -3293,14 +3287,14 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=3,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions],
-          node_ids=[feature1_nodes],
-          gains=[feature1_gains],
-          thresholds=[feature1_thresholds],
-          left_node_contribs=[feature1_left_node_contribs],
-          right_node_contribs=[feature1_right_node_contribs],
-          split_types=[feature1_split_types],
+          feature_ids=[group1_feature_ids],
+          dimension_ids=[group1_dimensions],
+          node_ids=[group1_nodes],
+          gains=[group1_gains],
+          thresholds=[group1_thresholds],
+          left_node_contribs=[group1_left_node_contribs],
+          right_node_contribs=[group1_right_node_contribs],
+          split_types=[group1_split_types],
           logits_dimension=logits_dimension)
 
       session.run(grow_op)
@@ -3641,7 +3635,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       """, res_ensemble)
 
   @test_util.run_deprecated_v1
-  def testPostPruningOfAllNodesMultiClass(self):
+  def testPostPruningOfAllNodesMultiClassV2(self):
     """Test growing an ensemble with post-pruning, with all nodes are pruned."""
     with self.cached_session() as session:
       # Create empty ensemble.
@@ -3654,43 +3648,41 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
       logits_dimension = 2
       # Prepare inputs. All have negative gains.
-      feature_ids = [0, 1]
+      group1_feature_ids = [0]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([-1.3], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([7], dtype=np.int32)
+      group1_left_node_contribs = np.array([[0.013, 0.14]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[0.0143, -0.2]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([-1.3], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([7], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[0.013, 0.14]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[0.0143, -0.2]],
-                                              dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
-
-      feature2_nodes = np.array([0], dtype=np.int32)
-      feature2_gains = np.array([-0.62], dtype=np.float32)
-      feature2_dimensions = np.array([3], dtype=np.int32)
-      feature2_thresholds = np.array([33], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[0.01, -0.3]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[0.0143, 0.121]],
-                                              dtype=np.float32)
-      feature2_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
+      group2_feature_ids = [1]
+      group2_nodes = np.array([0], dtype=np.int32)
+      group2_gains = np.array([-0.62], dtype=np.float32)
+      group2_dimensions = np.array([3], dtype=np.int32)
+      group2_thresholds = np.array([33], dtype=np.int32)
+      group2_left_node_contribs = np.array([[0.01, -0.3]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[0.0143, 0.121]], dtype=np.float32)
+      group2_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
           tree_ensemble_handle,
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=2,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions, feature2_dimensions],
-          node_ids=[feature1_nodes, feature2_nodes],
-          gains=[feature1_gains, feature2_gains],
-          thresholds=[feature1_thresholds, feature2_thresholds],
+          feature_ids=[group1_feature_ids, group2_feature_ids],
+          dimension_ids=[group1_dimensions, group2_dimensions],
+          node_ids=[group1_nodes, group2_nodes],
+          gains=[group1_gains, group2_gains],
+          thresholds=[group1_thresholds, group2_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs
           ],
-          split_types=[feature1_split_types, feature2_split_types],
+          split_types=[group1_split_types, group2_split_types],
           logits_dimension=logits_dimension)
 
       session.run(grow_op)
@@ -3761,16 +3753,16 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
       # Prepare inputs.
       # All have negative gain.
-      feature_ids = [3]
-      feature1_nodes = np.array([1, 2], dtype=np.int32)
-      feature1_gains = np.array([-0.2, -0.5], dtype=np.float32)
-      feature1_dimensions = np.array([0, 4], dtype=np.int32)
-      feature1_thresholds = np.array([77, 79], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[0.023, -0.99], [0.3, 5.979]],
-                                             dtype=np.float32)
-      feature1_right_node_contribs = np.array([[0.012343, 0.63], [24, 0.289]],
-                                              dtype=np.float32)
-      feature1_split_types = np.array(
+      group1_feature_ids = [3]
+      group1_nodes = np.array([1, 2], dtype=np.int32)
+      group1_gains = np.array([-0.2, -0.5], dtype=np.float32)
+      group1_dimensions = np.array([0, 4], dtype=np.int32)
+      group1_thresholds = np.array([77, 79], dtype=np.int32)
+      group1_left_node_contribs = np.array([[0.023, -0.99], [0.3, 5.979]],
+                                           dtype=np.float32)
+      group1_right_node_contribs = np.array([[0.012343, 0.63], [24, 0.289]],
+                                            dtype=np.float32)
+      group1_split_types = np.array(
           [_INEQUALITY_DEFAULT_LEFT, _INEQUALITY_DEFAULT_LEFT])
 
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -3778,14 +3770,14 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=2,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions],
-          node_ids=[feature1_nodes],
-          gains=[feature1_gains],
-          thresholds=[feature1_thresholds],
-          left_node_contribs=[feature1_left_node_contribs],
-          right_node_contribs=[feature1_right_node_contribs],
-          split_types=[feature1_split_types],
+          feature_ids=[group1_feature_ids],
+          dimension_ids=[group1_dimensions],
+          node_ids=[group1_nodes],
+          gains=[group1_gains],
+          thresholds=[group1_thresholds],
+          left_node_contribs=[group1_left_node_contribs],
+          right_node_contribs=[group1_right_node_contribs],
+          split_types=[group1_split_types],
           logits_dimension=logits_dimension)
 
       session.run(grow_op)
@@ -3975,7 +3967,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertProtoEquals(expected_result, res_ensemble)
 
   @test_util.run_deprecated_v1
-  def testPostPruningChangesNothingMultiClass(self):
+  def testPostPruningChangesNothingMultiClassV2(self):
     """Test growing an ensemble with post-pruning with all gains >0."""
     with self.cached_session() as session:
       # Create empty ensemble.
@@ -3989,24 +3981,23 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       # Prepare inputs.
       logits_dimension = 2
       # Second feature has larger (but still negative gain).
-      feature_ids = [3, 4]
+      group1_feature_ids = [3]
+      group1_nodes = np.array([0], dtype=np.int32)
+      group1_gains = np.array([7.62], dtype=np.float32)
+      group1_dimensions = np.array([0], dtype=np.int32)
+      group1_thresholds = np.array([52], dtype=np.int32)
+      group1_left_node_contribs = np.array([[-4.375, 2.18]], dtype=np.float32)
+      group1_right_node_contribs = np.array([[7.143, -0.40]], dtype=np.float32)
+      group1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
-      feature1_nodes = np.array([0], dtype=np.int32)
-      feature1_gains = np.array([7.62], dtype=np.float32)
-      feature1_dimensions = np.array([0], dtype=np.int32)
-      feature1_thresholds = np.array([52], dtype=np.int32)
-      feature1_left_node_contribs = np.array([[-4.375, 2.18]], dtype=np.float32)
-      feature1_right_node_contribs = np.array([[7.143, -0.40]],
-                                              dtype=np.float32)
-      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
-
-      feature2_nodes = np.array([0], dtype=np.int32)
-      feature2_gains = np.array([0.63], dtype=np.float32)
-      feature2_dimensions = np.array([0], dtype=np.int32)
-      feature2_thresholds = np.array([23], dtype=np.int32)
-      feature2_left_node_contribs = np.array([[-0.6, 1.11]], dtype=np.float32)
-      feature2_right_node_contribs = np.array([[0.24, -2.01]], dtype=np.float32)
-      feature2_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+      group2_feature_ids = [4]
+      group2_nodes = np.array([0], dtype=np.int32)
+      group2_gains = np.array([0.63], dtype=np.float32)
+      group2_dimensions = np.array([0], dtype=np.int32)
+      group2_thresholds = np.array([23], dtype=np.int32)
+      group2_left_node_contribs = np.array([[-0.6, 1.11]], dtype=np.float32)
+      group2_right_node_contribs = np.array([[0.24, -2.01]], dtype=np.float32)
+      group2_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
 
       # Grow tree ensemble.
       grow_op = boosted_trees_ops.update_ensemble_v2(
@@ -4014,18 +4005,18 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=1,
-          feature_ids=feature_ids,
-          dimension_ids=[feature1_dimensions, feature2_dimensions],
-          node_ids=[feature1_nodes, feature2_nodes],
-          gains=[feature1_gains, feature2_gains],
-          thresholds=[feature1_thresholds, feature2_thresholds],
+          feature_ids=[group1_feature_ids, group2_feature_ids],
+          dimension_ids=[group1_dimensions, group2_dimensions],
+          node_ids=[group1_nodes, group2_nodes],
+          gains=[group1_gains, group2_gains],
+          thresholds=[group1_thresholds, group2_thresholds],
           left_node_contribs=[
-              feature1_left_node_contribs, feature2_left_node_contribs
+              group1_left_node_contribs, group2_left_node_contribs
           ],
           right_node_contribs=[
-              feature1_right_node_contribs, feature2_right_node_contribs
+              group1_right_node_contribs, group2_right_node_contribs
           ],
-          split_types=[feature1_split_types, feature2_split_types],
+          split_types=[group1_split_types, group2_split_types],
           logits_dimension=logits_dimension)
 
       session.run(grow_op)

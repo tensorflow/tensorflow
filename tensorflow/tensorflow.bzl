@@ -55,6 +55,11 @@ load(
 VERSION = "2.1.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
+# Sanitize a dependency so that it works correctly from code that includes
+# TensorFlow as a submodule.
+def clean_dep(dep):
+    return str(Label(dep))
+
 def if_v2(a):
     return select({
         clean_dep("//tensorflow:api_version_2"): a,
@@ -75,6 +80,12 @@ def if_nvcc(a):
 
 def if_cuda_is_configured_compat(x):
     return if_cuda_is_configured(x)
+
+def if_xla_available(if_true, if_false = []):
+    return select({
+        clean_dep("//tensorflow:with_xla_support"): if_true,
+        "//conditions:default": if_false,
+    })
 
 # Given a source file, generate a test name.
 # i.e. "common_runtime/direct_session_test.cc" becomes
@@ -112,11 +123,6 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
 def tf_portable_proto_library(name, proto_deps, deps = [], **kwargs):
     _ignore = [kwargs]
     native.cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
-
-# Sanitize a dependency so that it works correctly from code that includes
-# TensorFlow as a submodule.
-def clean_dep(dep):
-    return str(Label(dep))
 
 def if_android_x86(a):
     return select({
@@ -195,6 +201,8 @@ def if_ios_x86_64(a):
 def if_mobile(a):
     return select({
         clean_dep("//tensorflow:android"): a,
+        clean_dep("//tensorflow:chromiumos"): a,
+        clean_dep("//tensorflow:emscripten"): a,
         clean_dep("//tensorflow:ios"): a,
         "//conditions:default": [],
     })
@@ -202,6 +210,8 @@ def if_mobile(a):
 def if_not_mobile(a):
     return select({
         clean_dep("//tensorflow:android"): [],
+        clean_dep("//tensorflow:chromiumos"): [],
+        clean_dep("//tensorflow:emscripten"): [],
         clean_dep("//tensorflow:ios"): [],
         "//conditions:default": a,
     })
@@ -300,6 +310,7 @@ def tf_copts(
         (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
         if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
+        if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
@@ -344,6 +355,18 @@ def tf_opts_nortti_if_emscripten():
         "-fno-rtti",
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+    ])
+
+def tf_defines_nortti_if_android():
+    return if_android([
+        "GOOGLE_PROTOBUF_NO_RTTI",
+        "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+    ])
+
+def tf_defines_nortti_if_emscripten():
+    return if_emscripten([
+        "GOOGLE_PROTOBUF_NO_RTTI",
+        "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ])
 
 def tf_features_nomodules_if_android():
@@ -1402,7 +1425,7 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
         ]) + if_rocm_is_configured(cuda_deps + [
             "@local_config_rocm//rocm:rocm_headers",
         ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
 
@@ -2442,6 +2465,7 @@ def pybind_extension(
         copts = [],
         linkopts = [],
         deps = [],
+        defines = [],
         visibility = None,
         testonly = None,
         licenses = None,
@@ -2508,6 +2532,7 @@ def pybind_extension(
             exported_symbols_file,
             version_script_file,
         ],
+        defines = defines,
         features = features + ["-use_header_modules"],
         linkshared = 1,
         testonly = testonly,
@@ -2553,6 +2578,7 @@ def tf_python_pybind_extension(
         copts = [],
         hdrs = [],
         deps = [],
+        defines = [],
         visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
@@ -2567,8 +2593,19 @@ def tf_python_pybind_extension(
         copts = copts,
         hdrs = hdrs,
         deps = deps + tf_binary_pybind_deps() + mkl_deps(),
+        defines = defines,
         visibility = visibility,
     )
+
+def tf_pybind_cc_library_wrapper(name, deps, visibility = None):
+    """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.
+
+    This wrapper ensures that cc libraries' and protos' headers are made
+    available to pybind code, without creating ODR violations in the dynamically
+    linked case.  The symbols in these deps symbols should be linked to, and
+    exported by, the core pywrap_tensorflow_internal.so
+    """
+    cc_header_only_library(name = name, deps = deps, visibility = visibility)
 
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.
@@ -2605,8 +2642,8 @@ def tf_jit_compilation_passes_extra_deps():
 
 def if_mlir(if_true, if_false = []):
     return select({
+        str(Label("//tensorflow:with_mlir_support")): if_true,
         "//conditions:default": if_false,
-        "//tensorflow:with_mlir_support": if_true,
     })
 
 def tfcompile_extra_flags():

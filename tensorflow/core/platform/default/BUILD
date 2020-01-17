@@ -10,6 +10,16 @@ package(
 )
 
 cc_library(
+    name = "casts",
+    hdrs = ["casts.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+)
+
+cc_library(
     name = "context",
     hdrs = ["//tensorflow/core/platform:context.h"],
     tags = [
@@ -81,7 +91,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/lib/core:error_codes_proto_cc",
+        "//tensorflow/core:error_codes_proto_impl_cc",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
@@ -277,12 +287,11 @@ cc_library(
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:macos": [],
-        "//conditions:default": [
+        "//tensorflow:with_numa_support": [
+            # Don't merge in a single line
             "@hwloc",
         ],
+        "//conditions:default": [],
     }),
 )
 
@@ -463,8 +472,41 @@ bzl_library(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "legacy_mobile_srcs",
+    name = "additional_mobile_srcs_no_runtime",
+    visibility = ["//tensorflow/core/platform:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "context.h",
+        "dynamic_annotations.h",
+        "env.cc",
+        "integral_types.h",
+        "load_library.cc",
+        "port.cc",
+        "posix_file_system.cc",
+        "posix_file_system.h",
+        "stacktrace.h",
+        "tracing_impl.h",
+    ],
+    visibility = ["//tensorflow/core/platform:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "casts.h",
+        "cord.h",
+        "monitoring.cc",
+        "mutex.h",
+        "mutex_data.h",
+        "notification.h",
+        "unbounded_work_queue.cc",
+        "unbounded_work_queue.h",
+    ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )
 

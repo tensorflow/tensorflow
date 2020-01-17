@@ -206,6 +206,10 @@ class Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStreamWrapper(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments);
+
   const HloProfilePrinterData& hlo_profile_printer_data() const {
     CHECK(hlo_profiling_enabled());
     return *hlo_profile_printer_data_;

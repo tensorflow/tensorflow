@@ -57,6 +57,27 @@ function set_bazel_outdir {
   export TEST_TMPDIR=/tmpfs/bazel_output
 }
 
+# Downloads bazelisk to ~/bin as `bazel`.
+function install_bazelisk {
+  date
+  case "$(uname -s)" in
+    Darwin) local name=bazelisk-darwin-amd64 ;;
+    Linux)  local name=bazelisk-linux-amd64  ;;
+    *) die "Unknown OS: $(uname -s)" ;;
+  esac
+  mkdir -p "$HOME/bin"
+  wget --no-verbose -O "$HOME/bin/bazel" \
+      "https://github.com/bazelbuild/bazelisk/releases/download/v1.2.1/$name"
+  chmod u+x "$HOME/bin/bazel"
+  if [[ ! ":$PATH:" =~ :"$HOME"/bin/?: ]]; then
+    PATH="$HOME/bin:$PATH"
+  fi
+  set_bazel_outdir
+  which bazel
+  bazel version
+  date
+}
+
 # Install the given bazel version on linux
 function update_bazel_linux {
   if [[ -z "$1" ]]; then
@@ -129,6 +150,7 @@ function install_pip_deps {
 
   # LINT.IfChange(ubuntu_pip_installations)
   # TODO(aselle): Change all these to be --user instead of sudo.
+  ${SUDO_CMD} ${PIP_CMD} install astunparse==1.6.3
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install gast==0.3.2
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
@@ -159,6 +181,7 @@ function install_ubuntu_16_pip_deps {
   done
 
   # LINT.IfChange(ubuntu_16_pip_installations)
+  "${PIP_CMD}" install astunparse==1.6.3 --user
   "${PIP_CMD}" install --user --upgrade attrs
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
   "${PIP_CMD}" install numpy==1.14.5 --user

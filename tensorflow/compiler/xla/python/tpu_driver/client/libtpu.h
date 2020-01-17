@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_C_API_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_C_API_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_
 
 #include <stdint.h>
 
@@ -53,14 +53,16 @@ typedef struct TpuLoadedProgramHandle {
   TpuEvent* event;
 } TpuLoadedProgramHandle;
 
+// HloProto is a serialized xla::HloProto buffer.
 typedef struct HloProto {
   void* buffer;
   int32_t size;
 } HloProto;
 
+// DeviceAssignment is a serialized xla::DeviceAssignmentProto buffer.
 typedef struct DeviceAssignment {
-  int replica_count;
-  int computation_count;
+  void* bytes;
+  int32_t size;
 } DeviceAssignment;
 
 typedef struct TpuStatus {
@@ -79,9 +81,19 @@ typedef struct TpuAllocationShape {
   int32_t size;
 } TpuAllocationShape;
 
+typedef struct TpuSystemInfo {
+  void* bytes;
+  int32_t size;
+} TpuSystemInfo;
+
 typedef void(PrototypeTpuDriver_Initialize)(struct TpuDriverFn* driver_fn);
 typedef struct TpuDriver*(PrototypeTpuDriver_Open)(const char* worker);
 typedef void(PrototypeTpuDriver_Close)(struct TpuDriver* driver);
+
+typedef struct TpuSystemInfo*(PrototypeTpuDriver_QuerySystemInfo)(
+    struct TpuDriver* driver);
+
+typedef void(PrototypeTpuDriver_FreeSystemInfo)(struct TpuSystemInfo* info);
 
 // TODO(frankchn): Make this not a hard-coded constant.
 const int32_t MemoryRegion_HBM = 1;
@@ -113,6 +125,10 @@ typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_LoadProgram)(
     const struct TpuCompiledProgramHandle* compiled_program_handle,
     int32_t eventc, struct TpuEvent** eventv);
 
+/* Note: We are not responsible for freeing the event within the
+ * TpuLoadedProgramHandle. You have to call FreeEvent separately to ensure that
+ * memory does not leak.
+ */
 typedef struct TpuEvent*(PrototypeTpuDriver_UnloadProgram)(
     struct TpuDriver* driver,
     struct TpuLoadedProgramHandle* loaded_program_handle, int32_t eventc,
@@ -139,6 +155,10 @@ typedef struct TpuBufferHandle*(PrototypeTpuDriver_AllocateShape)(
     const struct TpuAllocationShape shape, int32_t eventc,
     struct TpuEvent** eventv);
 
+/* Note: We are not responsible for freeing the event within the
+ * TpuBufferHandle. You have to call FreeEvent separately to ensure that memory
+ * does not leak.
+ */
 typedef struct TpuEvent*(PrototypeTpuDriver_Deallocate)(
     struct TpuDriver* driver, struct TpuBufferHandle* buffer_handle,
     int32_t eventc, struct TpuEvent** eventv);
@@ -179,6 +199,10 @@ typedef const char*(PrototypeTpuDriver_Version)();
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Initialize TpuDriver_Initialize;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Open TpuDriver_Open;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Close TpuDriver_Close;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_QuerySystemInfo
+    TpuDriver_QuerySystemInfo;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeSystemInfo
+    TpuDriver_FreeSystemInfo;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_ComputeLinearizedBytesFromShape
     TpuDriver_ComputeLinearizedBytesFromShape;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_LinearizeShape
@@ -227,6 +251,8 @@ struct TpuDriverFn {
   PrototypeTpuDriver_Close* TpuDriver_Close;                        // NOLINT
   PrototypeTpuDriver_ComputeLinearizedBytesFromShape*
       TpuDriver_ComputeLinearizedBytesFromShape;                    // NOLINT
+  PrototypeTpuDriver_QuerySystemInfo* TpuDriver_QuerySystemInfo;    // NOLINT
+  PrototypeTpuDriver_FreeSystemInfo* TpuDriver_FreeSystemInfo;      // NOLINT
   PrototypeTpuDriver_LinearizeShape* TpuDriver_LinearizeShape;      // NOLINT
   PrototypeTpuDriver_DelinearizeShape* TpuDriver_DelinearizeShape;  // NOLINT
   PrototypeTpuDriver_CompileProgram* TpuDriver_CompileProgram;      // NOLINT
@@ -252,7 +278,8 @@ struct TpuDriverFn {
   PrototypeTpuDriver_EventAwait* TpuDriver_EventAwait;              // NOLINT
   PrototypeTpuDriver_FreeEvent* TpuDriver_FreeEvent;                // NOLINT
   PrototypeTpuDriver_FreeStatus* TpuDriver_FreeStatus;              // NOLINT
+
   PrototypeTpuDriver_Version* TpuDriver_Version;                    // NOLINT
 };
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_C_API_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_

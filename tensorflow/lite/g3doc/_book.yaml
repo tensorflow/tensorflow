@@ -80,6 +80,7 @@ upper_tabs:
         path: /lite/performance/gpu_advanced
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
+        status: experimental
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
 

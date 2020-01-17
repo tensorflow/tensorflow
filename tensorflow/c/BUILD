@@ -303,6 +303,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "@com_google_absl//absl/strings",

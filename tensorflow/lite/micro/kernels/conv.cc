@@ -232,6 +232,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
     // Conv is quantized along dimension 0:
     // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
     TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
                       affine_quantization->scale->size);
     TF_LITE_ENSURE_EQ(context, filter->dims->data[0],

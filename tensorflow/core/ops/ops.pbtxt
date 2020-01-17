@@ -5970,6 +5970,7 @@ op {
   input_arg {
     name: "feature_ids"
     type: DT_INT32
+    number_attr: "num_groups"
   }
   input_arg {
     name: "dimension_ids"
@@ -6029,6 +6030,15 @@ op {
     default_value {
       i: 1
     }
+  }
+  attr {
+    name: "num_groups"
+    type: "int"
+    default_value {
+      i: 1
+    }
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }

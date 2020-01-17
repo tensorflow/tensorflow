@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/convert/host_threads_xplane_to_tf_metrics_db.h"
+#include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 
 #include <vector>
 
@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -175,7 +176,7 @@ void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst) {
   src.tf_metrics_db.Clear();
 }
 
-OpMetricsDb ConvertHostThreadsXPlaneToTfMetricsDb(const XPlane& host_trace) {
+OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
   absl::flat_hash_map<int64, TfOp> tf_ops =
       CollectTfOpsFromHostThreadsXPlane(host_trace);
   OpMetricsDb result;
@@ -185,6 +186,39 @@ OpMetricsDb ConvertHostThreadsXPlaneToTfMetricsDb(const XPlane& host_trace) {
     ConsumeTfMetricsDbData(
         ConvertHostThreadsXLineToTfMetricsDbData(line, tf_ops), &combiner);
   });
+  return result;
+}
+
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
+    const XPlane& device_trace, double peak_tera_flops_per_second,
+    double peak_hbm_bw_giga_bytes_per_second) {
+  OpMetricsDb result;
+  DeviceOpMetricsDbBuilder device_op_metrics_db_builder(
+      &result, peak_tera_flops_per_second, peak_hbm_bw_giga_bytes_per_second);
+
+  int64 first_op_offset_ps = kint64max;
+  int64 last_op_offset_ps = 0;
+
+  XPlaneVisitor plane(&device_trace);
+  plane.ForEachLine([&](const XLineVisitor& line) {
+    if (IsDerivedThreadId(line.Id())) return;
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      first_op_offset_ps = std::min(first_op_offset_ps, event.OffsetPs());
+      last_op_offset_ps = std::max(last_op_offset_ps, event.EndOffsetPs());
+
+      const XStat* stat = event.GetStats(StatType::kLevel0);
+      if (!stat) return;
+      absl::string_view tf_op_fullname = stat->str_value();
+      if (tf_op_fullname.empty()) return;
+      TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
+      device_op_metrics_db_builder.EnterOp(
+          /*program_id=*/0, tf_op.name, tf_op.type, tf_op_fullname,
+          /*occurrences=*/1, event.DurationPs(),
+          /*children_time_ps=*/0, /*flops=*/0,
+          /*bytes_accessed=*/0);
+    });
+  });
+  result.set_total_time_ps(last_op_offset_ps - first_op_offset_ps);
   return result;
 }
 

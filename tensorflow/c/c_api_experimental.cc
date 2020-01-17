@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -807,6 +808,113 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
     return;
   }
   status->status = EnableCollectiveOps(server_def, ctx);
+}
+
+void MakeTPUInitializationFunctionDef(
+    const tensorflow::string& tpu_system_device_name,
+    tensorflow::FunctionDef* function_def) {
+  tensorflow::OpDef* signature_def(function_def->mutable_signature());
+  signature_def->set_name("_eager_context_tpu_initialization");
+  signature_def->set_is_stateful(true);
+  signature_def->add_control_output("ConfigureDistributedTPU");
+  tensorflow::OpDef_ArgDef* arg_def(signature_def->add_output_arg());
+  arg_def->set_name("topology_proto");
+  arg_def->set_type(tensorflow::DataType::DT_STRING);
+  tensorflow::NodeDef* configure_node_def(function_def->add_node_def());
+  configure_node_def->set_name("ConfigureDistributedTPU");
+  configure_node_def->set_op("ConfigureDistributedTPU");
+  (*configure_node_def->mutable_attr())["compilation_failure_closes_chips"]
+      .set_b(false);
+  configure_node_def->set_device(tpu_system_device_name);
+  tensorflow::NodeDef* identity_node_def(function_def->add_node_def());
+  identity_node_def->set_name("Identity");
+  identity_node_def->set_op("Identity");
+  identity_node_def->add_input("ConfigureDistributedTPU:topology:0");
+  (*identity_node_def->mutable_attr())["T"].set_type(
+      tensorflow::DataType::DT_STRING);
+  (*function_def->mutable_ret())["topology_proto"] = "Identity:output:0";
+  (*function_def->mutable_control_ret())["ConfigureDistributedTPU"] =
+      "ConfigureDistributedTPU";
+}
+
+// NOTE(iga): ConfigureDistributedTPU is dummy op whose sole purpose is to
+// trigger DistributedTPURewritePass. This pass actually adds real ops that
+// initialize the TPU system. Thus, we can't simply run ConfigureDistributedTPU
+// eagerly. We need to wrap it in a function and trigger the rewrite passes on
+// it. The easiest way to trigger a rewrite is to run it in a function.
+
+// Running initialization as an operation rather than calling the underlying C++
+// implementation directly allows us to run initialization on a remote device
+// without a separate communication channel.
+TF_CAPI_EXPORT extern void TFE_InitializeTPUSystem(TFE_Context* ctx,
+                                                   const char* job,
+                                                   TF_Buffer* tpu_topology,
+                                                   TF_Status* status) {
+  if (tpu_topology->data != nullptr) {
+    status->status = InvalidArgument("Passing non-empty TF_Buffer is invalid.");
+    return;
+  }
+  tensorflow::string tpu_system_device_name = tensorflow::strings::StrCat(
+      "/job:", job, "/replica:0/task:0/device:TPU_SYSTEM:0");
+  tensorflow::Device* tpu_system_device = nullptr;
+  tensorflow::Status lookup_status = ctx->context->FindDeviceFromName(
+      tpu_system_device_name.c_str(), &tpu_system_device);
+  if (!lookup_status.ok() || tpu_system_device == nullptr) {
+    // There are no TPUs to initialize.
+    status->status = tensorflow::errors::NotFound(tensorflow::strings::StrCat(
+        "No TPUs are associated with the specified job '", job, "'"));
+    return;
+  }
+  tensorflow::FunctionDef function_def;
+  MakeTPUInitializationFunctionDef(tpu_system_device->name().c_str(),
+                                   &function_def);
+  tensorflow::string function_name = function_def.signature().name();
+  status->status = ctx->context->AddFunctionDef(function_def);
+  if (!status->status.ok()) return;
+  // Run the function, which may be a remote call. It returns a serialized
+  // topology proto.
+  const tensorflow::AttrTypeMap* attr_map;
+  bool is_function;
+  status->status = tensorflow::AttrTypeMapForOp(function_name.c_str(),
+                                                &attr_map, &is_function);
+  if (!status->status.ok()) return;
+  tensorflow::EagerOperation call_op(ctx->context, function_name.c_str(),
+                                     is_function, attr_map);
+  status->status = call_op.SetDeviceName(tpu_system_device_name.c_str());
+  if (!status->status.ok()) return;
+  tensorflow::TensorHandle* remote_topology_handle;
+  int num_retvals = 1;
+  status->status =
+      tensorflow::EagerExecute(&call_op, &remote_topology_handle, &num_retvals);
+  if (!status->status.ok()) return;
+  tensorflow::TensorHandle* local_topology_handle = nullptr;
+  status->status = tensorflow::EagerCopyToDevice(
+      remote_topology_handle, ctx->context, &ctx->context->Executor(),
+      ctx->context->HostCPU(), false, &local_topology_handle);
+  remote_topology_handle->Unref();
+  if (!status->status.ok()) return;
+  const tensorflow::Tensor* topology_proto_tensor;
+  status->status = local_topology_handle->Tensor(&topology_proto_tensor);
+  if (!status->status.ok()) return;
+  status->status = ctx->context->RemoveFunction(function_name);
+  if (!status->status.ok()) return;
+  // The function ran, so we put the result in the return buffer.
+  tensorflow::string result =
+      topology_proto_tensor->flat<tensorflow::tstring>()(0);
+  local_topology_handle->Unref();
+  void* topology_data = tensorflow::port::Malloc(result.size());
+  tpu_topology->data = topology_data;
+  if (tpu_topology->data == nullptr) {
+    status->status = tensorflow::errors::ResourceExhausted(
+        "Failed to allocate memory for topology proto (", result.size(),
+        " bytes)");
+  }
+  memcpy(topology_data, result.c_str(), result.size());
+  tpu_topology->length = result.size();
+  tpu_topology->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  status->status = tensorflow::Status::OK();
 }
 
 TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {

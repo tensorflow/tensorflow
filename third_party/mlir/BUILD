@@ -433,8 +433,8 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":AffineOps",
         ":DialectUtils",
-        ":EDSC",
         ":IR",
         ":StandardOps",
         ":Support",
@@ -1345,7 +1345,7 @@ cc_library(
         ":AffineToStandardTransforms",
         ":GPUDialect",
         ":IR",
-        ":Linalg",
+        ":LinalgTransforms",
         ":LoopOps",
         ":StandardOps",
         ":Support",
@@ -2195,7 +2195,8 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
-        ":Linalg",
+        ":LinalgOps",
+        ":LinalgTransforms",
         ":Pass",
         ":StandardOps",
         ":Support",
@@ -2207,14 +2208,37 @@ cc_library(
     alwayslink = 1,
 )
 
-# TODO(ntv): Update these to make mapping with cmake simpler.
 cc_library(
-    name = "Linalg",
+    name = "LinalgOps",
+    srcs = [
+        "lib/Dialect/Linalg/IR/LinalgOps.cpp",
+        "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
+        "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
+        "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":DialectUtils",
+        ":IR",
+        ":LinalgOpsIncGen",
+        ":LinalgStructuredOpsIncGen",
+        ":LinalgTransformPatternsIncGen",
+        ":Parser",
+        ":Support",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "LinalgTransforms",
     srcs = [
         "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
         "lib/Dialect/Linalg/EDSC/Builders.cpp",
-        "lib/Dialect/Linalg/IR/LinalgOps.cpp",
-        "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
         "lib/Dialect/Linalg/Transforms/LinalgToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
@@ -2226,9 +2250,6 @@ cc_library(
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
         "include/mlir/Dialect/Linalg/EDSC/Builders.h",
         "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
-        "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
-        "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
-        "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/LinalgTransforms.h",
         "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
@@ -2245,6 +2266,7 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
+        ":LinalgOps",
         ":LinalgOpsIncGen",
         ":LinalgStructuredOpsIncGen",
         ":LinalgTransformPatternsIncGen",
@@ -2264,8 +2286,8 @@ cc_library(
 
 cc_library(
     name = "LinalgDialectRegistration",
-    srcs = ["lib/Dialect/Linalg/LinalgRegistration.cpp"],
-    deps = [":Linalg"],
+    srcs = ["lib/Dialect/Linalg/IR/LinalgRegistration.cpp"],
+    deps = [":LinalgOps"],
     alwayslink = 1,
 )
 

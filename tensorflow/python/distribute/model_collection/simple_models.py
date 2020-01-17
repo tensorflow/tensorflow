@@ -61,7 +61,7 @@ class SimpleFunctionalModel(model_collection_base.ModelAndInput):
         optimizer=optimizer,
         experimental_run_tf_function=experimental_run_tf_function)
 
-    return model, output_name
+    return model
 
   def get_data(self):
     return _get_data_for_simple_models()
@@ -90,7 +90,7 @@ class SimpleSequentialModel(model_collection_base.ModelAndInput):
         optimizer=optimizer,
         experimental_run_tf_function=experimental_run_tf_function)
 
-    return model, output_name
+    return model
 
   def get_data(self):
     return _get_data_for_simple_models()
@@ -101,14 +101,12 @@ class SimpleSequentialModel(model_collection_base.ModelAndInput):
 
 class _SimpleModel(keras.Model):
 
-  output_name = 'output_layer'
-
   def __init__(self):
-    self._dense_layer = keras.layers.Dense(
-        5, dtype=dtypes.float32, name=self.output_name)
+    super(_SimpleModel, self).__init__()
+    self._dense_layer = keras.layers.Dense(5, dtype=dtypes.float32)
 
   def call(self, inputs):
-    return self._dense_layer(inputs)
+    return {'output_layer': self._dense_layer(inputs)}
 
 
 class SimpleSubclassModel(model_collection_base.ModelAndInput):
@@ -127,7 +125,7 @@ class SimpleSubclassModel(model_collection_base.ModelAndInput):
         optimizer=optimizer,
         experimental_run_tf_function=experimental_run_tf_function)
 
-    return model, model.output_name
+    return model
 
   def get_data(self):
     return _get_data_for_simple_models()
@@ -151,7 +149,7 @@ class SimpleTFModuleModel(model_collection_base.ModelAndInput):
 
   def get_model(self, **kwargs):
     model = _SimpleModule()
-    return model, 'foo'
+    return model
 
   def get_data(self):
     return _get_data_for_simple_models()

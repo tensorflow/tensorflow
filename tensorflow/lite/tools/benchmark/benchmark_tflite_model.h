@@ -70,6 +70,8 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
   virtual TfLiteDelegatePtrMap GetDelegates() const;
 
+  virtual TfLiteStatus LoadModel();
+
   // Allow subclasses to create a customized Op resolver during init.
   virtual std::unique_ptr<tflite::OpResolver> GetOpResolver() const;
 
@@ -110,7 +112,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   std::vector<InputLayerInfo> inputs_;
   std::vector<InputTensorData> inputs_data_;
   std::unique_ptr<BenchmarkListener> profiling_listener_ = nullptr;
-  std::unique_ptr<BenchmarkListener> gemmlowp_profiling_listener_ = nullptr;
+  std::unique_ptr<BenchmarkListener> ruy_profiling_listener_ = nullptr;
   TfLiteDelegatePtrMap delegates_;
 
   std::mt19937 random_engine_;

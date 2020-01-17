@@ -95,7 +95,7 @@ class DequantizeOp : public XlaOpKernel {
                       ScalarLike(output, min_range));
 
     if (dtype_ == DT_BFLOAT16) {
-      output = xla::ConvertElementType(input, xla::BF16);
+      output = xla::ConvertElementType(output, xla::BF16);
     }
     ctx->SetOutput(0, output);
   }

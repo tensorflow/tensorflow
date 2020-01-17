@@ -35,9 +35,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("GetDefaultDeviceAssignment",
            [](PyTpuClient* client, int num_replicas)
                -> StatusOr<std::vector<std::shared_ptr<Device>>> {
-             TF_ASSIGN_OR_RETURN(
-                 DeviceAssignment device_assignment,
-                 client->GetDefaultDeviceAssignment(num_replicas));
+             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                                 client->GetDefaultDeviceAssignment(
+                                     num_replicas, /*num_partitions=*/1));
              std::vector<std::shared_ptr<Device>> result;
              for (int i = 0; i < num_replicas; ++i) {
                int device_id = device_assignment(i, 0);
@@ -203,11 +203,18 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("Execute", &PyTpuExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecutePerReplica", &PyTpuExecutable::ExecutePerReplica,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("ExecuteOnLocalDevices", &PyTpuExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<TpuDevice, Device, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
+      .def_property_readonly("coords", &TpuDevice::coords)
+      .def_property_readonly("core_on_chip", &TpuDevice::core_on_chip)
       .def("__repr__", [](const TpuDevice& device) {
-        return absl::StrFormat("TpuDevice(id=%i)", device.id());
+        return absl::StrFormat(
+            "TpuDevice(id=%i, host_id=%i, coords=(%i,%i,%i), core_on_chip=%i)",
+            device.id(), device.host_id(), device.coords()[0],
+            device.coords()[1], device.coords()[2], device.core_on_chip());
       });
 }  // NOLINT(readability/fn_size)
 

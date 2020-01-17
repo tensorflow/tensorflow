@@ -38,8 +38,24 @@ namespace xla {
 
 class TpuDevice : public Device {
  public:
-  using Device::Device;
+  TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
+            int core_on_chip, int core_on_host);
+
+  const std::array<int, 3>& coords() const { return coords_; }
+  int core_on_chip() const { return core_on_chip_; }
+  int core_on_host() const { return core_on_host_; }
+
   std::string DebugString() const override;
+
+  static xla::StatusOr<std::vector<std::shared_ptr<xla::Device>>> GetTpuDevices(
+      const tpu_driver::SystemInfo& system_info);
+
+ private:
+  const std::array<int, 3> coords_;
+  // Index of the core of the same chip.
+  int core_on_chip_;
+  // Index of the core of the same host.
+  int core_on_host_;
 };
 
 // Encapsulates the state of Python session with XLA.
@@ -50,7 +66,7 @@ class PyTpuClient {
   static StatusOr<std::shared_ptr<PyTpuClient>> Get(const std::string& worker);
 
   explicit PyTpuClient(std::string platform_name,
-                       std::unique_ptr<tpu_driver::TpuDriver> client,
+                       std::unique_ptr<tpu_driver::TpuDriver> driver,
                        std::vector<std::shared_ptr<Device>> devices,
                        int host_id);
   virtual ~PyTpuClient() = default;
@@ -64,7 +80,7 @@ class PyTpuClient {
   StatusOr<Literal> TransferFromOutfeed(const Shape& shape, int device_ordinal);
 
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas) const;
+      int num_replicas, int num_partitions) const;
 
   int device_count() const { return devices_.size(); }
   int local_device_count() const { return local_devices_.size(); }
@@ -269,6 +285,7 @@ class PyTpuExecutable {
   PyTpuExecutable& operator=(PyTpuExecutable&&) = delete;
 
   int num_replicas() const { return device_assignment_.replica_count(); }
+  int num_partitions() const { return device_assignment_.computation_count(); }
 
   int64 SizeOfGeneratedCodeInBytes() const {
     return executables_[0]->size_in_bytes();
@@ -291,7 +308,16 @@ class PyTpuExecutable {
   // Execute on many replicas. Takes a sequence of argument lists (one argument
   // list per replica) and returns a tuple of results (one result per replica).
   // The number of argument lists must be equal to the replica count.
+  // The executable must have only one partition.
+  // TODO(cjfj): Remove this once JAX is moved to `ExecuteOnLocalDevices`.
   StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> ExecutePerReplica(
+      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
+
+  // Execute on local devices. Takes a sequence of argument lists (one argument
+  // list per local device) and returns a tuple of results (one result per local
+  // device). The number of argument lists must be equal to the local device
+  // count.
+  StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> ExecuteOnLocalDevices(
       absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
 
   void Delete() { executables_.clear(); }
@@ -305,18 +331,22 @@ class PyTpuExecutable {
   ExecuteResult ExecuteHelper(
       absl::Span<const std::vector<PyTpuBuffer*>> all_core_arguments,
       absl::Span<PyTpuBuffer* const> this_core_arguments, int replica,
-      const RunId& run_id);
+      int partition, const RunId& run_id);
 
   std::shared_ptr<PyTpuClient> const client_;
   std::vector<std::unique_ptr<tpu_driver::LoadedProgramHandle>> executables_;
   const DeviceAssignment device_assignment_;
 
-  // The replica indices of device_assignment_ to be run by this client. On
-  // single-host platforms, this is all replicas (i.e. local_replicas_[i] = i),
-  // but this may not be the case on multi-host platforms.
-  std::vector<int> local_replicas_;
+  // The replica and partition indices of device_assignment_ to be run by this
+  // client. On single-host platforms without partitioning, this is all replicas
+  // (i.e. local_logical_devices_[i] = (i, 0)), but this may not be the case on
+  // multi-host platforms.
+  // If there are 4 replicas and 2 partitions on a single host platform, size of
+  // local_logical_devices_ is 4*2 = 8.
+  std::vector<std::pair<int, int>> local_logical_devices_;
 
-  // local_devices_[i] is the Device to which local_replicas_[i] is assigned.
+  // local_devices_[i] is the Device to which local_logical_devices_[i] is
+  // assigned.
   // shared_ptrs instead of unique_ptrs to play well with the Python bindings
   // (see xla.cc).
   std::vector<std::shared_ptr<Device>> local_devices_;

@@ -32,6 +32,12 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
           cost_analysis_.per_second_rate(HloCostAnalysis::kTranscendentalsKey));
 }
 
+float MemorySpaceAssignmentCostAnalysis::
+    GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const {
+  return bytes /
+         cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+}
+
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::optional<int64> operand_in_alternate_mem,
@@ -84,6 +90,10 @@ float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
   int64 size_in_bytes = cost_analysis_.GetShapeSize(shape);
   return static_cast<float>(size_in_bytes) /
          async_copy_bandwidth_bytes_per_second_;
+}
+
+int64 MemorySpaceAssignmentCostAnalysis::GetScheduleEndTime() const {
+  return hlo_live_range_.schedule_end_time();
 }
 
 bool InstructionCountPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
@@ -258,6 +268,51 @@ AlternateMemoryBestFitHeap::GetSortedColocatedIntervals(
   return colocated_intervals;
 }
 
+bool AlternateMemoryBestFitHeap::IsIntervalAllowedInAlternateMemory(
+    const BufferInterval& interval) const {
+  // If the buffer is a tuple, don't use this algorithm for now. The buffers
+  // that are pointed to by the tuple will still use this algorithm.  Because
+  // tuples are cheap to place in the alternate memory (they are just pointers)
+  // we don't need to use prefetch/evict logic.
+  if (interval.buffer->shape().IsTuple()) {
+    VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+            << " in default mem because it is a tuple.";
+    return false;
+  }
+
+  // The semantics of TupleSelect are weird: TupleSelect doesn't define a
+  // buffer, but just forwards the buffers in the either left or right side.
+  // This means the the two different inputs to TupleSelect must not alias, yet
+  // they should be allocated in the same memory space, and both buffers must be
+  // kept alive for the entire live range of TupleSelect. Instead, just don't
+  // allocate TupleSelect in the alternate memory space.
+  // TODO(berkin): Not allocating add-dependencies either since they need to be
+  // treated specially. We should revisit this later.
+  for (const HloPosition& position : interval.buffer->positions()) {
+    if (position.instruction->opcode() == HloOpcode::kTupleSelect ||
+        position.instruction->opcode() == HloOpcode::kAddDependency) {
+      VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+              << " in default mem because it has a tuple-select or "
+              << "add-dependency position.";
+      return false;
+    }
+  }
+
+  // Send and Recv HLOs return a request identifier. These should not be
+  // allocated in the alternate memory.
+  const HloPosition& defining_position = interval.buffer->defining_position();
+  if ((defining_position.instruction->opcode() == HloOpcode::kSend ||
+       defining_position.instruction->opcode() == HloOpcode::kRecv) &&
+      defining_position.index == ShapeIndex({1})) {
+    VLOG(4)
+        << "Keeping value " << interval.buffer->ToShortString()
+        << " in default mem because it is a request identifier for send/recv.";
+    return false;
+  }
+
+  return true;
+}
+
 HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
@@ -279,36 +334,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
-    // If the buffer is a tuple, don't use this algorithm for now. The buffers
-    // that are pointed to by the tuple will still use this algorithm.  Because
-    // tuples are cheap to place in the alternate memory (they are just
-    // pointers) we don't need to use prefetch/evict logic.
-    if (interval.buffer->shape().IsTuple()) {
-      VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
-              << " in default mem because it is a tuple.";
-      continue;
-    }
-
-    // The semantics of TupleSelect are weird: TupleSelect doesn't define a
-    // buffer, but just forwards the buffers in the either left or right side.
-    // This means the the two different inputs to TupleSelect must not alias,
-    // yet they should be allocated in the same memory space, and both buffers
-    // must be kept alive for the entire live range of TupleSelect. Instead,
-    // just don't allocate TupleSelect in the alternate memory space.
-    // TODO(berkin): Not allocating add-dependencies either since they need to
-    // be treated specially. We should revisit this later.
-    bool keep_in_default_mem = false;
-    for (const HloPosition& position : interval.buffer->positions()) {
-      if (position.instruction->opcode() == HloOpcode::kTupleSelect ||
-          position.instruction->opcode() == HloOpcode::kAddDependency) {
-        keep_in_default_mem = true;
-        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
-                << " in default mem because it has a tuple-select or "
-                << "add-dependency position.";
-        break;
-      }
-    }
-    if (keep_in_default_mem) {
+    if (!IsIntervalAllowedInAlternateMemory(interval)) {
       continue;
     }
 
@@ -1068,7 +1094,23 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
               std::max(alternate_mem_benefit, use_alternate_mem_benefit);
         }
       }
-      return alternate_mem_benefit;
+
+      // Get performance slowdown in seconds of prefetching current
+      // BufferInterval causing to other BufferIntervals.
+      float alternate_mem_slowdown =
+          cost_analysis.GetInstructionElapsedDueToMemorySlowdown(interval.size);
+
+      // Scale the slowdown based on the time of this buffer. We would want
+      // earlier buffers have lower slowdown values, because they are less
+      // likely to overlap with other HLOs.
+      // TODO (yuemmawang) We may want a piecewise function, where a lower
+      // slowdown for early HLOs, and full slowdown for mid-to-late HLOs.
+      // TODO (yuemmawang) Further in a smarter way, we want buffers overlapped
+      // with more HLOs have higher slowdown, and vice versa.
+      float scale = interval.start * 1.0 / cost_analysis.GetScheduleEndTime();
+      alternate_mem_slowdown *= scale;
+
+      return alternate_mem_benefit - alternate_mem_slowdown;
     };
 
     float x_memory_boundedness = get_memory_boundedness(x);
@@ -1083,29 +1125,25 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
 }
 
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
-MemorySpaceAssignment::Run(HloModule* module, const Options& options) {
+MemorySpaceAssignment::Run(HloModule* module,
+                           const HloLiveRange& hlo_live_range,
+                           const HloAliasAnalysis& alias_analysis,
+                           const Options& options) {
   CHECK(module->has_schedule());
   VLOG(4) << "Module before memory space assignment: ";
   XLA_VLOG_LINES(4, module->ToString());
   VLOG(4) << "Schedule: " << module->schedule().ToString();
-  TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
-
-  const HloComputation* entry_computation = module->entry_computation();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                      HloLiveRange::Run(module->schedule(), *alias_analysis,
-                                        entry_computation));
   MemorySpaceAssignment memory_space_assignment(
-      module, options.alternate_memory_space, *hlo_live_range);
+      module, options.alternate_memory_space, hlo_live_range);
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
-      &memory_space_assignment.allocation_map_, options, *alias_analysis,
-      *hlo_live_range);
+      &memory_space_assignment.allocation_map_, options, alias_analysis,
+      hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module,
-                                        module->schedule(),
-                                        *alias_analysis.get(), options.size_fn,
-                                        heap_simulator_options)
+                                        module->schedule(), alias_analysis,
+                                        options.size_fn, heap_simulator_options)
                          .status());
 
   TF_RETURN_IF_ERROR(memory_space_assignment.Process());
@@ -1349,6 +1387,15 @@ Status MemorySpaceAssignment::SimplifyGraph() {
       VLOG(4) << "Not simplifying " << computation->name()
               << " because it's not in the schedule.";
       continue;
+    }
+    // Drop control dependencies. Since the computation is already scheduled, we
+    // don't need control dependencies anymore, and having control
+    // predecessors/successors prevents us from removing instructions without
+    // users (HloComputation::IsSafelyRemovable returns false if there are
+    // control dependencies).
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
     }
     // We perform limited DCE and forward the tuple operand in patterns like
     // GetTupleElement(Tuple(a, b), 0). This is mostly because memory space

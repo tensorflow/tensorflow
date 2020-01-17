@@ -320,6 +320,25 @@ xla_test(
 )
 
 xla_test(
+    name = "buffer_donation_test",
+    srcs = ["buffer_donation_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:backend",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+xla_test(
     name = "conv_depthwise_test",
     timeout = "long",
     srcs = [

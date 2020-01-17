@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 #if defined(__ANDROID__)
@@ -51,10 +52,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
-
-#ifdef GEMMLOWP_PROFILING
-#include "profiling/profiler.h"
-#endif
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -105,12 +102,15 @@ class ProfilingListener : public BenchmarkListener {
   profiling::ProfileSummarizer init_summarizer_;
 };
 
-// Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
-class GemmlowpProfilingListener : public BenchmarkListener {
+// Dumps ruy profiling events if the ruy profiler is enabled.
+class RuyProfileListener : public BenchmarkListener {
  public:
   void OnBenchmarkStart(const BenchmarkParams& params) override;
 
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
+
+ private:
+  std::unique_ptr<ruy::profiler::ScopeProfile> ruy_profile_;
 };
 
 void ProfilingListener::OnBenchmarkStart(const BenchmarkParams& params) {
@@ -148,19 +148,12 @@ void ProfilingListener::OnSingleRunEnd() {
   run_summarizer_.ProcessProfiles(profile_events, *interpreter_);
 }
 
-void GemmlowpProfilingListener::OnBenchmarkStart(
-    const BenchmarkParams& params) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::RegisterCurrentThreadForProfiling();
-  gemmlowp::StartProfiling();
-#endif
+void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
+  ruy_profile_.reset(new ruy::profiler::ScopeProfile);
 }
 
-void GemmlowpProfilingListener::OnBenchmarkEnd(
-    const BenchmarkResults& results) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::FinishProfiling();
-#endif
+void RuyProfileListener::OnBenchmarkEnd(const BenchmarkResults& results) {
+  ruy_profile_ = nullptr;
 }
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
@@ -563,13 +556,7 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::Init() {
-  std::string graph = params_.Get<std::string>("graph");
-  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
-  if (!model_) {
-    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
-    return kTfLiteError;
-  }
-  TFLITE_LOG(INFO) << "Loaded model " << graph;
+  TF_LITE_ENSURE_STATUS(LoadModel());
 
   auto resolver = GetOpResolver();
 
@@ -655,11 +642,20 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
 
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
-  AddListener(gemmlowp_profiling_listener_.get());
-#endif
+  ruy_profiling_listener_.reset(new RuyProfileListener());
+  AddListener(ruy_profiling_listener_.get());
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
+  std::string graph = params_.Get<std::string>("graph");
+  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
+  if (!model_) {
+    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
+    return kTfLiteError;
+  }
+  TFLITE_LOG(INFO) << "Loaded model " << graph;
   return kTfLiteOk;
 }
 

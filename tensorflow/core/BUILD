@@ -79,6 +79,8 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
+    "tf_defines_nortti_if_android",
+    "tf_defines_nortti_if_emscripten",
     "tf_features_nomodules_if_android",
     "tf_features_nomodules_if_emscripten",
     "tf_gen_op_libs",
@@ -123,6 +125,7 @@ load(
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
+    "tf_portable_deps_no_runtime",
     "tf_proto_library",
     "tf_proto_library_cc",
     "tf_protos_all",
@@ -1292,80 +1295,76 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Core sources for Android builds.
+# Sources required to build the TensorFlow framework without the runtime on
+# mobile platforms. This is essentially the sources required to build
+# tensorflow/core/framework:tensor without using granular targets.
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "//tensorflow/compiler/jit:mobile_srcs_no_runtime",
         "//tensorflow/core/framework:attr_value_proto_text_srcs",
         "//tensorflow/core/framework:mobile_srcs_no_runtime",
-        "//tensorflow/core/lib/bfloat16:bfloat16.cc",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
-        "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
-        "//tensorflow/core/lib/core:legacy_lib_core_all_srcs",
-        "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
-        "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
-        "//tensorflow/core/lib/hash:legacy_lib_hash_all_srcs",
-        "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
-        "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_srcs",
-        "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
-        "//tensorflow/core/lib/io:legacy_lib_io_all_srcs",
-        "//tensorflow/core/lib/math:math_util.h",
-        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_headers",
-        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_srcs",
-        "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
-        "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
-        "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
-        "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
-        "//tensorflow/core/platform:legacy_mobile_srcs",
-        "//tensorflow/core/profiler:mobile_srcs",
+        "//tensorflow/core/lib/bfloat16:mobile_srcs_no_runtime",
+        "//tensorflow/core/lib/core:mobile_srcs_no_runtime",
+        "//tensorflow/core/lib/gtl:mobile_srcs_no_runtime",
+        "//tensorflow/core/lib/hash:mobile_srcs_no_runtime",
+        "//tensorflow/core/lib/strings:mobile_srcs_no_runtime",
+        "//tensorflow/core/platform:mobile_srcs_no_runtime",
         "//tensorflow/core/public:mobile_srcs_no_runtime",
-        "//tensorflow/core/util/ctc:android_srcs",
-        "//tensorflow/core/util/sparse:mobile_srcs_no_runtime_group",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
     ] + glob(
         [
             "client/**/*.cc",
-            "lib/**/*.h",
-            "lib/**/*.cc",
         ],
         exclude = [
             "**/*test.*",
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
-            "debug/**/*",
-            "lib/jpeg/**/*",
-            "lib/png/**/*",
-            "lib/gif/**/*",
-            "user_ops/**/*.cu.cc",
-            "common_runtime/gpu/**/*",
-            "common_runtime/eager/*",
-            "common_runtime/gpu_device_factory.*",
         ],
-    ) + if_chromiumos(
-        ["//tensorflow/core/platform:legacy_srcs_no_runtime_google"],
-        otherwise = ["//tensorflow/core/platform:legacy_srcs_no_runtime"],
     ),
     visibility = ["//visibility:private"],
 )
 
+# Sources required to build the TensorFlow framework with runtime on
+# mobile platforms without granular targets. It is assumed that the source
+# files in tensorflow/core:mobile_srcs_no_runtime have been compiled
+# separately and are linked in as a dependency.
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        # Sources for which we do not yet have granular targets.
         "//tensorflow/c/eager:srcs",
         "//tensorflow/c:srcs",
         "//tensorflow/core/common_runtime/eager:srcs",
         "//tensorflow/core/framework:mobile_srcs_only_runtime",
         "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
+        "//tensorflow/core/profiler:mobile_srcs",
+        "//tensorflow/core/public:mobile_srcs_only_runtime",
         "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/util/sparse:mobile_srcs_only_runtime",
         "//tensorflow/core/util/tensor_bundle:android_srcs",
+        "//tensorflow/core/util:mobile_srcs_only_runtime",
+
+        # Sources for which we already have granular targets.
+        "//tensorflow/core/lib/core:mobile_srcs_only_runtime",
+        "//tensorflow/core/lib/gtl:mobile_srcs_only_runtime",
+        "//tensorflow/core/lib/hash:mobile_srcs_only_runtime",
+        "//tensorflow/core/lib/histogram:mobile_srcs_only_runtime",
+        "//tensorflow/core/lib/math:mobile_srcs_only_runtime",
+        "//tensorflow/core/lib/monitoring:mobile_srcs_only_runtime",
+        "//tensorflow/core/lib/random:mobile_srcs_only_runtime",
+        "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
+        "//tensorflow/core/platform:mobile_srcs_only_runtime",
     ] + glob(
         [
-            "common_runtime/**/*.h",
             "common_runtime/**/*.cc",
-            "graph/**/*.h",
+            "common_runtime/**/*.h",
             "graph/**/*.cc",
+            "graph/**/*.h",
+            "lib/wav/*.cc",
+            "lib/wav/*.h",
         ],
         exclude = [
             "**/*test.*",
@@ -1389,6 +1388,12 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
+    visibility = ["//visibility:public"],
+)
+
 # Native library support for Android applications.  Does not contain
 # operators, use :android_tensorflow_lib if you want full operator
 # support.
@@ -1405,51 +1410,31 @@ filegroup(
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
-    srcs = if_android([":android_srcs"]),
-    copts = tf_copts(android_optimization_level_override = None) + [
-        "-DSUPPORT_SELECTIVE_REGISTRATION",
-    ],
+    srcs = if_android([":mobilesrcs"]),
+    copts = tf_copts(android_optimization_level_override = None),
+    defines = ["SUPPORT_SELECTIVE_REGISTRATION"],
     linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
-    deps = [
-        ":mobile_additional_lib_deps",
-        ":protos_all_cc_impl",
-        "//tensorflow/core/util:stats_calculator_portable",
-        "//third_party/eigen3",
-        "@com_google_protobuf//:protobuf",
-        "@double_conversion//:double-conversion",
-        "@farmhash_archive//:farmhash",
-        "@nsync//:nsync_cpp",
-    ],
     alwayslink = 1,
 )
 
 cc_library(
     name = "android_tensorflow_lib_lite_nortti",
-    srcs = if_android([":android_srcs"]),
-    copts = tf_copts(android_optimization_level_override = None) + [
-        "-DSUPPORT_SELECTIVE_REGISTRATION",
-    ] + tf_opts_nortti_if_android(),
+    srcs = if_android([":mobile_srcs"]),
+    copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android(),
+    defines = [
+        "SUPPORT_SELECTIVE_REGISTRATION",
+    ] + tf_defines_nortti_if_android(),
     linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
-    deps = [
-        ":mobile_additional_lib_deps",
-        ":protos_all_cc_impl",
-        "//tensorflow/core/util:stats_calculator_portable",
-        "//third_party/eigen3",
-        "@com_google_protobuf//:protobuf",
-        "@double_conversion//:double-conversion",
-        "@farmhash_archive//:farmhash",
-        "@nsync//:nsync_cpp",
-    ],
     alwayslink = 1,
 )
 
@@ -1461,29 +1446,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
-)
-
-cc_library(
-    name = "emscripten_tensorflow_lib_lite_nortti_lite_protos_no_runtime",
-    srcs = if_emscripten([":mobile_srcs_no_runtime"]),
-    copts = ["-DSUPPORT_SELECTIVE_REGISTRATION"] + tf_opts_nortti_if_emscripten(),
-    defines = ["TENSORFLOW_LITE_PROTOS"],
-    tags = [
-        "manual",
-        "notap",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":emscripten_proto_lib_no_rtti_lite_runtime",
-        ":mobile_additional_lib_deps",
-        "//tensorflow/core/util:stats_calculator_portable",
-        "//third_party/eigen3",
-        "@double_conversion//:double-conversion",
-        "@farmhash_archive//:farmhash",
-        "@nsync//:nsync_cpp",
-        "@zlib_archive//:zlib",
-    ],
-    alwayslink = 1,
 )
 
 # Native library support for iOS applications.
@@ -1513,19 +1475,10 @@ cc_library(
 
 cc_library(
     name = "ios_tensorflow_lib_lite",
-    srcs = if_ios([":android_srcs"]),
+    srcs = if_ios([":mobile_srcs"]),
     copts = tf_copts() + ["-Os"],
     visibility = ["//visibility:public"],
-    deps = [
-        ":mobile_additional_lib_deps",
-        ":protos_all_cc_impl",
-        "//tensorflow/core/util:stats_calculator_portable",
-        "//third_party/eigen3",
-        "@com_google_protobuf//:protobuf",
-        "@double_conversion//:double-conversion",
-        "@farmhash_archive//:farmhash",
-        "@nsync//:nsync_cpp",
-    ],
+    deps = tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
 
@@ -1599,7 +1552,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# This is like android_test_srcs, minus the things that are already in android_srcs.
+# This is like android_test_srcs, minus the things that are already in mobile_srcs.
 filegroup(
     name = "android_test_srcs_no_core",
     srcs = [
@@ -1974,6 +1927,7 @@ cc_library(
         "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:context",
         "//tensorflow/core/platform:cord",
@@ -2779,7 +2733,9 @@ cc_library(
         ":protos_all_cc",
         ":shared_counter",
         "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4652,29 +4608,4 @@ tf_portable_proto_library(
     ],
     visibility = ["//visibility:public"],
     deps = ["@com_google_protobuf//:protobuf"],
-)
-
-# There is currently no need for a full proto version of emscripten tf lib lite.
-alias(
-    name = "emscripten_lib_lite_no_runtime",
-    actual = ":emscripten_tensorflow_lib_lite_nortti_lite_protos_no_runtime",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_srcs_no_runtime",
-    actual = ":mobile_srcs_no_runtime",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_srcs_only_runtime",
-    actual = ":mobile_srcs_only_runtime",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//visibility:public"],
 )

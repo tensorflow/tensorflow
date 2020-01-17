@@ -364,6 +364,8 @@ void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
+  op_params.lhs_cacheable = IsConstantTensor(filter);
+  op_params.rhs_cacheable = IsConstantTensor(input);
   if (kernel_type == kReference) {
     reference_integer_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
@@ -405,6 +407,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     op_params.output_shift = data->output_shift;
     op_params.quantized_activation_min = data->output_activation_min;
     op_params.quantized_activation_max = data->output_activation_max;
+    op_params.lhs_cacheable = IsConstantTensor(filter);
+    op_params.rhs_cacheable = IsConstantTensor(input);
     switch (output->type) {
       case kTfLiteUInt8:
         if (kernel_type == kReference) {
@@ -484,6 +488,8 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
+  op_params.lhs_cacheable = IsConstantTensor(filter);
+  op_params.rhs_cacheable = IsConstantTensor(input);
   if (kernel_type == kReference) {
     reference_ops::ShuffledFullyConnected(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
@@ -528,6 +534,8 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     FullyConnectedParams op_params;
     op_params.float_activation_min = output_activation_min;
     op_params.float_activation_max = output_activation_max;
+    op_params.lhs_cacheable = IsConstantTensor(filter);
+    op_params.rhs_cacheable = IsConstantTensor(input);
     optimized_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
         GetTensorShape(filter), GetTensorData<float>(filter),

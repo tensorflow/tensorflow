@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -64,7 +65,8 @@ inline void LstmStepWithAuxInput(
     float* output_state_ptr, float* cell_state_ptr, float* input_gate_scratch,
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
     float* output_ptr, Logger* logger,
-    const std::vector<int>& intemediate_tensor_indexes) {
+    const std::vector<int>& intemediate_tensor_indexes,
+    ErrorReporter* error_reporter) {
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -158,7 +160,7 @@ inline void LstmStepWithAuxInput(
     }
     if (is_layer_norm_lstm) {
       logger->LogTensorValue(intemediate_tensor_indexes[0], input_gate_scratch,
-                             n_cell * n_batch);
+                             n_cell * n_batch, error_reporter);
       tensor_utils::MeanStddevNormalization(
           input_gate_scratch, input_gate_scratch, n_cell, n_batch);
       tensor_utils::VectorBatchVectorCwiseProduct(
@@ -179,7 +181,7 @@ inline void LstmStepWithAuxInput(
   }
   if (is_layer_norm_lstm) {
     logger->LogTensorValue(intemediate_tensor_indexes[1], forget_gate_scratch,
-                           n_cell * n_batch);
+                           n_cell * n_batch, error_reporter);
     tensor_utils::MeanStddevNormalization(forget_gate_scratch,
                                           forget_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -196,7 +198,7 @@ inline void LstmStepWithAuxInput(
                                          n_batch * n_cell, cell_state_ptr);
   if (is_layer_norm_lstm) {
     logger->LogTensorValue(intemediate_tensor_indexes[2], cell_scratch,
-                           n_cell * n_batch);
+                           n_cell * n_batch, error_reporter);
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
                                           n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -229,7 +231,7 @@ inline void LstmStepWithAuxInput(
   }
   if (is_layer_norm_lstm) {
     logger->LogTensorValue(intemediate_tensor_indexes[3], output_gate_scratch,
-                           n_cell * n_batch);
+                           n_cell * n_batch, error_reporter);
     tensor_utils::MeanStddevNormalization(output_gate_scratch,
                                           output_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -246,7 +248,7 @@ inline void LstmStepWithAuxInput(
                                          n_batch * n_cell, output_gate_scratch);
 
   logger->LogTensorValue(intemediate_tensor_indexes[4], output_gate_scratch,
-                         n_cell * n_batch);
+                         n_cell * n_batch, error_reporter);
 
   const bool use_projection_weight = (projection_weights_ptr != nullptr);
   const bool use_projection_bias = (projection_bias_ptr != nullptr);
@@ -317,7 +319,8 @@ TfLiteStatus EvalFloat(
     int output_offset, TfLiteTensor* scratch_buffer,
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, Logger* logger,
-    const std::vector<int>& intemediate_tensor_indexes) {
+    const std::vector<int>& intemediate_tensor_indexes,
+    ErrorReporter* error_reporter) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   int max_time, n_batch;
   if (input->dims->size == 3) {
@@ -404,7 +407,7 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(activation_state),
           GetTensorData<float>(cell_state), input_gate_scratch,
           forget_gate_scratch, cell_scratch, output_gate_scratch,
-          output_ptr_time, logger, intemediate_tensor_indexes);
+          output_ptr_time, logger, intemediate_tensor_indexes, error_reporter);
     }
   } else {
     for (int b = 0; b < n_batch; b++) {
@@ -465,7 +468,7 @@ TfLiteStatus EvalFloat(
             n_cell, n_input, aux_input_size, n_output, output_batch_leading_dim,
             activation_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
             forget_gate_scratch_ptr, cell_scratch_ptr, output_gate_scratch_ptr,
-            output_ptr, logger, intemediate_tensor_indexes);
+            output_ptr, logger, intemediate_tensor_indexes, error_reporter);
       }
     }
   }
@@ -489,8 +492,8 @@ struct OpData {
 // Resize the output, state tensors based on the sizes of the input tensors.
 // Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
-TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
-                       Logger* logger) {
+TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
+                       ErrorReporter* error_reporter) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
 
   const TfLiteTensor* input =
@@ -585,7 +588,7 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
           projection_bias, params, /*forward_sequence=*/true,
           /*time_major=*/true,
           /*output_offset=*/0, scratch_buffer, activation_state, cell_state,
-          output, logger, intemediate_tensor_indexes);
+          output, logger, intemediate_tensor_indexes, error_reporter);
     }
     case kTfLiteUInt8:
     case kTfLiteInt8:
@@ -598,8 +601,9 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
 }  // namespace
 
 TfLiteStatus lstm_logging_kernel(TfLiteContext* context, TfLiteNode* node,
-                                 Logger* logger) {
-  return lstm_eval(context, node, logger);
+                                 Logger* logger,
+                                 ErrorReporter* error_reporter) {
+  return lstm_eval(context, node, logger, error_reporter);
 }
 
 }  // namespace builtin

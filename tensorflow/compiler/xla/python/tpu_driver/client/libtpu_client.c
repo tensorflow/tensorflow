@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Before you start, make sure c_api.so, c_api.h and and c_api_client.c are in
-// the same working directory.
+// Before you start, make sure libtpu.so, libtpu.h and and libtpu_client.c are
+// in the same working directory.
 //
-// To compile: gcc -o c_api_client c_api_client.c -ldl
-// To run: sudo ./c_api_client
+// To compile: gcc -o libtpu_client libtpu_client.c -ldl
+// To run: sudo ./libtpu_client
 
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "c_api.h"
+#include "libtpu.h"
 
 void* LoadAndInitializeDriver(const char* shared_lib,
                               struct TpuDriverFn* driver_fn) {
   void* handle;
-  handle = dlopen("./c_api.so", RTLD_NOW);
+  handle = dlopen(shared_lib, RTLD_NOW);
   if (!handle) {
     fprintf(stderr, "Error: %s\n", dlerror());
     exit(EXIT_FAILURE);
@@ -42,14 +42,23 @@ void* LoadAndInitializeDriver(const char* shared_lib,
 }
 
 int main(int argc, char** argv) {
+  char* api_path = "./libtpu.so";
+  if (argc == 2) {
+    api_path = argv[1];
+  }
+
   struct TpuDriverFn driver_fn;
-  void* handle = LoadAndInitializeDriver("./c_api.so", &driver_fn);
+  void* handle = LoadAndInitializeDriver(api_path, &driver_fn);
 
   fprintf(stdout, "------ Going to Query Version ------\n");
   fprintf(stdout, "TPU Driver Version: %s\n", driver_fn.TpuDriver_Version());
 
   fprintf(stdout, "------ Going to Open a TPU Driver ------\n");
   struct TpuDriver* driver = driver_fn.TpuDriver_Open("local://");
+
+  fprintf(stdout, "------ Going to Query for System Information ------\n");
+  struct TpuSystemInfo* info = driver_fn.TpuDriver_QuerySystemInfo(driver);
+  driver_fn.TpuDriver_FreeSystemInfo(info);
 
   // An example of simple program to sum two parameters.
   const char* hlo_module_text = R"(HloModule add_vec_module
@@ -105,7 +114,7 @@ int main(int argc, char** argv) {
         /*eventc=*/1, /*eventv=*/allocate_buf_b_events);
 
   fprintf(stdout, "------ Going to Execute a TPU program ------\n");
-  DeviceAssignment device_assignment = {1, 1};
+  DeviceAssignment device_assignment = {NULL, 0};
   TpuBufferHandle* input_buffer_handle[] = {buf_a_handle, buf_b_handle};
   TpuBufferHandle* output_buffer_handle[] = {buf_sum_handle};
   TpuEvent* transfer_events[] = {transfer_ev1, transfer_ev2};

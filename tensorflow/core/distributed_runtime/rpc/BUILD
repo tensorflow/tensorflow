@@ -3,6 +3,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_windows",
     "tf_cc_binary",
     "tf_cc_test",
     "tf_cuda_library",
@@ -39,6 +40,7 @@ cc_library(
     name = "grpc_util",
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
+    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
         "//tensorflow:grpc",
         "//tensorflow:grpc++",

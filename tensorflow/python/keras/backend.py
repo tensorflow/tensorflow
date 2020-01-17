@@ -909,9 +909,14 @@ def _initialize_variables(session):
     # marked as initialized.
     is_initialized = session.run(
         [variables_module.is_variable_initialized(v) for v in candidate_vars])
+    # TODO(kathywu): Some metric variables loaded from SavedModel are never
+    # actually used, and do not have an initializer.
+    should_be_initialized = [
+        (not is_initialized[n]) and v.initializer is not None
+        for n, v in enumerate(candidate_vars)]
     uninitialized_vars = []
-    for flag, v in zip(is_initialized, candidate_vars):
-      if not flag:
+    for flag, v in zip(should_be_initialized, candidate_vars):
+      if flag:
         uninitialized_vars.append(v)
       v._keras_initialized = True
     if uninitialized_vars:
@@ -980,9 +985,9 @@ def is_keras_tensor(x):
   True
 
   """
-  if not isinstance(x, (ops.Tensor,
-                        variables_module.Variable,
-                        sparse_tensor.SparseTensor)):
+  if not isinstance(x,
+                    (ops.Tensor, variables_module.Variable,
+                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
   return hasattr(x, '_keras_history')

@@ -73,12 +73,20 @@ class LegalizeTF : public FunctionPass<LegalizeTF> {
 };
 
 /// Returns if the given TF data format string is the default format.
-static bool isDefaultDataFormat(StringRef format) { return format == "NHWC"; }
+static bool IsDefaultDataFormat(StringRef format) { return format == "NHWC"; }
 
 /// Returns the feature dimension for the given format and input type.
-static size_t getFeatureDimension(StringAttr format,
+static size_t GetFeatureDimension(StringAttr format,
                                   RankedTensorType inputType) {
-  return isDefaultDataFormat(format.getValue()) ? inputType.getRank() - 1 : 1;
+  return IsDefaultDataFormat(format.getValue()) ? inputType.getRank() - 1 : 1;
+}
+
+// Gets all integer values from the given attribute and push them to `values`.
+void GetI64ArrayAttrValues(Attribute attr, SmallVectorImpl<int64_t> *values) {
+  auto array_attr = attr.cast<ArrayAttr>();
+  values->reserve(array_attr.getValue().size());
+  for (Attribute val : array_attr.getValue())
+    values->push_back(val.cast<IntegerAttr>().getValue().getSExtValue());
 }
 
 // Returns 1D 64-bit dense elements attribute with the given values.
@@ -103,6 +111,16 @@ static DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
   RankedTensorType ty = RankedTensorType::get(
       {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
   return DenseIntElementsAttr::get(ty, values);
+}
+
+// Returns the corresponding type that should be used for performing sum
+// accumulation over the given input type.
+Type GetSumAccumulationType(Type input_type) {
+  MLIRContext *ctx = input_type.getContext();
+  if (input_type.isBF16() || input_type.isF16()) return FloatType::getF32(ctx);
+  if (input_type.isInteger(8) || input_type.isInteger(16))
+    return IntegerType::get(32, ctx);
+  return input_type;
 }
 
 // Returns axis in HLO format from TF elements attr with exactly one element
@@ -379,7 +397,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 static IntegerAttr getFeatureDimensionAttr(Builder &b, StringAttr format,
                                            Value input) {
   return b.getI64IntegerAttr(
-      getFeatureDimension(format, input.getType().cast<RankedTensorType>()));
+      GetFeatureDimension(format, input.getType().cast<RankedTensorType>()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -392,7 +410,7 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
                                                     StringAttr format,
                                                     Value input) {
   auto inputType = input.getType().cast<RankedTensorType>();
-  size_t featureDim = getFeatureDimension(format, inputType);
+  size_t featureDim = GetFeatureDimension(format, inputType);
   RankedTensorType type = RankedTensorType::get(1, b.getIntegerType(64));
   return DenseIntElementsAttr::get(type, featureDim);
 }
@@ -1141,6 +1159,80 @@ static DenseIntElementsAttr GetReduceWindowPadding(
       RankedTensorType::get({rank, 2}, builder->getIntegerType(64)),
       flatten_paddings);
 }
+
+// Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
+// dimensions with add as the reduction function. The reduction result is
+// then divided by the number of elements in the window.
+class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::AvgPoolOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto input_type = op.value().getType().dyn_cast<RankedTensorType>();
+    if (!input_type) return matchFailure();
+
+    // TODO(b/147217034): support other data formats.
+    if (!IsDefaultDataFormat(op.data_format())) return matchFailure();
+    // TODO(b/147217034): support "SAME" padding.
+    if (op.padding() != "VALID") return matchFailure();
+
+    // We will do accumulation first; use a larger bitwidth if suitable.
+    Type input_element_type = input_type.getElementType();
+    Type sum_element_type = GetSumAccumulationType(input_element_type);
+    Type result_type;
+
+    // The result type for reduction and division with the proper element type.
+    if (auto ranked_type = op.getType().dyn_cast<RankedTensorType>())
+      result_type =
+          RankedTensorType::get(ranked_type.getShape(), sum_element_type);
+    else
+      result_type = UnrankedTensorType::get(sum_element_type);
+
+    Value input_value = op.value();
+
+    // Convert if we need enlarge the element type's bitwidth.
+    if (input_element_type != sum_element_type)
+      input_value = rewriter.create<ConvertOp>(op.getLoc(), input_value,
+                                               sum_element_type);
+
+    // Create the tf.ReduceWindow op.
+    Value init =
+        GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
+    DenseIntElementsAttr paddings_attr =
+        GetReduceWindowPadding(input_type.getShape(), op.ksize(), op.strides(),
+                               op.padding(), &rewriter);
+    auto reduce = rewriter.create<ReduceWindowOp>(
+        op.getLoc(), result_type, input_value, init,
+        GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
+        /*base_dilations=*/DenseIntElementsAttr(),
+        /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
+    BuildReduceBody<AddOp>(sum_element_type, &reduce.body(), &rewriter);
+
+    // Count the number of elements in the window. The following calculation
+    // is only valid for no paddings.
+    SmallVector<int64_t, 4> ksize;
+    GetI64ArrayAttrValues(op.ksize(), &ksize);
+    int64_t count = std::accumulate(ksize.begin(), ksize.end(), 1,
+                                    std::multiplies<int64_t>());
+
+    // Divide by the number of elements in the window.
+    Value divisor =
+        GetScalarConstOfType(sum_element_type, op.getLoc(), count, &rewriter);
+    auto batch_dims =
+        GetI64ElementsAttrForSeq(0, input_type.getRank(), &rewriter);
+    Value result = rewriter.create<DivOp>(op.getLoc(), result_type, reduce,
+                                          divisor, batch_dims);
+
+    // Convert back if we enlarged the element type's bitwidth.
+    if (input_element_type != sum_element_type)
+      result =
+          rewriter.create<ConvertOp>(op.getLoc(), result, input_element_type);
+
+    rewriter.replaceOp(op, result);
+    return matchSuccess();
+  }
+};
 
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
@@ -3299,8 +3391,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertConv2DBackpropInputOp, ConvertEinsumOp,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertMaxOp, ConvertMaxPoolOp,
-      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
+      ConvertInfeedDequeueTupleOp, ConvertMaxOp, ConvertAvgPoolOp,
+      ConvertMaxPoolOp, ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
       ConvertOutfeedEnqueueTupleOp, ConvertRangeOp, ConvertSelectV2Op,
       ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,

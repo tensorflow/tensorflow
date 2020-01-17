@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 
+#include <memory>
+
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -103,35 +105,35 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     buf = new TF_ManagedBuffer(data, len, deallocator, deallocator_arg);
   }
 
-  TF_Tensor* ret = new TF_Tensor{tensorflow::TensorInterface(
+  // TODO(gjn): Make the choice of interface a compile-time configuration.
+  tensorflow::TensorInterface ret(
       Tensor(static_cast<tensorflow::DataType>(dtype),
-             tensorflow::TensorShape(dimvec), buf))};
+             tensorflow::TensorShape(dimvec), buf));
   buf->Unref();
   size_t elem_size = TF_DataTypeSize(dtype);
-  if (elem_size > 0 && len < (elem_size * ret->tensor.NumElements())) {
-    delete ret;
+  if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
     return nullptr;
   }
-  return ret;
+  return new TF_Tensor{std::make_unique<tensorflow::TensorInterface>(ret)};
 }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* t) {
-  return t->tensor.CanMove() ? t : nullptr;
+  return t->tensor->CanMove() ? t : nullptr;
 }
 
 void TF_DeleteTensor(TF_Tensor* t) { delete t; }
 
-TF_DataType TF_TensorType(const TF_Tensor* t) { return t->tensor.Type(); }
+TF_DataType TF_TensorType(const TF_Tensor* t) { return t->tensor->Type(); }
 
-int TF_NumDims(const TF_Tensor* t) { return t->tensor.NumDims(); }
+int TF_NumDims(const TF_Tensor* t) { return t->tensor->NumDims(); }
 
 int64_t TF_Dim(const TF_Tensor* t, int dim_index) {
-  return t->tensor.Dim(dim_index);
+  return t->tensor->Dim(dim_index);
 }
 
-size_t TF_TensorByteSize(const TF_Tensor* t) { return t->tensor.ByteSize(); }
+size_t TF_TensorByteSize(const TF_Tensor* t) { return t->tensor->ByteSize(); }
 
-void* TF_TensorData(const TF_Tensor* t) { return t->tensor.Data(); }
+void* TF_TensorData(const TF_Tensor* t) { return t->tensor->Data(); }
 
 int64_t TF_TensorElementCount(const TF_Tensor* t) {
   int64_t result = 1;
@@ -147,7 +149,10 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
                           int num_new_dims, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   Status cc_status(
-      to->tensor.BitcastFrom(from->tensor, type, new_dims, num_new_dims));
+      static_cast<tensorflow::TensorInterface*>(to->tensor.get())
+          ->BitcastFrom(*static_cast<const tensorflow::TensorInterface*>(
+                            from->tensor.get()),
+                        type, new_dims, num_new_dims));
   Set_TF_Status_from_Status(status, cc_status);
 }
 
@@ -308,12 +313,11 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
     return t;
   }
   if (src.dtype() != tensorflow::DT_STRING) {
-    auto* result = new TF_Tensor();
-    if (!result->tensor.CopyFrom(src, src.shape())) {
-      delete result;
+    Tensor tensor;
+    if (!tensor.CopyFrom(src, src.shape())) {
       return nullptr;
     }
-    return result;
+    return new TF_Tensor{std::make_unique<tensorflow::TensorInterface>(tensor)};
   }
   // DT_STRING tensors require a copying since TF_Tensor.buffer expects a flatly
   // encoded sequence of strings.
@@ -363,7 +367,8 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
-  return src->tensor.ToTensor(dst);
+  return static_cast<const tensorflow::TensorInterface*>(src->tensor.get())
+      ->ToTensor(dst);
 }
 
 Status TensorInterface::ToTensor(Tensor* dst) const {
@@ -418,12 +423,8 @@ Status TensorInterface::ToTensor(Tensor* dst) const {
   return Status::OK();
 }
 
-bool TensorInterface::CopyFrom(const Tensor& other, const TensorShape& shape) {
-  return tensor_.CopyFrom(other, shape);
-}
-
 bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }
 
 }  // namespace tensorflow
 
-bool TF_TensorIsAligned(const TF_Tensor* t) { return t->tensor.IsAligned(); }
+bool TF_TensorIsAligned(const TF_Tensor* t) { return t->tensor->IsAligned(); }

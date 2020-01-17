@@ -690,8 +690,79 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
 
 This release contains contributions from many people at Google, as well as:
 
-1e100, a6802739, 4d55397500, a6802739, Abdullah Selek, abenmao, Abolfazl Shahbazi, Adam Richter, Adam Weiss, Ag Ramesh, Alan Du, Albin Joy, Alex, Alex Itkes, Alex Sergeev, Alexander Pivovarov, Alexey Romanov, alhkad, Aman Patel, Amit, Amit Kumar Jaiswal, Amit Srivastava, amoitra, Andreas Eberle, Andrew Lihonosov, Andy Craze, Anshuman Tripathy, Anthony Hsu, Anthony Platanios, Anuj Rawat, arp95, Arpit Shah, Armen Poghosov, armenpoghosov, Astropeak, Ashwin Ramaswami, Arpit Shah, Augustina Ragwitz, Aurelien Geron, AuréLien Geron, avasid, aweers, awesomealex1, Ayush Agrawal, Bas Aarts, Bastian Eichenberger, Bairen Yi, Bayberry Z, Ben Barsdell, Benjamin Peterson, bhack, Bharat Raghunathan, Bhavani Subramanian, Bin Fan, blairhan, BléNesi Attila, Bodin-E, Brandon Carter, Bryan Cutler, candy.dc, Cao Zongyan, Casper Da Costa-Luis, Chao Liu, Chen Guoyin, chenchc, chengchingwen, chie8842, Christian Hansen, Christoph Boeddeker, Christopher Yeh, Clayne Robison, Coady, Patrick, crafet, csukuangfj, ctiijima, Dan Jarvis, Dan Lazewatsky, Daniel Ingram, Daniel Rasmussen, Daniel Salvadori, Dave Airlie, David Norman, Dayananda V, delock, Denis Khalikov, Deven Desai, Dheeraj Rajaram Reddy, Diego Caballero, dmitrievanthony, Donovan Ong, Drew Szurko, Duncan Dean, Duncan Riach, Dustin Neighly, Dwight J Lyle, Eamon Ito-Fisher, eashtian3, Edward Forgacs, EFanZh, ejot, Elroy Ashtian Jr, Eric Schweitz, Evgeniy Polyakov, Fangjun Kuang, Federico Martinez, Fei Hu, Felix Lemke, Filip Matzner, FlashTek, fo40225, formath, FrançOis Chollet, frreiss, Fred Reiss, Frederic Bastien, Fredrik Knutsson, G. Hussain Chinoy, Gabriel, Gautam, gehring, Geoffrey Irving, George Grzegorz Pawelczak, Grzegorz Pawelczak, George Sterpu, Gianluca Varisco, Gleb Popov, Greg Peatfield, Guillaume Klein, Gurpreet Singh, Gustavo Lima Chaves, Gyoung-Yoon Ryoo, haison, Hanton Yang, HanGuo97, Haraldur TóMas HallgríMsson, Hari Shankar, hehongliang, Heungsub Lee, Hoeseong Kim, Huan Li (李卓桓), HåKon Sandsmark, I-Hong, I-Hong Jhuo, Ilham Firdausi Putra, Ilango R, Imran Salam, Innovimax, Jacky Ko, Irene Dea, Ivan Habernal, Jakub Lipinski, Jacky, Jason Zaman, Jason Zavaglia, jayhpark530, jcf94, jefby, Jeff Daily, Jeff Poznanovic, Jeffrey Poznanovic, Jekyll Lai, jer, Jeroen BéDorf, jerryyin, jhalakp, jiakai, Jia Qingtong, Jiankang, JiangXIAO, Joe Bowser, Joe Q, Joe Quadrino, Joel Shapiro, Johan Gunnarsson, Jojimon Varghese, Jonas Rauber, Jonathan Kyl, Jonathan, Joon, Joppe Geluykens, Joseph Friedman, Josh Beal,  jtressle, Julian Niedermeier, Junqin Zhang, Justin Dujardin, Justin Tunis, jwu, K. Hodges, kaixih, Kaixi Hou, kjopek, Karl Lessard, Karl Weinmeister, Karthik Muthuraman, Kashif Rasul, Kay Zhu, Kbhute-Ibm, KDR, Keno Fischer, Kevin Mader, khanhlvg, Kilaru Yasaswi Sri Chandra Gandhi, Koan-Sin Tan, Koock Yoon, kouml, ktaebum, Kyuwon Kim, Lakshay Tokas, Laurent Le Brun, leike666666, leonard951, Leslie-Fang, Letian Kang, Li, Guizi, Loo Rong Jie, Lucas Hendren, Lukas Folle, Lukas Geiger, Luke Han, luxupu, lvli, Ma, Guokai, Mahmoud Abuzaina, Maksym Kysylov, Mandar Deshpande, manhyuk, Manraj Singh Grover, Marco Gaido, Marek Drozdowski, Margaret Maynard-Reid, Mark Ryan, mars20, Mateusz Chudyk, Matt Conley, mbhuiyan, mdfaijul, Mei Jie, Melissa Grueter, merturl, MichaelKonobeev, Michael KäUfl, Michal W. Tarnowski, MickaëL Schoentgen, Miguel Morin, Mihail Salnikov, Mikalai Drabovich, Mike Arpaia, Mike Holcomb, minds, monklof, Moses Marin, mpppk, Mr. Metal, Mshr-H, musikisomorphie, nammbash, Natalia Gimelshein, Nathan Luehr, Nayana-Ibm, Nayana Thorat, neargye, Neeraj Pradhan, Nehal J Wani, Neil, Nick, Nick Lewycky, Niels Ole Salscheider, Niklas SilfverströM, Niranjan Hasabnis, Nuka-137, Nutti, ocjosen, olicht, omeir1, P Sudeepam, Paige Bailey, Palmer Lao, Pan Daoxin, Pariksheet Pinjari, Pasquale Minervini, Patrick J. Lopresti, Patrik Gustavsson, Pavel Akhtyamov, Pavel Samolysov, PENGWA, per1234, PeterLee, Phan Van Nguyen Duc, Philipp Jund, Phillip Kravtsov, Pooya Davoodi, Pranav Marathe, Putra Manggala, Qingqing Cao, R S Nikhil Krishna, Rajeshwar Reddy T, Ramon ViñAs, Rasmus Diederichsen, Reuben Morais, robert, Rohit Gupta, Roland Zimmermann, Roman Soldatow, RonLek, Ruizhe, Ryan Jiang, saishruthi, Saleem Abdulrasool, Samantha Andow, Sami Kama, Sami Kama, Sana-Damani, Saurabh Deoras, sdamani, Sean Morgan, seanshpark, Sebastien Iooss, Serv-Inc, Severen Redwood, Shahzad Lone, Shashank Gupta, shashvat, Shashvat Chand Shahi, Shubham Goyal, Shashi, Sigrid Keydana, Siju, Siju Samuel, sleighsoft, smilu97, Snease-Abq, Son Tran, Spencer Schaber, sremedios, Srini511, srinivasan.narayanamoorthy, Steve Lang, Steve Nesae, Subin, Sumesh Udayakumaran, Sungmann Cho, sunway513, Supriya Rao, sxwang, Tae-Hwan Jung, Taehoon Lee, Takeo Sawada, Taylor Jakobson, Taylor Thornton, Ted Chang, TengLu, terryky, ThisIsIsaac, ThisIsPIRI, Thomas Deegan, Thomas Hagebols, tianyapiaozi, Till Hoffmann, Tim Zaman, tomguluson92, Tongxuan Liu, Trent Lo, Trevor Morris, TungJerry, Tyorden, Uday Bondhugula, v1incent, Vagif, Vasileios Lioutas, vbvg2008, vcarpani, Vijay Ravichandran, Vikram Tiwari,Viktor Gal,  Vishwak Srinivasan, Vincent, Vishnuvardhan Janapati, Vitor-Alves, Vivek Suryamurthy, wangsiyu, wateryzephyr, WeberXie, Wei Wang, WeijieSun, Wen-Heng (Jack) Chung, wenxizhu, Will Battel, William D. Irons, winstonq, wyzhao, Xiaoming (Jason) Cui, Xiaoquan Kong, Xin, Xinping Wang, Yan Facai (颜发才), Yann-Yy, Yasir Modak, Yasuhiro Matsumoto, ymodak, Yong Tang, Yongfeng Gu, Younes Khoudli, Yuan Lin, Yuan (Terry) Tang, Yuchen Ying, Yves-Noel Weweler, zhangyujing, zjjott, zyeric, 王振华 (Zhenhua Wang), 黄鑫
-
+1e100, a6802739, 4d55397500, a6802739, Abdullah Selek, abenmao, Abolfazl
+Shahbazi, Adam Richter, Adam Weiss, Ag Ramesh, Alan Du, Albin Joy, Alex, Alex
+Itkes, Alex Sergeev, Alexander Pivovarov, Alexey Romanov, alhkad, Aman Patel,
+Amit, Amit Kumar Jaiswal, Amit Srivastava, amoitra, Andreas Eberle, Andrew
+Lihonosov, Andy Craze, Anshuman Tripathy, Anthony Hsu, Anthony Platanios, Anuj
+Rawat, arp95, Arpit Shah, Armen Poghosov, armenpoghosov, Astropeak, Ashwin
+Ramaswami, Arpit Shah, Augustina Ragwitz, Aurelien Geron, AuréLien Geron,
+avasid, aweers, awesomealex1, Ayush Agrawal, Bas Aarts, Bastian Eichenberger,
+Bairen Yi, Bayberry Z, Ben Barsdell, Benjamin Peterson, bhack, Bharat
+Raghunathan, Bhavani Subramanian, Bin Fan, blairhan, BléNesi Attila, Bodin-E,
+Brandon Carter, Bryan Cutler, candy.dc, Cao Zongyan, Casper Da Costa-Luis, Chao
+Liu, Chen Guoyin, chenchc, chengchingwen, chie8842, Christian Hansen, Christoph
+Boeddeker, Christopher Yeh, Clayne Robison, Coady, Patrick, crafet, csukuangfj,
+ctiijima, Dan Jarvis, Dan Lazewatsky, Daniel Ingram, Daniel Rasmussen, Daniel
+Salvadori, Dave Airlie, David Norman, Dayananda V, delock, Denis Khalikov, Deven
+Desai, Dheeraj Rajaram Reddy, Diego Caballero, dmitrievanthony, Donovan Ong,
+Drew Szurko, Duncan Dean, Duncan Riach, Dustin Neighly, Dwight J Lyle, Eamon
+Ito-Fisher, eashtian3, Edward Forgacs, EFanZh, ejot, Elroy Ashtian Jr, Eric
+Schweitz, Evgeniy Polyakov, Fangjun Kuang, Federico Martinez, Fei Hu, Felix
+Lemke, Filip Matzner, FlashTek, fo40225, formath, FrançOis Chollet, frreiss,
+Fred Reiss, Frederic Bastien, Fredrik Knutsson, G. Hussain Chinoy, Gabriel,
+Gautam, gehring, Geoffrey Irving, George Grzegorz Pawelczak, Grzegorz Pawelczak,
+George Sterpu, Gianluca Varisco, Gleb Popov, Greg Peatfield, Guillaume Klein,
+Gurpreet Singh, Gustavo Lima Chaves, Gyoung-Yoon Ryoo, haison, Hanton Yang,
+HanGuo97, Haraldur TóMas HallgríMsson, Hari Shankar, hehongliang, Heungsub Lee,
+Hoeseong Kim, Huan Li (李卓桓), HåKon Sandsmark, I-Hong, I-Hong Jhuo, Ilham
+Firdausi Putra, Ilango R, Imran Salam, Innovimax, Jacky Ko, Irene Dea, Ivan
+Habernal, Jakub Lipinski, Jacky, Jason Zaman, Jason Zavaglia, jayhpark530,
+jcf94, jefby, Jeff Daily, Jeff Poznanovic, Jeffrey Poznanovic, Jekyll Lai, jer,
+Jeroen BéDorf, jerryyin, jhalakp, jiakai, Jia Qingtong, Jiankang, JiangXIAO, Joe
+Bowser, Joe Q, Joe Quadrino, Joel Shapiro, Johan Gunnarsson, Jojimon Varghese,
+Jonas Rauber, Jonathan Kyl, Jonathan, Joon, Joppe Geluykens, Joseph Friedman,
+Josh Beal, jtressle, Julian Niedermeier, Junqin Zhang, Justin Dujardin, Justin
+Tunis, jwu, K. Hodges, kaixih, Kaixi Hou, kjopek, Karl Lessard, Karl
+Weinmeister, Karthik Muthuraman, Kashif Rasul, Kay Zhu, Kbhute-Ibm, KDR, Keno
+Fischer, Kevin Mader, khanhlvg, Kilaru Yasaswi Sri Chandra Gandhi, Koan-Sin Tan,
+Koock Yoon, kouml, ktaebum, Kyuwon Kim, Lakshay Tokas, Laurent Le Brun,
+leike666666, leonard951, Leslie-Fang, Letian Kang, Li, Guizi, Loo Rong Jie,
+Lucas Hendren, Lukas Folle, Lukas Geiger, Luke Han, luxupu, lvli, Ma, Guokai,
+Mahmoud Abuzaina, Maksym Kysylov, Mandar Deshpande, manhyuk, Manraj Singh
+Grover, Marco Gaido, Marek Drozdowski, Margaret Maynard-Reid, Mark Ryan, mars20,
+Mateusz Chudyk, Matt Conley, mbhuiyan, mdfaijul, Mei Jie, Melissa Grueter,
+merturl, MichaelKonobeev, Michael KäUfl, Michal W. Tarnowski, MickaëL
+Schoentgen, Miguel Morin, Mihail Salnikov, Mikalai Drabovich, Mike Arpaia, Mike
+Holcomb, minds, monklof, Moses Marin, mpppk, Mr. Metal, Mshr-H, musikisomorphie,
+nammbash, Natalia Gimelshein, Nathan Luehr, Nayana-Ibm, Nayana Thorat, neargye,
+Neeraj Pradhan, Nehal J Wani, Neil, Nick, Nick Lewycky, Niels Ole Salscheider,
+Niklas SilfverströM, Niranjan Hasabnis, Nuka-137, Nutti, ocjosen, olicht,
+omeir1, P Sudeepam, Paige Bailey, Palmer Lao, Pan Daoxin, Pariksheet Pinjari,
+Pasquale Minervini, Patrick J. Lopresti, Patrik Gustavsson, Pavel Akhtyamov,
+Pavel Samolysov, PENGWA, per1234, PeterLee, Phan Van Nguyen Duc, Philipp Jund,
+Phillip Kravtsov, Pooya Davoodi, Pranav Marathe, Putra Manggala, Qingqing Cao, R
+S Nikhil Krishna, Rajeshwar Reddy T, Ramon ViñAs, Rasmus Diederichsen, Reuben
+Morais, robert, Rohit Gupta, Roland Zimmermann, Roman Soldatow, RonLek, Ruizhe,
+Ryan Jiang, saishruthi, Saleem Abdulrasool, Samantha Andow, Sami Kama,
+Sana-Damani, Saurabh Deoras, sdamani, Sean Morgan, seanshpark, Sebastien Iooss,
+Serv-Inc, Severen Redwood, Shahzad Lone, Shashank Gupta, shashvat, Shashvat
+Chand Shahi, Shubham Goyal, Shashi, Sigrid Keydana, Siju, Siju Samuel,
+sleighsoft, smilu97, Snease-Abq, Son Tran, Spencer Schaber, sremedios, Srini511,
+srinivasan.narayanamoorthy, Steve Lang, Steve Nesae, Subin, Sumesh Udayakumaran,
+Sungmann Cho, sunway513, Supriya Rao, sxwang, Tae-Hwan Jung, Taehoon Lee, Takeo
+Sawada, Taylor Jakobson, Taylor Thornton, Ted Chang, TengLu, terryky,
+ThisIsIsaac, ThisIsPIRI, Thomas Deegan, Thomas Hagebols, tianyapiaozi, Till
+Hoffmann, Tim Zaman, tomguluson92, Tongxuan Liu, Trent Lo, Trevor Morris,
+TungJerry, Tyorden, Uday Bondhugula, v1incent, Vagif, Vasileios Lioutas,
+vbvg2008, vcarpani, Vijay Ravichandran, Vikram Tiwari,Viktor Gal, Vishwak
+Srinivasan, Vincent, Vishnuvardhan Janapati, Vitor-Alves, Vivek Suryamurthy,
+wangsiyu, wateryzephyr, WeberXie, Wei Wang, WeijieSun, Wen-Heng (Jack) Chung,
+wenxizhu, Will Battel, William D. Irons, winstonq, wyzhao, Xiaoming (Jason) Cui,
+Xiaoquan Kong, Xin, Xinping Wang, Yan Facai (颜发才), Yann-Yy, Yasir Modak,
+Yasuhiro Matsumoto, ymodak, Yong Tang, Yongfeng Gu, Younes Khoudli, Yuan Lin,
+Yuan (Terry) Tang, Yuchen Ying, Yves-Noel Weweler, zhangyujing, zjjott, zyeric,
+王振华 (Zhenhua Wang), 黄鑫
 
 # Release 1.14.0
 

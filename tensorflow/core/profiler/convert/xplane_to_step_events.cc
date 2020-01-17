@@ -60,11 +60,11 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
       }
     });
     if (group_id < 0) return;
-    // Don't add events when either (1) it excludes device step events or
-    // (2) it has a device and that the group_id (i.e. step number) already
+    // Don't add CPU events when (1) it includes device step events and (2) it
+    // doesn't have a device and that the group_id (i.e. step number) already
     // appears on the device. This will filter out all cpu events that do not
     // correspond to any steps executed on the device.
-    if (!use_device_step_events ||
+    if (use_device_step_events &&
         device_step_events.find(group_id) == device_step_events.end())
       return;
     Timespan timespan = Timespan(event.TimestampPs(), event.DurationPs());
@@ -94,10 +94,10 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
 }
 
 StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
-  int64 correlation_id = -1;
-  int64 group_id = -1;
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
+    int64 correlation_id = -1;
+    int64 group_id = -1;
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();

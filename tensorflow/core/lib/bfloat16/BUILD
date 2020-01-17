@@ -15,6 +15,15 @@ cc_library(
     ],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "bfloat16.cc",
+        "bfloat16.h",
+    ],
+)
+
 # TODO(bmzhao): Remove the following once references in core/BUILD is removed.
 exports_files(
     glob(["*"]),

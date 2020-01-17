@@ -207,17 +207,16 @@ py_binary(
     name = "generate2",
     srcs = ["generate2.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":generate2_lib",
-        "@six_archive//:six",
     ],
 )
 
 py_library(
     name = "generate2_lib",
     srcs = ["generate2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:util",

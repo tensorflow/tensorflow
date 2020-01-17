@@ -209,6 +209,7 @@ def _verify_tf_loop_vars(init_vars,
                    shape_invariants)
   for name, init, entry, exit_, invariant in named_vars:
     try:
+      nest.assert_same_structure(init, entry, expand_composites=True)
       nest.assert_same_structure(entry, exit_, expand_composites=True)
     except (ValueError, TypeError) as e:
       raise TypeError('"{}" does not have the same nested structure after one'
