@@ -84,6 +84,21 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   initialization_status_ = kTfLiteOk;
 }
 
+MicroInterpreter::~MicroInterpreter() {
+  if (node_and_registrations_ != nullptr) {
+    for (size_t i = 0; i < operators_->size(); ++i) {
+      TfLiteNode* node = &(node_and_registrations_[i].node);
+      const TfLiteRegistration* registration =
+          node_and_registrations_[i].registration;
+      // registration is allocated outside the interpreter, so double check to
+      // make sure it's not nullptr;
+      if (registration != nullptr && registration->free != nullptr) {
+        registration->free(&context_, node->user_data);
+      }
+    }
+  }
+}
+
 void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
   int32_t tensorSize = 1;
   for (int d = 0; d < tensorCorr->dims->size; ++d)
@@ -126,22 +141,6 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
                                    op_resolver_, &node_and_registrations_));
   TF_LITE_ENSURE_OK(&context_, allocator_.FinishTensorAllocation());
 
-  tensors_allocated_ = true;
-  return kTfLiteOk;
-}
-
-TfLiteStatus MicroInterpreter::Invoke() {
-  if (initialization_status_ != kTfLiteOk) {
-    error_reporter_->Report("Invoke() called after initialization failed\n");
-    return kTfLiteError;
-  }
-
-  // Ensure tensors are allocated before the interpreter is invoked to avoid
-  // difficult to debug segfaults.
-  if (!tensors_allocated_) {
-    AllocateTensors();
-  }
-
   // Init method is not yet implemented.
   for (size_t i = 0; i < operators_->size(); ++i) {
     auto* node = &(node_and_registrations_[i].node);
@@ -175,6 +174,22 @@ TfLiteStatus MicroInterpreter::Invoke() {
     }
   }
 
+  tensors_allocated_ = true;
+  return kTfLiteOk;
+}
+
+TfLiteStatus MicroInterpreter::Invoke() {
+  if (initialization_status_ != kTfLiteOk) {
+    error_reporter_->Report("Invoke() called after initialization failed\n");
+    return kTfLiteError;
+  }
+
+  // Ensure tensors are allocated before the interpreter is invoked to avoid
+  // difficult to debug segfaults.
+  if (!tensors_allocated_) {
+    AllocateTensors();
+  }
+
   for (size_t i = 0; i < operators_->size(); ++i) {
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
@@ -187,16 +202,6 @@ TfLiteStatus MicroInterpreter::Invoke() {
             OpNameFromRegistration(registration), i, invoke_status);
         return kTfLiteError;
       }
-    }
-  }
-
-  // This is actually a no-op.
-  // TODO(wangtz): Consider removing this code to slightly reduce binary size.
-  for (size_t i = 0; i < operators_->size(); ++i) {
-    auto* node = &(node_and_registrations_[i].node);
-    auto* registration = node_and_registrations_[i].registration;
-    if (registration->free) {
-      registration->free(&context_, node->user_data);
     }
   }
   return kTfLiteOk;
