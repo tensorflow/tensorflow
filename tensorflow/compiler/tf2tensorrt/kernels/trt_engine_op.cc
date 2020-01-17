@@ -405,12 +405,12 @@ Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& shapes) {
   if (shapes.size() != input_partial_shapes_.size()) {
     is_match_partial_shapes = false;
   }
-  for (int i = 0; i < shapes.size(); i++) {
+  for (int i = 0; i < shapes.size() && is_match_partial_shapes; i++) {
     if (shapes[i].dims() != input_partial_shapes_[i].dims()) {
       is_match_partial_shapes = false;
     }
   }
-  for (int i = 0; i < shapes.size(); i++) {
+  for (int i = 0; i < shapes.size() && is_match_partial_shapes; i++) {
     for (int d = 0; d < shapes[i].dims(); d++) {
       if (input_partial_shapes_[i].dim_size(d) != -1) {
         if (shapes[i].dim_size(d) != input_partial_shapes_[i].dim_size(d)) {
