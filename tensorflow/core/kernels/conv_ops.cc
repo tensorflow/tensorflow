@@ -1150,7 +1150,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                       input_desc, bfloat16_input_ptr, filter_desc,
                       bfloat16_filter_ptr, conv_desc, output_desc,
                       &bfloat16_output_ptr, &scratch_allocator,
-                      AlgorithmConfig(profile_algorithm), &profile_result)
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
+                      &profile_result)
                   .ok();
         } else {
           miopen_launch_status =
@@ -1158,7 +1160,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                   ->ThenConvolveWithAlgorithm(
                       input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
                       output_desc, &output_ptr, &scratch_allocator,
-                      AlgorithmConfig(profile_algorithm), &profile_result)
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
+                      &profile_result)
                   .ok();
         }
         if (miopen_launch_status && profile_result.is_valid()) {

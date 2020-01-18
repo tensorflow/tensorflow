@@ -1309,7 +1309,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                       filter_desc, bfloat16_filter_ptr, output_desc,
                       bfloat16_out_backprop_ptr, conv_desc, input_desc,
                       &bfloat16_in_backprop_ptr, &scratch_allocator,
-                      AlgorithmConfig(profile_algorithm), &profile_result)
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
+                      &profile_result)
                   .ok();
         } else {
           miopen_launch_status =
@@ -1317,7 +1319,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                   ->ThenConvolveBackwardDataWithAlgorithm(
                       filter_desc, filter_ptr, output_desc, out_backprop_ptr,
                       conv_desc, input_desc, &in_backprop_ptr,
-                      &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                      &scratch_allocator,
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
                       &profile_result)
                   .ok();
         }

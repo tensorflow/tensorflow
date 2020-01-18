@@ -544,7 +544,9 @@ struct LaunchConvOp<GPUDevice, T> {
                   ->ThenConvolveWithAlgorithm(
                       input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
                       output_desc, &output_ptr, &scratch_allocator,
-                      AlgorithmConfig(profile_algorithm), &profile_result)
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
+                      &profile_result)
                   .ok();
           if (miopen_launch_status) {
             if (profile_result.is_valid()) {

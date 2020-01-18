@@ -1142,7 +1142,9 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                       input_desc, bfloat16_input_ptr, output_desc,
                       bfloat16_out_backprop_ptr, conv_desc, filter_desc,
                       &bfloat16_filter_backprop_ptr, &scratch_allocator,
-                      AlgorithmConfig(profile_algorithm), &profile_result)
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
+                      &profile_result)
                   .ok();
         } else {
           miopen_launch_status =
@@ -1150,7 +1152,9 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                   ->ThenConvolveBackwardFilterWithAlgorithm(
                       input_desc, input_ptr, output_desc, out_backprop_ptr,
                       conv_desc, filter_desc, &filter_backprop_ptr,
-                      &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                      &scratch_allocator,
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
                       &profile_result)
                   .ok();
         }
