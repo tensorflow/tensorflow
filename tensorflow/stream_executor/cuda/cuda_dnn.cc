@@ -3924,14 +3924,14 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
     absl::Span<const int> input_lengths_data,
     ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
+  // Query the workspace size.
+  size_t workspace_size_in_bytes = 0;
+#if CUDNN_VERSION >= 7603
   CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ToCudnnDataType(element_type));
   const CudnnRnnStateTensorDescriptor& cudnn_probs_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(probs_desc);
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(grads_desc);
-  // Query the workspace size.
-  size_t workspace_size_in_bytes = 0;
-#if CUDNN_VERSION >= 7603
   RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
       /*handle=*/cudnn.handle(), /*probsDesc=*/cudnn_probs_desc.handle(),
       /*gradientsDesc=*/cudnn_grads_desc.handle(),
