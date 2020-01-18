@@ -61,15 +61,12 @@ class Nadam(optimizer_v2.OptimizerV2):
     See [Dozat, T., 2015](http://cs229.stanford.edu/proj2015/054_report.pdf).
     
   Usage Example:
-    ```python
-    >>> import tensorflow as tf
     >>> model = tf.keras.models.Sequential()
     >>> model.add(tf.keras.layers.Dense(12, activation="relu"))
     >>> model.add(tf.keras.layers.Dense(8, activation="relu"))
     >>> model.add(tf.keras.layers.Dense(1, activation="sigmoid"))
     >>> model.compile(optimizer=tf.keras.optimizers.Nadam(), 
     ...               loss="binary_crossentropy")
-    ```
   """
 
   def __init__(self,
