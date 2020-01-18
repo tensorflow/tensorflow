@@ -17,6 +17,7 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
+update_bazel_linux
 
 install_ubuntu_16_pip_deps pip3.6
 
@@ -51,4 +52,4 @@ WHL_PATH=$(ls "${PIP_WHL_DIR}"/*.whl)
 
 cp "${WHL_PATH}" "$(pwd)"/.
 chmod +x tensorflow/tools/ci_build/builds/docker_cpu_pip.sh
-docker run -e "CI_BUILD_USER=$(id -u -n)" -e "CI_BUILD_UID=$(id -u)"  -e "CI_BUILD_GROUP=$(id -g -n)" -e "CI_BUILD_GID=$(id -g)"  -e "CI_BUILD_HOME=/bazel_pip" -v "$(pwd)":/bazel_pip tensorflow/tensorflow:devel-py3 "./bazel_pip/tensorflow/tools/ci_build/builds/with_the_same_user" "./bazel_pip/tensorflow/tools/ci_build/builds/docker_cpu_pip.sh"
+docker run -e "BAZEL_VERSION=${BAZEL_VERSION}" -e "CI_BUILD_USER=$(id -u -n)" -e "CI_BUILD_UID=$(id -u)"  -e "CI_BUILD_GROUP=$(id -g -n)" -e "CI_BUILD_GID=$(id -g)"  -e "CI_BUILD_HOME=/bazel_pip" -v "$(pwd)":/bazel_pip tensorflow/tensorflow:devel-py3 "./bazel_pip/tensorflow/tools/ci_build/builds/with_the_same_user" "./bazel_pip/tensorflow/tools/ci_build/builds/docker_cpu_pip.sh"
