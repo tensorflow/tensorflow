@@ -504,6 +504,8 @@ filegroup(
         "mutex.h",
         "mutex_data.h",
         "notification.h",
+        "subprocess.cc",
+        "subprocess.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
     ],
