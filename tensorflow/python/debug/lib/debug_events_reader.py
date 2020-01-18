@@ -399,10 +399,7 @@ class DebuggedGraph(object):
       graph_op_creation_digest: A GraphOpCreationDigest data object describing
         the creation of an op inside this graph.
     """
-    if graph_op_creation_digest.op_name in self._op_by_name:
-      raise ValueError(
-          "Duplicate op name: %s (op type: %s)" %
-          (graph_op_creation_digest.op_name, graph_op_creation_digest.op_type))
+    assert graph_op_creation_digest.op_name not in self._op_by_name
     self._op_by_name[
         graph_op_creation_digest.op_name] = graph_op_creation_digest
 

@@ -739,11 +739,8 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testOverrideDTypeInFuncGraph(self):
     def to_float64(op_type, inputs, attrs, outputs, op_name=None, graph=None):
-      del inputs, attrs, op_name, graph  # Unused.
-      if op_type == "Placeholder":
-        return outputs
-      else:
-        return [math_ops.cast(output, dtypes.float64) for output in outputs]
+      del op_type, inputs, attrs, op_name, graph  # Unused.
+      return [math_ops.cast(output, dtypes.float64) for output in outputs]
 
     op_callbacks.add_op_callback(to_float64)
 
