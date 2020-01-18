@@ -1830,7 +1830,6 @@ cc_library(
         ],
     ) + [
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
-        "//tensorflow/core/util:lib_internal_impl_srcs",
     ],
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
@@ -1966,6 +1965,7 @@ cc_library(
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:unbounded_work_queue",
         "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
         "@zlib_archive//:zlib",
