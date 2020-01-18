@@ -499,12 +499,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "curl",
         build_file = clean_dep("//third_party:curl.BUILD"),
-        sha256 = "4376ac72b95572fb6c4fbffefb97c7ea0dd083e1974c0e44cd7e49396f454839",
-        strip_prefix = "curl-7.65.3",
+        sha256 = "d0393da38ac74ffac67313072d7fe75b1fa1010eb5987f63f349b024a36b7ffb",
+        strip_prefix = "curl-7.66.0",
         system_build_file = clean_dep("//third_party/systemlibs:curl.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.65.3.tar.gz",
-            "https://curl.haxx.se/download/curl-7.65.3.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.66.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.66.0.tar.gz",
         ],
     )
 
