@@ -68,21 +68,8 @@ class Nadam(optimizer_v2.OptimizerV2):
     >>> model.add(tf.keras.layers.Dense(1, activation="sigmoid"))
     >>> model.compile(optimizer=tf.keras.optimizers.Nadam(), 
     ...               loss="binary_crossentropy")
-    >>> model.summary()
-    Model: "sequential"
-    _________________________________________________________________
-    Layer (type)                 Output Shape              Param #   
-    =================================================================
-    dense (Dense)                (None, 12)                156       
-    _________________________________________________________________
-    dense_1 (Dense)              (None, 8)                 104       
-    _________________________________________________________________
-    dense_2 (Dense)              (None, 1)                 9         
-    =================================================================
-    Total params: 269
-    Trainable params: 269
-    Non-trainable params: 0
-    _________________________________________________________________
+    >>> model.optimizer
+    <tensorflow.python.keras.optimizer_v2.nadam.Nadam at ...>
     
   """
 
