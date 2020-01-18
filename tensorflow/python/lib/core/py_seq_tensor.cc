@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
@@ -376,43 +375,37 @@ DEFINE_HELPER(ConvertInt32, int32, DT_INT32, ConvertOneInt32);
 
 // Floating-point support
 
-// Returns `true` if `out` overflows when converted from `as_double`.
-template <class T>
-static inline bool CheckForOverflow(double as_double, T* out) {
-  return (sizeof(T) < sizeof(double) && std::isinf(*out) &&
-          std::isfinite(as_double));
-}
-
-// There is no `std::isinf` that takes `Eigen::half` as argument but Eigen
-// provides `Eigen::half_impl::isinf` instead.
-template <>
-inline bool CheckForOverflow<Eigen::half>(double as_double, Eigen::half* out) {
-  return (sizeof(Eigen::half) < sizeof(double) &&
-          Eigen::half_impl::isinf(*out) && std::isfinite(as_double));
-}
-
 template <class T>
 const char* ConvertOneFloat(PyObject* v, T* out) {
   if (PyErr_Occurred()) {
     return nullptr;
   }
   if (TF_PREDICT_TRUE(PyFloat_Check(v))) {
-    const double as_double = PyFloat_AS_DOUBLE(v);
-    *out = static_cast<T>(as_double);
-    // Check for overflow
-    if (TF_PREDICT_FALSE(CheckForOverflow<T>(as_double, out))) {
+    double as_double = PyFloat_AsDouble(v);
+    // Handle infinity.
+    if (as_double == std::numeric_limits<double>::infinity()) {
+      *out = std::numeric_limits<T>::infinity();
+      return nullptr;
+    } else if (as_double == -1 * std::numeric_limits<double>::infinity()) {
+      *out = -1 * std::numeric_limits<T>::infinity();
+      return nullptr;
+    }
+    // Check for overflow.
+    if (as_double > std::numeric_limits<T>::max() ||
+        as_double < std::numeric_limits<T>::lowest()) {
       return ErrorOutOfRangeDouble;
     }
+    *out = static_cast<T>(as_double);
     return nullptr;
   }
 #if PY_MAJOR_VERSION < 3
   if (PyInt_Check(v)) {
-    *out = static_cast<T>(PyInt_AS_LONG(v));
+    *out = PyInt_AS_LONG(v);
     return nullptr;
   }
 #endif
   if (PyLong_Check(v)) {
-    *out = static_cast<T>(PyLong_AsDouble(v));
+    *out = PyLong_AsDouble(v);
     if (PyErr_Occurred()) return ErrorOutOfRangeDouble;
     return nullptr;
   }
@@ -451,17 +444,12 @@ const char* ConvertOneNumpyHalf(PyObject* v, Eigen::half* out) {
 }
 DEFINE_HELPER(ConvertNumpyHalf, Eigen::half, DT_HALF, ConvertOneNumpyHalf);
 
-<<<<<<< HEAD
 // String support
 
 const char* ConvertOneString(PyObject* v, string* out) {
   if (PyBytes_Check(v)) {
     out->assign(PyBytes_AS_STRING(v), PyBytes_GET_SIZE(v));
     return nullptr;
-=======
-  static const char* ConvertScalar(PyObject* v, Eigen::half* out) {
-    return ConvertOneFloat<Eigen::half>(v, out);
->>>>>>> c6170fb37c... Fix segfault when attempting to convert string to float16.
   }
   if (PyUnicode_Check(v)) {
 #if PY_MAJOR_VERSION >= 3
@@ -549,13 +537,7 @@ Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret) {
       break;
 
     case DT_HALF:
-<<<<<<< HEAD
       RETURN_STRING_AS_STATUS(ConvertNumpyHalf(obj, shape, ret));
-=======
-      if (NumpyHalfConverter::Convert(obj, &shape, ret) == nullptr)
-        return Status::OK();
-      break;
->>>>>>> c6170fb37c... Fix segfault when attempting to convert string to float16.
 
     case DT_INT64:
       if (ConvertInt64(obj, shape, ret) == nullptr) return Status::OK();
