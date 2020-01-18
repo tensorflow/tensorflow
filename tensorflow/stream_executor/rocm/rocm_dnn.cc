@@ -2738,20 +2738,6 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     const dnn::AlgorithmConfig& algorithm_config,
     ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
     DeviceMemory<uint8>* scratch_memory) {
-  ScopedTensorDescriptor input_nd{
-      input_descriptor,
-      ToMIOpenDataType(element_type, input_descriptor.layout())};
-  ScopedFilterDescriptor filter{
-      filter_descriptor, input_descriptor,
-      ToMIOpenDataType(element_type, filter_descriptor.layout())};
-  ScopedTensorDescriptor output_nd{
-      output_descriptor,
-      ToMIOpenDataType(element_type, output_descriptor.layout())};
-  ScopedConvolutionDescriptor conv{
-      convolution_descriptor,
-      ToMIOpenDataType(GetConvAccumulatorType(element_type))};
-
-  auto miopen = miopen_->GetHandle(parent_, stream);
 
   absl::optional<dnn::AlgorithmDesc> input_algo_desc =
       algorithm_config.algorithm();
@@ -2761,64 +2747,9 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
   // An algorithm has been specified.
   *algorithm_desc = *input_algo_desc;
 
-  const uint64_t solution_id = algorithm_desc->algo_id();
+  assert(algorithm_config.scratch_size().has_value());
 
-  size_t scratch_memory_size = 0;
-
-  switch (kind) {
-    case dnn::ConvolutionKind::FORWARD: {
-      auto status = wrap::miopenConvolutionForwardGetSolutionWorkspaceSize(
-          miopen.handle(), filter.handle(), input_nd.handle(), conv.handle(),
-          output_nd.handle(), solution_id, &scratch_memory_size);
-
-      if (status != miopenStatusSuccess) {
-        return port::InternalError(absl::StrCat(
-            "call to miopenConvolutionForwardGetSolutionWorkspaceSize "
-            "failed: ",
-            ToString(status)));
-      }
-      break;
-    }
-
-    case dnn::ConvolutionKind::BACKWARD_DATA: {
-      auto status = wrap::miopenConvolutionBackwardDataGetSolutionWorkspaceSize(
-          miopen.handle(), output_nd.handle(), filter.handle(), conv.handle(),
-          input_nd.handle(), solution_id, &scratch_memory_size);
-
-      if (status != miopenStatusSuccess) {
-        return port::InternalError(absl::StrCat(
-            "call to miopenConvolutionabckwardDataGetSolutionWorkspaceSize "
-            "failed: ",
-            ToString(status)));
-      }
-      break;
-    }
-
-    case dnn::ConvolutionKind::BACKWARD_FILTER: {
-      auto status =
-          wrap::miopenConvolutionBackwardWeightsGetSolutionWorkspaceSize(
-              miopen.handle(), output_nd.handle(), input_nd.handle(),
-              conv.handle(), filter.handle(), solution_id,
-              &scratch_memory_size);
-
-      if (status != miopenStatusSuccess) {
-        return port::InternalError(absl::StrCat(
-            "call to miopenConvolutionabckwardWeightsGetSolutionWorkspaceSize "
-            "failed: ",
-            ToString(status)));
-      }
-      break;
-    }
-
-    default: {
-      return port::InternalError(
-          absl::StrCat("Unexpected convolution kind ", static_cast<int>(kind)));
-      break;
-    }
-  }
-
-  VLOG(2) << "miopen...GetSolutionWorkspaceSize returned "
-          << scratch_memory_size << " for solution_id " << solution_id;
+  size_t scratch_memory_size = *(algorithm_config.scratch_size());
 
   // allocate scratch memory
   if (scratch_memory_size != 0) {
