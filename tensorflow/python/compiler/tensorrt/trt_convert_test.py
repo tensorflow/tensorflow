@@ -222,6 +222,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         output_saved_model_dir, tags=[tag_constants.SERVING])
     graph_func = saved_model_loaded.signatures[
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+    input_shapes = [(2, 4), (3, 9), (64, 128), (2, 6), (4, 9)]
     for x in input_shapes:
       input = ops.convert_to_tensor(
         np.random.normal(size=x).astype(np.float32))
