@@ -51,9 +51,16 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
     return count;
   }
 
-  bool BuildAliasConfig(const Shape& input_shape, const Shape& output_shape) {
+  bool BuildAliasConfig(absl::Span<Shape const> input_shapes,
+                        const Shape& output_shape) {
     config_ = HloInputOutputAliasConfig(output_shape);
-    auto changed = optimize_pass_->Build(input_shape, output_shape, &config_);
+    std::vector<const Shape*> input_shape_ptrs;
+    input_shape_ptrs.reserve(input_shapes.size());
+    for (const Shape& s : input_shapes) {
+      input_shape_ptrs.push_back(&s);
+    }
+    auto changed =
+        optimize_pass_->Build(input_shape_ptrs, output_shape, &config_);
     TF_CHECK_OK(changed.status());
 
     return changed.ValueOrDie();
@@ -73,7 +80,7 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
 TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentBufferSizes) {
   Shape input = ShapeUtil::MakeTupleShape({r1f32_, r2f32_});
   Shape output = ShapeUtil::MakeTupleShape({r3f32_, r4f32_});
-  bool changed = BuildAliasConfig(input, output);
+  bool changed = BuildAliasConfig({input}, output);
   EXPECT_FALSE(changed);
   EXPECT_EQ(AliasCount(), 0);
 }
@@ -82,7 +89,7 @@ TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentBufferSizes) {
 TEST_F(OptimizeInputOutputBufferAliasTest, OrderedNonNestedTuple) {
   Shape input = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
   Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
-  bool changed = BuildAliasConfig(input, output);
+  bool changed = BuildAliasConfig({input}, output);
   EXPECT_TRUE(changed);
   EXPECT_EQ(AliasCount(), 4);
 
@@ -97,7 +104,7 @@ TEST_F(OptimizeInputOutputBufferAliasTest, OrderedNonNestedTuple) {
 TEST_F(OptimizeInputOutputBufferAliasTest, PartialReuseNonNestedTuple) {
   Shape input = ShapeUtil::MakeTupleShape({r1f32_, r1f32_, r2f32_, r2f32_});
   Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
-  bool changed = BuildAliasConfig(input, output);
+  bool changed = BuildAliasConfig({input}, output);
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(AliasCount(), 2);
@@ -111,7 +118,7 @@ TEST_F(OptimizeInputOutputBufferAliasTest, PartialReuseNonNestedTuple) {
 TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNonNestedTuple) {
   Shape input = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
   Shape output = ShapeUtil::MakeTupleShape({r4f32_, r3f32_, r2f32_, r1f32_});
-  bool changed = BuildAliasConfig(input, output);
+  bool changed = BuildAliasConfig({input}, output);
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(AliasCount(), 4);
@@ -127,7 +134,7 @@ TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNestedTuple) {
       {ShapeUtil::MakeTupleShape({r1f32_}), r2f32_, r3f32_, r4f32_});
   Shape output = ShapeUtil::MakeTupleShape(
       {r1f32_, ShapeUtil::MakeTupleShape({r3f32_, r2f32_}), r2f32_});
-  bool changed = BuildAliasConfig(input, output);
+  bool changed = BuildAliasConfig({input}, output);
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(AliasCount(), 3);
@@ -135,6 +142,22 @@ TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNestedTuple) {
   EXPECT_EQ(config_.GetAliasedOutput(0, {0, 0}), ShapeIndex{0});
   EXPECT_EQ(config_.GetAliasedOutput(0, {1}), ShapeIndex({1, 1}));
   EXPECT_EQ(config_.GetAliasedOutput(0, {2}), ShapeIndex({1, 0}));
+}
+
+// The output shape is reverse of the input shape, but we can still reuse all
+// the buffers.
+TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNoTuple) {
+  std::vector<Shape> input = {r1f32_, r2f32_, r3f32_, r4f32_};
+  Shape output = ShapeUtil::MakeTupleShape({r4f32_, r3f32_, r2f32_, r1f32_});
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_TRUE(changed);
+
+  EXPECT_EQ(AliasCount(), 4);
+
+  EXPECT_EQ(config_.GetAliasedOutput(0, {}), ShapeIndex{3});
+  EXPECT_EQ(config_.GetAliasedOutput(1, {}), ShapeIndex{2});
+  EXPECT_EQ(config_.GetAliasedOutput(2, {}), ShapeIndex{1});
+  EXPECT_EQ(config_.GetAliasedOutput(3, {}), ShapeIndex{0});
 }
 
 }  // namespace xla
