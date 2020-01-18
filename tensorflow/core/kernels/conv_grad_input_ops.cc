@@ -1238,7 +1238,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                 ->ThenConvolveBackwardDataWithAlgorithm(
                     filter_desc, filter_ptr, output_desc, out_backprop_ptr,
                     conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
+                    AlgorithmConfig(profile_algorithm,
+                                    miopen_algorithm.scratch_size()),
+                    &profile_result)
                 .ok();
 
         if (miopen_launch_status && profile_result.is_valid()) {

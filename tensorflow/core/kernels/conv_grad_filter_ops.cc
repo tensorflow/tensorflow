@@ -1076,7 +1076,9 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                 ->ThenConvolveBackwardFilterWithAlgorithm(
                     input_desc, input_ptr, output_desc, out_backprop_ptr,
                     conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                    &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm,
+                                    miopen_algorithm.scratch_size()),
                     &profile_result)
                 .ok();
 

@@ -1449,7 +1449,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                 ->ThenConvolveBackwardDataWithAlgorithm(
                     filter_desc, filter_ptr, output_desc, out_backprop_ptr,
                     conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
+                    AlgorithmConfig(profile_algorithm,
+                                    miopen_algorithm.scratch_size()),
+                    &profile_result)
                 .ok();
         if (miopen_launch_status) {
           if (profile_result.is_valid()) {
@@ -1896,7 +1898,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                     input_desc, input_ptr, output_desc, out_backprop_ptr,
                     conv_desc, filter_desc, &filter_backprop_ptr,
                     &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
+                    AlgorithmConfig(profile_algorithm,
+                                    miopen_algorithm.scratch_size()),
+                    &profile_result)
                 .ok();
         if (cudnn_launch_status) {
           if (profile_result.is_valid()) {
