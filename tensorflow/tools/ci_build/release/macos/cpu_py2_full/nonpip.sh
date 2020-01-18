@@ -24,7 +24,7 @@ bazel version
 set_bazel_outdir
 
 # Pick a more recent version of xcode
-sudo xcode-select --switch /Applications/Xcode_9.2.app/Contents/Developer
+sudo xcode-select --switch /Applications/Xcode_10.3.app/Contents/Developer
 python -m virtualenv tf_build_env --system-site-packages
 source tf_build_env/bin/activate
 
