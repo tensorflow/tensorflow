@@ -636,8 +636,7 @@ bool HloParserImpl::ParseInstructionList(HloComputation** computation,
     // the pool, which should not happen.
     if (root_node == nullptr) {
       LOG(FATAL) << "instruction " << root_name
-                 << " was marked as ROOT but the parser has not seen it before";
-      return false;
+                 << " was marked as ROOT but the parser has not seen it before"; // abort()
     }
     root = root_node->first;
   }
