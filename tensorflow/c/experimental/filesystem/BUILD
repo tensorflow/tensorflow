@@ -18,37 +18,23 @@ cc_library(
     ],
 )
 
-# Core TensorFlow depends on this, this will be included in main library
-cc_library(
-    name = "filesystem_interface_impl",
-    srcs = ["filesystem_interface.cc"],
-    hdrs = ["filesystem_interface.h"],
-    deps = [
-        ":modular_filesystem",
-        "//tensorflow/c:tf_file_statistics",
-        "//tensorflow/c:tf_status",
-        "//tensorflow/c:tf_status_internal",
-        "//tensorflow/core:ptr_util",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/platform:stringpiece",
-    ],
-    alwayslink = 1,
-)
-
 # Core TensorFlow depends on this, will be included in main library
 cc_library(
     name = "modular_filesystem",
-    srcs = ["modular_filesystem.cc"],
+    srcs = [
+        "modular_filesystem.cc",
+        "modular_filesystem_registration.cc",
+        "modular_filesystem_registration.h",
+    ],
     hdrs = ["modular_filesystem.h"],
     deps = [
         ":filesystem_interface",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core:lib",
+        "//tensorflow/c:tf_status_internal",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -63,16 +49,12 @@ tf_cc_test(
         "notap",  # b/139060984, requires implementing modular support for Google filesystem
     ],
     deps = [
-        ":filesystem_interface_impl",
-        "//tensorflow/c:tf_status",
-        "//tensorflow/c:tf_status_internal",
+        ":modular_filesystem",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/lib/io:path",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:stacktrace_handler",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:test",
     ],
 )

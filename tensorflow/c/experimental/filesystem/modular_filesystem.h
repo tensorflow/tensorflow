@@ -156,6 +156,9 @@ class ModularReadOnlyMemoryRegion final : public ReadOnlyMemoryRegion {
   TF_DISALLOW_COPY_AND_ASSIGN(ModularReadOnlyMemoryRegion);
 };
 
+// Registers a filesystem plugin so that core TensorFlow can use it.
+Status RegisterFilesystemPlugin(const std::string& dso_path);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_MODULAR_FILESYSTEM_H_

@@ -12,18 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
+
 #include <memory>
 #include <random>
 #include <string>
 
-#include "tensorflow/c/tf_status.h"
-#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/stacktrace_handler.h"
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -1713,32 +1711,11 @@ INSTANTIATE_TEST_SUITE_P(ModularFileSystem, ModularFileSystemTest,
 
 // Loads a shared object implementing filesystem functionality.
 static bool LoadDSO(const std::string& dso) {
-  void* dso_handle;
-  tensorflow::Status status =
-      tensorflow::Env::Default()->LoadLibrary(dso.c_str(), &dso_handle);
-  if (!status.ok()) {
-    VLOG(0) << "Couldn't load DSO: " << status;
-    return false;
-  }
-
-  void* dso_symbol;
-  status = tensorflow::Env::Default()->GetSymbolFromLibrary(
-      dso_handle, "TF_InitPlugin", &dso_symbol);
-  if (!status.ok()) {
-    VLOG(0) << "Couldn't load TF_InitPlugin: " << status;
-    return false;
-  }
-
-  TF_Status* s = TF_NewStatus();
-  (reinterpret_cast<void (*)(TF_Status*)>(dso_symbol))(s);
-  if (!s->status.ok()) {
-    VLOG(0) << "Couldn't initialize plugin: " << s->status;
-    TF_DeleteStatus(s);
-    return false;
-  }
-  TF_DeleteStatus(s);
-
-  return true;
+  tensorflow::Status status = RegisterFilesystemPlugin(dso);
+  if (!status.ok())
+    VLOG(0) << "Filesystems from '" << dso
+            << "' could not be registered: " << status;
+  return status.ok();
 }
 
 // Tests whether a URI scheme results in a filesystem that is supported.
