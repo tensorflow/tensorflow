@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "third_party/tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
