@@ -545,6 +545,7 @@ xla_test(
 
 xla_test(
     name = "params_test",
+    timeout = "long",
     srcs = ["params_test.cc"],
     shard_count = 30,
     tags = [
