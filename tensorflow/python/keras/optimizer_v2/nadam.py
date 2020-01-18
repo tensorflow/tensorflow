@@ -69,7 +69,7 @@ class Nadam(optimizer_v2.OptimizerV2):
     >>> model.compile(optimizer=tf.keras.optimizers.Nadam(), 
     ...               loss="binary_crossentropy")
     >>> model.optimizer
-    <tensorflow.python.keras.optimizer_v2.nadam.Nadam at ...>
+    <tensorflow.python.keras.optimizer_v2.nadam.Nadam ...>
     
   """
 
