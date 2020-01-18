@@ -682,12 +682,16 @@ cc_library(
     ],
 )
 
-exports_files(
-    ["transforms/passes.h"],
+cc_library(
+    name = "empty_passes",
+    hdrs = ["transforms/passes.h"],
     visibility = [
         "//configs/devtools/hawkeye/tflite:__subpackages__",
         "//learning/brain/models/app_benchmarks:__subpackages__",
         "//tensorflow/compiler/mlir/lite:friends",
         "//tensorflow/lite/experimental/mlir:__subpackages__",
+    ],
+    deps = [
+        "@llvm-project//llvm:support",
     ],
 )
