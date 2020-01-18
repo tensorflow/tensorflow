@@ -326,19 +326,6 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
                                    QueueResponse* queue_response) {
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
-  const tensorflow::AttrTypeMap* types;
-  bool is_function = false;
-  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp(name, &types, &is_function));
-  if (is_function && !eager_context->FindFunctionByName(name)) {
-    return errors::NotFound(
-        "'", name,
-        "' is neither a type of a primitive operation nor a name "
-        "of a function registered in binary running on ",
-        port::Hostname(),
-        ". One possible root cause is the client and server binaries are not "
-        "built with the same version. Please make sure the operation or "
-        "function is registered in the binary running in this process.");
-  }
   absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
       absl::nullopt;
   if (operation.is_function()) {
@@ -349,9 +336,8 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
     }
   }
   op.reset(new tensorflow::EagerOperation(eager_context));
-  TF_RETURN_IF_ERROR(op->Reset(name, is_function, types,
-                               operation.device().c_str(), eager_executor,
-                               remote_func_params));
+  TF_RETURN_IF_ERROR(op->Reset(name, operation.device().c_str(), false,
+                               eager_executor, remote_func_params));
 
   {
     profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",

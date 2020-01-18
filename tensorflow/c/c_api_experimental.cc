@@ -871,16 +871,9 @@ TF_CAPI_EXPORT extern void TFE_InitializeTPUSystem(TFE_Context* ctx,
   tensorflow::string function_name = function_def.signature().name();
   status->status = ctx->context->AddFunctionDef(function_def);
   if (!status->status.ok()) return;
-  // Run the function, which may be a remote call. It returns a serialized
-  // topology proto.
-  const tensorflow::AttrTypeMap* attr_map;
-  bool is_function;
-  status->status = tensorflow::AttrTypeMapForOp(function_name.c_str(),
-                                                &attr_map, &is_function);
-  if (!status->status.ok()) return;
   tensorflow::EagerOperation call_op(ctx->context);
-  status->status = call_op.Reset(function_name.c_str(), is_function, attr_map,
-                                 nullptr, nullptr);
+  status->status =
+      call_op.Reset(function_name.c_str(), nullptr, false, nullptr);
   if (!status->status.ok()) return;
   status->status = call_op.SetDeviceName(tpu_system_device_name.c_str());
   if (!status->status.ok()) return;

@@ -61,28 +61,26 @@ thread_local std::map<TFE_Context*, std::unique_ptr<TFE_Op>>
 thread_local std::unique_ptr<TF_Status> thread_local_tf_status =  // NOLINT
     nullptr;
 
-TFE_Op* ReleaseThreadLocalOp(TFE_Context* ctx) {
+std::unique_ptr<TFE_Op> ReleaseThreadLocalOp(TFE_Context* ctx) {
   auto it = thread_local_eager_operation_map.find(ctx);
   if (it == thread_local_eager_operation_map.end()) {
     return nullptr;
   }
-  return it->second.release();
+  return std::move(it->second);
 }
 
 TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
               const char* raw_device_name, TF_Status* status) {
-  TFE_Op* maybe_op = ReleaseThreadLocalOp(ctx);
-  if (maybe_op) {
-    TFE_OpReset(maybe_op, op_or_function_name, raw_device_name, status);
-    if (status->status.ok()) {
-      return maybe_op;
-    }
-    // Delete op and create a fresh one
-    delete maybe_op;
+  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
+  if (!op) {
+    op.reset(new TFE_Op{tensorflow::EagerOperation(ctx->context)});
   }
-
-  return NewOrResetOp(ctx, op_or_function_name, raw_device_name, status,
-                      nullptr);
+  status->status =
+      op->operation.Reset(op_or_function_name, raw_device_name, false, nullptr);
+  if (!status->status.ok()) {
+    op.reset();
+  }
+  return op.release();
 }
 
 void ReturnOp(TFE_Context* ctx, TFE_Op* op) {
@@ -1016,10 +1014,8 @@ PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 void TFE_DeleteContextCapsule(PyObject* context) {
   TFE_Context* ctx =
       reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
-  TFE_Op* op = ReleaseThreadLocalOp(ctx);
-  if (op) {
-    delete op;
-  }
+  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
+  op.reset();
   TFE_DeleteContext(ctx);
 }
 

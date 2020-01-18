@@ -28,16 +28,10 @@ class TestEagerOpRewrite : public EagerOpRewrite {
   Status Run(EagerOperation* orig_op,
              std::unique_ptr<tensorflow::EagerOperation>* out_op) override {
     ++count_;
-    const tensorflow::AttrTypeMap* types;
-    bool is_function = false;
-    const string kNewOp = "NoOp";
-    TF_RETURN_IF_ERROR(
-        tensorflow::AttrTypeMapForOp(kNewOp.c_str(), &types, &is_function));
     // Create a new NoOp Eager operation.
     tensorflow::EagerOperation* op =
         new tensorflow::EagerOperation(&orig_op->EagerContext());
-    TF_RETURN_IF_ERROR(
-        op->Reset(kNewOp.c_str(), is_function, types, nullptr, &executor_));
+    TF_RETURN_IF_ERROR(op->Reset("NoOp", nullptr, false, &executor_));
     out_op->reset(op);
     return Status::OK();
   }

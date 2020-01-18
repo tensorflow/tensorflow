@@ -1124,8 +1124,14 @@ size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
-  return NewOrResetOp(ctx, op_or_function_name, nullptr, status,
-                      /* op_to_reset= */ nullptr);
+  std::unique_ptr<TFE_Op> new_op(
+      new TFE_Op{tensorflow::EagerOperation(ctx->context)});
+  status->status =
+      new_op->operation.Reset(op_or_function_name, nullptr, false, nullptr);
+  if (!status->status.ok()) {
+    new_op.reset();
+  }
+  return new_op.release();
 }
 
 void TFE_DeleteOp(TFE_Op* op) { delete op; }

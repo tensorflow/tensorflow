@@ -46,29 +46,10 @@ class EagerOperation {
     ClearInferenceState();
   }
 
-  tensorflow::Status Reset(const char* op, bool is_function,
-                           const tensorflow::AttrTypeMap* t,
-                           const char* raw_device_name, EagerExecutor* executor,
+  tensorflow::Status Reset(const char* op, const char* raw_device_name,
+                           bool remote, EagerExecutor* executor,
                            const absl::optional<EagerRemoteFunctionParams>
-                               remote_func_params = absl::nullopt) {
-    DCHECK(inputs_.empty());
-    ClearInferenceState();
-    if (!is_function) {
-      TF_RETURN_IF_ERROR(tensorflow::OpDefForOp(op, &op_def_));
-    }
-    attrs_.Reset(op);
-    attr_types_ = t;
-    device_ = nullptr;
-    use_xla_ = false;
-    is_function_ = is_function;
-    cancellation_manager_ = nullptr;
-    executor_ = executor ? executor : &ctx_.Executor();
-    remote_func_params_ = remote_func_params;
-#ifdef TENSORFLOW_MEM_DEBUG
-    op_name_ = op;
-#endif
-    return SetDeviceName(raw_device_name, true);
-  }
+                               remote_func_params = absl::nullopt);
 
   bool is_function() const { return is_function_; }
 

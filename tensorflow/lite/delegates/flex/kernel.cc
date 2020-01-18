@@ -233,23 +233,15 @@ class OpNode {
   // Build thew new EagerOperation. In case of error, the returned 'op' is
   // guaranteed to be 'nullptr'.
   tensorflow::Status BuildEagerOp(tensorflow::EagerContext* eager_context) {
-    op_.reset();
-
-    const tensorflow::AttrTypeMap* attr_types;
-    bool is_function = false;
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        tensorflow::AttrTypeMapForOp(name_.c_str(), &attr_types, &is_function),
-        " (while processing attributes of '", name_, "')");
-    if (is_function) {
+    op_.reset(new tensorflow::EagerOperation(eager_context));
+    TF_RETURN_IF_ERROR(op_->Reset(name_.c_str(), nullptr, false, nullptr));
+    if (op_->is_function()) {
+      op_.reset();
       return tensorflow::errors::NotFound(
           "Operation '", name_,
           "' is not registered.  (while processing attributes of '", name_,
           "')");
     }
-
-    op_.reset(new tensorflow::EagerOperation(eager_context));
-    TF_RETURN_IF_ERROR(
-        op_->Reset(name_.c_str(), false, attr_types, nullptr, nullptr));
 
     op_->MutableAttrs()->NumInputs(inputs_.Size());
     for (const auto& attr : nodedef_.attr()) {

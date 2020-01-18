@@ -97,6 +97,8 @@ tf_cuda_library(
         ":kernel_and_device",
         ":tensor_handle",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/types:optional",
     ],
 )

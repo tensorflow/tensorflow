@@ -111,16 +111,8 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
 void RemoteCopyNode::StartSend() {
   // TODO(gjn): We should consider just using the low-level SendOp::Compute()
   // functionality here instead of constructing an Op.
-  const AttrTypeMap* types;
-  bool is_function = false;
-  Status status = AttrTypeMapForOp("_Send", &types, &is_function);
-  if (!status.ok()) {
-    captured_state_->SetSendStatus(status);
-    return;
-  }
-  DCHECK(!is_function);
   EagerOperation op(ctx_);
-  status = op.Reset("_Send", /*is_function=*/false, types, nullptr, nullptr);
+  Status status = op.Reset("_Send", nullptr, false, nullptr);
   if (!status.ok()) {
     captured_state_->SetSendStatus(status);
     return;
@@ -251,17 +243,8 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
 void RemoteCopyNode::StartRecv(StatusCallback done) {
   // TODO(gjn): We should consider just using the low-level RecvOp::Compute()
   // functionality here instead of constructing an Op.
-  const AttrTypeMap* types;
-  bool is_function = false;
-  Status status = AttrTypeMapForOp("_Recv", &types, &is_function);
-  if (!status.ok()) {
-    captured_state_->dst()->Poison(status);
-    done(status);
-    return;
-  }
-  DCHECK(!is_function);
   EagerOperation op(ctx_);
-  status = op.Reset("_Recv", /*is_function=*/false, types, nullptr, nullptr);
+  Status status = op.Reset("_Recv", nullptr, false, nullptr);
   if (!status.ok()) {
     captured_state_->dst()->Poison(status);
     done(status);

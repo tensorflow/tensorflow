@@ -14,7 +14,44 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
+
 namespace tensorflow {
+
+Status EagerOperation::Reset(
+    const char* op, const char* raw_device_name, bool remote,
+    EagerExecutor* executor,
+    const absl::optional<EagerRemoteFunctionParams> remote_func_params) {
+  DCHECK(inputs_.empty());
+  ClearInferenceState();
+  bool is_function = false;
+  TF_RETURN_IF_ERROR(AttrTypeMapForOp(op, &attr_types_, &is_function));
+
+  if (!is_function) {
+    TF_RETURN_IF_ERROR(OpDefForOp(op, &op_def_));
+  } else if (!remote && !ctx_.FindFunctionByName(op)) {
+    return errors::NotFound(
+        "'", op,
+        "' is neither a type of a primitive operation nor a name "
+        "of a function registered in binary running on ",
+        port::Hostname(),
+        ". Make sure the operation or function is "
+        "registered in the binary running in this process.");
+  }
+  attrs_.Reset(op);
+  device_ = nullptr;
+  use_xla_ = false;
+  is_function_ = is_function;
+  cancellation_manager_ = nullptr;
+  executor_ = executor ? executor : &ctx_.Executor();
+  remote_func_params_ = remote_func_params;
+#ifdef TENSORFLOW_MEM_DEBUG
+  op_name_ = op;
+#endif
+  return SetDeviceName(raw_device_name, true);
+}
 
 tensorflow::Status EagerOperation::MaybeInferSingleInputAttrs(
     TensorHandle* handle) {

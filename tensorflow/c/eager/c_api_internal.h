@@ -93,10 +93,6 @@ struct TFE_Op {
   tensorflow::EagerOperation operation;
 };
 
-TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
-                     const char* raw_device_name, TF_Status* status,
-                     TFE_Op* op_to_reset = nullptr);
-
 struct TFE_Profiler {
   explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }
 
