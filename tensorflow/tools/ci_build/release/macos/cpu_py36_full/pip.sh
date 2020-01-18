@@ -23,6 +23,9 @@ which bazel
 bazel version
 set_bazel_outdir
 
+# Pick a more recent version of xcode
+sudo xcode-select --switch /Applications/Xcode_10.3.app/Contents/Developer
+
 # Install macos pip dependencies
 install_macos_pip_deps sudo pip3.6
 
