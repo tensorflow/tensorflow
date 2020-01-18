@@ -34,8 +34,11 @@ class TestEagerOpRewrite : public EagerOpRewrite {
     TF_RETURN_IF_ERROR(
         tensorflow::AttrTypeMapForOp(kNewOp.c_str(), &types, &is_function));
     // Create a new NoOp Eager operation.
-    out_op->reset(new tensorflow::EagerOperation(
-        nullptr, kNewOp.c_str(), is_function, types, &executor_));
+    tensorflow::EagerOperation* op =
+        new tensorflow::EagerOperation(&orig_op->EagerContext());
+    TF_RETURN_IF_ERROR(
+        op->Reset(kNewOp.c_str(), is_function, types, nullptr, &executor_));
+    out_op->reset(op);
     return Status::OK();
   }
 };
@@ -46,13 +49,21 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, TestEagerOpRewrite);
 
 TEST(EagerOpRewriteRegistryTest, RegisterRewritePass) {
   EXPECT_EQ(0, TestEagerOpRewrite::count_);
-  EagerOperation* orig_op = nullptr;
+  StaticDeviceMgr device_mgr(DeviceFactory::NewDevice(
+      "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false, false,
+      &device_mgr, false, nullptr, nullptr);
+  EagerOperation orig_op(ctx);
   std::unique_ptr<tensorflow::EagerOperation> out_op;
   EXPECT_EQ(Status::OK(),
             EagerOpRewriteRegistry::Global()->RunRewrite(
-                EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op));
+                EagerOpRewriteRegistry::PRE_EXECUTION, &orig_op, &out_op));
   EXPECT_EQ(1, TestEagerOpRewrite::count_);
   EXPECT_EQ("NoOp", out_op->Name());
+  ctx->Unref();
 }
 
 }  // namespace tensorflow

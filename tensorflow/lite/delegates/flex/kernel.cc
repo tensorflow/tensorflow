@@ -247,9 +247,9 @@ class OpNode {
           "')");
     }
 
-    op_.reset(new tensorflow::EagerOperation(eager_context, name_.c_str(),
-                                             /*is_function=*/false,
-                                             attr_types));
+    op_.reset(new tensorflow::EagerOperation(eager_context));
+    TF_RETURN_IF_ERROR(
+        op_->Reset(name_.c_str(), false, attr_types, nullptr, nullptr));
 
     op_->MutableAttrs()->NumInputs(inputs_.Size());
     for (const auto& attr : nodedef_.attr()) {

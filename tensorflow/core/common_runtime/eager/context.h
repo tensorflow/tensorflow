@@ -141,7 +141,7 @@ class EagerContext : public core::RefCounted {
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
 
-  const std::vector<DeviceType>& prioritized_device_type_list() {
+  const std::vector<DeviceType>& prioritized_device_type_list() const {
     return prioritized_device_type_list_;
   }
 
@@ -166,7 +166,7 @@ class EagerContext : public core::RefCounted {
 
   bool LazyCopyFunctionRemoteInputs() const;
 
-  bool FindFunctionByName(const string& name);
+  bool FindFunctionByName(const string& name) const;
 
   Status FindFunctionOpData(const string& name,
                             const tensorflow::OpRegistrationData** op_data);

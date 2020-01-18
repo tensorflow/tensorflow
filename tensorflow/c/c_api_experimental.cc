@@ -551,7 +551,7 @@ TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(TFE_Op* op,
                                                     TF_Status* status) {
   TFE_ExecuteOpNotification* n = new TFE_ExecuteOpNotification;
 
-  n->thread.reset(op->operation.EagerContext()->TFEnv()->StartThread(
+  n->thread.reset(op->operation.EagerContext().TFEnv()->StartThread(
       tensorflow::ThreadOptions(), "ExecuteOpThread",
       [op, retvals, num_retvals, n]() {
         TFE_Execute(op, retvals, num_retvals, n->status.get());
@@ -878,8 +878,10 @@ TF_CAPI_EXPORT extern void TFE_InitializeTPUSystem(TFE_Context* ctx,
   status->status = tensorflow::AttrTypeMapForOp(function_name.c_str(),
                                                 &attr_map, &is_function);
   if (!status->status.ok()) return;
-  tensorflow::EagerOperation call_op(ctx->context, function_name.c_str(),
-                                     is_function, attr_map);
+  tensorflow::EagerOperation call_op(ctx->context);
+  status->status = call_op.Reset(function_name.c_str(), is_function, attr_map,
+                                 nullptr, nullptr);
+  if (!status->status.ok()) return;
   status->status = call_op.SetDeviceName(tpu_system_device_name.c_str());
   if (!status->status.ok()) return;
   tensorflow::TensorHandle* remote_topology_handle;

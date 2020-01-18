@@ -49,9 +49,9 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     return;
   }
   auto target = options.target;
-  auto* released_op =
-      new EagerOperation(ctx_, function_name.c_str(), is_function, attr_types);
-  s = released_op->SetDeviceName(target.c_str());
+  auto* released_op = new EagerOperation(ctx_);
+  s = released_op->Reset(function_name.c_str(), is_function, attr_types,
+                         target.c_str(), nullptr);
   if (!s.ok()) {
     done(s);
     return;

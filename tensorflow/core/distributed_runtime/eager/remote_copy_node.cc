@@ -40,20 +40,20 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
 
 Status CreateUncachedKernelAndDeviceOp(
     EagerOperation* op, core::RefCountPtr<KernelAndDevice>* kernel) {
-  EagerContext* ctx = op->EagerContext();
+  EagerContext& ctx = op->EagerContext();
   Device* device = op->Device();
 
-  FunctionLibraryRuntime* flr = ctx->func_lib(device);
+  FunctionLibraryRuntime* flr = ctx.func_lib(device);
   if (flr == nullptr) {
     return errors::Unavailable(
         "Unable to find a FunctionLibraryRuntime corresponding to device ",
         device->name());
   }
 
-  auto runner = (flr->runner() != nullptr) ? flr->runner() : ctx->runner();
-  kernel->reset(new KernelAndDeviceOp(
-      ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
-      ctx->GetCollectiveExecutorHandle(), ctx->HostCPU()));
+  auto runner = (flr->runner() != nullptr) ? flr->runner() : ctx.runner();
+  kernel->reset(new KernelAndDeviceOp(ctx.GetRendezvous(), ctx.LogMemory(), flr,
+                                      runner, ctx.GetCollectiveExecutorHandle(),
+                                      ctx.HostCPU()));
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
   return kernel->get()->Init(ndef, nullptr);
@@ -77,7 +77,7 @@ RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
       src_(src),
       ctx_(ctx),
       executor_(executor),
-      send_device_(src->DeviceOrHostCPU(ctx)),
+      send_device_(src->DeviceOrHostCPU(*ctx)),
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
       recv_op_id_(recv_op_id),
@@ -119,7 +119,12 @@ void RemoteCopyNode::StartSend() {
     return;
   }
   DCHECK(!is_function);
-  EagerOperation op(ctx_, "_Send", /*is_function=*/false, types);
+  EagerOperation op(ctx_);
+  status = op.Reset("_Send", /*is_function=*/false, types, nullptr, nullptr);
+  if (!status.ok()) {
+    captured_state_->SetSendStatus(status);
+    return;
+  }
 
   op.SetDevice(send_device_);
 
@@ -146,7 +151,7 @@ void RemoteCopyNode::StartSend() {
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
         src_, remote_op->add_inputs(), src_->device(),
-        src_->DeviceOrHostCPU(ctx_)->name());
+        src_->DeviceOrHostCPU(*ctx_)->name());
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
       return;
@@ -255,7 +260,13 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
     return;
   }
   DCHECK(!is_function);
-  EagerOperation op(ctx_, "_Recv", /*is_function=*/false, types);
+  EagerOperation op(ctx_);
+  status = op.Reset("_Recv", /*is_function=*/false, types, nullptr, nullptr);
+  if (!status.ok()) {
+    captured_state_->dst()->Poison(status);
+    done(status);
+    return;
+  }
 
   op.SetDevice(recv_device_);
 
@@ -300,7 +311,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   // tensor handles aware of more than one device.
   // TODO(fishx): Make CopyToDevice asynchronous.
   Tensor tensor;
-  s = src_->CopyToDevice(ctx_, ctx_->HostCPU(), &tensor);
+  s = src_->CopyToDevice(*ctx_, ctx_->HostCPU(), &tensor);
   if (!s.ok()) {
     done(s);
     return;

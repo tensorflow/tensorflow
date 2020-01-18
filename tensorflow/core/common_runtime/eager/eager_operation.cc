@@ -16,6 +16,76 @@ limitations under the License.
 
 namespace tensorflow {
 
+tensorflow::Status EagerOperation::MaybeInferSingleInputAttrs(
+    TensorHandle* handle) {
+  if (!op_def_) return Status::OK();
+
+  const auto& input_def = op_def_->input_arg(inference_arg_idx_++);
+  if (!input_def.number_attr().empty() || !input_def.type_list_attr().empty()) {
+    // Some clients that are still setting their input attributes manually are
+    // adding input list to their op by calling `TFE_OpAddInput` for each of
+    // its elements instead of calling `TFE_OpAddInputList`. When this happens,
+    // we cannot detect the end of such list, thus lose track of the input
+    // arguments in the op definition. To guarantee backward compatibility with
+    // those clients, disable automatic inference in this case.
+    ClearInferenceState();
+    return Status::OK();
+  }
+  const std::string& type_attr = input_def.type_attr();
+  if (!type_attr.empty() &&
+      inference_attrs_.find(type_attr) == inference_attrs_.end()) {
+    MutableAttrs()->Set(type_attr, handle->dtype);
+    inference_attrs_.insert(type_attr);
+  }
+  return Status::OK();
+}
+
+void EagerOperation::InferSingleTypeInputListAttrs(
+    const tensorflow::OpDef::ArgDef& input_def,
+    const tensorflow::DataType dtype, int num_inputs) {
+  if (inference_attrs_.find(input_def.number_attr()) ==
+      inference_attrs_.end()) {
+    MutableAttrs()->Set(input_def.number_attr(), num_inputs);
+    inference_attrs_.insert(input_def.number_attr());
+  }
+  if (inference_attrs_.find(input_def.type_attr()) == inference_attrs_.end()) {
+    MutableAttrs()->Set(input_def.type_attr(), dtype);
+    inference_attrs_.insert(input_def.type_attr());
+  }
+}
+
+void EagerOperation::InferMixedTypeInputListAttrs(
+    const tensorflow::OpDef::ArgDef& input_def,
+    const std::vector<tensorflow::DataType>& dtypes) {
+  if (inference_attrs_.find(input_def.type_list_attr()) ==
+      inference_attrs_.end()) {
+    MutableAttrs()->Set(input_def.type_list_attr(),
+                        tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
+                            dtypes.data(), dtypes.size()));
+    inference_attrs_.insert(input_def.type_list_attr());
+  }
+}
+
+tensorflow::Status EagerOperation::InferInputListAttrs(int num_inputs) {
+  if (!op_def_) return Status::OK();
+
+  int start = inference_arg_idx_;
+  const auto& input_def = op_def_->input_arg(inference_arg_idx_++);
+  if (!input_def.type_list_attr().empty()) {
+    std::vector<tensorflow::DataType> dtypes(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      dtypes[i] = inputs_[start + i]->dtype;
+    }
+    InferMixedTypeInputListAttrs(input_def, dtypes);
+  } else if (!input_def.type_attr().empty() &&
+             !input_def.number_attr().empty()) {
+    InferSingleTypeInputListAttrs(input_def, inputs_[start]->dtype, num_inputs);
+  } else {
+    return tensorflow::errors::InvalidArgument("Invalid input list definition");
+  }
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status EagerOperation::SetDeviceName(const char* device,
                                                  const bool reset) {
   if (device != nullptr && strlen(device) > 0) {
@@ -40,12 +110,12 @@ tensorflow::Status EagerOperation::SetDeviceName(const char* device,
 }
 
 bool EagerOperation::IsLocal() const {
-  if (ctx_->remote_device_mgr() == nullptr) return true;
+  if (ctx_.remote_device_mgr() == nullptr) return true;
 
   if (!device_parsed_name_.has_job && !device_parsed_name_.has_replica &&
       !device_parsed_name_.has_task)
     return true;
-  auto& host_cpu_name = ctx_->HostCPU()->parsed_name();
+  auto& host_cpu_name = ctx_.HostCPU()->parsed_name();
   return device_parsed_name_.job == host_cpu_name.job &&
          device_parsed_name_.replica == host_cpu_name.replica &&
          device_parsed_name_.task == host_cpu_name.task;

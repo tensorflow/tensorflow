@@ -348,11 +348,10 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
       remote_func_params = {operation.id(), absl::nullopt};
     }
   }
-  op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
-                                          types, eager_executor,
-                                          remote_func_params));
-
-  TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
+  op.reset(new tensorflow::EagerOperation(eager_context));
+  TF_RETURN_IF_ERROR(op->Reset(name, is_function, types,
+                               operation.device().c_str(), eager_executor,
+                               remote_func_params));
 
   {
     profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",

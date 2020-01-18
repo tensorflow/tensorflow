@@ -28,39 +28,25 @@ TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
     return nullptr;
   }
 
-  if (op_to_reset && op_to_reset->ctx != ctx) {
-    status->status = tensorflow::errors::Internal(
-        "Cannot reset a TFE_Op from another TFE_Context");
-    return nullptr;
-  }
-
-  std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
-  if (!is_function) {
-    const tensorflow::OpDef* op_def;
-    status->status = tensorflow::OpDefForOp(op_or_function_name, &op_def);
-    if (!status->status.ok()) {
+  tensorflow::EagerContext& context =
+      op_to_reset ? op_to_reset->operation.EagerContext() : *ctx->context;
+  if (is_function) {
+    if (!context.FindFunctionByName(name)) {
+      status->status = tensorflow::errors::NotFound(
+          "'", name,
+          "' is neither a type of a primitive operation nor a name "
+          "of a function registered in binary running on ",
+          tensorflow::port::Hostname(),
+          ". Make sure the operation or function is "
+          "registered in the binary running in this process.");
       return nullptr;
     }
-    inference_ctx.reset(new TFE_OpInferenceContext(op_def));
-  } else if (!ctx->context->FindFunctionByName(name)) {
-    status->status = tensorflow::errors::NotFound(
-        "'", name,
-        "' is neither a type of a primitive operation nor a name "
-        "of a function registered in binary running on ",
-        tensorflow::port::Hostname(),
-        ". Make sure the operation or function is "
-        "registered in the binary running in this process.");
-    return nullptr;
   }
 
-  if (op_to_reset) {
-    status->status = op_to_reset->Reset(
-        name, is_function, types, raw_device_name, std::move(inference_ctx));
-    return op_to_reset;
-  }
-
-  TFE_Op* new_op =
-      new TFE_Op(ctx, name, is_function, types, std::move(inference_ctx));
-  status->status = new_op->operation.SetDeviceName(raw_device_name);
+  TFE_Op* new_op = op_to_reset
+                       ? op_to_reset
+                       : new TFE_Op{tensorflow::EagerOperation(&context)};
+  status->status = new_op->operation.Reset(name, is_function, types,
+                                           raw_device_name, nullptr);
   return new_op;
 }
