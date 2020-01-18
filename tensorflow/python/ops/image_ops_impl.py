@@ -680,7 +680,7 @@ def transpose(image, name=None):
     ValueError: if the shape of `image` not supported.
 
   Usage Example:
-  
+
   >>> image = [[[1, 2], [3, 4]],
   ...         [[5, 6], [7, 8]],
   ...         [[9, 10], [11, 12]]]
@@ -2130,7 +2130,7 @@ def adjust_hue(image, delta, name=None):
     Adjusted image(s), same shape and DType as `image`.
 
   Usage Example:
-    
+
   >>> image = [[[1, 2, 3], [4, 5, 6]],
   ...          [[7, 8, 9], [10, 11, 12]],
   ...          [[13, 14, 15], [16, 17, 18]]]
@@ -3124,21 +3124,6 @@ def rgb_to_yiq(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-
-  Usage Example:
-    
-  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-  >>> image = tf.constant(image)
-  >>> tf.image.rgb_to_yiq(image)
-  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-  array([[[ 1.815     , -0.91724455,  0.09962624],
-        [ 4.815     , -0.9172445 ,  0.09951639]],
-       [[ 7.815     , -0.91724443,  0.09940636],
-        [10.815001  , -0.91724455,  0.09929633]],
-       [[13.815001  , -0.91724443,  0.09918654],
-        [16.815     , -0.9172445 ,  0.09907603]]], dtype=float32)>  
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3166,21 +3151,6 @@ def yiq_to_rgb(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-
-  Usage Example:
-    
-  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-  >>> image = tf.constant(image)
-  >>> tf.image.yiq_to_rgb(image)
-  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-  array([[[ 4.774447  , -1.4856384 ,  3.8992112 ],
-        [12.504881  , -1.2432894 ,  8.691683  ]],
-       [[20.235313  , -1.0009406 , 13.484153  ],
-        [27.965748  , -0.7585919 , 18.276623  ]],
-       [[35.696182  , -0.51624316, 23.069094  ],
-        [43.426617  , -0.27389395, 27.861565  ]]], dtype=float32)>
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3221,21 +3191,6 @@ def rgb_to_yuv(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-
-  Usage Example:
-
-  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-  >>> image = tf.constant(image)
-  >>> tf.image.rgb_to_yuv(image)
-  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-  array([[[ 1.815     ,  0.5831516 , -0.7149856 ],
-        [ 4.815     ,  0.5831516 , -0.7149856 ]],
-       [[ 7.815     ,  0.5831516 , -0.7149856 ],
-        [10.815001  ,  0.58315134, -0.7149854 ]],
-       [[13.815     ,  0.58315134, -0.7149856 ],
-        [16.815     ,  0.58315134, -0.7149854 ]]], dtype=float32)>
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3263,21 +3218,6 @@ def yuv_to_rgb(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-
-  Usage Example:
-  
-  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-  >>> image = tf.constant(image)
-  >>> tf.image.yuv_to_rgb(image)
-  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-  array([[[ 4.419649 , -1.5311501,  5.0641236],
-        [10.839298 , -1.4569428, 14.160309 ]],
-       [[17.258947 , -1.3827351, 23.256495 ],
-        [23.678596 , -1.3085275, 32.35268  ]],
-       [[30.098246 , -1.23432  , 41.448868 ],
-        [36.517895 , -1.1601126, 50.54505  ]]], dtype=float32)>
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
