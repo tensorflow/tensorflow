@@ -4248,11 +4248,11 @@ py_test(
     srcs = ["ops/script_ops_test.py"],
     python_version = "PY3",
     deps = [
-        ":script_ops",
         ":client_testlib",
         ":dtypes",
         ":framework_ops",
         ":framework_test_lib",
+        ":script_ops",
         "//third_party/py/numpy",
     ],
 )
