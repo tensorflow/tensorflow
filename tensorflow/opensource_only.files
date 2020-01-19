@@ -148,7 +148,6 @@ tensorflow/third_party/pybind11.BUILD
 tensorflow/third_party/python_runtime/BUILD
 tensorflow/third_party/repo.bzl
 tensorflow/third_party/rules_closure.patch
-tensorflow/third_party/rules_swift.patch
 tensorflow/third_party/six.BUILD
 tensorflow/third_party/snappy.BUILD
 tensorflow/third_party/sqlite.BUILD
