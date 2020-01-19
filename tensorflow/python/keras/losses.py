@@ -1043,7 +1043,7 @@ def logcosh(y_true, y_pred):
   y_true = math_ops.cast(y_true, y_pred.dtype)
 
   def _logcosh(x):
-    return x + nn.softplus(-2. * x) - math_ops.log(2.)
+    return x + nn.softplus(-2. * x) - math_ops.cast(math_ops.log(2.), x.dtype)
 
   return K.mean(_logcosh(y_pred - y_true), axis=-1)
 
