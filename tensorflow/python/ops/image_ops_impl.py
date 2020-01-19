@@ -328,7 +328,7 @@ def random_flip_up_down(image, seed=None):
   When passing a batch of images, each image will be randomly flipped
   independent of other images.
 
-  Example usage:
+  Usage Example:
 
     Randomly flip a single image.
     >>> import numpy as np
@@ -369,7 +369,7 @@ def random_flip_left_right(image, seed=None):
   When passing a batch of images, each image will be randomly flipped
   independent of other images.
 
-  Example usage:
+  Usage Example:
     Randomly flip a single image.
     >>> import numpy as np
 
@@ -626,7 +626,7 @@ def _rot90_4D(images, k, name_scope):
 def transpose(image, name=None):
   """Transpose image(s) by swapping the height and width dimension.
   
-  Example usage:
+  Usage Example:
     >>> image = tf.random.uniform((1920, 1080, 3))
     >>> print(image.shape)
     (1920, 1080, 3)
@@ -677,13 +677,19 @@ def central_crop(image, central_fraction):
 
   This function works on either a single image (`image` is a 3-D Tensor), or a
   batch of images (`image` is a 4-D Tensor).
+  
+  Usage Example:
+  
+  ```python
+  >>> import tensorflow as tf
+  >>> x = tf.random.normal(shape=(256, 256, 3))
+  >>> tf.image.central_crop(x, 0.5)
+  ```
 
   Args:
     image: Either a 3-D float Tensor of shape [height, width, depth], or a 4-D
       Tensor of shape [batch_size, height, width, depth].
     central_fraction: float (0, 1], fraction of size to crop
-  Usage Example: ```python >> import tensorflow as tf >> x =
-    tf.random.normal(shape=(256, 256, 3)) >> tf.image.central_crop(x, 0.5) ```
 
   Raises:
     ValueError: if central_crop_fraction is not within (0, 1].
