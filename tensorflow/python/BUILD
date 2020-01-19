@@ -1407,6 +1407,16 @@ py_library(
 )
 
 tf_py_test(
+    name = "framework_constant_op_test",
+    size = "small",
+    srcs = ["framework/constant_op_test.py"],
+    additional_deps = [
+        ":constant_op",
+    ],
+    main = "framework/constant_op_test.py",
+)
+
+tf_py_test(
     name = "framework_registry_test",
     size = "small",
     srcs = ["framework/registry_test.py"],
