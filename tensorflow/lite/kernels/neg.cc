@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/neg.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -58,10 +59,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorShape(output),
                             GetTensorData<float>(output));
       break;
+    case kTfLiteInt8:
+      // using EQ attempts to cast to int via the %d format specifier and gives
+      // incorrect value and since some hardware platforms do not support float
+      // formatting by default, I did a direct equality check instead
+      TF_LITE_ENSURE(context, input->params.scale == output->params.scale);
+      reference_integer_ops::Negate(
+          GetTensorShape(input), GetTensorData<int8_t>(input),
+          input->params.zero_point, GetTensorShape(output),
+          GetTensorData<int8_t>(output), output->params.zero_point);
+      break;
+
     default:
       context->ReportError(
           context,
-          "Neg only currently supports int64, int32, and float32, got %d.",
+          "Neg only currently supports int64, int32, float32, and int8 got %d.",
           input->type);
       return kTfLiteError;
   }
