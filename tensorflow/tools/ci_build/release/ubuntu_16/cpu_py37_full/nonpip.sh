@@ -24,8 +24,8 @@ update_bazel_linux
 
 # Make sure estimator and tensorboard are the same as when final was released
 pip uninstall -y tf-estimator-nightly tb-nightly
-pip install -y tf-estimator-nightly==1.14.0.dev2019072801
-pip install -y tb-nightly==2.1.0a20190927
+pip install tf-estimator-nightly==1.14.0.dev2019072801
+pip install tb-nightly==2.1.0a20190927
 
 # Run configure.
 export TF_NEED_GCP=1
@@ -48,4 +48,4 @@ bazel test --test_output=errors --config=opt --test_lang_filters=py \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
-  ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+  ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/python:contrib_test -//tensorflow/examples/...
