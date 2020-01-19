@@ -135,7 +135,7 @@ def do_not_doc_inheritable(obj):
     # method2
   ```
 
-  When generating docs for a class's attributes, the `__mro__` is searched and
+  When generating docs for a class's arributes, the `__mro__` is searched and
   the attribute will be skipped if this decorator is detected on the attribute
   on any class in the `__mro__`.
 
@@ -178,7 +178,7 @@ def for_subclass_implementers(obj):
 
   Works on method, or other class-attributes.
 
-  When generating docs for a class's attributes, the `__mro__` is searched and
+  When generating docs for a class's arributes, the `__mro__` is searched and
   the attribute will be skipped if this decorator is detected on the attribute
   on any **parent** class in the `__mro__`.
 

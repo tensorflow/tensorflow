@@ -46,7 +46,7 @@ def is_free_function(py_object, full_name, index):
     index: The {full_name:py_object} dictionary for the public API.
 
   Returns:
-    True if the object is a stand-alone function, and not part of a class
+    True if the obeject is a stand-alone function, and not part of a class
     definition.
   """
   if not tf_inspect.isfunction(py_object):
@@ -235,7 +235,7 @@ class ReferenceResolver(object):
     return cls(doc_index=doc_index, **json_dict)
 
   def to_json_file(self, filepath):
-    """Converts the ReferenceResolver to json and writes it to the specified file.
+    """Converts the RefenceResolver to json and writes it to the specified file.
 
     Args:
       filepath: The file path to write the json to.

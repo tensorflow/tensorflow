@@ -32,7 +32,7 @@ from tensorflow.tools.docs import doc_controls
 from tensorflow.tools.docs import parser
 
 # The test needs a real module. `types.ModuleType()` doesn't work, as the result
-# is a `builtin` module. Using "parser" here is arbitrary. The tests don't
+# is a `builtin` module. Using "parser" here is arbitraty. The tests don't
 # depend on the module contents. At this point in the process the public api
 # has already been extracted.
 test_module = parser
