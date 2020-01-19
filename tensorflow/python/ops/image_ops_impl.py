@@ -625,6 +625,14 @@ def _rot90_4D(images, k, name_scope):
 @tf_export('image.transpose', v1=['image.transpose', 'image.transpose_image'])
 def transpose(image, name=None):
   """Transpose image(s) by swapping the height and width dimension.
+  
+  Example usage:
+    >>> image = tf.random.uniform((1920, 1080, 3))
+    >>> print(image.shape)
+    (1920, 1080, 3)
+    >>> transposed_img = tf.image.transpose(image)
+    >>> print(transposed_img.shape)
+    (1080, 1920, 3)
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
