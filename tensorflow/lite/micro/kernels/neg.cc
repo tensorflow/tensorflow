@@ -27,6 +27,19 @@ namespace neg {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, output->type, input->type);
+  TF_LITE_ENSURE_EQ(context, output->dims->size, input->dims->size);
+  for (int i = 0; i < output->dims->size; ++i) {
+    TF_LITE_ENSURE_EQ(context, output->dims->data[i], input->dims->data[i]);
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -61,7 +74,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_NEG() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 /*prepare=*/nullptr, neg::Eval};
+                                 /*prepare=*/neg::Prepare, neg::Eval};
   return &r;
 }
 
