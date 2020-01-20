@@ -593,6 +593,43 @@ class BaseLayerTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(RuntimeError, 'You must call `super()'):
       layer(np.random.random((10, 2)))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_first_arg_not_called_inputs(self):
+    x, y = array_ops.ones((10, 1)), array_ops.ones((10, 1))
+
+    class ArgLayer(keras.layers.Layer):
+
+      def call(self, x, y):
+        return x + y
+
+    layer = ArgLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+    class KwargLayer(keras.layers.Layer):
+
+      def call(self, x=None, y=None):
+        return x + y
+
+    layer = KwargLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+    with self.assertRaisesRegexp(ValueError, 'must always be passed'):
+      layer(y=y)
+
+    class TFFunctionLayer(keras.layers.Layer):
+
+      @def_function.function
+      def call(self, x, y=None):
+        if y is None:
+          return x
+        return x + y
+
+    layer = TFFunctionLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
 
 class SymbolicSupportTest(test.TestCase):
 
