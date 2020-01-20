@@ -147,13 +147,29 @@ class CloudTpuClientTest(test.TestCase):
 
   @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
+  def testNetworkEndpointsNotReadyWithApi(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertRaisesRegex(
+        RuntimeError, 'TPU .* is not yet ready; state: "None"',
+        c.network_endpoints)
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
   def testInitializeNoArgumentsWithEnvironmentVariable(self):
     os.environ['TPU_NAME'] = 'tpu_name'
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
             'ipAddress': '10.1.2.3',
             'port': '8470',
-            'health': 'HEALTHY'
+            'state': 'READY',
+            'health': 'HEALTHY',
         }
     }
     c = client.Client(
@@ -167,7 +183,8 @@ class CloudTpuClientTest(test.TestCase):
         'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
             'ipAddress': '10.1.2.3',
             'port': '8470',
-            'health': 'HEALTHY'
+            'state': 'READY',
+            'health': 'HEALTHY',
         }
     }
     c = client.Client(
@@ -245,6 +262,57 @@ class CloudTpuClientTest(test.TestCase):
     c = client.Client(
         tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
     self.assertEqual(False, c.recoverable())
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  def testHealthApi(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'PREEMPTED',
+            'health': 'HEALTHY',
+            'acceleratorType': 'v3-8',
+            'tensorflowVersion': 'nightly',
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertEqual('HEALTHY', c.health())
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  def testRuntimeVersionApi(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'PREEMPTED',
+            'health': 'HEALTHY',
+            'acceleratorType': 'v3-8',
+            'tensorflowVersion': 'nightly',
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertEqual('nightly', c.runtime_version())
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  def testAcceleratorTypeApi(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'PREEMPTED',
+            'health': 'HEALTHY',
+            'acceleratorType': 'v3-8',
+            'tensorflowVersion': 'nightly',
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertEqual('v3-8', c.accelerator_type())
 
   def testHandlesByteStrings(self):
     self.assertEqual(

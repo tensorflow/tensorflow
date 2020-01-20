@@ -41,7 +41,7 @@ class DirectivesTest(converter_testing.TestCase):
     def_, = anno.getanno(node.body[0].targets[0],
                          anno.Static.DEFINITIONS)
     d = def_.directives[directives.set_element_type]
-    self.assertEqual(d['dtype'].s, 'a')
+    self.assertEqual(d['dtype'].value, 'a')
     self.assertEqual(d['shape'].id, 'string_var')
 
   def test_argument_target(self):
@@ -54,8 +54,8 @@ class DirectivesTest(converter_testing.TestCase):
 
     def_, = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
     d = def_.directives[directives.set_element_type]
-    self.assertEqual(d['dtype'].n, 1)
-    self.assertEqual(d['shape'].n, 2)
+    self.assertEqual(d['dtype'].value, 1)
+    self.assertEqual(d['shape'].value, 2)
 
   def test_loop_target(self):
 
@@ -69,7 +69,7 @@ class DirectivesTest(converter_testing.TestCase):
 
     d = anno.getanno(node.body[1], anno.Basic.DIRECTIVES)
     d = d[directives.set_loop_options]
-    self.assertEqual(d['parallel_iterations'].n, 10)
+    self.assertEqual(d['parallel_iterations'].value, 10)
     self.assertEqual(d['back_prop'].id, 'a')
     self.assertNotIn('swap_memory', d)
 

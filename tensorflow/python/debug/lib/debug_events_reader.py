@@ -19,16 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import glob
 import os
 import threading
 
 import six
 
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import file_io
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.util import compat
 
 
@@ -40,9 +40,10 @@ class DebugEventsReader(object):
   """Reader class for a tfdbg v2 DebugEvents directory."""
 
   def __init__(self, dump_root):
-    if not os.path.isdir(dump_root):
+    if not file_io.is_directory(dump_root):
       raise ValueError("Specified dump_root is not a directory: %s" % dump_root)
-    metadata_paths = glob.glob(os.path.join(dump_root, "*.metadata"))
+    metadata_paths = file_io.get_matching_files(
+        os.path.join(dump_root, "*.metadata"))
     if not metadata_paths:
       raise ValueError("Cannot find any metadata file in directory: %s" %
                        dump_root)
@@ -61,6 +62,8 @@ class DebugEventsReader(object):
     self._graph_execution_traces_path = compat.as_bytes(
         "%s.graph_execution_traces" % prefix)
     self._readers = dict()  # A map from file path to reader.
+    # A map from file path to current reading offset.
+    self._reader_offsets = dict()
     self._readers_lock = threading.Lock()
 
     self._offsets = dict()
@@ -85,36 +88,32 @@ class DebugEventsReader(object):
     Yields:
       A tuple of (offset, debug_event_proto) on each `next()` call.
     """
+    reader = self._get_reader(file_path)
+    while True:
+      current_offset = self._reader_offsets[file_path]
+      try:
+        record, self._reader_offsets[file_path] = reader.read(current_offset)
+      except (errors.DataLossError, IndexError):
+        # We ignore partial read exceptions, because a record may be truncated.
+        # The PyRandomRecordReader throws an `IndexError` when offset goes out
+        # of bound.
+        break
+      yield DebugEventWithOffset(
+          debug_event=debug_event_pb2.DebugEvent.FromString(record),
+          offset=current_offset)
+
+  def _get_reader(self, file_path):
+    """Get a random-access reader for TFRecords file at file_path."""
+    file_path = compat.as_bytes(file_path)
     # The following code uses the double-checked locking pattern to optimize
     # the common case (where the reader is already initialized).
     if file_path not in self._readers:  # 1st check, without lock.
       with self._readers_lock:
         if file_path not in self._readers:  # 2nd check, with lock.
-          with errors.raise_exception_on_not_ok_status() as status:
-            # TODO(b/136474806): Use tf_record.tf_record_iterator() once it
-            # supports offset.
-            self._readers[file_path] = pywrap_tensorflow.PyRecordReader_New(
-                compat.as_bytes(file_path), 0, b"", status)
-    reader = self._readers[file_path]
-    while True:
-      offset = reader.offset()
-      try:
-        reader.GetNext()
-      except (errors.DataLossError, errors.OutOfRangeError):
-        # We ignore partial read exceptions, because a record may be truncated.
-        # PyRecordReader holds the offset prior to the failed read, so retrying
-        # will succeed.
-        break
-      yield DebugEventWithOffset(
-          debug_event=debug_event_pb2.DebugEvent.FromString(reader.record()),
-          offset=offset)
-
-  def _create_offset_reader(self, file_path, offset):
-    with errors.raise_exception_on_not_ok_status() as status:
-      # TODO(b/136474806): Use tf_record.tf_record_iterator() once it
-      # supports ofset.
-      return pywrap_tensorflow.PyRecordReader_New(
-          file_path, offset, b"", status)
+          self._readers[file_path] = tf_record.tf_record_random_reader(
+              file_path)
+          self._reader_offsets[file_path] = 0
+    return self._readers[file_path]
 
   def metadata_iterator(self):
     return self._generic_iterator(self._metadata_path)
@@ -128,6 +127,11 @@ class DebugEventsReader(object):
   def graphs_iterator(self):
     return self._generic_iterator(self._graphs_path)
 
+  def read_source_files_event(self, offset):
+    """Read a DebugEvent proto at given offset from the .source_files file."""
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._source_files_path).read(offset)[0])
+
   def read_graphs_event(self, offset):
     """Read a DebugEvent proto at a given offset from the .graphs file.
 
@@ -139,15 +143,10 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    # TODO(cais): After switching to new Python wrapper of tfrecord reader,
-    # use seeking instead of repeated file opening. Same below.
-    reader = self._create_offset_reader(self._graphs_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
-    return debug_event
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._graphs_path).read(offset)[0])
 
   def execution_iterator(self):
     return self._generic_iterator(self._execution_path)
@@ -163,13 +162,10 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    reader = self._create_offset_reader(self._execution_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
-    return debug_event
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._execution_path).read(offset)[0])
 
   def graph_execution_traces_iterator(self):
     return self._generic_iterator(self._graph_execution_traces_path)
@@ -185,25 +181,24 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    reader = self._create_offset_reader(
-        self._graph_execution_traces_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
-    return debug_event
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._graph_execution_traces_path).read(offset)[0])
 
   def close(self):
-    for reader in self._readers.values():
-      reader.Close()
+    with self._readers_lock:
+      file_paths = list(self._readers.keys())
+      for file_path in file_paths:
+        self._readers[file_path].close()
+        del self._readers[file_path]
 
 
 class BaseDigest(object):
   """Base class for digest.
 
   Properties:
-    wall_time: A timestamp for the digest (unit: s).
+    wall_time: A timestamp for the digest as a `float` (unit: s).
     offset: A offset number in the corresponding file that can be used for
       fast random read access.
   """
@@ -220,6 +215,9 @@ class BaseDigest(object):
   def offset(self):
     return self._offset
 
+  def to_json(self):
+    return {"wall_time": self.wall_time}
+
 
 class ExecutionDigest(BaseDigest):
   """Light-weight digest summarizing top-level execution event.
@@ -233,20 +231,38 @@ class ExecutionDigest(BaseDigest):
       In the case of the execution of a tf.function (FuncGraph), this is the
       internally-generated name of the function (e.g.,
       "__inference_my_func_123").
+    output_tensor_device_ids: IDs of the devices on which the output tensors of
+      the execution reside. For no-output execution, this is `None`.
   """
 
   def __init__(self,
                wall_time,
                offset,
-               op_type):
+               op_type,
+               output_tensor_device_ids=None):
     super(ExecutionDigest, self).__init__(wall_time, offset)
     self._op_type = op_type
+    self._output_tensor_device_ids = _tuple_or_none(output_tensor_device_ids)
 
   @property
   def op_type(self):
     return self._op_type
 
-  # TODO(cais): Implement to_json().
+  @property
+  def output_tensor_device_ids(self):
+    return self._output_tensor_device_ids
+
+  def to_json(self):
+    output = super(ExecutionDigest, self).to_json()
+    output.update({
+        "op_type": self.op_type,
+        "output_tensor_device_ids": self.output_tensor_device_ids,
+    })
+    return output
+
+
+def _tuple_or_none(data):
+  return tuple(data) if data else None
 
 
 class Execution(ExecutionDigest):
@@ -256,6 +272,7 @@ class Execution(ExecutionDigest):
   number of output tensors.
 
   Properties (beyond the base class `ExecutionDigest`):
+    host_name: Name of the host on which the execution happened.
     stack_frame_ids: Reference IDs for stack frames, ordered from bottommost to
       topmost. Use `DebugDataReader.read_execution_stack_trace()` to load the
       detailed stack frames (filepath, lineno and function name).
@@ -275,6 +292,7 @@ class Execution(ExecutionDigest):
 
   def __init__(self,
                execution_digest,
+               host_name,
                stack_frame_ids,
                tensor_debug_mode,
                graph_id=None,
@@ -284,13 +302,19 @@ class Execution(ExecutionDigest):
     super(Execution, self).__init__(
         execution_digest.wall_time,
         execution_digest.offset,
-        execution_digest.op_type)
-    self._stack_frame_ids = stack_frame_ids
+        execution_digest.op_type,
+        output_tensor_device_ids=execution_digest.output_tensor_device_ids)
+    self._host_name = host_name
+    self._stack_frame_ids = tuple(stack_frame_ids)
     self._tensor_debug_mode = tensor_debug_mode
     self._graph_id = graph_id
-    self._input_tensor_ids = input_tensor_ids
-    self._output_tensor_ids = output_tensor_ids
-    self._debug_tensor_values = debug_tensor_values
+    self._input_tensor_ids = _tuple_or_none(input_tensor_ids)
+    self._output_tensor_ids = _tuple_or_none(output_tensor_ids)
+    self._debug_tensor_values = _tuple_or_none(debug_tensor_values)
+
+  @property
+  def host_name(self):
+    return self._host_name
 
   @property
   def stack_frame_ids(self):
@@ -320,7 +344,18 @@ class Execution(ExecutionDigest):
   def debug_tensor_values(self):
     return self._debug_tensor_values
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    output = super(Execution, self).to_json()
+    output.update({
+        "host_name": self.host_name,
+        "stack_frame_ids": self.stack_frame_ids,
+        "tensor_debug_mode": self.tensor_debug_mode,
+        "graph_id": self.graph_id,
+        "input_tensor_ids": self.input_tensor_ids,
+        "output_tensor_ids": self.output_tensor_ids,
+        "debug_tensor_values": self.debug_tensor_values,
+    })
+    return output
 
 
 class DebuggedGraph(object):
@@ -394,6 +429,32 @@ class DebuggedGraph(object):
   # TODO(cais): Implement to_json().
 
 
+class DebuggedDevice(object):
+  """Debugger data regarding a device involved in the debugged program.
+
+  Properties:
+    device_name: Name of the device, as a str.
+    device_id: An integer ID for the device, unique for each device within
+      the scope of the debugged TensorFlow program.
+  """
+
+  def __init__(self,
+               device_name,
+               device_id):
+    self._device_name = device_name
+    self._device_id = device_id
+
+  @property
+  def device_name(self):
+    return self._device_name
+
+  @property
+  def device_id(self):
+    return self._device_id
+
+  # TODO(cais): Implement to_json().
+
+
 class GraphOpCreationDigest(BaseDigest):
   """Data object describing the creation of an op inside a graph.
 
@@ -423,8 +484,8 @@ class GraphOpCreationDigest(BaseDigest):
     self._graph_id = graph_id
     self._op_type = op_type
     self._op_name = op_name
-    self._output_tensor_ids = output_tensor_ids
-    self._input_names = input_names
+    self._output_tensor_ids = _tuple_or_none(output_tensor_ids)
+    self._input_names = _tuple_or_none(input_names)
     self._device_name = device_name
 
   @property
@@ -455,7 +516,17 @@ class GraphOpCreationDigest(BaseDigest):
   def device_name(self):
     return self._device_name
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    output = super(GraphOpCreationDigest, self).to_json()
+    output.update({
+        "graph_id": self.graph_id,
+        "op_type": self.op_type,
+        "op_name": self.op_name,
+        "output_tensor_ids": self.output_tensor_ids,
+        "input_names": self.input_names,
+        "device_name": self.device_name,
+    })
+    return output
 
 
 class GraphExecutionTraceDigest(BaseDigest):
@@ -468,6 +539,8 @@ class GraphExecutionTraceDigest(BaseDigest):
     op_type: Type name of the executed op (e.g., "Conv2D").
     op_name: Name of the op (e.g., "conv_2d_3/Conv2D").
     output_slot: Output slot index of the tensor.
+    graph_id: The debugger-generated ID of the innermost (immediately-enclosing)
+      graph.
   """
 
   def __init__(self,
@@ -475,11 +548,13 @@ class GraphExecutionTraceDigest(BaseDigest):
                offset,
                op_type,
                op_name,
-               output_slot):
+               output_slot,
+               graph_id):
     super(GraphExecutionTraceDigest, self).__init__(wall_time, offset)
     self._op_type = op_type
     self._op_name = op_name
     self._output_slot = output_slot
+    self._graph_id = graph_id
 
   @property
   def op_type(self):
@@ -493,7 +568,19 @@ class GraphExecutionTraceDigest(BaseDigest):
   def output_slot(self):
     return self._output_slot
 
-  # TODO(cais): Implement to_json().
+  @property
+  def graph_id(self):
+    return self._graph_id
+
+  def to_json(self):
+    output = super(GraphExecutionTraceDigest, self).to_json()
+    output.update({
+        "op_type": self.op_type,
+        "op_name": self.op_name,
+        "output_slot": self.output_slot,
+        "graph_id": self.graph_id,
+    })
+    return output
 
 
 class GraphExecutionTrace(GraphExecutionTraceDigest):
@@ -522,8 +609,9 @@ class GraphExecutionTrace(GraphExecutionTraceDigest):
         graph_execution_trace_digest.offset,
         graph_execution_trace_digest.op_type,
         graph_execution_trace_digest.op_name,
-        graph_execution_trace_digest.output_slot)
-    self._graph_ids = graph_ids
+        graph_execution_trace_digest.output_slot,
+        graph_execution_trace_digest.graph_id)
+    self._graph_ids = tuple(graph_ids)
     self._tensor_debug_mode = tensor_debug_mode
     self._debug_tensor_value = debug_tensor_value
     self._device_name = device_name
@@ -542,13 +630,21 @@ class GraphExecutionTrace(GraphExecutionTraceDigest):
 
   @property
   def debug_tensor_value(self):
-    return self._debug_tensor_value
+    return _tuple_or_none(self._debug_tensor_value)
 
   @property
   def device_name(self):
     return self._device_name
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    output = super(GraphExecutionTrace, self).to_json()
+    output.update({
+        "graph_ids": self.graph_ids,
+        "tensor_debug_mode": self.tensor_debug_mode,
+        "debug_tensor_value": self.debug_tensor_value,
+        "device_name": self.device_name,
+    })
+    return output
 
 
 def _parse_tensor_value(tensor_proto, return_list=False):
@@ -603,40 +699,40 @@ class DebugDataReader(object):
 
   def __init__(self, dump_root):
     self._reader = DebugEventsReader(dump_root)
+    self._load_metadata()
+
     # TODO(cais): Implement pagination for memory constraints.
     self._execution_digests = []
 
-    # A list of (host_name, file_path) tuples.
-    self._host_name_file_paths = []
+    # Mapping (host_name, file_path) tuple to offset in the .source_files file.
+    self._host_name_file_path_to_offset = collections.OrderedDict()
     # A dict mapping id to (host_name, file_path, lineno, func) tuple.
     self._stack_frame_by_id = dict()
     # Stores unprocessed stack frame IDs. This is necessary to handle the
     # case in which reading of the .stack_frames file gets ahead of the reading
     # of the .source_files file.
     self._unprocessed_stack_frames = dict()
+    # A dict mapping id to DebuggedDevice objects.
+    self._device_by_id = dict()
     # A dict mapping id to DebuggedGraph objects.
     self._graph_by_id = dict()
     self._graph_op_digests = []
     # TODO(cais): Implement pagination for memory constraints.
     self._graph_execution_trace_digests = []
 
-    # The following timestamps keep track where we've reached in each
-    # file of the DebugEvent source file, so that we don't run into race
-    # conditions with the writer.
-    self._source_files_timestamp = 0
-    # Temporary object used to hold DebugEvent protos with stack_frames
-    # field that has been read beyond max_wall_time.
-    # self._last_successful_stack_frames_offset = -1  # TODO(cais): Fix.
+  def _load_metadata(self):
+    metadata_iter = self._reader.metadata_iterator()
+    debug_event = next(metadata_iter).debug_event
+    self._starting_wall_time = debug_event.wall_time
+    self._tensorflow_version = debug_event.debug_metadata.tensorflow_version
 
-  # TODO(cais): Read metadata.
   def _load_source_files(self):
     """Incrementally read the .source_files DebugEvent file."""
     source_files_iter = self._reader.source_files_iterator()
-    for debug_event, _ in source_files_iter:
+    for debug_event, offset in source_files_iter:
       source_file = debug_event.source_file
-      self._host_name_file_paths.append(
-          (source_file.host_name, source_file.file_path))
-      self._source_file_timestamp = debug_event.wall_time
+      self._host_name_file_path_to_offset[
+          (source_file.host_name, source_file.file_path)] = offset
 
   def _load_stack_frames(self):
     """Incrementally read the .stack_frames file.
@@ -658,12 +754,11 @@ class DebugDataReader(object):
     unprocessed_stack_frame_ids = tuple(self._unprocessed_stack_frames.keys())
     for stack_frame_id in unprocessed_stack_frame_ids:
       file_line_col = self._unprocessed_stack_frames[stack_frame_id]
-      if len(self._host_name_file_paths) > file_line_col.file_index:
+      if len(self._host_name_file_path_to_offset) > file_line_col.file_index:
+        host_name, file_path = list(self._host_name_file_path_to_offset.keys())[
+            file_line_col.file_index]
         self._stack_frame_by_id[stack_frame_id] = (
-            self._host_name_file_paths[file_line_col.file_index][0],
-            self._host_name_file_paths[file_line_col.file_index][1],
-            file_line_col.line,
-            file_line_col.func)
+            host_name, file_path, file_line_col.line, file_line_col.func)
       del self._unprocessed_stack_frames[stack_frame_id]
 
   def _load_graphs(self):
@@ -695,6 +790,10 @@ class DebugDataReader(object):
         if graph_proto.outer_context_id:
           self._graph_by_id[
               graph_proto.outer_context_id].add_inner_graph_id(graph.graph_id)
+      elif debug_event.debugged_device.ByteSize():
+        device_proto = debug_event.debugged_device
+        self._device_by_id[device_proto.device_id] = DebuggedDevice(
+            device_proto.device_name, device_proto.device_id)
 
   def _load_graph_execution_traces(self):
     """Incrementally load the .graph_execution_traces file."""
@@ -708,7 +807,8 @@ class DebugDataReader(object):
           offset,
           op_type,
           op_name,
-          trace_proto.output_slot)
+          trace_proto.output_slot,
+          debug_event.graph_execution_trace.tfdbg_context_id)
       self._graph_execution_trace_digests.append(digest)
 
   def _lookup_op_type(self, graph_id, op_name):
@@ -730,7 +830,9 @@ class DebugDataReader(object):
       self._execution_digests.append(ExecutionDigest(
           debug_event.wall_time,
           offset,
-          debug_event.execution.op_type))
+          debug_event.execution.op_type,
+          output_tensor_device_ids=(
+              debug_event.execution.output_tensor_device_ids or None)))
 
   def update(self):
     """Perform incremental read of the file set."""
@@ -740,6 +842,46 @@ class DebugDataReader(object):
     self._load_graph_execution_traces()
     self._load_execution()
 
+  def source_file_list(self):
+    """Get a list of source files known to the debugger data reader.
+
+    Returns:
+      A tuple of `(host_name, file_path)` tuples.
+    """
+    return tuple(self._host_name_file_path_to_offset.keys())
+
+  def source_lines(self, host_name, file_path):
+    """Read the line-by-line content of a source file.
+
+    Args:
+      host_name: Host name on which the source file is located.
+      file_path: File path at which the source file is located.
+
+    Returns:
+      Lines of the source file as a `list` of `str`s.
+    """
+    offset = self._host_name_file_path_to_offset[(host_name, file_path)]
+    return list(self._reader.read_source_files_event(offset).source_file.lines)
+
+  def starting_wall_time(self):
+    """Wall timestamp for when the debugged TensorFlow program started.
+
+    Returns:
+      Stating wall time as seconds since the epoch, as a `float`.
+    """
+    return self._starting_wall_time
+
+  def tensorflow_version(self):
+    """TensorFlow version used in the debugged TensorFlow program.
+
+    Note: this is not necessarily the same as the version of TensorFlow used to
+    load the DebugEvent file set.
+
+    Returns:
+      TensorFlow version used by the debugged program, as a `str`.
+    """
+    return self._tensorflow_version
+
   def outermost_graphs(self):
     """Get the number of outer most graphs read so far."""
     return [graph for graph in self._graph_by_id.values()
@@ -748,6 +890,15 @@ class DebugDataReader(object):
   def graph_by_id(self, graph_id):
     """Get a DebuggedGraph object by its ID."""
     return self._graph_by_id[graph_id]
+
+  def device_name_by_id(self, device_id):
+    """Get the name of a device by the debugger-generated ID of the device."""
+    return self._device_by_id[device_id].device_name
+
+  def device_name_map(self):
+    """Get a map mapping device IDs to device names."""
+    return {device_id: self._device_by_id[device_id].device_name
+            for device_id in self._device_by_id}
 
   def graph_op_digests(self, op_type=None):
     """Get the list of the digests for graph-op creation so far.
@@ -830,13 +981,13 @@ class DebugDataReader(object):
             _parse_tensor_value(tensor_proto, return_list=True))
     return Execution(
         execution_digest,
+        execution_proto.code_location.host_name,
         tuple(execution_proto.code_location.stack_frame_ids),
         execution_proto.tensor_debug_mode,
         graph_id=execution_proto.graph_id,
         input_tensor_ids=tuple(execution_proto.input_tensor_ids),
         output_tensor_ids=tuple(execution_proto.output_tensor_ids),
-        debug_tensor_values=tuple(
-            debug_tensor_values) if debug_tensor_values else None)
+        debug_tensor_values=_tuple_or_none(debug_tensor_values))
 
   def read_graph_execution_trace(self, graph_execution_trace_digest):
     """Read the detailed graph execution trace.
@@ -881,9 +1032,8 @@ class DebugDataReader(object):
       execution: The Execution object of interest.
 
     Returns:
-      A tuple consisting of:
-        1. The host name.
-        2. The stack trace, as a list of (file_path, lineno, func) tuples.
+      1. The host name.
+      2. The stack trace, as a list of (file_path, lineno, func) tuples.
     """
     host_name = self._stack_frame_by_id[execution.stack_frame_ids[0]][0]
     return (host_name, [

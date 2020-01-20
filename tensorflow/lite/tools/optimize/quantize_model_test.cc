@@ -1260,6 +1260,68 @@ TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
   }
 }
 
+class QuantizePackTest : public QuantizeModelTest {
+ protected:
+  QuantizePackTest() {
+    input_model_ = ReadModel(internal::kModelPack);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizePackTest, VerifyPack) {
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto subgraph = model_.subgraphs[0].get();
+
+  // The model should only have 3 inputs and 1 output.
+  EXPECT_EQ(subgraph->inputs.size(), 3);
+  EXPECT_EQ(subgraph->outputs.size(), 1);
+
+  const auto& op1 = subgraph->operators[1].get();
+  const auto& op2 = subgraph->operators[2].get();
+  const auto& op3 = subgraph->operators[3].get();
+  const auto& op4 = subgraph->operators[4].get();
+
+  ASSERT_EQ(model_.operator_codes[op1->opcode_index].get()->builtin_code,
+            BuiltinOperator_QUANTIZE);
+  ASSERT_EQ(model_.operator_codes[op2->opcode_index].get()->builtin_code,
+            BuiltinOperator_QUANTIZE);
+  ASSERT_EQ(model_.operator_codes[op3->opcode_index].get()->builtin_code,
+            BuiltinOperator_PACK);
+  ASSERT_EQ(model_.operator_codes[op4->opcode_index].get()->builtin_code,
+            BuiltinOperator_DEQUANTIZE);
+
+  const auto& pack_input0 = subgraph->tensors[op3->inputs[0]].get();
+  const auto& pack_input1 = subgraph->tensors[op3->inputs[1]].get();
+  const auto& pack_input2 = subgraph->tensors[op3->inputs[2]].get();
+
+  const auto& pack_output = subgraph->tensors[op3->outputs[0]].get();
+
+  // Check quantization parameters for input and output.
+  EXPECT_FLOAT_EQ(pack_input0->quantization->scale[0],
+                  pack_input1->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(pack_input1->quantization->scale[0],
+                  pack_input2->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(pack_input0->quantization->zero_point[0],
+                  pack_input1->quantization->zero_point[0]);
+  EXPECT_FLOAT_EQ(pack_input1->quantization->zero_point[0],
+                  pack_input2->quantization->zero_point[0]);
+
+  EXPECT_FLOAT_EQ(pack_input1->quantization->scale[0],
+                  pack_output->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(pack_input1->quantization->zero_point[0],
+                  pack_output->quantization->zero_point[0]);
+
+  // Check type of input and output.
+  EXPECT_EQ(pack_output->type, TensorType_INT8);
+  EXPECT_EQ(pack_input0->type, TensorType_INT8);
+  EXPECT_EQ(pack_input1->type, TensorType_INT8);
+  EXPECT_EQ(pack_input2->type, TensorType_INT8);
+}
+
 class QuantizeMinimumMaximumTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<const char*> {

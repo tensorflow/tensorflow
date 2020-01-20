@@ -220,7 +220,10 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_oss_py2"],  # b/138443278
+    tags = [
+        "no_oss_py2",
+        "notap",
+    ],  # b/138443278
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -1208,7 +1211,7 @@ distribute_py_test(
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/saving",
     ],
 )
 
@@ -1221,7 +1224,7 @@ distribute_py_test(
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/saving",
         "//tensorflow/python/saved_model",
     ],
 )

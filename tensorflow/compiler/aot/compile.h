@@ -35,6 +35,7 @@ struct CompileResult {
   std::unique_ptr<xla::cpu::CpuAotCompilationResult> aot;
   xla::ProgramShapeProto program_shape;  // Static shape of args and results.
   string entry_point;                    // Name of generated function.
+  string tensorflow_header_root;         // Prefix for tensorflow headers.
   int pointer_size = 0;                  // Size of a pointer in bytes.
 };
 
@@ -42,8 +43,11 @@ struct CompileResult {
 // that performs the graph operations.
 //
 // The XLA compilation options are specified in the flags.
-Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
+Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
                     const MainFlags& flags, CompileResult* compile_result);
+
+// The full compilation method, for reuse in a library setting.
+Status Main(const MainFlags& flags);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

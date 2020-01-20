@@ -365,7 +365,7 @@ class LayerCallCollection(object):
       elif layer.input_spec is not None:
 
         def to_tensor_spec_or_none(x):
-          spec = input_spec.to_tensor_spec(x, layer.dtype)
+          spec = input_spec.to_tensor_spec(x, layer._compute_dtype)  # pylint: disable=protected-access
           # If the shape is too general (e.g. multiple dimensions are allowed),
           # return None so that separate functions can be generated for each
           # inferred input signature.

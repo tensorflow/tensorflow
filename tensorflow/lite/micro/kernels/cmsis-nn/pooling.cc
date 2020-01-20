@@ -77,12 +77,12 @@ void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
       GetTensorShape(output), GetTensorData<float>(output));
 }
 
-void AverageEvalUint8(const TfLiteContext* context, const TfLiteNode* node,
+void AverageEvalUint8(TfLiteContext* context, const TfLiteNode* node,
                       const TfLitePoolParams* params, const OpData* data,
                       const TfLiteTensor* input, TfLiteTensor* output) {
   int32_t activation_min, activation_max;
-  CalculateActivationRangeUint8(params->activation, output, &activation_min,
-                                &activation_max);
+  (void)CalculateActivationRangeQuantized(context, params->activation, output,
+                                          &activation_min, &activation_max);
 
   PoolParams op_params;
   op_params.stride_height = params->stride_height;
@@ -102,8 +102,8 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
                              const TfLitePoolParams* params, const OpData* data,
                              TfLiteTensor* input, TfLiteTensor* output) {
   int32_t activation_min, activation_max;
-  CalculateActivationRangeInt8(params->activation, output, &activation_min,
-                               &activation_max);
+  (void)CalculateActivationRangeQuantized(context, params->activation, output,
+                                          &activation_min, &activation_max);
 
   TFLITE_DCHECK_LE(activation_min, activation_max);
 
@@ -184,8 +184,8 @@ void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
                            TfLitePoolParams* params, OpData* data,
                            const TfLiteTensor* input, TfLiteTensor* output) {
   int32_t activation_min, activation_max;
-  CalculateActivationRangeUint8(params->activation, output, &activation_min,
-                                &activation_max);
+  (void)CalculateActivationRangeQuantized(context, params->activation, output,
+                                          &activation_min, &activation_max);
 
   tflite::PoolParams op_params;
   op_params.stride_height = params->stride_height;

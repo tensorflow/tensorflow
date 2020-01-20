@@ -75,43 +75,32 @@ enabled on CPU by additionally using the flag `--tf_xla_cpu_global_jit`:
 $ TF_XLA_FLAGS="--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit" path/to/your/program
 ```
 
+Auto-clustering support on a CPU and on multi-GPU environments is experimental.
+
 For a detailed usage example, see the
 [auto-clustering tutorial colab](./tutorials/autoclustering_xla.ipynb).
 
 ### Explicit compilation
 
 Explicit compilation API offers a more fine-grained control for choosing which
-functions should be compiled with XLA. However, it requires restructuring source
-code, as not all TensorFlow operations can be represented in XLA. That is, using
-explicit compilation on API on functions which can not be represented in XLA
-results in an exception.
+functions should be compiled with XLA. However, it might require restructuring
+of the source code, as not all TensorFlow operations can be represented in XLA.
 
-#### TF2: Use `@tf.function(experimental_compile=True)`
+Note: Using the explicit compilation on API on functions which can not be
+represented in XLA results in an exception.
 
 Optimizing sections of the program using
 [`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function) is a
-standard approach for
-[improving performance](https://www.tensorflow.org/tutorials/customization/performance)
-of TF2 programs. You can enable compilation with XLA by setting the
-`experimental_compile` argument of `tf.function` to `True`.
-
-Note: `experimental_compile` only works in
-[eager](https://www.tensorflow.org/guide/eager) mode.
-
-#### TF1: Use `xla.compile`
-
-If you are using TF1, you can use the `xla.compile` API for explicit compilation
-using XLA. See the [tutorial colab](./tutorials/xla_compile.ipynb) for usage
-examples.
-
-Note: Gradient computation of graph in `xla.compile()` is prohibited because it
-can cause performance degradation. To avoid this issue, move gradient
-computation inside `xla.compile()`.
+standard approach for [improving
+performance](https://www.tensorflow.org/tutorials/customization/performance) of
+TF2 programs. You can enable compilation with XLA by setting the
+`experimental_compile` argument of `tf.function` to `True`. See the [tutorial
+colab](./tutorials/compile.ipynb) for usage examples.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 
 You can also use a standalone [`tfcompile`](./tfcompile) tool,
-which converts TensorFlow graph into executable code (for CPU only).
+which converts TensorFlow graph into executable code (for x86-64 CPU only).
 
 ## Inspect compiled programs
 
@@ -146,13 +135,7 @@ the TensorFlow graph with:
 $ TF_DUMP_GRAPH_PREFIX=/tmp/generated TF_XLA_FLAGS="--tf_xla_clustering_debug"
 ```
 
-## Supported platforms
-
-Auto-clustering is supported on NVIDIA GPUs, and ahead-of-time compilation is
-supported on x86-64 CPUs. Auto-clustering support on multi-GPU environments and
-on a CPU is experimental.
-
-## Generating great bug reports
+## Reproducible bug reports
 
 A bug report is much easier to reproduce if it includes dumps for the generated
 XLA programs and the used auto-clustering embedding.

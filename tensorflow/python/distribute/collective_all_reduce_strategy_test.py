@@ -357,7 +357,7 @@ class CollectiveAllReduceStrategyTestBase(
          self.cached_session(config=config,
                              target=master_target) as sess:
       iterator = distribution.make_input_fn_iterator(input_fn)
-      sess.run(iterator.initialize())
+      sess.run(iterator.initializer)
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
@@ -375,7 +375,7 @@ class CollectiveAllReduceStrategyTestBase(
 
       # After re-initializing the iterator, should be able to iterate again.
       if test_reinitialize:
-        sess.run(iterator.initialize())
+        sess.run(iterator.initializer)
 
         for expected_value in expected_values:
           next_element = iterator.get_next()

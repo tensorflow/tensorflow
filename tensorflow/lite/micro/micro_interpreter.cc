@@ -16,30 +16,12 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 
 namespace tflite {
 namespace {
-const size_t kStackDataAllocatorSize = 128;
-class StackDataAllocator : public BuiltinDataAllocator {
- public:
-  void* Allocate(size_t size) override {
-    if (size > kStackDataAllocatorSize) {
-      return nullptr;
-    } else {
-      return data_;
-    }
-  }
-  void Deallocate(void* data) override {
-    // Do nothing.
-  }
-
- private:
-  uint8_t data_[kStackDataAllocatorSize];
-
-  TF_LITE_REMOVE_VIRTUAL_DELETE
-};
 
 const char* OpNameFromRegistration(const TfLiteRegistration* registration) {
   if (registration->builtin_code == BuiltinOperator_CUSTOM) {
@@ -252,43 +234,20 @@ TfLiteTensor* MicroInterpreter::tensor(size_t index) {
   return &context_.tensors[index];
 }
 
-struct pairTfLiteNodeAndRegistration MicroInterpreter::node_and_registration(
-    int node_index) {
-  TfLiteStatus status = kTfLiteOk;
-  struct pairTfLiteNodeAndRegistration tfNodeRegiPair;
-  auto opcodes = model_->operator_codes();
-  {
-    const auto* op = operators_->Get(node_index);
-    size_t index = op->opcode_index();
-    if (index < 0 || index >= opcodes->size()) {
-      error_reporter_->Report("Missing registration for opcode_index %d\n",
-                              index);
+TfLiteStatus MicroInterpreter::ResetVariableTensors() {
+  const size_t length = tensors_size();
+  for (size_t i = 0; i < length; ++i) {
+    TfLiteTensor* cur_tensor = tensor(i);
+    if (cur_tensor->is_variable) {
+      TfLiteStatus status = tflite::ResetVariableTensor(cur_tensor);
+      if (status != kTfLiteOk) {
+        error_reporter_->Report("Failed to reset variable tensor at index: %d",
+                                i);
+        return status;
+      }
     }
-    auto opcode = (*opcodes)[index];
-    const TfLiteRegistration* registration = nullptr;
-    status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
-                                       &registration);
-    if (status != kTfLiteOk) {
-      error_reporter_->Report("Missing registration for opcode_index %d\n",
-                              index);
-    }
-    if (registration == nullptr) {
-      error_reporter_->Report("Skipping op for opcode_index %d\n", index);
-    }
-
-    // Disregard const qualifier to workaround with existing API.
-    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
-    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
-
-    TfLiteNode node;
-    node.inputs = inputs_array;
-    node.outputs = outputs_array;
-    tfNodeRegiPair.node = node;
-    tfNodeRegiPair.registration = registration;
   }
-  return tfNodeRegiPair;
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

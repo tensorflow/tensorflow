@@ -39,16 +39,6 @@ limitations under the License.
     return NULL;
   }
 
-#ifdef HAS_GLOBAL_STRING
-  template<>
-      bool _PyObjAs(PyObject *pystr, ::string* cstr) {
-    char *buf;
-    Py_ssize_t len;
-    if (PyBytes_AsStringAndSize(pystr, &buf, &len) == -1) return false;
-    if (cstr) cstr->assign(buf, len);
-    return true;
-  }
-#endif
   template<>
       bool _PyObjAs(PyObject *pystr, std::string* cstr) {
     char *buf;
@@ -57,12 +47,6 @@ limitations under the License.
     if (cstr) cstr->assign(buf, len);
     return true;
   }
-#ifdef HAS_GLOBAL_STRING
-  template<>
-      PyObject* _PyObjFrom(const ::string& c) {
-    return PyBytes_FromStringAndSize(c.data(), c.size());
-  }
-#endif
   template<>
       PyObject* _PyObjFrom(const std::string& c) {
     return PyBytes_FromStringAndSize(c.data(), c.size());

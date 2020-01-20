@@ -314,7 +314,6 @@ def update_confusion_matrix_variables(variables_to_update,
                                                                sample_weight)
     num_thresholds = len(to_list(thresholds))
     one_thresh = math_ops.cast(True, dtype=dtypes.bool)
-  y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   if not any(
       key for key in variables_to_update if key in list(ConfusionMatrix)):
@@ -349,6 +348,7 @@ def update_confusion_matrix_variables(variables_to_update,
       y_pred, y_true, sample_weight = (
           tf_losses_utils.squeeze_or_expand_dimensions(
               y_pred, y_true, sample_weight=sample_weight))
+  y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   if top_k is not None:
     y_pred = _filter_top_k(y_pred, top_k)

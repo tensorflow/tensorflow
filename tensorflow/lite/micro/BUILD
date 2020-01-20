@@ -13,6 +13,14 @@ package(
 )
 
 cc_library(
+    name = "micro_compatibility",
+    hdrs = [
+        "compatibility.h",
+    ],
+    build_for_embedded = True,
+)
+
+cc_library(
     name = "micro_framework",
     srcs = [
         "debug_log.cc",
@@ -21,13 +29,11 @@ cc_library(
         "micro_allocator.cc",
         "micro_error_reporter.cc",
         "micro_interpreter.cc",
-        "micro_mutable_op_resolver.cc",
         "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
         "test_helpers.cc",
     ],
     hdrs = [
-        "compatibility.h",
         "debug_log.h",
         "debug_log_numbers.h",
         "memory_helpers.h",
@@ -46,6 +52,7 @@ cc_library(
         "-Wsign-compare",
     ],
     deps = [
+        ":micro_compatibility",
         ":micro_utils",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
@@ -99,6 +106,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        ":micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

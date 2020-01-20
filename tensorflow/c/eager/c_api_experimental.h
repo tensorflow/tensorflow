@@ -29,10 +29,10 @@ extern "C" {
 // and set the device name. It's effectively `TFE_OpSetDevice`, but it is faster
 // than seperately calling it because if the existing op has the same
 // `raw_device_name`, it skips parsing and just leave as it is.
-TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Context* ctx,
+TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
                                        const char* op_or_function_name,
                                        const char* raw_device_name,
-                                       TF_Status* status, TFE_Op* op_to_reset);
+                                       TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);

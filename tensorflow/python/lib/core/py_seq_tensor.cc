@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -23,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
+#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
@@ -67,7 +70,7 @@ bool IsPyFloat(PyObject* obj) {
 
 struct ConverterState {
   // The inferred tensor shape.
-  TensorShape inferred_shape;
+  gtl::InlinedVector<int64, 4> inferred_shape;
 
   // The inferred tensor data type.
   DataType inferred_dtype;
@@ -155,14 +158,14 @@ Status InferShapeAndType(PyObject* obj, ConverterState* state) {
     } else if (PySequence_Check(obj)) {
       auto length = PySequence_Length(obj);
       if (length > 0) {
-        state->inferred_shape.AddDim(length);
+        state->inferred_shape.push_back(length);
         PyObject* elem = nullptr;
         TF_RETURN_IF_ERROR(SampleElementFromSequence(obj, &elem));
         obj = elem;
         refs_to_clean.push_back(make_safe(obj));
         continue;
       } else if (length == 0) {
-        state->inferred_shape.AddDim(length);
+        state->inferred_shape.push_back(length);
         state->inferred_dtype = DT_INVALID;  // Invalid dtype for empty tensors.
       } else {
         // The sequence does not have a valid length (PySequence_Length < 0).
@@ -247,12 +250,12 @@ struct Converter {
     Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));
     if (TF_PREDICT_FALSE(seq == nullptr)) return ErrorRectangular;
 
-    const int64 s = state->inferred_shape.dim_size(depth);
+    const int64 s = state->inferred_shape[depth];
     if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {
       return ErrorRectangular;
     }
 
-    if (state->inferred_shape.dims() - depth > 1) {
+    if (state->inferred_shape.size() - depth > 1) {
       /* Iterate over outer dim, and recursively convert each element. */
       for (int64 i = 0; i < s; ++i) {
         const char* error = Helper(PySequence_Fast_GET_ITEM(seq.get(), i),
@@ -272,24 +275,31 @@ struct Converter {
     return nullptr;
   }
 
-  static const char* Convert(PyObject* obj, ConverterState* state,
-                             Tensor* dest) {
+  static Status Convert(TFE_Context* ctx, PyObject* obj, ConverterState* state,
+                        TFE_TensorHandle** h, const char** error) {
     /* TODO(josh11b): Allocator & attributes? */
-    Tensor result(ConverterTraits<T>::kTypeEnum, state->inferred_shape);
-    if (state->inferred_shape.dims() == 0) { /* Scalar case */
+    Tensor result(ConverterTraits<T>::kTypeEnum,
+                  TensorShape(state->inferred_shape));
+    if (state->inferred_shape.empty()) { /* Scalar case */
       T value;
       auto scalar = ZeroDimArrayToScalar(obj, state);
-      const char* error = ConverterTraits<T>::ConvertScalar(scalar, &value);
+      *error = ConverterTraits<T>::ConvertScalar(scalar, &value);
       Py_DECREF(scalar);
-      if (error != nullptr) return error;
+      if (*error != nullptr) return errors::InvalidArgument(*error);
       result.scalar<T>()() = value;
     } else {
       T* buf = result.flat<T>().data();
-      const char* error = Helper(obj, 0, state, &buf);
-      if (error != nullptr) return error;
+      *error = Helper(obj, 0, state, &buf);
+      if (*error != nullptr) return errors::InvalidArgument(*error);
     }
-    *dest = result;
-    return nullptr;
+    tensorflow::TensorHandle* handle = nullptr;
+    auto status = tensorflow::TensorHandle::CreateLocalHandle(
+        result, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
+    if (!status.ok()) {
+      return status;
+    }
+    *h = new TFE_TensorHandle{std::make_unique<TensorHandleInterface>(handle)};
+    return Status::OK();
   }
 };
 
@@ -590,136 +600,230 @@ struct ConverterTraits<bool> {
 
 typedef Converter<bool> BoolConverter;
 
+// Convert a Python numpy.ndarray object to a TFE_TensorHandle.
+// The two may share underlying storage so changes to one may reflect in the
+// other.
+TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
+  tensorflow::TensorHandle* handle;
+  tensorflow::Tensor t;
+  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
+  if (cppstatus.ok()) {
+    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
+        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
+  }
+  if (!cppstatus.ok()) {
+    PyErr_SetString(PyExc_ValueError,
+                    tensorflow::strings::StrCat(
+                        "Failed to convert a NumPy array to a Tensor (",
+                        cppstatus.error_message(), ").")
+                        .c_str());
+    return nullptr;
+  }
+  return new TFE_TensorHandle{
+      std::make_unique<tensorflow::TensorHandleInterface>(handle)};
+}
+
 }  // namespace
 
-#define RETURN_STRING_AS_STATUS(...)                             \
-  do {                                                           \
-    const char* _error = (__VA_ARGS__);                          \
-    if (TF_PREDICT_TRUE(_error == nullptr)) return Status::OK(); \
-    return errors::InvalidArgument(_error);                      \
-  } while (0)
+// TODO(b/147743551): This function handles enough conversions to justify
+// promoting to something like PyObjectToTensorHandle.
+// TODO(b/147828820): Handle Tensors properly.
+TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
+                                          DataType dtype) {
+  // Shortcut: __array__ objects (such as Pandas data frames).
+  // These objects are efficiently handled by Numpy. We transform them into
+  // Numpy arrays and handle them in the Numpy case below. Note that Tensors
+  // implement the __array__ function, and will be handled in this shortcut.
+  Safe_PyObjectPtr array =
+      make_safe(PyArray_FromArrayAttr(obj, nullptr, nullptr));
+  if (array == nullptr) {
+    return nullptr;
+  }
+  if (array.get() == Py_NotImplemented) {
+    // The Py_NotImplemented returned from PyArray_FromArrayAttr is not
+    // Py_INCREF'ed, so we don't want the Safe_PyObjectPtr to Py_DECREF it.
+    array.release();
+  } else {
+    // PyArray_FromArrayAttr ensures that `array` is a PyArrayObject, so all
+    // we have to do is replace `obj` with it and continue.
+    obj = array.get();
+  }
 
-Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret) {
+  // Shortcut: Numpy arrays.
+  if (PyArray_Check(obj)) {
+    int desired_np_dtype = -1;
+    if (dtype != tensorflow::DT_INVALID) {
+      if (!tensorflow::TF_DataType_to_PyArray_TYPE(
+               static_cast<TF_DataType>(dtype), &desired_np_dtype)
+               .ok()) {
+        PyErr_SetString(
+            PyExc_TypeError,
+            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
+                .c_str());
+        return nullptr;
+      }
+    }
+
+    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(obj);
+    int array_dtype = PyArray_TYPE(array);
+
+    Safe_PyObjectPtr safe_value(nullptr);
+    // Use Numpy to convert between types if needed.
+    if ((desired_np_dtype >= 0 && desired_np_dtype != array_dtype) ||
+        !PyArray_ISCARRAY(array)) {
+      int new_dtype = desired_np_dtype >= 0 ? desired_np_dtype : array_dtype;
+      safe_value = tensorflow::make_safe(
+          PyArray_FromAny(obj, PyArray_DescrFromType(new_dtype), 0, 0,
+                          NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST, nullptr));
+      if (PyErr_Occurred()) return nullptr;
+      if (safe_value == nullptr) {
+        PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
+      }
+      obj = safe_value.get();
+    }
+    return NumpyToTFE_TensorHandle(ctx, obj);
+  }
+
   ConverterState state;
-  TF_RETURN_IF_ERROR(InferShapeAndType(obj, &state));
+  Status status = InferShapeAndType(obj, &state);
+  if (!status.ok()) {
+    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    return nullptr;
+  }
   DataType requested_dtype = DT_INVALID;
   if (dtype != DT_INVALID) {
     requested_dtype = dtype;
   }
+
   // NOTE(josh11b): If don't successfully convert to the requested type,
   // we just try instead to create a tensor of the inferred type and
   // let the caller convert it to the requested type using a cast
   // operation.
+  const char* error = nullptr;
+  TFE_TensorHandle* handle = nullptr;
+  status = errors::Unimplemented("Missing Python -> Tensor conversion for ",
+                                 DataTypeString(state.inferred_dtype));
   switch (requested_dtype) {
     case DT_FLOAT:
-      if (FloatConverter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = FloatConverter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_DOUBLE:
-      if (DoubleConverter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = DoubleConverter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_HALF:
-      if (NumpyHalfConverter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = NumpyHalfConverter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_INT64:
-      if (Int64Converter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = Int64Converter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_INT32:
-      if (Int32Converter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = Int32Converter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_UINT64:
-      if (UInt64Converter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = UInt64Converter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_COMPLEX128:
-      if (Complex128Converter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = Complex128Converter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_STRING:
-      if (StringConverter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = StringConverter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_BOOL:
-      if (BoolConverter::Convert(obj, &state, ret) == nullptr)
-        return Status::OK();
+      status = BoolConverter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     default:
       break;
   }
+  if (status.ok()) return handle;
+
   switch (state.inferred_dtype) {
     case DT_FLOAT:
       // TODO(josh11b): Handle mixed floats and complex numbers?
       if (requested_dtype == DT_INVALID) {
         // TensorFlow uses float32s to represent floating point numbers
         // by default (for space and speed over using doubles).
-        RETURN_STRING_AS_STATUS(FloatConverter::Convert(obj, &state, ret));
+        status = FloatConverter::Convert(ctx, obj, &state, &handle, &error);
       } else {
         // We are going to do a cast to the user's requested dtype
         // after this.  We use doubles for this intermediate result so
         // we don't lose precision that might be representable in the
         // final type.
-        RETURN_STRING_AS_STATUS(DoubleConverter::Convert(obj, &state, ret));
+        status = DoubleConverter::Convert(ctx, obj, &state, &handle, &error);
       }
+      break;
 
     case DT_DOUBLE:
-      RETURN_STRING_AS_STATUS(DoubleConverter::Convert(obj, &state, ret));
+      status = DoubleConverter::Convert(ctx, obj, &state, &handle, &error);
+      break;
 
     case DT_HALF:
-      RETURN_STRING_AS_STATUS(NumpyHalfConverter::Convert(obj, &state, ret));
+      status = NumpyHalfConverter::Convert(ctx, obj, &state, &handle, &error);
+      break;
 
     case DT_INT64:
       if (requested_dtype == DT_INVALID) {
-        const char* error = Int32Converter::Convert(obj, &state, ret);
+        status = Int32Converter::Convert(ctx, obj, &state, &handle, &error);
         if (error == ErrorFoundInt64) {
-          error = Int64Converter::Convert(obj, &state, ret);
+          status = Int64Converter::Convert(ctx, obj, &state, &handle, &error);
         }
         if (error == ErrorFoundFloat) {
-          error = FloatConverter::Convert(obj, &state, ret);
+          status = FloatConverter::Convert(ctx, obj, &state, &handle, &error);
         }
         // TODO(josh11b): May also want to fall back to using doubles if
         // error == ErrorOutOfRange?
-        RETURN_STRING_AS_STATUS(error);
       } else {
-        const char* error = Int64Converter::Convert(obj, &state, ret);
+        status = Int64Converter::Convert(ctx, obj, &state, &handle, &error);
         if (error == ErrorFoundFloat) {
-          error = DoubleConverter::Convert(obj, &state, ret);
+          status = DoubleConverter::Convert(ctx, obj, &state, &handle, &error);
         }
-        RETURN_STRING_AS_STATUS(error);
       }
+      break;
 
     case DT_STRING:
-      RETURN_STRING_AS_STATUS(StringConverter::Convert(obj, &state, ret));
+      status = StringConverter::Convert(ctx, obj, &state, &handle, &error);
+      break;
 
     case DT_COMPLEX128:
-      RETURN_STRING_AS_STATUS(Complex128Converter::Convert(obj, &state, ret));
+      status = Complex128Converter::Convert(ctx, obj, &state, &handle, &error);
+      break;
 
     case DT_BOOL:
-      RETURN_STRING_AS_STATUS(BoolConverter::Convert(obj, &state, ret));
+      status = BoolConverter::Convert(ctx, obj, &state, &handle, &error);
+      break;
 
     case DT_INVALID:  // Only occurs for empty tensors.
-      *ret = Tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
-                    state.inferred_shape);
-      return Status::OK();
+    {
+      tensorflow::TensorHandle* h = nullptr;
+      Tensor tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
+                    TensorShape(state.inferred_shape));
+      status = tensorflow::TensorHandle::CreateLocalHandle(
+          tensor, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &h);
+      if (!status.ok()) {
+        PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+        return nullptr;
+      }
+      return new TFE_TensorHandle{std::make_unique<TensorHandleInterface>(h)};
+    }
 
     default:
-      return errors::Unimplemented("Missing Python -> Tensor conversion for ",
-                                   DataTypeString(state.inferred_dtype));
+      break;
   }
 
-  return Status::OK();
+  if (!status.ok()) {
+    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    return nullptr;
+  }
+
+  return handle;
 }
 
 }  // namespace tensorflow

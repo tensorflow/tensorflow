@@ -18,8 +18,9 @@ limitations under the License.
 
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:llvm-project
+#include "mlir/EDSC/Helpers.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 
 namespace mlir {
 namespace xla_lhlo {
@@ -52,7 +53,7 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
       const SmallVector<int64_t, 2> tile_sizes(
           generic_op.getNumInputsAndOutputs(), 1);
       auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (const Value result : op.getOutputs()) {
+      for (const Value result : op.getOutputBuffers()) {
         if (!func_args.count(result)) continue;
         if (linalg::tileLinalgOp(b, op, tile_sizes, /*permutation=*/{},
                                  &folder)) {

@@ -36,6 +36,8 @@ from tensorflow.python.eager import eager_util as c_api_util
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import errors
+from tensorflow.python.tpu import topology
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
@@ -427,6 +429,8 @@ class Context(object):
     self._soft_device_placement = None
     self._log_device_placement = None
     self._enable_mlir_bridge = None
+    self._tpu_topologies_by_job = {}
+    self._attempted_tpu_initialization = set()
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -459,6 +463,24 @@ class Context(object):
     """
     return self._rng.randint(0, _MAXINT32)
 
+  def _maybe_initialize_tpu_system(self, job):
+    """Initializes TPUs associated with `job` if necessary."""
+    if job in self._attempted_tpu_initialization:
+      return
+    self._attempted_tpu_initialization.add(job)
+    try:
+      with c_api_util.tf_buffer() as buffer_:
+        pywrap_tfe.TFE_InitializeTPUSystem(self._context_handle, job, buffer_)
+        topology_proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
+    except errors.NotFoundError:
+      pass
+    else:
+      # TODO(b/134094971): Remove this when lazy tensor copy in multi-device
+      # function has been implemented.
+      self.mirroring_policy = MIRRORING_ALL
+      parsed_topology = topology.Topology(serialized=topology_proto_data)
+      self._tpu_topologies_by_job[job] = parsed_topology
+
   def _initialize_logical_devices(self):
     """Helper to initialize devices."""
     # Store list of devices
@@ -471,6 +493,8 @@ class Context(object):
         dev_name = pywrap_tfe.TF_DeviceListName(device_list, i)
         context_devices.append(pydev.canonical_name(dev_name))
         spec = pydev.DeviceSpec.from_string(dev_name)
+
+        self._maybe_initialize_tpu_system(spec.job)
         # If the job is localhost, we assume that the cluster has not yet been
         # configured and thus clear the job, replica & task.
         if spec.job == "localhost":
@@ -590,6 +614,10 @@ class Context(object):
 
     if self._context_handle:
       server_def_str = server_def.SerializeToString()
+      # Current executor might have pending nodes that involves updated remote
+      # devices. Wait for them to finish before updating.
+      self.executor.wait()
+      self.executor.clear_error()
       pywrap_tfe.TFE_ContextUpdateServerDef(self._context_handle,
                                             keep_alive_secs, server_def_str)
       self._initialize_logical_devices()
@@ -1410,6 +1438,18 @@ class Context(object):
     self._thread_local_data.function_call_options = None
 
   @property
+  def tpu_topologies(self):
+    """A sequence of TPU topologies for connected TPU systems."""
+    ensure_initialized()
+    return tuple(self._tpu_topologies_by_job.values())
+
+  @property
+  def tpu_topologies_by_job(self):
+    """A mapping from job name to TPU topology for connected TPU systems."""
+    ensure_initialized()
+    return self._tpu_topologies_by_job
+
+  @property
   def log_device_placement(self):
     return self.config.log_device_placement
 
@@ -1905,16 +1945,19 @@ def set_execution_mode(mode):
 @tf_contextlib.contextmanager
 def execution_mode(mode):
   """Context manager for setting execution mode for current thread."""
-  ctx = context()
-  executor_new = executor.new_executor(mode == ASYNC)
-  executor_old = ctx.executor
-  try:
-    executor_old.wait()
-    ctx.executor = executor_new
+  if mode is None:
     yield
-  finally:
-    ctx.executor = executor_old
-    executor_new.wait()
+  else:
+    ctx = context()
+    executor_new = executor.new_executor(mode == ASYNC)
+    executor_old = ctx.executor
+    try:
+      executor_old.wait()
+      ctx.executor = executor_new
+      yield
+    finally:
+      ctx.executor = executor_old
+      executor_new.wait()
 
 
 @tf_contextlib.contextmanager

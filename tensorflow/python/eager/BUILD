@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -153,18 +154,21 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//tensorflow/python/tpu:topology",
         "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "context_test",
     size = "small",
     srcs = ["context_test.py"],
+    main = "context_test.py",
     python_version = "PY3",
     deps = [
         ":context",
         ":test",
+        "//tensorflow/python/tpu",
     ],
 )
 
@@ -775,6 +779,8 @@ tf_xla_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
+        # TODO(b/145618471): Remove this transitive dependency.
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python:framework_ops",
     ],
 )

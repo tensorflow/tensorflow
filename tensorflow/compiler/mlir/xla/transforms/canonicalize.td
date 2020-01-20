@@ -29,7 +29,7 @@ def BuildSliceLimits : NativeCodeCall<
 
 def BuildSliceStrides : NativeCodeCall<
   "GetI64ElementsAttr(SmallVector<int64_t, 4>("
-  "$0->getType().cast<RankedTensorType>().getRank(), 1), &$_builder)">;
+  "$0.getType().cast<RankedTensorType>().getRank(), 1), &$_builder)">;
 
 def DynamicSliceToSlice: Pat<(HLO_DynamicSliceOp HLO_Tensor:$input,
            (HLO_ConstOp I64ElementsAttr:$starting_indices),

@@ -100,10 +100,10 @@ class TextVectorization(CombinerPreprocessingLayer):
        this object you should only pass functions that are registered Keras
        serializables (see `tf.keras.utils.register_keras_serializable` for more
        details).
-    2) When using a custom callable for `standardize`, the data recieved
+    2) When using a custom callable for `standardize`, the data received
        by the callable will be exactly as passed to this layer. The callable
        should return a tensor of the same shape as the input.
-    3) When using a custom callable for `split`, the data recieved by the
+    3) When using a custom callable for `split`, the data received by the
        callable will have the 1st dimension squeezed out - instead of
        `[["string to split"], ["another string to split"]]`, the Callable will
        see `["string to split", "another string to split"]`. The callable should
@@ -297,7 +297,13 @@ class TextVectorization(CombinerPreprocessingLayer):
           "Saving is not yet supported for TextVectorization layers.")
     self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
 
-    self._add_trackable(self._table, trainable=False)
+    tracked_table = self._add_trackable(self._table, trainable=False)
+
+    # This is a workaround for summary() on this layer. Because the table is
+    # not mutable during training, the effective number of parameters (and so
+    # the weight shape) is 0; we add this as an attr so that the parameter
+    # counting code in the Model object doesn't throw an attribute error.
+    tracked_table.shape = tensor_shape.TensorShape((0,))
 
     # We are adding this here instead of in build() since it does not depend
     # on the input shape at all.
@@ -439,6 +445,13 @@ class TextVectorization(CombinerPreprocessingLayer):
     }
     base_config = super(TextVectorization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  def count_params(self):
+    # This method counts the number of scalars in the weights of this layer.
+    # Since this layer doesn't have any /actual/ weights (in that there's
+    # nothing in this layer that can be trained - we only use the weight
+    # abstraction for ease of saving!) we return 0.
+    return 0
 
   def set_vocabulary(self,
                      vocab,

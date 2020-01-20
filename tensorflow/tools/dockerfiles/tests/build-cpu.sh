@@ -18,7 +18,7 @@
 set -ex
 git clone --branch=master --depth=1 https://github.com/tensorflow/tensorflow.git /tensorflow || true
 cd /tensorflow
-ln -snf $(which ${PYTHON}) /usr/local/bin/python 
+ln -snf $(which ${PYTHON}) /usr/local/bin/python
 # Run configure.
 export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
@@ -31,8 +31,8 @@ export PYTHON_BIN_PATH=$(which python3.7)
 export TMP=/tmp
 yes "" | /usr/local/bin/python configure.py
 
-# Build the pip package and import
+# Build the pip package and install it
 bazel build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" --config=opt --config=v2 tensorflow/tools/pip_package:build_pip_package
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --gpu --nightly_flag
-pip --no-cache-dir install --upgrade /tmp/pip/tensorflow-*.whl
-
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip_pkg --cpu --nightly_flag
+ls -al /tmp/pip_pkg
+pip --no-cache-dir install --upgrade /tmp/pip_pkg/tensorflow*.whl

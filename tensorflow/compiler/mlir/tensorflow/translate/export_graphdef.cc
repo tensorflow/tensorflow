@@ -27,18 +27,20 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -55,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -65,7 +68,6 @@ CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
-using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 using mlir::BlockArgument;
@@ -99,38 +101,26 @@ std::string LegalizeNodeName(llvm::StringRef name) {
   assert(!name.empty() && "expected non-empty name");
 
   std::string legalized_name;
-  for (auto it = name.begin(); it != name.end(); ++it) {
-    if (IsLegalChar(*it, it == name.begin())) {
-      legalized_name += *it;
+  bool first = true;
+  for (auto c : name) {
+    if (IsLegalChar(c, first)) {
+      legalized_name += c;
     } else {
       legalized_name += '.';
     }
+    first = false;
   }
 
   return legalized_name;
 }
 
-// TODO(jpienaar): unify and move from here to be able to reuse with tflite
-std::string GetName(Operation* inst) {
-  // TODO(prakalps): b/137006652 prevents us from using location info (derived
-  // from experimental_debug_info) to generate node names. Until it is fixed,
-  // first check for "name" attribute to get node name.
-
-  // Default name is Operation type.
-  auto name = inst->getName().getStringRef();
-  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    name = attr.getValue();
-  } else if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>()) {
-    name = name_loc.getName().strref();
-  } else if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
-    // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
-    // if imported with DebugInfo), else use the fallback naming scheme below.
-    if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      name = name_loc.getName().strref();
+// OpOrArgLocNameMapper that legalizes the returned name.
+class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
+ private:
+  std::string GetName(OpOrVal op_or_val) override {
+    return LegalizeNodeName(OpOrArgLocNameMapper::GetName(op_or_val));
   }
-
-  return LegalizeNodeName(name);
-}
+};
 
 // Stateful helper class to export a function into a Graph.
 class Exporter {
@@ -179,15 +169,8 @@ class Exporter {
   // an index is used to find out the right operand of the dst_node.
   Status AddEdgeBetweenNodes(Value src, Node* dst_node, unsigned dst_index);
 
-  // Returns a unique name for `op`.
-  std::string UniqueName(Operation* op);
-
-  // Returns a unique name starting with a given prefix.
-  std::string UniqueName(llvm::StringRef prefix);
-
   Graph* graph_;
-  absl::flat_hash_map<Operation*, string> op_to_name_;
-  absl::flat_hash_map<string, int64> name_to_count_;
+  LegalizedOpOrValLocNameMapper op_to_name_;
   absl::flat_hash_map<Operation*, Node*> nodes_;
   llvm::DenseMap<BlockArgument, Node*> args_;
   // One single return operation can return multiple results, and each of them
@@ -203,48 +186,27 @@ class Exporter {
   // are inserted to the name_to_inst_ first, and the other "sink" operation
   // can be paired by checking this map and both are inserted to the
   // source_to_sink_ map.
-  absl::flat_hash_map<string, Operation*> name_to_inst_;
+  llvm::StringMap<Operation*> name_to_inst_;
   absl::flat_hash_map<Operation*, Operation*> source_to_sink_;
 
   const mlir::Dialect* tf_dialect_;
 };
 
-std::string Exporter::UniqueName(llvm::StringRef prefix) {
-  // Keep incrementing the counter until we find a unique name.
-  std::string name = prefix;
-  int64& prefix_count = name_to_count_[name];
-  int64 val = prefix_count;
-  while (val != 0) {
-    name = (prefix + llvm::Twine(prefix_count)).str();
-    ++prefix_count;
-    val = name_to_count_[name];
-  }
-  name_to_count_[name] = 1;
-  return name;
-}
-
-std::string Exporter::UniqueName(Operation* op) {
-  auto& name = op_to_name_[op];
-  if (!name.empty()) return name;
-  name = UniqueName(GetName(op));
-  return name;
-}
-
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument arg, unsigned index, llvm::StringRef name) {
-  auto func = arg->getParentRegion()->getParentOfType<mlir::FuncOp>();
+  auto func = arg.getParentRegion()->getParentOfType<mlir::FuncOp>();
 
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(UniqueName(func.getName().str()));
+    node_def->set_name(op_to_name_.GetUniqueName(func.getName().str()));
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
 
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
-      arg->getType().cast<mlir::TensorType>().getElementType(), &dtype));
+      arg.getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
@@ -275,14 +237,14 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(
-        UniqueName(inst->getParentOfType<mlir::FuncOp>().getName().str()));
+    node_def->set_name(op_to_name_.GetUniqueName(
+        inst->getParentOfType<mlir::FuncOp>().getName().str()));
 
   node_def->set_op(FunctionLibraryDefinition::kRetOp);
   auto inst_op = inst->getOperand(index);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
-      inst_op->getType().cast<mlir::TensorType>().getElementType(), &dtype));
+      inst_op.getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
@@ -294,8 +256,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
 
 Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
                                      unsigned dst_index) {
-  if (auto input_result = src->dyn_cast<mlir::OpResult>()) {
-    auto* input_inst = input_result->getOwner();
+  if (auto input_result = src.dyn_cast<mlir::OpResult>()) {
+    auto* input_inst = input_result.getOwner();
     // replaces the input node by the sink one if it is an NextIteration source:
     auto it = source_to_sink_.find(input_inst);
     if (it != source_to_sink_.end()) {
@@ -304,16 +266,16 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
     auto node_it = nodes_.find(input_inst);
     TF_RET_CHECK(node_it != nodes_.end())
         << "Use of OpResult encountered before def!";
-    if (input_result->getType().isa<mlir::TFControlFlow::TFControlType>()) {
+    if (input_result.getType().isa<mlir::TFControlFlow::TFControlType>()) {
       graph_->AddControlEdge(node_it->second, dst_node);
     } else {
-      graph_->AddEdge(node_it->second, input_result->getResultNumber(),
-                      dst_node, dst_index);
+      graph_->AddEdge(node_it->second, input_result.getResultNumber(), dst_node,
+                      dst_index);
     }
     return Status::OK();
   }
 
-  auto input_arg = src->cast<BlockArgument>();
+  auto input_arg = src.cast<BlockArgument>();
   auto input_node_it = args_.find(input_arg);
   TF_RET_CHECK(input_node_it != args_.end())
       << "Use of BlockArgument encounted before def!";
@@ -348,7 +310,7 @@ Status Exporter::AddInstructionNode(Operation* inst) {
     return errors::InvalidArgument("std.return is only allowed terminator");
 
   std::unique_ptr<NodeDef> node_def;
-  auto name = UniqueName(inst);
+  auto name = op_to_name_.GetUniqueName(inst);
   // Convert registered TF ops to NodeDef. Only registered ops are handled to
   // ensure that PopulateDerivedAttrs adds the correct attributes.
   TF_ASSIGN_OR_RETURN(node_def,
@@ -357,12 +319,13 @@ Status Exporter::AddInstructionNode(Operation* inst) {
 
   Node* node = graph_->AddNode(*node_def, &status);
   TF_RETURN_IF_ERROR(status);
+  DCHECK(node != nullptr);
   nodes_[inst] = node;
   return Status::OK();
 }
 
 bool IsEntryFunctionArg(BlockArgument arg) {
-  return arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
+  return arg.getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
          "main";
 }
 
@@ -383,39 +346,32 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
   // is an input node. We recover the original input node and skip adding the
   // argument node. The new input node will be handled as normal in the
   // following steps.
-  if (!arg->hasOneUse()) {
+  if (!arg.hasOneUse()) {
     return errors::FailedPrecondition(
         "Arg in 'main' should only have one user.");
   }
-  auto* input = *arg->user_begin();
+  auto* input = *arg.user_begin();
   auto input_name = input->getName().getStringRef();
   input_name.consume_back(".input");
-  mlir::OpBuilder builder(arg->getOwner());
-  auto loc = mlir::NameLoc::get(builder.getIdentifier(UniqueName(input)),
-                                builder.getContext());
+  mlir::OpBuilder builder(arg.getOwner());
+  auto loc = mlir::NameLoc::get(
+      builder.getIdentifier(op_to_name_.GetUniqueName(input)),
+      builder.getContext());
   OperationState state(loc, input_name.str());
   state.attributes.append(input->getAttrs().begin(), input->getAttrs().end());
   for (auto op : input->getOperands()) {
     // Skip the argument in the new operation.
-    if (op->isa<BlockArgument>()) continue;
+    if (op.isa<BlockArgument>()) continue;
     state.operands.push_back(op);
   }
   state.types.append(input->getResultTypes().begin(),
                      input->getResultTypes().end());
   auto* inst = builder.createOperation(state);
-  // If it is one of the specified input names, then the new
-  // instruction should have the same name.
-  auto& mapped_name = op_to_name_[inst];
-  const auto& input_mapped_name = op_to_name_[input];
-  DCHECK(mapped_name.empty())
-      << "AddArgumentNode() attempted to change the op_to_name_ mapping for "
-      << inst << " from " << mapped_name << " to " << input_mapped_name << ".";
-  DCHECK(!input_mapped_name.empty())
-      << "AddArgumentNode() attempted to set the op_to_name_ mapping for "
-      << inst << " to an empty string.";
-  mapped_name.assign(input_mapped_name);
+  // If it is one of the specified input names, then the new instruction should
+  // have the same name.
+  op_to_name_.InitOpName(inst, op_to_name_.GetUniqueName(input));
   for (int index : llvm::seq<int>(0, input->getNumResults())) {
-    input->getResult(index)->replaceAllUsesWith(inst->getResult(index));
+    input->getResult(index).replaceAllUsesWith(inst->getResult(index));
   }
   input->dropAllReferences();
   input->erase();
@@ -445,7 +401,10 @@ Status Exporter::AddReturnNode(mlir::ReturnOp op,
 // - NextIteration "sink" is paired with the "source" with the name attribute.
 //   It is added to the graph like the other operations.
 Status Exporter::AddNextIterationNode(Operation* inst) {
-  auto name = GetName(inst);
+  // TODO(jpienaar): Update the above comment and the importer.
+  // The source and sink nodes are inserted during import with a unique
+  // location.
+  auto name = inst->getLoc().cast<mlir::NameLoc>().getName().strref();
   if (inst->getName().getStringRef().endswith(".source")) {
     name_to_inst_[name] = inst;
     return Status::OK();
@@ -514,36 +473,51 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     TF_RET_CHECK(output_names.size() == term->getNumOperands())
         << "output names (" << output_names.size()
         << ") != terminator operands (" << term->getNumOperands() << ")";
+    llvm::DenseMap<Operation*, llvm::StringRef> output_op_to_name;
+    llvm::StringMap<Operation*> name_to_op;
     for (auto it : llvm::enumerate(term->getOperands())) {
-      exporter.name_to_count_[output_names[it.index()].str()] = 1;
-      // Only assign defining op of operands of the return the output names if
-      // the main graph did not have its _Retval nodes lifted into the functions
-      // returns.
-      if (!graph_as_function) {
-        auto defining_op = it.value()->getDefiningOp();
-        auto& mapped_name = exporter.op_to_name_[defining_op];
-        DCHECK(mapped_name.empty())
-            << "Convert() attempted to change the op_to_name_ mapping for "
-            << defining_op << " from " << mapped_name << " to output "
-            << it.index() << " name " << output_names[it.index()].str() << ".";
-        mapped_name = output_names[it.index()];
+      // If there is a result index specified, ensure only one and that it
+      // matches the result index of the op.
+      auto result = it.value().cast<mlir::OpResult>();
+      std::string orig_name = output_names[it.index()];
+      auto tensor_id = ParseTensorName(orig_name);
+      TF_RET_CHECK(result.getResultNumber() == tensor_id.index());
+      auto name = LegalizeNodeName(
+          llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
+
+      if (graph_as_function) {
+        // Ensure name does not get reused.
+        (void)exporter.op_to_name_.GetUniqueName(name);
+        continue;
+      }
+
+      if (output_op_to_name.insert({it.value().getDefiningOp(), name}).second) {
+        TF_RET_CHECK(name_to_op.insert({name, result.getDefiningOp()}).second)
+            << "multiple operations associated with the same name";
+        exporter.op_to_name_.InitOpName(result.getDefiningOp(), name);
+      } else {
+        TF_RET_CHECK(output_op_to_name[result.getDefiningOp()] == name)
+            << "associating multiple names with the same op not supported";
       }
     }
   }
+
   if (!input_names.empty()) {
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
     for (auto it : llvm::enumerate(function.getArguments())) {
-      exporter.name_to_count_[input_names[it.index()].str()] = 1;
+      // TODO(lyandy): Update when changing feed/fetch import.
+      std::string orig_name = input_names[it.index()];
+      std::string name = LegalizeNodeName(orig_name);
+      auto tensor_id = ParseTensorName(name);
+      TF_RET_CHECK(tensor_id.index() == 0)
+          << "input port designation not supported";
       // Only assign user of argument the input name if the main graph did not
       // have its _Arg nodes lifted into the functions arguments.
-      if (!graph_as_function) {
-        auto first_user = *it.value()->user_begin();
-        auto& mapped_name = exporter.op_to_name_[first_user];
-        DCHECK(mapped_name.empty())
-            << "Convert() attempted to change the op_to_name_ mapping for "
-            << first_user << " from " << mapped_name << " to input "
-            << it.index() << " name " << input_names[it.index()].str() << ".";
-        mapped_name = input_names[it.index()];
+      if (graph_as_function) {
+        // Ensure name does not get reused.
+        (void)exporter.op_to_name_.GetUniqueName(name);
+      } else {
+        exporter.op_to_name_.InitOpName(*it.value().user_begin(), name);
       }
     }
   }
@@ -552,7 +526,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   for (auto it : llvm::enumerate(block.getArguments())) {
     int index = it.index();
     auto arg = it.value();
-    mlir::Type type = arg->getType();
+    mlir::Type type = arg.getType();
     if (!type.isa<mlir::TensorType>()) {
       return errors::InvalidArgument(
           "FuncOps arguments must have tensor types. Found ",

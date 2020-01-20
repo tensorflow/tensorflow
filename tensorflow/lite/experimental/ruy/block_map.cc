@@ -24,16 +24,16 @@ limitations under the License.
 #include <string>
 #endif
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 
 namespace ruy {
 
 void GetBlockByIndex(const BlockMap& block_map, int index,
                      SidePair<int>* block) {
-  gemmlowp::ScopedProfilingLabel label("GetBlockByIndex");
+  profiler::ScopeLabel label("GetBlockByIndex");
   const std::uint32_t index_u32 = index;
 
   const std::uint32_t num_blocks_per_local_curve =
@@ -270,7 +270,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
                   int tentative_thread_count, Path path,
                   int cache_friendly_traversal_threshold, BlockMap* block_map) {
-  gemmlowp::ScopedProfilingLabel label("MakeBlockMap");
+  profiler::ScopeLabel label("MakeBlockMap");
 
 #ifdef RUY_MAKEBLOCKMAP_DEBUG
 #if RUY_MAKEBLOCKMAP_DEBUG >= 2
@@ -409,7 +409,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
 
 void GetBlockMatrixCoords(Side side, const BlockMap& block_map, int block,
                           int* start, int* end) {
-  gemmlowp::ScopedProfilingLabel label("GetBlockMatrixCoords");
+  profiler::ScopeLabel label("GetBlockMatrixCoords");
   *start = block * block_map.small_block_dims[side] +
            std::min(block, block_map.large_blocks[side]) *
                block_map.kernel_dims[side];

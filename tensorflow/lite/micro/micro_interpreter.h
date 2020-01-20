@@ -89,12 +89,19 @@ class MicroInterpreter {
     return nullptr;
   }
 
+  // Reset all variable tensors to the default value.
+  TfLiteStatus ResetVariableTensors();
+
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
   ErrorReporter* error_reporter() { return error_reporter_; }
 
   size_t operators_size() const { return operators_->size(); }
-  struct pairTfLiteNodeAndRegistration node_and_registration(int node_index);
+
+  // For debugging only.
+  const NodeAndRegistration node_and_registration(int node_index) const {
+    return node_and_registrations_[node_index];
+  }
 
  private:
   void CorrectTensorEndianness(TfLiteTensor* tensorCorr);

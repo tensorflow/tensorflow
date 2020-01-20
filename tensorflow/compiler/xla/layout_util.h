@@ -49,10 +49,6 @@ class LayoutUtil {
   // dimensions.
   static Layout MakeDescendingLayout(int64 rank);
 
-  // Creates a sparse layout with the given maximum number of elements. (This is
-  // a convenience function for protobuf construction.)
-  static Layout MakeSparseLayout(int64 max_sparse_elements);
-
   // Returns default layout for the given shape.
   static Layout GetDefaultLayoutForShape(const Shape& shape);
 
@@ -108,17 +104,6 @@ class LayoutUtil {
   // * R2+: equivalent to row-major. Dimension 0 is the major, dimension 1 is
   //        more minor, and so on until dimension N-1 which is the minor.
   static bool IsMonotonicWithDim0Major(const Layout& layout);
-
-  // Returns whether the given Shape is an array (i.e. not a tuple) and has a
-  // sparse format layout.
-  static bool IsSparseArray(const Shape& shape);
-
-  // Returns whether the given Layout has a sparse format.
-  static bool IsSparse(const Layout& layout);
-
-  // Returns the maximum number of elements that can be stored in a sparse
-  // layout.
-  static int64 MaxSparseElements(const Layout& layout);
 
   // Returns whether the given shape has a layout. For tuple shapes, true is
   // returned only if all elements have layouts.

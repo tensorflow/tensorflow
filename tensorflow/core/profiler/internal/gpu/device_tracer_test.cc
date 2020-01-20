@@ -33,8 +33,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -241,6 +245,45 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   // Depending on whether this runs on CPU or GPU, we will have a
   // different number of devices.
   EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1);
+}
+
+TEST_F(DeviceTracerTest, TraceToXSpace) {
+  profiler::ProfilerOptions options;
+  auto tracer = CreateGpuTracer(options);
+  if (!tracer) return;
+
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+
+  TF_ASSERT_OK(tracer->Start());
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  TF_ASSERT_OK(tracer->Stop());
+  XSpace space;
+  TF_ASSERT_OK(tracer->CollectData(&space));
+  // At least one gpu plane and one host plane for launching events.
+  EXPECT_NE(FindPlaneWithName(space, kHostThreads), nullptr);
+
+  const XPlane* device_plane =
+      FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
+  EXPECT_NE(device_plane, nullptr);  // Check if device plane is serialized.
+  // Check if device capacity is serialized.
+  XPlaneVisitor plane(device_plane);
+  EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
 }
 
 }  // namespace

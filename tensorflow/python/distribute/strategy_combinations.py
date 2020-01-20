@@ -237,6 +237,13 @@ tpu_strategies = [
 
 all_strategies = strategies_minus_tpu + tpu_strategies
 
+multidevice_strategies = [
+    mirrored_strategy_with_gpu_and_cpu,
+    mirrored_strategy_with_two_gpus,
+    tpu_strategy,  # steps_per_run=2
+    tpu_strategy_one_step
+]
+
 
 def strategy_minus_tpu_combinations():
   return combinations.combine(

@@ -26,8 +26,8 @@ tf_cuda_library(
         "c_api.cc",
         "c_api_debug.cc",
         "c_api_experimental.h",
-        "c_api_internal.cc",
         "c_api_internal.h",
+        "tensor_handle_interface.h",
     ],
     hdrs = ["c_api.h"],
     copts = tf_copts() + tfe_xla_copts(),
@@ -93,6 +93,7 @@ filegroup(
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
+        "tensor_handle_interface.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -102,7 +103,10 @@ filegroup(
 
 tf_cuda_library(
     name = "c_api_internal",
-    srcs = ["c_api_experimental.h"],
+    srcs = [
+        "c_api_experimental.h",
+        "tensor_handle_interface.h",
+    ],
     hdrs = ["c_api_internal.h"],
     visibility = [
         "//learning/deepmind/courier:__subpackages__",
@@ -123,6 +127,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:remote_device",

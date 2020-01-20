@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
@@ -54,7 +54,7 @@ bool IsReadOnlyVariableOp(Operation* op) { return isa<TF::ReadVariableOp>(op); }
 
 void RewriteReadOnlyVariableOpToTensorOp(Operation* op, Value tensor_value) {
   auto read_variable = cast<TF::ReadVariableOp>(op);
-  read_variable.value()->replaceAllUsesWith(tensor_value);
+  read_variable.value().replaceAllUsesWith(tensor_value);
 }
 
 bool IsFreezable(GlobalTensorOp global_tensor,
@@ -74,7 +74,7 @@ bool IsFreezable(GlobalTensorOp global_tensor,
   // or control flow, we fail to prove it is freezable even though we could.
   for (auto& global_tensor_use : global_tensor_uses) {
     auto arg = global_tensor_use.func.getArgument(global_tensor_use.arg_index);
-    for (auto user : arg->getUsers()) {
+    for (auto user : arg.getUsers()) {
       if (!IsReadOnlyVariableOp(user)) {
         return false;
       }
@@ -130,12 +130,12 @@ void FreezeGlobalTensors(ModuleOp module,
       auto func = global_tensor_use.func;
       auto arg_index = global_tensor_use.arg_index;
       Value arg = func.getArgument(arg_index);
-      for (Operation* user : llvm::make_early_inc_range(arg->getUsers())) {
+      for (Operation* user : llvm::make_early_inc_range(arg.getUsers())) {
         RewriteReadOnlyVariableOpToTensorOp(user, arg);
         user->erase();
       }
       Type new_type = global_tensor.value().Attribute::getType();
-      arg->setType(new_type);
+      arg.setType(new_type);
       auto old_ftype = func.getType();
       auto input_types = old_ftype.getInputs().vec();
       input_types[arg_index] = new_type;
@@ -168,7 +168,7 @@ void EraseUnusedBoundInputs(ModuleOp module) {
     SmallVector<unsigned, 4> args_to_erase;
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
       if (func.getArgAttr(i, "tf_saved_model.bound_input") &&
-          func.getArgument(i)->use_empty()) {
+          func.getArgument(i).use_empty()) {
         args_to_erase.push_back(i);
       }
     }

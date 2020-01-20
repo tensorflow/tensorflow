@@ -91,6 +91,13 @@ class TracingCallbackTest(
     self.assertTrue([
         frame for frame in stack_frames if frame[0] == _current_file_full_path])
 
+  def _expectedDefaultDeviceName(self):
+    gpu_name = test_util.gpu_device_name()
+    if gpu_name:
+      return "/job:localhost/replica:0/task:0" + gpu_name
+    else:
+      return "/job:localhost/replica:0/task:0/device:CPU:0"
+
   def testInvalidTensorDebugModeCausesError(self):
     with self.assertRaisesRegexp(
         ValueError,
@@ -147,6 +154,14 @@ class TracingCallbackTest(
         self.assertGreaterEqual(execution.wall_time, prev_wall_time)
         prev_wall_time = execution.wall_time
         executed_op_types.append(execution.op_type)
+        # Check the device name.
+        if execution.op_type in ("AddV2", "Mul", "RealDiv"):
+          self.assertLen(execution.output_tensor_device_ids, 1)
+          self.assertEqual(
+              reader.device_name_by_id(execution.output_tensor_device_ids[0]),
+              self._expectedDefaultDeviceName(),
+              "Unexpected device name from eager op %s" % execution.op_type)
+
         # No graph IDs should have been logged for eager op executions.
         self.assertFalse(execution.graph_id)
         self.assertTrue(execution.input_tensor_ids)
@@ -327,6 +342,35 @@ class TracingCallbackTest(
         self.assertAllClose(
             trace.debug_tensor_value, [tensor_id, 10, 2, 4, 2, 2, 0, 0, 0, 0])
 
+  def testListingSourceFiles(self):
+    writer = dumping_callback.enable_dump_debug_info(self.dump_root)
+    # Run a simple eager execution event, so that the source files are dumped.
+    self.assertAllClose(math_ops.truediv(7.0, 1.0 / 6.0), 42.0)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      source_file_list = reader.source_file_list()
+      self.assertIsInstance(source_file_list, tuple)
+      for item in source_file_list:
+        self.assertIsInstance(item, tuple)
+        self.assertLen(item, 2)
+      self.assertIn((_host_name, _current_file_full_path), source_file_list)
+
+  def testReadingSourceLines(self):
+    writer = dumping_callback.enable_dump_debug_info(self.dump_root)
+    # Run a simple eager execution event, so that the source-file contents are
+    # dumped.
+    self.assertAllClose(math_ops.truediv(7.0, 1.0 / 6.0), 42.0)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      with open(_current_file_full_path, "rt") as f:
+        file_lines = f.read().split("\n")
+      self.assertEqual(
+          reader.source_lines(_host_name, _current_file_full_path), file_lines)
+
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("CurtHealth", "CURT_HEALTH"),
@@ -371,6 +415,13 @@ class TracingCallbackTest(
         self.assertLen(graph.inner_graph_ids, 1)
         inner_graph = reader.graph_by_id(graph.inner_graph_ids[0])
         self.assertEqual(inner_graph.name, "log_sum")
+        # Check device names.
+        self.assertLen(executions[0].output_tensor_device_ids, 1)
+        self.assertEqual(
+            reader.device_name_by_id(executions[0].output_tensor_device_ids[0]),
+            self._expectedDefaultDeviceName())
+        self.assertIn(self._expectedDefaultDeviceName(),
+                      set(reader.device_name_map().values()))
 
       # Verify the recorded graph-building history.
       add_op_digests = reader.graph_op_digests(op_type="AddV2")
@@ -428,7 +479,7 @@ class TracingCallbackTest(
         # Under the default NO_TENSOR tensor-debug mode, the tensor_proto ought
         # to be an empty float32 tensor.
         for trace in graph_exec_traces:
-          self.assertEqual(trace.debug_tensor_value, [])
+          self.assertIsNone(trace.debug_tensor_value)
       elif tensor_debug_mode == "CURT_HEALTH":
         # Test the association between graph exec and prior graph building.
         # In each case, the 1st element of debug_tensor_value is the ID of the

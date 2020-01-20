@@ -19,13 +19,13 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -100,7 +100,7 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
 
       // Use stored value in last_store to replace all uses of current resource
       // load's result, then erase this resource load.
-      read_variable_op.value()->replaceAllUsesWith(last_store.value());
+      read_variable_op.value().replaceAllUsesWith(last_store.value());
       read_variable_op.erase();
       continue;
     }
@@ -130,7 +130,7 @@ void HoistResourceLoads(tf_device::LaunchOp launch_op) {
     Value resource = read_variable_op.resource();
 
     // Skip resources created inside of launch_op.
-    if (resource->getParentRegion() == &launch_op.body()) continue;
+    if (resource.getParentRegion() == &launch_op.body()) continue;
 
     auto p = resource_to_read_ops.insert({resource, read_variable_op});
     if (p.second) {
@@ -167,7 +167,7 @@ bool AppendResourceStoreValueToReturn(tf_device::LaunchOp launch_op) {
     if (!resource) continue;
 
     // Skip resources created inside of launch_op.
-    if (resource->getParentRegion() == &launch_op.body()) continue;
+    if (resource.getParentRegion() == &launch_op.body()) continue;
 
     // TODO(ycao): Prevent same value from being returned multiple times.
     // TODO(ycao): Do not return resource store value if it is defined outside
@@ -189,11 +189,12 @@ bool AppendResourceStoreValueToReturn(tf_device::LaunchOp launch_op) {
 // Moves resource store operations to after launch_op. This assumes load-store
 // forwarding has been performed on this launch_op such that there is at most
 // one resource store operation carrying its final value.
-void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
+tf_device::LaunchOp SinkResourceStores(tf_device::LaunchOp launch_op,
+                                       OpBuilder* builder) {
   // Update ReturnOp inside launch_op's body to output final values of updated
   // external resources.
   bool has_resource_store = AppendResourceStoreValueToReturn(launch_op);
-  if (!has_resource_store) return;
+  if (!has_resource_store) return launch_op;
 
   auto new_return_op = launch_op.GetBody().getTerminator();
   llvm::SmallVector<Type, 4> new_launch_return_types(
@@ -207,7 +208,7 @@ void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
 
   // Replace uses of old launch_op results with those of new_launch_op.
   for (auto p : llvm::zip(launch_op.getResults(), new_launch_op.getResults())) {
-    std::get<0>(p)->replaceAllUsesWith(std::get<1>(p));
+    std::get<0>(p).replaceAllUsesWith(std::get<1>(p));
   }
 
   // Create a mapping from operands of new_return_op operands to new_launch_op
@@ -228,10 +229,11 @@ void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
   }
 
   launch_op.erase();
+  return new_launch_op;
 }
 
 // Hoists resource variable loads and sinks stores from launch_op.
-void HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
+LogicalResult HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
   ModuleOp m = launch_op.getParentOfType<ModuleOp>();
   OpBuilder builder(m);
 
@@ -243,20 +245,45 @@ void HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
   HoistResourceLoads(launch_op);
 
   // Move stores of external resources, if any, to after launch_op.
-  SinkResourceStores(launch_op, &builder);
+  auto new_launch_op = SinkResourceStores(launch_op, &builder);
+
+  llvm::SetVector<Value> captured_values;
+  getUsedValuesDefinedAbove(new_launch_op.body(), new_launch_op.body(),
+                            captured_values);
+
+  for (Value v : captured_values) {
+    auto tensor_type = v.getType().dyn_cast<TensorType>();
+    if (!tensor_type) continue;
+    if (!tensor_type.getElementType().isa<TF::ResourceType>()) continue;
+
+    return new_launch_op.emitOpError()
+           << "has remaining resource inputs that can not be lifted";
+  }
+
+  return success();
 }
 
 }  // namespace
 
 // Lifts resource operation from tf_device.launch_func ops nested in `op`
-// outside.
-void LiftResourceOps(Operation* op) {
-  op->walk([](tf_device::LaunchOp launch_op) {
-    HoistResourceOpsFromLaunchOp(launch_op);
+// outside. Returns failure if there are remaining resource-type values that can
+// not be lifted.
+LogicalResult LiftResourceOps(Operation* op) {
+  auto result = op->walk([](tf_device::LaunchOp launch_op) {
+    if (failed(HoistResourceOpsFromLaunchOp(launch_op))) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
   });
+
+  return failure(result.wasInterrupted());
 }
 
-void ResourceOpLiftingPass::runOnFunction() { LiftResourceOps(getFunction()); }
+void ResourceOpLiftingPass::runOnFunction() {
+  if (failed(LiftResourceOps(getFunction()))) {
+    signalPassFailure();
+  }
+}
 
 std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass() {
   return std::make_unique<ResourceOpLiftingPass>();

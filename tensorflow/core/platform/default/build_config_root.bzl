@@ -35,10 +35,7 @@ def tf_additional_grpc_deps_py():
     return []
 
 def tf_additional_license_deps():
-    return select({
-        str(Label("//tensorflow:with_xla_support")): ["@llvm//:LICENSE.TXT"],
-        "//conditions:default": [],
-    })
+    return []
 
 # Include specific extra dependencies when building statically, or
 # another set of dependencies otherwise. If "macos" is provided, that

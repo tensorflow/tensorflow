@@ -124,20 +124,6 @@ class IteratorHandleOp : public OpKernel {
   // inconsistent capacities.
   Status VerifyResource(IteratorResource* resource);
 
-  template <typename To, typename From>  // use like this: down_cast<T*>(foo);
-  static inline To down_cast(From* f) {  // so we only accept pointers
-    static_assert(
-        (std::is_base_of<From, typename std::remove_pointer<To>::type>::value),
-        "target type not derived from source type");
-
-    // We skip the assert and hence the dynamic_cast if RTTI is disabled.
-#if !defined(__GNUC__) || defined(__GXX_RTTI)
-    // Uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
-    assert(f == nullptr || dynamic_cast<To>(f) != nullptr);
-#endif  // !defined(__GNUC__) || defined(__GXX_RTTI)
-    return static_cast<To>(f);
-  }
-
   FunctionLibraryRuntime* CreatePrivateFLR(
       OpKernelContext* ctx, std::unique_ptr<DeviceMgr>* device_mgr,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,
@@ -174,28 +160,55 @@ class AnonymousIteratorHandleOp : public AnonymousResourceOp<IteratorResource> {
   const int graph_def_version_;
 };
 
-class MakeIteratorOp : public AsyncOpKernel {
+// A hybrid asynchronous-and-synchronous OpKernel with efficient support for
+// both modes.
+//
+// Inherit from this class when the application logic of the kernel (i) is
+// implemented synchronously, (ii) must run on a background thread when the
+// kernel executes in the inter-op threadpool (typically because it depends on
+// inter-op threadpool threads, e.g. for function execution), and (iii) can run
+// synchronously on the calling thread when the caller donates a thread
+// (typically in eager execution). The implementation avoids a thread-hop in
+// case (iii).
+//
+// NOTE: Unlike typical OpKernel subclasses, the application logic is
+// implemented in a method (DoCompute()) that returns Status. Use
+// TF_RETURN_IF_ERROR for error-related control flow rather than
+// OP_REQUIRES_OK().
+class HybridAsyncOpKernel : public AsyncOpKernel {
  public:
-  explicit MakeIteratorOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(), "tf_data_make_iterator") {}
+  HybridAsyncOpKernel(OpKernelConstruction* ctx,
+                      const char* background_worker_name);
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+  void Compute(OpKernelContext* ctx) final;
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) final;
+
+ protected:
+  virtual Status DoCompute(OpKernelContext* ctx) = 0;
 
  private:
   BackgroundWorker background_worker_;
 };
 
-class IteratorGetNextOp : public AsyncOpKernel {
+class MakeIteratorOp : public HybridAsyncOpKernel {
+ public:
+  explicit MakeIteratorOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(ctx, "tf_data_make_iterator") {}
+
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
+};
+
+class IteratorGetNextOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(), "tf_data_iterator_get_next") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {}
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+  AsyncOpKernel* AsAsync() override;
+  const AsyncOpKernel* AsAsync() const override;
 
- private:
-  BackgroundWorker background_worker_;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class DeleteIteratorOp : public OpKernel {
@@ -205,29 +218,20 @@ class DeleteIteratorOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 };
 
-class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
+class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextAsOptionalOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(),
-                           "tf_data_iterator_get_next_as_optional") {
+      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next_as_optional") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 
  private:
-  BackgroundWorker background_worker_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-};
-
-class IteratorGetNextSyncOp : public OpKernel {
- public:
-  explicit IteratorGetNextSyncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override;
 };
 
 class IteratorToStringHandleOp : public OpKernel {

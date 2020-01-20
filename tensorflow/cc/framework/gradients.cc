@@ -96,7 +96,7 @@ class SymbolicGradientBuilder {
   // Used to identify nodes at which to stop backprop.
   std::unordered_set<int> GetStopBackpropNodes(
       const std::vector<bool>& reachable_nodes,
-      const std::unordered_set<int>& output_nodes);
+      const std::unordered_set<int>& output_nodes) const;
 
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
@@ -190,7 +190,7 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
 
 std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
     const std::vector<bool>& reachable_nodes,
-    const std::unordered_set<int>& output_nodes) {
+    const std::unordered_set<int>& output_nodes) const {
   // Output nodes that get transitively consumed by other `outputs_` are stored
   // in `internal_outputs`.
   std::unordered_set<int> internal_outputs;

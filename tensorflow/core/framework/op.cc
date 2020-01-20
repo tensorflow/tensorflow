@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_def_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -31,6 +30,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+Status DefaultValidator(const OpRegistryInterface& op_registry) {
+  LOG(WARNING) << "No kernel validator registered with OpRegistry.";
+  return Status::OK();
+}
 
 // OpRegistry -----------------------------------------------------------------
 
@@ -45,7 +49,8 @@ Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
   return Status::OK();
 }
 
-OpRegistry::OpRegistry() : initialized_(false) {}
+OpRegistry::OpRegistry()
+    : initialized_(false), op_registry_validator_(DefaultValidator) {}
 
 OpRegistry::~OpRegistry() {
   for (const auto& e : registry_) delete e.second;
@@ -114,7 +119,7 @@ const OpRegistrationData* OpRegistry::LookUpSlow(
     // Note: Can't hold mu_ while calling Export() below.
   }
   if (first_call) {
-    TF_QCHECK_OK(ValidateKernelRegistrations(*this));
+    TF_QCHECK_OK(op_registry_validator_(*this));
   }
   if (res == nullptr) {
     if (first_unregistered) {

@@ -24,7 +24,7 @@ import warnings
 
 from absl import logging
 import six
-from six import PY3
+from six import PY2
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
@@ -727,10 +727,10 @@ class TFLiteConverter(TFLiteConverterBase):
             print("Ignore 'tcmalloc: large alloc' warnings.")
 
             if not isinstance(file_content, str):
-              if PY3:
-                file_content = six.ensure_text(file_content, "utf-8")
-              else:
+              if PY2:
                 file_content = six.ensure_binary(file_content, "utf-8")
+              else:
+                file_content = six.ensure_text(file_content, "utf-8")
             graph_def = _graph_pb2.GraphDef()
             _text_format.Merge(file_content, graph_def)
           except (_text_format.ParseError, DecodeError):
