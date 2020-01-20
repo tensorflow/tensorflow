@@ -322,7 +322,16 @@ class TimeDistributed(Wrapper):
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
     input_uid = generic_utils.object_list_uid(inputs)
-    inner_inputs = self._input_map.get(input_uid, inputs)
+    if input_uid in self._input_map:
+      inner_inputs = self._input_map[input_uid]
+    else:
+      if isinstance(inputs, ragged_tensor.RaggedTensor):
+        inner_inputs = inputs.values
+        self._input_map[input_uid] = inner_inputs
+      else:
+        inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
+        inner_inputs = array_ops.reshape(inputs, inner_input_shape)
+      self._input_map[input_uid] = inner_inputs
     output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
       if mask is None:
