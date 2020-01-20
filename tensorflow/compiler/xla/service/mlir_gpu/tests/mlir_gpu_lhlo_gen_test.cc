@@ -88,15 +88,13 @@ TEST_F(LhloGenTest, Copy) {
   CompileAndVerifyIr(R"(
 HloModule Copy
 
-ENTRY %Copy (x: f32[2,4,8]) -> f32[2,4,8] {
-  %x = f32[2,4,8]{1,0,2} parameter(0)
-  ROOT %copy = f32[2,4,8]{2,0,1} copy(f32[2,4,8]{1,0,2} %x)
+ENTRY %Copy (x: f32[2,4]) -> f32[2,4] {
+  %x = f32[2,4] parameter(0)
+  ROOT %copy = f32[2,4] copy(f32[2,4] %x)
 })",
                      R"(
-;CHECK: #[[MAP0:.*]] = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
-;CHECK: #[[MAP1:.*]] = affine_map<(d0, d1, d2) -> (d1, d0, d2)>
-;CHECK: func @copy(%[[OPERAND:.*]]: memref<2x4x8xf32, #[[MAP0]]>, %[[RESULT:.*]]: memref<2x4x8xf32, #[[MAP1]]>) {
-;CHECK:   "xla_lhlo.copy"(%[[OPERAND]], %[[RESULT]]) : (memref<2x4x8xf32, #[[MAP0]]>, memref<2x4x8xf32, #[[MAP1]]>) -> ()
+;CHECK: func @copy(%[[OPERAND:.*]]: memref<2x4xf32>, %[[RESULT:.*]]: memref<2x4xf32>) {
+;CHECK:   "xla_lhlo.copy"(%[[OPERAND]], %[[RESULT]]) : (memref<2x4xf32>, memref<2x4xf32>) -> ()
       )");
 }
 

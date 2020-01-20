@@ -429,7 +429,7 @@ class Context(object):
     self._soft_device_placement = None
     self._log_device_placement = None
     self._enable_mlir_bridge = None
-    self._tpu_topologies = []
+    self._tpu_topologies_by_job = {}
     self._attempted_tpu_initialization = set()
     self._optimizer_experimental_options = {}
 
@@ -478,8 +478,8 @@ class Context(object):
       # TODO(b/134094971): Remove this when lazy tensor copy in multi-device
       # function has been implemented.
       self.mirroring_policy = MIRRORING_ALL
-      self._tpu_topologies.append(
-          topology.Topology(serialized=topology_proto_data))
+      parsed_topology = topology.Topology(serialized=topology_proto_data)
+      self._tpu_topologies_by_job[job] = parsed_topology
 
   def _initialize_logical_devices(self):
     """Helper to initialize devices."""
@@ -1441,7 +1441,13 @@ class Context(object):
   def tpu_topologies(self):
     """A sequence of TPU topologies for connected TPU systems."""
     ensure_initialized()
-    return self._tpu_topologies
+    return tuple(self._tpu_topologies_by_job.values())
+
+  @property
+  def tpu_topologies_by_job(self):
+    """A mapping from job name to TPU topology for connected TPU systems."""
+    ensure_initialized()
+    return self._tpu_topologies_by_job
 
   @property
   def log_device_placement(self):

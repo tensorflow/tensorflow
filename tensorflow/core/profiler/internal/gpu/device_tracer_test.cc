@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -273,7 +274,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_NE(FindPlaneWithName(space, kHostThreads), nullptr);
 
   const XPlane* device_plane =
-      FindPlaneWithName(space, StrCat(kGpuPlanePrefix, 0));
+      FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
   EXPECT_NE(device_plane, nullptr);  // Check if device plane is serialized.
   // Check if device capacity is serialized.
   XPlaneVisitor plane(device_plane);

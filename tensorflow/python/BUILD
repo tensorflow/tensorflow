@@ -3,7 +3,7 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -822,6 +822,8 @@ cc_library(
     srcs = ["lib/core/py_seq_tensor.cc"],
     hdrs = ["lib/core/py_seq_tensor.h"],
     deps = [
+        ":ndarray_tensor",
+        ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":py_util",
         ":safe_ptr",
@@ -1109,10 +1111,12 @@ py_library(
         ":tensor_util",
         ":type_spec",
         ":util",
-        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
+        "//tensorflow/python/eager:context",
+    ] + if_xla_available([
+        "//tensorflow/compiler/aot:_pywrap_tfcompile",
+    ]),
 )
 
 py_library(
@@ -2771,6 +2775,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":sparse_ops",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
     ],
 )
 
@@ -5553,6 +5558,8 @@ tf_py_wrap_cc(
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
+    ]) + if_xla_available([
+        "//tensorflow/compiler/aot:tfcompile_lib",
     ]),
 )
 

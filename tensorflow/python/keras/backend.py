@@ -909,9 +909,14 @@ def _initialize_variables(session):
     # marked as initialized.
     is_initialized = session.run(
         [variables_module.is_variable_initialized(v) for v in candidate_vars])
+    # TODO(kathywu): Some metric variables loaded from SavedModel are never
+    # actually used, and do not have an initializer.
+    should_be_initialized = [
+        (not is_initialized[n]) and v.initializer is not None
+        for n, v in enumerate(candidate_vars)]
     uninitialized_vars = []
-    for flag, v in zip(is_initialized, candidate_vars):
-      if not flag:
+    for flag, v in zip(should_be_initialized, candidate_vars):
+      if flag:
         uninitialized_vars.append(v)
       v._keras_initialized = True
     if uninitialized_vars:
@@ -3229,11 +3234,43 @@ def reverse(x, axes):
 
 
 # VALUE MANIPULATION
+_VALUE_SET_CODE_STRING = """
+  >>> K = tf.keras.backend  # Common keras convention
+  >>> v = K.variable(1.)
+
+  >>> # reassign
+  >>> K.set_value(v, 2.)
+  >>> print(K.get_value(v))
+  2.0
+
+  >>> # increment
+  >>> K.set_value(v, K.get_value(v) + 1)
+  >>> print(K.get_value(v))
+  3.0
+
+  Variable semantics in TensorFlow 2 are eager execution friendly. The above 
+  code is roughly equivalent to:
+
+  >>> v = tf.Variable(1.)
+
+  >>> _ = v.assign(2.)
+  >>> print(v.numpy())
+  2.0
+
+  >>> _ = v.assign_add(1.)
+  >>> print(v.numpy())
+  3.0"""[3:]  # Prune first newline and indent to match the docstring template.
 
 
 @keras_export('keras.backend.get_value')
 def get_value(x):
   """Returns the value of a variable.
+
+  `backend.get_value` is the compliment of `backend.set_value`, and provides
+  a generic interface for reading from variables while abstracting away the
+  differences between TensorFlow 1.x and 2.x semantics.
+
+  {snippet}
 
   Arguments:
       x: input variable.
@@ -3286,8 +3323,14 @@ def batch_get_value(tensors):
 def set_value(x, value):
   """Sets the value of a variable, from a Numpy array.
 
+  `backend.set_value` is the compliment of `backend.get_value`, and provides
+  a generic interface for assigning to variables while abstracting away the
+  differences between TensorFlow 1.x and 2.x semantics.
+
+  {snippet}
+
   Arguments:
-      x: Tensor to set to a new value.
+      x: Variable to set to a new value.
       value: Value to set the tensor to, as a Numpy array
           (of the same shape).
   """
@@ -3352,6 +3395,10 @@ def batch_set_value(tuples):
           assign_ops.append(assign_op)
           feed_dict[assign_placeholder] = value
         get_session().run(assign_ops, feed_dict=feed_dict)
+
+
+get_value.__doc__ = get_value.__doc__.format(snippet=_VALUE_SET_CODE_STRING)
+set_value.__doc__ = set_value.__doc__.format(snippet=_VALUE_SET_CODE_STRING)
 
 
 @keras_export('keras.backend.print_tensor')

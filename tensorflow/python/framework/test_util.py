@@ -284,6 +284,10 @@ def IsBuiltWithROCm():
   return _pywrap_util_port.IsBuiltWithROCm()
 
 
+def IsBuiltWithXLA():
+  return _pywrap_util_port.IsBuiltWithXLA()
+
+
 def IsBuiltWithNvcc():
   return _pywrap_util_port.IsBuiltWithNvcc()
 

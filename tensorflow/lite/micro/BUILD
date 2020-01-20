@@ -29,7 +29,6 @@ cc_library(
         "micro_allocator.cc",
         "micro_error_reporter.cc",
         "micro_interpreter.cc",
-        "micro_mutable_op_resolver.cc",
         "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
         "test_helpers.cc",

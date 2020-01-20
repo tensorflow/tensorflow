@@ -28,6 +28,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_handler.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -52,21 +53,22 @@ class NnApiMock : public ::tflite::nnapi::NnApiHandler {
       return open("/dev/zero", O_RDWR);
     };
 
-    GetDeviceCountReturns<0>();
-    ModelCreateReturns<0>();
-    AddOperandReturns<0>();
-    SetOperandValueReturns<0>();
-    AddOperationReturns<0>();
-    IdentifyInputAndOutputsReturns<0>();
-    RelaxComputationFloatReturns<0>();
-    ModelFinishReturns<0>();
-    MemoryCreateFromFdReturns<0>();
-    CompilationCreateReturns<0>();
-    CompilationFinishReturns<0>();
-    ExecutionCreateReturns<0>();
-    ExecutionSetInputFromMemoryReturns<0>();
-    ExecutionSetOutputFromMemoryReturns<0>();
-    ExecutionComputeReturns<0>();
+    ModelCreateReturns<ANEURALNETWORKS_NO_ERROR>();
+    AddOperandReturns<ANEURALNETWORKS_NO_ERROR>();
+    SetOperandValueReturns<ANEURALNETWORKS_NO_ERROR>();
+    AddOperationReturns<ANEURALNETWORKS_NO_ERROR>();
+    IdentifyInputAndOutputsReturns<ANEURALNETWORKS_NO_ERROR>();
+    RelaxComputationFloatReturns<ANEURALNETWORKS_NO_ERROR>();
+    ModelFinishReturns<ANEURALNETWORKS_NO_ERROR>();
+    MemoryCreateFromFdReturns<ANEURALNETWORKS_NO_ERROR>();
+    CompilationCreateReturns<ANEURALNETWORKS_NO_ERROR>();
+    CompilationCreateForDevicesReturns<ANEURALNETWORKS_NO_ERROR>();
+    CompilationFinishReturns<ANEURALNETWORKS_NO_ERROR>();
+    ExecutionCreateReturns<ANEURALNETWORKS_NO_ERROR>();
+    ExecutionSetInputFromMemoryReturns<ANEURALNETWORKS_NO_ERROR>();
+    ExecutionSetOutputFromMemoryReturns<ANEURALNETWORKS_NO_ERROR>();
+    ExecutionComputeReturns<ANEURALNETWORKS_NO_ERROR>();
+    SetNnapiSupportedDevice("test-device", android_sdk_version);
   }
 
   ~NnApiMock() { Reset(); }

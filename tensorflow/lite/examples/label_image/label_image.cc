@@ -301,7 +301,7 @@ void RunInference(Settings* s) {
       break;
     default:
       LOG(FATAL) << "cannot handle output type "
-                 << interpreter->tensor(input)->type << " yet";
+                 << interpreter->tensor(output)->type << " yet";
       exit(-1);
   }
 

@@ -48,7 +48,7 @@ from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
 
 # Use tensorflow's `tf_inspect`, which is aware of `tf_decorator`.
-parser.tf_inspect = tf_inspect
+parser.inspect = tf_inspect
 
 # `tf` has an `__all__` that doesn't list important things like `keras`.
 # The doc generator recognizes `__all__` as the list of public symbols.

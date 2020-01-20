@@ -551,7 +551,7 @@ TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(TFE_Op* op,
                                                     TF_Status* status) {
   TFE_ExecuteOpNotification* n = new TFE_ExecuteOpNotification;
 
-  n->thread.reset(op->operation.EagerContext()->TFEnv()->StartThread(
+  n->thread.reset(op->operation.EagerContext().TFEnv()->StartThread(
       tensorflow::ThreadOptions(), "ExecuteOpThread",
       [op, retvals, num_retvals, n]() {
         TFE_Execute(op, retvals, num_retvals, n->status.get());
@@ -820,13 +820,19 @@ void MakeTPUInitializationFunctionDef(
   tensorflow::OpDef_ArgDef* arg_def(signature_def->add_output_arg());
   arg_def->set_name("topology_proto");
   arg_def->set_type(tensorflow::DataType::DT_STRING);
-  tensorflow::NodeDef* node_def(function_def->add_node_def());
-  node_def->set_name("ConfigureDistributedTPU");
-  node_def->set_op("ConfigureDistributedTPU");
-  (*node_def->mutable_attr())["compilation_failure_closes_chips"].set_b(false);
-  node_def->set_device(tpu_system_device_name);
-  (*function_def->mutable_ret())["topology_proto"] =
-      "ConfigureDistributedTPU:topology:0";
+  tensorflow::NodeDef* configure_node_def(function_def->add_node_def());
+  configure_node_def->set_name("ConfigureDistributedTPU");
+  configure_node_def->set_op("ConfigureDistributedTPU");
+  (*configure_node_def->mutable_attr())["compilation_failure_closes_chips"]
+      .set_b(false);
+  configure_node_def->set_device(tpu_system_device_name);
+  tensorflow::NodeDef* identity_node_def(function_def->add_node_def());
+  identity_node_def->set_name("Identity");
+  identity_node_def->set_op("Identity");
+  identity_node_def->add_input("ConfigureDistributedTPU:topology:0");
+  (*identity_node_def->mutable_attr())["T"].set_type(
+      tensorflow::DataType::DT_STRING);
+  (*function_def->mutable_ret())["topology_proto"] = "Identity:output:0";
   (*function_def->mutable_control_ret())["ConfigureDistributedTPU"] =
       "ConfigureDistributedTPU";
 }
@@ -865,15 +871,10 @@ TF_CAPI_EXPORT extern void TFE_InitializeTPUSystem(TFE_Context* ctx,
   tensorflow::string function_name = function_def.signature().name();
   status->status = ctx->context->AddFunctionDef(function_def);
   if (!status->status.ok()) return;
-  // Run the function, which may be a remote call. It returns a serialized
-  // topology proto.
-  const tensorflow::AttrTypeMap* attr_map;
-  bool is_function;
-  status->status = tensorflow::AttrTypeMapForOp(function_name.c_str(),
-                                                &attr_map, &is_function);
+  tensorflow::EagerOperation call_op(ctx->context);
+  status->status =
+      call_op.Reset(function_name.c_str(), nullptr, false, nullptr);
   if (!status->status.ok()) return;
-  tensorflow::EagerOperation call_op(ctx->context, function_name.c_str(),
-                                     is_function, attr_map);
   status->status = call_op.SetDeviceName(tpu_system_device_name.c_str());
   if (!status->status.ok()) return;
   tensorflow::TensorHandle* remote_topology_handle;

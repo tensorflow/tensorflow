@@ -24,6 +24,10 @@ limitations under the License.
 
 namespace tflite {
 namespace evaluation {
+namespace {
+// Default cropping fraction value.
+const float kCroppingFraction = 0.875;
+}  // namespace
 
 TfLiteStatus ImageClassificationStage::Init() {
   // Ensure inference params are provided.
@@ -61,16 +65,13 @@ TfLiteStatus ImageClassificationStage::Init() {
   }
 
   // ImagePreprocessingStage
-  EvaluationStageConfig preprocessing_config;
-  preprocessing_config.set_name("image_preprocessing");
-  auto* preprocess_params = preprocessing_config.mutable_specification()
-                                ->mutable_image_preprocessing_params();
-  preprocess_params->set_image_height(input_shape->data[1]);
-  preprocess_params->set_image_width(input_shape->data[2]);
-  preprocess_params->set_output_type(static_cast<int>(input_type));
-  // Preserving aspect improves the accuracy by about 0.5%.
-  preprocess_params->set_aspect_preserving(true);
-  preprocessing_stage_.reset(new ImagePreprocessingStage(preprocessing_config));
+  tflite::evaluation::ImagePreprocessingConfigBuilder builder(
+      "image_preprocessing", input_type);
+  builder.AddSquareCroppingStep();
+  builder.AddCroppingStep(kCroppingFraction);
+  builder.AddResizingStep(input_shape->data[2], input_shape->data[1], false);
+  builder.AddDefaultNormalizationStep();
+  preprocessing_stage_.reset(new ImagePreprocessingStage(builder.build()));
   if (preprocessing_stage_->Init() != kTfLiteOk) return kTfLiteError;
 
   // TopkAccuracyEvalStage.

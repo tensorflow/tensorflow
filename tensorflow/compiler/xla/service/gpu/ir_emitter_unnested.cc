@@ -2925,37 +2925,27 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       reduction_dimensions.is_row_reduction ||
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
                                             reduction_dimensions.dimensions[2]);
-  int64 tile_size_x = 1;
-  int64 num_threads_x = 1;
-  if (reduction_dimensions.is_row_reduction) {
-    num_threads_x = kWarpSize;
-    tile_size_x = reduction_tiling[2] * num_threads_x;
-  } else {
-    // Column reduction without transpose doesn't require communication among
-    // threads processing elements in the same tile. The current implementation
-    // only support the use of one hardware thread block to process one block of
-    // tiles in the KernelMappingScheme. We try to use one thread to compute
-    // the partial results for two tensor elements and to maximize the values of
-    // num_threads_x and tile_size_x to allow a bigger hardware thread block.
-    int64 hw_threads_per_block_limit =
-        ThreadsPerBlockLimit(ir_emitter_context_->device_description());
-    if (!dilated_x) {
-      // Vectorized loads: two elements per thread.
-      tile_size_x = std::min(2 * hw_threads_per_block_limit,
-                             reduction_dimensions.dimensions[2]);
-      num_threads_x = tile_size_x / 2;
-    } else {
-      // One element per thread.
-      tile_size_x = std::min(hw_threads_per_block_limit,
-                             reduction_dimensions.dimensions[2]);
-      num_threads_x = tile_size_x;
-    }
+
+  if (!dilated_x && !reduction_dimensions.is_row_reduction) {
+    // Vectorized loads: a single thread reduces two adjacent columns.
+    reduction_tiling[2] *= 2;
   }
+
+  int64 num_threads_y = 1;
+  int64 num_threads_x = [&] {
+    if (reduction_dimensions.is_row_reduction) {
+      return kWarpSize;
+    }
+    return std::min(
+        ThreadsPerBlockLimit(ir_emitter_context_->device_description()),
+        CeilOfRatio(reduction_dimensions.dimensions[2], reduction_tiling[2]));
+  }();
 
   KernelMappingScheme mapping_scheme(
       reduction_dimensions.dimensions,
-      /*tile_sizes=*/{reduction_tiling[0], reduction_tiling[1], tile_size_x},
-      /*num_threads_y=*/1, num_threads_x, dilated_x);
+      {reduction_tiling[0], reduction_tiling[1] * num_threads_y,
+       reduction_tiling[2] * num_threads_x},
+      num_threads_y, num_threads_x, dilated_x);
   return ReductionCodegenInfo(mapping_scheme,
                               reduction_dimensions.is_row_reduction);
 }

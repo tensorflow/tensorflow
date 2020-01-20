@@ -95,6 +95,12 @@ class OpRegistry : public OpRegistryInterface {
   // Get all `OpRegistrationData`s.
   void GetOpRegistrationData(std::vector<OpRegistrationData>* op_data);
 
+  // Registers a function that validates op registry.
+  void RegisterValidator(
+      std::function<Status(const OpRegistryInterface&)> validator) {
+    op_registry_validator_ = std::move(validator);
+  }
+
   // Watcher, a function object.
   // The watcher, if set by SetWatcher(), is called every time an op is
   // registered via the Register function. The watcher is passed the Status
@@ -159,6 +165,8 @@ class OpRegistry : public OpRegistryInterface {
 
   // Registry watcher.
   mutable Watcher watcher_ GUARDED_BY(mu_);
+
+  std::function<Status(const OpRegistryInterface&)> op_registry_validator_;
 };
 
 // An adapter to allow an OpList to be used as an OpRegistryInterface.

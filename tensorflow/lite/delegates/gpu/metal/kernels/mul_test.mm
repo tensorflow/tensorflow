@@ -94,4 +94,56 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
+
+- (void)testApplyMaskChannel1 {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> mask;
+  mask.type = DataType::FLOAT32;
+  mask.ref = 1;
+  mask.shape = BHWC(1, 1, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 1, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::APPLY_MASK), {}}, {input, mask}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  XCTAssertTrue(model.PopulateTensor(1, {2, 3}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({2, 4, 9, 12}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
+- (void)testApplyMaskEqualsToInputChannel {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> mask;
+  mask.type = DataType::FLOAT32;
+  mask.ref = 1;
+  mask.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 1, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::APPLY_MASK), {}}, {input, mask}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  XCTAssertTrue(model.PopulateTensor(1, {1, 2, 3, 4}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  // Disable test for now.
+  // status = CompareVectors({1, 4, 9, 16}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
 @end

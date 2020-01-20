@@ -1349,6 +1349,58 @@ class PerChannelQuantizedConvolutionOpModel : public BaseConvolutionOpModel {
   }
 };
 
+TEST_P(ConvolutionOpTest, SimplePerTensorTest) {
+  // TODO(b/138722124): Enable these tests on NNAPI.
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+
+  PerChannelQuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1},
+       /*per_channel_quantization_offsets=*/{0},
+       /*channel_index=*/0},
+      {TensorType_INT8, {}, -63.5, 64, 0.5, -1},
+      /*stride_width=*/1, /*stride_height=*/1);
+  m.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      {
+          1, 2,  // out channel = 0, y = 0, x = 0
+          3, 4,  // out channel = 0, y = 0, x = 1
+          3, 4,  // out channel = 0, y = 1, x = 0
+          5, 6,  // out channel = 0, y = 1, x = 1
+          7, 8,  // out channel = 1, y = 0, x = 0
+          5, 6,  // out channel = 1, y = 0, x = 1
+          3, 4,  // out channel = 1, y = 1, x = 0
+          1, 2,  // out channel = 1, y = 1, x = 1
+      });
+  m.SetBias({3, -2});
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({31, 56, -57, -44})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({61, 111, -115, -89}));
+}
+
 TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
   PerChannelQuantizedConvolutionOpModel<int8_t> m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},

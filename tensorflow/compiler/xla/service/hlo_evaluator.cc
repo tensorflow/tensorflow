@@ -1769,7 +1769,7 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       //                                       output_dim_size);
       input_index_clamped[i] =
           std::min(operand_shape.dimensions(i) - output_dim_size,
-                   std::max(0LL, input_gather_index[i]));
+                   std::max(int64{0}, input_gather_index[i]));
     }
     for (int i = 0, e = input_index.size(); i < e; i++) {
       input_index[i] = input_index_clamped[i] + input_window_index[i];

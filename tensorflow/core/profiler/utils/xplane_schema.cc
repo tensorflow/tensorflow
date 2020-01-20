@@ -42,6 +42,8 @@ static const absl::string_view kHostEventTypeMetadataMap[] = {
     "ExecutorDoneCallback",
     "MemoryAllocation",
     "MemoryDeallocation",
+    // Performance counter related.
+    "kRemotePerf",
     // tf data captured function events.
     "InstantiatedCapturedFunction::Run",
     "InstantiatedCapturedFunction::RunWithBorrowedArgs",
@@ -68,6 +70,7 @@ static_assert(sizeof(kHostEventTypeMetadataMap) / sizeof(absl::string_view) ==
               "Mismatch between enum and string map.");
 
 static const absl::string_view kStatTypeStrMap[] = {
+    // TraceMe arguments.
     "UnknownStatType",
     "id",
     "parent_step_id",
@@ -89,18 +92,29 @@ static const absl::string_view kStatTypeStrMap[] = {
     "bytes_available",
     "fragmentation",
     "peak_bytes_in_use",
+    // Device trace arguments.
     "device_id",
     "context_id",
     "correlation_id",
     "memcpy_details",
     "memalloc_details",
     "kernel_details",
+    "stream",
+    // Stats added when processing traces.
     "group_id",
     "step_name",
     "level 0",
     "tf_op",
     "hlo_op",
     "hlo_module",
+    // Performance counter related.
+    "Raw Value",
+    "Scaled Value",
+    "Thread Id",
+    // XLA metadata map related.
+    "SELF_DURATION_PS",
+    "MIN_DURATION_PS",
+    // Device capability related.
     "clock_rate",
     "core_count",
     "memory_bandwidth",
@@ -153,6 +167,7 @@ const absl::flat_hash_map<absl::string_view, StatType>& GetStatTypeMap() {
           {"memcpy_details", kMemcpyDetails},
           {"memalloc_details", kMemallocDetails},
           {"kernel_details", kKernelDetails},
+          {"stream", kStream},
           // Stats added when processing traces.
           {"group_id", kGroupId},
           {"step_name", kStepName},
@@ -160,6 +175,14 @@ const absl::flat_hash_map<absl::string_view, StatType>& GetStatTypeMap() {
           {"tf_op", kTfOp},
           {"hlo_op", kHloOp},
           {"hlo_module", kHloModule},
+          // Performance counter related.
+          {"Raw Value", kRawValue},
+          {"Scaled Value", kScaledValue},
+          {"Thread Id", kThreadId},
+          // XLA metadata map related.
+          {"SELF_DURATION_PS", kSelfDurationPs},
+          {"MIN_DURATION_PS", kMinDurationPs},
+          // Device capability related.
           {"clock_rate", kDevCapClockRateKHz},
           {"core_count", kDevCapCoreCount},
           {"memory_bandwidth", kDevCapMemoryBandwidth},

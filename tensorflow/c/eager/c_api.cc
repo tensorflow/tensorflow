@@ -95,10 +95,8 @@ using tensorflow::string;
 namespace {
 
 const tensorflow::OpDef* GetOpDef(TFE_Op* op, TF_Status* status) {
-  if (op->inference_ctx) {
-    return op->inference_ctx->op_def;
-  }
-  const tensorflow::OpDef* op_def;
+  const tensorflow::OpDef* op_def = op->operation.OpDef();
+  if (op_def) return op_def;
   status->status =
       tensorflow::OpDefForOp(op->operation.Name().c_str(), &op_def);
   return op_def;
@@ -614,81 +612,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 }
 #endif  // !IS_MOBILE_PLATFORM
 
-tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
-                                           TFE_TensorHandle* input) {
-  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
-  if (!input_def.number_attr().empty() || !input_def.type_list_attr().empty()) {
-    // Some clients that are still setting their input attributes manually are
-    // adding input list to their op by calling `TFE_OpAddInput` for each of
-    // its elements instead of calling `TFE_OpAddInputList`. When this happens,
-    // we cannot detect the end of such list, thus lose track of the input
-    // arguments in the op definition. To guarantee backward compatibility with
-    // those clients, disable automatic inference in this case.
-    op->inference_ctx.reset(nullptr);
-    return tensorflow::Status::OK();
-  }
-  const std::string& type_attr = input_def.type_attr();
-  if (!type_attr.empty() && ictx->attrs.find(type_attr) == ictx->attrs.end()) {
-    op->operation.MutableAttrs()->Set(
-        type_attr,
-        static_cast<tensorflow::DataType>(input->handle->DataType()));
-    ictx->attrs.insert(type_attr);
-  }
-  return tensorflow::Status::OK();
-}
-
-void OpInferSingleTypeInputListAttrs(TFE_Op* op,
-                                     const tensorflow::OpDef::ArgDef& input_def,
-                                     const tensorflow::DataType dtype,
-                                     int num_inputs) {
-  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  if (ictx->attrs.find(input_def.number_attr()) == ictx->attrs.end()) {
-    op->operation.MutableAttrs()->Set(input_def.number_attr(), num_inputs);
-    ictx->attrs.insert(input_def.number_attr());
-  }
-  if (ictx->attrs.find(input_def.type_attr()) == ictx->attrs.end()) {
-    op->operation.MutableAttrs()->Set(input_def.type_attr(), dtype);
-    ictx->attrs.insert(input_def.type_attr());
-  }
-}
-
-void OpInferMixedTypeInputListAttrs(
-    TFE_Op* op, const tensorflow::OpDef::ArgDef& input_def,
-    const std::vector<tensorflow::DataType>& dtypes) {
-  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  if (ictx->attrs.find(input_def.type_list_attr()) == ictx->attrs.end()) {
-    op->operation.MutableAttrs()->Set(
-        input_def.type_list_attr(),
-        tensorflow::gtl::ArraySlice<const tensorflow::DataType>(dtypes.data(),
-                                                                dtypes.size()));
-    ictx->attrs.insert(input_def.type_list_attr());
-  }
-}
-
-tensorflow::Status OpInferInputListAttrs(TFE_Op* op, TFE_TensorHandle** inputs,
-                                         int num_inputs) {
-  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
-  if (!input_def.type_list_attr().empty()) {
-    std::vector<tensorflow::DataType> dtypes(num_inputs);
-    for (int i = 0; i < num_inputs; ++i) {
-      dtypes[i] = static_cast<const tensorflow::DataType>(
-          inputs[i]->handle->DataType());
-    }
-    OpInferMixedTypeInputListAttrs(op, input_def, dtypes);
-  } else if (!input_def.type_attr().empty() &&
-             !input_def.number_attr().empty()) {
-    OpInferSingleTypeInputListAttrs(
-        op, input_def,
-        static_cast<const tensorflow::DataType>(inputs[0]->handle->DataType()),
-        num_inputs);
-  } else {
-    return tensorflow::errors::InvalidArgument("Invalid input list definition");
-  }
-  return tensorflow::Status::OK();
-}
-
 }  // namespace
 
 extern "C" {
@@ -1090,7 +1013,7 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
     } else {
       tensorflow::EagerContext* ctx = handle_->Context();
       CHECK_NE(ctx, nullptr);
-      *status = handle_->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
+      *status = handle_->CopyToDevice(*ctx, ctx->HostCPU(), &tensor);
       if (!status->ok()) return nullptr;
     }
     return tensorflow::TF_TensorFromTensor(tensor, status);
@@ -1201,8 +1124,14 @@ size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
-  return NewOrResetOp(ctx, op_or_function_name, nullptr, status,
-                      /* op_to_reset= */ nullptr);
+  std::unique_ptr<TFE_Op> new_op(
+      new TFE_Op{tensorflow::EagerOperation(ctx->context)});
+  status->status =
+      new_op->operation.Reset(op_or_function_name, nullptr, false, nullptr);
+  if (!status->status.ok()) {
+    new_op.reset();
+  }
+  return new_op.release();
 }
 
 void TFE_DeleteOp(TFE_Op* op) { delete op; }
@@ -1213,7 +1142,7 @@ void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
   tensorflow::Device* device = (op->operation.Device() == nullptr)
-                                   ? op->operation.EagerContext()->HostCPU()
+                                   ? op->operation.EagerContext().HostCPU()
                                    : op->operation.Device();
   return device->name().c_str();
 }
@@ -1227,16 +1156,12 @@ void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
-  return op->AddInput(input, status);
-}
-
-void TFE_Op::AddInput(TFE_TensorHandle* input, TF_Status* status) {
-  operation.AddInput(tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-                         input->handle.get())
-                         ->Handle());
-  if (inference_ctx) {
-    status->status = OpInferSingleInputAttrs(this, input);
-  }
+  tensorflow::TensorHandle* h =
+      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+          input->handle.get())
+          ->Handle();
+  op->operation.AddInput(h);
+  status->status = op->operation.MaybeInferSingleInputAttrs(h);
 }
 
 void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
@@ -1247,9 +1172,7 @@ void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
             inputs[i]->handle.get())
             ->Handle());
   }
-  if (op->inference_ctx) {
-    status->status = OpInferInputListAttrs(op, inputs, num_inputs);
-  }
+  status->status = op->operation.InferInputListAttrs(num_inputs);
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
@@ -1482,15 +1405,10 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  VLOG(1) << "Calling TFE_Execute() on op " << op;
-  op->Execute(retvals, num_retvals, status);
-}
-
-void TFE_Op::Execute(TFE_TensorHandle** retvals, int* num_retvals,
-                     TF_Status* status) {
   absl::FixedArray<tensorflow::TensorHandle*> handle_retvals(*num_retvals);
-  status->status =
-      tensorflow::EagerExecute(&operation, handle_retvals.data(), num_retvals);
+  VLOG(1) << "Calling TFE_Execute() on op " << op;
+  status->status = tensorflow::EagerExecute(&op->operation,
+                                            handle_retvals.data(), num_retvals);
   if (!status->status.ok()) {
     return;
   }

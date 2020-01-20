@@ -931,8 +931,31 @@ cc_library(
     ],
 )
 
+# This flag enables experimental MLIR GPU support.
+config_setting(
+    name = "with_mlir_gpu_support",
+    values = {"define": "with_mlir_gpu_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+# Lets us choose the right GPU plugin depending on whether the experimental MLIR
+# GPU plugin should be used or not.
 cc_library(
     name = "gpu_plugin",
+    deps = select(
+        {
+            ":with_mlir_gpu_support": [
+                ":mlir_gpu_plugin",
+            ],
+            "//conditions:default": [
+                ":gpu_plugin_no_mlir",
+            ],
+        },
+    ),
+)
+
+cc_library(
+    name = "gpu_plugin_no_mlir",
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -4182,6 +4205,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

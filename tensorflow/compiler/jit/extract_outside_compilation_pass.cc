@@ -374,39 +374,6 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
   return new_def;
 }
 
-TF_ATTRIBUTE_NOINLINE Status
-ValidateOutsideCompilationCallNode(Node* call_node) {
-  // DT_INT64 as input/output for outside compilation is not supported yet:
-  // b/120809951.
-  for (const Edge* e : call_node->in_edges()) {
-    if (e->IsControlEdge()) {
-      continue;
-    }
-    DataType dtype = e->src()->output_type(e->src_output());
-    if (dtype == DT_INT64) {
-      return errors::Unimplemented(
-          "int64 input for outside compilation is not supported yet: "
-          "b/120809951. Please cast output of node ",
-          e->src()->DebugString(),
-          " to int32 before feeding it into outside compilation.");
-    }
-  }
-  for (const Edge* e : call_node->out_edges()) {
-    if (e->IsControlEdge()) {
-      continue;
-    }
-    DataType dtype = e->dst()->input_type(e->dst_input());
-    if (dtype == DT_INT64) {
-      return errors::Unimplemented(
-          "int64 output for outside compilation is not supported yet: "
-          "b/120809951. Please cast input of node ",
-          e->dst()->DebugString(),
-          " to int32 before returning it from outside compilation.");
-    }
-  }
-  return Status::OK();
-}
-
 // Replace outside compilation function call node with XlaHostCompute node.
 TF_ATTRIBUTE_NOINLINE xla::StatusOr<Node*> ReplaceOutsideCompilationCallNode(
     Graph* g, Node* call_node, const std::map<string, int>& host_compute_core,
@@ -2384,7 +2351,6 @@ Status ExtractOutsideCompilationForFunction(
     }
     std::map<string, Node*> host_compute_nodes;
     for (Node* n : outside_compilation_nodes) {
-      TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
       auto host_compute_node_or = ReplaceOutsideCompilationCallNode(
           graph_out.get(), n, host_compute_core, *cluster_deps);
       TF_RETURN_IF_ERROR(host_compute_node_or.status());

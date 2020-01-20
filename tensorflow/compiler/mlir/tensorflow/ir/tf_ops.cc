@@ -1618,6 +1618,18 @@ static LogicalResult Verify(ReshapeOp op) {
   auto type_of_tensor = op.tensor().getType().cast<TensorType>();
   // No compile time verification for unknown sized shape.
   if (rank_by_shape == -1 || !type_of_tensor.hasStaticShape()) return success();
+  int64_t num_by_tensor = type_of_tensor.getNumElements();
+
+  auto out_ty = op.getType().cast<RankedTensorType>();
+  if (out_ty && out_ty.hasStaticShape()) {
+    int64_t num_output_elements = out_ty.getNumElements();
+    if (num_by_tensor != num_output_elements)
+      return op.emitOpError()
+             << "number of output elements (" << num_output_elements
+             << ") does not match expected number of elements ("
+             << num_by_tensor << ")";
+  }
+
   // Check values if constant shape. No compiling time verification for
   // non-constant shape.
   auto *shape_op = op.shape().getDefiningOp();
@@ -1648,7 +1660,6 @@ static LogicalResult Verify(ReshapeOp op) {
       num_by_shape *= num;
     }
   }
-  auto num_by_tensor = type_of_tensor.getNumElements();
   // If there is one component of shape is -1, the dimension should be
   // computed so that the total size remains constant.
   if (unknown_dim_count == 1) {

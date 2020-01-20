@@ -190,7 +190,7 @@ genrule(
         "//conditions:default": [],
     }) + select({
         "//tensorflow:with_numa_support": [
-            "//third_party/hwloc:COPYING",
+            "@hwloc//:COPYING",
         ],
         "//conditions:default": [],
     }) + if_cuda([
@@ -270,7 +270,7 @@ genrule(
         "//conditions:default": [],
     }) + select({
         "//tensorflow:with_numa_support": [
-            "//third_party/hwloc:COPYING",
+            "@hwloc//:COPYING",
         ],
         "//conditions:default": [],
     }) + if_cuda([

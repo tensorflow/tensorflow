@@ -139,6 +139,7 @@ class LocalBackend(Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
+    options.num_partitions = compile_options.num_partitions
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
@@ -518,6 +519,7 @@ class CompileOptions(object):
     self.dump_hlo_as_proto = None
     self.hlo_profile = None
     self.num_replicas = 1
+    self.num_partitions = 1
     self.argument_layouts = None
     self.result_layout = None
     self.device_assignment = None

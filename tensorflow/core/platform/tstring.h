@@ -24,17 +24,19 @@ limitations under the License.
 
 #ifdef USE_TSTRING
 
-// The inclusion of absl/strings/string_view.h in tstring.h would preclude the
-// use of tstring in tflite.  Given that, in order to mitigate the forced
-// inclusion of absl/strings/string_view.h while providing convenience methods
-// for implicit conversion, we replace explicit uses of absl::string_view with a
-// forward declaration and associated templates.
+#include "absl/strings/string_view.h"
+
 namespace absl {
-class string_view;
+#ifdef ABSL_NAMESPACE_BEGIN
+ABSL_NAMESPACE_BEGIN
+#endif  // ABSL_NAMESPACE_BEGIN
 class AlphaNum;
 #ifdef PLATFORM_GOOGLE
 class Cord;
 #endif  // PLATFORM_GOOGLE
+#ifdef ABSL_NAMESPACE_END
+ABSL_NAMESPACE_END
+#endif  // ABSL_NAMESPACE_END
 }  // namespace absl
 
 namespace tensorflow {
@@ -82,10 +84,8 @@ class tstring {
 
   tstring(size_t n, char c) : str_(n, c) {}
 
-  template <typename T,
-            typename std::enable_if<std::is_same<T, absl::string_view>::value,
-                                    T>::type* = nullptr>
-  explicit tstring(const T& str) : str_(str.data(), str.size()) {}
+  explicit tstring(const absl::string_view& str)
+      : str_(str.data(), str.size()) {}
 
 #ifdef PLATFORM_GOOGLE
   template <typename T,
@@ -106,10 +106,7 @@ class tstring {
     return *this;
   }
 
-  template <typename T,
-            typename std::enable_if<std::is_same<T, absl::string_view>::value,
-                                    T>::type* = nullptr>
-  tstring& operator=(const T& str) {
+  tstring& operator=(const absl::string_view& str) {
     str_.assign(str.data(), str.size());
 
     return *this;
@@ -154,11 +151,8 @@ class tstring {
 
   operator std::string() const { return str_; }
 
-  template <typename T,
-            typename std::enable_if<std::is_same<T, absl::string_view>::value,
-                                    T>::type* = nullptr>
-  operator T() const {
-    return T(str_.data(), str_.size());
+  operator absl::string_view() const {
+    return absl::string_view(str_.data(), str_.size());
   }
 
 #ifdef PLATFORM_GOOGLE

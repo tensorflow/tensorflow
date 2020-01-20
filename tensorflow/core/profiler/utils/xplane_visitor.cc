@@ -25,6 +25,21 @@ XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
       metadata_(plane->GetStatMetadata(stat->metadata_id())),
       type_(plane->GetStatType(stat->metadata_id())) {}
 
+std::string XStatVisitor::ToString() const {
+  switch (stat_->value_case()) {
+    case XStat::kInt64Value:
+      return absl::StrCat(stat_->int64_value());
+    case XStat::kUint64Value:
+      return absl::StrCat(stat_->uint64_value());
+    case XStat::kDoubleValue:
+      return absl::StrCat(stat_->double_value());
+    case XStat::kStrValue:
+      return stat_->str_value();
+    case XStat::VALUE_NOT_SET:
+      return "";
+  }
+}
+
 XEventVisitor::XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                              const XEvent* event)
     : XStatsOwner<XEvent>(plane, event),

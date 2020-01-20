@@ -425,8 +425,11 @@ class DirectTpuDriver : public TpuDriver {
           static_cast<DirectBufferHandle* const>(outputs[i])->handle_);
     }
 
-    struct DeviceAssignment da = {device_assignment.replica_count(),
-                                  device_assignment.computation_count()};
+    struct DeviceAssignment da;
+    da.size = device_assignment.ByteSizeLong();
+    da.bytes = malloc(da.size);
+    device_assignment.SerializeToArray(da.bytes, da.size);
+
     auto event = std::make_shared<DirectEvent>(
         &driver_fn_,
         driver_fn_.TpuDriver_ExecuteProgram(
@@ -434,6 +437,7 @@ class DirectTpuDriver : public TpuDriver {
             inputs.size(), inputv.data(), outputs.size(), outputv.data(), da,
             wait_for.size(), tpu_events));
 
+    free(da.bytes);
     delete[] tpu_events;
     return event;
   }

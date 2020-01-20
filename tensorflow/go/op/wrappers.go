@@ -27182,6 +27182,43 @@ func MlirPassthroughOp(scope *Scope, inputs []tf.Output, mlir_module string, Tou
 	return outputs
 }
 
+// StringLowerAttr is an optional argument to StringLower.
+type StringLowerAttr func(optionalAttr)
+
+// StringLowerEncoding sets the optional encoding attribute to value.
+// If not specified, defaults to ""
+func StringLowerEncoding(value string) StringLowerAttr {
+	return func(m optionalAttr) {
+		m["encoding"] = value
+	}
+}
+
+// Converts all uppercase characters into their respective lowercase replacements.
+//
+// Example:
+//
+// >>> tf.strings.lower("CamelCase string and ALL CAPS")
+// <tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
+//
+func StringLower(scope *Scope, input tf.Output, optional ...StringLowerAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringLower",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ParseSequenceExampleV2Attr is an optional argument to ParseSequenceExampleV2.
 type ParseSequenceExampleV2Attr func(optionalAttr)
 
@@ -33665,6 +33702,43 @@ func UnsortedSegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output, num
 		Input: []tf.Input{
 			data, segment_ids, num_segments,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StringUpperAttr is an optional argument to StringUpper.
+type StringUpperAttr func(optionalAttr)
+
+// StringUpperEncoding sets the optional encoding attribute to value.
+// If not specified, defaults to ""
+func StringUpperEncoding(value string) StringUpperAttr {
+	return func(m optionalAttr) {
+		m["encoding"] = value
+	}
+}
+
+// Converts all lowercase characters into their respective uppercase replacements.
+//
+// Example:
+//
+// >>> tf.strings.upper("CamelCase string and ALL CAPS")
+// <tf.Tensor: shape=(), dtype=string, numpy=b'CAMELCASE STRING AND ALL CAPS'>
+//
+func StringUpper(scope *Scope, input tf.Output, optional ...StringUpperAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringUpper",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -44166,6 +44240,81 @@ func SegmentMean(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// CTCLossV2Attr is an optional argument to CTCLossV2.
+type CTCLossV2Attr func(optionalAttr)
+
+// CTCLossV2PreprocessCollapseRepeated sets the optional preprocess_collapse_repeated attribute to value.
+//
+// value: Scalar, if true then repeated labels are
+// collapsed prior to the CTC calculation.
+// If not specified, defaults to false
+func CTCLossV2PreprocessCollapseRepeated(value bool) CTCLossV2Attr {
+	return func(m optionalAttr) {
+		m["preprocess_collapse_repeated"] = value
+	}
+}
+
+// CTCLossV2CtcMergeRepeated sets the optional ctc_merge_repeated attribute to value.
+//
+// value: Scalar.  If set to false, *during* CTC calculation
+// repeated non-blank labels will not be merged and are interpreted as
+// individual labels.  This is a simplified version of CTC.
+// If not specified, defaults to true
+func CTCLossV2CtcMergeRepeated(value bool) CTCLossV2Attr {
+	return func(m optionalAttr) {
+		m["ctc_merge_repeated"] = value
+	}
+}
+
+// CTCLossV2IgnoreLongerOutputsThanInputs sets the optional ignore_longer_outputs_than_inputs attribute to value.
+//
+// value: Scalar. If set to true, during CTC
+// calculation, items that have longer output sequences than input sequences
+// are skipped: they don't contribute to the loss term and have zero-gradient.
+// If not specified, defaults to false
+func CTCLossV2IgnoreLongerOutputsThanInputs(value bool) CTCLossV2Attr {
+	return func(m optionalAttr) {
+		m["ignore_longer_outputs_than_inputs"] = value
+	}
+}
+
+// Calculates the CTC Loss (log probability) for each batch entry.  Also calculates
+//
+// the gradient.  This class performs the softmax operation for you, so inputs
+// should be e.g. linear projections of outputs by an LSTM.
+//
+// Arguments:
+//	inputs: 3-D, shape: `(max_time x batch_size x num_classes)`, the logits. Default blank
+// label is 0 rather num_classes - 1.
+//	labels_indices: The indices of a `SparseTensor<int32, 2>`.
+// `labels_indices(i, :) == [b, t]` means `labels_values(i)` stores the id for
+// `(batch b, time t)`.
+//	labels_values: The values (labels) associated with the given batch and time.
+//	sequence_length: A vector containing sequence lengths (batch).
+//
+// Returns:
+//	loss: A vector (batch) containing log-probabilities.
+//	gradient: The gradient of `loss`.  3-D, shape:
+// `(max_time x batch_size x num_classes)`.
+func CTCLossV2(scope *Scope, inputs tf.Output, labels_indices tf.Output, labels_values tf.Output, sequence_length tf.Output, optional ...CTCLossV2Attr) (loss tf.Output, gradient tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CTCLossV2",
+		Input: []tf.Input{
+			inputs, labels_indices, labels_values, sequence_length,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // ResourceSparseApplyKerasMomentumAttr is an optional argument to ResourceSparseApplyKerasMomentum.

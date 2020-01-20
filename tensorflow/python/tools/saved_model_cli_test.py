@@ -35,6 +35,8 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_cli
@@ -708,6 +710,63 @@ Defined Functions:
     saved_model_cli._OP_BLACKLIST = op_blacklist
     output = out.getvalue().strip()
     self.assertTrue('\'VariableV2\'' in output)
+
+  def testAOTCompileCPUWrongSignatureDefKey(self):
+    if not test.is_built_with_xla():
+      self.skipTest('Skipping test because XLA is not compiled in.')
+
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    output_dir = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir')
+    args = self.parser.parse_args(
+        ['aot_compile_cpu', '--dir', base_path, '--tag_set', 'serve',
+         '--output_prefix', output_dir,
+         '--cpp_class', 'Compiled',
+         '--signature_def_key', 'MISSING'])
+    with self.assertRaisesRegexp(ValueError, 'Unable to find signature_def'):
+      saved_model_cli.aot_compile_cpu(args)
+
+  def testAOTCompileCPUFreezesAndCompiles(self):
+    if not test.is_built_with_xla():
+      self.skipTest('Skipping test because XLA is not compiled in.')
+
+    class DummyModel(tracking.AutoTrackable):
+      """Model compatible with XLA compilation."""
+
+      def __init__(self):
+        self.var = variables.Variable(1.0, name='my_var')
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32)
+      ])
+      def func2(self, x):
+        return {'res': x + self.var}
+
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = DummyModel()
+    with self.cached_session():
+      self.evaluate(dummy_model.var.initializer)
+      save.save(dummy_model, saved_model_dir)
+
+    self.parser = saved_model_cli.create_parser()
+    output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
+    args = self.parser.parse_args(
+        ['aot_compile_cpu', '--dir', saved_model_dir, '--tag_set', 'serve',
+         '--output_prefix', output_prefix,
+         '--cpp_class', 'Generated'])  # Use the default seving signature_key.
+    saved_model_cli.aot_compile_cpu(args)
+    self.assertTrue(file_io.file_exists('{}.o'.format(output_prefix)))
+    self.assertTrue(file_io.file_exists('{}.h'.format(output_prefix)))
+    self.assertTrue(file_io.file_exists('{}_metadata.o'.format(output_prefix)))
+    self.assertTrue(
+        file_io.file_exists('{}_makefile.inc'.format(output_prefix)))
+    header_contents = file_io.read_file_to_string('{}.h'.format(output_prefix))
+    self.assertIn('class Generated', header_contents)
+    self.assertIn('arg_x_data', header_contents)
+    self.assertIn('result_res_data', header_contents)
+    makefile_contents = file_io.read_file_to_string(
+        '{}_makefile.inc'.format(output_prefix))
+    self.assertIn('-D_GLIBCXX_USE_CXX11_ABI=', makefile_contents)
 
 
 if __name__ == '__main__':

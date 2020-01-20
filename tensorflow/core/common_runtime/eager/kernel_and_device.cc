@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
@@ -280,14 +280,11 @@ Status KernelAndDeviceOp::Run(
 
   {
     absl::string_view op_name = kernel_->name_view();
-    // 'ScopedActivity' will trace the OpKernel scheduling time on host.
-    profiler::TraceMe activity(
+    // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
+    // time on device of the OpKernel.
+    profiler::AnnotatedTraceMe activity(
         [&] { return absl::StrCat(op_name, ":", kernel_->type_string_view()); },
         profiler::TraceMeLevel::kInfo);
-    // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-    profiler::ScopedAnnotation annotation([&]() {
-      return absl::StrCat(op_name, ":", kernel_->type_string_view());
-    });
     device_->Compute(kernel_.get(), &context);
   }
 

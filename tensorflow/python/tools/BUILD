@@ -1,8 +1,7 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
+load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -325,7 +324,10 @@ py_library(
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
-    ],
+        "//tensorflow/python:tf_optimizer",
+    ] + if_xla_available(
+        ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
+    ),
 )
 
 py_test(
@@ -339,7 +341,10 @@ py_test(
     tags = [
         "manual",
         "no-internal-py3",
+        "nosan",
     ],
+    # Force-include XLA dependencies of saved_model_cli_lib to ensure we test
+    # the AOT compilation.
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
