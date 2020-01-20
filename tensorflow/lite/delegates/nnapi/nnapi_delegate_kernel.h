@@ -288,6 +288,8 @@ class NNAPIDelegateKernel {
   const NnApi* nnapi_;
   // ANN device handle.
   std::vector<ANeuralNetworksDevice*> nnapi_devices_;
+  // Name of the nnapi device, empty if nnapi_devices_ is empty;
+  std::string device_name_;
   // ANN API state.
   std::unique_ptr<ANeuralNetworksModel, NNFreeModel> nn_model_;
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>
