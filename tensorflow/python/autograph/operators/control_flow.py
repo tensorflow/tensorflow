@@ -188,7 +188,7 @@ def _verify_single_loop_var(
                                               shape_invariant))
       if not _is_subshape(exit_shape, shape_invariant):
         raise ValueError(
-            '"{}" has shape {} after the loop, which does not conform with'
+            '"{}" has shape {} after one iteration, which does not conform with'
             ' the shape invariant {}.'.format(
                 name, exit_shape, shape_invariant))
 
