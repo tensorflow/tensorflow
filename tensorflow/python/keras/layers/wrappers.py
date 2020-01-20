@@ -327,7 +327,6 @@ class TimeDistributed(Wrapper):
     else:
       if isinstance(inputs, ragged_tensor.RaggedTensor):
         inner_inputs = inputs.values
-        self._input_map[input_uid] = inner_inputs
       else:
         inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
         inner_inputs = array_ops.reshape(inputs, inner_input_shape)
