@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -92,6 +93,50 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
     return self.BuildParams(self.GraphFn, dtypes.float32,
                             [[12, 5, 8, 1, 1, 12], [12, 5, 8, 1, 12, 1, 1]],
                             [[12, 5, 8, 12]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return ["TRTEngineOp_0"]
+
+
+class ExplicitBatchDimTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GraphFn(self, inp):
+    """Create a graph containing single segment."""
+    dtype = inp.dtype
+    val = math_ops.abs(inp)
+    return gen_math_ops.exp(val)
+
+  def GetParams(self):
+    input_dims = [[[1, 6, 6]]]
+    input_specs = [tensor_spec.TensorSpec([None, None, 6], dtypes.float32,
+                                          "input")]
+    output_specs = input_specs
+    expected_output_dims = input_dims
+
+    return trt_test.TfTrtIntegrationTestParams(
+        graph_fn=self.GraphFn, input_specs=input_specs,
+        output_specs=output_specs, input_dims=input_dims,
+        expected_output_dims=expected_output_dims)
+
+  def GetConversionParams(self, run_params):
+    """Return a ConversionParams for test."""
+    conversion_params = super(ExplicitBatchDimTest,
+                              self).GetConversionParams(run_params)
+    rewrite_config_with_trt = self.GetTrtRewriterConfig(
+        run_params=run_params,
+        conversion_params=conversion_params)
+    found_trt_cfg = False
+    for optimizer in rewrite_config_with_trt.custom_optimizers:
+        if optimizer.name == 'TensorRTOptimizer':
+            found_trt_cfg = True
+            optimizer.parameter_map["use_implicit_batch"].b = False
+            optimizer.parameter_map["minimum_segment_size"].i = 1
+
+    assert found_trt_cfg
+
+    return conversion_params._replace(
+        rewriter_config_template=rewrite_config_with_trt)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
