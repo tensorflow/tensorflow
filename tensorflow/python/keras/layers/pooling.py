@@ -373,15 +373,24 @@ class MaxPooling2D(Pooling2D):
              
   Usage Example:
   
-  >>> input_image = np.random.normal(0.5,0.1,(1,28,28,1))
-  >>> output = np.random.normal(0.5,0.1,(1,13,13,16))
+  >>> input_image = tf.constant([[[[1.], [1.], [2.], [4.], [2.], [4.], [2.]],
+  ...                            [[2.], [2.], [3.], [2.], [2.], [1.], [2.]],
+  ...                            [[4.], [1.], [1.], [1.], [1.], [2.], [2.]],
+  ...                            [[2.], [2.], [1.], [4.], [2.], [3.], [4.]],
+  ...                            [[1.], [4.], [1.], [1.], [2.], [3.], [2.]],
+  ...                            [[1.], [4.], [2.], [3.], [1.], [2.], [3.]],
+  ...                            [[3.], [4.], [1.], [2.], [3.], [1.], [4.]]]]) 
+  >>> output = tf.constant([[[[1], [0]],
+  ...                       [[0], [1]]]]) 
   >>> model = tf.keras.models.Sequential()
-  >>> model.add(tf.keras.layers.Conv2D(16, kernel_size=(3, 3), 
-  ...    input_shape=(28,28,1)))
+  >>> model.add(tf.keras.layers.Conv2D(1, kernel_size=(3, 3), 
+  ...    input_shape=(7,7,1)))
   >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
   >>> model.compile('adam', 'mean_squared_error')
-  >>> model.fit(input_image, output)
-  <tensorflow.python.keras.callbacks.History at 0x7f851d526e48>
+  >>> model.fit(input_image, output, steps_per_epoch=1, 
+  ...    shuffle=False, verbose=0)
+  >>> model.predict(input_image, steps=1).shape
+  (1, 2, 2, 1)
 
   For example, for stride=(1,1) and padding="same":
 
