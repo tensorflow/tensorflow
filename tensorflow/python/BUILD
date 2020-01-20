@@ -10,6 +10,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
+load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
@@ -423,6 +424,30 @@ tf_python_pybind_extension(
     deps = [
         "//third_party/python_runtime:headers",
         "@pybind11",
+    ],
+)
+
+# Necessary for the pywrap inclusion below.
+tf_pybind_cc_library_wrapper(
+    name = "tfcompile_headers_lib",
+    deps = [
+        "//tensorflow/compiler/aot:tfcompile_lib",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tfcompile",
+    srcs = ["tfcompile_wrapper.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_tfcompile",
+    deps = [
+        ":tfcompile_headers_lib",
+        "@pybind11",
+        "//third_party/python_runtime:headers",
+        ":pybind11_lib",
+        ":pybind11_status",
+        # The headers here cannot be brought in via cc_header_only_library
+        "//tensorflow/compiler/aot:llvm_targets",
     ],
 )
 
@@ -1115,7 +1140,7 @@ py_library(
         "@six_archive//:six",
         "//tensorflow/python/eager:context",
     ] + if_xla_available([
-        "//tensorflow/compiler/aot:_pywrap_tfcompile",
+        ":_pywrap_tfcompile",
     ]),
 )
 

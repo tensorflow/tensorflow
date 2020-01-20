@@ -71,7 +71,7 @@ _XLA_DEBUG_OPTIONS_URL = (
 
 
 try:
-  from tensorflow.compiler.aot import _pywrap_tfcompile  # pylint: disable=g-import-not-at-top
+  from tensorflow.python import _pywrap_tfcompile  # pylint: disable=g-import-not-at-top
 except ImportError as e:
   _pywrap_tfcompile_import_error = ImportError(
       'Unable to import _pywrap_tfcompile; you must build TensorFlow '
