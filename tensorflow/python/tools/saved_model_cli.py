@@ -101,6 +101,16 @@ def _sysconfig_module():
   return sysconfig_lib
 
 
+def _parse_tensor_name(name):
+  """Convert a tensor name like 'tensor:0' into a tuple ('tensor', 0)."""
+  if ':' in name and not name.endswith(':'):
+    node_name = name[:name.rfind(':')]
+    output_slot = int(name[name.rfind(':') + 1:])
+    return node_name, output_slot
+  else:
+    return name, None
+
+
 _XLA_MAKEFILE_TEMPLATE = """
 INC = -I{tensorflow_includes}
 LIB = -L{compiled_dir}
@@ -134,7 +144,11 @@ def _xla_makefile_string(output_prefix):
       base = os.path.realpath(
           os.path.join(os.path.dirname(this_file), *([os.path.pardir] * 3)))
     else:
-      base = test.test_src_dir_path('')
+      try:
+        base = test.test_src_dir_path('')
+      except KeyError:  # Can't find TEST_SRCDIR in environment path.
+        base = os.path.realpath(
+            os.path.join(os.path.dirname(__file__), *([os.path.pardir] * 3)))
     expected_header = os.path.join(
         base, 'tensorflow', 'compiler', 'tf2xla', 'xla_compiled_cpu_function.h')
     if not os.path.exists(expected_header):
@@ -162,6 +176,47 @@ def _show_tag_sets(saved_model_dir):
   print('The given SavedModel contains the following tag-sets:')
   for tag_set in sorted(tag_sets):
     print('%r' % ', '.join(sorted(tag_set)))
+
+
+def _get_variable_nodes_from_graph_def(graph_def):
+  """Get the list of Variable nodes from `graph_def`.
+
+  Args:
+    graph_def: An instance of `GraphDef`.
+
+  Returns:
+    A list of `NodeDef` corresponding to variables in the graph.
+  """
+  variables = [n for n in graph_def.node if n.op == 'VarHandleOp']
+
+  for f in graph_def.library.function:
+    variables += [n for n in f.node_def if n.op == 'VarHandleOp']
+
+  return variables
+
+
+def _prune_removed_feed_nodes(signature_def, graph_def):
+  """Identify the inputs in the signature no longer in graph_def, prune them.
+
+  Args:
+    signature_def: A `SignatureDef` instance.
+    graph_def: A `GraphDef` instance.
+
+  Returns:
+    A new pruned `SignatureDef`.
+  """
+  node_names = set([n.name for n in graph_def.node])
+  new_signature_def = meta_graph_pb2.SignatureDef()
+  new_signature_def.CopyFrom(signature_def)
+  for (k, v) in signature_def.inputs.items():
+    tensor_name, _ = _parse_tensor_name(v.name)
+    if tensor_name not in node_names:
+      logging.warn(
+          'Signature input key \'{}\', tensor name \'{}\', has been pruned '
+          'while freezing the graph.  Removing it from the compiled signatures.'
+          .format(k, tensor_name))
+      del new_signature_def.inputs[k]
+  return new_signature_def
 
 
 def _show_signature_def_map_keys(saved_model_dir, tag_set):
@@ -882,23 +937,28 @@ def aot_compile_cpu(args):
   checkpoint_path = (
       args.checkpoint_path
       or os.path.join(args.dir, 'variables/variables'))
+  if not args.variables_to_feed:
+    variables_to_feed = []
+  elif args.variables_to_feed.lower() == 'all':
+    variables_to_feed = None  # We will identify them after.
+  else:
+    variables_to_feed = args.variables_to_feed.split(',')
   aot_compile_cpu_meta_graph_def(
       checkpoint_path=checkpoint_path,
       meta_graph_def=saved_model_utils.get_meta_graph_def(
           args.dir, args.tag_set),
       signature_def_key=args.signature_def_key,
-      freeze_graph=args.freeze_graph,
+      variables_to_feed=variables_to_feed,
       output_prefix=args.output_prefix,
       cpp_class=args.cpp_class)
 
 
-def aot_compile_cpu_meta_graph_def(
-    checkpoint_path,
-    meta_graph_def,
-    output_prefix,
-    signature_def_key,
-    cpp_class,
-    freeze_graph=True):
+def aot_compile_cpu_meta_graph_def(checkpoint_path,
+                                   meta_graph_def,
+                                   output_prefix,
+                                   signature_def_key,
+                                   cpp_class,
+                                   variables_to_feed=()):
   """Compile a `MetaGraphDef` to header+object files in `output_prefix`.
 
   Use XLA AOT (`tfcompile`) to convert the given meta graph and
@@ -920,7 +980,10 @@ def aot_compile_cpu_meta_graph_def(
     output_prefix: Python string.  Path prefix for outputs.
     signature_def_key: String, the signature_def to use in the SavedModel.
     cpp_class: Name of output C++ class.
-    freeze_graph: Whether to freeze the graph before compilation.
+    variables_to_feed: A list of strings, the variables that will be fed by the
+      user; these won't be frozen.  If `None`, then we will extract all the
+      variables in the graph and mark them as to-feed.  The default behavior is
+      an empty tuple: all variables must be frozen.
 
   Raises:
     RuntimeError: If tensorflow was not built with XLA.
@@ -945,32 +1008,62 @@ def aot_compile_cpu_meta_graph_def(
         'Signature key {} must have outputs, but saw none:\n{}'.format(
             signature_def_key, str(signature_def)))
 
+  temp_dir = test.get_temp_dir()
+  file_io.recursive_create_dir(temp_dir)
+  if logging.get_verbosity() >= logging.INFO:
+    original_graph_def_location = os.path.join(temp_dir, 'original_graph.pb')
+    with file_io.FileIO(original_graph_def_location, 'wb') as graph_writer:
+      graph_writer.write(meta_graph_def.graph_def.SerializeToString())
+
   # This updates graph_def in place.
   _replace_input_placeholders_with_default_values(
       meta_graph_def.graph_def, signature_def)
   graph_def = _optimize_graph(meta_graph_def, signature_def)
 
-  if freeze_graph:
-    # Load the Variables so that we can freeze the graph.
-    with session.Session(graph=ops_lib.Graph()) as sess:
-      restorer = saver_lib.import_meta_graph(
-          meta_graph_def, clear_devices=True)
-      restorer.restore(sess, checkpoint_path)
-      graph_def.CopyFrom(
-          graph_util.convert_variables_to_constants(
-              sess,
-              graph_def,
-              [n.name.split(':')[0] for n in signature_def.outputs.values()]))
+  all_variables = _get_variable_nodes_from_graph_def(graph_def)
+  if variables_to_feed is None:
+    variable_nodes_to_feed = list(all_variables)
+  else:
+    not_in_graph = (
+        set(variables_to_feed).difference([x.name for x in all_variables]))
+    if not_in_graph:
+      raise ValueError(
+          'Asked to feed variables that were not found in graph: {}.  '
+          'Variables contained in the graph: {}'.format(
+              not_in_graph, set([x.name for x in all_variables])))
+    all_variables_map = dict((x.name, x) for x in all_variables)
+    variable_nodes_to_feed = [
+        all_variables_map[name] for name in variables_to_feed
+    ]
 
-  temp_dir = test.get_temp_dir()
+  if logging.get_verbosity() >= logging.INFO:
+    prefrozen_graph_def_location = os.path.join(temp_dir, 'prefrozen_graph.pb')
+    with file_io.FileIO(prefrozen_graph_def_location, 'wb') as graph_writer:
+      graph_writer.write(meta_graph_def.graph_def.SerializeToString())
+
+  # Load the Variables so that we can freeze the graph.
+  with session.Session(graph=ops_lib.Graph()) as sess:
+    restorer = saver_lib.import_meta_graph(meta_graph_def, clear_devices=True)
+    restorer.restore(sess, checkpoint_path)
+    graph_def.CopyFrom(
+        graph_util.convert_variables_to_constants(
+            sess,
+            graph_def,
+            output_node_names=[
+                _parse_tensor_name(n.name)[0]
+                for n in signature_def.outputs.values()
+            ],
+        ))
+
+  signature_def = _prune_removed_feed_nodes(signature_def, graph_def)
+
   frozen_graph_def_location = os.path.join(temp_dir, 'frozen_graph.pb')
   config_pbtxt_location = os.path.join(temp_dir, 'config.pbtxt')
   logging.info('Writing graph def to: {}'.format(frozen_graph_def_location))
   with file_io.FileIO(frozen_graph_def_location, 'wb') as graph_writer:
     graph_writer.write(graph_def.SerializeToString())
   config = _signature_to_tf2xla_config(
-      signature_def,
-      frozen_variables=freeze_graph)
+      signature_def, variable_nodes_to_feed=variable_nodes_to_feed)
   logging.info('Writing config_pbtxt to: {}'.format(config_pbtxt_location))
   with file_io.FileIO(config_pbtxt_location, mode='w') as config_writer:
     config_writer.write(str(config))
@@ -991,13 +1084,6 @@ def aot_compile_cpu_meta_graph_def(
 
   output_prefix = _shlex_quote(output_prefix)
 
-  additional_compiler_args = {}
-  sysconfig = _sysconfig_module()
-  if sysconfig:
-    # We're inside PIP and need to pass a customized relative path to the
-    # appropriate tensorflow headers.
-    additional_compiler_args['tensorflow_header_root'] = 'tensorflow'
-
   _pywrap_tfcompile.Compile(
       graph=frozen_graph_def_location,
       config=config_pbtxt_location,
@@ -1008,8 +1094,7 @@ def aot_compile_cpu_meta_graph_def(
       out_metadata_object='{}_metadata.o'.format(output_prefix),
       gen_name_to_index=True,
       # ProgramShape isn't uniquefied by entry_point.
-      gen_program_shape=False,
-      **additional_compiler_args)
+      gen_program_shape=False)
 
 
 def _optimize_graph(meta_graph_def, signature_def):
@@ -1034,7 +1119,7 @@ def _replace_input_placeholders_with_default_values(graph_def, signature_def):
   name_to_node_map = dict((n.name, n) for n in graph_def.node)
   temp_graph = ops_lib.Graph()
   for name, input_ in signature_def.inputs.items():
-    tensor_name = input_.name.split(':')[0]
+    tensor_name, _ = _parse_tensor_name(input_.name)
     if tensor_name not in name_to_node_map:
       raise RuntimeError(
           'Unable to find input signature tensor \'{}\' in optimized GraphDef. '
@@ -1330,13 +1415,16 @@ def add_aot_compile_cpu_subparser(subparsers):
             'The class will be generated in the given namespace(s), or if no '
             'namespaces are given, within the global namespace.'))
   parser_compile.add_argument(
-      '--freeze_graph',
-      type=bool,
-      default=True,
-      help=('Whether to freeze the tf.Variables into the graph.  If false, '
-            'then all Variables in the closure of the signature graph path '
-            'be be added as input and output args to the XLA-compiled graph '
-            '(not currently supported)'))
+      '--variables_to_feed',
+      type=str,
+      default='',
+      help=('The names of variables that will be fed into the network.  '
+            'Options are: empty (default; all variables are frozen, none may '
+            'be fed), \'all\' (all variables may be fed), or a '
+            'comma-delimited list of names of variables that may be fed.  In '
+            'the last case, the non-fed variables will be frozen in the graph.')
+  )
+
   parser_compile.set_defaults(func=aot_compile_cpu)
 
 
@@ -1371,12 +1459,13 @@ def create_parser():
   return parser
 
 
-def _signature_to_tf2xla_config(signature_def, frozen_variables):
+def _signature_to_tf2xla_config(signature_def, variable_nodes_to_feed):
   """Convert `signature_def` to tf2xla config.  Returns a `tf2xla.Config` proto.
 
   Args:
     signature_def: Instance of `SignatureDef`.
-    frozen_variables: Python bool, whether variables are being frozen or not.
+    variable_nodes_to_feed: List NodeDefs corresponding to VarHandleOp,
+      the list of variables to feed.
 
   Returns:
     An instance of `tf2xla.Config` proto.
@@ -1390,7 +1479,9 @@ def _signature_to_tf2xla_config(signature_def, frozen_variables):
   tensor_id = tf2xla_pb2.TensorId
 
   for name, input_ in signature_def.inputs.items():
-    (node_name, output_index) = input_.name.split(':')
+    name = name.replace('/', '_')
+    name = 'feed_{}'.format(name)
+    (node_name, output_index) = _parse_tensor_name(input_.name)
     output_index = int(output_index)
     config.feed.append(
         tf2xla_pb2.Feed(
@@ -1399,7 +1490,9 @@ def _signature_to_tf2xla_config(signature_def, frozen_variables):
             type=input_.dtype,
             shape=input_.tensor_shape))
   for name, output_ in signature_def.outputs.items():
-    (node_name, output_index) = output_.name.split(':')
+    name = name.replace('/', '_')
+    name = 'fetch_{}'.format(name)
+    (node_name, output_index) = _parse_tensor_name(output_.name)
     output_index = int(output_index)
     config.fetch.append(
         tf2xla_pb2.Fetch(
@@ -1407,14 +1500,22 @@ def _signature_to_tf2xla_config(signature_def, frozen_variables):
             name=name,
             type=output_.dtype,
             shape=output_.tensor_shape))
-  if not frozen_variables:
-    # Extract all variables along the path and add to config
-    raise NotImplementedError('Non-frozen graphs are not supported.')
+  for node in variable_nodes_to_feed:
+    name = node.name.replace('/', '_')
+    name = 'param_{}'.format(name)
+    config.variable.append(
+        tf2xla_pb2.Variable(
+            node_name=node.name,
+            name=name,
+            type=node.attr['dtype'].type,
+            shape=node.attr['shape'].shape,
+            readonly=True))
 
   return config
 
 
 def main():
+  logging.set_verbosity(logging.INFO)
   parser = create_parser()
   args = parser.parse_args()
   if not hasattr(args, 'func'):

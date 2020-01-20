@@ -119,13 +119,12 @@ using BufferInfo = cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     string triple, string cpu_name, string features, string entry_point_name,
-    RelocationModel relocation_model, string tensorflow_header_root)
+    RelocationModel relocation_model)
     : triple_(std::move(triple)),
       cpu_name_(std::move(cpu_name)),
       features_(std::move(features)),
       entry_point_name_(std::move(entry_point_name)),
-      relocation_model_(relocation_model),
-      tensorflow_header_root_(std::move(tensorflow_header_root)) {}
+      relocation_model_(relocation_model) {}
 
 CpuAotCompilationOptions::~CpuAotCompilationOptions() = default;
 

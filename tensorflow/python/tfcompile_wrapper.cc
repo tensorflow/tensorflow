@@ -39,8 +39,8 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
          std::string entry_point, std::string cpp_class,
          std::string out_function_object, std::string out_metadata_object,
          std::string out_header, std::string out_session_module,
-         std::string mlir_components, std::string tensorflow_header_root,
-         bool gen_name_to_index, bool gen_program_shape) {
+         std::string mlir_components, bool gen_name_to_index,
+         bool gen_program_shape) {
         tensorflow::tfcompile::MainFlags flags;
         flags.graph = std::move(graph);
         flags.config = std::move(config);
@@ -54,7 +54,6 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
         flags.out_header = std::move(out_header);
         flags.out_session_module = std::move(out_session_module);
         flags.mlir_components = std::move(mlir_components);
-        flags.tensorflow_header_root = std::move(tensorflow_header_root);
 
         // C++ codegen options
         flags.gen_name_to_index = gen_name_to_index;
@@ -68,8 +67,6 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
       py::arg("cpp_class") = "", py::arg("out_function_object") = "out_model.o",
       py::arg("out_metadata_object") = "out_helper.o",
       py::arg("out_header") = "out.h", py::arg("out_session_module") = "",
-      py::arg("mlir_components") = "",
-      py::arg("tensorflow_header_root") = "third_party/tensorflow",
-      py::arg("gen_name_to_index") = false,
+      py::arg("mlir_components") = "", py::arg("gen_name_to_index") = false,
       py::arg("gen_program_shape") = false);
 }

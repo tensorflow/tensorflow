@@ -1,7 +1,7 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test")
+load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -343,10 +343,63 @@ py_test(
         "no-internal-py3",
         "nosan",
     ],
-    # Force-include XLA dependencies of saved_model_cli_lib to ensure we test
-    # the AOT compilation.
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+genrule(
+    name = "aot_compiled_x_plus_y_gen",
+    srcs = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+        "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb",
+    ],
+    outs = [
+        "compiled_model.h",
+        "compiled_model.o",
+        "compiled_model_metadata.o",
+        "compiled_model_makefile.inc",
+    ],
+    cmd = (
+        "$(location :saved_model_cli) aot_compile_cpu " +
+        "--dir \"$$(dirname $(location //tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb))\" " +
+        "--output_prefix $(@D)/compiled_model " +
+        "--cpp_class CompiledModel " +
+        "--tag_set serve "
+    ),
+    tools = [
+        ":saved_model_cli",
+    ],
+)
+
+cc_library(
+    name = "aot_compiled_x_plus_y",
+    srcs = if_xla_available([
+        ":compiled_model.o",
+        ":compiled_model_metadata.o",
+    ]),
+    hdrs = if_xla_available([
+        ":compiled_model.h",
+    ]),
+    deps = if_xla_available([
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/core/platform:types",
+    ]),
+)
+
+tf_cc_test(
+    name = "binary_using_aot_compiled_x_plus_y_test",
+    srcs = if_xla_available([
+        "binary_using_aot_compiled_x_plus_y_test.cc",
+    ]),
+    deps = [
+        "//tensorflow/core:test_main",
+    ] + if_xla_available([
+        ":aot_compiled_x_plus_y",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:logging",
+    ]),
 )

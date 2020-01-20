@@ -40,7 +40,6 @@ struct MainFlags {
   string out_header;
   string out_session_module;
   string mlir_components;
-  string tensorflow_header_root;
 
   // C++ codegen options
   bool gen_name_to_index = false;
