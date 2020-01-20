@@ -1633,19 +1633,32 @@ cc_library(
 # -----------------------------------------------------------------------------
 # Clif-related proto libraries.
 
-tf_pyclif_proto_library(
-    name = "example/example_pyclif",
-    proto_lib = ":protos_all",
-    proto_srcfile = "example/example.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "example/feature_pyclif",
-    proto_lib = ":protos_all",
-    proto_srcfile = "example/feature.proto",
-    visibility = ["//visibility:public"],
-)
+# The following targets will be moved to core/example. The aliases are only temporary
+# since moving existing users will require several CLs over several projects.
+[
+    [
+        alias(
+            name = "example_%s_pyclif%s" % (proto_name, target_suffix),
+            actual = ":example/%s_pyclif%s" % (proto_name, target_suffix),
+            visibility = ["//visibility:public"],
+        )
+        for target_suffix in [
+            "",
+            "_pb2",
+        ]
+    ] + [
+        tf_pyclif_proto_library(
+            name = "example/%s_pyclif" % proto_name,
+            proto_lib = ":protos_all",
+            proto_srcfile = "example/%s.proto" % proto_name,
+            visibility = ["//visibility:public"],
+        ),
+    ]
+    for proto_name in [
+        "example",
+        "feature",
+    ]
+]
 
 # The following targets will be moved to core/protobuf. The aliases are only temporary
 # since moving existing users will require several CLs over several projects.
