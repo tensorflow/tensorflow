@@ -119,26 +119,21 @@ cc_library(
     deps = [
         ":benchmark_model_lib",
         ":benchmark_utils",
+        ":delegate_provider_hdr",
+        ":gpu_delegate_provider",
         ":logging",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/lite/experimental/ruy/profiler",
+        ":nnapi_delegate_provider",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:delegate",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/lite/delegates/gpu:metal_delegate",
-        ],
-        "//conditions:default": [],
-    }),
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -194,6 +189,60 @@ cc_library(
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ],
+)
+
+cc_library(
+    name = "delegate_provider_hdr",
+    hdrs = [
+        "delegate_provider.h",
+    ],
+    copts = common_copts,
+    deps = [
+        ":benchmark_params",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/tools:command_line_flags",
+    ],
+)
+
+cc_library(
+    name = "gpu_delegate_provider",
+    srcs = ["gpu_delegate_provider.cc"],
+    copts = common_copts + select({
+        "//tensorflow:ios": [
+            "-xobjective-c++",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/tools/evaluation:utils",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/gpu:metal_delegate",
+        ],
+        "//conditions:default": [],
+    }),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "nnapi_delegate_provider",
+    srcs = ["nnapi_delegate_provider.cc"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/tools/evaluation:utils",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
