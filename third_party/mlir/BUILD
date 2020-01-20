@@ -18,8 +18,9 @@ package_group(
 )
 
 exports_files([
-    "run_lit.sh",
     "LICENSE.TXT",
+    "include/mlir/Dialect/LLVMIR/LLVMOps.td",
+    "run_lit.sh",
 ])
 
 cc_library(
