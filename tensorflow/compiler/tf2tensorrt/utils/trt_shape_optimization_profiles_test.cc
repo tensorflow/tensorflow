@@ -196,49 +196,6 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   }
 }
 
-TEST_F(TrtShapeOptimizationProfileTest, Switch) {
-  // Network with dynamic input shapes
-  nvinfer1::Dims3 dims(-1, -1, 10);
-  DefineNetwork(network_.get(), dims);
-
-  TrtShapeOptimizationProfile profile;
-  std::vector<std::vector<nvinfer1::Dims3>> input_profiles{
-      {nvinfer1::Dims3(2, 2, 10), nvinfer1::Dims3(2, 2, 10)},
-      {nvinfer1::Dims3(3, 3, 10), nvinfer1::Dims3(3, 3, 10)},
-      {nvinfer1::Dims3(16, 16, 10), nvinfer1::Dims3(16, 16, 10)},
-  };
-
-  // Simulate a profile collection phase
-  for (auto dim_vec : input_profiles) {
-    std::vector<TensorShape> shape_vec = dimvec2shapevec(dim_vec);
-    profile.addShape(shape_vec);
-  }
-  profile.initProfiles();
-
-  // Configure and build engine
-  profile.configureBuilder(builder_.get(), builder_config_.get(),
-                           network_.get());
-  engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
-      builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
-  ASSERT_NE(nullptr, engine);
-
-  // Instead of calling profile.createExecutionContexts, we just create a
-  // single context and switch profiles there
-  TrtUniquePtrType<nvinfer1::IExecutionContext> ctx(
-      engine->createExecutionContext());
-
-  // Check if default profile is set
-  int prof_idx = ctx->getOptimizationProfile();
-  EXPECT_EQ(prof_idx, 0);
-
-  for (int i = 1; i < profile.GetNumProfiles(); i++) {
-    VLOG(2) << "Checking swich to optimization profile " << i;
-    ctx->setOptimizationProfile(i);
-    prof_idx = ctx->getOptimizationProfile();
-    EXPECT_EQ(prof_idx, i);
-  }
-}
-
 }  // namespace tensorrt
 }  // namespace tensorflow
 
