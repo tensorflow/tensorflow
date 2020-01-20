@@ -99,7 +99,7 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
     return ["TRTEngineOp_0"]
 
 
-class ExplicitBatchDimTest(trt_test.TfTrtIntegrationTestBase):
+class UnaryExplicitBatchDimTest(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
     """Create a graph containing single segment."""
