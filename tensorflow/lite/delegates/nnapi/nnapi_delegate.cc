@@ -31,6 +31,7 @@ limitations under the License.
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
+
 #if defined __ANDROID__ || defined __unix__
 #define TFLITE_NNAPI_ALLOW_MMAP_SHARING
 #include <sys/mman.h>
@@ -469,6 +470,36 @@ TfLiteStatus GetTargetDevices(TfLiteContext* context, TfLiteDelegate* delegate,
 
 namespace delegate {
 namespace nnapi {
+
+#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
+NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
+  if (name && size > 0) {
+    nnapi_ = nnapi;
+    byte_size_ = size;
+    fd_ = nnapi_->ASharedMemory_create(name, size);
+    data_ptr_ = reinterpret_cast<uint8_t*>(
+        mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
+    nnapi_->ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE,
+                                               fd_, 0, &nn_memory_handle_);
+  }
+}
+#else
+NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* /*name*/,
+                   size_t /*size*/)
+    : nnapi_(nullptr) {}
+#endif
+
+NNMemory::~NNMemory() {
+#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
+  if (data_ptr_) {
+    munmap(data_ptr_, byte_size_);
+  }
+  if (nn_memory_handle_) {
+    nnapi_->ANeuralNetworksMemory_free(nn_memory_handle_);
+  }
+  if (fd_ > 0) close(fd_);
+#endif
+}
 
 // RAII NN API Execution Destructor for use with std::unique_ptr
 struct NNFreeExecution {
