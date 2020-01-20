@@ -260,7 +260,7 @@ class MomentumOptimizerTest(test.TestCase):
       self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
 
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
-  def testMinimizeWith2DIndiciesForEmbeddingLookup(self):
+  def testMinimizeWith2DIndicesForEmbeddingLookup(self):
     # This test invokes the ResourceSparseApplyMomentum operation, which
     # did not have a registered GPU kernel as of April 2018. With graph
     # execution, the placement algorithm notices this and automatically

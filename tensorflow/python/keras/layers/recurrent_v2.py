@@ -837,7 +837,7 @@ class LSTMCell(recurrent.LSTMCell):
     inputs: A 2D tensor, with shape of `[batch, feature]`.
     states: List of 2 tensors that corresponding to the cell's units. Both of
       them have shape `[batch, units]`, the first tensor is the memory state
-      from previous time step, the second tesnor is the carry state from
+      from previous time step, the second tensor is the carry state from
       previous time step. For timestep 0, the initial state provided by user
       will be feed to cell.
     training: Python boolean indicating whether the layer should behave in
