@@ -123,7 +123,6 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                                      const HloComputation* hlo_computation,
                                      IrEmitterContext* ir_emitter_context)
-
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
       hlo_computation_(hlo_computation) {
   // Initialize thunk_sequence_ to an empty list of thunks.
@@ -153,9 +152,6 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
                              kernel_name.c_str(), module);
-
-  // Annotate function as a GPU kernel.
-  AnnotateFunctionAsGpuKernel(module, kernel, &b_);
 
   // Add dereferenceable and alignment information to each of the kernel's
   // parameters.
@@ -2111,7 +2107,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
     absl::Span<HloComputation* const> reducers,
     absl::Span<llvm::AllocaInst* const> partial_result_addresses) {
-  for (int distance = kWarpSize/2; distance >= 1; distance /= 2) {
+  for (int distance = 16; distance >= 1; distance /= 2) {
     for (int i = 0; i != reducers.size(); ++i) {
       llvm::Type* element_type =
           partial_result_addresses[i]->getType()->getElementType();
@@ -2129,12 +2125,11 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
       llvm::Value* partial_result =
           Load(convert_pointer_for_shuffle(partial_result_addresses[i]),
                "partial_reduction_result");
-    llvm::Module* module = ir_emitter_context_->llvm_module();
-    Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_),
-          convert_pointer_for_shuffle(result_from_other_lane));
-    TF_CHECK_OK(EmitCallToNestedComputation(
-        *reducers[i], {partial_result_addresses[i], result_from_other_lane},
-        partial_result_addresses[i]));
+      Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_),
+            convert_pointer_for_shuffle(result_from_other_lane));
+      TF_CHECK_OK(EmitCallToNestedComputation(
+          *reducers[i], {partial_result_addresses[i], result_from_other_lane},
+          partial_result_addresses[i]));
     }
   }
 }
