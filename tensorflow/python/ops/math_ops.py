@@ -3305,6 +3305,15 @@ def log_sigmoid(x, name=None):
   Specifically, `y = log(1 / (1 + exp(-x)))`.  For numerical stability,
   we use `y = -tf.nn.softplus(-x)`.
 
+  Usage Example:
+   >>>import tensorflow as tf
+   >>>tensor1 = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+   >>>tensor2 = [2.0, 5.7]
+   >>>print(tf.math.log_sigmoid(tensor1, name='log_sigmoid_tensor1'))
+   Tensor("log_sigmoid_tensor1_5:0", shape=(6,), dtype=float32)
+   >>>print(tf.math.log_sigmoid(tensor2, name='log_sigmoid_tensor2'))
+   Tensor("log_sigmoid_tensor2_1:0", shape=(2,), dtype=float32)
+
   Args:
     x: A Tensor with type `float32` or `float64`.
     name: A name for the operation (optional).
