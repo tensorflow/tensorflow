@@ -106,9 +106,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     }
 
     rewriter.setInsertionPointToEnd(block);
-    Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(lhlo_op), bodyResultTypes, bodyArgs, rewriter);
-    rewriter.create<linalg::YieldOp>(loc, op->getResults());
+    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(lhlo_op), bodyResultTypes, bodyArgs, &rewriter);
+    rewriter.create<linalg::YieldOp>(loc, opResult);
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
   }
@@ -133,10 +133,10 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     // Create two loads from the input.
     auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
     auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
-    Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
+    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
-        llvm::ArrayRef<Value>{lhs, rhs}, rewriter);
-    rewriter.create<StoreOp>(loc, op->getResult(0), lhlo_op.out());
+        llvm::ArrayRef<Value>{lhs, rhs}, &rewriter);
+    rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
   }
@@ -322,6 +322,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::AddOp>,
                    PointwiseToLinalgConverter<xla_lhlo::AndOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CompareOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::CopyOp>,
                    PointwiseToLinalgConverter<xla_lhlo::DivOp>,
                    PointwiseToLinalgConverter<xla_lhlo::ExpOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MaxOp>,

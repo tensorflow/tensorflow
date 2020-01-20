@@ -102,6 +102,19 @@ func @exp(%input: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @copy
+func @copy(%input: memref<2x4x8xf32>,
+           %result: memref<2x4x8xf32>) {
+  "xla_lhlo.copy"(%input, %result)
+      : (memref<2x4x8xf32>, memref<2x4x8xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   linalg.yield %[[OPERAND_IN]] : f32
+
+// -----
+
 // CHECK-LABEL: func @float_cmp
 func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
     %result: memref<2x2xi1>) {
