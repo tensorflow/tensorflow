@@ -582,6 +582,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model = keras.Sequential(dense)
     self.assertEqual(model.count_params(), 16 * 4 + 16)
 
+  def test_super_not_called(self):
+
+    class CustomLayerNotCallingSuper(keras.layers.Layer):
+
+      def __init__(self):
+        pass
+
+    layer = CustomLayerNotCallingSuper()
+    with self.assertRaisesRegexp(RuntimeError, 'You must call `super()'):
+      layer(np.random.random((10, 2)))
+
 
 class SymbolicSupportTest(test.TestCase):
 
