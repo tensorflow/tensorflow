@@ -238,6 +238,21 @@ class SingleOpModel {
                    quantized_output.data() + quantized_output.size());
   }
 
+  template <typename T>
+  void PerChannelQuantizeBiasPopulateTensor(
+      const std::vector<float>& input_data, int index,
+      TfLiteAffineQuantization* params) {
+    const int32_t num_inputs = input_data.size();
+    std::vector<T> quantized_output(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                   : params->scale->data[i];
+      quantized_output[i] = input_data[i] / scale;
+    }
+    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                   quantized_output.data() + quantized_output.size());
+  }
+
   // Quantize and populate data for bias with per channel quantization.
   void PerChannelQuantizeBias(int index, const std::vector<float>& input_data) {
     const int32_t num_inputs = input_data.size();
@@ -246,23 +261,9 @@ class SingleOpModel {
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
     CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
     if (t->type == kTfLiteInt32) {
-      std::vector<int32_t> quantized_output(num_inputs);
-      for (int i = 0; i < num_inputs; ++i) {
-        const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                              : params->scale->data[i];
-        quantized_output[i] = input_data[i] / scale;
-      }
-      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                     quantized_output.data() + quantized_output.size());
+      PerChannelQuantizeBiasPopulateTensor<int32_t>(input_data, index, params);
     } else {
-      std::vector<int64_t> quantized_output(num_inputs);
-      for (int i = 0; i < num_inputs; ++i) {
-        const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                              : params->scale->data[i];
-        quantized_output[i] = input_data[i] / scale;
-      }
-      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                     quantized_output.data() + quantized_output.size());
+      PerChannelQuantizeBiasPopulateTensor<int64_t>(input_data, index, params);
     }
   }
 

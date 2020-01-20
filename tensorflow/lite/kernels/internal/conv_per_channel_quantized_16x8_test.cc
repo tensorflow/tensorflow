@@ -87,8 +87,8 @@ void PickOutputMultiplier(
                   int32 filter_val =
                       filter_data[Offset(filter_shape, output_channel, filter_y,
                                          filter_x, in_channel)];
-                  acc += (std::int64_t)filter_val *
-                         (std::int64_t)(input_val + input_offset);
+                  acc += static_cast<std::int64_t>(filter_val) *
+                         static_cast<std::int64_t>(input_val + input_offset);
                 }
               }
             }
