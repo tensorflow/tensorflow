@@ -239,6 +239,10 @@ CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
 AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
+# The default Makefile target(all) must appear before any target,
+# which is compiled if there's no command-line arguments.
+all: $(MICROLITE_LIB_PATH)
+
 # Load the examples.
 include $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
 
@@ -267,9 +271,6 @@ $(OBJDIR)%.o: %.c $(THIRD_PARTY_TARGETS)
 $(OBJDIR)%.o: %.S $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
-
-# The target that's compiled if there's no command-line arguments.
-all: $(MICROLITE_LIB_PATH)
 
 microlite: $(MICROLITE_LIB_PATH)
 
