@@ -47,17 +47,17 @@ limitations under the License.
 #endif
 
 namespace {
-#pragma Data(".Xdata")
+#pragma Bss(".Xdata")
     static int8_t scratch_mem_x[SCRATCH_MEM_X_SIZE];
-#pragma Data()
+#pragma Bss()
 
-#pragma Data(".Ydata")
+#pragma Bss(".Ydata")
     static int8_t scratch_mem_y[SCRATCH_MEM_Y_SIZE];
-#pragma Data()
+#pragma Bss()
 
-#pragma Data(".Zdata")
+#pragma Bss(".Zdata")
     static int8_t scratch_mem_z[SCRATCH_MEM_Z_SIZE];
-#pragma Data()
+#pragma Bss()
 }
 
 static inline
