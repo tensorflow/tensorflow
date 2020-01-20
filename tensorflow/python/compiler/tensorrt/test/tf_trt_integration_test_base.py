@@ -403,6 +403,19 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     converter.save(trt_saved_model_dir)
     return trt_saved_model_dir
 
+  def _NeedToBuild(self, conversion_params):
+    """ Whether we need to call converter.build().
+    Currently we need to build if we have explicit batch (dynamic shapes)
+    """
+    config = conversion_params.rewriter_config_template
+    if config is None:
+        return False
+    for optimizer in config.custom_optimizers:
+      if optimizer.name == 'TensorRTOptimizer':
+        if "use_implicit_batch" in optimizer.parameter_map:
+            return not optimizer.parameter_map["use_implicit_batch"].b
+    return False
+
   def _GetInferGraph(self, run_params, saved_model_dir):
     """Return trt converted graphdef."""
     conversion_params = self.GetConversionParams(run_params)
@@ -414,6 +427,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       session_config, conversion_params)
     converter.convert()
+
+    if self._NeedToBuild(conversion_params):
+      logging.info("Need to start build mode")
+      def _BuildInputFn():
+        for shapes in self._GetParamsCached().input_dims:
+          yield [np.zeros(x).astype(np.float32) for x in shapes]
+
+      converter.build(input_fn=_BuildInputFn)
+
     trt_saved_model_dir = self._GetSavedModelDir(run_params,
                                                  GraphState.INFERENCE)
     converter.save(trt_saved_model_dir)
