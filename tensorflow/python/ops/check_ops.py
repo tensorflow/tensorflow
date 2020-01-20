@@ -1587,18 +1587,18 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
                      name=None):
   """Assert tensor shapes and dimension size relationships between tensors.
 
-  This Op checks that a collection of tensors shape relationships
-  satisfies given constraints.
+  This Op checks that the shape relationships of a collection of tensors
+  satisfy the given constraints.
 
   Example:
 
   ```python
-  tf.assert_shapes([
-    (x: ('N', 'Q')),
-    (y: ('N', 'D')),
-    (param: ('Q',)),
-    (scalar: ()),
-  ])
+  tf.assert_shapes({
+    x: ('N', 'Q'),
+    y: ('N', 'D'),
+    param: ('Q',),
+    scalar: (),
+  })
   ```
 
   If `x`, `y`, `param` or `scalar` does not have a shape that satisfies
@@ -1612,7 +1612,7 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
       integer primitive.
     - a size entry is interpreted as *any* size if it is None or '.'.
 
-  If the first entry of a shape is `...` (type `Ellipsis`) or '*' that indicates
+  If the first entry of a shape is `...` (type `Ellipsis`) or '*', this indicates
   a variable number of outer dimensions of unspecified size, i.e. the constraint
   applies to the inner-most dimensions only.
 
@@ -1639,17 +1639,17 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
 def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   """Assert tensor shapes and dimension size relationships between tensors.
 
-  This Op checks that a collection of tensors shape relationships
-  satisfies given constraints.
+  This Op checks that the shape relationships of a collection of tensors
+  satisfy the given constraints.
 
   Example:
 
   ```python
   tf.assert_shapes({
-    (x, ('N', 'Q')),
-    (y, ('N', 'D')),
-    (param, ('Q',)),
-    (scalar, ())
+    x: ('N', 'Q'),
+    y: ('N', 'D'),
+    param: ('Q',),
+    scalar: (),
   })
   ```
 
@@ -1671,7 +1671,7 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
       integer primitive.
     - a size entry is interpreted as *any* size if it is None or '.'.
 
-  If the first entry of a shape is `...` (type `Ellipsis`) or '*' that indicates
+  If the first entry of a shape is `...` (type `Ellipsis`) or '*', this indicates
   a variable number of outer dimensions of unspecified size, i.e. the constraint
   applies to the inner-most dimensions only.
 
