@@ -358,7 +358,7 @@ TEST_F(TRTEngineResourceOpsTest, Profiles) {
   EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
   EXPECT_EQ(1, resource->cache_.size());
   EXPECT_EQ(3, resource->profiles_.GetNumProfiles());
-  //TODO(tamas) Check the number of engine contexts
+  EXPECT_EQ(3, resource->cache_.begin()->second->execution_context.size());
   resource->Unref();
 
   // Destroy the engine cache again.
