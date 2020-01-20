@@ -668,6 +668,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       RunConvOptions options;
       options.profile_result = &profile_result;
       options.algo_override = alg;
+      options.scratch_size_override = miopen_alg.scratch_size();
       Status launch_status =
           RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
                      &scratch_allocator, stream, options);

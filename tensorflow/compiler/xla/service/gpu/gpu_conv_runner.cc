@@ -225,6 +225,9 @@ Status RunGpuConvImpl(const GpuConvParams& params,
 
   if (options.algo_override.has_value()) {
     algorithm = AlgorithmConfig(*options.algo_override);
+    if (options.scratch_size_override.has_value()) {
+      algorithm.set_scratch_size(*options.scratch_size_override);
+    }
   }
 
   Status run_status = RunGpuConvInternalImpl<ElementType, BiasType, OutputType>(
