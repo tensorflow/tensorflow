@@ -110,7 +110,7 @@ class ROCMBlas : public blas::BlasSupport {
                               /*err_on_failure=*/false, args...);
   }
 
-  // A helper allocation funciton to convert raw pointers memory layout to
+  // A helper allocation function to convert raw pointers memory layout to
   // strided flavor
   template <typename T>
   port::Status AllocateStridedBuffer(

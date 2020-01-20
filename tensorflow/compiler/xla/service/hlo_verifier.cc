@@ -1599,7 +1599,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     for (int b = 0; b < conditional->branch_count(); ++b) {
       if (conditional->branch_computation(b)->num_parameters() != 1) {
         return FailedPrecondition(
-            "Branch computation %s of %s must have 1 parameter insted of %d",
+            "Branch computation %s of %s must have 1 parameter instead of %d",
             conditional->branch_computation(b)->name(), conditional->ToString(),
             conditional->branch_computation(b)->num_parameters());
       }

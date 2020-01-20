@@ -3614,7 +3614,7 @@ func BoostedTreesSparseCalculateBestFeatureSplitSplitType(value string) BoostedT
 //	l1: l1 regularization factor on leaf weights, per instance based.
 //	l2: l2 regularization factor on leaf weights, per instance based.
 //	tree_complexity: adjustment to the gain, per leaf based.
-//	min_node_weight: mininum avg of hessians in a node before required for the node to be considered for splitting.
+//	min_node_weight: minimum avg of hessians in a node before required for the node to be considered for splitting.
 //	logits_dimension: The dimension of logit, i.e., number of classes.
 //
 // Returns:
@@ -3711,7 +3711,7 @@ func BoostedTreesCalculateBestFeatureSplitV2(scope *Scope, node_id_range tf.Outp
 //	l1: l1 regularization factor on leaf weights, per instance based.
 //	l2: l2 regularization factor on leaf weights, per instance based.
 //	tree_complexity: adjustment to the gain, per leaf based.
-//	min_node_weight: mininum avg of hessians in a node before required for the node to be considered for splitting.
+//	min_node_weight: minimum avg of hessians in a node before required for the node to be considered for splitting.
 //	max_splits: the number of nodes that can be split in the whole tree. Used as a dimension of output tensors.
 //
 // Returns:
@@ -3764,7 +3764,7 @@ func BoostedTreesCalculateBestGainsPerFeature(scope *Scope, node_id_range tf.Out
 // Checks whether a tree ensemble has been initialized.
 //
 // Arguments:
-//	tree_ensemble_handle: Handle to the tree ensemble resouce.
+//	tree_ensemble_handle: Handle to the tree ensemble resource.
 //
 // Returns output boolean on whether it is initialized or not.
 func IsBoostedTreesEnsembleInitialized(scope *Scope, tree_ensemble_handle tf.Output) (is_initialized tf.Output) {
@@ -5160,7 +5160,7 @@ func CudnnRNNParamsToCanonicalV2NumProj(value int64) CudnnRNNParamsToCanonicalV2
 // num_layers: Specifies the number of layers in the RNN model.
 // num_units: Specifies the size of the hidden state.
 // input_size: Specifies the size of the input state.
-// num_params_weigths: number of weight parameter matrix for all layers.
+// num_params_weights: number of weight parameter matrix for all layers.
 // num_params_biases: number of bias parameter vector for all layers.
 // weights: the canonical form of weights that can be used for saving
 //     and restoration. They are more likely to be compatible across different
@@ -8378,7 +8378,7 @@ func BoostedTreesCalculateBestFeatureSplitSplitType(value string) BoostedTreesCa
 //	l1: l1 regularization factor on leaf weights, per instance based.
 //	l2: l2 regularization factor on leaf weights, per instance based.
 //	tree_complexity: adjustment to the gain, per leaf based.
-//	min_node_weight: mininum avg of hessians in a node before required for the node to be considered for splitting.
+//	min_node_weight: minimum avg of hessians in a node before required for the node to be considered for splitting.
 //	logits_dimension: The dimension of logit, i.e., number of classes.
 //
 // Returns:
@@ -13774,7 +13774,7 @@ func DebugNumericSummaryV2OutputDtype(value tf.DataType) DebugNumericSummaryV2At
 //   element is a bit which is set to 1 if the input tensor has an
 //   infinity or nan value, or zero otherwise.
 //
-//   3 (CONCISE_HEALTH): Ouput a float32/64 tensor of shape [5]. The 1st
+//   3 (CONCISE_HEALTH): Output a float32/64 tensor of shape [5]. The 1st
 //   element is the tensor_id, if provided, and -1 otherwise. The
 //   remaining four slots are the total number of elements, -infs,
 //   +infs, and nans in the input tensor respectively.
@@ -14132,11 +14132,11 @@ func TridiagonalSolve(scope *Scope, diagonals tf.Output, rhs tf.Output, optional
 //
 // Arguments:
 //	superdiag: Tensor of shape `[..., 1, M]`, representing superdiagonals of
-// tri-diagonal matrices to the left of multiplication. Last element is ingored.
+// tri-diagonal matrices to the left of multiplication. Last element is ignored.
 //	maindiag: Tensor of shape `[..., 1, M]`, representing main diagonals of tri-diagonal
 // matrices to the left of multiplication.
 //	subdiag: Tensor of shape `[..., 1, M]`, representing subdiagonals of tri-diagonal
-// matrices to the left of multiplication. First element is ingored.
+// matrices to the left of multiplication. First element is ignored.
 //	rhs: Tensor of shape `[..., M, N]`, representing MxN matrices to the right of
 // multiplication.
 //
@@ -17744,7 +17744,7 @@ func CudnnRNNCanonicalToParamsV2NumProj(value int64) CudnnRNNCanonicalToParamsV2
 // biases: the canonical form of biases that can be used for saving
 //     and restoration. They are more likely to be compatible across different
 //     generations.
-// num_params_weigths: number of weight parameter matrix for all layers.
+// num_params_weights: number of weight parameter matrix for all layers.
 // num_params_biases: number of bias parameter vector for all layers.
 // rnn_mode: Indicates the type of the RNN model.
 // input_mode: Indicate whether there is a linear projection between the input and
@@ -30968,8 +30968,8 @@ func ResourceApplyFtrlV2UseLocking(value bool) ResourceApplyFtrlV2Attr {
 //	linear: Should be from a Variable().
 //	grad: The gradient.
 //	lr: Scaling factor. Must be a scalar.
-//	l1: L1 regulariation. Must be a scalar.
-//	l2: L2 shrinkage regulariation. Must be a scalar.
+//	l1: L1 regularization. Must be a scalar.
+//	l2: L2 shrinkage regularization. Must be a scalar.
 //
 //	lr_power: Scaling factor. Must be a scalar.
 //
@@ -36345,8 +36345,8 @@ func ResourceApplyFtrlUseLocking(value bool) ResourceApplyFtrlAttr {
 //	linear: Should be from a Variable().
 //	grad: The gradient.
 //	lr: Scaling factor. Must be a scalar.
-//	l1: L1 regulariation. Must be a scalar.
-//	l2: L2 regulariation. Must be a scalar.
+//	l1: L1 regularization. Must be a scalar.
+//	l2: L2 regularization. Must be a scalar.
 //	lr_power: Scaling factor. Must be a scalar.
 //
 // Returns the created operation.
@@ -42995,7 +42995,7 @@ func ResourceSparseApplyFtrlV2UseLocking(value bool) ResourceSparseApplyFtrlV2At
 //	indices: A vector of indices into the first dimension of var and accum.
 //	lr: Scaling factor. Must be a scalar.
 //	l1: L1 regularization. Must be a scalar.
-//	l2: L2 shrinkage regulariation. Must be a scalar.
+//	l2: L2 shrinkage regularization. Must be a scalar.
 //
 //	lr_power: Scaling factor. Must be a scalar.
 //

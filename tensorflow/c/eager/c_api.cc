@@ -516,7 +516,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   grpc_server->worker_env()->device_mgr->ListDeviceAttributes(
       &local_device_attributes);
 
-  // This request make sure that we can create Rendevzous properly between
+  // This request make sure that we can create Rendezvous properly between
   // Local and Remote context.
   tensorflow::eager::CreateContextRequest base_request;
   for (const auto& da : cluster_device_attributes) {
