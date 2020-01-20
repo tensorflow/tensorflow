@@ -297,7 +297,7 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
   auto src_storage_type = definition.src_tensors[0].storage_type;
   return src_storage_type == TensorStorageType::BUFFER &&
          attr.weights.shape.w == 1 && attr.weights.shape.h == 1 &&
-         attr.dilations.w == 1 && attr.dilations.w == 1 &&
+         attr.dilations.w == 1 && attr.dilations.h == 1 &&
          attr.strides.w == 1 && attr.strides.h == 1 &&
          attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
