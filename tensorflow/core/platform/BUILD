@@ -856,7 +856,6 @@ tf_cc_tests(
         "strcat_test.cc",
         "stringpiece_test.cc",
         "stringprintf_test.cc",
-        "subprocess_test.cc",
         "vmodule_benchmark_test.cc",
     ],
     create_named_test_suite = True,
@@ -878,6 +877,20 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib_archive//:zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "subprocess_test",
+    size = "small",
+    srcs = ["subprocess_test.cc"],
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":subprocess",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
