@@ -145,9 +145,9 @@ function install_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install portpicker
   ${SUDO_CMD} ${PIP_CMD} install scipy
   ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly==2.1.0a20190927
   ${PIP_CMD} install --user --upgrade attrs
-  ${PIP_CMD} install --user --upgrade tf-estimator-nightly
+  ${PIP_CMD} install --user --upgrade tf-estimator-nightly==1.14.0.dev2019072801
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
   # ===================================================================
 }
@@ -181,8 +181,8 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install portpicker --user
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
-  "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
-  "${PIP_CMD}" install --user --upgrade tb-nightly
+  "${PIP_CMD}" install --user --upgrade tf-estimator-nightly==1.14.0.dev2019072801
+  "${PIP_CMD}" install --user --upgrade tb-nightly==2.1.0a20190927
   # ===================================================================
 }
 
@@ -222,9 +222,9 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly==2.1.0a20190927
   ${PIP_CMD} install --user --upgrade attrs
-  ${PIP_CMD} install --user --upgrade tf-estimator-nightly
+  ${PIP_CMD} install --user --upgrade tf-estimator-nightly==1.14.0.dev2019072801
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
 }
 
