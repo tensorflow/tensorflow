@@ -29,9 +29,8 @@ export TF_NEED_S3=1
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.7)
-export TF2_BEHAVIOR=1
 yes "" | "$PYTHON_BIN_PATH" configure.py
-tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py37,-v1only"
+tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py37"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
@@ -40,7 +39,6 @@ source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 bazel test --test_output=errors --config=opt --test_lang_filters=py \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
   --linkopt=-lrt \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/python:contrib_test -//tensorflow/examples/...
