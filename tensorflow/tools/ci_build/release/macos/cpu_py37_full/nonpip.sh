@@ -25,7 +25,7 @@ set_bazel_outdir
 
 # Pick a more recent version of xcode
 sudo xcode-select --switch /Applications/Xcode_10.3.app/Contents/Developer
-python -m virtualenv tf_build_env --system-site-packages
+python3.7 -m virtualenv tf_build_env --system-site-packages
 source tf_build_env/bin/activate
 
 # Install macos pip dependencies
@@ -34,18 +34,16 @@ install_macos_pip_deps sudo pip3.7
 # Run configure.
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
-export TF2_BEHAVIOR=1
 export PYTHON_BIN_PATH=$(which python3.7)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
-tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1)"
+tag_filters="-no_oss,-oss_serial,-nomac,-no_mac,-no_oss_py37,-gpu,-tpu,-benchmark-test"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
 # Run tests
 bazel test --test_output=errors --config=opt \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} \

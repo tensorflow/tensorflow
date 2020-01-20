@@ -41,8 +41,8 @@ export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=opt --config=v2"
-export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
+export TF_BUILD_FLAGS="--config=opt"
+export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going"
 export TF_TEST_TARGETS="//tensorflow/python/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS='-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py35,-gpu,-tpu,-benchmark-test'

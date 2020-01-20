@@ -40,11 +40,11 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=opt --config=v2 --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain"
-export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
-export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
+export TF_BUILD_FLAGS="--config=opt --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain"
+export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going"
+export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/python:contrib_test -//tensorflow/examples/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
-export TF_TEST_FILTER_TAGS='-no_oss,-oss_serial,-no_oss_py35,-v1only'
+export TF_TEST_FILTER_TAGS='-no_oss,-oss_serial,-no_oss_py35'
 export IS_NIGHTLY=0 # Not nightly
 export TF_PROJECT_NAME="tensorflow"
 export TF_PIP_TEST_ROOT="pip_test"

@@ -33,7 +33,6 @@ export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.7)
-export TF2_BEHAVIOR=1
 export PROJECT_NAME="tensorflow_gpu"
 export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$TENSORRT_INSTALL_PATH/lib"
 export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
@@ -48,10 +47,9 @@ tag_filters="gpu,requires-gpu,-no_gpu,-nogpu,-no_oss,-oss_serial,-no_oss_py37"
 bazel test --config=cuda --config=opt \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
   --linkopt=-lrt \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --test_lang_filters=py \
-  --build_tag_filters=${tag_filters} \
   --test_tag_filters=${tag_filters} \
+  --build_tag_filters=${tag_filters} \
   --test_timeout="300,450,1200,3600" --local_test_jobs=4 \
   --test_output=errors --verbose_failures=true --keep_going \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \

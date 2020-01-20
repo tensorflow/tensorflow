@@ -22,11 +22,6 @@ install_ubuntu_16_pip_deps pip3.7
 # Update bazel
 update_bazel_linux
 
-# Make sure estimator and tensorboard are the same as when final was released
-pip uninstall -y tf-estimator-nightly tb-nightly
-pip install tf-estimator-nightly==1.14.0.dev2019072801
-pip install tb-nightly==2.1.0a20190927
-
 # Run configure.
 export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
@@ -34,9 +29,8 @@ export TF_NEED_S3=1
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.7)
-export TF2_BEHAVIOR=1
 yes "" | "$PYTHON_BIN_PATH" configure.py
-tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py37,-v1only"
+tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py37"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
@@ -45,7 +39,6 @@ source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 bazel test --test_output=errors --config=opt --test_lang_filters=py \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
   --linkopt=-lrt \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/python:contrib_test -//tensorflow/examples/...
