@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/collective_nccl_reducer.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
@@ -109,8 +109,8 @@ void NcclReducer::Run(StatusCallback done) {
     nccl_done.Notify();
   };
   auto participant = absl::make_unique<NcclManager::Participant>(
-      compute_stream->parent(), compute_stream, gpu_info->event_mgr,
-      gpu_info->gpu_id, col_ctx_->input, col_ctx_->output,
+      compute_stream->parent(), compute_stream, gpu_info,
+      col_ctx_->input, col_ctx_->output,
       col_params_->default_rank, std::move(done_callback));
   VLOG(1) << "NcclReducer calling NcclManager::AddToAllReduce num_tasks "
           << col_params_->group.num_tasks << " current task "
@@ -182,4 +182,4 @@ REGISTER_COLLECTIVE(NcclReduce, NcclReducer);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
