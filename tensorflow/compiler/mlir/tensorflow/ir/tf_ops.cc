@@ -417,33 +417,6 @@ void ConstOp::build(Builder *builder, OperationState &result, Type type,
 // Conv2DOp and Conv3DOp
 //===----------------------------------------------------------------------===//
 
-template <typename OpT>
-static LogicalResult VerifyConvOpAttributes(OpT op, int num_dims) {
-  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
-    return op.emitOpError()
-           << "requires result to be " << num_dims << "D tensor";
-
-  auto is_not_positive = [](Attribute val) {
-    return val.cast<IntegerAttr>().getValue().getSExtValue() <= 0;
-  };
-
-  int64_t strides_size = op.strides().size();
-  if (strides_size != num_dims)
-    return op.emitOpError() << "requires strides attribute length to be "
-                            << num_dims << "; actual length " << strides_size;
-  if (llvm::any_of(op.strides().getValue(), is_not_positive))
-    return op.emitOpError("requires positive strides");
-
-  int64_t dilations_size = op.strides().size();
-  if (op.dilations().size() != num_dims)
-    return op.emitOpError() << "requires dilations attribute length to be "
-                            << num_dims << "; actual length " << dilations_size;
-  if (llvm::any_of(op.dilations().getValue(), is_not_positive))
-    return op.emitOpError("requires positive dilations");
-
-  return success();
-}
-
 // Verifies that,
 // * Ranks of operands and result are valid
 // * Number of input channels is divisible by the number of filter input
@@ -456,40 +429,13 @@ template <typename OpT, typename std::enable_if<llvm::is_one_of<
 static LogicalResult Verify(OpT op) {
   int num_spatial_dims = std::is_same<OpT, Conv2DOp>() ? 2 : 3;
   int num_dims = 2 + num_spatial_dims;
-
   if (!IsOfRankOrUnranked(op.input(), num_dims) ||
       !IsOfRankOrUnranked(op.filter(), num_dims))
     return op.emitOpError()
            << "requires operands to be " << num_dims << "D tensor";
-
-  // EXPLICIT padding mode and the associated attribute is limited to Conv2D.
-  // So, fetch attribute by string instead of the op.explicit_paddings()
-  // attribute getter.
-  if (op.padding() == "EXPLICIT") {
-    auto paddings = op.template getAttrOfType<ArrayAttr>("explicit_paddings");
-    if (!paddings)
-      return op.emitOpError() << "requires attribute 'explicit_paddings' with "
-                                 "'EXPLICIT' padding mode";
-
-    int64_t paddings_size = paddings.size();
-    int64_t expected_size = 2 * num_dims;
-
-    if (paddings_size != expected_size)
-      return op.emitOpError()
-             << "requires explicit_paddings attribute length to be "
-             << expected_size << "; actual length " << paddings_size;
-
-    auto is_negative = [](Attribute val) {
-      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
-    };
-    if (llvm::any_of(paddings.getValue(), is_negative))
-      return op.emitOpError("requires non negative explicit paddings");
-  }
-
-  LogicalResult verify_result = VerifyConvOpAttributes(op, num_dims);
-  if (failed(verify_result)) {
-    return verify_result;
-  }
+  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
+    return op.emitOpError()
+           << "requires result to be " << num_dims << "D tensor";
 
   int64_t input_channels = -1;
   if (auto ty = op.input()->getType().template dyn_cast<RankedTensorType>()) {
@@ -515,29 +461,50 @@ static LogicalResult Verify(OpT op) {
               "number of filter input channels; found "
            << input_channels << " and " << filter_channels << ", respectively";
 
-  return success();
-}
+  // EXPLICIT padding mode and the associated attribute is limited to Conv2D.
+  // So, fetch attribute by string instead of the op.explicit_paddings()
+  // attribute getter.
+  if (op.padding() == "EXPLICIT") {
+    auto paddings = op.template getAttrOfType<ArrayAttr>("explicit_paddings");
+    if (!paddings)
+      return op.emitOpError() << "requires attribute 'explicit_paddings' with "
+                                 "'EXPLICIT' padding mode";
 
-//===----------------------------------------------------------------------===//
-// Conv2dBackpropInputOp
-//===----------------------------------------------------------------------===//
+    int64_t paddings_size = paddings.size();
+    int64_t expected_size = 2 * num_dims;
 
-static LogicalResult Verify(Conv2DBackpropInputOp op) {
-  int num_spatial_dims = 2;
-  int num_dims = 2 + num_spatial_dims;
+    if (paddings_size != expected_size)
+      return op.emitOpError()
+             << "requires explicit_paddings attribute length to be "
+             << expected_size << "; actual length " << paddings_size;
 
-  if (!IsOfRankOrUnranked(op.out_backprop(), num_dims) ||
-      !IsOfRankOrUnranked(op.filter(), num_dims))
-    return op.emitOpError()
-           << "requires operands to be " << num_dims << "D tensor";
-
-  LogicalResult verify_result = VerifyConvOpAttributes(op, num_dims);
-  if (failed(verify_result)) {
-    return verify_result;
+    auto is_negative = [](Attribute val) {
+      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
+    };
+    if (llvm::any_of(paddings.getValue(), is_negative))
+      return op.emitOpError("requires non negative explicit paddings");
   }
 
+  auto is_not_positive = [](Attribute val) {
+    return val.cast<IntegerAttr>().getValue().getSExtValue() <= 0;
+  };
+
+  int64_t strides_size = op.strides().size();
+  if (strides_size != num_dims)
+    return op.emitOpError() << "requires strides attribute length to be "
+                            << num_dims << "; actual length " << strides_size;
+  if (llvm::any_of(op.strides().getValue(), is_not_positive))
+    return op.emitOpError("requires positive strides");
+
+  int64_t dilations_size = op.strides().size();
+  if (op.dilations().size() != num_dims)
+    return op.emitOpError() << "requires dilations attribute length to be "
+                            << num_dims << "; actual length " << dilations_size;
+  if (llvm::any_of(op.dilations().getValue(), is_not_positive))
+    return op.emitOpError("requires positive dilations");
+
   return success();
-}  // namespace TF
+}
 
 //===----------------------------------------------------------------------===//
 // DivOp
