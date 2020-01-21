@@ -443,7 +443,7 @@ TEST_P(ModularFileSystemTest, TestCreateDirPathIsInvalid) {
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDir) {
   const std::string dirpath = GetURIForPath("a/path/to/a/dir");
   Status status = env_->RecursivelyCreateDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirInATree) {
@@ -454,7 +454,7 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirInATree) {
 
   const std::string new_dirpath = GetURIForPath("a/path/to/a/another/dir");
   status = env_->RecursivelyCreateDir(new_dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirWhichIsFile) {
@@ -465,7 +465,7 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirWhichIsFile) {
     GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->RecursivelyCreateDir(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirTwice) {
@@ -475,7 +475,7 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirTwice) {
     GTEST_SKIP() << "RecursivelyCreateDir() not supported: " << status;
 
   status = env_->RecursivelyCreateDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirPathIsInvalid) {
@@ -487,7 +487,7 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirPathIsInvalid) {
 
   const std::string new_path = GetURIForPath("a_file/a_dir");
   status = env_->RecursivelyCreateDir(new_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedDir) {
@@ -498,7 +498,7 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedDir) {
 
   const std::string new_dirpath = GetURIForPath("some/path/that/is/extended");
   status = env_->RecursivelyCreateDir(new_dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedFile) {
@@ -515,7 +515,7 @@ TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedFile) {
 
   const std::string new_dirpath = GetURIForPath("some/path/to_a_file/error");
   status = env_->RecursivelyCreateDir(new_dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteFile) {
@@ -644,7 +644,7 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyEmpty) {
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
   status = env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 0);
 }
@@ -671,7 +671,7 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyNotEmpty) {
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
   status = env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 0);
 }
@@ -683,7 +683,7 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyDoesNotExist) {
   int64 undeleted_dirs = 0;
   Status status =
       env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 1);
 }
@@ -712,7 +712,7 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyPathIsInvalid) {
   const std::string new_path = GetURIForPath("a_file/a_dir");
   int64 undeleted_files, undeleted_dirs;
   status = env_->DeleteRecursively(new_path, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedDir) {
@@ -730,13 +730,13 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedDir) {
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
   status = env_->DeleteRecursively(path, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 0);
 
   // Parent directory must still exist
   status = env_->FileExists(parent_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedFile) {
@@ -754,13 +754,13 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedFile) {
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
   status = env_->DeleteRecursively(filepath, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 0);
 
   // Parent directory must still exist
   status = env_->FileExists(parent_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFile) {
