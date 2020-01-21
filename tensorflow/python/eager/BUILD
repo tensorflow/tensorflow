@@ -443,6 +443,7 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:op_callbacks",
         "//tensorflow/python:tensor_shape",
     ],
 )
