@@ -13,8 +13,4 @@
 :: limitations under the License.
 :: =============================================================================
 
-SET PYTHON_DIRECTORY=Python36
-
-CALL tensorflow\tools\ci_build\release\common_win.bat
-
-echo "This build does not exist in TF 2.0"
+echo "This build not enabled on 2.0"
