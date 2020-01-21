@@ -36,6 +36,7 @@ limitations under the License.
 #undef LoadLibrary
 #undef CopyFile
 #undef DeleteFile
+#undef TranslateName
 #endif  // defined(PLATFORM_WINDOWS)
 
 // The tests defined here test the compliance of filesystems with the API
