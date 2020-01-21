@@ -856,24 +856,8 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     ...       [[7., 8., 9.],
     ...       [10., 11., 12.]]]
     >>> padded_image = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4)
-    >>> print(padded_image)
-    <tf.Tensor: shape=(4, 4, 3), dtype=float32, numpy=
-    array([[[ 0.,  0.,  0.],
-            [ 0.,  0.,  0.],
-            [ 0.,  0.,  0.],
-            [ 0.,  0.,  0.]],
-           [[ 0.,  0.,  0.],
-            [ 1.,  2.,  3.],
-            [ 4.,  5.,  6.],
-            [ 0.,  0.,  0.]],
-           [[ 0.,  0.,  0.],
-            [ 7.,  8.,  9.],
-            [10., 11., 12.],
-            [ 0.,  0.,  0.]],
-           [[ 0.,  0.,  0.],
-            [ 0.,  0.,  0.],
-            [ 0.,  0.,  0.],
-            [ 0.,  0.,  0.]]], dtype=float32)>
+    >>> padded_image
+    <tf.Tensor: shape=(4, 4, 3), numpy=..., dtype=float32)>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
