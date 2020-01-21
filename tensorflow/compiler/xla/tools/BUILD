@@ -1,6 +1,11 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+    "tf_cc_binary",
+    "tf_cc_test",
+)
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
@@ -223,12 +228,13 @@ tf_cc_binary(
     srcs = ["interactive_graphviz.cc"],
     deps = [
         ":hlo_extractor",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:local_service",
@@ -236,9 +242,9 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm([
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]),
 )
 
 sh_test(
@@ -325,17 +331,18 @@ tf_cc_binary(
     srcs = ["run_hlo_module_main.cc"],
     deps = [
         ":run_hlo_module_lib",
+        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:test",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm([
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]),
 )
 
 # This target is used to reproduce miscompiles in OSS outside of TF, and it can
