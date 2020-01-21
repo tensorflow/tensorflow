@@ -310,7 +310,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
     std::shared_ptr<void> leaves_reference,
     std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device) {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromLiterals");
-  VLOG(1) << "PyLocalBuffer::FromLiterals: shape: " << tuple_shape.ToString()
+  VLOG(2) << "PyLocalBuffer::FromLiterals: shape: " << tuple_shape.ToString()
           << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
@@ -793,7 +793,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   StatusOr<ScopedShapedBuffer> result_buffer_or_status =
       executable_->RunAsync(argument_buffer_ptrs, options);
 
-  VLOG(1) << "Replica " << replica
+  VLOG(1) << "Replica " << replica << " partition " << partition
           << " completed; ok=" << result_buffer_or_status.ok();
   if (!result_buffer_or_status.ok()) {
     LOG(ERROR) << "Execution of replica " << replica
@@ -839,6 +839,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
         "Attempted to execute computation with %d partitions using Execute()",
         num_partitions());
   }
+  VLOG(1) << "Executing computation " << name();
   return ExecuteHelper(argument_handles, /*replica=*/0, /*partition=*/0,
                        RunId());
 }
@@ -872,7 +873,8 @@ PyLocalExecutable::ExecuteOnLocalDevices(
         num_partitions());
   }
 
-  VLOG(1) << "Executing computation; num_replicas=" << num_replicas()
+  VLOG(1) << "Executing computation " << name()
+          << "; num_replicas=" << num_replicas()
           << " num_partitions=" << num_partitions()
           << " num_local_devices=" << num_local_devices;
   std::vector<StatusOr<std::unique_ptr<PyLocalBuffer>>> results(
@@ -974,20 +976,28 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
   }
 
   if (device_assignment) {
+    VLOG(2) << "PyLocalExecutable::Compile got device_assignment:\n"
+            << device_assignment->ToString();
     if (device_assignment->replica_count() != options.num_replicas()) {
       return InvalidArgument(
           "Mismatched number of replicas for device "
-          "assignment and computation (%d vs %d).",
-          device_assignment->replica_count(), options.num_replicas());
-    } else if (device_assignment->computation_count() != 1) {
-      return Unimplemented(
-          "Only 1 computation per replica supported, %d requested.",
-          device_assignment->computation_count());
+          "assignment and computation (%d vs %d).\n%s",
+          device_assignment->replica_count(), options.num_replicas(),
+          device_assignment->ToString());
+    }
+    if (device_assignment->computation_count() != options.num_partitions()) {
+      return InvalidArgument(
+          "Mismatched number of partitions for device "
+          "assignment and computation (%d vs %d).\n%s",
+          device_assignment->computation_count(), options.num_partitions(),
+          device_assignment->ToString());
     }
   } else {
     TF_ASSIGN_OR_RETURN(device_assignment,
                         client->GetDefaultDeviceAssignment(
                             options.num_replicas(), options.num_partitions()));
+    VLOG(2) << "PyLocalExecutable::Compile using default device_assignment:\n"
+            << device_assignment->ToString();
   }
 
   if (!argument_layouts) {
