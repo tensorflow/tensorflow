@@ -373,24 +373,21 @@ class MaxPooling2D(Pooling2D):
              
   Usage Example:
   
-  >>> input_image = tf.constant([[[[1.], [1.], [2.], [4.], [2.], [4.], [2.]],
-  ...                            [[2.], [2.], [3.], [2.], [2.], [1.], [2.]],
-  ...                            [[4.], [1.], [1.], [1.], [1.], [2.], [2.]],
-  ...                            [[2.], [2.], [1.], [4.], [2.], [3.], [4.]],
-  ...                            [[1.], [4.], [1.], [1.], [2.], [3.], [2.]],
-  ...                            [[1.], [4.], [2.], [3.], [1.], [2.], [3.]],
-  ...                            [[3.], [4.], [1.], [2.], [3.], [1.], [4.]]]]) 
+  >>> input_image = tf.constant([[[[1.], [1.], [2.], [4.]],
+  ...                            [[2.], [2.], [3.], [2.]],
+  ...                            [[4.], [1.], [1.], [1.]],
+  ...                            [[2.], [2.], [1.], [4.]]]]) 
   >>> output = tf.constant([[[[1], [0]],
   ...                       [[0], [1]]]]) 
   >>> model = tf.keras.models.Sequential()
-  >>> model.add(tf.keras.layers.Conv2D(1, kernel_size=(3, 3), 
-  ...    input_shape=(7,7,1)))
-  >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
+  >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2), 
+  ...    input_shape=(4,4,1)))
   >>> model.compile('adam', 'mean_squared_error')
-  >>> model.fit(input_image, output, steps_per_epoch=1, 
-  ...    shuffle=False, verbose=0)
-  >>> model.predict(input_image, steps=1).shape
-  (1, 2, 2, 1)
+  >>> model.predict(input_image, steps=1)
+  array([[[[2.],
+           [4.]],
+          [[4.],
+           [4.]]]], dtype=float32)
 
   For example, for stride=(1,1) and padding="same":
 
