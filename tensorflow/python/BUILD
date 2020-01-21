@@ -590,7 +590,7 @@ tf_python_pybind_extension(
     srcs = [
         "training/quantize_training_wrapper.cc",
     ],
-    hdrs = ["//tensorflow/core:quantize_training_hdrs"],
+    hdrs = ["//tensorflow/core/graph:quantize_training_hdrs"],
     module_name = "_pywrap_quantize_training",
     deps = [
         ":pybind11_lib",
