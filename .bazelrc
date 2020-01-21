@@ -343,6 +343,7 @@ build:rbe_linux --config=avx_linux
 build:rbe_linux --config=short_logs
 # TODO(gunan): Check why we need this specified in rbe, but not in other builds.
 build:rbe_linux --linkopt=-lrt
+build:rbe_linux --linkopt=-lm
 
 build:rbe_cpu_linux --config=rbe_linux
 build:rbe_cpu_linux --crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
