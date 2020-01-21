@@ -1497,7 +1497,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
     llvm::Type* int8_double_pointer =
         llvm::PointerType::get(b_.getInt8PtrTy(), /*AddressSpace=*/0);
     for (int64 idx : gte_index) {
-      loc = BitCast(loc, int8_double_pointer);
+      loc = PointerBitCastOrAddrSpaceCast(loc, int8_double_pointer);
       loc = Load(InBoundsGEP(loc, {b_.getInt64(idx)}));
     }
 
@@ -2150,7 +2150,8 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     llvm::Type* shuffled_value_type =
         element_type->isStructTy() ? b_.getIntNTy(bit_width) : element_type;
     auto convert_pointer_for_shuffle = [&](llvm::Value* ptr) {
-      return BitCast(ptr, shuffled_value_type->getPointerTo());
+      return PointerBitCastOrAddrSpaceCast(
+            ptr, shuffled_value_type->getPointerTo());
     };
     llvm::Value* partial_result =
         Load(convert_pointer_for_shuffle(partial_result_address),
