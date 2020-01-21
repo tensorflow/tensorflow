@@ -356,6 +356,8 @@ class TextVectorization(CombinerPreprocessingLayer):
     """Converts preprocessed inputs into numpy arrays."""
     if isinstance(preprocessed_data, np.ndarray):
       return preprocessed_data
+    elif isinstance(preprocessed_data, ops.EagerTensor):
+      return preprocessed_data.numpy()  
     return np.array(preprocessed_data.to_list())
   # End of V1/V2 shim points.
 
