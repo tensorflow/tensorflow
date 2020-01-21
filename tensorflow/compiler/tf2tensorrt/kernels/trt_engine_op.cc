@@ -924,7 +924,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
         segment_graph_def_, precision_mode_, batch_size, workspace_size_,
-        input_partial_shapes_, &logger, allocator, calibrator_.get(), &engine,
+        input_engine_shapes, &logger, allocator, calibrator_.get(), &engine,
         use_calibration_, use_implicit_batch_, &convert_successfully,
         cache_res->profiles_);
     if (!status.ok()) {
