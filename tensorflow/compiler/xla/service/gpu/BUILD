@@ -11,11 +11,13 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -399,9 +401,20 @@ filegroup(
     ),
 )
 
+# virtual targets since nested select statements not possible
+tf_cuda_library(
+    name = "virtual_nccl",
+    deps = if_cuda(["@local_config_nccl//:nccl"]),
+)
+
+tf_cuda_library(
+    name = "virtual_rccl",
+    deps = if_rocm(["@local_config_rocm//rocm:rccl"]),
+)
+
 tf_cuda_library(
     name = "nccl_all_reduce_thunk",
-    srcs = if_cuda(
+    srcs = if_cuda_or_rocm(
         [":nccl_all_reduce_thunk_src"],
         ["dummy_all_reduce_thunk.cc"],
     ),
@@ -420,10 +433,15 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+    ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ] + if_nccl([
-        "@local_config_nccl//:nccl",
+    ]) + if_rocm([
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
+    ]) + if_nccl([
+        ":virtual_nccl",
+        ":virtual_rccl",
     ]),
 )
 

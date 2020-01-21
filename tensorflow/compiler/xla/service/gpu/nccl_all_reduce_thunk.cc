@@ -28,7 +28,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#endif
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
@@ -37,7 +41,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
+
+#if TENSORFLOW_USE_ROCM
+// Local hipify of cuda symbols
+#define cudaError_t hipError_t
+#define cudaStream_t hipStream_t
+#define cudaGetErrorString hipGetErrorString
+#define cudaGetDevice hipGetDevice
+#define cudaSetDevice hipSetDevice
+#define cudaSuccess hipSuccess
+#endif
 
 namespace xla {
 namespace gpu {
@@ -406,7 +420,7 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(
   CHECK(allreduce_datatype.has_value());
 
   se::StreamExecutor* executor = participant.stream->parent();
-  se::cuda::ScopedActivateExecutorContext scoped_context(executor);
+  se::gpu::ScopedActivateExecutorContext scoped_context(executor);
   cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
       participant.stream->implementation()->GpuStreamMemberHack());
   VLOG(3) << "Using stream pointer: " << cu_stream
