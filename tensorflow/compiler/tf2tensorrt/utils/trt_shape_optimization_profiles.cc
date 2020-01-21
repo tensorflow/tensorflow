@@ -94,16 +94,6 @@ Status TrtShapeOptimizationProfile::configureBuilder(
   nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
   const nvinfer1::INetworkDefinition* network) {
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-//  if (!isAnyInputDynamic(network)) {
-//    // we do not need profiles for static input
-//    return Status::OK();
-//  }
-//  if (input_shapes_.size() == 0) {
-//    // This should not happen. If we did not have build mode, then a single
-//    // profile is added by GetEngine
-//    return errors::Internal("No TRT optimization profile found");
-//  }
-//  initProfiles();
   addProfiles(builder, config, network);
 #endif
   return Status::OK();

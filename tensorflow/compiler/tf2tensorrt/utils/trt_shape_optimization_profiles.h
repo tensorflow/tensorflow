@@ -141,20 +141,11 @@ class TrtShapeOptimizationProfile {
   int getProfileNumber(std::vector<TensorShape> shapes);
 
   // Creates optimization profiles and add them to the builder config.
-  //
-  // Parameters:
-  // builder -
-  // config -
-  // network -
   Status configureBuilder(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network);
 
   // Creates execution contexts for each optimization profile.
-  //
-  // Parameters:
-  // engine - cuda engine
-  // exec_context - we append one execution context for each element in profile_
   Status createExecutionContexts(
     nvinfer1::ICudaEngine* engine,
     std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);

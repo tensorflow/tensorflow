@@ -115,7 +115,6 @@ class LRUCache {
   }
 };
 
-
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
@@ -137,6 +136,9 @@ struct EngineContext {
 
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
+
+  // In explicit batch mode, we maintain a vector of contexts for each engine,
+  // where each context is created for a different profile.
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
       GUARDED_BY(mu);
 };
@@ -203,7 +205,9 @@ class TRTEngineCacheResource : public ResourceBase {
   // attach it to each item of the cache.
   std::unique_ptr<CalibrationContext> calib_ctx_;
 
-  // Optimization Profiles
+  // This object maintains all the optimization profiles during profile generation
+  // and engine build. We currently don't use this object during runtime, instead
+  // we deserialize the profiles out of the cached engines.
   TrtShapeOptimizationProfile profiles_;
 };
 

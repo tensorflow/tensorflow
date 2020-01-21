@@ -93,7 +93,7 @@ class TRTEngineOp : public AsyncOpKernel {
       LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
                VectorTensorShapeHasher>;
 
-  // Execute calibration
+  // Execute calibration.
   void ExecuteCalibration(OpKernelContext* ctx,
                           TRTEngineCacheResource* cache_res,
                           AsyncHelper* helper);
@@ -112,14 +112,15 @@ class TRTEngineOp : public AsyncOpKernel {
   bool ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context,
                         int trt_context_idx);
 
-  // Allocate necessary resources for calibration
+  // Allocate necessary resources for calibration.
   Status AllocateCalibrationResources(OpKernelContext* ctx,
                                       TRTEngineCacheResource* cache_res);
 
   Status GetEngineCacheResource(OpKernelContext* ctx,
                                 TRTEngineCacheResource** cache_res);
 
-  // Get engine for the input shape
+  // Return a pair of 1) An EngineContext object that is compatible with the input
+  // and 2) The index of the context compatible with the input.
   StatusOr<std::pair<EngineContext*, int>> GetEngine(
       const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
       TRTEngineCacheResource* cache_res);
@@ -149,14 +150,14 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
 
-  // Whether to use implicit batch dimension for TensorRT
+  // Whether to use implicit batch dimension for TensorRT.
   bool use_implicit_batch_;
 
   // Whether to collect optimization profiles for TensorRT
-  // Only used when use_implicit_batch_=false
+  // Only used when use_implicit_batch_=false.
   bool profile_generation_mode_;
 
-  // Maximum number of cached engines
+  // Maximum number of cached engines.
   int max_cached_engines_;
 
   int64 workspace_size_;
@@ -170,6 +171,7 @@ class TRTEngineOp : public AsyncOpKernel {
   // user-provided quantization ranges.
   bool use_calibration_;
 
+  // Array of all input shapes during graph construction set in an attribute.
   std::vector<PartialTensorShape> input_partial_shapes_;
 };
 
@@ -280,8 +282,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     FunctionLibraryRuntime* lib = context->function_library();
     OP_REQUIRES_OK(context,
                    ConstructFunctionHandle(lib, context->device()->name()));
-    OP_REQUIRES_OK(context,
-                   FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_));
+    OP_REQUIRES_OK(
+        context, FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_));
   }
   // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
   // backward compatibility reasons. Remove it once all known users switch to
@@ -426,11 +428,10 @@ Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& input_conc
           "to contain the dynamic input shapes to TRTEngineOp");
     }
   } else {
-    const string error_msg = string("Input shapes do not match input partial "
-                                    "shapes stored in graph, for ") +
-                             name() + string(": ") +
-                             DebugString(input_concrete_shapes) + " != " +
-                             DebugString(input_partial_shapes_);
+    const string error_msg = StrCat(
+        "Input shapes do not match input partial shapes stored in graph, for ",
+        name(),  ": ", DebugString(input_concrete_shapes), " != ",
+        DebugString(input_partial_shapes_));
     if (input_concrete_shapes.size() != input_partial_shapes_.size()) {
       return errors::InvalidArgument(error_msg);
     }
@@ -451,8 +452,7 @@ Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& input_conc
   }
 
   if (input_concrete_shapes[0].dims() < 1) {
-    return errors::InvalidArgument("Input shapes contain scalar, for ", name(),
-                                   ": ",
+    return errors::InvalidArgument("Input shapes contain scalar, for ", name(), ": ",
                                    TensorShapeUtils::ShapeListString(input_concrete_shapes));
   }
 
@@ -567,27 +567,21 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 }
 
-/** Query the binding index for tensor
- * Parameters
- *  - name: tensor name
- *  - prof_idx: porfile index
- *  - engine: cuda engine
- *  - binding_idx - the binding index is returned here
- */
-Status GetTrtBindingIndex(const char* name, int prof_idx,
-                          const nvinfer1::ICudaEngine* engine,
+// Get the binding index of a tensor in an engine.
+Status GetTrtBindingIndex(const char* tensor_name, int profile_idx,
+                          const nvinfer1::ICudaEngine* cuda_engine,
                           int* binding_idx) {
-  *binding_idx = engine->getBindingIndex(name);
+  *binding_idx = cuda_engine->getBindingIndex(tensor_name);
   if (*binding_idx == -1) {
-    const string msg = StrCat("Input node ", name, " not found");
+    const string msg = StrCat("Input node ", tensor_name, " not found");
     LOG(ERROR) << msg;
     return errors::NotFound(msg);
   }
   // If we have more then one optimization profiles then the binding idx
   // depends on the profile number
   const int bindings_per_profile =
-      engine->getNbBindings() / engine->getNbOptimizationProfiles();
-  *binding_idx = *binding_idx + prof_idx * bindings_per_profile;
+      cuda_engine->getNbBindings() / cuda_engine->getNbOptimizationProfiles();
+  *binding_idx = *binding_idx + profile_idx * bindings_per_profile;
   return Status::OK();
 }
 
@@ -626,7 +620,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   const int num_binding = cuda_engine->getNbBindings();
   std::vector<void*> buffers(num_binding);
 
-  // Setup engine inputs
+  // Setup engine inputs.
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string input_name = StrCat(IONamePrefixes::kInputPHName, i);
     int binding_index = -1;
@@ -697,7 +691,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   }
 #endif
 
-  // Setup engine outputs
+  // Setup engine outputs.
   for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
     const string output_name = StrCat(IONamePrefixes::kOutputPHName, i);
@@ -776,7 +770,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
 
-  // nvinfer1::IExecutionContext::enqueue* is not thread safe and we need a mutex
+  // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
   // for it.
   mutex_lock lock(engine_context->mu);
   bool ret = false;

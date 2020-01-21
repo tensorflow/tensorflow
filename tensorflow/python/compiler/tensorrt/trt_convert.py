@@ -1133,9 +1133,9 @@ class TrtGraphConverterV2(object):
                               partial(_set_profile_generation_mode, True))
       _rebuild_func()
 
-    # Run inference.
-    #   - Builds TRT engines if self._need_trt_profiles is False.
-    #   - Builds TRT optimization profiles if self._need_trt_profiles is True.
+    # Run inference:
+    #   Builds TRT engines if self._need_trt_profiles is False.
+    #   Builds TRT optimization profiles if self._need_trt_profiles is True.
     inputs = []
     for inp in input_fn():
       inputs.append(inp)

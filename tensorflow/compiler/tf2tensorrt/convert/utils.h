@@ -111,6 +111,7 @@ string GetLinkedTensorRTVersion();
 // TensorRT library version information {Maj, Min, Patch}.
 string GetLoadedTensorRTVersion();
 
+// Return true if an engine built for cached_shapes can also run actual_shapes.
 bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
                          const std::vector<TensorShape>& cached_shapes);
 
