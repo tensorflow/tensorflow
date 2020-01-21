@@ -99,6 +99,12 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
     return ["TRTEngineOp_0"]
 
 
+# Due to a leak in TF ResourceManager, where we store the TRT engines cache,
+# we sometimes observe test failures. We initially put the following test
+# in trt_convert_test.py and we observed those failures. The symptoms vary
+# depending on the test including 1) Out or range error, 2) While the cache
+# is expected to be empty, FP32 tests find an FP16 engine in the cache and
+# thus it fails due to inaccurate outputs.
 class UnaryExplicitBatchDimTest(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
