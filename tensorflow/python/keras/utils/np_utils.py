@@ -30,7 +30,10 @@ def to_categorical(y, num_classes=None, dtype='float32'):
   Usage Example:
     >>> y = [0, 1, 2, 3]
     >>> tf.keras.utils.to_categorical(y, num_classes=4)
-    array([...], dtype=float32)
+    array([[1., 0., 0., 0.],
+           [0., 1., 0., 0.],
+           [0., 0., 1., 0.],
+           [0., 0., 0., 1.]], dtype=float32)
 
   Arguments:
       y: class vector to be converted into a matrix
