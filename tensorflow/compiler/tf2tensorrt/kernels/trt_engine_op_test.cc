@@ -49,10 +49,7 @@ using ::testing::ElementsAre;
 
 class TRTEngineOpTestBase : public OpsTestBase {
  public:
-  void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1,
-                      PartialTensorShape shape = PartialTensorShape({-1, -1}),
-                      bool use_implicit_batch = true,
-                      bool profile_generation_mode = false) {
+  void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1) {
     // Create the GPU device.
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
@@ -72,6 +69,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
         convert::RegisterGraphToFunctionLibrary(graph_def, graph, op_name));
     TF_ASSERT_OK(flib_def_->AddLibrary(graph->flib_def()));
 
+    PartialTensorShape shape({-1, -1});
+
     // Create the op.
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
     NameAttrList function;
@@ -88,8 +87,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("workspace_size_bytes", 1 << 20)
                      .Attr("precision_mode", "FP32")
                      .Attr("use_calibration", false)
-                     .Attr("_use_implicit_batch", use_implicit_batch)
-                     .Attr("_profile_generation_mode", profile_generation_mode)
+                     .Attr("_use_implicit_batch", true)
                      .Attr("OutT", {dtype})
                      .Finalize(OpsTestBase::node_def()));
     TF_ASSERT_OK(InitOpWithFunctionLibrary());
@@ -122,9 +120,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
   }
 };
 
-TEST_F(TRTEngineOpTestBase, ImplicitBatch) {
-  TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/4,
-                                      PartialTensorShape({-1, 2}));
+TEST_F(TRTEngineOpTestBase, DynamicShapes) {
+  TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/4);
 
   // Execute the op with batch size > 1.
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({2, 2}));
@@ -156,6 +153,20 @@ TEST_F(TRTEngineOpTestBase, ImplicitBatch) {
   EXPECT_EQ(2, cache->size());
   EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
   EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
+
+  // Execute the op with an input that has different non-batch dimension.
+  ResetInputs();
+  TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({10, 10}));
+  TF_ASSERT_OK(OpsTestBase::RunOpKernel());
+  // Execute it again with an input that has the same non-batch dimension but
+  // smallest batch size. It should find the correct engine to use.
+  ResetInputs();
+  TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({1, 10}));
+  TF_ASSERT_OK(OpsTestBase::RunOpKernel());
+  EXPECT_EQ(3, cache->size());  // Should only create 3 engines in total.
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
+  EXPECT_EQ(1, cache->count({TensorShape({10, 10})}));
 }
 
 template <typename T>
@@ -165,8 +176,7 @@ using TypeList = ::testing::Types<float, Eigen::half>;
 TYPED_TEST_SUITE(TRTEngineOpTest, TypeList);
 
 TYPED_TEST(TRTEngineOpTest, Basic) {
-  TRTEngineOpTestBase::AddSimpleTrtOp(DataTypeToEnum<TypeParam>::v(), 1,
-                                      PartialTensorShape({-1, 2}));
+  TRTEngineOpTestBase::AddSimpleTrtOp(DataTypeToEnum<TypeParam>::v());
 
   // Execute the op.
   OpsTestBase::AddInputFromArray<TypeParam>(TensorShape({1, 2}),
