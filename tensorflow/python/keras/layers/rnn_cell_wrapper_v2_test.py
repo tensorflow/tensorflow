@@ -175,7 +175,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     _ = rnn_cell(inputs, [state, state])
     weights = base_cell._cells[0].weights
     self.assertLen(weights, expected_len=2)
-    self.assertTrue(all(["_wrapper" in v.name for v in weights]))
+    self.assertTrue(all("_wrapper" in v.name for v in weights))
 
   @parameterized.parameters(
       [rnn_cell_wrapper_v2.DropoutWrapper, rnn_cell_wrapper_v2.ResidualWrapper])
@@ -225,7 +225,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
   def testDropoutWrapperSerialization(self):
     wrapper_cls = rnn_cell_wrapper_v2.DropoutWrapper
-    cell = layers.LSTMCell(10)
+    cell = layers.GRUCell(10)
     wrapper = wrapper_cls(cell)
     config = wrapper.get_config()
 
@@ -248,6 +248,17 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
     reconstructed_wrapper = wrapper_cls.from_config(config)
     self.assertFalse(reconstructed_wrapper._dropout_state_filter(None))
+
+  def testDroputWrapperWithKerasLSTMCell(self):
+    wrapper_cls = rnn_cell_wrapper_v2.DropoutWrapper
+    cell = layers.LSTMCell(10)
+
+    with self.assertRaisesRegexp(ValueError, "does not work with "):
+      wrapper_cls(cell)
+
+    cell = layers.LSTMCellV2(10)
+    with self.assertRaisesRegexp(ValueError, "does not work with "):
+      wrapper_cls(cell)
 
 
 if __name__ == "__main__":

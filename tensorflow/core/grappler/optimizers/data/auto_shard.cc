@@ -43,9 +43,11 @@ constexpr char kNumWorkersAttrName[] = "num_workers";
 constexpr char kIndexAttrName[] = "index";
 constexpr char kAutoShardPolicyAttrName[] = "auto_shard_policy";
 
-constexpr std::array<const char*, 4> kReaderDatasetOps = {
+constexpr std::array<const char*, 6> kReaderDatasetOps = {
     "FixedLengthRecordDataset",
     "FixedLengthRecordDatasetV2",
+    "RecordIODataset",
+    "SSTableDataset",
     "TextLineDataset",
     "TFRecordDataset"
 };
@@ -394,7 +396,6 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   MutableGraphView graph(output);
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
 
-  NodeDef target_node;
   absl::flat_hash_set<string> nodes_to_delete;
 
   NodeDef* sink_node;

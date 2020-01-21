@@ -275,7 +275,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       opts.runner = nullptr;
     }
     Notification done;
-    std::vector<Tensor> out;
     Status status;
     flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
       status = s;
@@ -1854,7 +1853,8 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
 
   Tensor y;
   FunctionLibraryRuntime::Options opts;
-  opts.rendezvous = new IntraProcessRendezvous(device_mgr_.get());
+  PrivateIntraProcessRendezvous rendezvous(device_mgr_.get());
+  opts.rendezvous = &rendezvous;
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
   TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
@@ -1869,7 +1869,6 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
       y,
       test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
                               TensorShape({})));
-  opts.rendezvous->Unref();
 }
 
 namespace {

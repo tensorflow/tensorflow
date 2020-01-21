@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+
 import numpy as np
 import traceback
 import weakref
@@ -260,7 +261,6 @@ class _GraphTensorArray(object):
       value.set_shape(self._element_shape[0].dims)
     return value
 
-  @tf_should_use.should_use_result
   def write(self, index, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayWrite", [self._handle, index, value]):
@@ -526,7 +526,6 @@ class _GraphTensorArrayV2(object):
           name=name)
       return value
 
-  @tf_should_use.should_use_result
   def write(self, index, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayV2Write", [self._flow, index, value]):
@@ -640,7 +639,6 @@ class _GraphTensorArrayV2(object):
     else:
       return list_ops.tensor_list_length(input_handle=self._flow, name=name)
 
-  @tf_should_use.should_use_result
   def close(self, name=None):
     """See TensorArray."""
     return gen_control_flow_ops.no_op(name=name)
@@ -807,7 +805,7 @@ class _EagerTensorArray(object):
             None, None,
             "Tried to write to index %d but array is not resizeable and size "
             "is: %d" % (index, size))
-      self._tensor_array.extend([None for _ in range(index - size + 1)])
+      self._tensor_array.extend(None for _ in range(index - size + 1))
 
     if not isinstance(value, ops.EagerTensor):
       # TODO(b/129870929): Fix after all callers provide proper init dtype.
@@ -1139,6 +1137,7 @@ class TensorArray(object):
     """
     return self._implementation.read(index, name=name)
 
+  @tf_should_use.should_use_result(warn_in_eager=True)
   def write(self, index, value, name=None):
     """Write `value` into index `index` of the TensorArray.
 

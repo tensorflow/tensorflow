@@ -18,6 +18,7 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 
 #if defined(_MSC_VER)
@@ -26,8 +27,6 @@ limitations under the License.
 
 namespace tflite {
 namespace tensor_utils {
-
-float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
 // Check if all entries of a vector are zero for float.
 bool IsZeroVector(const float* vector, int v_size) {
@@ -46,6 +45,20 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                                          max, scaling_factor);
 }
 
+void SymmetricQuantizeFloats(const float* values, const int size,
+                             int8_t* quantized_values, float min_value,
+                             float max_value, float* scaling_factor) {
+  return PortableSymmetricQuantizeFloats(values, size, quantized_values,
+                                         min_value, max_value, scaling_factor);
+}
+
+void AsymmetricQuantizeFloats(const float* values, const int size,
+                              int8_t* quantized_values, float* scaling_factor,
+                              int32_t* offset) {
+  return PortableAsymmetricQuantizeFloats(values, size, quantized_values,
+                                          scaling_factor, offset);
+}
+
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int m_cols, const float* vector,
                                          int n_batch, float* result,
@@ -61,6 +74,16 @@ void MatrixBatchVectorMultiplyAccumulate(
   PortableMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vector,
                                               scaling_factors, n_batch, result,
                                               result_stride);
+}
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset) {
+  return PortableMatrixBatchVectorMultiplyAccumulate(
+      matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
+      result_stride, per_channel_scale, input_offset);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate(
@@ -81,28 +104,24 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
       result_stride);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
-                                         const int32_t* bias,
-                                         const int8_t* input_to_gate_weights,
-                                         int32_t multiplier, int32_t shift,
-                                         int32_t n_batch, int32_t n_input,
-                                         int32_t n_output, int32_t output_zp,
-                                         int32_t* scratch, int16_t* output) {
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output, CpuBackendContext* context) {
   PortableMatrixBatchVectorMultiplyAccumulate(
       input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
-      n_output, output_zp, scratch, output);
+      n_output, output_zp, scratch, output, context);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
-                                         const int32_t* bias,
-                                         const int8_t* input_to_gate_weights,
-                                         int32_t multiplier, int32_t shift,
-                                         int32_t n_batch, int32_t n_input,
-                                         int32_t n_output, int32_t output_zp,
-                                         int32_t* scratch, int8_t* output) {
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output, CpuBackendContext* context) {
   PortableMatrixBatchVectorMultiplyAccumulate(
       input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
-      n_output, output_zp, scratch, output);
+      n_output, output_zp, scratch, output, context);
 }
 
 void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
@@ -125,19 +144,9 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   PortableApplySigmoid(input, n_batch, n_input, output);
 }
 
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh0(input, n_batch, n_input, output);
-}
-
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh3(input, n_batch, n_input, output);
-}
-
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh4(input, n_batch, n_input, output);
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output) {
+  PortableApplyTanh(integer_bits, input, n_batch, n_input, output);
 }
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -167,29 +176,12 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
   PortableCwiseClipping(input, clipping_value, n_batch, n_input);
 }
 
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result) {
-  PortableVectorVectorCwiseProduct(vector1, vector2, v_size, result);
-}
-
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result) {
-  PortableVectorVectorCwiseProductAccumulate(vector1, vector2, v_size, result);
-}
-
-void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                   const float* batch_vector, int n_batch,
-                                   float* result) {
-  PortableVectorBatchVectorCwiseProduct(vector, v_size, batch_vector, n_batch,
-                                        result);
-}
-
-void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
-                                             const float* batch_vector,
-                                             int n_batch, float* result) {
-  PortableVectorBatchVectorCwiseProductAccumulate(vector, v_size, batch_vector,
-                                                  n_batch, result);
+void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
+                                             const int16_t* batch_vector,
+                                             int n_batch, int32_t multiplier,
+                                             int shift, int16_t* result) {
+  PortableVectorBatchVectorCwiseProductAccumulate(
+      vector, v_size, batch_vector, n_batch, multiplier, shift, result);
 }
 
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -197,18 +189,17 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
   return PortableVectorVectorDotProduct(vector1, vector2, v_size);
 }
 
+void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                      const int16_t* vector2, int v_size,
+                                      int n_batch, int32_t* result,
+                                      int result_stride) {
+  return PortableBatchVectorBatchVectorDotProduct(
+      vector1, vector2, v_size, n_batch, result, result_stride);
+}
+
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector) {
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
-}
-
-void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
-  PortableApplySigmoidToVector(vector, v_size, result);
-}
-
-void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result) {
-  PortableApplyActivationToVector(vector, v_size, activation, result);
 }
 
 void Sub1Vector(const float* vector, int v_size, float* result) {
@@ -236,11 +227,15 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
                              reduction_size);
 }
 
+void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
+                        int output_size, int reduction_size) {
+  PortableReductionSumVector(input_vector, output_vector, output_size,
+                             reduction_size);
+}
+
 void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch,
-                             float normalization_epsilon) {
-  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch,
-                                  normalization_epsilon);
+                             int v_size, int n_batch) {
+  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
 }
 
 }  // namespace tensor_utils

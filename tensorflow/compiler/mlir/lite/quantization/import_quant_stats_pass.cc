@@ -23,18 +23,18 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineExpr.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/AffineExpr.h"  // TF:llvm-project
+#include "mlir/IR/AffineMap.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_info.pb.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
@@ -70,19 +70,19 @@ class ImportQuantStatsPass : public FunctionPass<ImportQuantStatsPass> {
   void ImportAsStatsOps(OpBuilder b, Operation *op, int index,
                         const QuantParamsEntry &info);
 
-  void InsertStatsOpAtResult(OpBuilder b, Value *res, ElementsAttr layer_stats,
+  void InsertStatsOpAtResult(OpBuilder b, Value res, ElementsAttr layer_stats,
                              ElementsAttr axis_stats, IntegerAttr axis);
 
   // If the index is out of range, this method returns false. Otherwise it
   // returns true if the value is a float tensor.
   bool IsQuantizableResult(Operation *op, int index) {
     if (index < 0 || index >= op->getNumResults()) return false;
-    Value *res = op->getResult(index);
-    return res->getType().isa<ShapedType>() &&
-           res->getType().cast<ShapedType>().getElementType().isa<FloatType>();
+    Value res = op->getResult(index);
+    return res.getType().isa<ShapedType>() &&
+           res.getType().cast<ShapedType>().getElementType().isa<FloatType>();
   }
 
-  // A method to retrive the name for the given op.
+  // A method to retrieve the name for the given op.
   OperationToName op_to_name_;
 
   // We split the normal names and regex names, since the former can use hash
@@ -117,13 +117,13 @@ bool ImportQuantStatsPass::ParseQuantStats(const std::string &stats_str) {
   return false;
 }
 
-void ImportQuantStatsPass::InsertStatsOpAtResult(OpBuilder b, Value *res,
+void ImportQuantStatsPass::InsertStatsOpAtResult(OpBuilder b, Value res,
                                                  ElementsAttr layer_stats,
                                                  ElementsAttr axis_stats,
                                                  IntegerAttr axis) {
   auto stats_op = b.create<quant::StatisticsOp>(b.getUnknownLoc(), res,
                                                 layer_stats, axis_stats, axis);
-  res->replaceAllUsesWith(stats_op);
+  res.replaceAllUsesWith(stats_op);
   stats_op.getOperation()->replaceUsesOfWith(stats_op, res);
 }
 
@@ -206,10 +206,17 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateImportQuantStatsPass(
 std::unique_ptr<OpPassBase<FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
   auto get_name_func = [](Operation *op) {
-    if (auto name = op->getAttrOfType<StringAttr>("name"))
-      return name.getValue();
-    else
-      return llvm::StringRef("");
+    Location loc = op->getLoc();
+    if (auto name = loc.dyn_cast<NameLoc>()) {
+      return name.getName().strref();
+    } else if (auto fused_name = loc.dyn_cast<FusedLoc>()) {
+      for (auto sub_loc : fused_name.getLocations()) {
+        if (auto named_sub_loc = sub_loc.dyn_cast<NameLoc>()) {
+          return named_sub_loc.getName().strref();
+        }
+      }
+    }
+    return llvm::StringRef("");
   };
 
   return CreateImportQuantStatsPass(get_name_func, stats_str);

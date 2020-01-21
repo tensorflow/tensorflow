@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -460,7 +461,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
     input_shape = (3, 5)
 
     def gru(cudnn=False, **kwargs):
-      layer_class = keras.layers.CuDNNGRU if cudnn else keras.layers.GRU
+      layer_class = keras.layers.CuDNNGRU if cudnn else keras.layers.GRUV1
       return layer_class(2, input_shape=input_shape, **kwargs)
 
     def get_layer_weights(layer):

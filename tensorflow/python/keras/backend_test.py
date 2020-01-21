@@ -236,6 +236,10 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.is_keras_tensor(x), False)
     x = keras.Input(shape=(1,))
     self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    x = keras.Input(shape=(None,), ragged=True)
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    x = keras.Input(shape=(None, None), sparse=True)
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
     with self.assertRaises(ValueError):
       keras.backend.is_keras_tensor(0)
 
@@ -1579,6 +1583,15 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 class BackendCrossEntropyLossesTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  def test_binary_crossentropy_with_sigmoid(self):
+    t = keras.backend.constant([[0, 1, 0]])
+    logits = keras.backend.constant([[8., 1., 1.]])
+    p = keras.backend.sigmoid(logits)
+    p = array_ops.identity(array_ops.identity(p))
+    result = self.evaluate(keras.backend.binary_crossentropy(t, p))
+    self.assertArrayNear(result[0], [8., 0.313, 1.313], 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_categorical_crossentropy_loss(self):
     t = keras.backend.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
@@ -1636,6 +1649,15 @@ class BackendCrossEntropyLossesTest(test.TestCase):
 
     result = f([t_val, p_val])
     self.assertArrayNear(result, [.002, .003, .036], 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_categorical_crossentropy_with_softmax(self):
+    t = keras.backend.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    logits = keras.backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = keras.backend.softmax(logits)
+    p = array_ops.identity(array_ops.identity(p))
+    result = self.evaluate(keras.backend.categorical_crossentropy(t, p))
+    self.assertArrayNear(result, [0.002, 0.0005, 0.17], 1e-3)
 
   @test_util.run_in_graph_and_eager_modes
   def test_sparse_categorical_crossentropy_loss(self):
@@ -1702,6 +1724,15 @@ class BackendCrossEntropyLossesTest(test.TestCase):
 
       _ = f([t_val, p_val])
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_categorical_crossentropy_with_softmax(self):
+    t = keras.backend.constant([0, 1, 2])
+    logits = keras.backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = keras.backend.softmax(logits)
+    p = array_ops.identity(array_ops.identity(p))
+    result = self.evaluate(keras.backend.sparse_categorical_crossentropy(t, p))
+    self.assertArrayNear(result, [0.002, 0.0005, 0.17], 1e-3)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 @test_util.with_control_flow_v2
@@ -1755,7 +1786,6 @@ class TestCTC(test.TestCase):
               decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
     self.assertAllClose(log_prob_truth, log_prob_pred)
 
-  @test_util.run_v1_only('b/120545219')
   def test_ctc_batch_cost(self):
     with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)

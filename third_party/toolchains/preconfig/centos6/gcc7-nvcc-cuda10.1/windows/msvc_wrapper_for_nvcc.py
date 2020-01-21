@@ -114,7 +114,8 @@ def InvokeNvcc(argv, log=False):
 
   out_file = [f for f in argv if f.startswith('/Fo')]
   if len(out_file) != 1:
-    raise RuntimeError('Please sepecify exactly one output file for cuda compilation.')
+    raise RuntimeError(
+        'Please specify exactly one output file for cuda compilation.')
   out = ['-o', out_file[0][len('/Fo'):]]
 
   nvcc_compiler_options, argv = GetNvccOptions(argv)
@@ -133,7 +134,7 @@ def InvokeNvcc(argv, log=False):
   undefines, argv = GetOptionValue(argv, 'U')
   undefines = ['-U' + define for define in undefines]
 
-  # The rest of the unrecongized options should be passed to host compiler
+  # The rest of the unrecognized options should be passed to host compiler
   host_compiler_options = [
       option for option in argv if option not in (src_files + out_file)
   ]

@@ -83,7 +83,7 @@ class BiasAddTestBase(test.TestCase):
   def _testAll(self, np_inputs, np_bias):
     self._testBias(np_inputs, np_bias, use_gpu=False)
     self._testBiasNCHW(np_inputs, np_bias, use_gpu=False)
-    if np_inputs.dtype in [np.float16, np.float32, np.float64]:
+    if np_inputs.dtype in [np.float16, np.float32, np.float64, np.int32]:
       self._testBias(np_inputs, np_bias, use_gpu=True)
       self._testBiasNCHW(np_inputs, np_bias, use_gpu=True)
 

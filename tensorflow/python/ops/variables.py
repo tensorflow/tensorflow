@@ -21,13 +21,13 @@ import enum  # pylint: disable=g-bad-import-order
 import itertools
 import functools
 import os
+
 import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_utils
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -584,8 +584,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the assignment has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -602,8 +602,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the addition has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -620,8 +620,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the subtraction has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -634,8 +634,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -651,8 +650,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered addition has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -669,8 +667,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered maximization has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -687,8 +684,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered minimization has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -704,8 +700,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered multiplication has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -721,8 +716,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered division has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -738,8 +732,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -785,8 +778,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -836,8 +828,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -884,8 +875,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered addition has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -932,8 +922,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -1096,10 +1085,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def __eq__(self, other):
     """Compares two variables element-wise for equality."""
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      if fwd_compat.forward_compatible(2019, 9, 25):
-        return gen_math_ops.equal(self, other, incompatible_shape_error=False)
-      else:
-        return gen_math_ops.equal(self, other)
+      return gen_math_ops.equal(self, other, incompatible_shape_error=False)
     else:
       # In legacy graph mode, tensor equality is object equality
       return self is other
@@ -1108,11 +1094,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def __ne__(self, other):
     """Compares two variables element-wise for equality."""
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      if fwd_compat.forward_compatible(2019, 9, 25):
-        return gen_math_ops.not_equal(
-            self, other, incompatible_shape_error=False)
-      else:
-        return gen_math_ops.not_equal(self, other)
+      return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
     else:
       # In legacy graph mode, tensor equality is object equality
       return self is not other
@@ -1332,9 +1314,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     @property
     def spec(self):
       """Computes the spec string used for saving."""
-      full_shape_str = " ".join(["%d" % d for d in self.full_shape]) + " "
+      full_shape_str = " ".join("%d" % d for d in self.full_shape) + " "
       sl_spec = ":".join(
-          ["%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape)])
+          "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape))
       return full_shape_str + sl_spec
 
     def to_proto(self, export_scope=None):

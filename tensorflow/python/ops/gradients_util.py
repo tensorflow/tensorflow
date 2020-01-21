@@ -653,7 +653,10 @@ def _GradientsHelper(ys,
               # issue here because of zeros.
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
-              else:
+              elif default_gradient.supports_default_grad(op.outputs[i]):
+                # TODO(b/143286622): The supports_default_grad check is needed
+                # because While op emits non-differentiable resource tensors
+                # as outputs. Remove this check when that is not the case.
                 out_grads[i] = control_flow_state.ZerosLikeOutsideLoop(op, i)
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access
@@ -831,9 +834,9 @@ def _LogOpGradients(op, out_grads, in_grads):
       return True
 
   logging.vlog(1, "  in  --> %s",
-               ", ".join([x.name for x in out_grads if _FilterGrad(x)]))
+               ", ".join(x.name for x in out_grads if _FilterGrad(x)))
   logging.vlog(1, "  out --> %s",
-               ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
+               ", ".join(x.name for x in in_grads if _FilterGrad(x)))
 
 
 def _MultiDeviceAddN(tensor_list, gradient_uid):

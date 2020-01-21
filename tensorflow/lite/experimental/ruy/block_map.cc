@@ -24,16 +24,16 @@ limitations under the License.
 #include <string>
 #endif
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 
 namespace ruy {
 
 void GetBlockByIndex(const BlockMap& block_map, int index,
                      SidePair<int>* block) {
-  gemmlowp::ScopedProfilingLabel label("GetBlockByIndex");
+  profiler::ScopeLabel label("GetBlockByIndex");
   const std::uint32_t index_u32 = index;
 
   const std::uint32_t num_blocks_per_local_curve =
@@ -109,16 +109,36 @@ void GetRectangularness(int rows, int cols, int kernel_rows, int kernel_cols,
                         int* cols_rectangularness_log2) {
   *rows_rectangularness_log2 = 0;
   *cols_rectangularness_log2 = 0;
+
+  // In GEMV-ish cases, that is when kernel blocks are as narrow as the kernel
+  // itself, we risk having too small kernel blocks for good kernel
+  // amortization. We avoid that by limiting recangularness so that kernel
+  // blocks are not too tiny at least in that dimension. Specifically, we try to
+  // have at least (2^min_kernel_inner_loop_runs_log2) kernels fitting in each
+  // kernel block along the large dimension.
+  const int min_kernel_inner_loop_runs_log2 = 3;
   if (rows > cols) {
+    int cols_of_kernel_inner_loop_runs_log2 =
+        ceil_log2(cols) - pot_log2(kernel_cols);
+    int min_rows_of_kernel_inner_loop_runs_log2 =
+        std::max(0, min_kernel_inner_loop_runs_log2 -
+                        cols_of_kernel_inner_loop_runs_log2);
     *rows_rectangularness_log2 =
         std::min(floor_log2_quotient(rows, cols),
-                 floor_log2(rows) - pot_log2(kernel_rows));
+                 std::max(0, floor_log2(rows) - pot_log2(kernel_rows) -
+                                 min_rows_of_kernel_inner_loop_runs_log2));
     // Sanity check that we did not over-estimate rows_rectangularness_log2.
     RUY_DCHECK_GE(rows >> *rows_rectangularness_log2, cols);
   } else if (cols > rows) {
+    int rows_of_kernel_inner_loop_runs_log2 =
+        ceil_log2(rows) - pot_log2(kernel_rows);
+    int min_cols_of_kernel_inner_loop_runs_log2 =
+        std::max(0, min_kernel_inner_loop_runs_log2 -
+                        rows_of_kernel_inner_loop_runs_log2);
     *cols_rectangularness_log2 =
         std::min(floor_log2_quotient(cols, rows),
-                 floor_log2(cols) - pot_log2(kernel_cols));
+                 std::max(0, floor_log2(cols) - pot_log2(kernel_cols) -
+                                 min_cols_of_kernel_inner_loop_runs_log2));
     // Sanity check that we did not over-estimate cols_rectangularness_log2.
     RUY_DCHECK_GE(cols >> *cols_rectangularness_log2, rows);
   }
@@ -166,7 +186,15 @@ int GetMultithreadingScore(int block_size_log2, int rows, int cols,
 // (e.g. L3) caches shared among all cores. Here we aim to fit in a fast,
 // local cache.
 int GetCacheLocalityScore(int block_size_log2, int rows, int cols, int depth,
+                          int kernel_rows_log2, int kernel_cols_log2,
                           int lhs_scalar_size, int rhs_scalar_size, Path path) {
+  // In the narrow case (e.g. matrix*vector), each byte of the big operand
+  // matrix (either LHS or RHS) is traversed only once, so any notion of data
+  // locality is irrelevant. Ignore the 'cache locality score' by forcing it to
+  // be 0 in that case.
+  if (rows <= (1 << kernel_rows_log2) || cols <= (1 << kernel_cols_log2)) {
+    return 0;
+  }
   const int block_rows = std::min(1 << block_size_log2, rows);
   const int block_cols = std::min(1 << block_size_log2, cols);
 #if RUY_PLATFORM(ARM_64)
@@ -242,7 +270,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
                   int tentative_thread_count, Path path,
                   int cache_friendly_traversal_threshold, BlockMap* block_map) {
-  gemmlowp::ScopedProfilingLabel label("MakeBlockMap");
+  profiler::ScopeLabel label("MakeBlockMap");
 
 #ifdef RUY_MAKEBLOCKMAP_DEBUG
 #if RUY_MAKEBLOCKMAP_DEBUG >= 2
@@ -304,9 +332,9 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
        block_size_log2 <= max_block_size_log2; block_size_log2++) {
     const int multithreading_score = GetMultithreadingScore(
         block_size_log2, rows, cols, tentative_thread_count);
-    const int cache_locality_score =
-        GetCacheLocalityScore(block_size_log2, rows, cols, depth,
-                              lhs_scalar_size, rhs_scalar_size, path);
+    const int cache_locality_score = GetCacheLocalityScore(
+        block_size_log2, rows, cols, depth, kernel_rows_log2, kernel_cols_log2,
+        lhs_scalar_size, rhs_scalar_size, path);
     const int kernel_amortization_score = GetKernelAmortizationScore(
         block_size_log2, rows, cols, kernel_rows_log2, kernel_cols_log2);
     const int score =
@@ -381,7 +409,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
 
 void GetBlockMatrixCoords(Side side, const BlockMap& block_map, int block,
                           int* start, int* end) {
-  gemmlowp::ScopedProfilingLabel label("GetBlockMatrixCoords");
+  profiler::ScopeLabel label("GetBlockMatrixCoords");
   *start = block * block_map.small_block_dims[side] +
            std::min(block, block_map.large_blocks[side]) *
                block_map.kernel_dims[side];

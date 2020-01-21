@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
+
 #include <fstream>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -523,7 +525,6 @@ TEST(RetryingFileSystemTest, DeleteFile_SuccessWith2ndTry) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
   TF_EXPECT_OK(fs.DeleteFile("gs://path/file.txt"));
 }
 
@@ -534,7 +535,6 @@ TEST(RetryingFileSystemTest, DeleteFile_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
   const auto& status = fs.DeleteFile("gs://path/file.txt");
   EXPECT_TRUE(absl::StrContains(status.error_message(), "Retriable error #10"))
       << status;
@@ -549,7 +549,6 @@ TEST(RetryingFileSystemTest, CreateDir_SuccessWith2ndTry) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
   TF_EXPECT_OK(fs.CreateDir("gs://path/newdir"));
 }
 
@@ -560,7 +559,6 @@ TEST(RetryingFileSystemTest, CreateDir_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
   const auto& status = fs.CreateDir("gs://path/newdir");
   EXPECT_TRUE(absl::StrContains(status.error_message(), "Retriable error #10"))
       << status;
@@ -575,7 +573,6 @@ TEST(RetryingFileSystemTest, DeleteDir_SuccessWith2ndTry) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
   TF_EXPECT_OK(fs.DeleteDir("gs://path/dir"));
 }
 
@@ -586,7 +583,6 @@ TEST(RetryingFileSystemTest, DeleteDir_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
   const auto& status = fs.DeleteDir("gs://path/dir");
   EXPECT_TRUE(absl::StrContains(status.error_message(), "Retriable error #10"))
       << status;

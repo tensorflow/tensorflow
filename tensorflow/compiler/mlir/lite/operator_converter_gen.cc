@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/TableGen/Attribute.h"  // TF:local_config_mlir
+#include "mlir/TableGen/Attribute.h"  // TF:llvm-project
 
 using llvm::DefInit;
 using llvm::dyn_cast;
@@ -281,7 +281,7 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
       continue;
     }
 
-    os << formatv("  if(const auto *op = op_union.As{0}()) {\n", option_name);
+    os << formatv("  if(const auto *op = op_union.As{0}()) {{\n", option_name);
 
     // We only care about options that are in arguments
     auto *arg_values = def->getValueAsDag("arguments");

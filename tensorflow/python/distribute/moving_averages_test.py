@@ -173,30 +173,30 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
 
 class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
 
-  def _ema_replica_fn_eager(self, w, ema):
-    ema.apply([w])
-    w.assign_sub([0.5])
-    ema.apply([w])
-    return ema.average(w)
-
   @combinations.generate(all_combinations_eager)
   def testReplicaContextEager(self, distribution, use_function):
-    if isinstance(distribution,
-                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
-      self.skipTest("b/139429499: TPUStrategy is not supported yet.")
+    if not use_function and isinstance(
+        distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      self.skipTest("TPUStrategy doesn't support pure eager execution.")
     with distribution.scope():
       w = variables.Variable([1.0],
                              name="w",
                              aggregation=variables.VariableAggregation.MEAN)
       ema = moving_averages.ExponentialMovingAverage(0.8)
 
-      def fn(w, ema):
-        return distribution.experimental_run_v2(
-            self._ema_replica_fn_eager, args=(w, ema))
+      def fn():
+
+        def _ema_replica_fn_eager():
+          ema.apply([w])
+          w.assign_sub([0.5])
+          ema.apply([w])
+          return ema.average(w)
+
+        return distribution.experimental_run_v2(_ema_replica_fn_eager)
 
       if use_function:
         fn = def_function.function(fn)
-      ema_w = fn(w, ema)
+      ema_w = fn()
     self.assertAllClose(
         self.evaluate(distribution.experimental_local_results(ema_w))[0],
         [0.89999998])
@@ -209,12 +209,15 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
                              aggregation=variables.VariableAggregation.MEAN)
       ema = moving_averages.ExponentialMovingAverage(0.8)
 
-      def fn(w, ema):
-        return self._ema_replica_fn_eager(w, ema)
+      def fn():
+        ema.apply([w])
+        w.assign_sub([0.5])
+        ema.apply([w])
+        return ema.average(w)
 
       if use_function:
         fn = def_function.function(fn)
-      avg = fn(w, ema)
+      avg = fn()
     self.assertAllClose(
         self.evaluate(distribution.experimental_local_results(avg))[0],
         [0.89999998])

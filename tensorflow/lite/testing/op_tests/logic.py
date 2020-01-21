@@ -76,4 +76,5 @@ def make_logical_and_tests(options):
 @register_make_test_function()
 def make_logical_xor_tests(options):
   """Make a set of tests to do logical_xor, test logical_not as well."""
-  return _make_logical_tests(tf.logical_xor)(options, expected_tf_failures=1)
+  return _make_logical_tests(tf.math.logical_xor)(
+      options, expected_tf_failures=1)

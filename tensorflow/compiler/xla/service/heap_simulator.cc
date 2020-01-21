@@ -31,6 +31,12 @@ namespace xla {
 using absl::flat_hash_map;
 using absl::flat_hash_set;
 
+bool HeapSimulator::Chunk::OverlapsWith(Chunk other_chunk) const {
+  CHECK_NE(size, 0);
+  CHECK_NE(other_chunk.size, 0);
+  return offset < other_chunk.chunk_end() && other_chunk.offset < chunk_end();
+}
+
 /*static*/
 StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
     const HloSchedule& schedule,
@@ -478,6 +484,54 @@ HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
   return result;
 }
 
+GlobalDecreasingSizeBestFitHeap::GlobalDecreasingSizeBestFitHeap(
+    int64 alignment, Type type)
+    : alignment_(alignment) {
+  if (type == kTemporal) {
+    buffer_interval_compare_ = GetTemporalBufferIntervalCompare();
+  } else {
+    CHECK(type == kSpatial);
+    buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
+  }
+}
+
+GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap::GetTemporalBufferIntervalCompare() const {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    int64 x_end = x.end;
+    for (auto colocation : GetTransitiveColocations(x)) {
+      x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
+    }
+
+    int64 y_end = y.end;
+    for (auto colocation : GetTransitiveColocations(y)) {
+      y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
+    }
+
+    if (x_end - x.start != y_end - y.start) {
+      return x_end - x.start > y_end - y.start;
+    }
+
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    return x.buffer->id() < y.buffer->id();
+  };
+}
+
+/*static*/ GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare() {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    if (x.end - x.start != y.end - y.start) {
+      return x.end - x.start > y.end - y.start;
+    }
+    return x.buffer->id() < y.buffer->id();
+  };
+}
+
 void GlobalDecreasingSizeBestFitHeap::Alloc(const HloValue* buffer,
                                             int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
@@ -543,8 +597,7 @@ void GlobalDecreasingSizeBestFitHeap::Free(const HloValue* buffer, int64 size) {
 
 using Chunk = HeapSimulator::Chunk;
 
-void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
-    int64 start, int64 end, const Chunk& chunk) {
+void BufferIntervalTree::Add(int64 start, int64 end, const Chunk& chunk) {
   node_storage_.emplace_back(
       BufferIntervalTreeNode{start, end, end, chunk, nullptr, nullptr});
 
@@ -572,8 +625,7 @@ void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
   }
 }
 
-std::vector<Chunk>
-GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::ChunksOverlappingInTime(
+std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
     int64 start, int64 end) const {
   std::vector<Chunk> result;
   if (node_storage_.empty()) {
@@ -627,47 +679,7 @@ GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals() const {
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
   }
-  if (type_ == kTemporal) {
-    // Sort by live-range. A live range is defined by the range between the
-    // start of the first buffer and the end of the last co-located
-    // buffer. There could be "holes" in the live ranges of each co-located
-    // buffers, but in this heuristics we think they are contiguous.
-    absl::c_sort(sorted_buffer_intervals, [&](const BufferInterval& x,
-                                              const BufferInterval& y) {
-      int64 x_end = x.end;
-      for (auto colocation : GetTransitiveColocations(x)) {
-        x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
-      }
-
-      int64 y_end = y.end;
-      for (auto colocation : GetTransitiveColocations(y)) {
-        y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
-      }
-
-      if (x_end - x.start != y_end - y.start) {
-        return x_end - x.start > y_end - y.start;
-      }
-
-      if (x.size != y.size) {
-        return x.size > y.size;
-      }
-      return x.buffer->id() < y.buffer->id();
-    });
-  } else {
-    // Sort by spatial size. We don't look at co-locates as they should have the
-    // same size.
-    CHECK(type_ == kSpatial);
-    absl::c_sort(sorted_buffer_intervals,
-                 [&](const BufferInterval& x, const BufferInterval& y) {
-                   if (x.size != y.size) {
-                     return x.size > y.size;
-                   }
-                   if (x.end - x.start != y.end - y.start) {
-                     return x.end - x.start > y.end - y.start;
-                   }
-                   return x.buffer->id() < y.buffer->id();
-                 });
-  }
+  absl::c_sort(sorted_buffer_intervals, buffer_interval_compare_);
 
   return sorted_buffer_intervals;
 }

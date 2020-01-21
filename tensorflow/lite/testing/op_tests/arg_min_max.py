@@ -45,9 +45,11 @@ def make_arg_min_max_tests(options):
         shape=parameters["input_shape"])
     axis = random.randint(0, max(len(parameters["input_shape"]) - 1, 0))
     if parameters["is_arg_max"]:
-      out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
+      out = tf.math.argmax(
+          input_value, axis, output_type=parameters["output_type"])
     else:
-      out = tf.arg_min(input_value, axis, output_type=parameters["output_type"])
+      out = tf.math.argmin(
+          input_value, axis, output_type=parameters["output_type"])
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

@@ -1,8 +1,7 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
+load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -47,7 +46,7 @@ py_test(
     name = "saved_model_utils_test",
     size = "small",
     srcs = ["saved_model_utils_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
@@ -70,6 +69,7 @@ py_library(
         "//tensorflow/python:no_contrib",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python:training",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/saved_model:loader",
@@ -80,7 +80,7 @@ py_library(
 py_binary(
     name = "freeze_graph",
     srcs = ["freeze_graph.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":freeze_graph_main_lib"],
 )
@@ -97,7 +97,7 @@ py_library(
 py_binary(
     name = "import_pb_to_tensorboard",
     srcs = ["import_pb_to_tensorboard.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":import_pb_to_tensorboard_lib"],
 )
@@ -121,7 +121,7 @@ py_test(
     name = "freeze_graph_test",
     size = "small",
     srcs = ["freeze_graph_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":freeze_graph_lib",
@@ -140,7 +140,7 @@ py_test(
 py_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":inspect_checkpoint_lib"],
 )
@@ -152,7 +152,7 @@ py_library(
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:py_checkpoint_reader",
     ],
 )
 
@@ -176,7 +176,7 @@ py_library(
 py_binary(
     name = "strip_unused",
     srcs = ["strip_unused.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":strip_unused_lib",
@@ -190,7 +190,7 @@ py_test(
     name = "strip_unused_test",
     size = "small",
     srcs = ["strip_unused_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["notap"],
     deps = [
@@ -223,7 +223,7 @@ py_library(
 py_binary(
     name = "optimize_for_inference",
     srcs = ["optimize_for_inference.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":optimize_for_inference_main_lib"],
 )
@@ -247,7 +247,7 @@ py_test(
     name = "optimize_for_inference_test",
     size = "small",
     srcs = ["optimize_for_inference_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":optimize_for_inference_lib",
@@ -279,7 +279,7 @@ py_library(
 py_binary(
     name = "print_selective_registration_header",
     srcs = ["print_selective_registration_header.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [":print_selective_registration_header_lib"],
@@ -299,7 +299,7 @@ py_library(
 py_test(
     name = "print_selective_registration_header_test",
     srcs = ["print_selective_registration_header_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":selective_registration_header_lib",
@@ -311,7 +311,7 @@ py_test(
 py_binary(
     name = "saved_model_cli",
     srcs = ["saved_model_cli.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":saved_model_cli_lib"],
 )
@@ -324,7 +324,10 @@ py_library(
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
-    ],
+        "//tensorflow/python:tf_optimizer",
+    ] + if_xla_available(
+        ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
+    ),
 )
 
 py_test(
@@ -333,14 +336,70 @@ py_test(
     data = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
         "no-internal-py3",
+        "nosan",
     ],
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+genrule(
+    name = "aot_compiled_x_plus_y_gen",
+    srcs = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+        "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb",
+    ],
+    outs = [
+        "compiled_model.h",
+        "compiled_model.o",
+        "compiled_model_metadata.o",
+        "compiled_model_makefile.inc",
+    ],
+    cmd = (
+        "$(location :saved_model_cli) aot_compile_cpu " +
+        "--dir \"$$(dirname $(location //tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb))\" " +
+        "--output_prefix $(@D)/compiled_model " +
+        "--cpp_class CompiledModel " +
+        "--tag_set serve "
+    ),
+    tools = [
+        ":saved_model_cli",
+    ],
+)
+
+cc_library(
+    name = "aot_compiled_x_plus_y",
+    srcs = if_xla_available([
+        ":compiled_model.o",
+        ":compiled_model_metadata.o",
+    ]),
+    hdrs = if_xla_available([
+        ":compiled_model.h",
+    ]),
+    deps = if_xla_available([
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/core/platform:types",
+    ]),
+)
+
+tf_cc_test(
+    name = "binary_using_aot_compiled_x_plus_y_test",
+    srcs = if_xla_available([
+        "binary_using_aot_compiled_x_plus_y_test.cc",
+    ]),
+    deps = [
+        "//tensorflow/core:test_main",
+    ] + if_xla_available([
+        ":aot_compiled_x_plus_y",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:logging",
+    ]),
 )

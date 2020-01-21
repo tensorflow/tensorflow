@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/gcs_throttle.h"
+
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -24,7 +25,9 @@ namespace {
 
 class TestTime : public EnvTime {
  public:
-  uint64 NowNanos() const override { return now_micros_ * kMicrosToNanos; }
+  uint64 GetOverridableNowNanos() const override {
+    return now_micros_ * kMicrosToNanos;
+  }
 
   void SetTime(uint64 now_micros) { now_micros_ = now_micros; }
 

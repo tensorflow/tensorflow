@@ -734,6 +734,13 @@ struct ActivationParams {
   int32 quantized_activation_max;
 };
 
+struct ReluParams : public ActivationParams {
+  int32 input_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int32 output_shift;
+};
+
 // Styles of resizing op usages. For example, kImageStyle can be used with a Pad
 // op for pattern-specific optimization.
 enum class ResizingCategory : uint8 {
@@ -873,6 +880,9 @@ struct FullyConnectedParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  // Mark the operands as cacheable if they are unchanging, e.g. weights.
+  bool lhs_cacheable;
+  bool rhs_cacheable;
   FullyConnectedWeightsFormat weights_format;
 };
 
@@ -981,6 +991,10 @@ struct ReshapeParams {
 
 struct ResizeBilinearParams {
   bool align_corners;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Corresponds to the same argument for the
+  // original TensorFlow op in TF2.0.
+  bool half_pixel_centers;
 };
 
 struct ResizeNearestNeighborParams {
@@ -1033,11 +1047,11 @@ struct SqueezeParams {
 
 struct StridedSliceParams {
   int8 start_indices_count;
-  int16 start_indices[4];
+  int32 start_indices[4];
   int8 stop_indices_count;
-  int16 stop_indices[4];
+  int32 stop_indices[4];
   int8 strides_count;
-  int16 strides[4];
+  int32 strides[4];
 
   int16 begin_mask;
   int16 ellipsis_mask;

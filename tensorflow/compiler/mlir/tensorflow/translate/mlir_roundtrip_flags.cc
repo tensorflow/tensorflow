@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 
+#include <type_traits>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -31,19 +33,16 @@ limitations under the License.
 namespace tensorflow {
 
 Status ParseOutputArrayInfo(absl::string_view array_names,
-                            absl::flat_hash_set<string>* array,
-                            std::vector<string>* order) {
+                            std::vector<string>* outputs) {
   std::vector<string> output_names = absl::StrSplit(array_names, ',');
-  return ParseOutputArrayInfo(output_names, array, order);
+  return ParseOutputArrayInfo(output_names, outputs);
 }
 
 Status ParseOutputArrayInfo(const std::vector<string>& output_names,
-                            absl::flat_hash_set<string>* array,
-                            std::vector<string>* order) {
+                            std::vector<string>* outputs) {
   for (auto& output_name : output_names) {
     if (output_name.empty()) continue;
-    array->insert(string(*absl::StrSplit(output_name, ':').begin()));
-    order->push_back(output_name);
+    outputs->push_back(output_name);
   }
   return Status::OK();
 }
@@ -75,12 +74,33 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
                            const std::vector<string>& node_dtypes,
                            const std::vector<std::vector<int>>& node_shapes,
                            GraphImportConfig::InputArrays* inputs) {
-  if (node_names.size() != node_dtypes.size() ||
-      node_names.size() != node_shapes.size()) {
-    return errors::FailedPrecondition(
-        absl::StrCat("Unmatched node, data type and shape numbers (#arrays ",
-                     node_names.size(), ", #data_types ", node_dtypes.size(),
-                     ", #input_shapes ", node_shapes.size(), ")"));
+  std::vector<std::string> used_node_dtypes;
+  if (node_dtypes.empty() ||
+      (node_dtypes.size() == 1 && node_dtypes[0].empty())) {
+    // Mark all the node dtypes Invalid, so the importer can handle them by
+    // using the type from the graph.
+    used_node_dtypes.resize(node_names.size(), DataType_Name(DT_INVALID));
+  } else if (node_names.size() == node_dtypes.size()) {
+    for (auto dtype : node_dtypes) {
+      if (dtype.empty()) {
+        used_node_dtypes.push_back(DataType_Name(DT_INVALID));
+      } else if (dtype != DataType_Name(DT_INVALID)) {
+        used_node_dtypes.push_back(dtype);
+      } else {
+        return errors::FailedPrecondition(
+            "Use '' if want to use the type from graph.");
+      }
+    }
+  } else {
+    return errors::FailedPrecondition(absl::StrCat(
+        "Unmatched node array and data type numbers (#arrays ",
+        node_names.size(), ", #data_types ", node_dtypes.size(), ")"));
+  }
+
+  if (node_names.size() != node_shapes.size()) {
+    return errors::FailedPrecondition(absl::StrCat(
+        "Unmatched node array and data type numbers (#arrays ",
+        node_names.size(), ", #input_shapes ", node_shapes.size(), ")"));
   }
 
   // StringMap doesn't support reserve else reserve input map size here.
@@ -94,11 +114,10 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
           absl::StrCat("tensor ", name, " is repeated in the arrays flag"));
 
     ArrayInfo& info = it_inserted_pair.first->second;
-    if (!DataType_Parse(node_dtypes[i], &info.imported_dtype)) {
+    if (!DataType_Parse(used_node_dtypes[i], &info.imported_dtype)) {
       return errors::FailedPrecondition(
           absl::StrCat("Invalid node type '", node_dtypes[i], "'"));
     }
-    TF_RET_CHECK(DataType_Parse(node_dtypes[i], &info.imported_dtype));
 
     for (auto& dim : node_shapes[i]) {
       info.shape.add_dim()->set_size(dim);

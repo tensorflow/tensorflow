@@ -15,19 +15,11 @@ limitations under the License.
 
 // This is the operation definition file for LXLA.
 
-#ifdef LHLO_OPS
-#else
+#ifndef LHLO_OPS
 #define LHLO_OPS
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifdef HLO_OPS_BASE
-#else
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
-#endif
 
 def LHLO_Dialect : Dialect {
   let name = "xla_lhlo";
@@ -39,18 +31,18 @@ def LHLO_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
-def LHLO_IntBuffer : StaticShapeMemRefOf<[HLO_Int]>;
+def LHLO_IntBuffer : MemRefOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def LHLO_FpBuffer : StaticShapeMemRefOf<[AnyFloat]>;
+def LHLO_FpBuffer : MemRefOf<[AnyFloat]>;
 
 
-def LHLO_PredBuffer : StaticShapeMemRefOf<[HLO_Pred]>;
+def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
-def LHLO_IntOrFpBuffer : StaticShapeMemRefOf<[HLO_Int, AnyFloat]>;
+def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
-def LHLO_Buffer : StaticShapeMemRefOf<[AnyFloat, AnyInteger]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnyInteger]>;
 
 def LHLO_TupleBuffer : NestedTupleOf<[LHLO_Buffer]>;
 
@@ -63,14 +55,14 @@ def LHLO_BufferOrTuple : AnyTypeOf<[LHLO_Buffer, LHLO_TupleBuffer]>;
 class LHLO_Op<string mnemonic, list<OpTrait> traits> : Op<LHLO_Dialect,
                                                           mnemonic, traits>;
 
-def LHLO_ConstOp : BASE_HLO_ConstOp, LHLO_Op<"constant", []> {
+def LHLO_ConstOp : LHLO_Op<"constant", []>, BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value,
     LHLO_Buffer:$output
   );
 }
 
-def LHLO_IotaOp : BASE_HLO_IotaOp, LHLO_Op<"iota", []> {
+def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension,
                    LHLO_Buffer:$output);
 }
@@ -140,16 +132,18 @@ def LHLO_OrOp: LHLO_BinaryElementwiseOp<"or", []>, BASE_HLO_OrOp;
 //===----------------------------------------------------------------------===//
 
 // TODO(b/139813999): specify required function signature in a type-safe way.
-def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_ReduceOp {
+def LHLO_ReduceOp: LHLO_Op<"reduce", [
+      SameVariadicOperandSize,
+      SingleBlockImplicitTerminator<"TerminatorOp">
+    ]>, BASE_HLO_ReduceOp {
   let arguments = (ins
     Variadic<LHLO_BufferOrTuple>:$operands,
     Variadic<LHLO_BufferOrTuple>:$init_values,
     Variadic<LHLO_BufferOrTuple>:$out,
-    // TODO(hinsu): Attach computation as a region similar to the
-    // xla_hlo.reduce op.
-    SymbolRefAttr:$computation,
     I64ElementsAttr:$dimensions
   );
+
+  let regions = (region SizedRegion<1>:$body);
 }
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
@@ -262,6 +256,13 @@ def LHLO_ConvOp : LHLO_Op<"conv", []>, BASE_HLO_ConvOp {
   let arguments = (ins
     LHLO_Buffer:$lhs,
     LHLO_Buffer:$rhs,
+    LHLO_Buffer:$output
+  );
+}
+
+def LHLO_CopyOp: LHLO_Op<"copy", []>, BASE_HLO_CopyOp {
+  let arguments = (ins
+    LHLO_Buffer:$operand,
     LHLO_Buffer:$output
   );
 }

@@ -22,7 +22,6 @@ import six
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import monitoring
-from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 _TENSORSHAPE_V2_OVERRIDE = None
@@ -809,7 +808,14 @@ class TensorShape(object):
 
   @property
   def dims(self):
-    """Returns a list of Dimensions, or None if the shape is unspecified."""
+    """Deprecated.  Returns list of dimensions for this shape.
+
+    Suggest `TensorShape.as_list` instead.
+
+    Returns:
+      A list containing `tf.compat.v1.Dimension`s, or None if the shape is
+      unspecified.
+    """
     return self._dims
 
   @property
@@ -1233,36 +1239,3 @@ def unknown_shape(rank=None, **kwargs):
     return TensorShape(None)
   else:
     return TensorShape([Dimension(None)] * rank)
-
-
-@deprecation.deprecated(None, "Use tf.TensorShape([]).")
-def scalar():
-  """Returns a shape representing a scalar."""
-  return TensorShape([])
-
-
-@deprecation.deprecated(None, "Use tf.TensorShape([length]).")
-def vector(length):
-  """Returns a shape representing a vector.
-
-  Args:
-    length: The length of the vector, which may be None if unknown.
-
-  Returns:
-    A TensorShape representing a vector of the given length.
-  """
-  return TensorShape([length])
-
-
-@deprecation.deprecated(None, "Use tf.TensorShape([rows, cols]).")
-def matrix(rows, cols):
-  """Returns a shape representing a matrix.
-
-  Args:
-    rows: The number of rows in the matrix, which may be None if unknown.
-    cols: The number of columns in the matrix, which may be None if unknown.
-
-  Returns:
-    A TensorShape representing a matrix of the given size.
-  """
-  return TensorShape([rows, cols])

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 
@@ -33,9 +34,11 @@ namespace eager {
 class EagerClusterFunctionLibraryRuntime
     : public DistributedFunctionLibraryRuntime {
  public:
-  EagerClusterFunctionLibraryRuntime(EagerContext* ctx,
+  EagerClusterFunctionLibraryRuntime(const uint64 context_id, EagerContext* ctx,
                                      DeviceMgr* remote_device_mgr)
-      : ctx_(ctx), remote_device_mgr_(remote_device_mgr) {}
+      : context_id_(context_id),
+        ctx_(ctx),
+        remote_device_mgr_(remote_device_mgr) {}
 
   ~EagerClusterFunctionLibraryRuntime() override{};
 
@@ -61,26 +64,30 @@ class EagerClusterFunctionLibraryRuntime
   DeviceMgr* remote_device_mgr() const override { return remote_device_mgr_; }
 
  private:
+  const uint64 context_id_;
   EagerContext* ctx_;
   DeviceMgr* remote_device_mgr_;  // not owned.
 
   struct FunctionData {
     const string target;
-    const uint64 context_id;
-    EagerClient* eager_client = nullptr;
+    core::RefCountPtr<EagerClient> eager_client;
     std::unique_ptr<EagerOperation> op;
 
-    FunctionData(const string& target, const uint64 context_id,
-                 EagerClient* eager_client, std::unique_ptr<EagerOperation> op)
+    FunctionData(const string& target, EagerClient* eager_client,
+                 std::unique_ptr<EagerOperation> op)
         : target(target),
-          context_id(context_id),
-          eager_client(eager_client),
-          op(std::move(op)) {}
+          eager_client(core::RefCountPtr<EagerClient>(eager_client)),
+          op(std::move(op)) {
+      eager_client->Ref();
+    }
   };
 
   mutable mutex mu_;
   std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
 };
+
+DistributedFunctionLibraryRuntime* CreateClusterFLR(
+    const uint64 context_id, EagerContext* ctx, WorkerSession* worker_session);
 
 }  // namespace eager
 }  // namespace tensorflow

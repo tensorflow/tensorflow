@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
+
+#include <algorithm>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
@@ -638,6 +640,13 @@ Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     }
     return errors::FailedPrecondition(
         strings::StrCat(error_message, overflow_message));
+  }
+  // Domain resolution errors and certificate problems aren't going to improve
+  // on retry, so we return a FailedPrecondition (as the caller must take action
+  // before this can succeed).
+  if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
+    return errors::FailedPrecondition(
+        strings::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.

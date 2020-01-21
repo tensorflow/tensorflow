@@ -1,7 +1,7 @@
 # Description: Operations defined for Cloud TPUs
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
@@ -30,6 +30,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
+        "no_oss_py35",
         "no_pip",
     ],
     deps = [
@@ -182,6 +183,17 @@ py_library(
 )
 
 py_library(
+    name = "topology",
+    srcs = [
+        "topology.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
+    ],
+)
+
+py_library(
     name = "tpu_lib",
     srcs = [
         "__init__.py",
@@ -191,7 +203,6 @@ py_library(
         "tensor_tracer.py",
         "tensor_tracer_flags.py",
         "tensor_tracer_report.py",
-        "topology.py",
         "tpu.py",
         "tpu_feed.py",
         "tpu_function.py",
@@ -205,6 +216,7 @@ py_library(
     deps = [
         ":datasets",
         ":functional",
+        ":topology",
         ":tpu_py",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
@@ -212,7 +224,6 @@ py_library(
         "//tensorflow/core/protobuf/tpu:compilation_result_proto_py",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
-        "//tensorflow/core/protobuf/tpu:topology_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
@@ -256,29 +267,29 @@ tf_py_test(
     name = "datasets_test",
     size = "medium",
     srcs = ["datasets_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        ":datasets",
-    ],
     grpc_enabled = True,
     shard_count = 4,
     tags = ["no_oss"],
+    deps = [
+        ":datasets",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 tf_py_test(
     name = "tpu_test",
     size = "small",
     srcs = ["tpu_test.py"],
-    additional_deps = [
+    tags = [
+        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
+    deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
-    ],
-    tags = [
-        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
-        "no_windows",  # TODO: needs investigation on Windows
     ],
 )
 
@@ -286,7 +297,7 @@ tf_py_test(
     name = "tpu_sharding_test",
     size = "small",
     srcs = ["tpu_sharding_test.py"],
-    additional_deps = [
+    deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -297,7 +308,7 @@ tf_py_test(
     name = "bfloat16_test",
     size = "small",
     srcs = ["bfloat16_test.py"],
-    additional_deps = [
+    deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -308,7 +319,7 @@ tf_py_test(
     name = "tpu_infeed_test",
     size = "small",
     srcs = ["tpu_infeed_test.py"],
-    additional_deps = [
+    deps = [
         ":tpu",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
@@ -319,7 +330,7 @@ tf_py_test(
     name = "topology_test",
     size = "medium",
     srcs = ["topology_test.py"],
-    additional_deps = [
+    deps = [
         ":tpu",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -394,9 +405,9 @@ tf_py_test(
     srcs = [
         "feature_column_test.py",
     ],
-    additional_deps = [
+    main = "feature_column_test.py",
+    deps = [
         ":feature_column",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -407,8 +418,8 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/feature_column:feature_column_py",
+        "//third_party/py/numpy",
     ],
-    main = "feature_column_test.py",
 )
 
 tf_py_test(
@@ -416,9 +427,9 @@ tf_py_test(
     srcs = [
         "feature_column_v2_test.py",
     ],
-    additional_deps = [
+    main = "feature_column_v2_test.py",
+    deps = [
         ":feature_column_v2",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -429,15 +440,16 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/feature_column:feature_column_py",
+        "//third_party/py/numpy",
     ],
-    main = "feature_column_v2_test.py",
 )
 
 tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],
+    cc_api_version = 2,
     protodeps = [
-        "//tensorflow/core:protos_all_proto",
+        "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],
 )

@@ -102,6 +102,24 @@ class HloComputation {
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
   };
 
+  // Helper class to automatically set the OpMetadata for every instruction
+  // added to a computation.
+  class MetadataBuilder {
+   public:
+    MetadataBuilder(HloComputation* computation, const OpMetadata& metadata)
+        : computation_(computation), metadata_(metadata) {}
+
+    HloInstruction* AddInstruction(
+        std::unique_ptr<HloInstruction> instruction) {
+      instruction->set_metadata(metadata_);
+      return computation_->AddInstruction(std::move(instruction));
+    }
+
+   private:
+    HloComputation* computation_;
+    OpMetadata metadata_;
+  };
+
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);
@@ -140,9 +158,6 @@ class HloComputation {
   Status ReplaceEntryComputationParameter(
       int64 param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
-
-  // Returns true if the computation contains this instruction.
-  bool ContainsInstruction(const HloInstruction* instruction) const;
 
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
@@ -217,7 +232,8 @@ class HloComputation {
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map);
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+      bool prohibit_empty_literal = true);
 
   using InstructionSequence = tensorflow::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
@@ -403,7 +419,7 @@ class HloComputation {
   // the HLO computation with the exception of fusion computation. A parameter
   // instruction is removable for a fusion computation.
   //
-  // Note that IsSafelyRemovable() is a necassarily condition to remove an
+  // Note that IsSafelyRemovable() is a necessary condition to remove an
   // instruction rather than a sufficient condition. For example, instructions
   // with side-effect (e.g., Send, Infeed) may be removed from a computation,
   // but the transformation must guarantee the invariants relevant to the

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+
 from absl.testing import parameterized
 import numpy as np
 import six
@@ -32,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.preprocessing import sequence
 from tensorflow.python.util import nest
 
@@ -295,7 +297,10 @@ def compare_results(results_with_ds,
                     testcase,
                     partial_last_batch=None):
   """Compares results of model compiled with/without distribution strategy."""
-  if partial_last_batch == 'train_and_eval':
+  if policy.global_policy().compute_dtype in ('float16', 'bfloat16'):
+    default_tolerance = 1e-2
+    relaxed_tolerance = 1e-2
+  elif partial_last_batch == 'train_and_eval':
     # We relax the tolerence a lot in the partial last batch case as
     #   1. the examples in uneven batches may have different weights when
     #      applying the gradients in the distributed case.

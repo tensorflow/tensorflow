@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -347,6 +348,20 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   return allocated_bytes;
 }
 
+int64 GetTotalBytes(const std::vector<Tensor>& element) {
+  int64 total_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      total_bytes += dataset->TotalBytes();
+    } else {
+      total_bytes += tensor.TotalBytes();
+    }
+  }
+  return total_bytes;
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&
@@ -389,7 +404,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
     DCHECK_NE(ctx->input_list(), nullptr);
     ctx->input_list()->emplace_back((*output)->name(), std::move(t));
-    LOG(WARNING)
+    LOG_EVERY_N_SEC(WARNING, 30)
         << "Input of " << dataset->DebugString()
         << " will not be optimized because the dataset does not implement the "
            "AsGraphDefInternal() method needed to apply optimizations.";
@@ -403,6 +418,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     bool* end_of_sequence) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
+  DVLOG(3) << prefix() << " GetNext enter";
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
@@ -415,6 +431,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          s.error_message());
     LOG(ERROR) << s;
   }
+  DVLOG(3) << prefix() << " GetNext exit";
   return s;
 }
 
@@ -461,10 +478,8 @@ const char DatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
 const char DatasetBase::kDatasetGraphOutputNodeKey[] =
     "_DATASET_GRAPH_OUTPUT_NODE";
 
-BackgroundWorker::BackgroundWorker(Env* env, const string& name) {
-  thread_.reset(env->StartThread({} /* thread_options */, name,
-                                 [this]() { WorkerLoop(); }));
-}
+BackgroundWorker::BackgroundWorker(Env* env, const char* name)
+    : env_(env), name_(name) {}
 
 BackgroundWorker::~BackgroundWorker() {
   {
@@ -483,6 +498,10 @@ BackgroundWorker::~BackgroundWorker() {
 void BackgroundWorker::Schedule(std::function<void()> work_item) {
   {
     mutex_lock l(mu_);
+    if (!thread_) {
+      thread_ = absl::WrapUnique(env_->StartThread(
+          {} /* thread_options */, name_, [this]() { WorkerLoop(); }));
+    }
     work_queue_.push_back(std::move(work_item));
   }
   cond_var_.notify_one();

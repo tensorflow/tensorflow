@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 import threading
+
 from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -535,7 +536,7 @@ class ParameterServerStrategyTestBase(
          self.cached_session(config=config,
                              target=master_target) as sess:
       iterator = distribution.make_input_fn_iterator(input_fn)
-      sess.run(iterator.initialize())
+      sess.run(iterator.initializer)
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
@@ -553,7 +554,7 @@ class ParameterServerStrategyTestBase(
 
       # After re-initializing the iterator, should be able to iterate again.
       if test_reinitialize:
-        sess.run(iterator.initialize())
+        sess.run(iterator.initializer)
 
         for expected_value in expected_values:
           next_element = iterator.get_next()

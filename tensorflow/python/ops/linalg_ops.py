@@ -306,7 +306,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
         matrix, rhs, l2_regularizer, fast=fast, name=name)
 
 
-@tf_export('eig', 'linalg.eig', v1=[])
+@tf_export('linalg.eig', 'eig', v1=[])
 def eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of matrices.
 
@@ -336,7 +336,7 @@ def eig(tensor, name=None):
   return e, v
 
 
-@tf_export('eigvals', 'linalg.eigvals', v1=[])
+@tf_export('linalg.eigvals', 'eigvals', v1=[])
 def eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more matrices.
 

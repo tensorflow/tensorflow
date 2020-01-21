@@ -50,6 +50,12 @@ TEST_F(PrintingV2GraphTest, InvalidOutputStream) {
   ASSERT_NE(::tensorflow::Status::OK(), (Init("invalid_output_stream")));
 }
 
+TEST_F(PrintingV2GraphTest, InvalidInputRank) {
+  TF_ASSERT_OK(Init());
+  AddInputFromArray<tstring>(TensorShape({2}), {"bar", "foo"});
+  ASSERT_NE(::tensorflow::Status::OK(), RunOpKernel());
+}
+
 class PrintingGraphTest : public OpsTestBase {
  protected:
   Status Init(DataType input_type1, DataType input_type2, string msg = "",

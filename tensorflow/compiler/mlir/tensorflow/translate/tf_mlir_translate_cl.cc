@@ -29,7 +29,9 @@ opt<std::string> input_arrays(
 // NOLINTNEXTLINE
 opt<std::string> input_dtypes(
     "tf-input-data-types",
-    llvm::cl::desc("Input tensor data types, separated by ','"),
+    llvm::cl::desc("(Optional) Input tensor data types, separated by ','. Use "
+                   "'' if a single data type is skipped. The data type from "
+                   "the import graph is used if it is skipped."),
     llvm::cl::init(""));
 
 // NOLINTNEXTLINE
@@ -43,6 +45,13 @@ opt<std::string> input_shapes(
 // NOLINTNEXTLINE
 opt<std::string> output_arrays(
     "tf-output-arrays", llvm::cl::desc("Output tensor names, separated by ','"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<std::string> control_output_arrays(
+    "tf-control-output-arrays",
+    llvm::cl::desc("Control output node names, separated by ',', for main "
+                   "graphs that are functions"),
     llvm::cl::init(""));
 
 // NOLINTNEXTLINE

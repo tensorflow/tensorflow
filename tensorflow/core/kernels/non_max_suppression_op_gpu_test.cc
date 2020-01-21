@@ -427,9 +427,10 @@ TEST_F(NonMaxSuppressionV3GPUOpTest, TestEmptyInput) {
 class NonMaxSuppressionV4GPUOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    SetDevice(DEVICE_GPU,
-              std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
-                  "GPU", {}, "/job:a/replica:0/task:0")));
+    // TODO(b/143610288): reenable this once the bug is fixed.
+    // SetDevice(DEVICE_GPU,
+    //           std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
+    //               "GPU", {}, "/job:a/replica:0/task:0")));
 
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV4")
                      .Input(FakeInput(DT_FLOAT))

@@ -21,7 +21,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/softmax.h"
@@ -36,6 +36,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+
+#if __aarch64__ && __clang__
+#include <arm_neon.h>
+#endif
 
 namespace tflite {
 namespace ops {
@@ -57,7 +61,6 @@ struct OpData {
   int32_t input_range_radius = 0;
   int diff_min = 0;
   uint8_t table[256] = {0};
-  uint8_t* table_zero = nullptr;
 };
 
 struct SoftmaxOpData {
@@ -87,6 +90,11 @@ struct HardSwishData {
   HardSwishParams params;
 };
 
+struct ReluOpData : public OpData {
+  int32_t output_multiplier = 0;
+  int output_shift = 0;
+};
+
 namespace {
 TfLiteStatus CheckOutputQuantParams(TfLiteContext* context,
                                     const TfLiteTensor* input,
@@ -108,7 +116,6 @@ void PopulateLookupTable(struct OpData* data, const TfLiteTensor* input,
   const float inverse_scale = 1 / output->params.scale;
   int32_t maxval = std::numeric_limits<T>::max();
   int32_t minval = std::numeric_limits<T>::min();
-  data->table_zero = &data->table[-minval];
   for (int32_t val = minval; val <= maxval; ++val) {
     const float dequantized =
         input->params.scale * (val - input->params.zero_point);
@@ -116,28 +123,75 @@ void PopulateLookupTable(struct OpData* data, const TfLiteTensor* input,
     const float rescaled = std::round(transformed * inverse_scale);
     const int32_t quantized =
         static_cast<int32_t>(rescaled + output->params.zero_point);
-    data->table_zero[val] =
-        static_cast<uint8_t>(std::max(std::min(maxval, quantized), minval));
+    data->table[static_cast<uint8_t>(static_cast<T>(val))] =
+        static_cast<uint8_t>(
+            static_cast<T>(std::max(std::min(maxval, quantized), minval)));
   }
 }
 
-template <typename T>
+#if __aarch64__ && __clang__
+namespace {
+// Looks up each element of <indices> in <table>, returns them in a vector.
+// idx_offset must be a int8x16_t vector containing 64 in each lane.
+inline uint8x16_t aarch64_lookup_vector(const uint8x16x4_t table[4],
+                                        uint8x16_t indices) {
+  // Look up in 1st quarter of the table: top 2 bits of indices == 00
+  uint8x16_t output1 = vqtbl4q_u8(table[0], indices);
+  // Look up in 2nd quarter of the table: top 2 bits of indices == 01
+  uint8x16_t output2 =
+      vqtbl4q_u8(table[1], veorq_u8(indices, vdupq_n_u8(0x40)));
+  // Look up in 3rd quarter of the table: top 2 bits of indices == 10
+  uint8x16_t output3 =
+      vqtbl4q_u8(table[2], veorq_u8(indices, vdupq_n_u8(0x80)));
+  // Look up in 4th quarter of the table: top 2 bits of indices == 11
+  uint8x16_t output4 =
+      vqtbl4q_u8(table[3], veorq_u8(indices, vdupq_n_u8(0xc0)));
+
+  // Combine result of the 4 lookups.
+  return vorrq_u8(vorrq_u8(output1, output2), vorrq_u8(output3, output4));
+}
+}  // namespace
+#endif
+
+// TODO(b/143696793): move this to optimized_ops.
 void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
                           TfLiteTensor* output) {
-  static_assert(sizeof(T) == 1, "Lookup table valid only for 8bit");
   const int size =
       MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
-  T* output_data = GetTensorData<T>(output);
-  const T* input_data = GetTensorData<T>(input);
-  for (int i = 0; i < size; ++i) {
-    *output_data++ = static_cast<T>(data->table_zero[*input_data++]);
+  uint8_t* output_data = GetTensorData<uint8_t>(output);
+  const uint8_t* input_data = GetTensorData<uint8_t>(input);
+  int i = 0;
+#if __aarch64__ && __clang__
+  // This code uses ARM64-only instructions.
+  // TODO(b/143709993): Port to ARMv7
+
+  // Load the tables into registers. (4*4 128-bit registers)
+  uint8x16x4_t table[4];
+  table[0] = vld1q_u8_x4(data->table + 16 * 4 * 0);
+  table[1] = vld1q_u8_x4(data->table + 16 * 4 * 1);
+  table[2] = vld1q_u8_x4(data->table + 16 * 4 * 2);
+  table[3] = vld1q_u8_x4(data->table + 16 * 4 * 3);
+
+  // Vectorized loop; process uint8x16_t (16 elements) at a time.
+  constexpr int vectorized_16_loop_step = 16;
+  const int vectorized_16_loop_end =
+      size / vectorized_16_loop_step * vectorized_16_loop_step;
+  for (; i < vectorized_16_loop_end; i += vectorized_16_loop_step) {
+    uint8x16_t input = vld1q_u8(input_data + i);
+    uint8x16_t output = aarch64_lookup_vector(table, input);
+    vst1q_u8(output_data + i, output);
+  }
+  // Postamble and non-ARM64 code: simple for loop.
+#endif
+  for (; i < size; ++i) {
+    output_data[i] = data->table[input_data[i]];
   }
 }
 
 template <typename T>
 void QuantizedReluX(float act_min, float act_max, const TfLiteTensor* input,
-                    TfLiteTensor* output) {
-  ActivationParams params;
+                    TfLiteTensor* output, const ReluOpData* data) {
+  ReluParams params;
   params.quantized_activation_min =
       std::max(static_cast<int32_t>(std::numeric_limits<T>::min()),
                output->params.zero_point +
@@ -149,6 +203,10 @@ void QuantizedReluX(float act_min, float act_max, const TfLiteTensor* input,
                 static_cast<int32_t>(std::numeric_limits<T>::max()),
                 output->params.zero_point +
                     static_cast<int32>(roundf(act_max / output->params.scale)));
+  params.input_offset = input->params.zero_point;
+  params.output_offset = output->params.zero_point;
+  params.output_multiplier = data->output_multiplier;
+  params.output_shift = data->output_shift;
   optimized_ops::ReluX(params, GetTensorShape(input), GetTensorData<T>(input),
                        GetTensorShape(output), GetTensorData<T>(output));
 }
@@ -201,6 +259,32 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
+
+  return context->ResizeTensor(context, output,
+                               TfLiteIntArrayCopy(input->dims));
+}
+
+void* ReluInit(TfLiteContext* context, const char* buffer, size_t length) {
+  return new ReluOpData;
+}
+
+void ReluFree(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<ReluOpData*>(buffer);
+}
+
+TfLiteStatus ReluPrepare(TfLiteContext* context, TfLiteNode* node) {
+  ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
+    double real_multiplier = input->params.scale / output->params.scale;
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier,
+                       &data->output_shift);
+  }
 
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
@@ -557,6 +641,7 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  const ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
       optimized_ops::Relu(GetTensorShape(input), GetTensorData<float>(input),
@@ -566,11 +651,11 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
     // the unbounded upper limit is actually hard to quantize.
     case kTfLiteUInt8: {
       QuantizedReluX<uint8_t>(0.0f, std::numeric_limits<float>::infinity(),
-                              input, output);
+                              input, output, data);
     } break;
     case kTfLiteInt8: {
       QuantizedReluX<int8_t>(0.0f, std::numeric_limits<float>::infinity(),
-                             input, output);
+                             input, output, data);
     } break;
     default:
       context->ReportError(
@@ -584,6 +669,7 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  const ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
       optimized_ops::Relu1(GetTensorShape(input), GetTensorData<float>(input),
@@ -592,11 +678,11 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
-      QuantizedReluX<uint8_t>(-1.0f, 1.0f, input, output);
+      QuantizedReluX<uint8_t>(-1.0f, 1.0f, input, output, data);
       return kTfLiteOk;
     } break;
     case kTfLiteInt8: {
-      QuantizedReluX<int8_t>(-1, 1, input, output);
+      QuantizedReluX<int8_t>(-1, 1, input, output, data);
       return kTfLiteOk;
     } break;
     default:
@@ -665,6 +751,7 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
       size_t elements = input->bytes / sizeof(float);
@@ -675,10 +762,10 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8:
-      QuantizedReluX<uint8_t>(0.0f, 6.0f, input, output);
+      QuantizedReluX<uint8_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
     case kTfLiteInt8: {
-      QuantizedReluX<int8_t>(0.0f, 6.0f, input, output);
+      QuantizedReluX<int8_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
     } break;
     default:
@@ -733,7 +820,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
-        EvalUsingLookupTable<uint8_t>(data, input, output);
+        EvalUsingLookupTable(data, input, output);
       }
       return kTfLiteOk;
     } break;
@@ -748,7 +835,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<int8_t>(output));
       } else {
-        EvalUsingLookupTable<int8_t>(data, input, output);
+        EvalUsingLookupTable(data, input, output);
       }
       return kTfLiteOk;
     } break;
@@ -805,7 +892,7 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
-        EvalUsingLookupTable<uint8_t>(data, input, output);
+        EvalUsingLookupTable(data, input, output);
       }
       break;
     }
@@ -820,7 +907,7 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<int8_t>(output));
       } else {
-        EvalUsingLookupTable<int8_t>(data, input, output);
+        EvalUsingLookupTable(data, input, output);
       }
       break;
     }
@@ -1074,22 +1161,22 @@ TfLiteRegistration* Register_ELU() {
 }
 
 TfLiteRegistration* Register_RELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 activations::GenericPrepare,
+  static TfLiteRegistration r = {activations::ReluInit, activations::ReluFree,
+                                 activations::ReluPrepare,
                                  activations::ReluEval};
   return &r;
 }
 
 TfLiteRegistration* Register_RELU_N1_TO_1() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 activations::GenericPrepare,
+  static TfLiteRegistration r = {activations::ReluInit, activations::ReluFree,
+                                 activations::ReluPrepare,
                                  activations::Relu1Eval};
   return &r;
 }
 
 TfLiteRegistration* Register_RELU6() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 activations::GenericPrepare,
+  static TfLiteRegistration r = {activations::ReluInit, activations::ReluFree,
+                                 activations::ReluPrepare,
                                  activations::Relu6Eval};
   return &r;
 }

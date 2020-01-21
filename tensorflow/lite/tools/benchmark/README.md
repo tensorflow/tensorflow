@@ -34,6 +34,13 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
+*   `use_hexagon`: `bool` (default=false) \
+    Whether to use the Hexagon delegate. Not all devices may support the Hexagon
+    delegate, refer to the TensorFlow Lite documentation for more information
+    about which devices/chipsets are supported and about how to get the
+    required libraries. To use the Hexagon delegate also build the
+    hexagon_nn:libhexagon_interface.so target and copy the library to the
+    device. All libraries should be copied to /data/local/tmp on the device.
 *   `use_nnapi`: `bool` (default=false) \
     Whether to use [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
     This API is available on recent Android devices. Note that some Android P
@@ -58,7 +65,11 @@ and the following optional parameters:
     benchmark tool will not correctly use NNAPI.
 *   `use_gpu`: `bool` (default=false) \
     Whether to use the [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
-    This option is currently only available on Android devices.
+    This option is currently only available on Android and iOS devices.
+*   `gpu_wait_type`: `str` (default="") \
+    Which GPU wait_type option to use, when using GPU delegate on iOS. Should be
+    one of the following: passive, active, do_not_wait, aggressive. When left
+    blank, passive mode is used by default.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 
@@ -96,7 +107,18 @@ adb shell chmod +x /data/local/tmp/benchmark_model
 adb push mobilenet_quant_v1_224.tflite /data/local/tmp
 ```
 
-(5) Run the benchmark. For example:
+(5) Optionally, install Hexagon libraries on device.
+
+That step is only needed when using the Hexagon delegate.
+
+```
+bazel build --config=android_arm \
+  tensorflow/lite/experimental/delegates/hexagon/hexagon_nn:libhexagon_interface.so
+adb push bazel-bin/tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/libhexagon_interface.so /data/local/tmp
+adb push libhexagon_nn_skel*.so /data/local/tmp
+```
+
+(6) Run the benchmark. For example:
 
 ```
 adb shell /data/local/tmp/benchmark_model \
@@ -221,7 +243,7 @@ Memory (bytes): count=0
 31 nodes observed
 
 
-Average inference timings in us: Warmup: 83235, Init: 38467, no stats: 79760.9
+Average inference timings in us: Warmup: 83235, Init: 38467, Inference: 79760.9
 ```
 
 ## Benchmark multiple performance options in a single run

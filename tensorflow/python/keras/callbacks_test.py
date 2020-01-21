@@ -38,7 +38,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
@@ -351,6 +350,38 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       self.assertRegexpMatches(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_progbar_logging_with_dataset_and_partial_batch(self):
+    model = self._get_model(input_shape=(2,))
+
+    def generator():
+      # Have a partial batch at the end.
+      for _ in range(9):
+        yield np.random.random(2), 1
+
+    training = dataset_ops.Dataset \
+      .from_generator(
+          generator=generator,
+          output_types=('float64', 'float64'),
+          output_shapes=([2], [])) \
+      .batch(2)
+    validation = dataset_ops.Dataset \
+      .from_generator(
+          generator=generator,
+          output_types=('float64', 'float64'),
+          output_shapes=([2], [])) \
+      .batch(2)
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(x=training, validation_data=validation)
+
+      # Make sure the value of val_ metrics are not zeros.
+      log_content = printed.contents()
+      val_loss = re.findall(r'val_loss: (\d\.\d+)', log_content)
+      self.assertLen(val_loss, 1)
+      self.assertGreater(float(val_loss[0]), 0.0)
+
+  @keras_parameterized.run_with_all_model_types
   def test_ModelCheckpoint(self):
     if h5py is None:
       return  # Skip test if models cannot be saved.
@@ -612,18 +643,10 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       ds = dataset_ops.Dataset.from_tensor_slices((train_input, train_label))
       return ds.batch(8, drop_remainder=True)
 
-    class Bias(base_layer.Layer):
-
-      def build(self, input_shape):
-        self.bias = self.add_variable('bias', (1,), initializer='zeros')
-
-      def call(self, inputs):
-        return inputs + self.bias
-
     # Very simple bias model to eliminate randomness.
     optimizer = gradient_descent.SGD(0.1)
     model = sequential.Sequential()
-    model.add(Bias(input_shape=(1,)))
+    model.add(testing_utils.Bias(input_shape=(1,)))
     model.compile(loss='mae', optimizer=optimizer, metrics=['mae'])
     train_ds = get_input_datasets()
 
@@ -794,6 +817,18 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.assertRaisesRegexp(IOError, 'Please specify a non-directory '
                                           'filepath for ModelCheckpoint.'):
+      model.fit(train_ds, epochs=1, callbacks=[callback])
+
+  def test_ModelCheckpoint_with_bad_path_placeholders(self):
+    (model, train_ds, callback,
+     filepath) = self._get_dummy_resource_for_model_checkpoint_testing()
+
+    temp_dir = self.get_temp_dir()
+    filepath = os.path.join(temp_dir, 'chkpt_{epoch:02d}_{mape:.2f}.h5')
+    callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
+
+    with self.assertRaisesRegexp(KeyError, 'Failed to format this callback '
+                                           'filepath.*'):
       model.fit(train_ds, epochs=1, callbacks=[callback])
 
   def test_EarlyStopping(self):
@@ -1345,6 +1380,15 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             validation_data=(x_test, y_test),
             callbacks=cbks,
             epochs=1)
+
+  def test_callback_params_samples(self):
+    x, y = np.ones((64, 3)), np.ones((64, 2))
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=2, input_dim=3)
+    model.compile('sgd', 'mse')
+    callback = keras.callbacks.Callback()
+    model.evaluate(x, y, callbacks=[callback])
+    self.assertEqual(callback.params['samples'], 64)
 
 
 # A summary that was emitted during a test. Fields:

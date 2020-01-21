@@ -449,6 +449,21 @@ class TestSequential(keras_parameterized.TestCase):
     model.pop()
     self.assertEqual(model._layers[-1], layer)
 
+  @testing_utils.enable_v2_dtype_behavior
+  def test_sequential_does_not_autocast(self):
+
+    class AssertFloat64InputLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(AssertFloat64InputLayer, self).__init__(autocast=False)
+
+      def call(self, inputs):
+        assert inputs.dtype == 'float64', 'inputs are %s' % inputs.dtype
+        return array_ops.identity(inputs)
+
+    model = keras.Sequential([AssertFloat64InputLayer(), keras.layers.Dense(4)])
+    model(np.random.random((4, 4)))
+
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 

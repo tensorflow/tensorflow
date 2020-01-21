@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -43,9 +44,36 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
   return result;
 }
 
+static ShapeTree<MaybeOwningDeviceMemory> MakeMaybeOwningDeviceMemoryTree(
+    const ShapedBuffer& shaped_buffer) {
+  ShapeTree<MaybeOwningDeviceMemory> result(shaped_buffer.on_device_shape());
+  auto in_it = shaped_buffer.buffers().begin();
+  auto out_it = result.begin();
+  for (; in_it != shaped_buffer.buffers().end(); ++in_it, ++out_it) {
+    DCHECK(out_it != result.end());
+    out_it->second = MaybeOwningDeviceMemory(in_it->second);
+  }
+  return result;
+}
+
+StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  std::vector<ShapeTree<MaybeOwningDeviceMemory>> args(arguments.size());
+  auto out_it = args.begin();
+  for (const ShapedBuffer* arg : arguments) {
+    *out_it++ = MakeMaybeOwningDeviceMemoryTree(*arg);
+  }
+  TF_ASSIGN_OR_RETURN(ExecutionOutput out,
+                      ExecuteAsyncOnStream(run_options, std::move(args),
+                                           hlo_execution_profile));
+  return out.ConsumeResult();
+}
+
 StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
+    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   StatusOr<ExecutionOutput> result = ExecuteAsyncOnStream(
       run_options, std::move(arguments), hlo_execution_profile);
@@ -53,14 +81,6 @@ StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
   TF_RETURN_IF_ERROR(result.status());
   TF_RETURN_IF_ERROR(blocking_status);
   return result;
-}
-
-StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* /*run_options*/,
-    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> /*arguments*/,
-    HloExecutionProfile* /*hlo_execution_profile*/) {
-  return Unimplemented(
-      "MaybeOwningDeviceMemory version of overload is not implemented ");
 }
 
 StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
@@ -106,31 +126,41 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   return result;
 }
 
-StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments) {
-  se::Stream* stream = run_options->stream();
+struct ExecuteAsyncOnStreamWrapperState {
+  ExecutionProfile* profile;
   std::shared_ptr<se::Timer> timer;
-  ExecutionProfile* profile = run_options->run_options().execution_profile();
-  if (profile != nullptr) {
-    timer = std::make_shared<se::Timer>(stream->parent());
-    stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
+  std::shared_ptr<HloExecutionProfile> profile_ptr;
+};
+
+static ExecuteAsyncOnStreamWrapperState ExecuteWrapperBeforeExecution(
+    const Executable& executable,
+    const ServiceExecutableRunOptions* run_options) {
+  ExecuteAsyncOnStreamWrapperState state;
+  se::Stream* stream = run_options->stream();
+  state.profile = run_options->run_options().execution_profile();
+  if (state.profile != nullptr) {
+    state.timer = std::make_shared<se::Timer>(stream->parent());
+    stream->InitTimer(state.timer.get()).ThenStartTimer(state.timer.get());
   }
 
   VLOG(1) << "enqueueing executable on stream...";
   // If the profiling flag isn't enabled, we pass nullptr as the profile to
   // indicate profiling is not requested.
-  std::shared_ptr<HloExecutionProfile> profile_ptr =
-      module_config().debug_options().xla_hlo_profile() &&
-              hlo_profiling_enabled()
-          ? std::make_shared<HloExecutionProfile>(&hlo_profile_printer_data(),
-                                                  &hlo_profile_index_map())
+  state.profile_ptr =
+      executable.module_config().debug_options().xla_hlo_profile() &&
+              executable.hlo_profiling_enabled()
+          ? std::make_shared<HloExecutionProfile>(
+                &executable.hlo_profile_printer_data(),
+                &executable.hlo_profile_index_map())
           : nullptr;
+  return state;
+}
 
-  StatusOr<ScopedShapedBuffer> return_value =
-      ExecuteAsyncOnStream(run_options, arguments, profile_ptr.get());
-  if (!return_value.status().ok()) {
-    if (profile != nullptr) {
+Status ExecuteWrapperAfterExecution(
+    Executable* executable, const ExecuteAsyncOnStreamWrapperState& state,
+    Status return_status, se::Stream* stream) {
+  if (!return_status.ok()) {
+    if (state.profile != nullptr) {
       // Ensure the ThenStartTimer call has completed before we destroy timer.
       // We already have a failure status to return, so just log this if it
       // fails.
@@ -139,56 +169,81 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
         LOG(ERROR) << "Failed to BlockHostUntilDone: " << status;
       }
     }
-    return return_value.status();
+    return return_status;
   }
 
-  if (profile != nullptr) {
+  if (state.profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and profiling callback...";
-    stream->ThenStopTimer(timer.get());
+    stream->ThenStopTimer(state.timer.get());
 
     // We block instead of using an async callback because reading the timer
     // value may call back into the driver on GPU, which is not allowed.
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
-    const int64 executable_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    const int64 executable_size_in_bytes =
+        executable->SizeOfGeneratedCodeInBytes();
     // Merge in run-time profile information from execution_profile.
 
     // Overall execution time (in nanoseconds) from the executor timer.
-    profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
+    state.profile->set_compute_and_transfer_time_ns(state.timer->Nanoseconds());
 
     // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
     // the compute time without the transfer time, so this way we get the
     // correct compute time. We should instead have the correct value for
     // compute_and_transfer_time and set compute_time to the compute time.
-    if (profile->compute_time_ns() == 0) {
-      profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
+    if (state.profile->compute_time_ns() == 0) {
+      state.profile->set_compute_time_ns(
+          state.profile->compute_and_transfer_time_ns());
     }
 
     if (executable_size_in_bytes != 0) {
-      profile->set_executable_size_in_bytes(executable_size_in_bytes);
+      state.profile->set_executable_size_in_bytes(executable_size_in_bytes);
     }
   }
 
-  const auto& dump_path = module_config().debug_options().xla_dump_to();
-  if (module_config().debug_options().xla_hlo_profile() &&
-      profile_ptr != nullptr && !dump_path.empty()) {
+  const auto& dump_path =
+      executable->module_config().debug_options().xla_dump_to();
+  if (executable->module_config().debug_options().xla_hlo_profile() &&
+      state.profile_ptr != nullptr && !dump_path.empty()) {
     const std::string full_path =
         tensorflow::io::JoinPath(dump_path, "hlo_execution_profile_data");
     TF_CHECK_OK(tensorflow::WriteStringToFile(
         tensorflow::Env::Default(), full_path,
-        profile_ptr->ToProto().SerializeAsString()))
+        state.profile_ptr->ToProto().SerializeAsString()))
         << "Error saving HloExecutionProfileData to " << full_path;
   }
 
-  if (profile_ptr != nullptr) {
+  if (state.profile_ptr != nullptr) {
     const se::DeviceDescription* device_description =
         &stream->parent()->GetDeviceDescription();
-    stream->ThenDoHostCallback([profile_ptr, device_description]() {
-      XLA_LOG_LINES(tensorflow::INFO,
-                    profile_ptr->ToString(*device_description));
+    std::shared_ptr<HloExecutionProfile> profile = state.profile_ptr;
+    stream->ThenDoHostCallback([profile, device_description]() {
+      XLA_LOG_LINES(tensorflow::INFO, profile->ToString(*device_description));
     });
   }
 
+  return return_status;
+}
+
+StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments) {
+  auto state = ExecuteWrapperBeforeExecution(*this, run_options);
+  StatusOr<ScopedShapedBuffer> return_value =
+      ExecuteAsyncOnStream(run_options, arguments, state.profile_ptr.get());
+  TF_RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
+      this, state, return_value.status(), run_options->stream()));
+  return return_value;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
+    const ServiceExecutableRunOptions* run_options,
+    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments) {
+  auto state = ExecuteWrapperBeforeExecution(*this, run_options);
+  StatusOr<ExecutionOutput> return_value = ExecuteAsyncOnStream(
+      run_options, std::move(arguments), state.profile_ptr.get());
+  TF_RETURN_IF_ERROR(ExecuteWrapperAfterExecution(
+      this, state, return_value.status(), run_options->stream()));
   return return_value;
 }
 

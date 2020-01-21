@@ -126,7 +126,7 @@ TEST(BlockMapTest, MakeBlockMapTuningTestRectangular) {
   MakeBlockMapTuningTest(256, 16, 256, 8, 8, 1, 1,
                          /* tentative_thread_count */ 1, Path::kNeonDotprod,
                          /* expected_num_blocks_base_log2 */ 0,
-                         /* expected_rectangularness_log2 */ 4);
+                         /* expected_rectangularness_log2 */ 3);
   MakeBlockMapTuningTest(24, 2400, 256, 8, 8, 1, 1,
                          /* tentative_thread_count */ 1, Path::kNeonDotprod,
                          /* expected_num_blocks_base_log2 */ 0,

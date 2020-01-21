@@ -26,7 +26,8 @@ namespace tensorflow {
 // SubProcess is not yet implemented for Windows.
 class SubProcess {};
 
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
+inline std::unique_ptr<SubProcess> CreateSubProcess(
+    const std::vector<string>& argv) {
   LOG(FATAL) << "CreateSubProcess NOT IMPLEMENTED for Windows yet ! ";
   return nullptr;
 }

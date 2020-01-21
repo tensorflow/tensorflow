@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -450,7 +449,12 @@ string AttrValueToPython(const string& type, const AttrValue& value,
       std::ostringstream s;
       s.imbue(std::locale::classic());
       s << std::setprecision(FLT_DIG) << value.f();
-      return s.str();
+      // If there is no I/O error for `std::ostringstream s` return s.str(),
+      // otherwise fallback to strings::StrCat(value.f()).
+      if (s.good()) {
+        return s.str();
+      }
+      return strings::StrCat(value.f());
     }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";

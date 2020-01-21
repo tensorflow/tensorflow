@@ -183,7 +183,7 @@ class XlaDevice : public LocalDevice {
   Status RefreshStatus() override LOCKS_EXCLUDED(mu_);
 
  private:
-  xla::LocalClient* client() const;
+  xla::StatusOr<xla::LocalClient*> GetOrCreateClient() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureStreamOkLocked(xla::Backend* backend, const string& name,

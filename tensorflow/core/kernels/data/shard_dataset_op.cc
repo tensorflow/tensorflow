@@ -145,12 +145,13 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         Status s = input_impl_->GetNext(ctx, &unused_result, end_of_sequence);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           return errors::InvalidArgument(
-              "There aren't enough elements in this dataset for each shard "
-              "to have at least one element (# elems = ",
+              "There aren't enough elements in this dataset for each shard to "
+              "have at least one element (# elems = ",
               next_index_, ", ", "# shards = ", dataset()->num_shards_,
-              "). If you are using ",
-              "datasets with distribution strategy, consider turning ",
-              "dataset autosharding off with `tf.data.Options`.");
+              "). If you are using datasets with distribution strategy, "
+              "considering setting the auto sharding policy to either DATA or "
+              "OFF using the `experimental_distribute.auto_shard_policy` option"
+              "of `tf.data.Options()`.");
         } else if (!s.ok()) {
           return s;
         }

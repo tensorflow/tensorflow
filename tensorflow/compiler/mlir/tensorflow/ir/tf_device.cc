@@ -25,16 +25,19 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -146,7 +149,7 @@ ParseResult ParseReplicateOp(OpAsmParser* parser, OperationState* state) {
   Region& body = *state->addRegion();
   if (ParseReplicateOpOperands(parser, state, &operands, &region_args,
                                &region_arg_types) ||
-      parser->parseOptionalAttributeDict(state->attributes) ||
+      parser->parseOptionalAttrDict(state->attributes) ||
       SetOperands(loc, parser, state, operands, region_arg_types, &n) ||
       parser->parseRegion(body, region_args, region_arg_types))
     return failure();
@@ -180,12 +183,12 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   if (op.getNumOperands()) {
     *p << '(';
     Block& block = op.body().front();
-    interleaveComma(block.getArguments(), *p, [&](BlockArgument* arg) {
-      const int block_arg_num = arg->getArgNumber();
+    interleaveComma(block.getArguments(), *p, [&](BlockArgument arg) {
+      const int block_arg_num = arg.getArgNumber();
       *p << '[';
       p->printOperands(std::next(op.operand_begin(), block_arg_num * n),
                        std::next(op.operand_begin(), (block_arg_num + 1) * n));
-      *p << "] as " << *arg << ": " << arg->getType();
+      *p << "] as " << arg << ": " << arg.getType();
     });
     *p << ')';
   }
@@ -226,13 +229,13 @@ LogicalResult Verify(ReplicateOp op) {
 
   // Check replicated input types match block argument types.
   for (auto block_arg : block.getArguments()) {
-    Type block_arg_type = block_arg->getType();
-    for (int i = n * block_arg->getArgNumber(), e = i + n; i < e; ++i)
+    Type block_arg_type = block_arg.getType();
+    for (int i = n * block_arg.getArgNumber(), e = i + n; i < e; ++i)
       if (failed(VerifyCompatibleTypes(block_arg_type,
-                                       op.getOperand(i)->getType())))
+                                       op.getOperand(i).getType())))
         return op.emitOpError()
                << "incompatible types for operand " << i
-               << " and block argument " << block_arg->getArgNumber();
+               << " and block argument " << block_arg.getArgNumber();
   }
 
   Operation& terminator = block.back();
@@ -277,9 +280,9 @@ void BuildReplicateOp(
 
   for (auto& replicated_input : replicated_inputs) {
     DCHECK_EQ(llvm::size(replicated_input.first), n);
-    for (auto* input : replicated_input.first) {
+    for (auto input : replicated_input.first) {
       DCHECK(succeeded(
-          VerifyCompatibleTypes(input->getType(), replicated_input.second)));
+          VerifyCompatibleTypes(input.getType(), replicated_input.second)));
       state->addOperands(input);
     }
     block.addArgument(replicated_input.second);
@@ -293,7 +296,7 @@ void BuildReplicateOp(
 void ReplicateOp::build(
     Builder* builder, OperationState& state, int n,
     llvm::ArrayRef<llvm::StringRef> devices,
-    llvm::ArrayRef<std::pair<llvm::ArrayRef<Value*>, Type>> replicated_inputs,
+    llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs,
     llvm::ArrayRef<Type> replica_output_types) {
   BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
                    replica_output_types);
@@ -306,6 +309,39 @@ void ReplicateOp::build(
     Operation::result_type_range replica_output_types) {
   BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
                    replica_output_types);
+}
+
+//===----------------------------------------------------------------------===//
+// Canonicalization patterns
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// tf_device.launch
+//===----------------------------------------------------------------------===//
+
+namespace {
+// This pattern matches LaunchOps with only one ReturnOp (empty) and remaps the
+// results of the LaunchOp to the operands of the ReturnOp.
+struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
+  using OpRewritePattern<LaunchOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(LaunchOp op,
+                                     PatternRewriter& rewriter) const override {
+    Block& block = op.GetBody();
+    // Check if launch only has a return.
+    if (&block.front() != &block.back()) return matchFailure();
+
+    // Map launch results to return operands.
+    rewriter.replaceOp(op, block.front().getOperands());
+
+    return matchSuccess();
+  }
+};
+}  // anonymous namespace
+
+void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                           MLIRContext* context) {
+  results.insert<DropEmptyLaunch>(context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Translation.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Translation.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -33,13 +33,14 @@ using stream_executor::port::StatusOr;  // NOLINT TODO(b/130822468) fix this
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> emit_use_tuple_arg(
     "emit-use-tuple-args",
-    llvm::cl::desc("Emit HLO modules using tuples as args"),
+    llvm::cl::desc(
+        "Emit HLO modules using tuples as args for the entry computation"),
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_always_return_tuple(
-    "emit-always-return-tuple",
-    llvm::cl::desc("Emit HLO modules always return tuple"),
+static llvm::cl::opt<bool> emit_return_tuple(
+    "emit-return-tuple",
+    llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
     llvm::cl::init(false));
 
 namespace xla {
@@ -64,12 +65,11 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 }  // namespace
 
 mlir::OwningModuleRef HloToMlirHloTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input, mlir::MLIRContext* context) {
+    llvm::StringRef input, mlir::MLIRContext* context) {
   HloProto hlo_proto;
-  string content(input->getBufferStart(), input->getBufferSize());
+  string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
-    LOG(ERROR) << "Failed to load proto: "
-               << input->getBufferIdentifier().str();
+    LOG(ERROR) << "Failed to load proto";
     return nullptr;
   }
 
@@ -86,9 +86,9 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
 }
 
 mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input, mlir::MLIRContext* context) {
+    llvm::StringRef input, mlir::MLIRContext* context) {
   HloProto hlo_proto;
-  string content(input->getBufferStart(), input->getBufferSize());
+  string content(input.data(), input.size());
 
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
   if (!hlo_module_error.ok()) {
@@ -114,7 +114,7 @@ static mlir::LogicalResult MlirHloToHloTranslateFunction(
 
   HloProto hloProto;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_always_return_tuple);
+      module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
@@ -139,7 +139,7 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 
   HloProto hloProto;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_always_return_tuple);
+      module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();

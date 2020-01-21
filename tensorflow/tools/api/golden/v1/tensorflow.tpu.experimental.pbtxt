@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FtrlParameters"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "StochasticGradientDescentParameters"
     mtype: "<type \'type\'>"
   }

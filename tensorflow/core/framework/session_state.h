@@ -75,13 +75,11 @@ class TensorStore {
                      SessionState* session_state);
 
   // Returns true if no tensors have been added to this store.
-  bool empty() {
-    mutex_lock l(lock_);
-    return tensors_.empty();
-  }
+  bool empty() NO_THREAD_SAFETY_ANALYSIS { return !dirty_; }
 
  private:
   mutex lock_;
+  std::atomic<bool> dirty_ GUARDED_BY(lock_){false};
 
   // The tensors that will be saved to session state when this run completes.
   // A map from tensor string name to tensor.

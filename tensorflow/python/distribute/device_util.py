@@ -38,13 +38,17 @@ def canonicalize(d, default=None):
   Note: This uses "job:localhost" as the default if executing eagerly.
 
   Args:
-    d: a device string.
+    d: a device string or tf.config.LogicalDevice
     default: a string for default device if d doesn't have all components.
 
   Returns:
     a canonicalized device string.
   """
-  d = tf_device.DeviceSpec.from_string(d)
+  if isinstance(d, context.LogicalDevice):
+    d = tf_device.DeviceSpec.from_string(d.name)
+  else:
+    d = tf_device.DeviceSpec.from_string(d)
+
   assert d.device_type is None or d.device_type == d.device_type.upper(), (
       "Device type '%s' must be all-caps." % (d.device_type,))
   # Fill in missing device fields using defaults.

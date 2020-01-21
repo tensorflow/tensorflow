@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -100,18 +100,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int size = op_context.perm->dims->data[0];
   TransposeParams params;
   params.perm_count = size;
-  bool identical = true;
   for (int i = 0; i < size; ++i) {
     params.perm[i] = perm_data[i];
-    if (perm_data[i] != i) identical = false;
-  }
-
-  // TODO(b/140779653): Add an optimization pass in the conversion process to
-  // remove transpose op nodes where they do nothing like the below one.
-  if (identical) {
-    memcpy(op_context.output->data.raw, op_context.input->data.raw,
-           op_context.output->bytes);
-    return kTfLiteOk;
   }
 
 #define TF_LITE_TRANSPOSE(type, scalar)                     \
@@ -120,28 +110,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                   GetTensorShape(op_context.output),        \
                   GetTensorData<scalar>(op_context.output))
 
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-      if (kernel_type == kGenericOptimized) {
-        TF_LITE_TRANSPOSE(optimized_ops, float);
-      } else {
-        TF_LITE_TRANSPOSE(reference_ops, float);
-      }
-      break;
-    case kTfLiteUInt8:
-      if (kernel_type == kGenericOptimized) {
-        TF_LITE_TRANSPOSE(optimized_ops, uint8_t);
-      } else {
-        TF_LITE_TRANSPOSE(reference_ops, uint8_t);
-      }
-      break;
-    case kTfLiteInt8:
-      if (kernel_type == kGenericOptimized) {
-        TF_LITE_TRANSPOSE(optimized_ops, int8_t);
-      } else {
-        TF_LITE_TRANSPOSE(reference_ops, int8_t);
-      }
-      break;
     case kTfLiteInt32:
       if (kernel_type == kGenericOptimized) {
         TF_LITE_TRANSPOSE(optimized_ops, int32_t);
@@ -149,16 +122,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_TRANSPOSE(reference_ops, int32_t);
       }
       break;
-    case kTfLiteInt64:
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
       if (kernel_type == kGenericOptimized) {
-        TF_LITE_TRANSPOSE(optimized_ops, int64_t);
+        TF_LITE_TRANSPOSE(optimized_ops, int8_t);
       } else {
-        TF_LITE_TRANSPOSE(reference_ops, int64_t);
+        TF_LITE_TRANSPOSE(reference_ops, int8_t);
       }
       break;
+    case kTfLiteInt64:
+      TF_LITE_TRANSPOSE(reference_ops, int64_t);
+      break;
     case kTfLiteBool:
-      if (kernel_type == kGenericOptimized) {
-        TF_LITE_TRANSPOSE(optimized_ops, bool);
+      if (sizeof(bool) == 1) {
+        if (kernel_type == kGenericOptimized) {
+          TF_LITE_TRANSPOSE(optimized_ops, int8_t);
+        } else {
+          TF_LITE_TRANSPOSE(reference_ops, int8_t);
+        }
       } else {
         TF_LITE_TRANSPOSE(reference_ops, bool);
       }

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from absl.testing import parameterized
 import numpy as np
 from six.moves import range
@@ -46,6 +47,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
 
@@ -266,6 +268,32 @@ class FromConcreteFunctionTest(TestModels):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
+  @test_util.run_v2_only
+  def testNewQuantizer(self):
+    """Test the model quantized by the new converter."""
+    func, calibration_gen = self._getCalibrationQuantizeModel()
+
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    quantized_converter.representative_dataset = calibration_gen
+
+    # default quantizer
+    quantized_converter.experimental_new_quantizer = False
+    old_tflite = quantized_converter.convert()
+
+    # new quantizer
+    quantized_converter.experimental_new_quantizer = True
+    new_tflite = quantized_converter.convert()
+
+    for _ in range(5):
+      input_data = constant_op.constant(
+          np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
+      old_value = self._evaluateTFLiteModel(old_tflite, [input_data])
+      new_value = self._evaluateTFLiteModel(new_tflite, [input_data])
+      np.testing.assert_almost_equal(old_value, new_value, 1)
+
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir
@@ -443,9 +471,9 @@ class FromSavedModelTest(TestModels):
     root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
-
+    options = save_options.SaveOptions(save_debug_info=True)
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
-    save(root, save_dir, to_save)
+    save(root, save_dir, to_save, options)
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
@@ -760,6 +788,12 @@ class GrapplerTest(TestModels):
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
+    # Enable hybrid quantization, same result
+    converter.experimental_new_converter = True
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    hybrid_tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(hybrid_tflite_model, [input_data])
+    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
 if __name__ == '__main__':
   test.main()

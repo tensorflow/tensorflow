@@ -87,7 +87,7 @@ py_library(
 #cuda_py_test(
 #    name = "run_and_gather_logs_test",
 #    srcs = ["run_and_gather_logs.py"],
-#    additional_deps = [
+#    deps = [
 #        ":run_and_gather_logs",
 #    ],
 #    args = [
@@ -112,5 +112,5 @@ tf_py_logged_benchmark(
 
 tf_py_logged_benchmark(
     name = "sparse_csr_matrix_ops_benchmark",
-    target = "//tensorflow/python/kernel_tests:sparse_csr_matrix_ops_test_py",
+    target = "//tensorflow/python/kernel_tests/linalg/sparse:csr_sparse_matrix_ops_test",
 )

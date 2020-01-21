@@ -37,7 +37,6 @@ class Environment {
   explicit Environment(CLDevice&& device, CLContext&& context,
                        CLCommandQueue&& queue,
                        ProfilingCommandQueue&& profiling_queue);
-
   // Move only
   Environment(Environment&& environment);
   Environment& operator=(Environment&& environment);
@@ -56,6 +55,9 @@ class Environment {
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
   bool IsSupported(CalculationsPrecision precision) const;
   std::vector<TensorStorageType> GetSupportedStorages() const;
+  bool IsSupported(TensorStorageType storage_type) const;
+
+  Status Init();
 
   void SetHighPerformance() const;
   void SetDefaultPerformance() const;
@@ -69,12 +71,9 @@ class Environment {
   ProgramCache program_cache_;
 };
 
-TensorStorageType GetOptimalStorageType(const CLDevice& gpu);
+TensorStorageType GetFastestStorageType(const CLDevice& gpu);
 
 Status CreateEnvironment(Environment* result);
-Status CreateGLCompatibleEnvironment(cl_context_properties egl_context,
-                                     cl_context_properties egl_display,
-                                     Environment* result);
 
 }  // namespace cl
 }  // namespace gpu

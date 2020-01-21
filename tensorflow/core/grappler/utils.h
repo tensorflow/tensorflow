@@ -221,6 +221,9 @@ bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map);
 // Returns true iff the node has at least one control output.
 bool HasControlOutputs(const NodeDef& node, const NodeMap& node_map);
 
+// Number of connected control inputs.
+int NumControlInputs(const NodeDef& node);
+
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -98,14 +97,17 @@ class EagerExecutor {
 
   ~EagerExecutor();
 
-  // Puts this in a shutdown state. In this state, Add() will return an error
-  // and not add new EagerNodes. After putting this in the shutdown state,
+  // Puts this in a shutdown state. In this state, AddOrExecute() will return an
+  // error and not add new EagerNodes. After putting this in the shutdown state,
   // blocks until all pendings nodes have finished running.
   // Returns the status of executing pending nodes.
   // If async was not enabled, aborts and destroys all pending nodes.
   Status ShutDown();
 
   bool Async() const;
+
+  // Inline execute node if executor is in sync mode.
+  Status SyncExecute(EagerNode* node);
 
   // - Async Mode: schedules `node` for execution.
   // - Sync Mode: inline execute the 'node' directly.
@@ -124,7 +126,14 @@ class EagerExecutor {
   void ClearError();
 
   // Returns Status based on any errors that occurred during async execution.
-  Status status() const;
+  Status status() const {
+    if (ok()) return Status::OK();
+
+    tf_shared_lock l(node_queue_mutex_);
+    return status_;
+  }
+
+  bool ok() const NO_THREAD_SAFETY_ANALYSIS { return ok_; }
 
  private:
   // Possible states for this executor.
@@ -158,7 +167,9 @@ class EagerExecutor {
 
   const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
-  void NodeDone(core::RefCountPtr<NodeItem> item, const Status& status);
+  void NodeDone(const core::RefCountPtr<NodeItem>& item, const Status& status,
+                bool from_queue);
+  void NotifyWaiters(uint64 id) EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set
@@ -166,7 +177,8 @@ class EagerExecutor {
   // `status_` is not ok.
   void Run();
 
-  void RunItem(core::RefCountPtr<NodeItem> item);
+  Status RunItem(core::RefCountPtr<NodeItem> item, bool from_queue);
+  Status MoveToUnfinished(core::RefCountPtr<NodeItem> item, bool from_queue);
 
   // The impl of WaitForAllPendingNodes
   // `lock` is the lock that holds node_queue_mutex_.
@@ -193,6 +205,7 @@ class EagerExecutor {
   // `status_` is set based on any errors raised during execution of a
   // EagerNode.  It remains set until ClearError is called.
   Status status_ GUARDED_BY(node_queue_mutex_);
+  std::atomic<bool> ok_ GUARDED_BY(node_queue_mutex_);
 
   // Map from id of a EagerNode to condition_variables (not owned by the map).
   // These condition_variables are notified and removed when that EagerNode is

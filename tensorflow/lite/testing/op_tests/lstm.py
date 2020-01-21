@@ -68,7 +68,7 @@ def make_lstm_tests(options):
   def build_inputs(parameters, sess, inputs, outputs):
     """Feed inputs, assign variables, and freeze graph."""
 
-    with tf.variable_scope("", reuse=True):
+    with tf.compat.v1.variable_scope("", reuse=True):
       kernel = tf.get_variable("rnn/basic_lstm_cell/kernel")
       bias = tf.get_variable("rnn/basic_lstm_cell/bias")
       kernel_values = create_tensor_data(parameters["dtype"],

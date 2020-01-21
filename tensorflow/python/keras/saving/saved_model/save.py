@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import save_impl
@@ -71,7 +71,11 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
   # Trace all functions and signatures with `training=0` instead of using the
   # default learning phase placeholder.
   with K.learning_phase_scope(0):
-    save_lib.save(model, filepath, signatures, options)
+    # When saving a model involving batch norm layer within a strategy scope,
+    # the replica context is not available when calling `add_update()`, and thus
+    # we use the default replica context here.
+    with distribution_strategy_context._get_default_replica_context():  # pylint: disable=protected-access
+      save_lib.save(model, filepath, signatures, options)
 
   if not include_optimizer:
     model.optimizer = orig_optimizer

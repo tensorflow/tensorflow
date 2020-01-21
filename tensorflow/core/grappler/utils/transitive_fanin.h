@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_TRANSITIVE_FANIN_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_TRANSITIVE_FANIN_H_
 
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"

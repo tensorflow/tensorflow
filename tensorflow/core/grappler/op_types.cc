@@ -51,10 +51,13 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyBatchMatMul(const NodeDef& node) {
+  return node.op() == "BatchMatMul" || node.op() == "BatchMatMulV2";
+}
+
 bool IsAnyMatMul(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
-         IsQuantizedMatMul(node);
+  return node.op() == "MatMul" || node.op() == "SparseMatMul" ||
+         IsAnyBatchMatMul(node) || IsQuantizedMatMul(node);
 }
 
 bool IsAnyMax(const NodeDef& node) {
@@ -457,7 +460,9 @@ bool IsRsqrt(const NodeDef& node) { return node.op() == "Rsqrt"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 
-bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
+bool IsSelect(const NodeDef& node) {
+  return node.op() == "Select" || node.op() == "SelectV2";
+}
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
@@ -858,6 +863,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "ArgMin",
                                 "AudioSpectrogram",
                                 "BatchMatMul",
+                                "BatchMatMulV2",
                                 "BatchToSpace",
                                 "BatchToSpaceND",
                                 "Bincount",
@@ -878,8 +884,10 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "CudnnRNNBackpropV2",
                                 "CudnnRNNBackpropV3",
                                 "CudnnRNNCanonicalToParams",
+                                "CudnnRNNCanonicalToParamsV2",
                                 "CudnnRNNParamsSize",
                                 "CudnnRNNParamsToCanonical",
+                                "CudnnRNNParamsToCanonicalV2",
                                 "CudnnRNNV2",
                                 "CudnnRNNV3",
                                 "CumSum",
@@ -912,7 +920,9 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "LowerBound",
                                 "MatMul",
                                 "MatrixDiag",
+                                "MatrixDiagV2",
                                 "MatrixDiagPart",
+                                "MatrixDiagPartV2",
                                 "Mfcc",
                                 "OneHot",
                                 "Pack",
@@ -943,8 +953,6 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "Bucketize",
                                 "AvgPool",
                                 "BatchNormWithGlobalNormalization",
-                                "FusedBatchNorm",
-                                "FusedBatchNormV2",
                                 "Conv2D",
                                 "RandomUniform",
                                 "RandomUniformInt",

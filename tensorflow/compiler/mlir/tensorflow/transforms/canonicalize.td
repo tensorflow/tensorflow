@@ -22,6 +22,11 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 def SingleResultAndOperandHaveSameElementType : Constraint<
   CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;
 
+def SingleResultAndOperandHaveSameType : Constraint<
+  CPred<"$0.getType() == $1.getType()">>;
+
+def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
+
 //===----------------------------------------------------------------------===//
 // Add op patterns.
 //===----------------------------------------------------------------------===//
@@ -40,6 +45,23 @@ def AddV2OfNegRight : Pat<(TF_AddV2Op $arg0, (TF_NegOp $arg1)),
                           (TF_SubOp $arg0, $arg1)>;
 
 //===----------------------------------------------------------------------===//
+// BatchMatMul op patterns.
+//===----------------------------------------------------------------------===//
+
+def BatchMatMulToMatMul : Pat<(TF_BatchMatMulOp $x, $y, $adj_x, $adj_y),
+                              (TF_MatMulOp $x, $y, $adj_x, $adj_y),
+                              [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
+
+//===----------------------------------------------------------------------===//
+// BatchMatMulV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+def BatchMatMulV2ToMatMul : Pat<(TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
+                              (TF_MatMulOp $x, $y, $adj_x, $adj_y),
+                              [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
+
+
+//===----------------------------------------------------------------------===//
 // Bitcast op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -56,8 +78,7 @@ def BitcastNested : Pat<(TF_BitcastOp (TF_BitcastOp $arg)),
 
 def CastSameType : Pat<(TF_CastOp:$res $arg, $truncate),
                        (replaceWithValue $arg),
-                       [(SingleResultAndOperandHaveSameElementType $res,
-                                                                   $arg)]>;
+                       [(SingleResultAndOperandHaveSameType $res, $arg)]>;
 
 //===----------------------------------------------------------------------===//
 // Conj op patterns.

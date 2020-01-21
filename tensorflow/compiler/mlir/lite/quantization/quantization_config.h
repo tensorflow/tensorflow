@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -51,11 +52,22 @@ struct QuantizationSpecs {
   // the `weight_quantization` flag needs to set to false.
   tensorflow::DataType inference_type = tensorflow::DT_FLOAT;
 
+  // The input and output data type during inference. This flag is only used
+  // when `inference_type` is different from DT_FLOAT. This flag can only be set
+  // to DT_FLOAT or as same as `inference_type`. If this flag is different
+  // from `inference_type`, adaptor ops are inserted as heading and tailing ops
+  // in the result model.
+  tensorflow::DataType inference_input_type = tensorflow::DT_FLOAT;
+
   // Input node ranges. These ranges are stored as the same order of function
   // arguments. They are only used when `weight_quantization` is set to false,
   // and the model is required to have quantization parameters, either from
   // quantization aware training or calibration, for the remaining tensors.
   std::vector<std::pair<double, double>> input_ranges;
+
+  // The default ranges can be used when a tensor doesn't have quantization
+  // parameters and couldn't be quantized. Used only for latency tests.
+  std::pair<llvm::Optional<double>, llvm::Optional<double>> default_ranges;
 
   // A serialized "QuantizationInfo" object to specify value ranges for some of
   // the tensors with known names.
@@ -72,7 +84,7 @@ struct QuantizationSpecs {
   bool RunWeightQuantization() const { return weight_quantization; }
 
   // Whether this inference type represents a signed storage type.
-  bool IsSignedInferneceType() {
+  bool IsSignedInferenceType() {
     switch (inference_type) {
       case tensorflow::DT_QUINT8:
       case tensorflow::DT_QUINT16:

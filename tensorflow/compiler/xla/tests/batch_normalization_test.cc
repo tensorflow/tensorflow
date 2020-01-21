@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -251,6 +252,36 @@ XLA_TEST_P(BatchNormalizationTest, BasicTraining) {
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
+XLA_TEST_P(BatchNormalizationTest, BasicTraining_fp16) {
+  const int kFeatureIndex = 3;
+  XlaBuilder builder(TestName());
+  Array4D<Eigen::half> input = {{{{1.f, 2.f}}, {{3.f, 4.f}}},
+                                {{{5.f, 6.f}}, {{7.f, 8.f}}}};
+  auto operand = ConstantR4FromArray4D<Eigen::half>(&builder, input);
+
+  auto scale = ConstantR1<float>(&builder, {2.0f, 3.0f});
+
+  auto offset = ConstantR1<float>(&builder, {1.0f, 2.0f});
+
+  auto input_f32 = ConvertElementType(operand, F32);
+
+  auto output = BatchNormTraining(input_f32, scale, offset,
+                                  /*epsilon=*/0.001, kFeatureIndex);
+
+  auto converted = ConvertElementType(GetTupleElement(output, 0), F16);
+  Tuple(&builder,
+        {converted, GetTupleElement(output, 1), GetTupleElement(output, 2)});
+
+  Array4D<Eigen::half> out = {{{{-1.6f, -2.0f}}, {{0.1f, 0.6f}}},
+                              {{{1.9f, 3.3f}}, {{3.7f, 6.0f}}}};
+
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateFromArray(out), LiteralUtil::CreateR1<float>({4, 5}),
+       LiteralUtil::CreateR1<float>({5, 5})});
+
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
+}
+
 XLA_TEST_P(BatchNormalizationTest, BasicTrainingOnDimension2) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
@@ -270,6 +301,36 @@ XLA_TEST_P(BatchNormalizationTest, BasicTrainingOnDimension2) {
       {LiteralUtil::CreateR4<float>({{{{-1.6f}, {-2.0f}}, {{0.1f}, {0.6f}}},
                                      {{{1.9f}, {3.3f}}, {{3.7f}, {6.0f}}}}),
        LiteralUtil::CreateR1<float>({4, 5}),
+       LiteralUtil::CreateR1<float>({5, 5})});
+
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
+}
+
+XLA_TEST_P(BatchNormalizationTest, BasicTrainingOnDimension2_fp16) {
+  const int kFeatureIndex = 2;
+  XlaBuilder builder(TestName());
+  Array4D<Eigen::half> input = {{{{1.f}, {2.f}}, {{3.f}, {4.f}}},
+                                {{{5.f}, {6.f}}, {{7.f}, {8.f}}}};
+  auto operand = ConstantR4FromArray4D<Eigen::half>(&builder, input);
+
+  auto scale = ConstantR1<float>(&builder, {2.0f, 3.0f});
+
+  auto offset = ConstantR1<float>(&builder, {1.0f, 2.0f});
+
+  auto input_f32 = ConvertElementType(operand, F32);
+
+  auto output = BatchNormTraining(input_f32, scale, offset,
+                                  /*epsilon=*/0.001, kFeatureIndex);
+
+  auto converted = ConvertElementType(GetTupleElement(output, 0), F16);
+  Tuple(&builder,
+        {converted, GetTupleElement(output, 1), GetTupleElement(output, 2)});
+
+  Array4D<Eigen::half> out = {{{{-1.6f}, {-2.0f}}, {{0.1f}, {0.6f}}},
+                              {{{1.9f}, {3.3f}}, {{3.7f}, {6.0f}}}};
+
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateFromArray(out), LiteralUtil::CreateR1<float>({4, 5}),
        LiteralUtil::CreateR1<float>({5, 5})});
 
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
@@ -363,6 +424,43 @@ XLA_TEST_P(BatchNormalizationTest, BatchNormGradBasic) {
       {LiteralUtil::CreateR4<float>({{{{-3.f}, {-3.f}}, {{-1.f}, {-1.f}}},
                                      {{{1.f}, {1.f}}, {{3.f}, {3.f}}}}),
        LiteralUtil::CreateR1<float>({0, 0}),
+       LiteralUtil::CreateR1<float>({16, 20})});
+
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
+}
+
+XLA_TEST_P(BatchNormalizationTest, BatchNormGradBasic_fp16) {
+  const int kFeatureIndex = 2;
+  XlaBuilder builder(TestName());
+  auto operand = ConstantR4FromArray4D<Eigen::half>(
+      &builder,
+      Array4D<Eigen::half>(2, 2, 2, 1, static_cast<Eigen::half>(0.0f)));
+
+  auto operand_f32 = ConvertElementType(operand, F32);
+
+  auto scale = ConstantR1<float>(&builder, {1.0f, 1.0f});
+
+  auto mean = ConstantR1<float>(&builder, {0.0f, 0.0f});
+
+  auto var = ConstantR1<float>(&builder, {1.0f, 1.0f});
+
+  auto grad_output = ConstantR4FromArray4D<Eigen::half>(
+      &builder,
+      {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}});
+
+  auto grad_output_f32 = ConvertElementType(grad_output, F32);
+
+  auto output = BatchNormGrad(operand_f32, scale, mean, var, grad_output_f32,
+                              /*epsilon=*/0.001, kFeatureIndex);
+
+  auto converted_output = ConvertElementType(GetTupleElement(output, 0), F16);
+  Tuple(&builder, {converted_output, GetTupleElement(output, 1),
+                   GetTupleElement(output, 2)});
+
+  Array4D<Eigen::half> out = {{{{-3.f}, {-3.f}}, {{-1.f}, {-1.f}}},
+                              {{{1.f}, {1.f}}, {{3.f}, {3.f}}}};
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateFromArray(out), LiteralUtil::CreateR1<float>({0, 0}),
        LiteralUtil::CreateR1<float>({16, 20})});
 
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));

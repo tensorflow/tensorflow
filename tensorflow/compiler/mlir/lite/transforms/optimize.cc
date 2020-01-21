@@ -16,6 +16,7 @@ limitations under the License.
 // This transformation pass takes operations in TensorFlowLite dialect and
 // optimizes them to resulting operations in TensorFlowLite dialect.
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <functional>
@@ -30,14 +31,14 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Matchers.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -50,6 +51,24 @@ namespace TFL {
 // The actual Optimize Pass.
 namespace {
 
+bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
+  if (sq_op.getType().cast<ShapedType>().getRank() - 1 ==
+          *axis.getValues<int>().begin() ||
+      *axis.getValues<int>().begin() == -1) {
+    return true;
+  }
+  if (sq_op.getType().cast<ShapedType>().getRank() != axis.getNumElements()) {
+    return false;
+  }
+  auto shape = sq_op.getType().cast<ShapedType>();
+  SmallVector<int, 4> elems{axis.getValues<int>().begin(),
+                            axis.getValues<int>().end()};
+  for (int i = 0; i < shape.getRank(); ++i) {
+    if (i != elems[i]) return false;
+  }
+  return true;
+}
+
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
@@ -60,6 +79,18 @@ struct Optimize : public FunctionPass<Optimize> {
 // Returns whether the given type `a` is broadcast-compatible with `b`.
 bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
+}
+
+// Returns whether if `type1` dimensions are the same as the ending dimensions
+// of `type2`. This is more restricted than broadcastable.
+bool IsTailOfShape(Type type1, Type type2) {
+  auto tail_type = type1.dyn_cast<ShapedType>();
+  auto full_type = type2.dyn_cast<ShapedType>();
+  if (!tail_type || !full_type || tail_type.getRank() > full_type.getRank())
+    return false;
+  auto i1 = tail_type.getShape().rbegin(), e1 = tail_type.getShape().rend();
+  auto i2 = full_type.getShape().rbegin();
+  return std::equal(i1, e1, i2);
 }
 
 bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
@@ -122,6 +153,22 @@ ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
   return ExpandTo4DForConvImpl(a, true);
 }
 
+// Returns shape of a ranked tensor.
+// Precondition: output_val's is ranked tensor.
+DenseElementsAttr GetShape(Value output_val) {
+  auto output_type = output_val.getType().cast<RankedTensorType>();
+  auto shape_vector = output_type.getShape();
+  std::vector<int32_t> shape(shape_vector.size());
+  for (int i = 0; i < shape_vector.size(); ++i) {
+    shape[i] = shape_vector[i];
+  }
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(shape.size())},
+          mlir::IntegerType::get(32, output_val.getContext())),
+      llvm::makeArrayRef(shape));
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
@@ -133,19 +180,19 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
                                      PatternRewriter &rewriter) const override {
     // Add.
     DenseElementsAttr added_value;
-    Value *constant_val = add_op.rhs();
+    Value constant_val = add_op.rhs();
     if (!matchPattern(constant_val, m_Constant(&added_value)))
       return matchFailure();
 
     // Fully Connected.
     auto fc_op =
-        dyn_cast_or_null<TFL::FullyConnectedOp>(add_op.lhs()->getDefiningOp());
+        dyn_cast_or_null<TFL::FullyConnectedOp>(add_op.lhs().getDefiningOp());
     if (!fc_op) return matchFailure();
 
-    Value *filter = fc_op.filter();
-    Value *bias = fc_op.bias();
+    Value filter = fc_op.filter();
+    Value bias = fc_op.bias();
     ElementsAttr bias_value;
-    const bool is_none_bias = bias->getType().isa<NoneType>();
+    const bool is_none_bias = bias.getType().isa<NoneType>();
     if (!is_none_bias && !matchPattern(bias, m_Constant(&bias_value)))
       return matchFailure();
     if (fc_op.fused_activation_function() != "NONE") return matchFailure();
@@ -179,7 +226,7 @@ struct FuseFullyConnectedAndRelu : public OpRewritePattern<TFL::ReluOp> {
 
   PatternMatchResult matchAndRewrite(TFL::ReluOp relu_op,
                                      PatternRewriter &rewriter) const override {
-    Operation *input = relu_op.getOperand()->getDefiningOp();
+    Operation *input = relu_op.getOperand().getDefiningOp();
     if (!isa_and_nonnull<FullyConnectedOp>(input)) return matchFailure();
     auto fully_connected_op = cast<FullyConnectedOp>(input);
     if (fully_connected_op.fused_activation_function() != "NONE")
@@ -208,18 +255,18 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
                                      PatternRewriter &rewriter) const override {
     // Mul.
     DenseElementsAttr cst;
-    Value *constant_val = mul_op.rhs();
+    Value constant_val = mul_op.rhs();
     if (!matchPattern(constant_val, m_Constant(&cst))) return matchFailure();
 
     // Fully Connected.
     auto fc_op =
-        dyn_cast_or_null<TFL::FullyConnectedOp>(mul_op.lhs()->getDefiningOp());
+        dyn_cast_or_null<TFL::FullyConnectedOp>(mul_op.lhs().getDefiningOp());
     if (!fc_op) return matchFailure();
-    Value *filter = fc_op.filter();
-    Value *bias = fc_op.bias();
+    Value filter = fc_op.filter();
+    Value bias = fc_op.bias();
     ElementsAttr cst_tmp;
     if (!matchPattern(filter, m_Constant(&cst_tmp))) return matchFailure();
-    if (!bias->getType().isa<NoneType>() &&
+    if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&cst_tmp)))
       return matchFailure();
     if (fc_op.fused_activation_function().equals("None")) return matchFailure();
@@ -227,8 +274,8 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     // Broadcast the constant operand of Mul if it isn't compatible to the
     // filter input. We only support broadcasting the operand along the depth
     // dimension, when the operand's depth is 1.
-    Value *new_const_val = constant_val;
-    if (!IsBroadcastableElementsAttrAndType(cst.getType(), filter->getType())) {
+    Value new_const_val = constant_val;
+    if (!IsBroadcastableElementsAttrAndType(cst.getType(), filter.getType())) {
       auto original_shape = cst.getType().getShape();
       llvm::SmallVector<int64_t, 4> normalized_shape(original_shape.begin(),
                                                      original_shape.end());
@@ -236,7 +283,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
       auto new_cst = cst.reshape(RankedTensorType::get(
           normalized_shape, cst.getType().getElementType()));
       Type new_type = new_cst.getType();
-      if (!IsBroadcastableElementsAttrAndType(new_type, filter->getType())) {
+      if (!IsBroadcastableElementsAttrAndType(new_type, filter.getType())) {
         return matchFailure();
       }
       auto new_op =
@@ -251,7 +298,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     auto new_filter =
         rewriter.create<TF::MulOp>(loc, filter, new_const_val).z();
     // If bias isn't None, it needs to be multiplied as well.
-    if (!bias->getType().isa<NoneType>()) {
+    if (!bias.getType().isa<NoneType>()) {
       bias = rewriter.create<TF::MulOp>(loc, bias, constant_val).z();
     }
 
@@ -277,7 +324,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   PatternMatchResult matchAndRewrite(AffineOpType fc_op,
                                      PatternRewriter &rewriter) const override {
     // Binary op.
-    Operation *binary_op = fc_op.input()->getDefiningOp();
+    Operation *binary_op = fc_op.input().getDefiningOp();
     if (!binary_op || binary_op->getNumOperands() != 2)
       return this->matchFailure();
     // We only handle the cases the RHS is a scalar.
@@ -291,20 +338,20 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     APFloat cst_value = *cst.float_value_begin();
 
     // Affine op.
-    Value *filter = fc_op.filter();
-    Value *bias = fc_op.bias();
+    Value filter = fc_op.filter();
+    Value bias = fc_op.bias();
     DenseFPElementsAttr filter_cst, bias_cst;
     if (!matchPattern(filter, m_Constant(&filter_cst))) {
       // The filter maybe quantized, then we should set it to the real constant.
-      auto dq = llvm::dyn_cast_or_null<DequantizeOp>(filter->getDefiningOp());
+      auto dq = llvm::dyn_cast_or_null<DequantizeOp>(filter.getDefiningOp());
       if (!dq) return this->matchFailure();
-      auto q = llvm::dyn_cast_or_null<QuantizeOp>(dq.input()->getDefiningOp());
+      auto q = llvm::dyn_cast_or_null<QuantizeOp>(dq.input().getDefiningOp());
       if (!q || !matchPattern(q.input(), m_Constant(&filter_cst))) {
         return this->matchFailure();
       }
       filter = q.input();
     }
-    if (!bias->getType().isa<NoneType>() &&
+    if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&bias_cst)))
       return this->matchFailure();
     ShapedType filter_type = filter_cst.getType();
@@ -319,7 +366,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // so we have to update the bias.
       if (llvm::isa<SubOp>(binary_op)) cst_value.changeSign();
 
-      auto bias_and_slice = GetBiasDimAndSliceSize(filter_type.getShape());
+      auto bias_and_slice =
+          GetBiasDimAndSliceSize(filter_type.getShape(), fc_op);
       int64_t bias_size = bias_and_slice.first;
       int64_t slice_size = bias_and_slice.second;
       ShapedType new_bias_type =
@@ -328,7 +376,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // The new bias should be a 1-D tensor with length equals to the bias
       // dimension of the weight.
       SmallVector<APFloat, 4> new_bias_values;
-      if (bias->getType().isa<NoneType>()) {  // none bias, a list of zeros
+      if (bias.getType().isa<NoneType>()) {  // none bias, a list of zeros
         new_bias_values.resize(bias_size, APFloat(0.0));
       } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
         new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
@@ -360,19 +408,19 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // w * (x ' c) + b => (w ' c) x + b
       // so we have to update the weight.
       bool is_mul = llvm::isa<MulOp>(binary_op);
-      auto new_fitler =
+      auto new_filter =
           filter_cst.mapValues(filter_type.getElementType(), [&](APFloat it) {
             return (is_mul ? it * cst_value : it / cst_value).bitcastToAPInt();
           });
       // We recreate the constant op in case it is shared by the other ops. This
       // might increase the model size.
       auto new_filter_op = rewriter.create<ConstOp>(
-          fc_op.getLoc(), filter->getType(), new_fitler);
+          fc_op.getLoc(), filter.getType(), new_filter);
       fc_op.setOperand(0, binary_op->getOperand(0));
       if (fc_op.filter() != filter) {
         // This filter goes through quantize and dequantize ops. Then we just
         // need to update the weight to the quantize op.
-        filter->replaceAllUsesWith(new_filter_op);
+        filter.replaceAllUsesWith(new_filter_op);
       } else {
         // This filter doesn't go through quantize and dequantize ops, Then
         // we update the weight of the affine op directly.
@@ -391,10 +439,10 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   // has tailing channel dimension. This function is to provide a utility to
   // create the above information from the op property.
   static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
-      ArrayRef<int64_t> filter_shape) {
+      ArrayRef<int64_t> filter_shape, AffineOpType op) {
     // Channel dimension index is specified as op property
     auto channel_index_iter = filter_shape.begin();
-    std::advance(channel_index_iter, AffineOpType::GetChannelDimIndex());
+    std::advance(channel_index_iter, op.GetChannelDimIndex());
     // The slide size is the size of the data in higher dimensions.
     int64_t slice_size =
         std::accumulate(std::next(channel_index_iter), filter_shape.end(), 1,
@@ -440,10 +488,16 @@ void Optimize::runOnFunction() {
   auto *ctx = &getContext();
   auto func = getFunction();
 
-  // Add the generated patterns to the list.
+  // Potentially the binary ops might be fused together, like hard_swish, thus
+  // we explore these potentially first and then fuse the binary ops with the
+  // following ops in a second pattern match.
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
-                  FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+                  FuseFullyConnectedAndMul>(ctx);
+  applyPatternsGreedily(func, patterns);
+
+  // Fuse the binary ops with the following ops.
+  patterns.insert<FuseBinaryOpToFollowingConv2D,
                   FuseBinaryOpToFollowingDepthwiseConv2D,
                   FuseBinaryOpToFollowingFullyConnected>(ctx);
   applyPatternsGreedily(func, patterns);

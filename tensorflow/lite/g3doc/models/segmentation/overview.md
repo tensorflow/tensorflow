@@ -40,6 +40,48 @@ The current implementation includes the following features:
   <li>DeepLabv3+: We extend DeepLabv3 to include a simple yet effective decoder module to refine the segmentation results especially along object boundaries. Furthermore, in this encoder-decoder structure one can arbitrarily control the resolution of extracted encoder features by atrous convolution to trade-off precision and runtime.</li>
 </ol>
 
+## Performance Benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>GPU</th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite">Deeplab v3</a>
+    </td>
+    <td rowspan = 3>
+      2.7 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>16ms</td>
+    <td>37ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>20ms</td>
+    <td>23ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+     <td>16ms</td>
+    <td>25ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
+
 ## Example output
 
 The model will create a mask over the target objects with high accuracy.

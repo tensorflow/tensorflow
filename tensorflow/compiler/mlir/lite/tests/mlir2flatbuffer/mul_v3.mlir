@@ -13,7 +13,7 @@ func @main(tensor<3x!quant.uniform<i8:f32, 1.0>>) -> tensor<3x!quant.uniform<i8:
   // CHECK-NEXT:      shape: [ 3 ],
   // CHECK-NEXT:      type: INT8,
   // CHECK-NEXT:      buffer: 1,
-  // CHECK-NEXT:      name: "Input",
+  // CHECK-NEXT:      name: "arg0",
   // CHECK-NEXT:      quantization: {
   // CHECK-NEXT:        scale: [ 1.0 ],
   // CHECK-NEXT:        zero_point: [ 0 ]
@@ -61,8 +61,7 @@ func @main(tensor<3x!quant.uniform<i8:f32, 1.0>>) -> tensor<3x!quant.uniform<i8:
   // CHECK-NEXT:  } ]
   // CHECK-NEXT:}
 
-  %0 = "tfl.pseudo_input" (%arg0)  : (tensor<3x!quant.uniform<i8:f32, 1.0>>) ->tensor<3x!quant.uniform<i8:f32, 1.0>> loc("Input")
-  %1 = "tfl.pseudo_qconst"() { qtype = tensor<3x!quant.uniform<i8:f32, 1.0>>, value = dense<2> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<i8:f32, 1.0>>
-  %2 = "tfl.mul"(%0, %1) {fused_activation_function = "NONE"} : (tensor<3x!quant.uniform<i8:f32, 1.0>>, tensor<3x!quant.uniform<i8:f32, 1.0>>) -> tensor<3x!quant.uniform<i8:f32, 1.0>> loc("mul")
-  return %2 : tensor<3x!quant.uniform<i8:f32, 1.0>>
+  %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x!quant.uniform<i8:f32, 1.0>>, value = dense<2> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<i8:f32, 1.0>>
+  %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<3x!quant.uniform<i8:f32, 1.0>>, tensor<3x!quant.uniform<i8:f32, 1.0>>) -> tensor<3x!quant.uniform<i8:f32, 1.0>> loc("mul")
+  return %1 : tensor<3x!quant.uniform<i8:f32, 1.0>>
 }

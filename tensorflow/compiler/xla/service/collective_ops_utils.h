@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -31,14 +32,14 @@ namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
-// Atempts to match computation to one of the possible cases in ReductionKind.
+// Attempts to match computation to one of the possible cases in ReductionKind.
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
 // Figures out which devices (named by their replica-ids) are participating in
 // the all-reduce subgroup that contains device_ordinal.
 StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    int64 device_ordinal, const HloInstruction* instr,
+    int64 device_ordinal, absl::Span<const ReplicaGroup> replica_groups,
     int64 total_replica_count, const DeviceAssignment& device_assn);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
@@ -72,14 +73,26 @@ struct RendezvousKey {
 
   explicit RendezvousKey(const RunId& run_id,
                          std::vector<int64> participating_replicas,
-                         const HloInstruction* instr)
-      : run_id(run_id), participating_replicas(participating_replicas) {
+                         CollectiveOpKind collective_op_kind, int64 op_id)
+      : run_id(run_id),
+        participating_replicas(participating_replicas),
+        collective_op_kind(collective_op_kind),
+        op_id(op_id) {}
+
+  static RendezvousKey FromInstruction(
+      const RunId& run_id, std::vector<int64> participating_replicas,
+      const HloInstruction* instr) {
+    CollectiveOpKind collective_op_kind;
+    int64 op_id;
+
     std::tie(collective_op_kind, op_id) =
         instr->channel_id().has_value()
             ? std::make_pair(kCrossModule, instr->channel_id().value())
             : std::make_pair(
                   kCrossReplica,
                   static_cast<int64>(instr->GetModule()->unique_id()));
+    return RendezvousKey(run_id, participating_replicas, collective_op_kind,
+                         op_id);
   }
 
   int num_participants() const { return participating_replicas.size(); }
@@ -131,6 +144,36 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
              << desc_fn();
 }
 
+// Encapsulates parameters to Rendezvous::SubmitParticipant.
+struct AllReduceParticipantData {
+  explicit AllReduceParticipantData(RendezvousKey rendezvous_key)
+      : rendezvous_key(rendezvous_key) {}
+
+  int64 element_count;
+  int64 device_ordinal;
+  RendezvousKey rendezvous_key;
+
+  // TODO(b/125951860): We should vet that we're buffer allocating such that
+  // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
+  // on how well the NCCL in-place implementation performs vs the out-of-place
+  // implementation).
+  se::DeviceMemoryBase source_data;
+  se::DeviceMemoryBase destination_data;
+  se::Stream* stream;
+
+  ReductionKind reduction_kind;
+  PrimitiveType primitive_type;
+
+  int num_participants() const { return rendezvous_key.num_participants(); }
+
+  string ToString() const {
+    return absl::StrFormat(
+        "AllReduceParticipantData{element_count=%d, rendezvous_key=%s, "
+        "device_ordinal=%d, stream=%p}",
+        element_count, rendezvous_key.ToString(), device_ordinal, stream);
+  }
+};
+
 // The set of threads that want to do a collective op together all pick the same
 // Rendezvous object out of the global cache and call SubmitParticipant.
 //
@@ -139,14 +182,55 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
 //
 // Rendezvous objects can only be used once.
 //
-// I: Participant input.
 // O: Participant output.
-template <typename I, typename O>
+template <typename O>
 class Rendezvous {
  public:
   virtual ~Rendezvous() {}
   explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
 
+  // Submit a participant to the rendezvous. We get the rendezvous from
+  // `rendezvous_getter`, which we can then use to drop the existing reference.
+  static StatusOr<O> SubmitParticipant(
+      std::function<std::shared_ptr<Rendezvous<O>>()> rendezvous_getter,
+      AllReduceParticipantData participant) {
+    std::shared_ptr<Rendezvous<O>> rendezvous = rendezvous_getter();
+    TF_ASSIGN_OR_RETURN(auto p, rendezvous->SubmitParticipant(participant));
+
+    // Drop our reference to the Rendezvous and wait for all other threads to do
+    // the same.  If we didn't do this, one of the threads could run past this
+    // point, reenter ExecuteOnStream for another all-reduce, and attempt to
+    // reuse the Rendezvous!
+    //
+    // An alternative way of accomplishing this goal would be to implement
+    // RefcountingHashMap::erase() and call it during SubmitParticipant.  But
+    // erase() is deceptively complex to implement correctly.
+    std::shared_ptr<tensorflow::BlockingCounter> blocking_counter = p.second;
+    rendezvous.reset();
+    blocking_counter->DecrementCount();
+    xla::WaitAndLogIfStuck(blocking_counter.get(), [&] {
+      return absl::StrFormat(
+          "participant waiting for all threads to drop their reference to the "
+          "rendezvous: %p",
+          rendezvous.get());
+    });
+    return p.first;
+  }
+
+ protected:
+  // Returns domain-specific output O and whether this replica is primary.
+  virtual StatusOr<std::pair<O, bool>> SubmitParticipantImpl(
+      AllReduceParticipantData participant) = 0;
+
+  virtual void CleanupImpl(O handle, bool is_primary) {}
+
+  tensorflow::mutex mu_;
+
+  bool initialized_ GUARDED_BY(mu_) = false;
+
+  std::vector<AllReduceParticipantData> participants_ GUARDED_BY(mu_);
+
+ private:
   // Runs the all-reduce on the given thread.  If successful, returns
   //  - a handle to the clique that was used, so that the caller may keep the
   //    clique alive if it chooses.
@@ -154,7 +238,7 @@ class Rendezvous {
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
   StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
-  SubmitParticipant(I participant) {
+  SubmitParticipant(AllReduceParticipantData participant) {
     {
       tensorflow::mutex_lock lock(mu_);
       CHECK(!initialized_);
@@ -177,7 +261,7 @@ class Rendezvous {
     WaitAndLogIfStuck(&all_participants_present_, [&] {
       return absl::StrFormat(
           "participant for device ordinal %d, stream %p waiting for all "
-          "participants to be arrive at rendezvous %s",
+          "participants to arrive at rendezvous %s",
           participant.device_ordinal, participant.stream, key_.ToString());
     });
 
@@ -207,25 +291,12 @@ class Rendezvous {
 
     return std::make_pair(handle, returned_blocking_counter_);
   }
-
- protected:
-  // Returns domain-specific output O and whether this replica is primary.
-  virtual StatusOr<std::pair<O, bool>> SubmitParticipantImpl(I participant) = 0;
-
-  virtual void CleanupImpl(O handle, bool is_primary) {}
-
-  tensorflow::mutex mu_;
-
-  bool initialized_ GUARDED_BY(mu_) = false;
-
-  std::vector<I> participants_ GUARDED_BY(mu_);
-
- private:
   const RendezvousKey key_;
 
   tensorflow::BlockingCounter all_participants_present_{
       key_.num_participants()};
   tensorflow::BlockingCounter done_{key_.num_participants()};
+
   // tensorflow::BlockingCounter returned by SubmitParticipant.
   std::shared_ptr<tensorflow::BlockingCounter> returned_blocking_counter_{
       std::make_shared<tensorflow::BlockingCounter>(key_.num_participants())};

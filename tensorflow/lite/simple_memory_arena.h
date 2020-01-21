@@ -19,7 +19,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -69,7 +69,17 @@ class SimpleMemoryArena {
   TfLiteStatus ResolveAlloc(TfLiteContext* context, const ArenaAlloc& alloc,
                             char** output_ptr);
 
-  TfLiteStatus Clear();
+  // This clears allocation details but does not release the underlying buffer.
+  // New allocations should be committed & resolved before using this arena
+  // again.
+  TfLiteStatus ClearPlan();
+
+  // This releases the underlying buffer but does not clear the allocation plan.
+  // Since all associated pointers are invalidated, the arena cannot be used
+  // again until Commit() is called & tensor allocations are resolved.
+  TfLiteStatus ReleaseBuffer();
+
+  size_t GetBufferSize() { return underlying_buffer_size_; }
 
   std::intptr_t BasePointer() const {
     return reinterpret_cast<std::intptr_t>(underlying_buffer_aligned_ptr_);
