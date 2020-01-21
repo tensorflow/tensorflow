@@ -542,9 +542,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMul(self):
-<<<<<<< HEAD
-    dtypes_to_test = [np.float32, np.complex64]
-=======
     dtypes_to_test = [np.float32]
     if not test.is_built_with_rocm():
       # complex types is not supported on the ROCm platform
@@ -556,7 +553,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       # Ren-enable it once the fix is available
       self.skipTest("hipSPARSE all failure on the ROCm platform")
 
->>>>>>> upstream/master
     sparsify = lambda m: m * (m > 0)
     for dtype in dtypes_to_test:
       for (transpose_a, transpose_b) in ((False, False), (False, True),

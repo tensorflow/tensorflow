@@ -178,13 +178,7 @@ class ControlFlowTransformer(converter.Base):
           pass
       """
       return templates.replace(
-<<<<<<< HEAD
-          template,
-          getter_name=getter_name,
-          setter_name=setter_name)
-=======
           template, getter_name=getter_name, setter_name=setter_name)
->>>>>>> upstream/master
 
   def _create_loop_options(self, node):
     if not anno.hasanno(node, anno.Basic.DIRECTIVES):

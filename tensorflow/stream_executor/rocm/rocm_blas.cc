@@ -749,56 +749,32 @@ bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count, double alpha,
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count, float alpha,
                           DeviceMemory<std::complex<float>> *x, int incx) {
-<<<<<<< HEAD
   return DoBlasInternal(wrap::rocblas_csscal, stream,
                         true /* = pointer_mode_host */, elem_count, &alpha,
                         complex_cast(x), incx);
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the SCAL operation "
-             << "for the \"complex<float>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count, double alpha,
                           DeviceMemory<std::complex<double>> *x, int incx) {
-<<<<<<< HEAD
   return DoBlasInternal(wrap::rocblas_zdscal, stream,
                         true /* = pointer_mode_host */, elem_count, &alpha,
                         complex_cast(x), incx);
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the SCAL operation "
-             << "for the \"complex<double>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count,
                           std::complex<float> alpha,
                           DeviceMemory<std::complex<float>> *x, int incx) {
-<<<<<<< HEAD
   return DoBlasInternal(wrap::rocblas_cscal, stream,
                         true /* = pointer_mode_host */, elem_count, complex_cast(alpha),
                         complex_cast(x), incx);
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the SCAL operation "
-             << "for the \"complex<float>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count,
                           std::complex<double> alpha,
                           DeviceMemory<std::complex<double>> *x, int incx) {
-<<<<<<< HEAD
   return DoBlasInternal(wrap::rocblas_zscal, stream,
                         true /* = pointer_mode_host */, elem_count, complex_cast(alpha),
                         complex_cast(x), incx);
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the SCAL operation "
-             << "for the \"complex<double>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasSwap(Stream *stream, uint64 elem_count,
@@ -969,7 +945,6 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
-<<<<<<< HEAD
   blas_log("DoBlasGemv");
   return DoBlasInternal(
       wrap::rocblas_cgemv, stream, true /* = pointer_mode_host */,
@@ -977,11 +952,6 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
       complex_cast(a), lda, 
       complex_cast(x), incx,
       complex_cast(beta), complex_cast(y), incy);
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the GEMV operation "
-             << "for the \"complex<float>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
@@ -990,7 +960,6 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
-<<<<<<< HEAD
   blas_log("DoBlasGemv\n");
   return DoBlasInternal(
       wrap::rocblas_zgemv, stream, true /* = pointer_mode_host */,
@@ -998,11 +967,6 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
       complex_cast(a), lda, 
       complex_cast(x), incx,
       complex_cast(beta), complex_cast(y), incy);
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the GEMV operation "
-             << "for the \"complex<double>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasGer(Stream *stream, uint64 m, uint64 n, float alpha,
@@ -1655,17 +1619,11 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           const DeviceMemory<std::complex<float>> &b, int ldb,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
-<<<<<<< HEAD
   blas_log("DoBlasGemm");
   return DoBlasInternal(
       wrap::rocblas_cgemm, stream, true /* = pointer_mode_host */,
       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k, complex_cast(alpha),
       complex_cast(a), lda, complex_cast(b), ldb, complex_cast(beta), complex_cast(c), ldc);
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the GEMM operation "
-             << "for the \"complex<float>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
@@ -1675,17 +1633,11 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           const DeviceMemory<std::complex<double>> &b, int ldb,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *c, int ldc) {
-<<<<<<< HEAD
   blas_log("DoBlasGemm");
   return DoBlasInternal(
       wrap::rocblas_zgemm, stream, true /* = pointer_mode_host */,
       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k, complex_cast(alpha),
       complex_cast(a), lda, complex_cast(b), ldb, complex_cast(beta), complex_cast(c), ldc);
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the GEMM operation "
-             << "for the \"complex<double>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasGemvWithProfiling(
@@ -2176,7 +2128,6 @@ bool ROCMBlas::DoBlasGemmBatched(
     int ldb, std::complex<float> beta,
     const port::ArraySlice<DeviceMemory<std::complex<float>> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-<<<<<<< HEAD
   blas_log("DoBlasGemmBatched");
   port::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_cgemm_strided_batched, stream, transa, transb, m, n, k,
@@ -2186,11 +2137,6 @@ bool ROCMBlas::DoBlasGemmBatched(
     LOG(ERROR) << status;
   }
   return status.ok();
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the GEMMBatched operation "
-             << "for the \"complex<float>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 
@@ -2203,7 +2149,6 @@ bool ROCMBlas::DoBlasGemmBatched(
     int ldb, std::complex<double> beta,
     const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-<<<<<<< HEAD
   blas_log("DoBlasGemmBatched");
   port::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_zgemm_strided_batched, stream, transa, transb, m, n, k,
@@ -2213,11 +2158,6 @@ bool ROCMBlas::DoBlasGemmBatched(
     LOG(ERROR) << status;
   }
   return status.ok();
-=======
-  LOG(ERROR) << "rocBLAS does not currently support the GEMMBatched operation "
-             << "for the \"complex<double>\" datatype";
-  return false;
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasHemm(Stream *stream, blas::Side side,

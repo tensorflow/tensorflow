@@ -55,19 +55,11 @@ void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
   // On the ROCM platform the "ptx" string is not populated for the compiled
   // executable, and hence the "ptx_str" will be empty. So disabling the
   // pattern check on the ROCm platform
-<<<<<<< HEAD
-#if !defined(TENSORFLOW_USE_ROCM)
-  StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
-  ASSERT_TRUE(filecheck_result.ok());
-  EXPECT_TRUE(filecheck_result.ValueOrDie());
-#endif
-=======
   if (!is_built_with_rocm_) {
     StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
     ASSERT_TRUE(filecheck_result.ok());
     EXPECT_TRUE(filecheck_result.ValueOrDie());
   }
->>>>>>> upstream/master
 }
 
 }  // namespace gpu
