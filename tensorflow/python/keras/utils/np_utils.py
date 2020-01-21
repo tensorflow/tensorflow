@@ -27,6 +27,11 @@ def to_categorical(y, num_classes=None, dtype='float32'):
 
   E.g. for use with categorical_crossentropy.
 
+  Usage Example:
+    >>> y = [0, 1, 2, 3]
+    >>> tf.keras.utils.to_categorical(y, num_classes=4)
+    array([...], dtype=float32)
+
   Arguments:
       y: class vector to be converted into a matrix
           (integers from 0 to num_classes).
