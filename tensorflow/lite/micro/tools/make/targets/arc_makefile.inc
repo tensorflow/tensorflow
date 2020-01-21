@@ -5,6 +5,16 @@ ifeq ($(TARGET_ARCH), arc)
   AR_TOOL = arac
   CXX_TOOL = ccac
 
+ifeq ($(TARGET), iotdk)
+  TCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/iotdk/iotdk.tcf
+  LCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/iotdk/iotdk.lcf
+endif
+
+ifeq ($(TARGET), emsdp)
+  TCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp_em11d_dfss.tcf
+  LCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp.lcf
+endif
+
 ifneq ($(TCF_FILE), )
   TARGET = $(basename $(notdir $(TCF_FILE)))
 else
@@ -24,6 +34,11 @@ endif
   PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -O3 -Hpurge -Hcl -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
   PLATFORM_FLAGS += -tcf_core_config
   PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -m -Hldopt=-Coutput=memory.map -default_lcf=$(MAKEFILE_DIR)/targets/arc/memory.lcf 
+
+ifneq ($(LCF_FILE), )
+  PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
+  THIRD_PARTY_CC_HDRS += $(notdir $(LCF_FILE))
+endif
 
   CXXFLAGS += $(PLATFORM_FLAGS)
   CXXFLAGS:=$(filter-out -std=c++11,$(CXXFLAGS))

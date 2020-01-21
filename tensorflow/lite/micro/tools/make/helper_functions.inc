@@ -145,6 +145,13 @@ ifneq ($(TCF_FILE_NAME), )
 $(PRJDIR)$(3)/$(1)/$(TCF_FILE_NAME): $(TCF_FILE)
 	@cp $$< $$@
 endif
+
+# Special rule to copy LCF in case the local filesystem file name has been defined
+ifneq ($(LCF_FILE), )
+$(PRJDIR)$(3)/$(1)/$(notdir $(LCF_FILE)): $(LCF_FILE)
+	@cp $$< $$@
+endif
+
 endif
 endef
 
