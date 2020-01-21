@@ -45,13 +45,9 @@ class EagerOpRewriteTest {
             GetDefaultCustomKernelCreator()));
 
     EagerExecutor executor_(false);
-    const tensorflow::AttrTypeMap* types;
-    bool is_function = false;
-    EXPECT_EQ(Status::OK(), tensorflow::AttrTypeMapForOp(op_name.c_str(),
-                                                         &types, &is_function));
     std::unique_ptr<tensorflow::EagerOperation> op(
-        new tensorflow::EagerOperation(eager_ctx.get(), op_name.c_str(),
-                                       is_function, types, &executor_));
+        new tensorflow::EagerOperation(eager_ctx.get()));
+    op.get()->Reset(op_name.c_str(), nullptr, false, &executor_);
     return op;
   }
 
