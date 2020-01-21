@@ -128,10 +128,10 @@ class UnaryExplicitBatchDimTest(trt_test.TfTrtIntegrationTestBase):
         conversion_params=conversion_params)
     found_trt_cfg = False
     for optimizer in rewrite_config_with_trt.custom_optimizers:
-        if optimizer.name == 'TensorRTOptimizer':
-            found_trt_cfg = True
-            optimizer.parameter_map["use_implicit_batch"].b = False
-            optimizer.parameter_map["minimum_segment_size"].i = 1
+      if optimizer.name == 'TensorRTOptimizer':
+        found_trt_cfg = True
+        optimizer.parameter_map["use_implicit_batch"].b = False
+        optimizer.parameter_map["minimum_segment_size"].i = 1
 
     assert found_trt_cfg
 

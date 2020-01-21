@@ -40,7 +40,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test

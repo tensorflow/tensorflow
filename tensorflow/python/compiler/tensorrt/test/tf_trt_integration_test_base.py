@@ -409,11 +409,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """
     config = conversion_params.rewriter_config_template
     if config is None:
-        return False
+      return False
     for optimizer in config.custom_optimizers:
       if optimizer.name == 'TensorRTOptimizer':
         if "use_implicit_batch" in optimizer.parameter_map:
-            return not optimizer.parameter_map["use_implicit_batch"].b
+          return not optimizer.parameter_map["use_implicit_batch"].b
     return False
 
   def _GetInferGraph(self, run_params, saved_model_dir):
