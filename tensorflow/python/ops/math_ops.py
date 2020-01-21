@@ -1082,10 +1082,10 @@ def truediv(x, y, name=None):
   and `int64` (matching the behavior of Numpy).
   
   For example:
-  >>> num = tf.constant([32, 34])
-  >>> den = tf.constant([35, 36])
+  >>> num = tf.constant([16, 8])
+  >>> den = tf.constant([32, 64])
   >>> tf.math.truediv(num, den)
-  <tf.Tensor: shape=(2,), dtype=float64, numpy=array([0.91428571, 0.94444444])>
+  <tf.Tensor: shape=(2,), dtype=float64, numpy=array([0.5  , 0.125])>
 
   Args:
     x: `Tensor` numerator of numeric type.
@@ -1388,6 +1388,7 @@ def equal(x, y, name=None):
   boolean values.
 
   For example:
+  
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.equal(x, y)
@@ -1489,6 +1490,7 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
   `range(n) = range(0, n)`.
 
   For example:
+  
   >>> start = 3
   >>> limit = 18
   >>> delta = 3
@@ -1618,6 +1620,7 @@ def reduce_sum_v1(input_tensor,
   tensor with a single element is returned.
 
   For example:
+  
   >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
   >>> tf.reduce_sum(x)
   <tf.Tensor: shape=(), dtype=int32, numpy=6>
@@ -1725,11 +1728,17 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
 
   For example:
   >>> x = tf.constant([[1, 2, 3], [1, 1, 1]])
-  >>> tf.reduce_euclidean_norm(x)  # sqrt(17)
-  >>> tf.reduce_euclidean_norm(x, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
-  >>> tf.reduce_euclidean_norm(x, 1)  # [sqrt(14), sqrt(3)]
-  >>> tf.reduce_euclidean_norm(x, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
-  >>> tf.reduce_euclidean_norm(x, [0, 1])  # sqrt(17)
+  >>> tf.math.reduce_euclidean_norm(x)
+  <tf.Tensor: shape=(), dtype=int32, numpy=4>
+  >>> tf.math.reduce_euclidean_norm(x, 0)
+  <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 2, 3], dtype=int32)>
+  >>> tf.reduce_euclidean_norm(x, 1)  
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([3, 1], dtype=int32)>
+  >>> tf.math.reduce_euclidean_norm(x, 1, keepdims=True)  
+  <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
+  array([[3],
+        [1]], dtype=int32)>
+  >>> tf.math.reduce_euclidean_norm(x, [0, 1])  # sqrt(17)
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -1905,6 +1914,7 @@ def reduce_mean_v1(input_tensor,
   element is returned.
 
   For example:
+  
   >>> x = tf.constant([[1., 1.], [2., 2.]])
   >>> tf.reduce_mean(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.5>
@@ -2024,9 +2034,12 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
 
   For example:
   >>> x = tf.constant([[1., 2.], [3., 4.]])
-  >>> tf.reduce_variance(x)  # 1.25
-  >>> tf.reduce_variance(x, 0)  # [1., 1.]
-  >>> tf.reduce_variance(x, 1)  # [0.25,  0.25]
+  >>> tf.reduce_variance(x)  
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.25>
+  >>> tf.reduce_variance(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 1.], dtype=float32)>
+  >>> tf.reduce_variance(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.25, 0.25], dtype=float32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2069,9 +2082,12 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
 
   For example:
   >>> x = tf.constant([[1., 2.], [3., 4.]])
-  >>> tf.reduce_std(x)  # 1.1180339887498949
-  >>> tf.reduce_std(x, 0)  # [1., 1.]
-  >>> tf.reduce_std(x, 1)  # [0.5,  0.5]
+  >>> tf.math.reduce_std(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.118034>
+  >>> tf.reduce_std(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 1.], dtype=float32)>
+  >>> tf.reduce_std(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.5, 0.5], dtype=float32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2242,6 +2258,7 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
   
+  
   For example:
   >>> tf.math.reduce_min(tf.constant([32, 36]), axis=None, keepdims=True)
   <tf.Tensor: shape=(1,), dtype=int32, numpy=array([32], dtype=int32)>
@@ -2383,9 +2400,12 @@ def reduce_all_v1(input_tensor,
 
   For example:
   >>> x = tf.constant([[True,  True], [False, False]])
-  >>> tf.reduce_all(x)  # False
-  >>> tf.reduce_all(x, 0)  # [False, False]
-  >>> tf.reduce_all(x, 1)  # [True, False]
+  >>> tf.reduce_all(x)
+  <tf.Tensor: shape=(), dtype=bool, numpy=False>
+  >>> tf.reduce_all(x, 0)
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False, False])>
+  >>> tf.reduce_all(x, 1)
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2426,10 +2446,14 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
+  
   >>> x = tf.constant([[True,  True], [False, False]])
-  >>> tf.reduce_all(x)  # False
-  >>> tf.reduce_all(x, 0)  # [False, False]
-  >>> tf.reduce_all(x, 1)  # [True, False]
+  >>> tf.reduce_all(x)
+  <tf.Tensor: shape=(), dtype=bool, numpy=False>
+  >>> tf.reduce_all(x, 0)
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False, False])>
+  >>> tf.reduce_all(x, 1)
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2475,10 +2499,14 @@ def reduce_any_v1(input_tensor,
   tensor with a single element is returned.
 
   For example:
+  
   >>> x = tf.constant([[True,  True], [False, False]])
-  >>> tf.reduce_any(x)  # True
-  >>> tf.reduce_any(x, 0)  # [True, True]
-  >>> tf.reduce_any(x, 1)  # [True, False]
+  >>> tf.reduce_any(x)
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+  >>> tf.reduce_any(x, 0)
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
+  >>> tf.reduce_any(x, 1)
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2519,10 +2547,14 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
+  
   >>> x = tf.constant([[True,  True], [False, False]])
-  >>> tf.reduce_any(x)  # True
-  >>> tf.reduce_any(x, 0)  # [True, True]
-  >>> tf.reduce_any(x, 1)  # [True, False]
+  >>> tf.reduce_any(x)
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+  >>> tf.reduce_any(x, 0)
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
+  >>> tf.reduce_any(x, 1)
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2572,12 +2604,20 @@ def reduce_logsumexp_v1(input_tensor,
   taking the log of small inputs.
 
   For example:
+  
   >>> x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
-  >>> tf.reduce_logsumexp(x)  # log(6)
-  >>> tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
-  >>> tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
-  >>> tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
-  >>> tf.reduce_logsumexp(x, [0, 1])  # log(6)
+  >>> tf.reduce_logsumexp(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.79...>
+  >>> tf.reduce_logsumexp(x, 0)
+  <tf.Tensor: shape=(3,), dtype=float32, numpy=array([0.69..., 0.69..., 0.69...], dtype=float32)>
+  >>> tf.reduce_logsumexp(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1.09..., 1.09...], dtype=float32)>
+  >>> tf.reduce_logsumexp(x, 1, keepdims=True)
+  <tf.Tensor: shape=(2, 1), dtype=float32, numpy=
+  array([[1.0986123],
+         [1.0986123]], dtype=float32)>
+  >>> tf.reduce_logsumexp(x, [0, 1])
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.79...>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2617,12 +2657,20 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   taking the log of small inputs.
 
   For example:
+  
   >>> x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
-  >>> tf.reduce_logsumexp(x)  # log(6)
-  >>> tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
-  >>> tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
-  >>> tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
-  >>> tf.reduce_logsumexp(x, [0, 1])  # log(6)
+  >>> tf.reduce_logsumexp(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.79...>
+  >>> tf.reduce_logsumexp(x, 0)
+  <tf.Tensor: shape=(3,), dtype=float32, numpy=array([0.69..., 0.69..., 0.69...], dtype=float32)>
+  >>> tf.reduce_logsumexp(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1.09..., 1.09...], dtype=float32)>
+  >>> tf.reduce_logsumexp(x, 1, keepdims=True)
+  <tf.Tensor: shape=(2, 1), dtype=float32, numpy=
+  array([[1.0986123],
+         [1.0986123]], dtype=float32)>
+  >>> tf.reduce_logsumexp(x, [0, 1])
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.79...>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2749,7 +2797,8 @@ def matmul(a,
   array([[ 58,  64],
          [139, 154]], dtype=int32)>
 
-  A batch matrix multiplication with batch shape [2]
+  A batch matrix multiplication with batch shape [2]:
+  
   >>> a = tf.constant(np.arange(1, 13, dtype=np.int32), shape=[2, 2, 3])
   >>> a  # 3-D tensor
   <tf.Tensor: shape=(2, 2, 3), dtype=int32, numpy=
@@ -2778,6 +2827,7 @@ def matmul(a,
   (see [PEP 465](https://www.python.org/dev/peps/pep-0465/)). In TensorFlow,
   it simply calls the `tf.matmul()` function, so the following lines are
   equivalent:
+  
   >>> d = a @ b @ [[10], [11]]
   >>> d = tf.matmul(tf.matmul(a, b), [[10], [11]])
 
@@ -3324,6 +3374,7 @@ def bincount(arr,
 
   Raises:
     `InvalidArgumentError` if negative values are provided as an input.
+    
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
@@ -3386,28 +3437,26 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   element of the input is identical to the first element of the output:
   For example:
 
-  # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
+  >>> # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x)
   <tf.Tensor: shape=(4,), dtype=int32,
   numpy=array([ 2,  6, 12, 20], dtype=int32)>
   
-  # using varying `axis` values
+  >>> # using varying `axis` values
   >>> y = tf.constant([[2, 4, 6, 8], [1,3,5,7]])
   >>> tf.cumsum(y, axis=0)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  4,  6,  8],
-         [ 3,  7, 11, 15]], dtype=int32)>
-         
+         [ 3,  7, 11, 15]], dtype=int32)>       
   >>> tf.cumsum(y, axis=1)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  6, 12, 20],
          [ 1,  4,  9, 16]], dtype=int32)>
- 
+         
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
-  
-  # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
+  >>> # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, exclusive=True)
   <tf.Tensor: shape=(4,), dtype=int32,
@@ -3415,17 +3464,16 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
-  
-  # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
+  >>> # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
   >>> x = tf.constant([2, 4, 6, 8])
-  >>> tf.cumsum(x, reverse=True) 
+  >>> tf.cumsum(x, reverse=True)
   <tf.Tensor: shape=(4,), dtype=int32,
   numpy=array([20, 18, 14,  8], dtype=int32)>
 
   This is more efficient than using separate `tf.reverse` ops.
   The `reverse` and `exclusive` kwargs can also be combined:
   
-  # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
+  >>> # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, exclusive=True, reverse=True)
   <tf.Tensor: shape=(4,), dtype=int32,
@@ -3685,6 +3733,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
 
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
+  
   
   For example:
   >>> x = tf.constant([1, 2, 3, 4])
@@ -4273,7 +4322,9 @@ def polyval(coeffs, x, name=None):
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0])) 
+            
   For example:
+  
   >>> coefficients = [tf.constant(32, dtype=tf.int32),
                       tf.constant(33, dtype=tf.int32), 
                       tf.constant(34, dtype=tf.int32)]
