@@ -34,8 +34,6 @@ limitations under the License.
 #include <Accelerate/Accelerate.h>
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
@@ -53,6 +51,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/transpose_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tflite {
 namespace optimized_ops {
@@ -5585,8 +5585,7 @@ inline void TransposeConvV2(
   TFLITE_DCHECK(hwoi_ordered_filter_data);
   TFLITE_DCHECK(bias_data);
 
-  const int batch_size =
-      MatchingDim(input_shape, 0, output_shape, 0);
+  const int batch_size = MatchingDim(input_shape, 0, output_shape, 0);
   const int input_image_size = input_shape.Dims(1) * input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
@@ -5639,8 +5638,8 @@ inline void TransposeConvV2(
     output_data_p += output_offset;
   }
   output_data_p = output_data;
-  BiasAdd(output_data_p, bias_data, batch_size, output_height,
-          output_width, output_depth);
+  BiasAdd(output_data_p, bias_data, batch_size, output_height, output_width,
+          output_depth);
 }
 
 inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
@@ -5814,8 +5813,7 @@ inline void TransposeConvV2(
   TFLITE_DCHECK(hwoi_ordered_filter_data);
   TFLITE_DCHECK(bias_data);
 
-  const int batch_size =
-      MatchingDim(input_shape, 0, output_shape, 0);
+  const int batch_size = MatchingDim(input_shape, 0, output_shape, 0);
   const int input_image_size = input_shape.Dims(1) * input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
@@ -5874,8 +5872,8 @@ inline void TransposeConvV2(
     scratch_data_p += output_offset;
   }
   scratch_data_p = scratch_data;
-  BiasAdd(scratch_data_p, bias_data, batch_size, output_height,
-          output_width, output_depth);
+  BiasAdd(scratch_data_p, bias_data, batch_size, output_height, output_width,
+          output_depth);
 
   Quantize(params.output_multiplier, params.output_shift,
            output_shape.FlatSize(), params.output_offset, scratch_data,

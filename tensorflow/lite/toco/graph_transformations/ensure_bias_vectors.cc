@@ -17,10 +17,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -45,9 +45,9 @@ bool CheckOpInputSize(const Operator& op) {
   if (op.type == OperatorType::kConv ||
       op.type == OperatorType::kFullyConnected ||
       op.type == OperatorType::kDepthwiseConv) {
-        return (op.inputs.size() >= 3);
+    return (op.inputs.size() >= 3);
   } else if (op.type == OperatorType::kTransposeConv) {
-        return (op.inputs.size() >= 4);
+    return (op.inputs.size() >= 4);
   }
   return true;
 }

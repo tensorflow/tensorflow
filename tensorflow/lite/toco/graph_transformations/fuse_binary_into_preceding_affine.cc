@@ -17,11 +17,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -31,9 +31,9 @@ int GetBiasIndex(const Operator& op) {
   if (op.type == OperatorType::kConv ||
       op.type == OperatorType::kFullyConnected ||
       op.type == OperatorType::kDepthwiseConv) {
-        return 2;
+    return 2;
   } else if (op.type == OperatorType::kTransposeConv) {
-        return 3;
+    return 3;
   }
   LOG(FATAL) << "Unhandled operator type";
   return 0;
@@ -279,9 +279,8 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
 
   if (preceding_op->type == OperatorType::kTransposeConv &&
       binary_op->type != OperatorType::kAdd) {
-    AddMessageF(
-        "Not fusing %s to preceding %s" ,
-        LogName(*binary_op), LogName(*preceding_op));
+    AddMessageF("Not fusing %s to preceding %s", LogName(*binary_op),
+                LogName(*preceding_op));
     return ::tensorflow::Status::OK();
   }
 

@@ -367,10 +367,8 @@ TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
 
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE_CONV,
-      .input_types = std::vector<TensorType>{TensorType_INT32,
-                                             TensorType_INT8,
-                                             TensorType_INT8,
-                                             TensorType_INT32},
+      .input_types = std::vector<TensorType>{TensorType_INT32, TensorType_INT8,
+                                             TensorType_INT8, TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }

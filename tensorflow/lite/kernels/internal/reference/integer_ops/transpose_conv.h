@@ -26,8 +26,8 @@ inline void TransposeConv(
     const int32* output_shift, const RuntimeShape& input_shape,
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    int8* output_data, const RuntimeShape& im2col_shape, int8* im2col_data,
+    const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
+    const RuntimeShape& im2col_shape, int8* im2col_data,
     int32* scratch_buffer) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;

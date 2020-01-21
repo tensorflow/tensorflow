@@ -387,10 +387,10 @@ void EvalFloat(TfLiteContext* context, const TfLiteTransposeConvParams* params,
       optimized_ops::TransposeConvV2(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(transposed_weights),
-          GetTensorData<float>(transposed_weights),
-          GetTensorShape(bias), GetTensorData<float>(bias),
-          GetTensorShape(output), GetTensorData<float>(output),
-          GetTensorShape(col2im), GetTensorData<float>(col2im),
+          GetTensorData<float>(transposed_weights), GetTensorShape(bias),
+          GetTensorData<float>(bias), GetTensorShape(output),
+          GetTensorData<float>(output), GetTensorShape(col2im),
+          GetTensorData<float>(col2im),
           CpuBackendContext::GetFromContext(context));
       break;
     }
@@ -439,11 +439,10 @@ void EvalQuantized(TfLiteContext* context,
       optimized_ops::TransposeConvV2(
           op_params, GetTensorShape(input), GetTensorData<uint8>(input),
           GetTensorShape(transposed_weights),
-          GetTensorData<uint8>(transposed_weights),
-          GetTensorShape(bias), GetTensorData<int32>(bias),
-          GetTensorShape(output), GetTensorData<uint8>(output),
-          GetTensorShape(col2im), GetTensorData<int32>(col2im),
-          GetTensorData<int32>(scratch_buffer),
+          GetTensorData<uint8>(transposed_weights), GetTensorShape(bias),
+          GetTensorData<int32>(bias), GetTensorShape(output),
+          GetTensorData<uint8>(output), GetTensorShape(col2im),
+          GetTensorData<int32>(col2im), GetTensorData<int32>(scratch_buffer),
           CpuBackendContext::GetFromContext(context));
       break;
     }
@@ -451,14 +450,11 @@ void EvalQuantized(TfLiteContext* context,
 }
 
 template <KernelType kernel_type>
-void EvalQuantizedPerChannel(TfLiteContext* context,
-                             const TfLiteTransposeConvParams* params,
-                             OpData* data, const TfLiteTensor* input,
-                             const TfLiteTensor* weights,
-                             const TfLiteTensor* transposed_weights,
-                             const TfLiteTensor* bias,
-                             TfLiteTensor* col2im, TfLiteTensor* output,
-                             TfLiteTensor* scratch_buffer) {
+void EvalQuantizedPerChannel(
+    TfLiteContext* context, const TfLiteTransposeConvParams* params,
+    OpData* data, const TfLiteTensor* input, const TfLiteTensor* weights,
+    const TfLiteTensor* transposed_weights, const TfLiteTensor* bias,
+    TfLiteTensor* col2im, TfLiteTensor* output, TfLiteTensor* scratch_buffer) {
   tflite::ConvParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
@@ -584,8 +580,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         ResizeAndTransposeWeights(context, weights, transposed_weights);
       }
       EvalQuantizedPerChannel<kernel_type>(context, params, data, input,
-                                           weights, transposed_weights, bias, col2im,
-                                           output, scratch_buffer);
+                                           weights, transposed_weights, bias,
+                                           col2im, output, scratch_buffer);
       break;
     }
     default:

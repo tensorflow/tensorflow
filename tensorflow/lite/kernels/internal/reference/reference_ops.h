@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
@@ -60,6 +59,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 
@@ -2429,7 +2429,7 @@ inline void TransposeConv(
         for (int out_x = 0; out_x < output_width; ++out_x) {
           for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
             output_data[Offset(output_shape, batch, out_y, out_x,
-                                      out_channel)] += bias_data[out_channel];
+                               out_channel)] += bias_data[out_channel];
           }
         }
       }
@@ -2437,16 +2437,13 @@ inline void TransposeConv(
   }
 }
 
-inline void TransposeConv(const ConvParams& params,
-                          const RuntimeShape& input_shape,
-                          const uint8* input_data,
-                          const RuntimeShape& filter_shape,
-                          const uint8* filter_data,
-                          const RuntimeShape& bias_shape,
-                          const int32* bias_data,
-                          const RuntimeShape& output_shape, uint8* output_data,
-                          const RuntimeShape& im2col_shape, uint8* im2col_data,
-                          int32* scratch_buffer) {
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, const RuntimeShape& im2col_shape, uint8* im2col_data,
+    int32* scratch_buffer) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -2528,7 +2525,7 @@ inline void TransposeConv(const ConvParams& params,
             acc += bias_data[out_channel];
           }
           int32 scaled_acc = MultiplyByQuantizedMultiplier(
-                acc, output_multiplier, output_shift);
+              acc, output_multiplier, output_shift);
           scaled_acc += output_offset;
           scaled_acc = std::max(scaled_acc, output_activation_min);
           scaled_acc = std::min(scaled_acc, output_activation_max);
