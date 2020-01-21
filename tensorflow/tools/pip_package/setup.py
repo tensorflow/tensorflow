@@ -54,7 +54,7 @@ REQUIRED_PACKAGES = [
     'astunparse == 1.6.3',
     'backports.weakref >= 1.0rc1;python_version<"3.4"',
     'enum34 >= 1.1.6;python_version<"3.4"',
-    'gast == 0.3.2',
+    'gast == 0.3.3',
     'google_pasta >= 0.1.8',
     'h5py >= 2.10.0, < 2.11.0',
     'keras_preprocessing >= 1.1.0',
