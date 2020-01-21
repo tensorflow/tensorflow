@@ -76,19 +76,23 @@ namespace gpu {
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
+  // TODO: rename Dilated to Strided?
+  enum IndexingOrder { LinearIndexingX, DilatedIndexingX, VectorizedCoalescedIndexingX };
+
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
                       absl::Span<const int64> tile_sizes, int64 num_threads_y,
-                      int64 num_threads_x, bool is_dilated_x)
+                      int64 num_threads_x, IndexingOrder indexing_order)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
-        dilated_x_(is_dilated_x) {
+        indexing_order_(indexing_order) {
     CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
     CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
-    if (!dilated_x_) {
-      // dilated_x_=false is for the purpose of vectorization, which requires
+    if (indexing_order != LinearIndexingX) {
+      // DilatedIndexingX, and VectorizedCoalescedIndexingX
+      // is for the purpose of vectorization, which requires
       // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
       CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
     }
@@ -118,7 +122,9 @@ class KernelMappingScheme {
     return GetNumThreadsX() * GetNumThreadsY();
   }
 
-  bool DilatedX() const { return dilated_x_; }
+  IndexingOrder GetIndexingOrder() const {
+    return indexing_order_;
+  }
 
  private:
   // The number of elements in each dimension.
@@ -133,12 +139,15 @@ class KernelMappingScheme {
   // Number of threads used to process elements in the Y direction of a tile.
   const int64 num_threads_y_;
 
-  // When num_threads_x threads process a total of tile_size_x elements in the
-  // X dimension of a tile, each threads process n=tile_size_x/num_threads_x
-  // elements. When dilated_x=false, the n elements processed by a thread are
-  // contiguous. On the other hand, when dilated_x=true the n elements are
-  // dilated by a factor of num_threads_x.
-  const bool dilated_x_;
+  // When num_threads_x threads process a total of tile_size_x
+  // elements in the X dimension of a tile, each threads process
+  // n=tile_size_x/num_threads_x elements. When indexing_order_ have
+  // the value LinearIndexingX, the n elements processed by a thread
+  // are contiguous. When the value is DilatedIndexingX, the n
+  // elements are dilated by a factor of num_threads_x. When the value
+  // is VectorizedCoalescedIndexingX, it is a mix of both to enable
+  // vectorizing while keeping memory coalescing.
+  const IndexingOrder indexing_order_;
 };
 
 // Information to support the code generation for a tiled reduction kernel.
