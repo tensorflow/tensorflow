@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decompose_resource_ops.h"
 
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace TF {
@@ -33,6 +35,19 @@ static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   auto int_ty = ty.cast<IntegerType>();
   IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
   return DenseElementsAttr::get(scalar_ty, attr);
+}
+
+// Returns subtype of `resource` if present. Otherwise an unranked tensor type
+// of `element_type` is returned.
+static Type GetResourceSubtypeOrDefault(Value resource, Type element_type) {
+  auto resource_type = resource.getType()
+                           .cast<TensorType>()
+                           .getElementType()
+                           .cast<ResourceType>();
+  if (resource_type.getSubtypes().size() == 1)
+    return resource_type.getSubtypes().front();
+
+  return UnrankedTensorType::get(element_type);
 }
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_decompose_resource_ops.inc"

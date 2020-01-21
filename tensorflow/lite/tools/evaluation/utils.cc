@@ -28,6 +28,14 @@ limitations under the License.
 namespace tflite {
 namespace evaluation {
 
+namespace {
+
+Interpreter::TfLiteDelegatePtr CreateNullDelegate() {
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
+}  // namespace
+
 std::string StripTrailingSlashes(const std::string& path) {
   int end = path.size();
   while (end > 0 && path[end - 1] == '/') {
@@ -105,7 +113,7 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
         delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
       });
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
@@ -126,7 +134,33 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate() {
 
   return CreateGPUDelegate(&options);
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
+#endif  // defined(__ANDROID__)
+}
+
+Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
+    const std::string& library_directory_path, bool profiling) {
+#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+  if (library_directory_path.empty()) {
+    TfLiteHexagonInit();
+  } else {
+    TfLiteHexagonInitWithPath(library_directory_path.c_str());
+  }
+
+  const TfLiteHexagonDelegateOptions options = {
+      /*debug_level=*/0, /*powersave_level=*/0, profiling,
+      /*print_graph_debug=*/false};
+  TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(&options);
+  if (!delegate) {
+    TfLiteHexagonTearDown();
+    return CreateNullDelegate();
+  }
+  return Interpreter::TfLiteDelegatePtr(delegate, [](TfLiteDelegate* delegate) {
+    TfLiteHexagonDelegateDelete(delegate);
+    TfLiteHexagonTearDown();
+  });
+#else
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 

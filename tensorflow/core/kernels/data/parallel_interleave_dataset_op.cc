@@ -99,6 +99,9 @@ constexpr double kCyclePrefetchFactor = 2.0L;
 // behavior of the original autotune implementation.
 constexpr double kPerIteratorPrefetchFactor = 2.0L;
 
+// Period between reporting dataset statistics.
+constexpr int kStatsReportingPeriodMillis = 1000;
+
 // The motivation for creating an alternative implementation of parallel
 // interleave is to decouple the degree of parallelism from the cycle length.
 // This makes it possible to change the degree of parallelism (e.g. through
@@ -243,12 +246,15 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // scheduled into the shared threadpool. The threadpool is guaranteed to
       // support `num_threads` concurrent tasks without blocking indefinitely.
       //
-      // Allocate one thread for the worker manager, `cycle_length_` threads for
-      // the current workers, and `future_elements_prefetch_` for the future
-      // workers.
+      // Allocate one thread for the worker manager, one thread for stats
+      // collection, `cycle_length_` threads for the current workers, and
+      // `future_elements_prefetch_` for the future workers.
       int max_current_workers = dataset()->cycle_length_;
       int future_workers = future_elements_prefetch_ + dataset()->cycle_length_;
-      const int num_threads = 1 + max_current_workers + future_workers;
+      int num_threads = 1 + max_current_workers + future_workers;
+      if (ctx->stats_aggregator()) {
+        num_threads++;
+      }
       thread_pool_ = ctx->CreateThreadPool(kTfDataParallelInterleaveWorkerPool,
                                            num_threads);
       if (num_parallel_calls_->value == model::kAutotune) {
@@ -460,6 +466,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       current_workers_cond_var_.notify_all();
       future_workers_cond_var_.notify_all();
       num_parallel_calls_cond_var_->notify_all();
+      stats_thread_cond_var_.notify_all();
       while (wait && outstanding_threads_ > 0) {
         outstanding_threads_finished_cond_var_.wait(l);
       }
@@ -486,6 +493,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (!threads_initialized_) {
         IncrementOutstandingThreads();
         thread_pool_->Schedule([this]() { WorkerManagerThread(); });
+        if (ctx_->stats_aggregator()) {
+          IncrementOutstandingThreads();
+          thread_pool_->Schedule([this]() { StatsThread(); });
+        }
         threads_initialized_ = true;
       }
     }
@@ -945,12 +956,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     inline void IncrementCurrentActiveWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       num_current_active_workers_++;
-      UpdateThreadUtilizationStats();
     }
 
     inline void DecrementCurrentActiveWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       num_current_active_workers_--;
-      UpdateThreadUtilizationStats();
     }
 
     inline void IncrementOutstandingThreads() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -964,14 +973,32 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    inline void UpdateThreadUtilizationStats() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      const auto& stats_aggregator = ctx_->stats_aggregator();
-      if (stats_aggregator) {
-        stats_aggregator->AddScalar(
+    void StatsThread() {
+      for (int64 step = 0;; ++step) {
+        int num_current_active_workers;
+        int num_current_workers;
+        {
+          mutex_lock l(*mu_);
+          if (step != 0 && !cancelled_) {
+            stats_thread_cond_var_.wait_for(
+                l, std::chrono::milliseconds(kStatsReportingPeriodMillis));
+          }
+          if (cancelled_) {
+            DecrementOutstandingThreads();
+            return;
+          }
+          num_current_active_workers = num_current_active_workers_;
+          num_current_workers = num_current_workers_;
+        }
+        if (num_current_workers == 0) {
+          // Avoid division by zero.
+          num_current_workers = 1;
+        }
+        ctx_->stats_aggregator()->AddScalar(
             stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
-            static_cast<float>(num_current_active_workers_) /
-                static_cast<float>(num_parallel_calls_->value),
-            num_elements());
+            static_cast<float>(num_current_active_workers) /
+                static_cast<float>(num_current_workers),
+            step);
       }
     }
 
@@ -1282,6 +1309,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Condition variable for waking up future workers.
     condition_variable future_workers_cond_var_;
+
+    // Condition variable for waking up the stats thread.
+    condition_variable stats_thread_cond_var_;
 
     // Number of active worker threads which might be processing elements,
     // including both current workers and future workers. Used by

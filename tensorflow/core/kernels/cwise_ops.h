@@ -546,7 +546,8 @@ struct functor_traits<google_floor_mod<Scalar>> {
 #define ENABLE_FLOAT_EQUALITY_WARNING
 #endif
 
-template <typename Scalar, bool IsInteger = Eigen::NumTraits<Scalar>::IsInteger>
+template <typename Scalar, bool IsInteger = Eigen::NumTraits<Scalar>::IsInteger,
+          bool HasRint = packet_traits<Scalar>::HasRint>
 struct scalar_round_half_to_even_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
@@ -580,7 +581,7 @@ struct scalar_round_half_to_even_op {
 };
 
 template <typename Scalar>
-struct scalar_round_half_to_even_op<Scalar, true> {
+struct scalar_round_half_to_even_op<Scalar, true, false> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     return x;
@@ -588,6 +589,18 @@ struct scalar_round_half_to_even_op<Scalar, true> {
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     return x;
+  }
+};
+
+template <typename Scalar>
+struct scalar_round_half_to_even_op<Scalar, false, true> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x) const {
+    return Eigen::numext::rint(x);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    return print(x);
   }
 };
 

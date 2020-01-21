@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -208,6 +209,10 @@ Status HashNodeImpl(const GraphDef& graph, const NodeDef& node, uint64* hash,
 
   uint64 attr_hash = 0;
   for (const auto& attr : node.attr()) {
+    if (attr.first == kColocationAttrName ||
+        attr.first == kColocationGroupPrefix) {
+      continue;
+    }
     uint64 tmp_hash;
     TF_RETURN_IF_ERROR(HashAttrImpl(graph.library(), attr.first, attr.second,
                                     &tmp_hash, visited, cache));
@@ -261,6 +266,10 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
 
   uint64 attr_hash = 0;
   for (const auto& attr : func.attr()) {
+    if (attr.first == kColocationAttrName ||
+        attr.first == kColocationGroupPrefix) {
+      continue;
+    }
     uint64 tmp_hash;
     TF_RETURN_IF_ERROR(HashAttrImpl(library, attr.first, attr.second, &tmp_hash,
                                     visited, cache));
@@ -270,6 +279,10 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
   uint64 arg_attr_hash = 0;
   for (const auto& arg_attr : func.arg_attr()) {
     for (const auto& attr : arg_attr.second.attr()) {
+      if (attr.first == kColocationAttrName ||
+          attr.first == kColocationGroupPrefix) {
+        continue;
+      }
       uint64 tmp_hash;
       TF_RETURN_IF_ERROR(HashAttrImpl(library, attr.first, attr.second,
                                       &tmp_hash, visited, cache));

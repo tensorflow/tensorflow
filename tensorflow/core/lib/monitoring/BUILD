@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
@@ -194,6 +199,22 @@ cc_library(
     ],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "counter.h",
+        "gauge.h",
+        "metric_def.h",
+        "mobile_counter.h",
+        "mobile_gauge.h",
+        "mobile_sampler.h",
+        "sampler.h",
+        "types.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
 filegroup(
     name = "legacy_lib_monitoring_lib_headers",
     srcs = [
@@ -235,16 +256,6 @@ filegroup(
         "percentile_sampler.h",
         "sampler.h",
         "types.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_monitoring_all_srcs",
-    srcs = [
-        "collection_registry.cc",
-        "percentile_sampler.cc",
-        "sampler.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

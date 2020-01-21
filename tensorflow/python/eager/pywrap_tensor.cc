@@ -71,28 +71,6 @@ TFE_Context* GetContextHandle(PyObject* py_context) {
   return ctx;
 }
 
-// Convert a Python numpy.ndarray object to a TFE_TensorHandle.
-// The two may share underlying storage so changes to one may reflect in the
-// other.
-TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
-  tensorflow::TensorHandle* handle;
-  tensorflow::Tensor t;
-  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
-  if (cppstatus.ok()) {
-    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
-        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
-  }
-  if (!cppstatus.ok()) {
-    PyErr_SetString(PyExc_ValueError,
-                    tensorflow::strings::StrCat(
-                        "Failed to convert a NumPy array to a Tensor (",
-                        cppstatus.error_message(), ").")
-                        .c_str());
-    return nullptr;
-  }
-  return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
-}
-
 // Convert a TFE_TensorHandle to a Python numpy.ndarray object.
 // The two may share underlying storage so changes to one may reflect in the
 // other.
@@ -252,25 +230,6 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
 #undef RETURN_ERROR
 }
 
-TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* value,
-                                          DataType dtype) {
-  tensorflow::TensorHandle* handle = nullptr;
-  tensorflow::Tensor t;
-  // TODO(josh11b): Have PySeqToTensor set python errors instead of
-  // returning Status.
-  auto cppstatus = tensorflow::PySeqToTensor(value, dtype, &t);
-  if (cppstatus.ok()) {
-    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
-        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
-  }
-  if (!cppstatus.ok()) {
-    PyErr_SetString(PyExc_ValueError, cppstatus.error_message().c_str());
-    return nullptr;
-  }
-  CHECK_NE(handle, nullptr);
-  return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
-}
-
 TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
                                                PyObject* value,
                                                tensorflow::DataType dtype,
@@ -284,41 +243,8 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     value_decrefer.reset(value);
   }
 
-  Safe_TFE_TensorHandlePtr handle;
-  if (PyArray_Check(value)) {
-    int desired_np_dtype = -1;
-    if (dtype != tensorflow::DT_INVALID) {
-      if (!tensorflow::TF_DataType_to_PyArray_TYPE(
-               static_cast<TF_DataType>(dtype), &desired_np_dtype)
-               .ok()) {
-        PyErr_SetString(
-            PyExc_TypeError,
-            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
-                .c_str());
-        return nullptr;
-      }
-    }
-    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
-    int current_np_dtype = PyArray_TYPE(array);
-    auto safe_value = tensorflow::make_safe(static_cast<PyObject*>(nullptr));
-    if ((desired_np_dtype >= 0 && desired_np_dtype != current_np_dtype) ||
-        !PyArray_ISCARRAY(array)) {
-      int new_dtype =
-          desired_np_dtype >= 0 ? desired_np_dtype : current_np_dtype;
-      safe_value = tensorflow::make_safe(
-          PyArray_FromAny(value, PyArray_DescrFromType(new_dtype), 0, 0,
-                          NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST, nullptr));
-      if (PyErr_Occurred()) return nullptr;
-      if (safe_value == nullptr) {
-        PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
-        return nullptr;
-      }
-      value = safe_value.get();
-    }
-    handle = make_safe(NumpyToTFE_TensorHandle(ctx, value));
-  } else {
-    handle = make_safe(PySeqToTFE_TensorHandle(ctx, value, dtype));
-  }
+  Safe_TFE_TensorHandlePtr handle =
+      make_safe(PySeqToTFE_TensorHandle(ctx, value, dtype));
 
   if (handle == nullptr) return nullptr;
 

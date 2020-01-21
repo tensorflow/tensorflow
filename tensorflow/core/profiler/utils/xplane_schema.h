@@ -40,6 +40,10 @@ enum HostEventType {
   kEagerKernelExecute,
   kExecutorStateProcess,
   kExecutorDoneCallback,
+  kMemoryAllocation,
+  kMemoryDeallocation,
+  // Performance counter related.
+  kRemotePerf,
   // tf.data captured function events.
   kTfDataCapturedFunctionRun,
   kTfDataCapturedFunctionRunWithBorrowedArgs,
@@ -80,10 +84,12 @@ enum StatType {
   kStepNum,
   kIterNum,
   kIndexOnHost,
+  kAllocatorName,
   kBytesReserved,
   kBytesAllocated,
   kBytesAvailable,
   kFragmentation,
+  kPeakBytesInUse,
   // Device trace arguments.
   kDeviceId,
   kContextId,
@@ -91,6 +97,7 @@ enum StatType {
   kMemcpyDetails,
   kMemallocDetails,
   kKernelDetails,
+  kStream,
   // Stats added when processing traces.
   kGroupId,
   kStepName,
@@ -98,7 +105,21 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
-  kLastStatType = kHloModule,
+  // Performance counter related.
+  kRawValue,
+  kScaledValue,
+  kThreadId,
+  // XLA metadata map related.
+  kSelfDurationPs,
+  kMinDurationPs,
+  // Device capability related.
+  kDevCapClockRateKHz,
+  kDevCapCoreCount,
+  kDevCapMemoryBandwidth,
+  kDevCapMemorySize,
+  kDevCapComputeCapMajor,
+  kDevCapComputeCapMinor,
+  kLastStatType = kDevCapComputeCapMinor,
 };
 
 absl::Span<const absl::string_view> GetHostEventTypeStrMap();
@@ -121,6 +142,8 @@ inline absl::string_view GetStatTypeStr(StatType stat_type) {
 inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
+
+StatType GetStatType(absl::string_view stat_name);
 
 }  // namespace profiler
 }  // namespace tensorflow

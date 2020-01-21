@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 
-#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -768,9 +768,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
                                 const float* filter_data,
                                 int out_x_buffer_start, int out_x_buffer_end,
                                 int output_depth, float* acc_buffer) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
-#endif
+  ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
   // Sanity check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
@@ -845,7 +843,7 @@ inline void FloatDepthwiseConvAccumRowGeneric(
     const float* input_data, int pad_width, int depth_multiplier,
     int filter_width, const float* filter_data, int out_x_buffer_start,
     int out_x_buffer_end, int output_depth, float* acc_buffer) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConvAccumRowGeneric (slow)");
+  ruy::profiler::ScopeLabel label("DepthwiseConvAccumRowGeneric (slow)");
   const float* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
@@ -906,7 +904,7 @@ inline void DepthwiseConvImpl(
     const float* bias_data, const RuntimeShape& output_shape,
     float* output_data, const CpuFlags& /* cpu_flags */, int thread_start,
     int thread_end, int thread_dim) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConv/float/DepthwiseConvImpl");
+  ruy::profiler::ScopeLabel label("DepthwiseConv/float/DepthwiseConvImpl");
 
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;

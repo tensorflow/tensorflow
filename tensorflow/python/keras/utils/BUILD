@@ -37,15 +37,22 @@ py_library(
 )
 
 py_library(
+    name = "data_utils",
+    srcs = ["data_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [":generic_utils"],
+)
+
+py_library(
     name = "engine_utils",
     srcs = [
         "conv_utils.py",
-        "data_utils.py",
         "io_utils.py",
         "losses_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":data_utils",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/ops/losses:loss_reduction",
     ],

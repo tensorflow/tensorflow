@@ -18,10 +18,6 @@ py_library(
         "estimator/__init__.py",
         "keras_parameterized.py",
         "ops.py",
-        "preprocessing/__init__.py",
-        "preprocessing/image.py",
-        "preprocessing/sequence.py",
-        "preprocessing/text.py",
         "testing_utils.py",
     ],
     srcs_version = "PY2AND3",
@@ -37,6 +33,7 @@ py_library(
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
+        "//tensorflow/python/keras/preprocessing",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils",
         "//tensorflow/python/keras/wrappers",
@@ -381,12 +378,6 @@ py_library(
         "layers/normalization.py",
         "layers/normalization_v2.py",
         "layers/pooling.py",
-        "layers/preprocessing/categorical.py",
-        "layers/preprocessing/image_preprocessing.py",
-        "layers/preprocessing/normalization.py",
-        "layers/preprocessing/normalization_v1.py",
-        "layers/preprocessing/text_vectorization.py",
-        "layers/preprocessing/text_vectorization_v1.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
         "layers/rnn_cell_wrapper_v2.py",
@@ -412,21 +403,11 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/keras/layers/preprocessing",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "preprocessing_test_utils",
-    srcs = ["layers/preprocessing/preprocessing_test_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -694,45 +675,6 @@ cuda_py_test(
     ],
 )
 
-filegroup(
-    name = "vocabulary_testdata",
-    srcs = [
-        "layers/preprocessing/testdata/wire_vocabulary.txt",
-    ],
-)
-
-cuda_py_test(
-    name = "categorical_test",
-    size = "medium",
-    srcs = ["layers/preprocessing/categorical_test.py"],
-    data = [":vocabulary_testdata"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "image_preprocessing_test",
-    size = "medium",
-    srcs = ["layers/preprocessing/image_preprocessing_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 cuda_py_test(
     name = "convolutional_transpose_test",
     size = "medium",
@@ -901,36 +843,6 @@ cuda_py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "preprocessing_normalization_test",
-    size = "small",
-    srcs = ["layers/preprocessing/normalization_test.py"],
-    main = "normalization_test.py",
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        ":preprocessing_test_utils",
-        "//tensorflow/python:client_testlib",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "preprocessing_text_vectorization_test",
-    size = "medium",
-    srcs = ["layers/preprocessing/text_vectorization_test.py"],
-    main = "text_vectorization_test.py",
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        ":preprocessing_test_utils",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras/utils:generic_utils",
-        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1130,22 +1042,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "time_distributed_learning_phase_test",
-    size = "small",
-    srcs = ["layers/time_distributed_learning_phase_test.py"],
-    python_version = "PY3",
-    tags = [
-        "noasan",  # http://b/78599823
-        "notsan",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
 cuda_py_test(
     name = "training_gpu_test",
     size = "small",
@@ -1154,45 +1050,6 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "image_test",
-    size = "medium",
-    srcs = ["preprocessing/image_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "sequence_test",
-    size = "small",
-    srcs = ["preprocessing/sequence_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "text_test",
-    size = "small",
-    srcs = ["preprocessing/text_test.py"],
-    python_version = "PY3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

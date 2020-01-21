@@ -719,6 +719,14 @@ class GlobalPooling1D(Layer):
 class GlobalAveragePooling1D(GlobalPooling1D):
   """Global average pooling operation for temporal data.
 
+  Examples:
+
+  >>> input_shape = (2, 3, 4)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalAveragePooling1D()(x)
+  >>> print(y.shape)
+  (2, 4)
+
   Arguments:
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
@@ -827,6 +835,14 @@ class GlobalPooling2D(Layer):
 class GlobalAveragePooling2D(GlobalPooling2D):
   """Global average pooling operation for spatial data.
 
+  Examples:
+
+  >>> input_shape = (2, 4, 5, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalAveragePooling2D()(x)
+  >>> print(y.shape)
+  (2, 3)
+
   Arguments:
       data_format: A string,
         one of `channels_last` (default) or `channels_first`.
@@ -859,6 +875,14 @@ class GlobalAveragePooling2D(GlobalPooling2D):
 @keras_export('keras.layers.GlobalMaxPool2D', 'keras.layers.GlobalMaxPooling2D')
 class GlobalMaxPooling2D(GlobalPooling2D):
   """Global max pooling operation for spatial data.
+
+  Examples:
+
+  >>> input_shape = (2, 4, 5, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalMaxPool2D()(x)
+  >>> print(y.shape)
+  (2, 3)
 
   Arguments:
     data_format: A string,

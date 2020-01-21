@@ -284,7 +284,7 @@ class ForwardAccumulator {
   // Temporarily push or pop transient state for this accumulator.
   //
   // Allows an accumulator which is currently processing an operation to
-  // temporarily reset its state. Without pushing and poping, accumulators
+  // temporarily reset its state. Without pushing and popping, accumulators
   // ignore operations executed as a direct result of their own jvp
   // computations.
   void PushState() { call_state_.emplace(nullptr, false); }

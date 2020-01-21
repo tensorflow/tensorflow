@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass transforms MLIR TF contol dialect into a combination
-// of the TF and TF executor dialects.
+// This transformation pass transforms MLIR TF control dialect into a
+// combination of the TF and TF executor dialects.
 //
 // !! This code is only intended for migration purpose and will be deleted when
 // !! the importer is updated to directly emit the tf_executor dialect.

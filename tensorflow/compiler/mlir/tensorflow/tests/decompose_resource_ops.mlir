@@ -1,4 +1,24 @@
-// RUN: tf-opt %s -split-input-file -tf-device-decompose-resource-ops | FileCheck %s
+// RUN: tf-opt %s -split-input-file -tf-device-decompose-resource-ops | FileCheck %s --dump-input=fail
+
+// Tests that resources with subtypes are used if present.
+
+// CHECK-LABEL: func @decompose_use_subtype
+func @decompose_use_subtype() {
+
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<2x8xi32>>>
+
+  // CHECK:      %[[ONE:[0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK:      %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"
+  // CHECK-SAME: (tensor<*x!tf.resource<tensor<2x8xi32>>>) -> tensor<2x8xi32>
+  // CHECK:      "tf.AddV2"(%[[RES_READ_VAL]], %[[ONE]])
+  // CHECK-SAME: (tensor<2x8xi32>, tensor<i32>) -> tensor<2x8xi32>
+  // CHECK:      "tf.AssignVariableOp"
+
+  %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  "tf.AssignAddVariableOp"(%0, %1) {dtype = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<2x8xi32>>>, tensor<i32>) -> ()
+
+  return
+}
 
 // -----
 

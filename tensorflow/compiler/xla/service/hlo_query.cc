@@ -148,5 +148,25 @@ int64 NextChannelId(const HloModule& module) {
   return next_channel_id;
 }
 
+bool HasX64TransformedHostTransfer(const HloModule& module) {
+  for (auto computation : module.computations()) {
+    for (auto hlo : computation->instructions()) {
+      if (hlo->opcode() == HloOpcode::kSend) {
+        auto send = DynCast<HloSendInstruction>(hlo);
+        if (send->is_host_transfer() && send->operand(0)->shape().IsTuple()) {
+          return true;
+        }
+      } else if (hlo->opcode() == HloOpcode::kRecv) {
+        auto recv = DynCast<HloRecvInstruction>(hlo);
+        if (recv->is_host_transfer() &&
+            recv->shape().tuple_shapes(0).IsTuple()) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace hlo_query
 }  // namespace xla

@@ -268,10 +268,20 @@ def TFL_StatefulOp : OpInterface<"StatefulOpInterface"> {
 }
 
 //===----------------------------------------------------------------------===//
-// TFL native op trait for channel indices.
+// TFL op interface for output channel index.
 
-class ChannelDimIndex<int index>
-    : ParamNativeOpTrait<"TFL::ChannelDimIndex", !cast<string>(index)>;
+def TFL_ChannelDimIndexInterface : OpInterface<"ChannelDimIndexInterface"> {
+  let description = [{
+    Interface for defining the index of out channel index.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the dimension index of the output channels.}],
+      "int", "GetChannelDimIndex", (ins)
+    >,
+  ];
+}
 
 //===----------------------------------------------------------------------===//
 // TFL op base class.
@@ -300,7 +310,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    ChannelDimIndex<index>, AffineOpCoefficient<index, 1>]> {
+    TFL_ChannelDimIndexInterface, AffineOpCoefficient<index, 1>]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -501,8 +511,7 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
   }];
 
   let arguments = (
-    // TODO: Add support for uint8.
-    ins TensorOf<[F32, I32, I8]>:$input,
+    ins TensorOf<[F32, I32, I8, TFL_Uint8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
@@ -530,8 +539,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   }];
 
   let arguments = (
-    // TODO(pkanwar): Add support for uint8.
-    ins TensorOf<[F32, I32, I8]>:$input,
+    ins TensorOf<[F32, I32, I8, TFL_Uint8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
@@ -632,7 +640,12 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
   let results = (outs AnyTensor:$output);
 }
 
-def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
+def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
+  let extraClassDeclaration = [{
+    // StatefulOpInterface:
+    int GetChannelDimIndex() { return 0; }
+  }];
+}
 
 def TFL_CosOp: TFL_Op<"cos", [
     NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
@@ -652,6 +665,11 @@ def TFL_CosOp: TFL_Op<"cos", [
 def TFL_DepthwiseConv2DOp :
     TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3> {
   let arguments = !con(TFL_Conv2DOp.arguments, (ins I32Attr:$depth_multiplier));
+
+  let extraClassDeclaration = [{
+    // StatefulOpInterface:
+    int GetChannelDimIndex() { return 3; }
+  }];
 }
 
 def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
@@ -665,7 +683,8 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
-    NoSideEffect, AccumulatorUniformScale<2, 0, 1>, ChannelDimIndex<0>,
+    NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
+    TFL_ChannelDimIndexInterface,
     AffineOpCoefficient<-1, 1>]> {
   let summary = "Fully connected op";
 
@@ -687,6 +706,11 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
+
+  let extraClassDeclaration = [{
+    // ChannelDimIndexInterface:
+    int GetChannelDimIndex() { return 0; }
+  }];
 }
 
 def TFL_GatherOp : TFL_Op<"gather", [
@@ -2360,9 +2384,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
   let results = (outs TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$y);
 }
 
-def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
+def TFL_TileOp: TFL_Op<"tile", [NoSideEffect, SameOperandsAndResultsScale,
   PredOpTrait<"resultant element type needs to match first operand type",
-              TCresVTEtIsSameAsOp<0,0>>]> {
+              TFL_TCresVTEtIsSameAsOp<0,0>>]> {
   let summary = "Tile operator.";
   let description = [{
     Constructs a tensor by tiling a given tensor.
@@ -2375,10 +2399,11 @@ def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I1, I32, I64, TFL_Uint8]>:$input,
+    TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$multiples);
 
-  let results = (outs TensorOf<[F32, I1, I32, I64, TFL_Uint8]>:$output);
+  let results = (outs
+    TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8]>:$output);
 
   let hasOptions = 0;
 }
@@ -3353,6 +3378,20 @@ def TFL_SVDFOp :
     // StatefulOpInterface:
     std::vector<int> GetStatefulOperands() { return {4}; }
   }];
+}
+
+def TFL_SegmentSumOp: TFL_Op<"segment_sum", [NoSideEffect]> {
+  let summary = "SegmentSum operator";
+
+  let description = [{
+    Computes the sum along segments of a tensor.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I32]>:$data,
+    I32Tensor:$segment_ids
+  );
+  let results = (outs TensorOf<[F32, I32]>:$output);
 }
 
 #endif // TFL_OPS

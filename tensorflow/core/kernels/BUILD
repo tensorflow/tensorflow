@@ -239,7 +239,13 @@ tf_cuda_cc_test(
     name = "collective_nccl_test",
     size = "small",
     srcs = ["collective_nccl_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
+    tags = tf_cuda_tests_tags() + [
+        "guitar",
+        "manual",
+        "multi_gpu",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
@@ -2352,7 +2358,11 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util/ctc:ctc_beam_search_lib",
         "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
-    ],
+    ] + if_cuda([
+        ":gpu_utils",
+        ":conv_ops_gpu_hdrs",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
 )
 
 tf_cc_test(
@@ -3474,14 +3484,18 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cuda_sparse",
-    srcs = ["cuda_sparse.cc"],
+    srcs = if_cuda(["cuda_sparse.cc"]) + if_rocm(["rocm_sparse.cc"]),
     hdrs = ["cuda_sparse.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:cuda_solvers",
+    ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cusparse_lib",
-    ] + if_cuda(["@cub_archive//:cub"]),
+        "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:hipsparse",
+    ]),
 )
 
 LINALG_DEPS = [

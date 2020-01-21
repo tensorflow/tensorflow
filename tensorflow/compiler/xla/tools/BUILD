@@ -1,6 +1,11 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+    "tf_cc_binary",
+    "tf_cc_test",
+)
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
@@ -87,19 +92,12 @@ tf_cc_binary(
     ],
 )
 
+# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "replay_computation_gpu",
     deps = [
         ":replay_computation_library",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-    ],
-)
-
-tf_cc_binary(
-    name = "replay_computation_mlir_gpu",
-    deps = [
-        ":replay_computation_library",
-        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
     ],
 )
 
@@ -230,12 +228,13 @@ tf_cc_binary(
     srcs = ["interactive_graphviz.cc"],
     deps = [
         ":hlo_extractor",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:local_service",
@@ -243,9 +242,9 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm([
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]),
 )
 
 sh_test(
@@ -325,44 +324,25 @@ cc_library(
     ],
 )
 
+# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "run_hlo_module",
     testonly = True,
     srcs = ["run_hlo_module_main.cc"],
     deps = [
         ":run_hlo_module_lib",
+        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:interpreter_plugin",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:test",
+    ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:test",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-# Same as run_hlo_module, but supports the MLIR GPU backend instead of the XLA
-# GPU backend.
-tf_cc_binary(
-    name = "run_hlo_module_mlir_gpu",
-    testonly = True,
-    srcs = ["run_hlo_module_main.cc"],
-    deps = [
-        ":run_hlo_module_lib",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:test",
-        "@com_google_absl//absl/strings",
-    ],
+    ]),
 )
 
 # This target is used to reproduce miscompiles in OSS outside of TF, and it can

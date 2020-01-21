@@ -1104,6 +1104,63 @@ static LogicalResult Verify(TransposeOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// TriangularSolveOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TriangularSolveOp op) {
+  auto a_type = op.a().getType().dyn_cast<RankedTensorType>();
+
+  // Skip verifier if a is unranked tensor.
+  if (!a_type) return success();
+
+  // Check that a should have rank >= 2
+  auto a_rank = a_type.getRank();
+  if (a_rank < 2)
+    return op.emitOpError()
+           << "operand 'a' must have rank >= 2, but got " << a_type;
+
+  // The two minor dimensions of a must have same size.
+  if (a_type.getDimSize(a_rank - 2) != a_type.getDimSize(a_rank - 1))
+    return op.emitOpError() << "two minor dimensions of operand 'a' must have "
+                               "equal size, but got "
+                            << a_type;
+
+  auto b_type = op.b().getType().dyn_cast<RankedTensorType>();
+  // If b is unranked skip remaining checks.
+  if (!b_type) return success();
+
+  // Check that a and b have same rank.
+  auto b_rank = b_type.getRank();
+  if (a_rank != b_rank)
+    return op.emitOpError() << "operands must have equal rank, but got "
+                            << a_type << " and " << b_type;
+
+  // The shared dimension of a and b should match.
+  if (a_type.getDimSize(a_rank - 1) !=
+      b_type.getDimSize(b_rank - (op.left_side() ? 2 : 1)))
+    return op.emitOpError() << "shared dimension of operands 'a' and 'b' does "
+                               "not match, but got "
+                            << a_type << " and " << b_type;
+
+  // The leading batch dimensions of a and b must be equal.
+  auto a_batch_dims = a_type.getShape().drop_back(2);
+  auto b_batch_dims = b_type.getShape().drop_back(2);
+  if (a_batch_dims != b_batch_dims)
+    return op.emitOpError()
+           << "leading batch dimensions of the operands must be same, but got "
+           << a_type << " and " << b_type;
+
+  // Result and argument b must have same shape.
+  auto result_type = op.getType().dyn_cast<RankedTensorType>();
+  if (!result_type) return success();
+  if (result_type != b_type)
+    return op.emitOpError()
+           << "result and operand 'b' must have same shape, but got "
+           << result_type << " and " << b_type;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // GetTupleElementOp
 //===----------------------------------------------------------------------===//
 

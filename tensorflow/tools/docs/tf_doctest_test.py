@@ -128,10 +128,8 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
 
   @parameterized.parameters(
       # CHeck examples out of tolerence.
-      ['1.001e-6', [0]],
-      ['0.0', [1.001e-6]],
-      ['1.000001001e9', [1e9]],
-      ['1e9', [1.000001001e9]],
+      ['1.001e-2', [0]],
+      ['0.0', [1.001e-3]],
   )
   def test_fail_tolerences(self, text, expected_floats):
     extract_floats = tf_doctest_lib._FloatExtractor()

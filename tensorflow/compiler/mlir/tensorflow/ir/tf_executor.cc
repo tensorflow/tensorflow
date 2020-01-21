@@ -475,7 +475,8 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
 
   // Support parsing either a functional type (in which case all the types are
   // fully qualified) or a short form with a single type (in which case the data
-  // input and the outputs are all using this type).
+  // input and the outputs are all using this type and predicate is tensor<i1>
+  // type).
   if (types.front().isa<FunctionType>()) {
     FunctionType type = types.front().cast<FunctionType>();
     if (type.getNumInputs() != 2)
@@ -508,7 +509,8 @@ void Print(SwitchOp switch_op, OpAsmPrinter &p) {
   // else print the shorter single type.
   p << " : ";
   if (switch_op.trueOutput().getType() != data_operand_ty ||
-      switch_op.falseOutput().getType() != data_operand_ty) {
+      switch_op.falseOutput().getType() != data_operand_ty ||
+      switch_op.predicate().getType().isa<UnrankedTensorType>()) {
     p.printFunctionalType(switch_op.getOperation());
   } else {
     p << switch_op.getType(0);
@@ -1162,12 +1164,7 @@ struct DropEmptyIslandNoOperandOneDataResult
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
       return matchFailure();
 
-    // TODO(jpienaar): Revert this, this accounts for an intermediate bug that
-    // has already been fixed upstream but has not been integrated yet. The
-    // second result is unused here and so should be removed, but just using
-    // the same result in both places (which should not matter as unused).
-    rewriter.replaceOp(
-        op, {op.GetYield().getOperand(0), op.GetYield().getOperand(0)});
+    rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
 
     return matchSuccess();
   }

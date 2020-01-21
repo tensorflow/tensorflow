@@ -20,30 +20,55 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/tensor.h"
 
-// Internal structures used by the C API. These are likely to change and should
-// not be depended on.
+// Abstract interface to a Tensor.
+//
+// This allows us to hide concrete implementations of Tensor from header
+// files. The interface lists the common functionality that must be provided by
+// any concrete implementation. However, in cases where the true concrete class
+// is needed a static_cast can be applied.
+class AbstractTensorInterface {
+ public:
+  virtual ~AbstractTensorInterface() {}
+
+  // Returns tensor dtype.
+  virtual TF_DataType Type() const = 0;
+  // Returns number of dimensions.
+  virtual int NumDims() const = 0;
+  // Returns size of specified dimension
+  virtual int64_t Dim(int dim_index) const = 0;
+  // Returns number of elements across all dimensions.
+  virtual int64_t NumElements() const = 0;
+  // Return size in bytes of the Tensor
+  virtual size_t ByteSize() const = 0;
+  // Returns a pointer to tensor data
+  virtual void* Data() const = 0;
+
+  // Returns if the tensor is aligned
+  virtual bool IsAligned() const = 0;
+  // Returns if their is sole ownership of this Tensor and thus it can be moved.
+  virtual bool CanMove() const = 0;
+};
 
 namespace tensorflow {
 
-class TensorInterface {
+class TensorInterface : public AbstractTensorInterface {
  public:
   TensorInterface() {}
   explicit TensorInterface(Tensor t) : tensor_(std::move(t)) {}
+  ~TensorInterface() override {}
 
-  TF_DataType Type() const;
-  int NumDims() const;
-  int64_t Dim(int dim_index) const;
-  int64_t NumElements() const;
-  size_t ByteSize() const;
-  void* Data() const;
-  bool IsAligned() const;
+  TF_DataType Type() const override;
+  int NumDims() const override;
+  int64_t Dim(int dim_index) const override;
+  int64_t NumElements() const override;
+  size_t ByteSize() const override;
+  void* Data() const override;
+  bool IsAligned() const override;
+  bool CanMove() const override;
 
   Status ToTensor(Tensor* dst) const;
-  bool CopyFrom(const Tensor& other, const TensorShape& shape);
   Status BitcastFrom(const TensorInterface& from, TF_DataType type,
                      const int64_t* new_dims, int num_new_dims);
-
-  bool CanMove() const;
 
  private:
   Tensor tensor_;

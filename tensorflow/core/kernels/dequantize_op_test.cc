@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <random>
 #include <vector>
 
 #include "tensorflow/cc/ops/array_ops.h"
@@ -128,6 +129,7 @@ class DequantizeOpTest : public OpsTestBase {
   std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
                                         const std::vector<T>& data) {
     uint32 seed = 123;
+    std::minstd_rand rng(seed);
     int64 out_size = 1;
     for (int dim : dims) {
       out_size *= dim;
@@ -139,7 +141,7 @@ class DequantizeOpTest : public OpsTestBase {
     std::vector<T> out(out_size);
     int num_slices = (axis == -1) ? 1 : dims[axis];
     for (int out_idx = 0; out_idx < out_size; ++out_idx) {
-      int in_idx = rand_r(&seed) % data.size();
+      int in_idx = rng() % data.size();
       T multiplier = ((out_idx / minor_size) % num_slices) + 1;
       out[out_idx] = data[in_idx] * multiplier;
     }

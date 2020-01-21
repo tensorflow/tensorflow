@@ -544,37 +544,35 @@ typedef struct TfLiteContext {
   // Pointer to the op-level profiler, if set; nullptr otherwise.
   void* profiler;
 
-  // Allocate memory for op data. This method should only be used in `Init`
-  // method and the allocated memory will be available until `Free` method is
-  // called.
-  // On TFL, it allocates memory from heap using malloc, but for micro, this
-  // will be allocating from the allocator.
+  // Allocate persistent buffer which has the same life time as the interpreter.
+  // The memory is allocated from heap for TFL, and from tail in TFLM.
+  // If *ptr is not nullptr, the pointer will be reallocated.
+  // This method is only available in Prepare stage.
   // WARNING: This is an experimental interface that is subject to change.
-  void* (*AllocateOpData)(struct TfLiteContext* ctx, size_t size);
+  TfLiteStatus (*AllocatePersistentBuffer)(struct TfLiteContext* ctx,
+                                           size_t bytes, void** ptr);
 
-  // Deallocate memory holding op data. This method should only be used inside
-  // `Free` method. Caller needs to make sure that that `buffer` is allocated by
-  // `AllocateOpData` method.
-  // On TFL, it will free the buffer, and for micro, this method is a no-op.
+  // Allocate a buffer which will be deallocated right after invoke phase.
+  // The memory is allocated from heap in TFL, and from volatile arena in TFLM.
+  // This method is only available in invoke stage.
+  // NOTE: If possible use RequestScratchBufferInArena method to avoid memory
+  // allocation during inference time.
   // WARNING: This is an experimental interface that is subject to change.
-  void (*DeallocateOpData)(struct TfLiteContext* ctx, void* buffer);
+  TfLiteStatus (*AllocateBufferForEval)(struct TfLiteContext* ctx, size_t bytes,
+                                        void** ptr);
 
-  // Allocate a temporary tensor to the node. This method also makes a copy of
-  // the shape array internally so the shape array could be deallocated right
-  // afterwards. WARNING: This is an experimental interface that is subject to
-  // change.
-  TfLiteStatus (*AllocateTemporaryTensor)(struct TfLiteContext* ctx,
-                                          TfLiteNode* node, int dims,
-                                          int* shape, TfLiteType data_type,
-                                          TfLiteAllocationType allocation_type,
-                                          int* new_tensor_index);
-
-  // Deallocate all temporary tensors associated to the node (including
-  // kTfLiteArenaRwPersistent persistent tensors). It also deallocates
-  // all the shape tensors.
+  // Request a scratch buffer in the arena through static memory planning.
+  // This method is only available in Prepare stage and the buffer is allocated
+  // by the interpreter between Prepare and Eval stage. In Eval stage,
+  // GetScratchBuffer API can be used to fetch the address.
   // WARNING: This is an experimental interface that is subject to change.
-  void (*DeallocateAllTemporaryTensors)(struct TfLiteContext* ctx,
-                                        TfLiteNode* node);
+  TfLiteStatus (*RequestScratchBufferInArena)(struct TfLiteContext* ctx,
+                                              size_t bytes, int* buffer_idx);
+
+  // Get the scratch buffer pointer.
+  // This method is only available in Eval stage.
+  // WARNING: This is an experimental interface that is subject to change.
+  void* (*GetScratchBuffer)(struct TfLiteContext* ctx, int buffer_idx);
 
   // Resize the memory pointer of the `tensor`. This method behaves the same as
   // `ResizeTensor`, except that it makes a copy of the shape array internally

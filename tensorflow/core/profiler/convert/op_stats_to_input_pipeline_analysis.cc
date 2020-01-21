@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -46,6 +47,28 @@ namespace {
 
 const double kNumPsPerMs = 1000000000.0;
 
+// If the percentage of step time that is due to infeed is less than
+// kModeratelyInfeedBoundThresholdInPercent, it is considered NOT
+// input-bound; else if it is less than
+// kHighlyInfeedBoundThresholdInPercent, it is considered MODERATELY
+// input-bound; else if it is considered HIGHLY input-bound.
+constexpr double kModeratelyInfeedBoundThresholdInPercent = 5;
+constexpr double kHighlyInfeedBoundThresholdInPercent = 20;
+// If the percentage of step time that is due to kernel launch is less than
+// kModeratelyKernelLaunchBoundThresholdInPercent, it is considered NOT
+// kernel-launch bound; else if it is less than
+// kHighlyKernelLaunchBoundThresholdInPercent, it is considered MODERATELY
+// kernel-launch bound; else if it is considered HIGHLY kernel-launch bound.
+constexpr double kModeratelyKernelLaunchBoundThresholdInPercent = 3;
+constexpr double kHighlyKernelLaunchBoundThresholdInPercent = 15;
+// If the percentage of step time that is due to all other time is less than
+// kModeratelyAllOtherBoundThresholdInPercent, it is considered NOT
+// all-other bound; else if it is less than
+// kHighlyAllOtherBoundThresholdInPercent, it is considered MODERATELY
+// all-other bound; else if it is considered HIGHLY all-other bound.
+constexpr double kModeratelyAllOtherBoundThresholdInPercent = 3;
+constexpr double kHighlyAllOtherBoundThresholdInPercent = 15;
+
 template <class Collection>
 double GetTimeInMs(const Collection& type_ps, EventType event_type) {
   return PicosToMillis(gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
@@ -53,11 +76,21 @@ double GetTimeInMs(const Collection& type_ps, EventType event_type) {
 
 StepSummary GetStepSummaryForSampleStats(const Stat<double>& sample_stats) {
   StepSummary step_time_summary;
-  step_time_summary.set_average(sample_stats.avg());
-  step_time_summary.set_standard_deviation(
-      std::sqrt(sample_stats.sample_variance()));
-  step_time_summary.set_minimum(sample_stats.min());
-  step_time_summary.set_maximum(sample_stats.max());
+  double avg, sdv, min, max;
+  if (sample_stats.empty()) {
+    // If sample_stats is empty, sample_stats.avg() will return NaN. However, we
+    // prefer to show an 0 instead.
+    avg = sdv = min = max = 0.0;
+  } else {
+    avg = sample_stats.avg();
+    sdv = std::sqrt(sample_stats.sample_variance());
+    min = sample_stats.min();
+    max = sample_stats.max();
+  }
+  step_time_summary.set_average(avg);
+  step_time_summary.set_standard_deviation(sdv);
+  step_time_summary.set_minimum(min);
+  step_time_summary.set_maximum(max);
   return step_time_summary;
 }
 
@@ -307,6 +340,47 @@ double RatioOfHostToDeviceTimeToStepTime(
   return 0.0;
 }
 
+void KernelLaunchAnalysis(double kernel_launch_percent, int* observation_index,
+                          string* kernel_launch_classification,
+                          string* kernel_launch_statement) {
+  string percent_str = absl::StrFormat("%.1lf", kernel_launch_percent);
+  if (kernel_launch_percent >= kHighlyKernelLaunchBoundThresholdInPercent) {
+    *kernel_launch_classification = "high";
+    *kernel_launch_statement = absl::StrCat(
+        "(", ++*observation_index, ") ", percent_str,
+        " % of the total step time sampled is spent on Kernel Launch.");
+  } else if (kernel_launch_percent >=
+             kModeratelyKernelLaunchBoundThresholdInPercent) {
+    *kernel_launch_classification = "moderate";
+    *kernel_launch_statement = absl::StrCat(
+        "(", ++*observation_index, ") ", percent_str,
+        " % of the total step time sampled is spent on Kernel Launch.");
+  } else {
+    *kernel_launch_classification = "no";
+    *kernel_launch_statement = "";
+  }
+}
+
+void AllOtherAnalysis(double all_other_percent, int* observation_index,
+                      string* all_other_classification,
+                      string* all_other_statement) {
+  string percent_str = absl::StrFormat("%.1lf", all_other_percent);
+  if (all_other_percent >= kHighlyAllOtherBoundThresholdInPercent) {
+    *all_other_classification = "high";
+    *all_other_statement = absl::StrCat(
+        "(", ++*observation_index, ") ", percent_str,
+        " % of the total step time sampled is spent on All Others time.");
+  } else if (all_other_percent >= kModeratelyAllOtherBoundThresholdInPercent) {
+    *all_other_classification = "moderate";
+    *all_other_statement = absl::StrCat(
+        "(", ++*observation_index, ") ", percent_str,
+        " % of the total step time sampled is spent on All Others time.");
+  } else {
+    *all_other_classification = "no";
+    *all_other_statement = "";
+  }
+}
+
 }  // namespace
 
 void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
@@ -439,6 +513,105 @@ InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
   GenerateHostResult(op_stats.host_op_metrics_db(), &result);
   *result.mutable_recommendation() = GenerateRecommendation();
   return result;
+}
+
+void InfeedAnalysis(HardwareType hardware_type, double infeed_percent,
+                    int* observation_index, string* input_classification,
+                    string* input_statement) {
+  absl::string_view non_input_time = "other time";
+  string infeed_percent_str = absl::StrFormat("%.1lf", infeed_percent);
+  if (infeed_percent >= kHighlyInfeedBoundThresholdInPercent) {
+    *input_classification = "host";
+    *input_statement = absl::StrCat(
+        "(", ++*observation_index, ") ",
+        "Your program is HIGHLY input-bound because ", infeed_percent_str,
+        "% of the total step time sampled is waiting for input. Therefore, "
+        "you should first focus on reducing the input time.");
+  } else if (infeed_percent >= kModeratelyInfeedBoundThresholdInPercent) {
+    *input_classification = "both";
+    *input_statement = absl::StrCat(
+        "(", ++*observation_index, ") ",
+        "Your program is MODERATELY input-bound because ", infeed_percent_str,
+        "% of the total step time sampled is waiting for input. Therefore, "
+        "you would need to reduce both the input time and ",
+        non_input_time, ".");
+  } else {
+    *input_classification = "device";
+    *input_statement = absl::StrCat(
+        "(", ++*observation_index, ") ",
+        "Your program is NOT input-bound because only ", infeed_percent_str,
+        "% of the total step time sampled is waiting for "
+        "input. Therefore, you should focus on "
+        "reducing ",
+        non_input_time, ".");
+  }
+}
+
+GenericBottleneck GenericOverallBottleneck(
+    const InputPipelineAnalysisResult& result) {
+  double total_step_time_ms = 0;
+  double total_input_ms = 0;
+  double total_output_ms = 0;
+  double total_host_compute_ms = 0;
+  double total_host_prepare_ms = 0;
+  double total_host_compile_ms = 0;
+  double total_device_to_device_ms = 0;
+  double total_unknown_ms = 0;
+  for (const google::protobuf::Any& step_details : result.step_details()) {
+    PerGenericStepDetails details;
+    bool success = step_details.UnpackTo(&details);
+    if (!success && !step_details.type_url().empty()) {
+      LOG(ERROR) << "Unable to unpack step_breakdown. Expected: generic"
+                 << std::endl;
+      return {};
+    }
+    total_step_time_ms += details.step_time_ms();
+    total_input_ms +=
+        details.host_wait_input_ms() + details.host_to_device_ms();
+    total_output_ms += details.output_ms();
+    total_host_prepare_ms += details.host_prepare_ms();
+    total_device_to_device_ms += details.device_to_device_ms();
+    total_host_compute_ms += details.host_compute_ms();
+    total_host_compile_ms += details.host_compile_ms();
+    total_unknown_ms += details.unknown_time_ms();
+  }
+  if (total_step_time_ms == 0) {
+    return {{"unknown",
+             "No step time measured. Therefore we cannot tell where the "
+             "performance bottleneck is."},
+            "no",
+            "",
+            "no",
+            ""};
+  }
+  double input_percent = 100.0 * total_input_ms / total_step_time_ms;
+  double kernel_launch_percent =
+      100.0 * total_host_prepare_ms / total_step_time_ms;
+  double all_other_percent = 100.0 * total_unknown_ms / total_step_time_ms;
+  int observation_index = 0;
+  string input_classification;
+  string input_statement;
+  InfeedAnalysis(result.hardware_type(), input_percent, &observation_index,
+                 &input_classification, &input_statement);
+
+  string kernel_launch_classification;
+  string kernel_launch_statement;
+  KernelLaunchAnalysis(kernel_launch_percent, &observation_index,
+                       &kernel_launch_classification, &kernel_launch_statement);
+
+  string all_other_classification;
+  string all_other_statement;
+  AllOtherAnalysis(all_other_percent, &observation_index,
+                   &all_other_classification, &all_other_statement);
+
+  return {{
+              input_classification,
+              input_statement,
+          },
+          kernel_launch_classification,
+          kernel_launch_statement,
+          all_other_classification,
+          all_other_statement};
 }
 
 }  // namespace profiler

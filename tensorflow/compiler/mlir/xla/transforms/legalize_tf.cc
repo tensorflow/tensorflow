@@ -73,12 +73,20 @@ class LegalizeTF : public FunctionPass<LegalizeTF> {
 };
 
 /// Returns if the given TF data format string is the default format.
-static bool isDefaultDataFormat(StringRef format) { return format == "NHWC"; }
+static bool IsDefaultDataFormat(StringRef format) { return format == "NHWC"; }
 
 /// Returns the feature dimension for the given format and input type.
-static size_t getFeatureDimension(StringAttr format,
+static size_t GetFeatureDimension(StringAttr format,
                                   RankedTensorType inputType) {
-  return isDefaultDataFormat(format.getValue()) ? inputType.getRank() - 1 : 1;
+  return IsDefaultDataFormat(format.getValue()) ? inputType.getRank() - 1 : 1;
+}
+
+// Gets all integer values from the given attribute and push them to `values`.
+void GetI64ArrayAttrValues(Attribute attr, SmallVectorImpl<int64_t> *values) {
+  auto array_attr = attr.cast<ArrayAttr>();
+  values->reserve(array_attr.getValue().size());
+  for (Attribute val : array_attr.getValue())
+    values->push_back(val.cast<IntegerAttr>().getValue().getSExtValue());
 }
 
 // Returns 1D 64-bit dense elements attribute with the given values.
@@ -95,6 +103,24 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
       RankedTensorType::get(static_cast<int64_t>(attr.size()),
                             IntegerType::get(64, attr.getContext()));
   return DenseIntElementsAttr::get(ty, attr.getValue());
+}
+
+// Returns 1D 32-bit dense elements attribute with the given values.
+static DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
+                                               Builder *builder) {
+  RankedTensorType ty = RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
+// Returns the corresponding type that should be used for performing sum
+// accumulation over the given input type.
+Type GetSumAccumulationType(Type input_type) {
+  MLIRContext *ctx = input_type.getContext();
+  if (input_type.isBF16() || input_type.isF16()) return FloatType::getF32(ctx);
+  if (input_type.isInteger(8) || input_type.isInteger(16))
+    return IntegerType::get(32, ctx);
+  return input_type;
 }
 
 // Returns axis in HLO format from TF elements attr with exactly one element
@@ -371,7 +397,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 static IntegerAttr getFeatureDimensionAttr(Builder &b, StringAttr format,
                                            Value input) {
   return b.getI64IntegerAttr(
-      getFeatureDimension(format, input.getType().cast<RankedTensorType>()));
+      GetFeatureDimension(format, input.getType().cast<RankedTensorType>()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -384,7 +410,7 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
                                                     StringAttr format,
                                                     Value input) {
   auto inputType = input.getType().cast<RankedTensorType>();
-  size_t featureDim = getFeatureDimension(format, inputType);
+  size_t featureDim = GetFeatureDimension(format, inputType);
   RankedTensorType type = RankedTensorType::get(1, b.getIntegerType(64));
   return DenseIntElementsAttr::get(type, featureDim);
 }
@@ -1135,6 +1161,80 @@ static DenseIntElementsAttr GetReduceWindowPadding(
 }
 
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
+// dimensions with add as the reduction function. The reduction result is
+// then divided by the number of elements in the window.
+class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::AvgPoolOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto input_type = op.value().getType().dyn_cast<RankedTensorType>();
+    if (!input_type) return matchFailure();
+
+    // TODO(b/147217034): support other data formats.
+    if (!IsDefaultDataFormat(op.data_format())) return matchFailure();
+    // TODO(b/147217034): support "SAME" padding.
+    if (op.padding() != "VALID") return matchFailure();
+
+    // We will do accumulation first; use a larger bitwidth if suitable.
+    Type input_element_type = input_type.getElementType();
+    Type sum_element_type = GetSumAccumulationType(input_element_type);
+    Type result_type;
+
+    // The result type for reduction and division with the proper element type.
+    if (auto ranked_type = op.getType().dyn_cast<RankedTensorType>())
+      result_type =
+          RankedTensorType::get(ranked_type.getShape(), sum_element_type);
+    else
+      result_type = UnrankedTensorType::get(sum_element_type);
+
+    Value input_value = op.value();
+
+    // Convert if we need enlarge the element type's bitwidth.
+    if (input_element_type != sum_element_type)
+      input_value = rewriter.create<ConvertOp>(op.getLoc(), input_value,
+                                               sum_element_type);
+
+    // Create the tf.ReduceWindow op.
+    Value init =
+        GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
+    DenseIntElementsAttr paddings_attr =
+        GetReduceWindowPadding(input_type.getShape(), op.ksize(), op.strides(),
+                               op.padding(), &rewriter);
+    auto reduce = rewriter.create<ReduceWindowOp>(
+        op.getLoc(), result_type, input_value, init,
+        GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
+        /*base_dilations=*/DenseIntElementsAttr(),
+        /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
+    BuildReduceBody<AddOp>(sum_element_type, &reduce.body(), &rewriter);
+
+    // Count the number of elements in the window. The following calculation
+    // is only valid for no paddings.
+    SmallVector<int64_t, 4> ksize;
+    GetI64ArrayAttrValues(op.ksize(), &ksize);
+    int64_t count = std::accumulate(ksize.begin(), ksize.end(), 1,
+                                    std::multiplies<int64_t>());
+
+    // Divide by the number of elements in the window.
+    Value divisor =
+        GetScalarConstOfType(sum_element_type, op.getLoc(), count, &rewriter);
+    auto batch_dims =
+        GetI64ElementsAttrForSeq(0, input_type.getRank(), &rewriter);
+    Value result = rewriter.create<DivOp>(op.getLoc(), result_type, reduce,
+                                          divisor, batch_dims);
+
+    // Convert back if we enlarged the element type's bitwidth.
+    if (input_element_type != sum_element_type)
+      result =
+          rewriter.create<ConvertOp>(op.getLoc(), result, input_element_type);
+
+    rewriter.replaceOp(op, result);
+    return matchSuccess();
+  }
+};
+
+// Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
 //
 // Sample result for VALID padding mode:
@@ -1196,10 +1296,10 @@ class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
   PatternMatchResult matchAndRewrite(TF::SelectV2Op op,
                                      PatternRewriter &rewriter) const override {
     llvm::SmallVector<int64_t, 4> broadcast_then_else_shape;
-    auto ranked_then_type = op.t()->getType().dyn_cast<RankedTensorType>();
-    auto ranked_else_type = op.e()->getType().dyn_cast<RankedTensorType>();
+    auto ranked_then_type = op.t().getType().dyn_cast<RankedTensorType>();
+    auto ranked_else_type = op.e().getType().dyn_cast<RankedTensorType>();
     auto ranked_cond_type =
-        op.condition()->getType().dyn_cast<RankedTensorType>();
+        op.condition().getType().dyn_cast<RankedTensorType>();
     if (!ranked_then_type || !ranked_then_type.hasStaticShape() ||
         !ranked_else_type || !ranked_else_type.hasStaticShape() ||
         !ranked_cond_type || !ranked_cond_type.hasStaticShape())
@@ -1217,7 +1317,7 @@ class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
       return matchFailure();
 
     auto broadcast_or_self = [&](Value value) {
-      RankedTensorType type = value->getType().cast<RankedTensorType>();
+      RankedTensorType type = value.getType().cast<RankedTensorType>();
       auto output_type =
           RankedTensorType::get(broadcast_shape, type.getElementType());
       if (output_type == type) return value;
@@ -1242,7 +1342,7 @@ class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
     Value on_true = broadcast_or_self(op.t());
     Value on_false = broadcast_or_self(op.e());
 
-    rewriter.replaceOpWithNewOp<SelectOp>(op, on_true->getType(), pred, on_true,
+    rewriter.replaceOpWithNewOp<SelectOp>(op, on_true.getType(), pred, on_true,
                                           on_false);
 
     return matchSuccess();
@@ -3233,6 +3333,45 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
   }
 };
 
+// Converts tf.VariableShape op to a XLA HLO constant representing the variable
+// shape.
+class ConvertVariableShapeOp : public OpRewritePattern<TF::VariableShapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::VariableShapeOp op,
+                                     PatternRewriter &rewriter) const override {
+    // The input type should be a tensor<!tf.resource<resource-type>>. We need
+    // to get the inner resource type.
+    auto input_type = op.input().getType().cast<TensorType>();
+    auto subtypes =
+        input_type.getElementType().cast<TF::ResourceType>().getSubtypes();
+    // It can be missing; then we cannot convert.
+    if (subtypes.empty()) return matchFailure();
+
+    auto resource_type = subtypes[0].cast<TensorType>();
+    if (!resource_type.hasStaticShape()) return matchFailure();
+
+    auto resource_shape = resource_type.getShape();
+    Attribute const_attr;
+
+    // We need to match the original op result's element type.
+    auto element_type = op.getType().cast<TensorType>().getElementType();
+    unsigned bitwidth = element_type.cast<IntegerType>().getWidth();
+    if (bitwidth == 32) {
+      SmallVector<int32_t, 4> shape(resource_shape.begin(),
+                                    resource_shape.end());
+      const_attr = GetI32ElementsAttr(shape, &rewriter);
+    } else {
+      assert(bitwidth == 64);
+      const_attr = GetI64ElementsAttr(resource_shape, &rewriter);
+    }
+
+    rewriter.replaceOpWithNewOp<xla_hlo::ConstOp>(op, const_attr);
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -3252,8 +3391,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertConv2DBackpropInputOp, ConvertEinsumOp,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertMaxOp, ConvertMaxPoolOp,
-      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
+      ConvertInfeedDequeueTupleOp, ConvertMaxOp, ConvertAvgPoolOp,
+      ConvertMaxPoolOp, ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
       ConvertOutfeedEnqueueTupleOp, ConvertRangeOp, ConvertSelectV2Op,
       ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
@@ -3261,7 +3400,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp>(op->getContext());
+      ConvertRandomShuffleOp, ConvertVariableShapeOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

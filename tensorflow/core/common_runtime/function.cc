@@ -649,8 +649,9 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   auto device_type = DeviceType(device_->attributes().device_type());
   OpKernelConstruction construction(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
-      &fbody->fdef.signature(), flr, fbody->arg_types, input_memory_types,
-      fbody->ret_types, output_memory_types, graph_def_version_, &s);
+      &fbody->fdef.signature(), flr, device_->resource_manager(),
+      fbody->arg_types, input_memory_types, fbody->ret_types,
+      output_memory_types, graph_def_version_, &s);
   if (s.ok()) {
     *kernel = new CallOp(handle, &construction);
   }

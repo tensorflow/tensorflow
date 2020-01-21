@@ -1922,19 +1922,23 @@ REGISTER_OP("SobolSample")
     .Output("samples: dtype")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       ShapeHandle unused;
-      // inputs must be  scalars
+
+      // inputs must be scalars
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+
       const Tensor* dim_t = c->input_tensor(0);
       const Tensor* num_results_t = c->input_tensor(1);
-      if (dim_t == nullptr || num_results_t == nullptr) {
-        c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-        return Status::OK();
-      }
-      const int32 output_size =
-          dim_t->scalar<int32>()() * num_results_t->scalar<int32>()();
-      c->set_output(0, c->Vector(output_size));
+
+      int32 dim = dim_t == nullptr ? InferenceContext::kUnknownDim
+                                   : dim_t->scalar<int32>()();
+
+      int32 num_results = num_results_t == nullptr
+                              ? InferenceContext::kUnknownDim
+                              : num_results_t->scalar<int32>()();
+
+      c->set_output(0, c->Matrix(num_results, dim));
       return Status::OK();
     });
 

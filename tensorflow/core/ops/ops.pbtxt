@@ -5970,6 +5970,7 @@ op {
   input_arg {
     name: "feature_ids"
     type: DT_INT32
+    number_attr: "num_groups"
   }
   input_arg {
     name: "dimension_ids"
@@ -6029,6 +6030,15 @@ op {
     default_value {
       i: 1
     }
+  }
+  attr {
+    name: "num_groups"
+    type: "int"
+    default_value {
+      i: 1
+    }
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }
@@ -6499,6 +6509,54 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
       }
+    }
+  }
+}
+op {
+  name: "CTCLossV2"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "labels_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "labels_values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sequence_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "loss"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "preprocess_collapse_repeated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "ctc_merge_repeated"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "ignore_longer_outputs_than_inputs"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }

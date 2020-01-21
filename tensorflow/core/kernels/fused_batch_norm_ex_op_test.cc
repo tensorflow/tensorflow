@@ -464,6 +464,7 @@ constexpr bool kWithSideInput = true;  // side_input == true
 // -------------------------------------------------------------------------- //
 // FusedBatchNormEx[is_training=true].
 
+#if defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
 template <typename T>
 using FusedBatchNormExOpTrainingTest =
     FusedBatchNormExOpTestBase<T, float>;  // scale is always float
@@ -491,7 +492,6 @@ REGISTER_TYPED_TEST_SUITE_P(FusedBatchNormExOpTrainingTest,  //
                             TrainingWithReluInNHWCTest,      //
                             TrainingWithSideInputAndReluInNHWCTest);
 
-#if defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
 using FusedBatchNormExTrainingDataTypes = ::testing::Types<Eigen::half>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpTrainingTest,
                                FusedBatchNormExTrainingDataTypes);
@@ -500,6 +500,7 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpTrainingTest,
 // -------------------------------------------------------------------------- //
 // FusedBatchNormEx[is_training=false].
 
+#if defined(GOOGLE_CUDA)
 template <typename T>
 using FusedBatchNormExOpInferenceTest =
     FusedBatchNormExOpTestBase<T, float>;  // scale is always float
@@ -527,7 +528,6 @@ REGISTER_TYPED_TEST_SUITE_P(FusedBatchNormExOpInferenceTest,  //
                             InferenceWithReluInNHWCTest,      //
                             InferenceWithSideInputAndReluInNHWCTest);
 
-#if defined(GOOGLE_CUDA)
 using FusedBatchNormExInferenceDataTypes = ::testing::Types<Eigen::half, float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpInferenceTest,
                                FusedBatchNormExInferenceDataTypes);

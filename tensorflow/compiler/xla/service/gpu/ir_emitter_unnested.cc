@@ -1835,21 +1835,40 @@ namespace {
 
 // Returns true if the fusion contains any instruction that is likely
 // translated to complex LLVM IR, such as loops, and prevent vectorization.
-bool MayPreventVectorization(const HloInstruction& fusion_hlo) {
-  CHECK_EQ(fusion_hlo.opcode(), HloOpcode::kFusion);
-  return absl::c_any_of(
-      fusion_hlo.fused_instructions_computation()->instructions(),
-      [&](const HloInstruction* instr) {
-        switch (instr->opcode()) {
-          case HloOpcode::kReduce:
-          case HloOpcode::kReduceWindow:
-          case HloOpcode::kSort:
-          case HloOpcode::kDot:
-            return true;
-          default:
-            return false;
-        }
-      });
+bool MayPreventVectorization(const HloInstruction& hlo) {
+  if (hlo.opcode() == HloOpcode::kFusion) {
+    return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
+                          [](const HloInstruction* instr) {
+                            switch (instr->opcode()) {
+                              case HloOpcode::kReduce:
+                              case HloOpcode::kReduceWindow:
+                              case HloOpcode::kSort:
+                              case HloOpcode::kDot:
+                              case HloOpcode::kSin:
+                              case HloOpcode::kCos:
+                              case HloOpcode::kPower:
+                              case HloOpcode::kAtan2:
+                                return true;
+                              default:
+                                return false;
+                            }
+                          });
+  } else if (hlo.IsElementwise()) {
+    // Unfused elementwise operations are usually memory bound, unroll them.
+    switch (hlo.opcode()) {
+        // The following elementwise operation implementations contain branches.
+        // LLVM vectorizer doesn't work in that case.
+        // The unrolled code is faster when it isn't vectorized.
+      case HloOpcode::kSin:
+      case HloOpcode::kCos:
+      case HloOpcode::kPower:
+      case HloOpcode::kAtan2:
+        return true;
+      default:
+        return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -1858,9 +1877,7 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
   int unroll_factor = 1;
-  // Unfused elementwise operations are usually memory bound, unroll them.
-  if (hlo.IsElementwise() ||
-      (hlo.opcode() == HloOpcode::kFusion && !MayPreventVectorization(hlo))) {
+  if (!MayPreventVectorization(hlo)) {
     unroll_factor = ComputeMaxUnrollFactor(&hlo);
   }
 
@@ -2925,37 +2942,27 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       reduction_dimensions.is_row_reduction ||
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
                                             reduction_dimensions.dimensions[2]);
-  int64 tile_size_x = 1;
-  int64 num_threads_x = 1;
-  if (reduction_dimensions.is_row_reduction) {
-    num_threads_x = kWarpSize;
-    tile_size_x = reduction_tiling[2] * num_threads_x;
-  } else {
-    // Column reduction without transpose doesn't require communication among
-    // threads processing elements in the same tile. The current implementation
-    // only support the use of one hardware thread block to process one block of
-    // tiles in the KernelMappingScheme. We try to use one thread to compute
-    // the partial results for two tensor elements and to maximize the values of
-    // num_threads_x and tile_size_x to allow a bigger hardware thread block.
-    int64 hw_threads_per_block_limit =
-        ThreadsPerBlockLimit(ir_emitter_context_->device_description());
-    if (!dilated_x) {
-      // Vectorized loads: two elements per thread.
-      tile_size_x = std::min(2 * hw_threads_per_block_limit,
-                             reduction_dimensions.dimensions[2]);
-      num_threads_x = tile_size_x / 2;
-    } else {
-      // One element per thread.
-      tile_size_x = std::min(hw_threads_per_block_limit,
-                             reduction_dimensions.dimensions[2]);
-      num_threads_x = tile_size_x;
-    }
+
+  if (!dilated_x && !reduction_dimensions.is_row_reduction) {
+    // Vectorized loads: a single thread reduces two adjacent columns.
+    reduction_tiling[2] *= 2;
   }
+
+  int64 num_threads_y = 1;
+  int64 num_threads_x = [&] {
+    if (reduction_dimensions.is_row_reduction) {
+      return kWarpSize;
+    }
+    return std::min(
+        ThreadsPerBlockLimit(ir_emitter_context_->device_description()),
+        CeilOfRatio(reduction_dimensions.dimensions[2], reduction_tiling[2]));
+  }();
 
   KernelMappingScheme mapping_scheme(
       reduction_dimensions.dimensions,
-      /*tile_sizes=*/{reduction_tiling[0], reduction_tiling[1], tile_size_x},
-      /*num_threads_y=*/1, num_threads_x, dilated_x);
+      {reduction_tiling[0], reduction_tiling[1] * num_threads_y,
+       reduction_tiling[2] * num_threads_x},
+      num_threads_y, num_threads_x, dilated_x);
   return ReductionCodegenInfo(mapping_scheme,
                               reduction_dimensions.is_row_reduction);
 }

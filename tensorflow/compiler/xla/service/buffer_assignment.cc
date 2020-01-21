@@ -1375,8 +1375,8 @@ Status BufferAssigner::AssignPresetBuffers(
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
     auto preset_allocations_iter = preset_allocations.find(value.color());
     CHECK(preset_allocations_iter != preset_allocations.end())
-        << "No preset value allocation for color " << value.color()
-        << " found.";
+        << "No preset value allocation for color " << value.color() << " for "
+        << value.ToShortString() << " found.";
     preset_allocations_iter->second->AddAssignment(value, chunk.offset,
                                                    chunk.size);
 

@@ -75,6 +75,8 @@ enabled on CPU by additionally using the flag `--tf_xla_cpu_global_jit`:
 $ TF_XLA_FLAGS="--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit" path/to/your/program
 ```
 
+Auto-clustering support on a CPU and on multi-GPU environments is experimental.
+
 For a detailed usage example, see the
 [auto-clustering tutorial colab](./tutorials/autoclustering_xla.ipynb).
 
@@ -93,12 +95,12 @@ standard approach for [improving
 performance](https://www.tensorflow.org/tutorials/customization/performance) of
 TF2 programs. You can enable compilation with XLA by setting the
 `experimental_compile` argument of `tf.function` to `True`. See the [tutorial
-colab](./tutorials/experimental_compile.ipynb) for usage examples.
+colab](./tutorials/compile.ipynb) for usage examples.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 
 You can also use a standalone [`tfcompile`](./tfcompile) tool,
-which converts TensorFlow graph into executable code (for CPU only).
+which converts TensorFlow graph into executable code (for x86-64 CPU only).
 
 ## Inspect compiled programs
 
@@ -133,13 +135,7 @@ the TensorFlow graph with:
 $ TF_DUMP_GRAPH_PREFIX=/tmp/generated TF_XLA_FLAGS="--tf_xla_clustering_debug"
 ```
 
-## Supported platforms
-
-Auto-clustering is supported on NVIDIA GPUs, and ahead-of-time compilation is
-supported on x86-64 CPUs. Auto-clustering support on multi-GPU environments and
-on a CPU is experimental.
-
-## Generating great bug reports
+## Reproducible bug reports
 
 A bug report is much easier to reproduce if it includes dumps for the generated
 XLA programs and the used auto-clustering embedding.

@@ -744,6 +744,19 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %transpose.2 = s32[2,1,4,3] transpose(s32[1,2,3,4] %Arg_0.1), dimensions={1,0,3,2}
 }
 
+// CHECK-LABEL:  func @test_triangular_solve
+// CHECK-SAME:  ([[ARG_A:%.*]]: tensor<4x4xf32>, [[ARG_B:%.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
+%test_triangular_solve (Arg_0.1: f32[4,4], Arg_1.2: f32[4,3]) -> f32[4,3] {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %Arg_1.2 = f32[4,3] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.triangular_solve"([[ARG_A]], [[ARG_B]])
+  // CHECK-SAME:  left_side = true
+  // CHECK-SAME:  lower = true
+  // CHECK-SAME:  transpose_a = "NO_TRANSPOSE"
+  // CHECK-SAME:  unit_diagonal = true
+  ROOT %triangular-solve.3 = f32[4,3] triangular-solve(f32[4,4] %Arg_0.1, f32[4,3] %Arg_1.2), left_side=true, lower=true, transpose_a=NO_TRANSPOSE, unit_diagonal=true
+}
+
 // CHECK-LABEL:  func @test_tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>> {
 %test_tuple(Arg_0.1: s32[1], Arg_1.2: f32[1, 2]) -> (s32[1], f32[1,2]) {
   %Arg_0.1 = s32[1] parameter(0)

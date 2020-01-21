@@ -64,6 +64,12 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_num_replicas(
   return *this;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_num_partitions(
+    int num_partitions) {
+  num_partitions_ = num_partitions;
+  return *this;
+}
+
 string ExecutableBuildOptions::ToString() const {
   string result_layout = "nullopt";
   if (result_layout_set_) {

@@ -366,7 +366,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // so we have to update the bias.
       if (llvm::isa<SubOp>(binary_op)) cst_value.changeSign();
 
-      auto bias_and_slice = GetBiasDimAndSliceSize(filter_type.getShape());
+      auto bias_and_slice =
+          GetBiasDimAndSliceSize(filter_type.getShape(), fc_op);
       int64_t bias_size = bias_and_slice.first;
       int64_t slice_size = bias_and_slice.second;
       ShapedType new_bias_type =
@@ -438,10 +439,10 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   // has tailing channel dimension. This function is to provide a utility to
   // create the above information from the op property.
   static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
-      ArrayRef<int64_t> filter_shape) {
+      ArrayRef<int64_t> filter_shape, AffineOpType op) {
     // Channel dimension index is specified as op property
     auto channel_index_iter = filter_shape.begin();
-    std::advance(channel_index_iter, AffineOpType::GetChannelDimIndex());
+    std::advance(channel_index_iter, op.GetChannelDimIndex());
     // The slide size is the size of the data in higher dimensions.
     int64_t slice_size =
         std::accumulate(std::next(channel_index_iter), filter_shape.end(), 1,

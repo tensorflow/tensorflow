@@ -208,8 +208,9 @@ class TransformerTest(test.TestCase):
     class TestTransformer(transformer.Base):
 
       # Extract all string constants from the block.
-      def visit_Str(self, node):
-        self.set_local('string', self.get_local('string', default='') + node.s)
+      def visit_Constant(self, node):
+        self.set_local(
+            'string', self.get_local('string', default='') + str(node.value))
         return self.generic_visit(node)
 
       def _annotate_result(self, node):
@@ -236,7 +237,7 @@ class TransformerTest(test.TestCase):
           return 'b'
         else:
           _ = 'c'
-          while True:
+          while 4:
             raise '1'
       return 'nor this'
 
@@ -247,9 +248,9 @@ class TransformerTest(test.TestCase):
     while_node = for_node.body[1].orelse[1]
 
     self.assertFalse(anno.hasanno(for_node, 'string'))
-    self.assertEqual('abc', anno.getanno(for_node, 'test'))
+    self.assertEqual('3a2bc', anno.getanno(for_node, 'test'))
     self.assertFalse(anno.hasanno(while_node, 'string'))
-    self.assertEqual('1', anno.getanno(while_node, 'test'))
+    self.assertEqual('41', anno.getanno(while_node, 'test'))
 
   def test_local_scope_info_stack_checks_integrity(self):
 
@@ -289,7 +290,10 @@ class TransformerTest(test.TestCase):
 
       def _process_body_item(self, node):
         if isinstance(node, gast.Assign) and (node.value.id == 'y'):
-          if_node = gast.If(gast.Name('x', gast.Load(), None), [node], [])
+          if_node = gast.If(
+              gast.Name(
+                  'x', ctx=gast.Load(), annotation=None, type_comment=None),
+              [node], [])
           return if_node, if_node.body
         return node, None
 

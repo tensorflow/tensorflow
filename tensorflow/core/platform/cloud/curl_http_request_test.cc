@@ -443,6 +443,48 @@ TEST(CurlHttpRequestTest, GetRequest_HttpCode0) {
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
 
+TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
+  FakeLibCurl libcurl("get response", 0);
+  libcurl.curl_easy_perform_result_ = CURLE_COULDNT_RESOLVE_HOST;
+  libcurl.curl_easy_perform_error_message_ =
+      "Could not resolve host 'metadata'";
+  CurlHttpRequest http_request(&libcurl);
+
+  std::vector<char> scratch;
+  scratch.insert(scratch.end(), kTestContent.begin(), kTestContent.end());
+
+  http_request.SetUri("http://metadata");
+  const auto& status = http_request.Send();
+  EXPECT_EQ(error::FAILED_PRECONDITION, status.code());
+  EXPECT_EQ(
+      "Error executing an HTTP request: libcurl code 6 meaning "
+      "'Couldn't resolve host name', error details: Could not resolve host "
+      "'metadata'",
+      status.error_message());
+  EXPECT_EQ(0, http_request.GetResponseCode());
+}
+
+TEST(CurlHttpRequestTest, GetRequest_SslBadCertfile) {
+  FakeLibCurl libcurl("get response", 0);
+  libcurl.curl_easy_perform_result_ = CURLE_SSL_CACERT_BADFILE;
+  libcurl.curl_easy_perform_error_message_ =
+      "error setting certificate verify locations:";
+  CurlHttpRequest http_request(&libcurl);
+
+  std::vector<char> scratch;
+  scratch.insert(scratch.end(), kTestContent.begin(), kTestContent.end());
+
+  http_request.SetUri("http://metadata");
+  const auto& status = http_request.Send();
+  EXPECT_EQ(error::FAILED_PRECONDITION, status.code());
+  EXPECT_EQ(
+      "Error executing an HTTP request: libcurl code 77 meaning "
+      "'Problem with the SSL CA cert (path? access rights?)', error details: "
+      "error setting certificate verify locations:",
+      status.error_message());
+  EXPECT_EQ(0, http_request.GetResponseCode());
+}
+
 TEST(CurlHttpRequestTest, ResponseHeaders) {
   FakeLibCurl libcurl(
       "get response", 200,

@@ -173,6 +173,18 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return result;
 }
 
+// Converts StringRef to xla Transpose enum.
+static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
+    llvm::StringRef transpose_str) {
+  xla::TriangularSolveOptions::Transpose transpose_enum;
+  // Illegal tanspose string would be caught by the verifier, so
+  // 'Transpose_Parse' call below should never return false.
+  if (!xla::TriangularSolveOptions::Transpose_Parse(transpose_str,
+                                                    &transpose_enum))
+    return xla::TriangularSolveOptions::NO_TRANSPOSE;
+  return transpose_enum;
+}
+
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
   static std::vector<int64> Convert_##attribute(              \
       llvm::Optional<mlir::DenseIntElementsAttr> attribute) { \
@@ -737,6 +749,12 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
                             op.dimension().getSExtValue(), op.is_stable());
+  return success();
+}
+
+LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::Trace(op.tag(), value_map[op.operand()]);
   return success();
 }
 
