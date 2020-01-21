@@ -477,7 +477,7 @@ tensorflow::Status Export(
   for (const string& input_array : model.GetInvalidInputArrays()) {
     if (model.HasArray(input_array)) {
       return tensorflow::errors::InvalidArgument(absl::StrCat(
-          "Placeholder ", input_array, " should be specied by input_arrays."));
+          "Placeholder ", input_array, " should be specified by input_arrays."));
     }
   }
 
