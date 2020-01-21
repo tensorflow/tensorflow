@@ -3308,10 +3308,12 @@ def log_sigmoid(x, name=None):
   Usage Example:
    >>> tensor1 = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
    >>> tensor2 = [2.0, 5.7]
-   >>> print(tf.math.log_sigmoid(tensor1, name='log_sigmoid_tensor1'))
-   tf.Tensor([-0.6931472  -0.31326166 -0.12692805 -0.04858733 -0.01814996 -0.00671535], shape=(6,), dtype=float32)
-   >>> print(tf.math.log_sigmoid(tensor2, name='log_sigmoid_tensor2'))
-   tf.Tensor([-0.12692805 -0.00334038], shape=(2,), dtype=float32)
+   >>> tf.math.log_sigmoid(tensor1, name='log_sigmoid_tensor1')
+   <tf.Tensor: shape=(6,), dtype=float32, numpy=
+     array([-0.6931472 , -0.31326166, -0.12692805, -0.04858733, -0.01814996,
+     -0.00671535], dtype=float32)>
+   >>> tf.math.log_sigmoid(tensor2, name='log_sigmoid_tensor2')
+   <tf.Tensor: shape=(2,), dtype=float32, numpy=array([-0.12692805, -0.00334038], dtype=float32)>
 
   Args:
     x: A Tensor with type `float32` or `float64`.
