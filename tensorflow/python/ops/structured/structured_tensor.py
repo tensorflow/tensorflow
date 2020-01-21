@@ -108,7 +108,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       A `StructuredTensor`.
     """
     shape = tensor_shape.as_shape(shape)
-    if shape.rank is None:
+    rank = shape.ndims
+    if rank is None:
       raise ValueError("StructuredTensor's shape must have known rank.")
     if not isinstance(fields, dict):
       raise TypeError('fields must be a dictionary, got %s' %
@@ -133,10 +134,6 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         self._fields[key] = value
 
     # Check the static TensorShape for this StructuredTensor.
-    shape = tensor_shape.as_shape(shape)
-    rank = shape.ndims
-    if rank is None:
-      raise ValueError("StructuredTensor's shape must have known rank.")
     self._static_shape = shape
     if rank > 0:
       for value in self._fields.values():
@@ -402,8 +399,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       return self._fields[key[rank]].__getitem__(key[:rank] + key[rank + 1:])
 
   def __repr__(self):
-    return '<StructuredTensor(shape=%s, fields=%r)' % (self._static_shape,
-                                                       self._fields)
+    return '<StructuredTensor(shape=%s, fields=%r)>' % (self._static_shape,
+                                                        self._fields)
 
   #=============================================================================
   # Conversion
