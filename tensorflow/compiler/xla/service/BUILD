@@ -945,7 +945,7 @@ cc_library(
     deps = select(
         {
             ":with_mlir_gpu_support": [
-                ":mlir_gpu_plugin",
+                ":gpu_plugin_mlir",
             ],
             "//conditions:default": [
                 ":gpu_plugin_no_mlir",
@@ -971,7 +971,7 @@ cc_library(
 )
 
 cc_library(
-    name = "mlir_gpu_plugin",
+    name = "gpu_plugin_mlir",
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",

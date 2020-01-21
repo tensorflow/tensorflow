@@ -87,19 +87,12 @@ tf_cc_binary(
     ],
 )
 
+# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "replay_computation_gpu",
     deps = [
         ":replay_computation_library",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-    ],
-)
-
-tf_cc_binary(
-    name = "replay_computation_mlir_gpu",
-    deps = [
-        ":replay_computation_library",
-        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
     ],
 )
 
@@ -325,6 +318,7 @@ cc_library(
     ],
 )
 
+# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "run_hlo_module",
     testonly = True,
@@ -335,27 +329,6 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:test",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-# Same as run_hlo_module, but supports the MLIR GPU backend instead of the XLA
-# GPU backend.
-tf_cc_binary(
-    name = "run_hlo_module_mlir_gpu",
-    testonly = True,
-    srcs = ["run_hlo_module_main.cc"],
-    deps = [
-        ":run_hlo_module_lib",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:platform_port",
