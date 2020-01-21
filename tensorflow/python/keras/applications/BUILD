@@ -34,7 +34,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers_base",
+        "//tensorflow/python/keras/layers:layers_base",
     ],
 )
 

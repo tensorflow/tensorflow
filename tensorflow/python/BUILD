@@ -6818,7 +6818,7 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
