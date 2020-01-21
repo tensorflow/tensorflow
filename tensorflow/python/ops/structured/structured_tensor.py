@@ -402,10 +402,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       return self._fields[key[rank]].__getitem__(key[:rank] + key[rank + 1:])
 
   def __repr__(self):
-    if self._is_eager() and False:
-      return '<StructuredTensor %s>' % self.to_pyval()
-    else:
-      return 'StructuredTensor(%s, %r)' % (self._static_shape, self._fields)
+    return '<StructuredTensor(shape=%s, fields=%r)' % (self._static_shape,
+                                                       self._fields)
 
   #=============================================================================
   # Conversion
