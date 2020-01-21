@@ -136,17 +136,6 @@ namespace conv {
         region_params.rows = output->dims->data[1];
         region_params.cols = output->dims->data[2];
 
-        std::cout << "Prepare X_height=" << input->dims->data[1] << std::endl;
-        std::cout << "Prepare X_width=" << input->dims->data[2] << std::endl;
-        std::cout << "Prepare K_h=" << user_data->unpadded_shape[1] << std::endl;
-        std::cout << "Prepare K_w=" << user_data->unpadded_shape[2] << std::endl;
-        std::cout << "Prepare C_in=" << input->dims->data[3] << std::endl;
-        std::cout << "Prepare C_out=" << user_data->unpadded_shape[0] << std::endl;
-        std::cout << "Prepare padding_mode=" << user_data->padding_mode << std::endl;
-        std::cout << "Prepare zero_point=" << input->params.zero_point << std::endl;
-        std::cout << "Prepare region_rows=" << output->dims->data[1] << std::endl;
-        std::cout << "Prepare region_cols=" << output->dims->data[2] << std::endl;
-
         // NOTE: There is a comment in common.h about TfLiteQuantization quantization being added to 
         //         TfLiteTensor to replace TfLiteQuantizationParams params
         conv2d_shallowin_deepout_init(
@@ -174,7 +163,6 @@ namespace conv {
 
         for (unsigned i=0; i < block_count; i++)
         {
-            std::cout << "Eval block=" << i << std::endl;
             conv2d_shallowin_deepout_block(
                 output->data.int8, // Y
                 kernel_params,
@@ -249,17 +237,6 @@ namespace conv {
         region_params.rows = output->dims->data[1];
         region_params.cols = output->dims->data[2];
 
-        std::cout << "Prepare X_height=" << input->dims->data[1] << std::endl;
-        std::cout << "Prepare X_width=" << input->dims->data[2] << std::endl;
-        std::cout << "Prepare K_h=" << weights->dims->data[1] << std::endl;
-        std::cout << "Prepare K_w=" << weights->dims->data[2] << std::endl;
-        std::cout << "Prepare C_in=" << weights->dims->data[3] * weights->dims->data[5] << std::endl;
-        std::cout << "Prepare C_out=" << weights->dims->data[0] * weights->dims->data[4] << std::endl;
-        std::cout << "Prepare padding_mode=" << user_data->padding_mode << std::endl;
-        std::cout << "Prepare zero_point=" << input->params.zero_point << std::endl;
-        std::cout << "Prepare region_rows=" << output->dims->data[1] << std::endl;
-        std::cout << "Prepare region_cols=" << output->dims->data[2] << std::endl;
-
         // NOTE: There is a comment in common.h about TfLiteQuantization quantization being added to 
         //         TfLiteTensor to replace TfLiteQuantizationParams params
         conv2d_deepin_deepout_init(
@@ -286,7 +263,6 @@ namespace conv {
 
         for (unsigned i=0; i < block_count; i++)
         {
-            std::cout << "Eval block=" << i << std::endl;
             conv2d_deepin_deepout_block(
                 output->data.int8, // Y
                 kernel_params,
