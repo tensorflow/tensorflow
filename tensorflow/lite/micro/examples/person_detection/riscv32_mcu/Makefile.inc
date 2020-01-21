@@ -10,8 +10,10 @@ ifeq ($(TARGET), riscv32_mcu)
     $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/env/entry.S \
     $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/env/freedom-e300-hifive1/init.c
 
-  person_detection_TEST_HDRS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-  person_detection_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
+  person_detection_TEST_HDRS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS) \
+    tensorflow/lite/micro/arduino/abi.cc
+  person_detection_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS) \
+    tensorflow/lite/micro/arduino/abi.cc
 
   LIBWRAP_SYMS := malloc free \
                   open lseek read write fstat stat close link unlink \

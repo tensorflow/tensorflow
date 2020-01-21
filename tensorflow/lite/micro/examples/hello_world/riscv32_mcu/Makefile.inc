@@ -11,7 +11,8 @@ ifeq ($(TARGET), riscv32_mcu)
     $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/env/freedom-e300-hifive1/init.c
 
   HELLO_WORLD_TEST_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-  HELLO_WORLD_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
+  HELLO_WORLD_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS) \
+    tensorflow/lite/micro/arduino/abi.cc
 
   LIBWRAP_SYMS := malloc free \
                   open lseek read write fstat stat close link unlink \
