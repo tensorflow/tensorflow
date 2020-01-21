@@ -121,7 +121,7 @@ class UnaryExplicitBatchDimTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
-    conversion_params = super(ExplicitBatchDimTest,
+    conversion_params = super(UnaryExplicitBatchDimTest,
                               self).GetConversionParams(run_params)
     rewrite_config_with_trt = self.GetTrtRewriterConfig(
         run_params=run_params,
