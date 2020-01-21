@@ -154,12 +154,16 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
 
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
+  auto expected_ir = is_built_with_rocm_ ? R"(
+; CHECK: __ocml_sin_f32
+; CHECK-NOT: load float
+)"                                       : R"(
 ; CHECK: load float
 ; CHECK-NOT: load float
 }
-      )",
+)";
+
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
 }
 
@@ -179,12 +183,17 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
 
-  CompileAndVerifyIr(std::move(hlo_module),
+  auto expected_ir = is_built_with_rocm_ ? R"(
+; CHECK: __ocml_cos_f32
+; CHECK-NOT: load float
+)"                                       : R"(
                      R"(
 ; CHECK: load float
 ; CHECK-NOT: load float
 }
-      )",
+)";
+
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
 }
 
