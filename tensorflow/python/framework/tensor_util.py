@@ -985,7 +985,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   Usage example:  
   >>> tf.is_tensor(constant([[1,2,3],[4,5,6],[7,8,9]])) 
   True
-  >>> tf.is_tensor("Hello World"))
+  >>> tf.is_tensor("Hello World")
   False
     
   Args:
