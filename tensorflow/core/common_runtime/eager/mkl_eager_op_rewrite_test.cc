@@ -47,7 +47,8 @@ class EagerOpRewriteTest {
     EagerExecutor executor_(false);
     std::unique_ptr<tensorflow::EagerOperation> op(
         new tensorflow::EagerOperation(eager_ctx.get()));
-    op.get()->Reset(op_name.c_str(), nullptr, false, &executor_);
+    EXPECT_EQ(Status::OK(),
+              op.get()->Reset(op_name.c_str(), nullptr, false, &executor_));
     return op;
   }
 

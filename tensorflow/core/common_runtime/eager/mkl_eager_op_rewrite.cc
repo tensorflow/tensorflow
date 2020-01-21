@@ -114,7 +114,8 @@ Status MklEagerOpRewrite::SetupNewOp(
     std::unique_ptr<EagerOperation>* new_mkl_op) {
   bool is_remote = false;
   new_mkl_op->reset(new tensorflow::EagerOperation(&orig_op->EagerContext()));
-  new_mkl_op->get()->Reset(mkl_op_name.c_str(), nullptr, is_remote, nullptr);
+  TF_RETURN_IF_ERROR(new_mkl_op->get()->Reset(mkl_op_name.c_str(),
+                                              nullptr, is_remote, nullptr));
 
   int num_inputs = orig_op->Inputs().size();
   // Add all inputs to the new op.
