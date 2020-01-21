@@ -128,8 +128,12 @@ class ExtractImagePatches(test.TestCase):
   def testComplexDataTypes(self):
     """Test for complex data types"""
     for dtype in [np.complex64, np.complex128]:
-      image = np.reshape(range(120), [2, 3, 4, 5]).astype(dtype)
-      patches = np.reshape(range(120), [2, 3, 4, 5]).astype(dtype)
+      image = (
+          np.reshape(range(120), [2, 3, 4, 5]).astype(dtype) +
+          np.reshape(range(120, 240), [2, 3, 4, 5]).astype(dtype) * 1j)
+      patches = (
+          np.reshape(range(120), [2, 3, 4, 5]).astype(dtype) +
+          np.reshape(range(120, 240), [2, 3, 4, 5]).astype(dtype) * 1j)
       for padding in ["VALID", "SAME"]:
         self._VerifyValues(
             image,
