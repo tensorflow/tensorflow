@@ -983,7 +983,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   can be converted to a tensor using `ops.convert_to_tensor(x)`.
   
   Usage example:  
-  >>> tf.is_tensor(constant([[1,2,3],[4,5,6],[7,8,9]])) 
+  >>> tf.is_tensor(tf.constant([[1,2,3],[4,5,6],[7,8,9]])) 
   True
   >>> tf.is_tensor("Hello World")
   False
