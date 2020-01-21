@@ -2850,8 +2850,7 @@ class SavedModelV1Importer {
   StatusOr<mlir::OwningModuleRef> ConvertSignatures();
   StatusOr<mlir::OwningModuleRef> ConvertSignature(
       const GraphImportConfig& specs, llvm::StringRef func_name,
-      const SignatureDef& signature_def, const GraphDef& sub_graph_def,
-      const GraphDebugInfo& debug_info,
+      const GraphDef& sub_graph_def, const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def);
 
   // Create GlobalTensorOp for each variable and move each VarHandle op to
@@ -2900,8 +2899,8 @@ StatusOr<mlir::OwningModuleRef> SavedModelV1Importer::ConvertSignatures() {
         graphdef, &sub_graph_def,
         /* terminal_nodes = */ {specs.outputs.begin(), specs.outputs.end()}));
 
-    auto status_or_sub_module = ConvertSignature(
-        specs, func_name, signature_def, sub_graph_def, debug_info, flib_def);
+    auto status_or_sub_module =
+        ConvertSignature(specs, func_name, sub_graph_def, debug_info, flib_def);
     if (!status_or_sub_module.ok()) {
       LOG(ERROR) << "Failed to convert SignatureDef for " << func_name << ": "
                  << status_or_sub_module.status();
@@ -2926,8 +2925,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelV1Importer::ConvertSignatures() {
 
 StatusOr<mlir::OwningModuleRef> SavedModelV1Importer::ConvertSignature(
     const GraphImportConfig& specs, llvm::StringRef func_name,
-    const SignatureDef& signature_def, const GraphDef& sub_graph_def,
-    const GraphDebugInfo& debug_info,
+    const GraphDef& sub_graph_def, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
   // Convert this sub graphdef to sub graph
   GraphConstructorOptions options;
@@ -2987,27 +2985,18 @@ void SavedModelV1Importer::LiftVariable(mlir::TF::VarHandleOp op) {
   auto new_func_type =
       builder.getFunctionType(new_input_types, func_type.getResults());
 
-  auto new_func_op = builder.create<mlir::FuncOp>(
-      func_op.getLoc(), func_op.getName(), new_func_type,
-      llvm::ArrayRef<mlir::NamedAttribute>());
+  func_op.setType(new_func_type);
 
   // Bind the argument to the corresponding global tensor op.
-  new_func_op.setArgAttr(new_func_op.getNumArguments() - 1,
-                         "tf_saved_model.bound_input",
-                         builder.getSymbolRefAttr(op.shared_name()));
+  func_op.setArgAttr(func_op.getNumArguments() - 1,
+                     "tf_saved_model.bound_input",
+                     builder.getSymbolRefAttr(op.shared_name()));
 
-  // Replace the function body and update its signature.
-  auto& new_region = new_func_op.getBody();
-  new_region.getBlocks().splice(new_region.end(),
-                                func_op.getBody().getBlocks());
+  // Add the newly added function param to entry block's arguments.
+  auto new_value = func_op.front().addArgument(op.resource().getType());
 
-  func_op.getOperation()->erase();
-
-  auto& new_block = new_region.front();
-  auto new_value = new_block.addArgument(op.resource().getType());
-
+  // Remove the VarHandleOp.
   op.getOperation()->replaceAllUsesWith(llvm::ArrayRef<mlir::Value>(new_value));
-
   op.getOperation()->erase();
 }
 

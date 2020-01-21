@@ -1,4 +1,8 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -32,7 +36,7 @@ cc_test(
         "-lEGL",
         "-lGLESv3",
     ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "local",
         "nobuilder",
         "notap",
@@ -69,7 +73,7 @@ cc_library(
 cc_test(
     name = "add_test",
     srcs = ["add_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -98,7 +102,7 @@ cc_library(
 cc_test(
     name = "concat_test",
     srcs = ["concat_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -132,7 +136,7 @@ cc_library(
 cc_test(
     name = "conv_test",
     srcs = ["conv_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -172,7 +176,7 @@ cc_library(
 cc_test(
     name = "depthwise_conv_test",
     srcs = ["depthwise_conv_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -200,7 +204,7 @@ cc_library(
 cc_test(
     name = "elementwise_test",
     srcs = ["elementwise_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -230,7 +234,7 @@ cc_library(
 cc_test(
     name = "fully_connected_test",
     srcs = ["fully_connected_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -258,7 +262,7 @@ cc_library(
 cc_test(
     name = "lstm_test",
     srcs = ["lstm_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -287,7 +291,7 @@ cc_library(
 cc_test(
     name = "max_unpooling_test",
     srcs = ["max_unpooling_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -316,7 +320,7 @@ cc_library(
 cc_test(
     name = "mul_test",
     srcs = ["mul_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -345,7 +349,7 @@ cc_library(
 cc_test(
     name = "pad_test",
     srcs = ["pad_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -374,7 +378,7 @@ cc_library(
 cc_test(
     name = "pooling_test",
     srcs = ["pooling_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -405,7 +409,7 @@ cc_library(
 cc_test(
     name = "prelu_test",
     srcs = ["prelu_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -434,7 +438,7 @@ cc_library(
 cc_test(
     name = "relu_test",
     srcs = ["relu_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -462,7 +466,7 @@ cc_library(
 cc_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -491,7 +495,7 @@ cc_library(
 cc_test(
     name = "slice_test",
     srcs = ["slice_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -522,7 +526,7 @@ cc_library(
 cc_test(
     name = "softmax_test",
     srcs = ["softmax_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -583,7 +587,7 @@ cc_library(
 cc_test(
     name = "transpose_conv_test",
     srcs = ["transpose_conv_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -612,7 +616,7 @@ cc_library(
 cc_test(
     name = "upsampling_bilinear_test",
     srcs = ["upsampling_bilinear_test.cc"],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],

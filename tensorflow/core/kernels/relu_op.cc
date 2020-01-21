@@ -144,6 +144,10 @@ namespace functor {
   extern template struct SeluGrad<GPUDevice, T>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
+=======
+// TODO(rocm) : qint8 datatype currently not supported on the ROCm platform
+>>>>>>> upstream/master
 template <>
 void Relu<GPUDevice, qint8>::operator()(
     const GPUDevice& d, typename TTypes<qint8>::ConstTensor features,
@@ -190,6 +194,10 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
+<<<<<<< HEAD
+=======
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+>>>>>>> upstream/master
 template <typename Device>
 class ReluOp<Device, qint8>
     : public UnaryElementWiseOp<qint8, ReluOp<Device, qint8>> {

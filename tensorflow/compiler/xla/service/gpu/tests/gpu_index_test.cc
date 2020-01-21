@@ -108,6 +108,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
 
   // In the IR generated for AMDGPUs, we do not seem to have the
   // the addrspace(1) attribute for the lines being checked by the following
+<<<<<<< HEAD
   // patterns still need to investigate why that is the case, and whether or not
   // it is ok
   auto expected_ir = is_built_with_rocm_ ? R"(
@@ -117,12 +118,23 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
 ; CHECK: getelementptr inbounds float, float* %[[bitcast]], i64 %[[idx1]]
       )"
                                          : R"(
+=======
+  // patterns.
+  // need to investigate why that is the case, and whether or not it is ok
+  CompileAndVerifyIr(std::move(module),
+                     R"(
+>>>>>>> upstream/master
 ; CHECK: %[[urem1:.*]] = urem i{{[0-9]*}} %[[linear_index:.*]], 14
-; CHECK: %[[bitcast:.*]] = bitcast i8 addrspace(1)* %[[alloc:.*]] to float addrspace(1)*
+; CHECK: %[[bitcast:.*]] = bitcast i8{{( addrspace\(1\))?}}* %[[alloc:.*]] to float{{( addrspace\(1\))?}}*
 ; CHECK: %[[idx1:.*]] = zext i{{[0-9]*}} %[[urem1]] to i64
+<<<<<<< HEAD
 ; CHECK: getelementptr inbounds float, float addrspace(1)* %[[bitcast]], i64 %[[idx1]]
       )";
   CompileAndVerifyIr(std::move(module), expected_ir,
+=======
+; CHECK: getelementptr inbounds float, float{{( addrspace\(1\))?}}* %[[bitcast]], i64 %[[idx1]]
+      )",
+>>>>>>> upstream/master
                      /*match_optimized_ir=*/true);
 }
 

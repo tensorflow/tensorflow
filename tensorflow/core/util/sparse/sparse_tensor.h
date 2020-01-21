@@ -201,6 +201,8 @@ class SparseTensor {
     return vec;
   }
 
+  bool IndicesValid32BitFastPath() const;
+
   template <bool standard_order>
   Status IndicesValidHelper() const;
 

@@ -25,8 +25,30 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
-    const OpStats& op_stats, const HardwareType& hardware_type);
+// Common performance bottleneck.
+struct CommonBottleneck {
+  // Indicates if input is a bottleneck. Possible values:  "host", "device",
+  // "both", or "unknown"
+  string input_classification;
+  // A human-readable description of the input bottleneck.
+  string input_statement;
+};
+
+// Generic hardware bottleneck.
+struct GenericBottleneck {
+  // Bottleneck that exists on all hardware.
+  CommonBottleneck common;
+  // Indicates if kernel launching is a bottleneck. Possible values: "no",
+  // "moderate", "high".
+  string kernel_launch_classification;
+  // A human-readable description of the kernel launching overhead.
+  string kernel_launch_statement;
+  // Indicates if all other is a bottleneck. Possible values: "no", "moderate",
+  // "high".
+  string all_other_classification;
+  // A human-readable description of the all other overhead.
+  string all_other_statement;
+};
 
 // Computes the summary of step time in milliseconds.
 StepSummary ComputeStepTimeSummaryInMs(
@@ -37,6 +59,17 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
                         InputPipelineAnalysisResult* result);
 
 InputPipelineAnalysisRecommendation GenerateRecommendation();
+
+// Returns the performance bottleneck of the program executed.
+GenericBottleneck GenericOverallBottleneck(
+    const InputPipelineAnalysisResult& result);
+
+InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
+    const OpStats& op_stats, const HardwareType& hardware_type);
+
+void InfeedAnalysis(HardwareType hardware_type, double infeed_percent,
+                    int* observation_index, string* input_classification,
+                    string* input_statement);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -139,20 +139,25 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate() {
 }
 
 Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
-    const std::string& library_directory_path) {
-#if defined(__ANDROID__)
-  const TfLiteHexagonDelegateOptions options = {0, 0, false, false};
+    const std::string& library_directory_path, bool profiling) {
+#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+  if (library_directory_path.empty()) {
+    TfLiteHexagonInit();
+  } else {
+    TfLiteHexagonInitWithPath(library_directory_path.c_str());
+  }
+
+  const TfLiteHexagonDelegateOptions options = {
+      /*debug_level=*/0, /*powersave_level=*/0, profiling,
+      /*print_graph_debug=*/false};
   TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(&options);
-  if (delegate) {
-    if (library_directory_path.empty()) {
-      TfLiteHexagonInit();
-    } else {
-      TfLiteHexagonInitWithPath(library_directory_path.c_str());
-    }
+  if (!delegate) {
+    TfLiteHexagonTearDown();
+    return CreateNullDelegate();
   }
   return Interpreter::TfLiteDelegatePtr(delegate, [](TfLiteDelegate* delegate) {
-    TfLiteHexagonTearDown();
     TfLiteHexagonDelegateDelete(delegate);
+    TfLiteHexagonTearDown();
   });
 #else
   return CreateNullDelegate();

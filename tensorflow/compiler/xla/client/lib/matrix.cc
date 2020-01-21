@@ -125,7 +125,7 @@ XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
 
     // Calculate the indices of diagonal part with offset k.
     const int64 diag_len =
-        std::max(std::min(m + std::min(k, 0), n - std::max(k, 0)), 0LL);
+        std::max(std::min(m + std::min(k, 0), n - std::max(k, 0)), int64{0});
     XlaOp diag_base_indices = BroadcastInDim(Iota(builder, S32, diag_len),
                                              {diag_len, num_index_dims}, {0});
     XlaOp diag_offset =

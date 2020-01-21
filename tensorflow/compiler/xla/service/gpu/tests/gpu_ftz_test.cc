@@ -82,7 +82,7 @@ class GpuFtzDisabledTest : public GpuFtzTest {
 // "VerifyPtx" part, it merely compiles the executable
 //
 TEST_F(GpuFtzEnabledTest, MultiplyFtz) {
-  CompileAndVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
+  CompileAndOptionallyVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
     CHECK-NOT: mul.rn.f32
     CHECK: mul.rn.ftz.f32
     CHECK-NOT: mul.rn.f32
@@ -94,7 +94,7 @@ TEST_F(GpuFtzEnabledTest, MultiplyFtz) {
 // "VerifyPtx" part, it merely compiles the executable
 //
 TEST_F(GpuFtzDisabledTest, MultiplyFtz) {
-  CompileAndVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
+  CompileAndOptionallyVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
     CHECK-NOT: mul.rn.ftz.f32
     CHECK: mul.rn.f32
     CHECK-NOT: mul.rn.ftz.f32
@@ -112,7 +112,7 @@ TEST_F(GpuFtzDisabledTest, MultiplyFtz) {
 // "VerifyPtx" part, it merely compiles the executable
 //
 TEST_F(GpuFtzEnabledTest, ExpFtz) {
-  CompileAndVerifyPtx(CreateUnaryOpModule(HloOpcode::kExp), R"(
+  CompileAndOptionallyVerifyPtx(CreateUnaryOpModule(HloOpcode::kExp), R"(
     CHECK-NOT: ex2.approx.f32
     CHECK:     ex2.approx.ftz.f32
     CHECK-NOT: ex2.approx.f32
@@ -128,7 +128,7 @@ TEST_F(GpuFtzEnabledTest, ExpFtz) {
 // "VerifyPtx" part, it merely compiles the executable
 //
 TEST_F(GpuFtzDisabledTest, ExpFtz) {
-  CompileAndVerifyPtx(CreateUnaryOpModule(HloOpcode::kExp), R"(
+  CompileAndOptionallyVerifyPtx(CreateUnaryOpModule(HloOpcode::kExp), R"(
     CHECK-NOT: ex2.approx.f32
     CHECK-DAG: ex2.approx.ftz.f32
     CHECK-DAG: ex2.approx.f32

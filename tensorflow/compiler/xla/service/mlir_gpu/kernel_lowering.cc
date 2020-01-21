@@ -284,7 +284,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   pm.addPass(::mlir::xla_lhlo::createLegalizeToGpuPass());
   // Fuse linalg operations. This will yield a single tiled loop nest where
   // Go from linalg to normal loops.
-  pm.addPass(::mlir::linalg::createConvertLinalgToLoopsPass());
+  pm.addPass(::mlir::createConvertLinalgToLoopsPass());
   // Canonicalize the code to simplify index computations.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   // The innermost loops will be single-trip.

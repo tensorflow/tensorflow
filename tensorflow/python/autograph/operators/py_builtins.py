@@ -303,7 +303,7 @@ def _tf_py_func_print(objects, kwargs):
 
   def print_wrapper(*vals):
     vals = tuple(v.numpy() if tensor_util.is_tensor(v) else v for v in vals)
-    if six.PY3:
+    if not six.PY2:
       # TensorFlow doesn't seem to generate Unicode when passing strings to
       # py_func. This causes the print to add a "b'" wrapper to the output,
       # which is probably never what you want.

@@ -245,26 +245,26 @@ func @testReshape(tensor<*xf32>, tensor<*xf32>) -> (tensor<100x100xf32>) {
 // tf.Reshape with incorrect element number.
 func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<100> : tensor<2xi32>
-  // expected-error @+1 {{mismatch in tensor elements and shape implied elements}}
+  // expected-error @+1 {{number of output elements (10000) does not match expected number of elements (1000)}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
 // -----
 // tf.Reshape with more than one -1 in the shape.
-func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
+func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<-1> : tensor<2xi32>
   // expected-error @+1 {{more than one component of shape are -1}}
-  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
 // -----
 // tf.Reshape with -1 in the shape can't infer the dimension.
-func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
+func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<[101, -1]> : tensor<2xi32>
   // expected-error @+1 {{one component of shape is -1 but couldn't infer the dimension}}
-  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 

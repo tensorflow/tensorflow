@@ -204,6 +204,7 @@ cc_library(
         "allocation.h",
         "context.h",
         "context_util.h",
+        "core/macros.h",
         "core/subgraph.h",
         "error_reporter.h",
         "graph_info.h",

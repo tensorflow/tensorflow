@@ -61,12 +61,14 @@ class MemorySpaceAssignmentCostAnalysis {
   MemorySpaceAssignmentCostAnalysis(
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
-      float alternate_mem_bandwidth_bytes_per_second)
+      float alternate_mem_bandwidth_bytes_per_second,
+      const HloLiveRange& hlo_live_range)
       : cost_analysis_(cost_analysis),
         async_copy_bandwidth_bytes_per_second_(
             async_copy_bandwidth_bytes_per_second),
         alternate_mem_bandwidth_bytes_per_second_(
-            alternate_mem_bandwidth_bytes_per_second) {}
+            alternate_mem_bandwidth_bytes_per_second),
+        hlo_live_range_(hlo_live_range) {}
 
   const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
 
@@ -84,6 +86,12 @@ class MemorySpaceAssignmentCostAnalysis {
       absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
       bool output_in_alternate_mem = false) const;
 
+  // Returns the elapsed time in seconds that other BufferIntervals are slowed
+  // down, due to the prefetching of current bytes. Assuming other
+  // BufferIntervals needs default memory bandwidth, and only current
+  // BufferInterval is prefetched.
+  float GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const;
+
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
   // memory, except for the operand number that is in the alternate memory, if
@@ -97,10 +105,15 @@ class MemorySpaceAssignmentCostAnalysis {
   // from default to alternate memory space (or vice versa).
   float GetAsyncCopyElapsed(const Shape& shape) const;
 
+  int64 GetScheduleEndTime() const;
+
+  const HloLiveRange& hlo_live_range() const { return hlo_live_range_; }
+
  private:
   const HloCostAnalysis& cost_analysis_;
   float async_copy_bandwidth_bytes_per_second_;
   float alternate_mem_bandwidth_bytes_per_second_;
+  const HloLiveRange& hlo_live_range_;
 };
 
 // Abstract base class that memory space assignment uses to pick prefetch
@@ -109,13 +122,6 @@ class PrefetchIntervalPicker {
  public:
   PrefetchIntervalPicker() = default;
   virtual ~PrefetchIntervalPicker() = default;
-
-  // Sets the instruction schedule.
-  virtual void SetInstructionSchedule(
-      const absl::flat_hash_map<const HloInstruction*, int64>&
-          instruction_schedule) {
-    instruction_schedule_ = &instruction_schedule;
-  }
 
   // Returns true if the buffer can be allocated in alternate memory space
   // without any copies (prefetches).
@@ -202,14 +208,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
       float min_async_copy_to_overlap_ratio,
-      float max_async_copy_to_overlap_ratio)
-      : cost_analysis_(cost_analysis),
-        min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
-        max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio) {}
-
-  void SetInstructionSchedule(
-      const absl::flat_hash_map<const HloInstruction*, int64>&
-          instruction_schedule) override;
+      float max_async_copy_to_overlap_ratio);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
                                           int64 end_time) const override;
@@ -465,7 +464,8 @@ class MemorySpaceAssignment {
 
   // Runs the MemorySpaceAssignment pass.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
-      HloModule* module, const Options& options);
+      HloModule* module, const HloLiveRange& hlo_live_range,
+      const HloAliasAnalysis& alias_analysis, const Options& options);
 
   // Returns the maximum number of outstanding asynchronous copies in the
   // module.
@@ -620,6 +620,10 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // particular time. A buffer may be required to be in default memory because
   // it is a parameter in default memory or an ouput in default memory.
   bool RequiredInDefaultMemory(const HloValue* buffer, int64 time) const;
+
+  // Returns true if this buffer is allowed to be placed in the alternate
+  // memory.
+  bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
 
   // Finds an allocation for the given interval. Internally, it will attempt to
   // find a suitable chunk candidate within the heap size and prefetch interval

@@ -2196,7 +2196,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
 std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> extra;
-  if (window_ != nullptr && window_->dimensions_size() != 0) {
+  if (window_ != nullptr) {
     extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
   }
   if (convolution_dimension_numbers_ != nullptr) {

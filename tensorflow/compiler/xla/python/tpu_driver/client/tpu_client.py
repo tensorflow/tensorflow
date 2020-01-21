@@ -92,6 +92,7 @@ class TpuBackend(xla_client.Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
+    options.num_partitions = compile_options.num_partitions
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True

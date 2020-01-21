@@ -16,11 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 
 #if RUY_PLATFORM(AVX_VNNI) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 #include <immintrin.h>  // IWYU pragma: keep
@@ -52,7 +52,7 @@ static constexpr int kAvx8bitInnerSize = 4;
 //
 // When removing this comment, update profiling label below.
 void Kernel8bitAvxVnni(const KernelParams8bit<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvxVnni 8-bit (UNFINISHED)");
+  profiler::ScopeLabel label("Kernel kAvxVnni 8-bit (UNFINISHED)");
 
   std::int32_t accum_data[kAvx8bitBlockSize][kAvx8bitBlockSize];
 
@@ -325,7 +325,7 @@ void Kernel8bitAvxVnni(const KernelParams8bit<16, 16>& params) {
 //
 // When removing this comment, update profiling label below.
 void KernelFloatAvxVnni(const KernelParamsFloat<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvxVnni float (UNFINISHED)");
+  profiler::ScopeLabel label("Kernel kAvxVnni float (UNFINISHED)");
 
   float lhs_data[kAvxFloatBlockSize];
   float rhs_data[kAvxFloatBlockSize];

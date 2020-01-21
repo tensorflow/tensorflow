@@ -2450,14 +2450,14 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
   // Input ranges.
   const std::vector<std::pair<float, float>> ranges = {
       {-1.0, 127.0 / 128},  // input tensor
-      {-1.0, 0.9},          // input_to_input_weight tensor
+      {-1.0, 1.0},          // input_to_input_weight tensor
       {-1.0, 1.0},          // input_to_forget_weight tensor
       {-1.0, 1.0},          // input_to_cell_weight tensor
-      {-1.0, 0.8},          // input_to_output_weight tensor
+      {-1.0, 1.0},          // input_to_output_weight tensor
 
-      {-0.8, 1.0},  // recurrent_to_input_weight tensor
-      {-0.8, 0.9},  // recurrent_to_forget_weight tensor
-      {-0.8, 1.0},  // recurrent_to_cell_weight tensor
+      {-1.0, 1.0},  // recurrent_to_input_weight tensor
+      {-1.0, 1.0},  // recurrent_to_forget_weight tensor
+      {-1.0, 1.0},  // recurrent_to_cell_weight tensor
       {-1.0, 1.0},  // recurrent_to_output_weight tensor
 
       {-1, 1},  // cell_to_input_weight tensor
@@ -2465,7 +2465,7 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
       {-1, 1},  // cell_to_output_weight tensor
 
       {-100, 100},  // input_gate_bias tensor
-      {-100, 80},   // forget_gate_bias tensor
+      {-100, 100},  // forget_gate_bias tensor
       {-100, 100},  // cell_bias tensor
       {-100, 100},  // output_gate_bias tensor
 
@@ -2475,10 +2475,10 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
       {-1.0, 32767.0 / 32768},  // activation_state tensor
       {-1, 1},                  // cell_state tensor
 
-      {0, 0.5},  // input_layer_norm_coefficient tensor
-      {0, 0.5},  // forget_layer_norm_coefficient tensor
-      {0, 1.0},  // cell_layer_norm_coefficient tensor
-      {0, 1.0},  // output_layer_norm_coefficient tensor
+      {-1.00001, 1.0},  // input_layer_norm_coefficient tensor
+      {-1.00001, 1.0},  // forget_layer_norm_coefficient tensor
+      {-1.00001, 1.0},  // cell_layer_norm_coefficient tensor
+      {-1.00001, 1.0},  // output_layer_norm_coefficient tensor
       // Output scale is the same as input activation scale and only activation
       // scale is used in the op, so this is only provided for clarity.
       {-1.0, 32767.0 / 32768},  // output tensor.
@@ -2537,9 +2537,9 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
 
   // Expected outputs.
   const std::vector<std::vector<int8_t>> expected_output = {
-      {107, 127, 127, -41, 127, 127},
-      {53, 127, 127, 22, 127, 127},
-      {90, 127, 127, 34, 127, 127},
+      {127, 127, -108, -67, 127, 127},
+      {-128, 127, 127, -128, 127, 127},
+      {127, 127, 127, -128, 127, 127},
   };
 
   // Invoke and verify the result.

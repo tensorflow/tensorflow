@@ -3146,10 +3146,6 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
     }
   }
 
-  if (size.empty()) {
-    return Error(loc,
-                 "sub-attribute 'size=' is required in the window attribute");
-  }
   if (!stride.empty() && stride.size() != size.size()) {
     return Error(loc, "expects 'stride=' has the same size as 'size='");
   }

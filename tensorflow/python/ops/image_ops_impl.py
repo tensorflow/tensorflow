@@ -678,6 +678,21 @@ def transpose(image, name=None):
 
   Raises:
     ValueError: if the shape of `image` not supported.
+
+  Usage Example:
+
+  >>> image = [[[1, 2], [3, 4]],
+  ...         [[5, 6], [7, 8]],
+  ...         [[9, 10], [11, 12]]]
+  >>> image = tf.constant(image)
+  >>> tf.image.transpose(image)
+  <tf.Tensor: shape=(2, 3, 2), dtype=int32, numpy=
+  array([[[ 1,  2],
+         [ 5,  6],
+         [ 9, 10]],
+        [[ 3,  4],
+         [ 7,  8],
+         [11, 12]]], dtype=int32)>
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -2113,6 +2128,21 @@ def adjust_hue(image, delta, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+
+  Usage Example:
+
+  >>> image = [[[1, 2, 3], [4, 5, 6]],
+  ...          [[7, 8, 9], [10, 11, 12]],
+  ...          [[13, 14, 15], [16, 17, 18]]]
+  >>> image = tf.constant(image)
+  >>> tf.image.adjust_hue(image, 0.2)
+  <tf.Tensor: shape=(3, 2, 3), dtype=int32, numpy=
+  array([[[ 2,  1,  3],
+        [ 5,  4,  6]],
+       [[ 8,  7,  9],
+        [11, 10, 12]],
+       [[14, 13, 15],
+        [17, 16, 18]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -3161,7 +3191,6 @@ def rgb_to_yuv(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(

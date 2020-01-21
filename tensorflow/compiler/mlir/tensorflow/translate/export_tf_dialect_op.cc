@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -53,18 +54,34 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
   }
 
   auto result = values->insert({string(name), value});
-  if (!result.second) {
-    const auto& prev_dtypes = result.first->second.list();
-    int count = prev_dtypes.type_size();
-    if (count != type_list.type_size()) {
-      return errors::InvalidArgument("Type list count mismatch");
-    }
+  assert(result.second && "cannot have multiple attributes with the same name");
+  (void)result;
 
-    for (int i = 0; i < count; ++i) {
-      if (prev_dtypes.type(i) != type_list.type(i))
-        return errors::InvalidArgument("Type list mismatch");
+  return Status::OK();
+}
+
+// Sets shape list attribute with the given `name` to the given `shapes`. If the
+// attribute already exists with a different value, returns an error.
+template <typename ContainerT,
+          typename = typename std::enable_if<std::is_same<
+              llvm::Optional<llvm::ArrayRef<int64_t>>,
+              decltype(*std::declval<ContainerT>().begin())>::value>::type>
+Status SetShapeAttribute(absl::string_view name, ContainerT shapes,
+                         AttrValueMap* values) {
+  AttrValue value;
+  auto& shape_list = *value.mutable_list();
+  for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
+    TensorShapeProto& tshape = *shape_list.add_shape();
+    if (shape.hasValue()) {
+      for (int64_t dim : *shape) tshape.add_dim()->set_size(dim);
+    } else {
+      tshape.set_unknown_rank(true);
     }
   }
+
+  auto result = values->insert({string(name), value});
+  assert(result.second && "cannot have multiple attributes with the same name");
+  (void)result;
 
   return Status::OK();
 }

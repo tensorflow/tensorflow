@@ -1579,8 +1579,8 @@ class MklQuantizedConv2DOp
       param_key.AddAsKey<float>(max_input);
       param_key.AddAsKey<float>(min_freezed_output);
       param_key.AddAsKey<float>(max_freezed_output);
-      param_key.AddAsKey<const Tensor*>(&min_filter_vector);
-      param_key.AddAsKey<const Tensor*>(&max_filter_vector);
+      param_key.AddAsKey<const float*>(min_filter);
+      param_key.AddAsKey<const float*>(max_filter);
       params.post_op_params.push_back(
           {"output_scale", ALGORITHM_UNDEF, scales, param_key.GetKey()});
     }

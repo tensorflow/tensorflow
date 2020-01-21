@@ -239,9 +239,9 @@ Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
   OpKernel* kernel;
-  TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(device_type_, device_.get(),
-                                                allocator_, flr_, node_def,
-                                                TF_GRAPH_DEF_VERSION, &kernel));
+  TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(
+      device_type_, device_.get(), allocator_, flr_,
+      device_->resource_manager(), node_def, TF_GRAPH_DEF_VERSION, &kernel));
   op_kernel->reset(kernel);
   return Status::OK();
 }

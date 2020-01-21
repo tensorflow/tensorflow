@@ -61,6 +61,12 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
     y = math_ops.matmul(x1, x2)
   ```
 
+  If TPU devices are part of the newly connected job, the TPU system is
+  automatically initialized, via the same mechanism as
+  `tf.tpu.experimental.initialize_tpu_system`. If the newly-connected job
+  aliases an already-connected TPU system, that system will be re-initialized
+  and existing variable buffers invalidated.
+
   Args:
     remote_host: a single or a list the remote server addr in host-port format.
     job_name: The job name under which the new server will be accessible.

@@ -236,6 +236,10 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.is_keras_tensor(x), False)
     x = keras.Input(shape=(1,))
     self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    x = keras.Input(shape=(None,), ragged=True)
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    x = keras.Input(shape=(None, None), sparse=True)
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
     with self.assertRaises(ValueError):
       keras.backend.is_keras_tensor(0)
 

@@ -35,7 +35,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 64;
+constexpr int kMaxChannels = 256;
 
 struct OpData {
   TfLitePaddingValues padding;
@@ -224,6 +224,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
     // Depthwise conv is quantized along dimension 3:
     // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 3);
     TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
                       affine_quantization->scale->size);
     TF_LITE_ENSURE_EQ(context, filter->dims->data[3],

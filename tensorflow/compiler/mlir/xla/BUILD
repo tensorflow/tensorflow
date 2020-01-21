@@ -155,8 +155,8 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Linalg",
         "@llvm-project//mlir:LinalgDialectRegistration",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
@@ -174,7 +174,7 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Linalg",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LoopOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -189,8 +189,10 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:Linalg",
+        "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:LinalgDialectRegistration",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
@@ -300,20 +302,32 @@ cc_library(
     deps = [
         ":hlo",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_unfuse_batch_norm",
+    srcs = [
+        "transforms/unfuse_batch_norm.cc",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
 cc_library(
     name = "xla_test_passes",
     srcs = [
         "transforms/materialize_broadcasts_pass.cc",
+        "transforms/unfuse_batch_norm_pass.cc",
     ],
     deps = [
         ":hlo",
         ":xla_materialize_broadcasts",
+        ":xla_unfuse_batch_norm",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",

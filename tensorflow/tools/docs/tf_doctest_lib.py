@@ -115,8 +115,7 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
 
   _ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
 
-  def _allclose(self, want, got, rtol=1e-6, atol=1e-6):
-    # Same default as: tensorflow/python/framework/test_util.py "assertAllClose"
+  def _allclose(self, want, got, rtol=1e-3, atol=1e-3):
     return np.allclose(want, got, rtol=rtol, atol=atol)
 
   def check_output(self, want, got, optionflags):

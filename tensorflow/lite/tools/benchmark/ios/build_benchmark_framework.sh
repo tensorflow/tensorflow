@@ -31,7 +31,7 @@ usage() {
 PROFILING_ARGS=""
 while getopts "p" opt_name; do
   case "$opt_name" in
-    p) PROFILING_ARGS='--copt=-DGEMMLOWP_PROFILING';;
+    p) PROFILING_ARGS='--define=ruy_profiler=true';;
     *) usage;;
   esac
 done

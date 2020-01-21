@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
-#include "tensorflow/core/profiler/convert/host_threads_xplane_to_tf_metrics_db.h"
+#include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
@@ -26,7 +26,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
   OpStats op_stats;
   if (const XPlane* host_trace = FindPlaneWithName(space, kHostThreads)) {
     *op_stats.mutable_host_op_metrics_db() =
-        ConvertHostThreadsXPlaneToTfMetricsDb(*host_trace);
+        ConvertHostThreadsXPlaneToOpMetricsDb(*host_trace);
   }
   return op_stats;
 }

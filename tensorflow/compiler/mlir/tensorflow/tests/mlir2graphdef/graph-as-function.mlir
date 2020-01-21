@@ -65,9 +65,9 @@ attributes {tf.signature.is_stateful} {
 // CHECK:            output_arg {
 // CHECK-NEXT:         name: "function02"
 // CHECK:          node_def {
-// CHECK-NEXT:       name: "Identity"
+// CHECK-NEXT:       name: "[[NAME:[^"]*]]"
 // CHECK-NEXT:       op: "Identity"
 // CHECK-NEXT:       input: "function0"
 // CHECK:          ret {
 // CHECK-NEXT:       key: "function02"
-// CHECK-NEXT:       value: "Identity:output:0"
+// CHECK-NEXT:       value: "[[NAME]]:output:0"

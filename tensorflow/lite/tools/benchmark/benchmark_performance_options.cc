@@ -33,6 +33,11 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
+#if (defined(ANDROID) || defined(__ANDROID__)) && \
+    (defined(__arm__) || defined(__aarch64__))
+#define TFLITE_ENABLE_HEXAGON
+#endif
+
 namespace tflite {
 namespace benchmark {
 
@@ -61,6 +66,13 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
 #endif
     return;
   }
+
+#if defined(TFLITE_ENABLE_HEXAGON)
+  if (params.Get<bool>("use_hexagon")) {
+    current_run_name_ = "dsp w/ hexagon";
+    return;
+  }
+#endif
 
   // Handle cases run on CPU
   // Note: could use std::to_string to convert an integer to string but it
@@ -202,7 +214,12 @@ bool BenchmarkPerformanceOptions::ParsePerfOptions() {
 
 std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
     const {
-  return {"all", "cpu", "gpu", "nnapi", "none"};
+  std::vector<std::string> valid_options = {"all", "cpu", "gpu", "nnapi",
+                                            "none"};
+#if defined(TFLITE_ENABLE_HEXAGON)
+  valid_options.emplace_back("dsp");
+#endif
+  return valid_options;
 }
 
 bool BenchmarkPerformanceOptions::HasOption(const std::string& option) const {
@@ -218,19 +235,24 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("use_nnapi", false);
   single_option_run_params_->Set<std::string>("nnapi_accelerator_name", "");
 #endif
+#if defined(TFLITE_ENABLE_HEXAGON)
+  single_option_run_params_->Set<bool>("use_hexagon", false);
+#endif
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
   TFLITE_LOG(INFO) << "The list of TFLite runtime options to be benchmarked: ["
                    << params_.Get<std::string>("perf_options_list") << "]";
 
-  const bool benchmark_all = HasOption("all");
-
   if (HasOption("none")) {
     // Just add an empty BenchmarkParams instance.
     BenchmarkParams params;
     all_run_params_.emplace_back(std::move(params));
+    // As 'none' is exclusive to others, simply return here.
+    return;
   }
+
+  const bool benchmark_all = HasOption("all");
 
   if (benchmark_all || HasOption("cpu")) {
     const std::vector<int> num_threads = {1, 2, 4};
@@ -277,6 +299,14 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
     // an accelerator name is explicitly specified.
     BenchmarkParams params;
     params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
+    all_run_params_.emplace_back(std::move(params));
+  }
+#endif
+
+#if defined(TFLITE_ENABLE_HEXAGON)
+  if (benchmark_all || HasOption("dsp")) {
+    BenchmarkParams params;
+    params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(true));
     all_run_params_.emplace_back(std::move(params));
   }
 #endif

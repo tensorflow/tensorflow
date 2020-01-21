@@ -25,32 +25,143 @@ from __future__ import print_function
 
 import argparse
 import collections
+import copy
+import hashlib
 import os
+import pipes
 import re
+import shlex
 import sys
-import warnings
 
 import numpy as np
 import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import versions
+from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import app  # pylint: disable=unused-import
+from tensorflow.python.platform import sysconfig as sysconfig_lib
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.training import saver as saver_lib
+
+
+_XLA_DEBUG_OPTIONS_URL = (
+    'https://github.com/tensorflow/tensorflow/blob/master/'
+    'tensorflow/compiler/xla/debug_options_flags.cc')
+
+
+try:
+  from tensorflow.python import _pywrap_tfcompile  # pylint: disable=g-import-not-at-top
+except ImportError as e:
+  _pywrap_tfcompile_import_error = ImportError(
+      'Unable to import _pywrap_tfcompile; you must build TensorFlow '
+      'with XLA.  You may need to build tensorflow with flag '
+      '--define=with_xla_support=true.  Original error: {}'.format(str(e)))
+else:
+  _pywrap_tfcompile_import_error = None
+
 
 # Set of ops to blacklist.
 _OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
+
+
+def _shlex_quote(s):
+  if six.PY2:
+    return pipes.quote(s)
+  else:
+    return shlex.quote(s)
+
+
+def _sysconfig_module():
+  """Load tf.sysconfig if available and working (i.e., inside a pip package)."""
+  try:
+    _ = sysconfig_lib.get_include()
+  except ImportError:
+    return None
+  return sysconfig_lib
+
+
+def _parse_tensor_name(name):
+  """Convert a tensor name like 'tensor:0' into a tuple ('tensor', 0)."""
+  if ':' in name and not name.endswith(':'):
+    node_name = name[:name.rfind(':')]
+    output_slot = int(name[name.rfind(':') + 1:])
+    return node_name, output_slot
+  else:
+    return name, None
+
+
+_XLA_MAKEFILE_TEMPLATE = """
+INC = -I{tensorflow_includes}
+LIB = -L{compiled_dir}
+CXXFLAGS = {cxx_flags}
+"""
+
+
+def _xla_makefile_string(output_prefix):
+  """Returns a Makefile string with variables for using XLA binary object files.
+
+  Attempts to identify the right include header paths when run from either
+  an installed TensorFlow pip package, or from bazel run.
+
+  Args:
+    output_prefix: A string containing the output prefix for the XLA AOT
+      compiled header + object files.
+
+  Returns:
+    A string containing a filled out `_XLA_MAKEFILE_TEMPLATE`.
+  """
+  sysconfig = _sysconfig_module()
+  output_dir, _ = os.path.split(output_prefix)
+  if sysconfig:
+    tensorflow_includes = _shlex_quote(sysconfig.get_include())
+  else:
+    # Try hard to find the real source directory if this is a local bazel run.
+    if os.path.islink(__file__):
+      this_file = __file__
+      while os.path.islink(this_file):
+        this_file = os.readlink(this_file)
+      base = os.path.realpath(
+          os.path.join(os.path.dirname(this_file), *([os.path.pardir] * 3)))
+    else:
+      try:
+        base = test.test_src_dir_path('')
+      except KeyError:  # Can't find TEST_SRCDIR in environment path.
+        base = os.path.realpath(
+            os.path.join(os.path.dirname(__file__), *([os.path.pardir] * 3)))
+    expected_header = os.path.join(
+        base, 'tensorflow', 'compiler', 'tf2xla', 'xla_compiled_cpu_function.h')
+    if not os.path.exists(expected_header):
+      logging.error(
+          'Could not find includes path.  Missing file: {}'
+          .format(expected_header))
+    tensorflow_includes = base
+
+  return _XLA_MAKEFILE_TEMPLATE.format(
+      tensorflow_includes=tensorflow_includes,
+      compiled_dir=_shlex_quote(output_dir),
+      cxx_flags='-D_GLIBCXX_USE_CXX11_ABI={}'.format(
+          versions.CXX11_ABI_FLAG))
 
 
 def _show_tag_sets(saved_model_dir):
@@ -65,6 +176,47 @@ def _show_tag_sets(saved_model_dir):
   print('The given SavedModel contains the following tag-sets:')
   for tag_set in sorted(tag_sets):
     print('%r' % ', '.join(sorted(tag_set)))
+
+
+def _get_variable_nodes_from_graph_def(graph_def):
+  """Get the list of Variable nodes from `graph_def`.
+
+  Args:
+    graph_def: An instance of `GraphDef`.
+
+  Returns:
+    A list of `NodeDef` corresponding to variables in the graph.
+  """
+  variables = [n for n in graph_def.node if n.op == 'VarHandleOp']
+
+  for f in graph_def.library.function:
+    variables += [n for n in f.node_def if n.op == 'VarHandleOp']
+
+  return variables
+
+
+def _prune_removed_feed_nodes(signature_def, graph_def):
+  """Identify the inputs in the signature no longer in graph_def, prune them.
+
+  Args:
+    signature_def: A `SignatureDef` instance.
+    graph_def: A `GraphDef` instance.
+
+  Returns:
+    A new pruned `SignatureDef`.
+  """
+  node_names = set([n.name for n in graph_def.node])
+  new_signature_def = meta_graph_pb2.SignatureDef()
+  new_signature_def.CopyFrom(signature_def)
+  for (k, v) in signature_def.inputs.items():
+    tensor_name, _ = _parse_tensor_name(v.name)
+    if tensor_name not in node_names:
+      logging.warn(
+          'Signature input key \'{}\', tensor name \'{}\', has been pruned '
+          'while freezing the graph.  Removing it from the compiled signatures.'
+          .format(k, tensor_name))
+      del new_signature_def.inputs[k]
+  return new_signature_def
 
 
 def _show_signature_def_map_keys(saved_model_dir, tag_set):
@@ -653,7 +805,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
     if variable_name:
       # if file contains a single ndarray, ignore the input name
       if isinstance(data, np.ndarray):
-        warnings.warn(
+        logging.warn(
             'Input file %s contains a single ndarray. Name key \"%s\" ignored.'
             % (filename, variable_name))
         tensor_key_feed_dict[input_tensor_key] = data
@@ -680,7 +832,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   # When input is a python expression:
   for input_tensor_key, py_expr_evaluated in input_exprs.items():
     if input_tensor_key in tensor_key_feed_dict:
-      warnings.warn(
+      logging.warn(
           'input_key %s has been specified with both --inputs and --input_exprs'
           ' options. Value in --input_exprs will be used.' % input_tensor_key)
     tensor_key_feed_dict[input_tensor_key] = py_expr_evaluated
@@ -688,7 +840,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   # When input is a tf.Example:
   for input_tensor_key, example in input_examples.items():
     if input_tensor_key in tensor_key_feed_dict:
-      warnings.warn(
+      logging.warn(
           'input_key %s has been specified in multiple options. Value in '
           '--input_examples will be used.' % input_tensor_key)
     tensor_key_feed_dict[input_tensor_key] = example
@@ -762,34 +914,237 @@ def convert_with_tensorrt(args):
   """
   # Import here instead of at top, because this will crash if TensorRT is
   # not installed
-  from tensorflow.contrib import tensorrt  # pylint: disable=g-import-not-at-top
-  tensorrt.create_inference_graph(
-      None,
-      None,
-      max_batch_size=args.max_batch_size,
+  from tensorflow.python.compiler.tensorrt import trt_convert as trt  # pylint: disable=g-import-not-at-top
+
+  params = trt.DEFAULT_TRT_CONVERSION_PARAMS._replace(
       max_workspace_size_bytes=args.max_workspace_size_bytes,
       precision_mode=args.precision_mode,
-      minimum_segment_size=args.minimum_segment_size,
-      is_dynamic_op=args.is_dynamic_op,
+      minimum_segment_size=args.minimum_segment_size)
+  converter = trt.TrtGraphConverterV2(
       input_saved_model_dir=args.dir,
       input_saved_model_tags=args.tag_set.split(','),
-      output_saved_model_dir=args.output_dir)
+      conversion_params=params)
+  converter.convert()
+  converter.save(output_saved_model_dir=args.output_dir)
 
 
-def create_parser():
-  """Creates a parser that parse the command line arguments.
+def aot_compile_cpu(args):
+  """Function triggered by aot_compile_cpu command.
 
-  Returns:
-    A namespace parsed from command line arguments.
+  Args:
+    args: A namespace parsed from command line.
   """
-  parser = argparse.ArgumentParser(
-      description='saved_model_cli: Command-line interface for SavedModel')
-  parser.add_argument('-v', '--version', action='version', version='0.1.0')
+  checkpoint_path = (
+      args.checkpoint_path
+      or os.path.join(args.dir, 'variables/variables'))
+  if not args.variables_to_feed:
+    variables_to_feed = []
+  elif args.variables_to_feed.lower() == 'all':
+    variables_to_feed = None  # We will identify them after.
+  else:
+    variables_to_feed = args.variables_to_feed.split(',')
+  aot_compile_cpu_meta_graph_def(
+      checkpoint_path=checkpoint_path,
+      meta_graph_def=saved_model_utils.get_meta_graph_def(
+          args.dir, args.tag_set),
+      signature_def_key=args.signature_def_key,
+      variables_to_feed=variables_to_feed,
+      output_prefix=args.output_prefix,
+      cpp_class=args.cpp_class)
 
-  subparsers = parser.add_subparsers(
-      title='commands', description='valid commands', help='additional help')
 
-  # show command
+def aot_compile_cpu_meta_graph_def(checkpoint_path,
+                                   meta_graph_def,
+                                   output_prefix,
+                                   signature_def_key,
+                                   cpp_class,
+                                   variables_to_feed=()):
+  """Compile a `MetaGraphDef` to header+object files in `output_prefix`.
+
+  Use XLA AOT (`tfcompile`) to convert the given meta graph and
+  signature into a header + object files.  Also create an include makefile
+  that helps identify the appropriate necessary include and library paths
+  to incorporate these files into your C++ program.
+
+  The graph is always optimized with grappler, and optionally (by default)
+  variables are frozen as constants, before compilation happens.
+
+  If the `freeze_graph` is `True`, all variables are embedded as constants
+  into the graph and binary objects.  If it is `False`, then the variable
+  values become inputs and outputs of the compiled class and the C++
+  caller must set these values manually.
+
+  Args:
+    checkpoint_path: Python string.  Path to checkpoints/variables.
+    meta_graph_def: Instance of `MetaGraphDef`.
+    output_prefix: Python string.  Path prefix for outputs.
+    signature_def_key: String, the signature_def to use in the SavedModel.
+    cpp_class: Name of output C++ class.
+    variables_to_feed: A list of strings, the variables that will be fed by the
+      user; these won't be frozen.  If `None`, then we will extract all the
+      variables in the graph and mark them as to-feed.  The default behavior is
+      an empty tuple: all variables must be frozen.
+
+  Raises:
+    RuntimeError: If tensorflow was not built with XLA.
+    ImportError: If tensorflow was built with XLA but there was another
+      issue importing the tfcompile python wrapper.
+    ValueError: If `meta_graph_def.signature_def[signature_def_key]` is
+      missing or has empty outputs.
+  """
+  if _pywrap_tfcompile_import_error:
+    raise _pywrap_tfcompile_import_error
+
+  signature_def_map = meta_graph_def.signature_def
+  if signature_def_key not in signature_def_map:
+    raise ValueError(
+        'Unable to find signature_def key \'{}\' in signature def map.  '
+        'Available keys: {}'.format(
+            signature_def_key,
+            list(signature_def_map.keys())))
+  signature_def = signature_def_map[signature_def_key]
+  if not signature_def.outputs:
+    raise ValueError(
+        'Signature key {} must have outputs, but saw none:\n{}'.format(
+            signature_def_key, str(signature_def)))
+
+  temp_dir = test.get_temp_dir()
+  file_io.recursive_create_dir(temp_dir)
+  if logging.get_verbosity() >= logging.INFO:
+    original_graph_def_location = os.path.join(temp_dir, 'original_graph.pb')
+    with file_io.FileIO(original_graph_def_location, 'wb') as graph_writer:
+      graph_writer.write(meta_graph_def.graph_def.SerializeToString())
+
+  # This updates graph_def in place.
+  _replace_input_placeholders_with_default_values(
+      meta_graph_def.graph_def, signature_def)
+  graph_def = _optimize_graph(meta_graph_def, signature_def)
+
+  all_variables = _get_variable_nodes_from_graph_def(graph_def)
+  if variables_to_feed is None:
+    variable_nodes_to_feed = list(all_variables)
+  else:
+    not_in_graph = (
+        set(variables_to_feed).difference([x.name for x in all_variables]))
+    if not_in_graph:
+      raise ValueError(
+          'Asked to feed variables that were not found in graph: {}.  '
+          'Variables contained in the graph: {}'.format(
+              not_in_graph, set([x.name for x in all_variables])))
+    all_variables_map = dict((x.name, x) for x in all_variables)
+    variable_nodes_to_feed = [
+        all_variables_map[name] for name in variables_to_feed
+    ]
+
+  if logging.get_verbosity() >= logging.INFO:
+    prefrozen_graph_def_location = os.path.join(temp_dir, 'prefrozen_graph.pb')
+    with file_io.FileIO(prefrozen_graph_def_location, 'wb') as graph_writer:
+      graph_writer.write(meta_graph_def.graph_def.SerializeToString())
+
+  # Load the Variables so that we can freeze the graph.
+  with session.Session(graph=ops_lib.Graph()) as sess:
+    restorer = saver_lib.import_meta_graph(meta_graph_def, clear_devices=True)
+    restorer.restore(sess, checkpoint_path)
+    graph_def.CopyFrom(
+        graph_util.convert_variables_to_constants(
+            sess,
+            graph_def,
+            output_node_names=[
+                _parse_tensor_name(n.name)[0]
+                for n in signature_def.outputs.values()
+            ],
+        ))
+
+  signature_def = _prune_removed_feed_nodes(signature_def, graph_def)
+
+  frozen_graph_def_location = os.path.join(temp_dir, 'frozen_graph.pb')
+  config_pbtxt_location = os.path.join(temp_dir, 'config.pbtxt')
+  logging.info('Writing graph def to: {}'.format(frozen_graph_def_location))
+  with file_io.FileIO(frozen_graph_def_location, 'wb') as graph_writer:
+    graph_writer.write(graph_def.SerializeToString())
+  config = _signature_to_tf2xla_config(
+      signature_def, variable_nodes_to_feed=variable_nodes_to_feed)
+  logging.info('Writing config_pbtxt to: {}'.format(config_pbtxt_location))
+  with file_io.FileIO(config_pbtxt_location, mode='w') as config_writer:
+    config_writer.write(str(config))
+
+  output_dir = os.path.dirname(output_prefix)
+  file_io.recursive_create_dir(output_dir)
+
+  entry_digest = hashlib.md5()
+  entry_digest.update(str(config).encode())
+  entry_digest.update(str(graph_def).encode())
+  entry_digest = entry_digest.hexdigest()
+
+  logging.info('Generating XLA AOT artifacts in: {}'.format(output_dir))
+
+  makefile_inc_location = '{}_makefile.inc'.format(output_prefix)
+  with file_io.FileIO(makefile_inc_location, mode='w') as makefile_writer:
+    makefile_writer.write(_xla_makefile_string(output_prefix))
+
+  output_prefix = _shlex_quote(output_prefix)
+
+  _pywrap_tfcompile.Compile(
+      graph=frozen_graph_def_location,
+      config=config_pbtxt_location,
+      cpp_class=cpp_class,
+      entry_point='entry_{}'.format(entry_digest),
+      out_function_object='{}.o'.format(output_prefix),
+      out_header='{}.h'.format(output_prefix),
+      out_metadata_object='{}_metadata.o'.format(output_prefix),
+      gen_name_to_index=True,
+      # ProgramShape isn't uniquefied by entry_point.
+      gen_program_shape=False)
+
+
+def _optimize_graph(meta_graph_def, signature_def):
+  """Optimize `meta_graph_def` using grappler.  Returns a `GraphDef`."""
+  # We need to add a collection called 'train_op' so that grappler
+  # knows what the outputs are.
+  new_meta_graph_def = copy.deepcopy(meta_graph_def)
+  fetch_collection = meta_graph_pb2.CollectionDef()
+  for tensor_info in (
+      list(signature_def.inputs.values()) +
+      list(signature_def.outputs.values())):
+    fetch_collection.node_list.value.append(tensor_info.name)
+
+  new_meta_graph_def.collection_def['train_op'].CopyFrom(fetch_collection)
+
+  config = config_pb2.ConfigProto()
+  return tf_optimizer.OptimizeGraph(config, new_meta_graph_def)
+
+
+def _replace_input_placeholders_with_default_values(graph_def, signature_def):
+  """Replace graphdef's `tf.placeholder` input ops with all-zero constants."""
+  name_to_node_map = dict((n.name, n) for n in graph_def.node)
+  temp_graph = ops_lib.Graph()
+  for name, input_ in signature_def.inputs.items():
+    tensor_name, _ = _parse_tensor_name(input_.name)
+    if tensor_name not in name_to_node_map:
+      raise RuntimeError(
+          'Unable to find input signature tensor \'{}\' in optimized GraphDef. '
+          'Graph nodes are: {}'.format(tensor_name,
+                                       list(name_to_node_map.keys())))
+    node = name_to_node_map[tensor_name]
+    if node.op not in ('Placeholder', 'PlaceholderV2'):
+      logging.info(
+          'Tried to convert SavedModel input node \'{}\' from a placeholder, '
+          'but it doesn\'t look like a placeholder: {}'.format(tensor_name,
+                                                               node))
+      continue
+    shape = tensor_shape.TensorShape(input_.tensor_shape)
+    if not shape.is_fully_defined():
+      raise ValueError(
+          'Expected fully defined input shape for signature_def \'{}\', '
+          'tensor name: \'{}\'; but shape is: {}.'
+          .format(name, tensor_name, shape))
+    with temp_graph.as_default():
+      const = array_ops.zeros(shape, dtype=input_.dtype, name=tensor_name)
+    node.CopyFrom(const.op.node_def)
+
+
+def add_show_subparser(subparsers):
+  """Add parser for `show`."""
   show_msg = (
       'Usage examples:\n'
       'To show all tag-sets in a SavedModel:\n'
@@ -833,7 +1188,9 @@ def create_parser():
       help='key of SignatureDef to display input(s) and output(s) for')
   parser_show.set_defaults(func=show)
 
-  # run command
+
+def add_run_subparser(subparsers):
+  """Add parser for `run`."""
   run_msg = ('Usage example:\n'
              'To run input tensors from files through a MetaGraphDef and save'
              ' the output tensors to files:\n'
@@ -909,7 +1266,9 @@ def create_parser():
            'This option should be only used if the worker is a TPU job.')
   parser_run.set_defaults(func=run)
 
-  # scan command
+
+def add_scan_subparser(subparsers):
+  """Add parser for `scan`."""
   scan_msg = ('Usage example:\n'
               'To scan for blacklisted ops in SavedModel:\n'
               '$saved_model_cli scan --dir /tmp/saved_model\n'
@@ -929,7 +1288,9 @@ def create_parser():
       help='tag-set of graph in SavedModel to scan, separated by \',\'')
   parser_scan.set_defaults(func=scan)
 
-  # convert command
+
+def add_convert_subparser(subparsers):
+  """Add parser for `convert`."""
   convert_msg = ('Usage example:\n'
                  'To convert the SavedModel to one that have TensorRT ops:\n'
                  '$saved_model_cli convert \\\n'
@@ -965,11 +1326,6 @@ def create_parser():
       description='Convert the SavedModel with Tensorflow-TensorRT integration',
       formatter_class=argparse.RawTextHelpFormatter)
   parser_convert_with_tensorrt.add_argument(
-      '--max_batch_size',
-      type=int,
-      default=1,
-      help='max size for the input batch')
-  parser_convert_with_tensorrt.add_argument(
       '--max_workspace_size_bytes',
       type=int,
       default=2 << 20,
@@ -986,18 +1342,180 @@ def create_parser():
       default=3,
       help=('the minimum number of nodes required for a subgraph to be replaced'
             'in a TensorRT node'))
-  parser_convert_with_tensorrt.add_argument(
-      '--is_dynamic_op',
-      type=bool,
-      default=False,
-      help=('whether to generate dynamic TRT ops which will build the TRT '
-            'network and engine at run time'))
   parser_convert_with_tensorrt.set_defaults(func=convert_with_tensorrt)
+
+
+def add_aot_compile_cpu_subparser(subparsers):
+  """Add parser for `aot_compile_cpu`."""
+  compile_msg = '\n'.join(
+      ['Usage example:',
+       'To compile a SavedModel signature via (CPU) XLA AOT:',
+       '$saved_model_cli aot_compile_cpu \\',
+       '   --dir /tmp/saved_model \\',
+       '   --tag_set serve \\',
+       '   --output_dir /tmp/saved_model_xla_aot',
+       '', '',
+       'Note: Additional XLA compilation options are available by setting the ',
+       'XLA_FLAGS environment variable.  See the XLA debug options flags for ',
+       'all the options: ',
+       '  {}'.format(_XLA_DEBUG_OPTIONS_URL),
+       '',
+       'For example, to disable XLA fast math when compiling:',
+       '',
+       'XLA_FLAGS="--xla_cpu_enable_fast_math=false" $saved_model_cli '
+       'aot_compile_cpu ...',
+       '',
+       'Some possibly useful flags:',
+       '  --xla_cpu_enable_fast_math=false',
+       '  --xla_cpu_multi_thread_eigen=false',
+       '  --xla_force_host_platform_device_count=<num threads>',
+       '    (useful in conjunction with disabling eigen multi threading)'
+      ])
+
+  parser_compile = subparsers.add_parser(
+      'aot_compile_cpu',
+      description=compile_msg,
+      formatter_class=argparse.RawTextHelpFormatter)
+  parser_compile.add_argument(
+      '--dir',
+      type=str,
+      required=True,
+      help='directory containing the SavedModel to convert')
+  parser_compile.add_argument(
+      '--output_prefix',
+      type=str,
+      required=True,
+      help=('output directory + filename prefix for the resulting header(s) '
+            'and object file(s)'))
+  parser_compile.add_argument(
+      '--tag_set',
+      type=str,
+      required=True,
+      help='tag-set of graph in SavedModel to convert, separated by \',\'')
+  parser_compile.add_argument(
+      '--signature_def_key',
+      type=str,
+      default=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+      help=('signature_def key to use.  '
+            'default: DEFAULT_SERVING_SIGNATURE_DEF_KEY'))
+  parser_compile.add_argument(
+      '--checkpoint_path',
+      type=str,
+      default=None,
+      help='Custom checkpoint to use (default: use the SavedModel variables)')
+  parser_compile.add_argument(
+      '--cpp_class',
+      type=str,
+      required=True,
+      help=('The name of the generated C++ class, wrapping the generated '
+            'function.  The syntax of this flag is '
+            '[[<optional_namespace>::],...]<class_name>.  This mirrors the '
+            'C++ syntax for referring to a class, where multiple namespaces '
+            'may precede the class name, separated by double-colons.  '
+            'The class will be generated in the given namespace(s), or if no '
+            'namespaces are given, within the global namespace.'))
+  parser_compile.add_argument(
+      '--variables_to_feed',
+      type=str,
+      default='',
+      help=('The names of variables that will be fed into the network.  '
+            'Options are: empty (default; all variables are frozen, none may '
+            'be fed), \'all\' (all variables may be fed), or a '
+            'comma-delimited list of names of variables that may be fed.  In '
+            'the last case, the non-fed variables will be frozen in the graph.')
+  )
+
+  parser_compile.set_defaults(func=aot_compile_cpu)
+
+
+def create_parser():
+  """Creates a parser that parse the command line arguments.
+
+  Returns:
+    A namespace parsed from command line arguments.
+  """
+  parser = argparse.ArgumentParser(
+      description='saved_model_cli: Command-line interface for SavedModel')
+  parser.add_argument('-v', '--version', action='version', version='0.1.0')
+
+  subparsers = parser.add_subparsers(
+      title='commands', description='valid commands', help='additional help')
+
+  # show command
+  add_show_subparser(subparsers)
+
+  # run command
+  add_run_subparser(subparsers)
+
+  # scan command
+  add_scan_subparser(subparsers)
+
+  # tensorrt convert command
+  add_convert_subparser(subparsers)
+
+  # aot_compile_cpu command
+  add_aot_compile_cpu_subparser(subparsers)
 
   return parser
 
 
+def _signature_to_tf2xla_config(signature_def, variable_nodes_to_feed):
+  """Convert `signature_def` to tf2xla config.  Returns a `tf2xla.Config` proto.
+
+  Args:
+    signature_def: Instance of `SignatureDef`.
+    variable_nodes_to_feed: List NodeDefs corresponding to VarHandleOp,
+      the list of variables to feed.
+
+  Returns:
+    An instance of `tf2xla.Config` proto.
+
+  Raises:
+    RuntimeError: If TensorFlow was not compiled with XLA.
+  """
+  from tensorflow.compiler.tf2xla import tf2xla_pb2  # pylint: disable=g-import-not-at-top
+
+  config = tf2xla_pb2.Config()
+  tensor_id = tf2xla_pb2.TensorId
+
+  for name, input_ in signature_def.inputs.items():
+    name = name.replace('/', '_')
+    name = 'feed_{}'.format(name)
+    (node_name, output_index) = _parse_tensor_name(input_.name)
+    output_index = int(output_index)
+    config.feed.append(
+        tf2xla_pb2.Feed(
+            id=tensor_id(node_name=node_name, output_index=output_index),
+            name=name,
+            type=input_.dtype,
+            shape=input_.tensor_shape))
+  for name, output_ in signature_def.outputs.items():
+    name = name.replace('/', '_')
+    name = 'fetch_{}'.format(name)
+    (node_name, output_index) = _parse_tensor_name(output_.name)
+    output_index = int(output_index)
+    config.fetch.append(
+        tf2xla_pb2.Fetch(
+            id=tensor_id(node_name=node_name, output_index=output_index),
+            name=name,
+            type=output_.dtype,
+            shape=output_.tensor_shape))
+  for node in variable_nodes_to_feed:
+    name = node.name.replace('/', '_')
+    name = 'param_{}'.format(name)
+    config.variable.append(
+        tf2xla_pb2.Variable(
+            node_name=node.name,
+            name=name,
+            type=node.attr['dtype'].type,
+            shape=node.attr['shape'].shape,
+            readonly=True))
+
+  return config
+
+
 def main():
+  logging.set_verbosity(logging.INFO)
   parser = create_parser()
   args = parser.parse_args()
   if not hasattr(args, 'func'):
