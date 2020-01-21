@@ -42,7 +42,9 @@ bool CreateQuantizedModel(const std::string& path) {
   tflite::StderrReporter error_reporter;
   if (tflite::optimize::QuantizeModel(
           &builder, &model, tflite::TensorType_FLOAT32,
-          tflite::TensorType_FLOAT32, &error_reporter) != kTfLiteOk) {
+          tflite::TensorType_FLOAT32,
+          // TODO: Pass required activation type if needed
+          tflite::TensorType_INT8, &error_reporter) != kTfLiteOk) {
     return false;
   }
   return WriteFile(path, builder.GetBufferPointer(), builder.GetSize());

@@ -64,6 +64,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.quantize_input_as_activations = true;
       break;
     case BuiltinOperator_ARG_MAX:
       property.inputs = {{0, {}}};
@@ -176,7 +177,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // LogSoftmax requires output with 16/256 as scale and 127 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value = {16.0 / 256.0, 127};
+      tensor_property.restricted_value_int8 = {16.0 / 256.0, 127};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       break;
@@ -186,7 +187,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // Logistic requires output with 1/256 as scale and -128 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value = {1 / 256.0, -128};
+      tensor_property.restricted_value_int8 = {1 / 256.0, -128};
+      tensor_property.restricted_value_int16 = {1 / 32768.0, 0};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       break;
@@ -741,7 +743,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // L2 Norm requires output with 1/128 as scale and 0 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value = {1 / 128.0, 0};
+      tensor_property.restricted_value_int8 = {1 / 128.0, 0};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       break;
@@ -756,6 +758,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
+      property.quantize_input_as_activations = true;
       property.version = 2;
       break;
     case BuiltinOperator_MEAN:
@@ -767,6 +770,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
+      property.quantize_input_as_activations = true;
       property.version = 2;
       break;
     case BuiltinOperator_MUL:
@@ -777,6 +781,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     case BuiltinOperator_PACK:
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
@@ -840,7 +845,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // Softmax requires output with 1/256 as scale and -128 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value = {1 / 256.0, -128};
+      tensor_property.restricted_value_int8 = {1 / 256.0, -128};
+      tensor_property.restricted_value_int16 = {1 / 32768.0, 0};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       break;
@@ -866,7 +872,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // Tanh requires output with 1/128 as scale and 0 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value = {1 / 128.0, 0};
+      tensor_property.restricted_value_int8 = {1 / 128.0, 0};
+      tensor_property.restricted_value_int16 = {1 / 32768.0, 0};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       break;

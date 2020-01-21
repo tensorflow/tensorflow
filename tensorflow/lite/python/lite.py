@@ -224,6 +224,10 @@ class TFLiteConverterBase(object):
         self.target_spec.supported_ops) or
             self._smallest_supported_type() == constants.INT8)
 
+  def _is_int16x8_target_required(self):
+    return (set([OpsSet.TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]) ==
+        set(self.target_spec.supported_ops))
+
   def _smallest_supported_type(self):
     if self.target_spec.supported_types:
       return min(self.target_spec.supported_types, key=lambda x: x.size)
@@ -238,7 +242,9 @@ class TFLiteConverterBase(object):
         ]))
 
   def _is_post_training_optimize(self):
-    return self._is_int8_target_required() or self._any_optimization_enabled()
+    return self._is_int8_target_required() or \
+      self._is_int16x8_target_required() or \
+      self._any_optimization_enabled()
 
   def _is_int8_weight_only_quantize(self):
     return (self._is_post_training_optimize() and
@@ -255,11 +261,12 @@ class TFLiteConverterBase(object):
 
   def _calibrate_quantize_model(self, result, inference_input_type,
                                 inference_output_type, enable_mlir_quantizer):
-    allow_float = not self._is_int8_target_required()
+    allow_float = not self._is_int8_target_required() and not self._is_int16x8_target_required()
     calibrate_quantize = _calibrator.Calibrator(result)
+    activations_type = constants.INT16 if self._is_int16x8_target_required() else constants.INT8
     return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type, allow_float, enable_mlir_quantizer)
+        inference_output_type, allow_float, activations_type, enable_mlir_quantizer)
 
   def _get_base_converter_args(self):
     """Returns the base converter args.

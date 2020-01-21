@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 namespace optimize {
@@ -83,6 +83,46 @@ void GetAsymmetricQuantizationParams(
   quantization_params->max = std::vector<float>(1, max);
   quantization_params->scale = std::vector<float>(1, scale);
   quantization_params->zero_point = std::vector<int64_t>(1, zero_point);
+}
+
+void GetSymmetricQuantizationParams(
+    float min, float max, const int half_quant_range,
+    QuantizationParametersT* quantization_params) {
+  // Adjust the boundaries to guarantee 0 is included.
+  min = std::min(min, 0.0f);
+  max = std::max(max, 0.0f);
+  const float scale = std::max(std::abs(max), std::abs(min)) / half_quant_range;
+  int64_t zero_point = 0;
+  quantization_params->min = std::vector<float>(1, min);
+  quantization_params->max = std::vector<float>(1, max);
+  quantization_params->scale = std::vector<float>(1, scale);
+  quantization_params->zero_point = std::vector<int64_t>(1, 0);
+}
+
+TfLiteStatus GetQuantizationParams(TensorT* tensor, TensorType activations_type,
+                                   QuantizationParametersT* quantization_params,
+                                   ErrorReporter* error_reporter) {
+  if (activations_type == TensorType_INT8) {
+    GetAsymmetricQuantizationParams(
+        tensor->quantization->min[0], tensor->quantization->max[0],
+        std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
+        quantization_params);
+  } else if (activations_type == TensorType_INT16) {
+    float range = std::max(std::abs(tensor->quantization->min[0]),
+                           std::abs(tensor->quantization->max[0]));
+    const float quantized_range = 32767.0;
+    const float scale = range / quantized_range;
+    quantization_params->min = std::vector<float>(1, -range);
+    quantization_params->max = std::vector<float>(1, range);
+    quantization_params->scale = std::vector<float>(1, scale);
+    quantization_params->zero_point = std::vector<int64_t>(1, 0);
+  } else {
+    error_reporter->Report(
+        "Unsupported activation type for quantize-activation: %s",
+        activations_type);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
 // Set the max and min quantization parameter for a single tensor given its
@@ -536,6 +576,7 @@ TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                model, tensor, error_reporter);
 }
 
+template <class BiasType>
 TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
                                            float scaling_factor,
                                            ErrorReporter* error_reporter) {
@@ -548,25 +589,38 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(NumElements(*tensor, &num_elements));
 
-  std::vector<int32_t> final_buffer(num_elements);
-  const int32_t kScale = std::numeric_limits<int32_t>::max();
+  std::vector<BiasType> final_buffer(num_elements);
+  const BiasType kScale = std::numeric_limits<BiasType>::max();
 
   for (size_t i = 0; i < num_elements; i++) {
-    const int32_t quantized_value = tflite::SafeCast<int32_t>(
+    const BiasType quantized_value = tflite::SafeCast<BiasType>(
         TfLiteRound(float_data[i] * scaling_factor_inv));
     final_buffer[i] = std::min(kScale, std::max(-kScale, quantized_value));
   }
 
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
-  size_t buffer_size = num_elements * sizeof(int32_t);
+  size_t buffer_size = num_elements * sizeof(BiasType);
   std::vector<float> scales(1, scaling_factor);
   std::vector<int64_t> zero_points(1, 0);
+
+  auto output_type = std::is_same<BiasType, std::int32_t>::value
+                         ? TensorType_INT32
+                         : TensorType_INT64;
   return AddQuantizationParams(scales, zero_points, 0, uint8_buffer,
-                               buffer_size, TensorType_INT32, model, tensor,
+                               buffer_size, output_type, model, tensor,
                                error_reporter);
 }
 
+template TfLiteStatus SymmetricPerLayerBiasQuantize<std::int32_t>(
+    ModelT* model, TensorT* tensor, float scaling_factor,
+    ErrorReporter* error_reporter);
+
+template TfLiteStatus SymmetricPerLayerBiasQuantize<std::int64_t>(
+    ModelT* model, TensorT* tensor, float scaling_factor,
+    ErrorReporter* error_reporter);
+
+template <class BiasType>
 TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              float input_scale,
                                              const float* weight_scales,
@@ -583,14 +637,14 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(NumElements(*tensor, &num_elements));
 
-  std::vector<int32_t> final_buffer(num_elements);
-  const int32_t kScale = std::numeric_limits<int32_t>::max();
+  std::vector<BiasType> final_buffer(num_elements);
+  const BiasType kScale = std::numeric_limits<BiasType>::max();
 
   for (int32_t channel_idx = 0; channel_idx < number_of_dimension;
        channel_idx++) {
     float scaling_factor = scales[channel_idx];
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
-    const int32_t quantized_value = tflite::SafeCast<int32_t>(
+    const BiasType quantized_value = tflite::SafeCast<BiasType>(
         TfLiteRound(float_data[channel_idx] * scaling_factor_inv));
     final_buffer[channel_idx] =
         std::min(kScale, std::max(-kScale, quantized_value));
@@ -598,11 +652,25 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
 
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
-  size_t buffer_size = num_elements * sizeof(int32_t);
+  size_t buffer_size = num_elements * sizeof(BiasType);
   std::vector<int64_t> zero_point(scales.size(), 0);
+
+  auto output_type = std::is_same<BiasType, std::int32_t>::value
+                         ? TensorType_INT32
+                         : TensorType_INT64;
   return AddQuantizationParams(scales, zero_point, 0, uint8_buffer, buffer_size,
-                               TensorType_INT32, model, tensor, error_reporter);
+                               output_type, model, tensor, error_reporter);
 }
+
+template TfLiteStatus SymmetricPerChannelBiasQuantize<std::int64_t>(
+    ModelT* model, TensorT* tensor, float input_scale,
+    const float* weight_scales, int number_of_dimension,
+    ErrorReporter* error_reporter);
+
+template TfLiteStatus SymmetricPerChannelBiasQuantize<std::int32_t>(
+    ModelT* model, TensorT* tensor, float input_scale,
+    const float* weight_scales, int number_of_dimension,
+    ErrorReporter* error_reporter);
 
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
                             int per_axis_index, ErrorReporter* error_reporter) {
@@ -645,12 +713,12 @@ float GetEffectiveScale(ModelT* model, SubGraphT* subgraph, int op_idx,
   return scale;
 }
 
-void QuantizeActivation(TensorT* tensor) {
-  GetAsymmetricQuantizationParams(
-      tensor->quantization->min[0], tensor->quantization->max[0],
-      std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
-      tensor->quantization.get());
-  tensor->type = TensorType_INT8;
+TfLiteStatus QuantizeActivation(TensorT* tensor, TensorType activations_type,
+                                ErrorReporter* error_reporter) {
+  TF_LITE_ENSURE_STATUS(GetQuantizationParams(
+      tensor, activations_type, tensor->quantization.get(), error_reporter));
+  tensor->type = activations_type;
+  return kTfLiteOk;
 }
 
 TfLiteStatus QuantizeActivationToInt16(TensorT* tensor, float scale) {
