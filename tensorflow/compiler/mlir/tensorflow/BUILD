@@ -838,6 +838,7 @@ cc_library(
     srcs = ["utils/compile_mlir_util.cc"],
     hdrs = ["utils/compile_mlir_util.h"],
     deps = [
+        ":bridge_logger",
         ":convert_type",
         ":dump_mlir_util",
         ":error_util",
