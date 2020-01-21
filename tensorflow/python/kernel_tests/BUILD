@@ -3275,6 +3275,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
     tags = [
+        "no_mac",  # timeouts on GPU
         "no_pip",
         "notap",  # http://b/31080670
     ],

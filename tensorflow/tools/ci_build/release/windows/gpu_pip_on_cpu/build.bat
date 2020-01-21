@@ -13,9 +13,4 @@
 :: limitations under the License.
 :: =============================================================================
 
-SET PYTHON_DIRECTORY=Python36
-
-CALL tensorflow\tools\ci_build\release\common_win.bat
-
-call tensorflow\tools\ci_build\windows\integration\gpu_pip_on_cpu\run.bat
-
+echo "This build not enabled on 1.15"
