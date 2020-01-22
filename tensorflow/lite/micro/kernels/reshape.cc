@@ -80,7 +80,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  for (int i = 0; i < input->bytes; ++i) {
+  for (size_t i = 0; i < input->bytes; ++i) {
     output->data.raw[i] = input->data.raw[i];
   }
   return kTfLiteOk;

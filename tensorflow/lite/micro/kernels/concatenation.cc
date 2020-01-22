@@ -98,7 +98,7 @@ inline void GetAllTensorShapes(const TfLiteContext& context,
 // Get shape pointers from a list of shapes.
 inline void GetShapesPointers(const RuntimeShape* shapes, size_t num,
                               const RuntimeShape* pointers[]) {
-  for (int i = 0; i < num; ++i) {
+  for (size_t i = 0; i < num; ++i) {
     pointers[i] = &shapes[i];
   }
 }
