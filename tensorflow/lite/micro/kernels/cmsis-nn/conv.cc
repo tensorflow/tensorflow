@@ -162,6 +162,8 @@ TfLiteStatus EvalQuantizedPerChannel(
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
 
 #if defined(__ARM_FEATURE_DSP)
   RuntimeShape filter_shape = GetTensorShape(filter);
