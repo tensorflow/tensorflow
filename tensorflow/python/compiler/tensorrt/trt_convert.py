@@ -988,13 +988,16 @@ class TrtGraphConverterV2(object):
                        "with static TensorRT ops. Set is_dynamic_op to True.")
 
     # rewriter_config is already validated
+    self._need_trt_profiles = None
     for optimizer in self._rewriter_config.custom_optimizers:
       if optimizer.name == "TensorRTOptimizer":
         self._need_trt_profiles = not optimizer.parameter_map[
             "use_implicit_batch"].b \
             if "use_implicit_batch" in optimizer.parameter_map else False
+    assert self._need_trt_profiles != None
 
     self._converted = False
+    self._build_called_once = False
 
   def _run_conversion(self, meta_graph_def):
     """Run Grappler's OptimizeGraph() tool to convert the graph.
@@ -1113,6 +1116,10 @@ class TrtGraphConverterV2(object):
                  # return a list of input tensors
                  yield [np.zeros(x).astype(np.float32) for x in shapes]`
     """
+    if self._build_called_once:
+      raise NotImplementedError("build() is already called. It is not "
+                                "supported to call build() more than once.")
+
     def _rebuild_func():
       # Rebuild function from graph_def.
       reset_converted_func = wrap_function.function_from_graph_def(
@@ -1151,6 +1158,8 @@ class TrtGraphConverterV2(object):
       # profiles determine the engine.
       self._converted_func(*map(ops.convert_to_tensor, inputs[0]))
 
+    self._build_called_once = True
+
 
   def save(self, output_saved_model_dir):
     """Save the converted SavedModel.
@@ -1159,6 +1168,12 @@ class TrtGraphConverterV2(object):
       output_saved_model_dir: directory to saved the converted SavedModel.
     """
     assert self._converted
+
+    if self._need_trt_profiles and not self._build_called_once:
+      raise NotImplementedError(
+          "build() is not called . Explicit batch mode "
+          "(use_implicit_batch=False) requires generating TensorRT optimization"
+          " profiles which is done by calling build().")
 
     # Serialize the TRT engines in the cache if any, and create trackable
     # resource to track them.
