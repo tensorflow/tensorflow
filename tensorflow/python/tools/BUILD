@@ -397,6 +397,7 @@ tf_cc_test(
     srcs = if_xla_available([
         "binary_using_aot_compiled_x_plus_y_test.cc",
     ]),
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([
