@@ -57,6 +57,7 @@ def tpu_py_test(
     kwargs["python_version"] = kwargs.get("python_version", "PY3")
     kwargs["srcs"].append(wrapper_src)
     kwargs["deps"].append("//tensorflow/python:client_testlib")
+    kwargs["main"] = wrapper_src
 
     args = [
         "--wrapped_tpu_test_module_relative=.%s" % test_main.rsplit(".", 1)[0],
@@ -65,7 +66,6 @@ def tpu_py_test(
     native.py_test(
         name = name,
         tags = tags,
-        main = wrapper_src,
         args = args,
         **kwargs
     )

@@ -651,6 +651,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
