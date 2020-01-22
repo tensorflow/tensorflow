@@ -1785,7 +1785,8 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
   array([[3],
         [1]], dtype=int32)>
-  >>> tf.math.reduce_euclidean_norm(x, [0, 1])  # sqrt(17)
+  >>> tf.math.reduce_euclidean_norm(x, [0, 1])
+  <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2306,8 +2307,8 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
   
-  
   For example:
+  
   >>> tf.math.reduce_min(tf.constant([32, 36]), axis=None, keepdims=True)
   <tf.Tensor: shape=(1,), dtype=int32, numpy=array([32], dtype=int32)>
   
@@ -3525,7 +3526,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  6, 12, 20],
          [ 1,  4,  9, 16]], dtype=int32)>
-         
+
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
   >>> # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
@@ -3806,8 +3807,8 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
   
-  
   For example:
+  
   >>> x = tf.constant([1, 2, 3, 4])
   >>> y = tf.constant(2, dtype=tf.int32)
   >>> tf.math.unsorted_segment_mean(x, y, num_segments=3)
