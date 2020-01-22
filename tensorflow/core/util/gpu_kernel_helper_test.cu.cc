@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 #include <numeric>
@@ -103,7 +103,7 @@ __global__ void CudaShuffleGetSrcLaneTest(
       if (actual != expected) {
         printf("Cuda%sGetSrcLane(%d, %d) for lane %d returned %d, not %d\n",
                op_name, param, width, lane_id, actual, expected);
-        CudaAtomicAdd(failure_count, 1);
+        GpuAtomicAdd(failure_count, 1);
       }
     };
     for (int src_lane = -warpSize; src_lane <= warpSize; ++src_lane) {
@@ -282,7 +282,10 @@ TEST_F(GpuLaunchConfigTest, GetGpu3DLaunchConfig) {
 
 TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
   unsigned* failure_count;
+#if GOOGLE_CUDA
   ASSERT_EQ(cudaMallocManaged(&failure_count, sizeof(unsigned)), cudaSuccess);
+#else
+#endif  
   *failure_count = 0;
   TF_EXPECT_OK(GpuLaunchKernel(CudaShuffleGetSrcLaneTest, 1, 32, 0, nullptr,
                                failure_count));
@@ -293,4 +296,4 @@ TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
