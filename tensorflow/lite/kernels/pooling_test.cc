@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
 #include <gtest/gtest.h>
+#include <cstdarg>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -93,6 +93,25 @@ class SymmetricQuantizedPoolingOpModel : public BasePoolingOpModel {
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<int8_t>(ExtractVector<int8_t>(output_), GetScale(output_),
                               GetZeroPoint(output_));
+  }
+};
+
+class SymmetricQuantizedPoolingOpModel16 : public BasePoolingOpModel {
+ public:
+  using BasePoolingOpModel::BasePoolingOpModel;
+
+  void SetInput(std::initializer_list<float> data) {
+    QuantizeAndPopulate<int16_t>(input_, data);
+  }
+
+  void SetInput(const std::vector<float>& data) {
+    QuantizeAndPopulate<int16_t>(input_, data);
+  }
+
+  std::vector<int16_t> GetOutput() { return ExtractVector<int16_t>(output_); }
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
   }
 };
 
@@ -398,6 +417,29 @@ TEST(QuantizedPoolingOpTest, AveragePoolLargeDepth) {
                   ReplicateDepthRamp(output_image_plane, depth, 1.f / 512.f),
                   1. / 32.f)));
 }
+
+// Test quantized AveragePool with int16 input and output. The input is the same
+// as the uint8 test QuantizedPoolingOpTest.AveragePool but with a scale of
+// 1/4096 rather than 1/16.
+TEST(QuantizedPoolingOpTest, SymmetricAveragePool16) {
+  const float ulp = (float)1 / (float)4096;
+  SymmetricQuantizedPoolingOpModel16 m(
+      BuiltinOperator_AVERAGE_POOL_2D,
+      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 0, 16 - ulp},
+      /*filter_width=*/2, /*filter_height=*/2,
+      /*output=*/{TensorType_INT16, {}, 0, 16 - ulp});
+  m.SetInput({
+      0, 6, 2, 4,   //
+      3, 2, 10, 7,  //
+  });
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({2.75, 5.75})));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({(44 - 128) << 8, (92 - 128) << 8}));
+}
+
 // Test quantized AveragePool with int8 input and output. The input is the same
 // as the uint8 test QuantizedPoolingOpTest.AveragePool. The float output is
 // identical to uint8 test and quantized output is identical to uint8 test with
@@ -856,6 +898,28 @@ TEST(QuantizedInt8PoolingOpTest, MaxPool) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({6, 10})));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({96 - 128, 160 - 128}));
+}
+
+TEST(QuantizedInt8PoolingOpTest16, MaxPool) {
+  // Choose the input ranges carefully so that the dequantized output matches
+  // the results of the float model above.
+  // Input Range[0, 16-(1/4096)] --> [Scale{(1/4096)}, zero_point{-32768}]
+  const float ulp = (float)1 / (float)4096;
+  SymmetricQuantizedPoolingOpModel16 m(
+      BuiltinOperator_MAX_POOL_2D,
+      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 0, 16 - ulp},
+      /*filter_width=*/2, /*filter_height=*/2,
+      /*output=*/{TensorType_INT16, {}, 0, 16 - ulp});
+  m.SetInput({
+      0, 6, 2, 4,   //
+      3, 2, 10, 7,  //
+  });
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({6, 10})));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({(96 - 128) << 8, (160 - 128) << 8}));
 }
 
 TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu) {
