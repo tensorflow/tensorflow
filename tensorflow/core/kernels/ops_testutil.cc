@@ -122,7 +122,8 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
   }
 #else
   CHECK_NE(device_type, DEVICE_GPU)
-      << "Requesting GPU on binary compiled without GOOGLE_CUDA or TENSORFLOW_USE_ROCM.";
+      << "Requesting GPU on binary compiled without GOOGLE_CUDA or "
+         "TENSORFLOW_USE_ROCM.";
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 #endif
 }
