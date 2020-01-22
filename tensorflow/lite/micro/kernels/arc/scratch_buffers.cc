@@ -38,9 +38,7 @@ limitations under the License.
 
 #ifndef SCRATCH_MEM_Z_SIZE
 #ifdef core_config_dccm_size
-// temporary disable the use of dccm scratch mem
-//#define SCRATCH_MEM_Z_SIZE ((core_config_dccm_size) / 2)
-#define SCRATCH_MEM_Z_SIZE (0)
+#define SCRATCH_MEM_Z_SIZE ((core_config_dccm_size) / 2)
 #else
 #define SCRATCH_MEM_Z_SIZE (0)
 #endif
@@ -139,6 +137,17 @@ TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
         is_bias_allocated = true;
         break;
       }
+    }
+  }
+  if (!is_bias_allocated) {
+    uint32_t bias_mem_requirements = mli_hlp_count_elem_num(bias, 0) * mli_hlp_tensor_element_size(bias);
+    for (int i = 0; i < 3; ++i) {
+      if (mem_is_free[i]) {
+		  bias->data = static_cast<void*>(scratch_mem[i]);
+		  bias->capacity = bias_mem_requirements;
+        is_bias_allocated = true;
+        break;
+	  }
     }
   }
   return (is_bias_allocated) ? kTfLiteOk : kTfLiteError;
