@@ -456,7 +456,9 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 6,
     tags = [
+        "no_oss",  # http://b/148111329
         "noasan",  # http://b/78599823
+        "notap",  # http://b/148111329
         "notsan",
     ],
     deps = [
