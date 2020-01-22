@@ -469,7 +469,18 @@ PYBIND11_MODULE(xla_extension, m) {
                                  client->SerializeExecutable(*executable));
              return py::bytes(serialized);
            })
-      .def("DeserializeExecutable", &PyLocalClient::DeserializeExecutable);
+      .def("DeserializeExecutable", &PyLocalClient::DeserializeExecutable)
+      .def("CreateChannelHandle",
+           [](PyLocalClient* client) {
+             return client->client()->CreateChannelHandle();
+           })
+      .def("CreateDeviceToHostChannelHandle",
+           [](PyLocalClient* client) {
+             return client->client()->CreateDeviceToHostChannelHandle();
+           })
+      .def("CreateHostToDeviceChannelHandle", [](PyLocalClient* client) {
+        return client->client()->CreateHostToDeviceChannelHandle();
+      });
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
       .def_static(
@@ -899,8 +910,16 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
-  // TODO(phawkins): improve bindings for these types.
-  py::class_<ChannelHandle>(m, "ChannelHandle");
+  py::enum_<ChannelHandle::ChannelType>(m, "ChannelHandle_ChannelType")
+      .value("CHANNEL_TYPE_INVALID", ChannelHandle::CHANNEL_TYPE_INVALID)
+      .value("DEVICE_TO_DEVICE", ChannelHandle::DEVICE_TO_DEVICE)
+      .value("DEVICE_TO_HOST", ChannelHandle::DEVICE_TO_HOST)
+      .value("HOST_TO_DEVICE", ChannelHandle::HOST_TO_DEVICE);
+
+  py::class_<ChannelHandle>(m, "ChannelHandle")
+      .def_property_readonly("type", &ChannelHandle::type)
+      .def_property_readonly("handle", &ChannelHandle::handle)
+      .def("__repr__", [](ChannelHandle* h) { return h->DebugString(); });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla
