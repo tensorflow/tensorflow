@@ -9,11 +9,12 @@ load(
 
 def micro_copts():
     # TODO(b/139024129): include the followings as well:
+    # -Werror
     # -Wmissing-field-initializers
     # -Wdouble-promotion
     # -Wunused-const-variable
     # -Wshadow
-    copts = ["-Werror", "-Wsign-compare"]
+    copts = ["-Wsign-compare"]
     return copts
 
 def cc_library(**kwargs):
