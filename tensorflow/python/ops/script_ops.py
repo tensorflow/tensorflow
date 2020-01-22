@@ -509,7 +509,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
   if context.executing_eagerly():
-    result = func(*[x.numpy() for x in inp])
+    result = func(*[np.array(x) for x in inp])
     result = nest.flatten(result)
 
     result = [x if x is None else ops.convert_to_tensor(x) for x in result]
