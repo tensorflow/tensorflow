@@ -2249,6 +2249,11 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
   }
 }
 
+llvm::Value* IrEmitterUnnested::EmitBlockId() {
+  return gpu::EmitCallToTargetIntrinsic(gpu::TargetIntrinsicID::kBlockIdx, {},
+                                        {}, &b_);
+}
+
 // Given the IrArray index of a reduction input, returns the linear address of
 // the reduction output as if the reduction were going to keep the input
 // shape with the dimensions being reduced moved.
@@ -2410,8 +2415,7 @@ void IrEmitterUnnested::EmitTilingKernel(
 
   // Calculate the starting tile.
   const IrArray::Index starting_tile = [&] {
-    llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
-        gpu::TargetIntrinsicID::kBlockIdx, {}, {}, &b_);
+    llvm::Value* block_id = EmitBlockId();
     llvm_ir::AddRangeMetadata(0, mapping_scheme.GetNumberOfBlocks(),
                               llvm::cast<llvm::Instruction>(block_id));
     llvm::Value* linear_block_id =

@@ -317,6 +317,9 @@ class IrEmitterUnnested : public IrEmitter,
   // Sets the return value range to [0, threads_per_block).
   llvm::Value* EmitThreadId(int64 threads_per_block, llvm::Type* index_ty);
 
+  // Emits current block id.
+  llvm::Value* EmitBlockId();
+
   Status Postprocess(HloInstruction* hlo) override;
 
   // Returns the last generated thunk.
