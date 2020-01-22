@@ -161,18 +161,14 @@ namespace conv {
         unsigned block_count = kernel_params->block_count;
         int32_t scales_offset = user_data->unpadded_shape[0]; // C_out
 
-        for (unsigned i=0; i < block_count; i++)
-        {
-            conv2d_shallowin_deepout_block(
-                output->data.int8, // Y
-                kernel_params,
-                &kernel_params->blocks[i],
-                input->data.int8, // X,
-                weights->data.int8, // K
-                (int16_t*) &shift_scale->data.i16[0], // shifts
-                (int16_t*) &shift_scale->data.i16[scales_offset] // scales
-            );
-        }
+        conv2d_shallowin_deepout(
+            output->data.int8, // Y
+            kernel_params,
+            input->data.int8, // X,
+            weights->data.int8, // K
+            (int16_t*) &shift_scale->data.i16[0], // shifts
+            (int16_t*) &shift_scale->data.i16[scales_offset] // scales
+        );
 
         return kTfLiteOk;
     }
@@ -261,18 +257,14 @@ namespace conv {
         unsigned block_count = kernel_params->block_count;
         int32_t scales_offset = weights->dims->data[0] * weights->dims->data[4]; // C_out
 
-        for (unsigned i=0; i < block_count; i++)
-        {
-            conv2d_deepin_deepout_block(
-                output->data.int8, // Y
-                kernel_params,
-                &kernel_params->blocks[i],
-                input->data.int8, // X,
-                weights->data.int8, // K
-                (int16_t*) &shift_scale->data.i16[0], // shifts
-                (int16_t*) &shift_scale->data.i16[scales_offset] // scales
-            );
-        }
+        conv2d_deepin_deepout(
+            output->data.int8, // Y
+            kernel_params,
+            input->data.int8, // X,
+            weights->data.int8, // K
+            (int16_t*) &shift_scale->data.i16[0], // shifts
+            (int16_t*) &shift_scale->data.i16[scales_offset] // scales
+        );
 
         return kTfLiteOk;
     }
