@@ -53,7 +53,8 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
     static const int kScaledDiffIntegerBits = 5;
 
     tflite::PreprocessSoftmaxScaling(
-        params->beta, input->params.scale, kScaledDiffIntegerBits,
+        static_cast<double>(params->beta),
+        static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
         &data->input_multiplier, &data->input_left_shift);
     data->diff_min = -1.0 * tflite::CalculateInputRadius(
                                 kScaledDiffIntegerBits, data->input_left_shift);
@@ -143,7 +144,7 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
 void Softmax4DFloat(const TfLiteTensor* input, TfLiteTensor* output,
                     TfLiteSoftmaxParams* params) {
   SoftmaxParams op_params;
-  op_params.beta = params->beta;
+  op_params.beta = static_cast<double>(params->beta);
   tflite::reference_ops::Softmax(
       op_params, GetTensorShape(input), GetTensorData<float>(input),
       GetTensorShape(output), GetTensorData<float>(output));
