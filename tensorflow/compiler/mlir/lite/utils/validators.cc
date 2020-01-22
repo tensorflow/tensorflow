@@ -61,6 +61,16 @@ bool TFIntListIs1XY1(const ArrayAttr &attr) {
   return true;
 }
 
+// Returns true if every element of the attribute is 1. All elements of `attr`
+// must be `IntegerAttr`.
+bool TFIntListIsAllOnes(const ArrayAttr &attr) {
+  const auto &elements = attr.getValue();
+
+  return !std::any_of(elements.begin(), elements.end(), [](Attribute e) {
+    return e.cast<IntegerAttr>().getValue() != 1;
+  });
+}
+
 bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {
   // This would return false if we had unranked tensors (where they should
   // probably be considered as broadcastable), but given we are working with
