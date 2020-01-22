@@ -25,11 +25,11 @@ py_library(
     deps = [
         ":backend",
         ":engine",
-        ":layers",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
+        "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
@@ -358,72 +358,6 @@ py_library(
     ],
 )
 
-# A separate build for layers without serialization to avoid circular deps
-# with feature column.
-py_library(
-    name = "layers_base",
-    srcs = [
-        "layers/__init__.py",
-        "layers/advanced_activations.py",
-        "layers/convolutional.py",
-        "layers/convolutional_recurrent.py",
-        "layers/core.py",
-        "layers/cudnn_recurrent.py",
-        "layers/dense_attention.py",
-        "layers/embeddings.py",
-        "layers/kernelized.py",
-        "layers/local.py",
-        "layers/merge.py",
-        "layers/noise.py",
-        "layers/normalization.py",
-        "layers/normalization_v2.py",
-        "layers/pooling.py",
-        "layers/recurrent.py",
-        "layers/recurrent_v2.py",
-        "layers/rnn_cell_wrapper_v2.py",
-        "layers/wrappers.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":engine",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:cudnn_rnn_ops_gen",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:embedding_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:standard_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/keras/layers/preprocessing",
-        "//tensorflow/python/keras/utils:generic_utils",
-        "//tensorflow/python/keras/utils:layer_utils",
-        "//tensorflow/python/keras/utils:tf_utils",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "layers",
-    srcs = [
-        "layers/serialization.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":layers_base",
-        "//tensorflow/python/feature_column:feature_column_py",
-        "//tensorflow/python/keras/utils:tf_utils",
-    ],
-)
-
 tf_py_test(
     name = "integration_test",
     size = "medium",
@@ -622,93 +556,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "advanced_activations_test",
-    size = "medium",
-    srcs = ["layers/advanced_activations_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "tensorflow_op_layer_test",
-    size = "medium",
-    srcs = ["layers/tensorflow_op_layer_test.py"],
-    python_version = "PY3",
-    shard_count = 3,
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras/saving",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "convolutional_recurrent_test",
-    size = "medium",
-    srcs = ["layers/convolutional_recurrent_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "convolutional_test",
-    size = "medium",
-    srcs = ["layers/convolutional_test.py"],
-    python_version = "PY3",
-    shard_count = 8,
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "convolutional_transpose_test",
-    size = "medium",
-    srcs = ["layers/convolutional_transpose_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "cudnn_recurrent_test",
-    size = "medium",
-    srcs = ["layers/cudnn_recurrent_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_windows_gpu",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "base_preprocessing_layer_test",
     size = "medium",
     srcs = ["engine/base_preprocessing_layer_test.py"],
@@ -723,6 +570,7 @@ tf_py_test(
     ],
 )
 
+<<<<<<< HEAD
 tf_py_test(
     name = "pooling_test",
     size = "medium",
@@ -1044,6 +892,8 @@ tf_py_test(
     ],
 )
 
+=======
+>>>>>>> google_upstream/master
 cuda_py_test(
     name = "training_gpu_test",
     size = "small",
@@ -1187,9 +1037,9 @@ tf_py_test(
     ],
     deps = [
         ":keras",
-        ":layers",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",

@@ -1221,7 +1221,7 @@ def is_reduced_optimize_huge_functions_available(environ_cp):
   only, as of 2019-11-19). TensorFlow needs this flag to massively reduce
   compile times, but until 16.4 is officially released, we can't depend on it.
 
-  See also https://groups.google.com/a/tensorflow.org/g/build/c/SsW98Eo7l3o
+  See also https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
 
   Because it's very annoying to check this manually (to check the MSVC installed
   versions, you need to use the registry, and it's not clear if Bazel will be

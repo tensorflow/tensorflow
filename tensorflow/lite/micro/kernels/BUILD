@@ -1,7 +1,10 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
+)
+load(
+    "//tensorflow/lite/micro:build_def.bzl",
+    "micro_copts",
 )
 
 package(
@@ -46,7 +49,7 @@ cc_library(
         "unpack.cc",
     ],
     hdrs = ["micro_ops.h"],
-    copts = tflite_copts(),
+    copts = micro_copts(),
     deps = [
         ":activation_utils",
         ":micro_utils",
@@ -72,7 +75,7 @@ cc_library(
     hdrs = [
         "all_ops_resolver.h",
     ],
-    copts = tflite_copts(),
+    copts = micro_copts(),
     deps = [
         ":micro_ops",
         "//tensorflow/lite/micro:micro_compatibility",
@@ -115,7 +118,7 @@ cc_library(
         "unpack.cc",
     ],
     hdrs = ["micro_ops.h"],
-    copts = tflite_copts(),
+    copts = micro_copts(),
     deps = [
         ":activation_utils",
         ":micro_utils",
@@ -141,7 +144,7 @@ cc_library(
     hdrs = [
         "all_ops_resolver.h",
     ],
-    copts = tflite_copts(),
+    copts = micro_copts(),
     deps = [
         ":portable_optimized_micro_ops",
         "//tensorflow/lite/micro:micro_compatibility",

@@ -590,7 +590,7 @@ tf_python_pybind_extension(
     srcs = [
         "training/quantize_training_wrapper.cc",
     ],
-    hdrs = ["//tensorflow/core:quantize_training_hdrs"],
+    hdrs = ["//tensorflow/core/graph:quantize_training_hdrs"],
     module_name = "_pywrap_quantize_training",
     deps = [
         ":pybind11_lib",
@@ -4260,6 +4260,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "script_ops_test",
+    srcs = ["ops/script_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":dtypes",
+        ":framework_ops",
+        ":framework_test_lib",
+        ":script_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "standard_ops",
     srcs = ["ops/standard_ops.py"],
@@ -6819,7 +6833,7 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -7188,6 +7202,22 @@ cuda_py_test(
         ":training",
         ":variables",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "graph_building_benchmark",
+    size = "medium",
+    srcs = ["framework/graph_building_benchmark.py"],
+    main = "framework/graph_building_benchmark.py",
+    python_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":math_ops",
+        ":platform_benchmark",
+        "//tensorflow/python/eager:context",
     ],
 )
 

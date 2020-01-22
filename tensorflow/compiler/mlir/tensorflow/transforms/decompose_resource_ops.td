@@ -24,8 +24,8 @@ class GetScalarOfType<int value> : NativeCodeCall<
 def CreateTFReadVariableOp: NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "  $0.getLoc(),"
-    "  UnrankedTensorType::get("
-    "    $1.getType().cast<TensorType>().getElementType()),"
+    "  GetResourceSubtypeOrDefault("
+    "    $2, $1.getType().cast<TensorType>().getElementType()),"
     "  $2)"
     >;
 

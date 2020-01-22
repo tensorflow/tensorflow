@@ -369,6 +369,10 @@ class MemorySpaceAssignment {
     // Returns the defining position for this allocation.
     virtual HloPosition defining_position() const { return defining_position_; }
 
+    // Returns the time the buffer is first available to be used. For
+    // Allocation, this is start_time.
+    virtual int64 earliest_available_time() const { return start_time_; }
+
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
     Chunk chunk() const { return chunk_; }
@@ -434,6 +438,13 @@ class MemorySpaceAssignment {
 
     HloInstruction* copy_start() const { return copy_start_; }
     HloInstruction* copy_done() const { return copy_done_; }
+
+    // Returns the time the buffer is first available to be used. For For
+    // CopyAllocation, this is when the copy ends, which is
+    // copy_done_schedule_before.
+    int64 earliest_available_time() const override {
+      return copy_done_schedule_before_;
+    }
 
     int64 copy_start_schedule_after() const {
       return copy_start_schedule_after_;
@@ -643,6 +654,14 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       BufferInterval alternate_mem_interval,
       HloInstruction* non_bitcast_operand,
       MemorySpaceAssignment::AllocationSequence* allocations);
+
+  // For a no-copy allocation, find the best possible chunk candidate, where it
+  // has the longest possible availability if no preferred offset is given, or
+  // at the preferred_offset if it is given.
+  absl::optional<ChunkCandidate> FindBestNoCopyChunkCandidate(
+      int64 end_time, int64 last_use_time,
+      absl::optional<int64> preferred_offset,
+      BufferInterval* alternate_mem_interval) const;
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();

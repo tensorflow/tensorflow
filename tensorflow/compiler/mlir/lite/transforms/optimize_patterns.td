@@ -54,6 +54,10 @@ foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu1Op, TFL_AF_Relu1]] in
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
 
+
+class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
+  CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
+
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
@@ -72,7 +76,8 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
                                    (ConstantOp $value), TFL_AF_None),
                         $h_factor, $w_factor, $act_fn,
                         $padding, $stride_h, $stride_w),
-          [(HasOneUse $output)]>;
+          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
+           (HasOneUse $output)]>;
   def : Pat<(binaryOp (TFL_DepthwiseConv2DOp:$output $input, $filter,
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
@@ -86,13 +91,11 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w,
                           $multiplier),
-          [(HasOneUse $output)]>;
+          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+           (HasOneUse $output)]>;
 }
 foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
   defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
-
-class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
-  CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
 
 def ExpandTo4DForConv: NativeCodeCall<"ExpandTo4DForConv($0)">;
 

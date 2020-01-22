@@ -33,6 +33,26 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("local_devices", &PyTpuClient::local_devices)
       .def("host_id", &PyTpuClient::host_id)
       .def("GetDefaultDeviceAssignment",
+           [](PyLocalClient* client, int num_replicas, int num_partitions)
+               -> StatusOr<std::vector<std::vector<std::shared_ptr<Device>>>> {
+             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                                 client->GetDefaultDeviceAssignment(
+                                     num_replicas, num_partitions));
+             std::vector<std::vector<std::shared_ptr<Device>>> result;
+             result.resize(num_replicas);
+             for (int r = 0; r < num_replicas; ++r) {
+               result[r].resize(num_partitions);
+               for (int p = 0; p < num_partitions; ++p) {
+                 int device_id = device_assignment(r, p);
+                 auto iter = client->id_to_device().find(device_id);
+                 CHECK(iter != client->id_to_device().end()) << device_id;
+                 result[r][p] = iter->second;
+               }
+             }
+             return result;
+           })
+      // TODO(skye): delete after all callers can handle 2D output
+      .def("GetDefaultDeviceAssignment",
            [](PyTpuClient* client, int num_replicas)
                -> StatusOr<std::vector<std::shared_ptr<Device>>> {
              TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,

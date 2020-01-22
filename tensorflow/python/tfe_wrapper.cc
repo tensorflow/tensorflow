@@ -364,6 +364,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         return output;
       },
       py::return_value_policy::reference);
+  m.def("TFE_HostAddressSpace", [](py::handle& o, TF_Buffer& buf) {
+    TFE_HostAddressSpace(tensorflow::InputTFE_Context(o), &buf);
+  });
   m.def("TFE_ContextAddFunction", [](py::handle& ctx, py::handle& func) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
@@ -769,14 +772,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                             buf.get()->length, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
-  m.def("TFE_InitializeTPUSystem",
-        [](const py::handle& ctx, const char* job, TF_Buffer& buf) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          TFE_InitializeTPUSystem(tensorflow::InputTFE_Context(ctx), job, &buf,
-                                  status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);
   m.def("TF_DeleteDeviceList", &TF_DeleteDeviceList,
         py::return_value_policy::reference);

@@ -30,13 +30,27 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export('keras.datasets.cifar100.load_data')
 def load_data(label_mode='fine'):
-  """Loads CIFAR100 dataset.
+  """Loads [CIFAR100 dataset](https://www.cs.toronto.edu/~kriz/cifar.html).
+
+  This is a dataset of 50,000 32x32 color training images and
+  10,000 test images, labeled over 100 fine-grained classes that are
+  grouped into 20 coarse-grained classes. See more info at the
+  [CIFAR homepage](https://www.cs.toronto.edu/~kriz/cifar.html).
 
   Arguments:
-      label_mode: one of "fine", "coarse".
+      label_mode: one of "fine", "coarse". If it is "fine" the category labels
+      are the fine-grained labels, if it is "coarse" the output labels are the
+      coarse-grained superclasses.
 
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+
+      x_train, x_test: uint8 arrays of RGB image data with shape
+        (num_samples, 3, 32, 32) if the `tf.keras.backend.image_data_format` is
+        'channels_first', or (num_samples, 32, 32, 3) if the data format
+        is 'channels_last'.
+      y_train, y_test: uint8 arrays of category labels with shape
+        (num_samples, 1).
 
   Raises:
       ValueError: in case of invalid `label_mode`.

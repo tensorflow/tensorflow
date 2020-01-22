@@ -113,7 +113,7 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
 
 Status ConvPowerVR::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
-      definition_.batch_support && stride_padding_.x != 1;
+      definition_.IsBatchSupported() && stride_padding_.x != 1;
   const std::string code = GenerateConvPowerVR1x1(
       definition_, stride_correction, conv_params_, linked_operations_);
   std::vector<CompilerOptions> options;

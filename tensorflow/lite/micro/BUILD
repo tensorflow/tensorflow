@@ -5,6 +5,7 @@ load(
 load(
     "//tensorflow/lite/micro:build_def.bzl",
     "cc_library",
+    "micro_copts",
 )
 
 package(
@@ -18,6 +19,7 @@ cc_library(
         "compatibility.h",
     ],
     build_for_embedded = True,
+    copts = micro_copts(),
 )
 
 cc_library(
@@ -72,6 +74,7 @@ cc_library(
         "micro_utils.h",
     ],
     build_for_embedded = True,
+    copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",

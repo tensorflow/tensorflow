@@ -304,6 +304,36 @@ cc_test(
 )
 
 cc_library(
+    name = "mean",
+    srcs = ["mean.cc"],
+    hdrs = ["mean.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "mean_test",
+    srcs = ["mean_test.cc"],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":mean",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "mul",
     srcs = ["mul.cc"],
     hdrs = ["mul.h"],
@@ -641,6 +671,7 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "pooling",
     "prelu",
     "relu",
+    "mean",
     "reshape",
     "slice",
     "softmax",

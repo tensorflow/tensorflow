@@ -117,7 +117,11 @@ cc_library(
 tf_cc_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
-    tags = ["requires-gpu-sm35"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "requires-gpu-sm35",
+    ],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test_helpers",
@@ -470,6 +474,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_debug_info_manager_test",
     srcs = ["gpu_debug_info_manager_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_constants",
         ":gpu_debug_info_manager",
@@ -1025,6 +1030,7 @@ cc_library(
 tf_cc_test(
     name = "cudnn_pad_for_convolutions_test",
     srcs = ["cudnn_pad_for_convolutions_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":cudnn_pad_for_convolutions",
         ":ir_emission_utils",
@@ -1377,6 +1383,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gemm_rewriter",
         ":gpu_layout_assignment",
@@ -1552,7 +1559,12 @@ tf_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
     tags = [
+<<<<<<< HEAD
         "no_rocm",
+=======
+        "gpu",
+        "no_oss",
+>>>>>>> google_upstream/master
         "noasan",
         "nomsan",
         "requires-gpu-sm70",

@@ -981,7 +981,14 @@ def is_tensor(x):  # pylint: disable=invalid-name
 
   If `is_tensor(x)` returns `True`, it is safe to assume that `x` is a tensor or
   can be converted to a tensor using `ops.convert_to_tensor(x)`.
-
+  
+  Usage example:
+  
+  >>> tf.is_tensor(tf.constant([[1,2,3],[4,5,6],[7,8,9]])) 
+  True
+  >>> tf.is_tensor("Hello World")
+  False
+    
   Args:
     x: A python object to check.
 

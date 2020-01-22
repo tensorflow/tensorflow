@@ -2957,6 +2957,7 @@ bool OpGradientDoesntRequireOutputIndices(
           {"Cos", {true, {}}},
           {"Tan", {true, {}}},
           {"Add", {true, {}}},
+          {"AddN", {true, {}}},
           {"AddV2", {true, {}}},
           {"Sub", {true, {}}},
           {"Mul", {true, {}}},

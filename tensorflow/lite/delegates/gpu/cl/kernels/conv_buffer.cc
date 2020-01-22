@@ -216,7 +216,8 @@ ConvBuffer& ConvBuffer::operator=(ConvBuffer&& operation) {
 }
 
 Status ConvBuffer::Compile(const CreationContext& creation_context) {
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const std::string code =
       GenerateConvBuffer(definition_, stride_correction, x_elements_,
                          y_elements_, linked_operations_);
