@@ -222,8 +222,9 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   OpKernelConstruction construction(
       DeviceType(dev->device_type()), dev,
       dev->GetAllocator(AllocatorAttributes()), &node_def,
-      &fbody->fdef.signature(), flr, fbody->arg_types, input_memory_types,
-      fbody->ret_types, output_memory_types, flr->graph_def_version(), &s);
+      &fbody->fdef.signature(), flr, dev->resource_manager(), fbody->arg_types,
+      input_memory_types, fbody->ret_types, output_memory_types,
+      flr->graph_def_version(), &s);
 
   *kernel = absl::make_unique<XlaLocalLaunchBase>(
       &construction, constant_arg_indices, resource_arg_indices, function);

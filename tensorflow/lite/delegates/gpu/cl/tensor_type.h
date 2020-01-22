@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,14 +37,23 @@ enum class TensorStorageType {
 };
 
 struct TensorDescriptor {
-  DataType data_type;
-  TensorStorageType storage_type;
+  TensorDescriptor() = default;
+  TensorDescriptor(DataType dt, TensorStorageType st, Layout l)
+      : data_type(dt), storage_type(st), layout(l) {}
 
   bool operator==(const TensorDescriptor& d) const {
-    return data_type == d.data_type && storage_type == d.storage_type;
+    return data_type == d.data_type && storage_type == d.storage_type &&
+           layout == d.layout;
   }
 
   bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
+
+  DataType data_type = DataType::UNKNOWN;
+  TensorStorageType storage_type = TensorStorageType::UNKNOWN;
+  // This field describes logical layout, actual(physical) GPU layout can be
+  // totally different.
+  Layout layout =
+      Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
 };
 
 std::string ToString(TensorStorageType type);

@@ -65,7 +65,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   def _get_iterator(self, strategy, input_fn):
     iterator = strategy.make_input_fn_iterator(lambda _: input_fn())
-    self.evaluate(iterator.initialize())
+    self.evaluate(iterator.initializer)
     return iterator
 
   @combinations.generate(

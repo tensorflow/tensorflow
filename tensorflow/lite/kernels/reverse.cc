@@ -40,7 +40,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
       input->type != kTfLiteUInt8 && input->type != kTfLiteInt16 &&
-      input->type != kTfLiteInt64) {
+      input->type != kTfLiteInt64 && input->type != kTfLiteBool) {
     context->ReportError(context, "Type '%s' is not supported by reverse.",
                          TfLiteTypeGetName(input->type));
     return kTfLiteError;
@@ -101,6 +101,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reference_ops::Reverse<int64_t>(
           axis, GetTensorShape(input), GetTensorData<int64_t>(input),
           GetTensorShape(output), GetTensorData<int64_t>(output));
+      break;
+    }
+    case kTfLiteBool: {
+      reference_ops::Reverse<bool>(
+          axis, GetTensorShape(input), GetTensorData<bool>(input),
+          GetTensorShape(output), GetTensorData<bool>(output));
       break;
     }
     default: {

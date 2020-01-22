@@ -41,22 +41,48 @@ class InputLayer(base_layer.Layer):
   It is generally recommend to use the functional layer API via `Input`,
   (which creates an `InputLayer`) without directly using `InputLayer`.
 
+  When using InputLayer with Keras Sequential model, it can be skipped by
+  moving the input_shape parameter to the first layer after the InputLayer.
+
   This class can create placeholders for tf.Tensors, tf.SparseTensors, and
-  tf.RaggedTensors by choosing 'sparse=True' or 'ragged=True'.
+  tf.RaggedTensors by choosing 'sparse=True' or 'ragged=True'. Note that
+  'sparse' and 'ragged' can't be configured to True at same time.
+  Usage:
+
+  ```python
+  # With explicit InputLayer.
+  model = tf.keras.Sequential([
+    tf.keras.layers.InputLayer(input_shape=(4,)),
+    tf.keras.layers.Dense(8)])
+  model.compile(tf.optimizers.RMSprop(0.001), loss='mse')
+  model.fit(np.zeros((10, 4)),
+            np.ones((10, 8)))
+
+  # Without InputLayer and let the first layer to have the input_shape.
+  # Keras will add a input for the model behind the scene.
+  model = tf.keras.Sequential([
+    tf.keras.layers.Dense(8, input_shape=(4,))])
+  model.compile(tf.optimizers.RMSprop(0.001), loss='mse')
+  model.fit(np.zeros((10, 4)),
+            np.ones((10, 8)))
+  ```
 
   Arguments:
       input_shape: Shape tuple (not including the batch axis), or `TensorShape`
         instance (not including the batch axis).
       batch_size: Optional input batch size (integer or None).
-      dtype: Datatype of the input.
+      dtype: Optional datatype of the input. When not provided, the Keras
+          default float type will be used.
       input_tensor: Optional tensor to use as layer input
           instead of creating a placeholder.
       sparse: Boolean, whether the placeholder created is meant to be sparse.
+          Default to False.
       ragged: Boolean, whether the placeholder created is meant to be ragged.
           In this case, values of 'None' in the 'shape' argument represent
           ragged dimensions. For more information about RaggedTensors, see
           https://www.tensorflow.org/guide/ragged_tensors.
-      name: Name of the layer (string).
+          Default to False.
+      name: Optional name of the layer (string).
   """
 
   def __init__(self,

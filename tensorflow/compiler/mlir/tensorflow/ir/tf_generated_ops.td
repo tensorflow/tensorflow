@@ -2433,6 +2433,22 @@ tf.imag(input) ==> [4.75, 5.75]
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
+  let summary = "Fetches multiple values from infeed as an XLA tuple.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedResultShapeListAttr shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_InvertOp : TF_Op<"Invert", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
@@ -2491,6 +2507,42 @@ for dtype in dtype_list:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_InvertPermutationOp : TF_Op<"InvertPermutation", [NoSideEffect]> {
+  let summary = "Computes the inverse permutation of a tensor.";
+
+  let description = [{
+This operation computes the inverse of an index permutation. It takes a 1-D
+integer tensor `x`, which represents the indices of a zero-based array, and
+swaps each value with its index position. In other words, for an output tensor
+`y` and an input tensor `x`, this operation computes the following:
+
+`y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`
+
+The values must include 0. There can be no duplicate values or negative values.
+
+For example:
+
+```
+# tensor `x` is [3, 4, 0, 2, 1]
+invert_permutation(x) ==> [2, 4, 3, 0, 1]
+```
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$x
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_IsFiniteOp : TF_Op<"IsFinite", [NoSideEffect, SameOperandsAndResultShape]> {
@@ -3919,6 +3971,21 @@ output =
   }];
 }
 
+def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
+  let summary = "Enqueue multiple Tensor values on the computation outfeed.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr dtypes = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_PackOp : TF_Op<"Pack", [NoSideEffect]> {
   let summary = [{
 Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.
@@ -4285,6 +4352,35 @@ the dimension is padded with zeros.
 
   TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [SameOperandsAndResultType]> {
+  let summary = "Randomly shuffles a tensor along its first dimension.";
+
+  let description = [{
+The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
+  to one and only one `output[i]`. For example, a mapping that might occur for a
+  3x2 tensor is:
+
+```
+[[1, 2],       [[5, 6],
+ [3, 4],  ==>   [1, 2],
+ [5, 6]]        [3, 4]]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$value,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {
@@ -6292,6 +6388,29 @@ The above computation has a replicated output of two replicas.
 
   TF_DerivedResultSizeAttr num_replicas = TF_DerivedResultSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TPUReshardVariablesOp : TF_Op<"TPUReshardVariables", []> {
+  let summary = [{
+Op that reshards on-device TPU variables to specified state. Internal use only.
+  }];
+
+  let description = [{
+The sharding state is represented as the key of the compilation that generated
+the sharding/unsharding programs along with the main program. new_format_key
+specifies the desired state, and format_state_var is the current state of the
+variables.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_ResourceTensor>:$vars,
+    TF_StrTensor:$new_format_key,
+    TF_ResourceTensor:$format_state_var
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {

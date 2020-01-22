@@ -432,7 +432,7 @@ void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
         // the desired target pending.
         in_flight_batches_limit_ +=
             std::round(options_.target_pending - avg_pending);
-        in_flight_batches_limit_ = std::max(in_flight_batches_limit_, 1LL);
+        in_flight_batches_limit_ = std::max(in_flight_batches_limit_, int64{1});
         in_flight_batches_limit_ =
             std::min(in_flight_batches_limit_, options_.num_batch_threads);
         // Add extra processing threads if necessary.

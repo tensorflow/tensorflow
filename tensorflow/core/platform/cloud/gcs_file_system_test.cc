@@ -24,6 +24,11 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
+// Undef DeleteFile macro defined in wndows.h.
+#ifdef PLATFORM_WINDOWS
+#undef DeleteFile
+#endif
+
 namespace tensorflow {
 namespace {
 

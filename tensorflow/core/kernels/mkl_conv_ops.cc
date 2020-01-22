@@ -798,8 +798,7 @@ class MklConvOp : public OpKernel {
         // Tensorflow format to MKL format by caching the filter when it is
         // converted for the first time. This cached filter can then be reused
         // in subsequent iterations.
-        bool do_cache_filter = src_dims[MklDnnDims::Dim_N] > kSmallBatchSize;
-        if (is_filter_const_ && do_cache_filter) {
+        if (is_filter_const_) {
           if (IsFilterCacheEmpty(context)) {
             // Cache filter if it is not already cached.
             CacheFilter(context, conv_fwd_pd, filter_data, filter_tensor,
@@ -812,13 +811,6 @@ class MklConvOp : public OpKernel {
           filter_data = GetCachedFilter(
               context, GET_WEIGHTS_FORMAT_FROM_OP_PD(conv_fwd_pd, conv_fwd));
           is_filter_cached = (filter_data != nullptr);
-          if (filter_out_tensor != nullptr) {
-            Tfilter* filter_out_tensor_buf =
-                static_cast<Tfilter*>(const_cast<Tfilter*>(
-                    filter_out_tensor->flat<Tfilter>().data()));
-            memcpy(filter_out_tensor_buf, filter_data,
-                   filter_out_tensor->AllocatedBytes());
-          }
         }
         if (!is_filter_cached) {
           filter.SetUsrMem(filter_md, &filter_tensor);
@@ -1587,8 +1579,8 @@ class MklQuantizedConv2DOp
       param_key.AddAsKey<float>(max_input);
       param_key.AddAsKey<float>(min_freezed_output);
       param_key.AddAsKey<float>(max_freezed_output);
-      param_key.AddAsKey<const Tensor*>(&min_filter_vector);
-      param_key.AddAsKey<const Tensor*>(&max_filter_vector);
+      param_key.AddAsKey<const float*>(min_filter);
+      param_key.AddAsKey<const float*>(max_filter);
       params.post_op_params.push_back(
           {"output_scale", ALGORITHM_UNDEF, scales, param_key.GetKey()});
     }

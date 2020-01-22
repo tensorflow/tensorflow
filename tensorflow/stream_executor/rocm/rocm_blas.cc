@@ -2001,7 +2001,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
     batch_stride_b = ldb * k;
   }
 
-  // Alocate local vectors to hold device pointers to matrices
+  // Allocate local vectors to hold device pointers to matrices
   std::vector<MAPPED_T *> a_raw_ptrs, b_raw_ptrs, c_raw_ptrs;
   for (int i = 0; i < batch_count; ++i) {
     // static_cast does work when converting Eigen::half* to rocblas_half*,

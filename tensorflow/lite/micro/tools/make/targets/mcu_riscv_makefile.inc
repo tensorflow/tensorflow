@@ -23,10 +23,10 @@ ifeq ($(TARGET), riscv32_mcu)
     -Wvla \
     -Wall \
     -Wextra \
+    -Wsign-compare \
     -Wno-unused-parameter \
     -Wno-missing-field-initializers \
     -Wno-write-strings \
-    -Wno-sign-compare \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -Os

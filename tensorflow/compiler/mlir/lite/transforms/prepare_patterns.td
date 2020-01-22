@@ -106,6 +106,7 @@ def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt),
 def : Pat<(TF_CheckNumericsOp $arg, $msg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_SnapshotOp $arg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
+def : Pat<(TF_PlaceholderWithDefaultOp $arg), (TF_IdentityOp $arg)>;
 
 //===----------------------------------------------------------------------===//
 // Op removal patterns.

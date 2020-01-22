@@ -33,6 +33,11 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
+#if (defined(ANDROID) || defined(__ANDROID__)) && \
+    (defined(__arm__) || defined(__aarch64__))
+#define TFLITE_ENABLE_HEXAGON
+#endif
+
 namespace tflite {
 namespace benchmark {
 
@@ -61,6 +66,13 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
 #endif
     return;
   }
+
+#if defined(TFLITE_ENABLE_HEXAGON)
+  if (params.Get<bool>("use_hexagon")) {
+    current_run_name_ = "dsp w/ hexagon";
+    return;
+  }
+#endif
 
   // Handle cases run on CPU
   // Note: could use std::to_string to convert an integer to string but it
@@ -130,7 +142,9 @@ std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
       CreateFlag<std::string>(
           "perf_options_list", &params_,
           "A comma-separated list of TFLite performance options to benchmark. "
-          "By default, all performance options are benchmarked."),
+          "By default, all performance options are benchmarked. Note if it's "
+          "set to 'none', then the tool simply benchmark the model against the "
+          "specified benchmark parameters."),
       CreateFlag<float>("option_benchmark_run_delay", &params_,
                         "The delay between two consecutive runs of "
                         "benchmarking performance options in seconds."),
@@ -188,12 +202,24 @@ bool BenchmarkPerformanceOptions::ParsePerfOptions() {
     perf_options_.clear();
     return false;
   }
+
+  if (HasOption("none") && perf_options_.size() > 1) {
+    TFLITE_LOG(ERROR) << "The 'none' option can not be used together with "
+                         "other perf options in --perf_options_list!";
+    perf_options_.clear();
+    return false;
+  }
   return true;
 }
 
 std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
     const {
-  return {"all", "cpu", "gpu", "nnapi"};
+  std::vector<std::string> valid_options = {"all", "cpu", "gpu", "nnapi",
+                                            "none"};
+#if defined(TFLITE_ENABLE_HEXAGON)
+  valid_options.emplace_back("dsp");
+#endif
+  return valid_options;
 }
 
 bool BenchmarkPerformanceOptions::HasOption(const std::string& option) const {
@@ -209,11 +235,22 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("use_nnapi", false);
   single_option_run_params_->Set<std::string>("nnapi_accelerator_name", "");
 #endif
+#if defined(TFLITE_ENABLE_HEXAGON)
+  single_option_run_params_->Set<bool>("use_hexagon", false);
+#endif
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
   TFLITE_LOG(INFO) << "The list of TFLite runtime options to be benchmarked: ["
                    << params_.Get<std::string>("perf_options_list") << "]";
+
+  if (HasOption("none")) {
+    // Just add an empty BenchmarkParams instance.
+    BenchmarkParams params;
+    all_run_params_.emplace_back(std::move(params));
+    // As 'none' is exclusive to others, simply return here.
+    return;
+  }
 
   const bool benchmark_all = HasOption("all");
 
@@ -265,6 +302,14 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
     all_run_params_.emplace_back(std::move(params));
   }
 #endif
+
+#if defined(TFLITE_ENABLE_HEXAGON)
+  if (benchmark_all || HasOption("dsp")) {
+    BenchmarkParams params;
+    params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(true));
+    all_run_params_.emplace_back(std::move(params));
+  }
+#endif
 }
 
 void BenchmarkPerformanceOptions::Run() {
@@ -282,9 +327,13 @@ void BenchmarkPerformanceOptions::Run() {
 
   // Now perform all runs, each with different performance-affecting parameters.
   for (const auto& run_params : all_run_params_) {
-    // Reset all performance-related options before any runs.
-    ResetPerformanceOptions();
-    single_option_run_params_->Set(run_params);
+    // If the run_params is empty, then it means "none" is set for
+    // --perf_options_list.
+    if (!run_params.Empty()) {
+      // Reset all performance-related options before any runs.
+      ResetPerformanceOptions();
+      single_option_run_params_->Set(run_params);
+    }
     util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
 
     // Clear internally created listeners before each run but keep externally

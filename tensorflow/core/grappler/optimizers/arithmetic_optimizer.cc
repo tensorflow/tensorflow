@@ -1762,7 +1762,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
     for (NodeDef* consumer : consumers) {
       for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name) {
+        if (consumer->input(i) == node_name &&
+            consumer->name() != NodeName(new_input)) {
           consumer->set_input(i, new_input);
           ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
         }
@@ -2907,7 +2908,8 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
     for (NodeDef* consumer : consumers) {
       for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name && consumer->name() != new_input) {
+        if (consumer->input(i) == node_name &&
+            consumer->name() != NodeName(new_input)) {
           consumer->set_input(i, new_input);
           ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
         }
@@ -3389,13 +3391,15 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) {
 
   for (const auto& input : node.input()) {
     const TensorId input_tensor = ParseTensorName(input);
-    h = Hash64CombineUnordered(
-        Hash64(input_tensor.node().data(), input_tensor.node().size()), h);
-    h = Hash64CombineUnordered(std::hash<int>()(input_tensor.index()), h);
+    uint64 input_hash = Hash64Combine(
+        Hash64(input_tensor.node().data(), input_tensor.node().size()),
+        std::hash<int>()(input_tensor.index()));
+    h = Hash64CombineUnordered(input_hash, h);
   }
   for (const auto& attr : node.attr()) {
-    h = Hash64CombineUnordered(Hash64(attr.first), h);
-    h = Hash64CombineUnordered(FastAttrValueHash(attr.second), h);
+    uint64 attr_hash =
+        Hash64Combine(Hash64(attr.first), FastAttrValueHash(attr.second));
+    h = Hash64CombineUnordered(attr_hash, h);
   }
   memoized_signatures_.emplace(&node, h);
   return h;

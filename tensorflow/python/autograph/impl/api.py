@@ -428,7 +428,8 @@ def converted_call(f,
   if isinstance(f, functools.partial):
     new_kwargs = {}
     if f.keywords is not None:
-      new_kwargs = f.keywords
+      # Use copy to avoid mutating the underlying keywords.
+      new_kwargs = f.keywords.copy()
     if kwargs is not None:
       new_kwargs.update(kwargs)
     new_args = f.args + args
@@ -539,7 +540,7 @@ def converted_call(f,
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
                   converted_f.__defaults__)
-      if six.PY3:
+      if not six.PY2:
         logging.log(2, 'KW defaults of %s : %s',
                     converted_f, converted_f.__kwdefaults__)
 

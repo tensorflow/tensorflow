@@ -124,20 +124,6 @@ class IteratorHandleOp : public OpKernel {
   // inconsistent capacities.
   Status VerifyResource(IteratorResource* resource);
 
-  template <typename To, typename From>  // use like this: down_cast<T*>(foo);
-  static inline To down_cast(From* f) {  // so we only accept pointers
-    static_assert(
-        (std::is_base_of<From, typename std::remove_pointer<To>::type>::value),
-        "target type not derived from source type");
-
-    // We skip the assert and hence the dynamic_cast if RTTI is disabled.
-#if !defined(__GNUC__) || defined(__GXX_RTTI)
-    // Uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
-    assert(f == nullptr || dynamic_cast<To>(f) != nullptr);
-#endif  // !defined(__GNUC__) || defined(__GXX_RTTI)
-    return static_cast<To>(f);
-  }
-
   FunctionLibraryRuntime* CreatePrivateFLR(
       OpKernelContext* ctx, std::unique_ptr<DeviceMgr>* device_mgr,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,

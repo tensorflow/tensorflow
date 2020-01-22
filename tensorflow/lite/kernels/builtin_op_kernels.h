@@ -118,6 +118,7 @@ TfLiteRegistration* Register_RNN();
 TfLiteRegistration* Register_ROUND();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SCATTER_ND();
+TfLiteRegistration* Register_SEGMENT_SUM();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SELECT_V2();
 TfLiteRegistration* Register_SHAPE();

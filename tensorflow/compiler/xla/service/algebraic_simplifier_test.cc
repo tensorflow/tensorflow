@@ -2869,6 +2869,38 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
   EXPECT_THAT(computation->root_instruction(), param);
 }
 
+TEST_F(AlgebraicSimplifierTest, RemoveNoopSliceOfPad) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 2}), "param"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  PaddingConfig no_padding;
+  for (int i = 0; i < 2; ++i) {
+    auto dimension = no_padding.add_dimensions();
+    dimension->set_edge_padding_low(2);
+    dimension->set_edge_padding_high(0);
+    dimension->set_interior_padding(1);
+  }
+  auto pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {5, 5}), param, zero, no_padding));
+  builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {2, 2}), pad, /*start_indices=*/{2, 2},
+      /*limit_indices=*/{5, 5}, /*strides=*/{2, 2}));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Pad(m::Parameter(0), m::Op().Is(zero)))));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), param);
+}
+
 TEST_F(AlgebraicSimplifierTest, NegativePadding) {
   // Verify that a pad instruction with negative padding is replaced with a
   // pad with non-negative padding followed by a slice.

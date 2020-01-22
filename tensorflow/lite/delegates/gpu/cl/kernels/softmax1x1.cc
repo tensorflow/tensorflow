@@ -28,14 +28,14 @@ namespace {
 std::string GetSoftmaxKernelCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor(
-      "src_data",
-      {"tensor_size.x", "tensor_size.y", "tensor_size.z", "tensor_size.w"},
-      op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor(
-      "dst_data",
-      {"tensor_size.x", "tensor_size.y", "tensor_size.z", "tensor_size.w"},
-      op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor("src_data",
+                                 WHSBPoint{"tensor_size.x", "tensor_size.y",
+                                           "tensor_size.z", "tensor_size.w"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 WHSBPoint{"tensor_size.x", "tensor_size.y",
+                                           "tensor_size.z", "tensor_size.w"},
+                                 op_def.dst_tensors[0]);
 
   const std::string batch_id = op_def.batch_support ? "batch_id" : "";
   std::string c = GetCommonDefines(op_def.precision);
@@ -60,7 +60,7 @@ std::string GetSoftmaxKernelCode(
   c += "    if (z < size.x) {\n";
   c += "      float4 mask_temp = z == size.x - 1 ? mask : (float4)(1.0f);\n";
   c += "      float4 src = " +
-       src_tensor.ReadAsFloat4D("0", "0", "z", batch_id) + ";\n";
+       src_tensor.ReadAsFloatWHSB("0", "0", "z", batch_id) + ";\n";
   c += "      sum += dot(mask_temp, exp(src));\n";
   c += "      offset += 32;\n";
   c += "    }\n";
@@ -91,10 +91,10 @@ std::string GetSoftmaxKernelCode(
   c += "    int z = offset + tid;\n";
   c += "    if (z < size.x) {\n";
   c += "      FLT4 res = TO_FLT4(exp(" +
-       src_tensor.ReadAsFloat4D("0", "0", "z", batch_id) + ")*sum);\n";
+       src_tensor.ReadAsFloatWHSB("0", "0", "z", batch_id) + ")*sum);\n";
   const LinkingContext context{"res", "0", "0", "z"};
   c += PostProcess(linked_operations, context);
-  c += "    " + dst_tensor.Write4D("res", "0", "0", "z", batch_id);
+  c += "    " + dst_tensor.WriteWHSB("res", "0", "0", "z", batch_id);
   c += "      offset += 32;\n";
   c += "    }\n";
   c += "    s++;\n";
@@ -127,8 +127,8 @@ Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
-  const int depth = src_[0]->Depth();
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  const int depth = src_[0]->Slices();
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(depth, IntegralDivideRoundUp(depth, 32))));
   RETURN_IF_ERROR(

@@ -114,6 +114,29 @@ TEST(PadTest, PrependHWCAppendHWC) {
                                  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 }
 
+TEST(MirrorPadTest, Smoke) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 3, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 1, 7, 1);
+
+  PadAttributes attr;
+  attr.prepended = BHWC(0, 0, 2, 0);
+  attr.appended = BHWC(0, 0, 2, 0);
+  attr.type = PaddingContentType::REFLECT;
+
+  SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {1.0, 2.0, 3.0}));
+  ASSERT_OK(model.Invoke(*NewPadNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {3.0, 2.0, 1.0, 2.0, 3.0, 2.0, 1.0}));
+}
+
 }  // namespace
 }  // namespace gl
 }  // namespace gpu

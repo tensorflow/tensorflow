@@ -1987,6 +1987,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       ::tflite::BuiltinOperator_REVERSE_V2, OperatorType::kReverseV2));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowRankOperator>>(
       ::tflite::BuiltinOperator_RANK, OperatorType::kRank));
+  ops.emplace_back(new SimpleOperator<SegmentSumOperator>(
+      ::tflite::BuiltinOperator_SEGMENT_SUM, OperatorType::kSegmentSum));
   return ops;
 }
 }  // namespace

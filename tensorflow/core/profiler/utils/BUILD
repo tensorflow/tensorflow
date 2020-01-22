@@ -25,6 +25,16 @@ cc_library(
 )
 
 cc_library(
+    name = "hardware_type_utils",
+    srcs = ["hardware_type_utils.cc"],
+    hdrs = ["hardware_type_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+    ],
+)
+
+cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
 )
@@ -105,14 +115,21 @@ cc_library(
 )
 
 cc_library(
+    name = "trace_utils",
+    hdrs = ["trace_utils.h"],
+)
+
+cc_library(
     name = "xplane_builder",
     srcs = ["xplane_builder.cc"],
     hdrs = ["xplane_builder.h"],
     visibility = [":friends"],
     deps = [
+        ":tf_op_utils",
         ":time_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -124,6 +141,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -142,15 +161,19 @@ cc_library(
 
 cc_library(
     name = "xplane_visitor",
+    srcs = ["xplane_visitor.cc"],
     hdrs = ["xplane_visitor.h"],
     visibility = [":friends"],
     deps = [
         ":time_utils",
         ":timespan",
+        ":xplane_schema",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

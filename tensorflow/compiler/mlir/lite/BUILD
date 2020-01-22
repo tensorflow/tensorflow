@@ -47,6 +47,14 @@ gentbl(
             "-gen-op-doc",
             "g3doc/tfl_ops.md",
         ),
+        (
+            "-gen-op-interface-decls",
+            "ir/tfl_ops_interface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "ir/tfl_ops_interface.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_ops.td",
@@ -177,11 +185,12 @@ cc_library(
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
+        "ir/tfl_ops_interface.cc.inc",
+        "ir/tfl_ops_interface.h.inc",
         "utils/attribute_utils.cc",
     ],
     hdrs = [
         "ir/tfl_ops.h",
-        "ir/tfl_traits.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_traits.h",
@@ -330,6 +339,7 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_quantize",
     srcs = [
+        "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
         "transforms/load_quantization_recipe.cc",
@@ -506,6 +516,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
+        "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/versioning:op_version",
         "@com_google_absl//absl/base",
@@ -671,12 +682,16 @@ cc_library(
     ],
 )
 
-exports_files(
-    ["transforms/passes.h"],
+cc_library(
+    name = "empty_passes",
+    hdrs = ["transforms/passes.h"],
     visibility = [
         "//configs/devtools/hawkeye/tflite:__subpackages__",
         "//learning/brain/models/app_benchmarks:__subpackages__",
         "//tensorflow/compiler/mlir/lite:friends",
         "//tensorflow/lite/experimental/mlir:__subpackages__",
+    ],
+    deps = [
+        "@llvm-project//llvm:support",
     ],
 )

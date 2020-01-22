@@ -42,7 +42,7 @@ if [[ "$MODE" == "eigen" ]]; then
 else
     CONFIG="--config=mkl"
 # Setting OMP_THREADS for low performing benchmarks.
-#   Default value(=core count) degrades perfrmance of some banchmark cases. 
+#   Default value(=core count) degrades performance of some benchmark cases. 
 #   Optimal thread count is case specific. 
 #   An argument can be passed to script, the value of which is used if given.
 #   Otherwise OMP_NUM_THREADS is set to 10

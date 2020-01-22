@@ -5230,6 +5230,39 @@ Stream &Stream::ThenRnnBackward(
   return *this;
 }
 
+Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
+                            const DeviceMemory<float> &probs_data,
+                            absl::Span<const int> labels_data,
+                            absl::Span<const int> labels_lengths_data,
+                            absl::Span<const int> input_lengths_data,
+                            DeviceMemory<float> *costs_data,
+                            const dnn::RnnStateTensorDescriptor &grads_desc,
+                            DeviceMemory<float> *grads_data,
+                            ScratchAllocator *workspace_allocator) {
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      DeviceMemory<uint8> scratch_memory;
+      auto status = dnn->PrepareForCtcLoss(
+                           this, probs_desc, probs_data, grads_desc,
+                           labels_data, labels_lengths_data, input_lengths_data,
+                           workspace_allocator, &scratch_memory)
+                        .ok();
+      if (status) {
+        status =
+            dnn->DoCtcLoss(this, probs_desc, probs_data, labels_data,
+                           labels_lengths_data, input_lengths_data, costs_data,
+                           grads_desc, grads_data, &scratch_memory);
+      }
+      if (!status) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
                                     dnn::DataType input_type,
                                     const DeviceMemoryBase &input_data,

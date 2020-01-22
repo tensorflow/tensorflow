@@ -1212,7 +1212,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "@six_archive//:six",
     ],
 )

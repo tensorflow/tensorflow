@@ -40,7 +40,7 @@ py_library(
         "//tensorflow/python/keras:backend_config",
         "//tensorflow/python/keras:base_layer_utils",
         "//tensorflow/python/keras:initializers",
-        "//tensorflow/python/keras:tf_utils",
+        "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
 
@@ -55,7 +55,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python/keras:generic_utils",
+        "//tensorflow/python/keras/utils:generic_utils",
     ],
 )
 

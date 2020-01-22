@@ -389,7 +389,6 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     mlir::RankedTensorType shaped_type, mlir::Type elem_type,
     const std::vector<uint8_t>& buffer) {
   unsigned bit_width;
-  mlir::RankedTensorType buffer_type;
   if (auto itype = elem_type.dyn_cast<mlir::IntegerType>()) {
     bit_width = itype.getWidth();
   } else if (auto qtype = elem_type.dyn_cast<QuantizedType>()) {
@@ -920,15 +919,13 @@ StatusOr<FuncOp> ConvertSubgraph(
 // represents TFLite, this entry point must be called "main"
 // TODO(b/131175224,b/132239787) Support multiple entry points
 std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
-  if (subgraph.name.empty()) {
-    if (index == 0) {
-      return "main";
-    } else {
-      return llvm::formatv("fn_{0}", index).str();
-    }
-  } else {
-    return subgraph.name;
+  if (index == 0) {
+    return "main";
   }
+  if (subgraph.name.empty()) {
+    return llvm::formatv("fn_{0}", index).str();
+  }
+  return subgraph.name;
 }
 }  // namespace
 

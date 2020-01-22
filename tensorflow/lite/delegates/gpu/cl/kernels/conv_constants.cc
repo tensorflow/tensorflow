@@ -31,12 +31,12 @@ std::string GenerateConvolutionConstantCode(
     const OperationDef& op_def, const int2& kernel_size, int src_channels,
     int dst_channels, bool stride_correction, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -136,11 +136,11 @@ std::string GenerateConvolutionConstantCode(
           c += "    bool x_out = " + s_x + "< 0 || " + s_x + ">= src_size.x;\n";
           c += "    " + s_type + " src = x_out || y_out ?";
           c += "(" + s_type + ")(0.0) : ";
-          c += src_tensor.Read3D(s_x, s_y, std::to_string(s)) + s_postfix +
+          c += src_tensor.ReadWHS(s_x, s_y, std::to_string(s)) + s_postfix +
                ";\n";
         } else {
           c += "    " + s_type + " src = " +
-               src_tensor.Read3D(s_x, s_y, std::to_string(s), address_mode) +
+               src_tensor.ReadWHS(s_x, s_y, std::to_string(s), address_mode) +
                s_postfix + ";\n";
         }
         for (int d = 0; d < out_z; ++d) {
@@ -161,7 +161,7 @@ std::string GenerateConvolutionConstantCode(
     c += "    FLT4 res = TO_FLT4(r[" + s_i + "]) + biases[" + s_i + "];\n";
     const LinkingContext context{"res", "X", "Y", s_i};
     c += PostProcess(linked_operations, context);
-    c += "  " + dst_tensor.Write3D("res", "X", "Y", s_i);
+    c += "  " + dst_tensor.WriteWHS("res", "X", "Y", s_i);
     c += "  }\n";
   }
   c += "}\n";
@@ -252,8 +252,8 @@ Status ConvConstants::BindArguments() {
       kernel_.SetBytesAuto(int2(padding_.x * src_[0]->Batch(), padding_.y)));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(dilation_.x * src_[0]->Batch(), dilation_.y)));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 

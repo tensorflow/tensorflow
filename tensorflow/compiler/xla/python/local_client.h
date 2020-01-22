@@ -137,12 +137,14 @@ class PyLocalClient {
                                         std::shared_ptr<Device> device);
 
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas) const;
+      int num_replicas, int num_partitions) const;
 
   int device_count() const { return devices_.size(); }
   int local_device_count() const { return local_devices_.size(); }
-  const std::vector<std::shared_ptr<Device>>& devices() { return devices_; }
-  const std::vector<std::shared_ptr<Device>>& local_devices() {
+  const std::vector<std::shared_ptr<Device>>& devices() const {
+    return devices_;
+  }
+  const std::vector<std::shared_ptr<Device>>& local_devices() const {
     return local_devices_;
   }
   const std::map<int, std::shared_ptr<Device>>& id_to_device() const {
@@ -224,7 +226,7 @@ class PyLocalBuffer {
       const std::vector<PyLocalBuffer*> buffers,
       std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device);
 
-  PyLocalBuffer(Shape on_host_shape,
+  PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
                 std::shared_ptr<SharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client,
                 std::shared_ptr<Device> device);
@@ -235,6 +237,7 @@ class PyLocalBuffer {
   PyLocalBuffer& operator=(PyLocalBuffer&&) = delete;
 
   const Shape& on_host_shape() const { return on_host_shape_; }
+  const Shape& on_device_shape() const { return on_device_shape_; }
   std::shared_ptr<Device> device() const { return device_; }
   const std::string& platform_name() const { return client_->platform_name(); }
   std::shared_ptr<PyLocalClient> client() const { return client_; }
@@ -276,6 +279,7 @@ class PyLocalBuffer {
  private:
   const std::shared_ptr<PyLocalClient> client_;
   const Shape on_host_shape_;
+  const Shape on_device_shape_;
   const std::shared_ptr<Device> device_;
   mutable absl::Mutex mu_;
   std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
@@ -313,6 +317,10 @@ class PyLocalExecutable {
     return executable_->build_options().num_replicas();
   }
 
+  int num_partitions() const {
+    return executable_->build_options().num_partitions();
+  }
+
   int64 SizeOfGeneratedCodeInBytes() const {
     return executable_->executable()->SizeOfGeneratedCodeInBytes();
   }
@@ -331,17 +339,27 @@ class PyLocalExecutable {
   // Execute on many replicas. Takes a sequence of argument lists (one argument
   // list per replica) and returns a tuple of results (one result per replica).
   // The number of argument lists must be equal to the replica count.
+  // The executable must have only one partition.
+  // TODO(cjfj): Remove this once JAX is moved to `ExecuteOnLocalDevices`.
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecutePerReplica(
+      absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
+
+  // Execute on local devices. Takes a sequence of argument lists (one argument
+  // list per local device) and returns a tuple of results (one result per local
+  // device). The number of argument lists must be equal to the local device
+  // count.
+  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteOnLocalDevices(
       absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
 
   void Delete() { executable_ = nullptr; }
 
   LocalExecutable* executable() const { return executable_.get(); }
+  const string& name() const;
 
  private:
   StatusOr<std::unique_ptr<PyLocalBuffer>> ExecuteHelper(
       absl::Span<PyLocalBuffer* const> argument_handles, int replica,
-      const RunId& run_id);
+      int partition, const RunId& run_id);
 
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the
@@ -350,12 +368,16 @@ class PyLocalExecutable {
   std::shared_ptr<LocalExecutable> executable_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
-  // The replica indices of device_assignment_ to be run by this client. On
-  // single-host platforms, this is all replicas (i.e. local_replicas_[i] = i),
-  // but this may not be the case on multi-host platforms.
-  std::vector<int> local_replicas_;
+  // The replica and partition indices of device_assignment_ to be run by this
+  // client. On single-host platforms without partitioning, this is all replicas
+  // (i.e. local_logical_devices_[i] = (i, 0)), but this may not be the case on
+  // multi-host platforms.
+  // If there are 4 replicas and 2 partitions on a single host platform, size of
+  // local_logical_devices_ is 4*2 = 8.
+  std::vector<std::pair<int, int>> local_logical_devices_;
 
-  // local_devices_[i] is the Device to which local_replicas_[i] is assigned.
+  // local_devices_[i] is the Device to which local_logical_devices_[i] is
+  // assigned.
   // shared_ptrs instead of unique_ptrs to play well with the Python bindings
   // (see xla.cc).
   std::vector<std::shared_ptr<Device>> local_devices_;

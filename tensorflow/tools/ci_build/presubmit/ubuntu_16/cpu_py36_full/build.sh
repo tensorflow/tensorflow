@@ -49,7 +49,7 @@ function run_build () {
   source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
-  # //tensorflow/core:platform_setround_test is not supported. See b/64264700
+  # //tensorflow/core/platform:setround_test is not supported. See b/64264700
   "${BAZEL_WRAPPER_PATH}" \
     test \
     --config=rbe \

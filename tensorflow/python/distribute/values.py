@@ -1422,6 +1422,10 @@ class AggregatingVariable(variables_lib.Variable):
     return self._v.name
 
   @property
+  def trainable(self):
+    return self._v.trainable
+
+  @property
   def dtype(self):
     return self._v.dtype
 

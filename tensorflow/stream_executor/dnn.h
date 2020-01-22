@@ -1352,6 +1352,14 @@ class DnnSupport {
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
 
+  virtual bool GetMIOpenConvolveAlgorithms(
+      dnn::ConvolutionKind kind, Stream* stream, dnn::DataType element_type,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      std::vector<ProfileResult>* out_algorithms);
+
   // Returns a list of supported rnn algorithms.
   virtual bool GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms);
 
@@ -2140,7 +2148,7 @@ class DnnSupport {
   //  max_seq_length: the max length of the sequences.
   //  batch_size: the size of a minibatch.
   //  data_size: the size of the state.
-  //  seq_lenghs: the lengths of sequences in a batch.
+  //  seq_lengths: the lengths of sequences in a batch.
   //  data_type: an enum to specify the type for the underlying data.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
@@ -2381,6 +2389,73 @@ class DnnSupport {
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result) {
     return false;
+  }
+
+  template <typename ElementType>
+  port::Status PrepareForCtcLoss(Stream* stream,
+                                 const RnnStateTensorDescriptor& probs_desc,
+                                 DeviceMemory<ElementType> probs_data,
+                                 const RnnStateTensorDescriptor& grads_desc,
+                                 absl::Span<const int> labels_data,
+                                 absl::Span<const int> labels_lengths_data,
+                                 absl::Span<const int> input_lengths_data,
+                                 ScratchAllocator* workspace_allocator,
+                                 DeviceMemory<uint8>* scratch_memory) {
+    return DoPrepareForCtcLoss(stream, ToDataType<ElementType>::value,
+                               probs_desc, grads_desc, labels_data,
+                               labels_lengths_data, input_lengths_data,
+                               workspace_allocator, scratch_memory);
+  }
+
+  // Enqueue a CTC Loss operation onto the stream.
+  //
+  // Arguments:
+  //  stream: pointer to the stream where this operation should be enqueued to.
+  //  element_type: date type of the input tensors
+  //  probs_desc: specifies the shape and the data layout of the input tensor.
+  //  probs_data: the device memory region that contains the input tensor.
+  //  labels_data: the device memory region that contains the labels_value
+  //    tensor.
+  //  labels_lengths_data: the device memory region that contains the
+  //    labels_lengths tensor
+  //  input_lengths_data: the device memory region that contains the seq_lengths
+  //    tensor
+  //  costs_data: the device memory region that contains the costs tensor.
+  //  grads_desc: specifies the shape and the data layout of the grads tensor.
+  //  grads_data: the device memory region that contains the grads tensor.
+  //  ctc_loss_desc: a CTCLoss descriptor.
+  //  workspace_allocator: a memory allocator that creates the temporary
+  //    workspace memory used by this operation. The caller is responsible for
+  //    keeping the memory alive long enough for this operation, and recylces
+  //    afterwards.
+  virtual port::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
+                                 const RnnStateTensorDescriptor& probs_desc,
+                                 const DeviceMemoryBase probs_data,
+                                 absl::Span<const int> labels_data,
+                                 absl::Span<const int> labels_lengths_data,
+                                 absl::Span<const int> input_lengths_data,
+                                 DeviceMemoryBase costs_data,
+                                 const RnnStateTensorDescriptor& grads_desc,
+                                 DeviceMemoryBase grads_data,
+                                 DeviceMemory<uint8> scratch_memory);
+
+  template <typename ElementType>
+  bool DoCtcLoss(Stream* stream,
+                 const dnn::RnnStateTensorDescriptor& probs_desc,
+                 const DeviceMemory<ElementType>& probs_data,
+                 absl::Span<const int> labels_data,
+                 absl::Span<const int> labels_lengths_data,
+                 absl::Span<const int> input_lengths_data,
+                 DeviceMemory<ElementType>* costs_data,
+                 const dnn::RnnStateTensorDescriptor& grads_desc,
+                 DeviceMemory<ElementType>* grads_data,
+                 DeviceMemory<uint8>* scratch_memory) {
+    return IsStatusOk(
+        DoCtcLoss(stream, ToDataType<ElementType>::value, probs_desc,
+                  probs_data, labels_data, labels_lengths_data,
+                  input_lengths_data, *costs_data, grads_desc, *grads_data,
+                  *scratch_memory),
+        false);
   }
 
   // Transforms a tensor into another tensor with a different layout and/or data
@@ -2634,6 +2709,19 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8>* scratch_memory) {
     *algorithm_desc = {};
+    *scratch_memory = {};
+    return port::Status::OK();
+  }
+
+  virtual port::Status DoPrepareForCtcLoss(
+      Stream* stream, DataType element_type,
+      const RnnStateTensorDescriptor& probs_desc,
+      const RnnStateTensorDescriptor& grads_desc,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
+      ScratchAllocator* scratch_allocator,
+      DeviceMemory<uint8>* scratch_memory) {
     *scratch_memory = {};
     return port::Status::OK();
   }

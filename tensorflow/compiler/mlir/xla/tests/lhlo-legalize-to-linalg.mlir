@@ -1,11 +1,25 @@
 // RUN: tf-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s
 
-// CHECK: #map0 = (d0, d1) -> (d0, d1)
+// CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
 func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
   "xla_lhlo.add"(%lhs, %rhs, %result)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = addf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @element_wise_with_dynamic_shape
+func @element_wise_with_dynamic_shape(%lhs: memref<?x?xf32>, %rhs: memref<?x?xf32>,
+          %result: memref<?x?xf32>) {
+  "xla_lhlo.add"(%lhs, %rhs, %result)
+      : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -88,6 +102,19 @@ func @exp(%input: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @copy
+func @copy(%input: memref<2x4x8xf32>,
+           %result: memref<2x4x8xf32>) {
+  "xla_lhlo.copy"(%input, %result)
+      : (memref<2x4x8xf32>, memref<2x4x8xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   linalg.yield %[[OPERAND_IN]] : f32
+
+// -----
+
 // CHECK-LABEL: func @float_cmp
 func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
     %result: memref<2x2xi1>) {
@@ -129,7 +156,7 @@ func @select(%pred: memref<2x2xi1>, %lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>
 
 // -----
 
-// CHECK: #[[RESULT_MAP:.*]] = (d0, d1) -> (d0, d1)
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @iota
 func @iota(%out: memref<7x10xf32>) {
   "xla_lhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xf32>) -> ()
@@ -143,7 +170,7 @@ func @iota(%out: memref<7x10xf32>) {
 
 // -----
 
-// CHECK: #[[RESULT_MAP:.*]] = (d0, d1) -> (d0, d1)
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @iota
 func @iota(%out: memref<7x10xi64>) {
   "xla_lhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xi64>) -> ()
@@ -152,8 +179,8 @@ func @iota(%out: memref<7x10xi64>) {
 
 // -----
 
-// CHECK-DAG: #[[OPERAND_MAP:.*]] = (d0, d1, d2, d3, d4) -> (d4, d0, 0)
-// CHECK-DAG: #[[RESULT_MAP:.*]] = (d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d4, d0, 0)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
 // CHECK-LABEL: func @broadcast
 func @broadcast(%operand: memref<5x7x1xf32>, %result: memref<7x10x6x4x5xf32>) {
   "xla_lhlo.broadcast_in_dim"(%operand, %result)
@@ -167,7 +194,7 @@ func @broadcast(%operand: memref<5x7x1xf32>, %result: memref<7x10x6x4x5xf32>) {
 
 // -----
 
-// CHECK-DAG: #[[RESULT_MAP:.*]] = (d0, d1, d2) -> (d0, d1, d2)
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar
 func @broadcast_scalar(%operand: memref<f32>, %result: memref<7x10x6xf32>) {
   "xla_lhlo.broadcast_in_dim"(%operand, %result)

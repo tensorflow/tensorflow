@@ -72,7 +72,7 @@
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
 #                        in as `--action_env` for bazel build and tests.
 #   TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES:
-#                        Additonal pip packages to be installed.
+#                        Additional pip packages to be installed.
 #                        Caveat: pip version needs to be checked prior.
 #
 # ==============================================================================
@@ -477,7 +477,7 @@ install_tensorflow_pip() {
 
   # Install the gast package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
-  ${PIP_BIN_PATH} install --upgrade "gast==0.2.2" || \
+  ${PIP_BIN_PATH} install --upgrade "gast==0.3.3" || \
     die "Error: gast install, upgrade FAILED"
 
 }

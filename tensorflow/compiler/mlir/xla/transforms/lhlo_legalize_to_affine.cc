@@ -56,13 +56,12 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
     }
     auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
     auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
-    Operation* result = MapLhloOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(op), element_type, {l, r}, rewriter);
-    if (result == nullptr) {
+    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(op), element_type, {l, r}, &rewriter);
+    if (opResult == nullptr) {
       return this->matchFailure();
     }
-    rewriter.create<StoreOp>(loc, result->getResult(0), op.out(),
-                             induction_vars);
+    rewriter.create<StoreOp>(loc, opResult, op.out(), induction_vars);
     rewriter.eraseOp(op);
     return this->matchSuccess();
   }

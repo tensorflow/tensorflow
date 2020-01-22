@@ -5,6 +5,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
     "tf_proto_library_cc",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
@@ -62,7 +63,7 @@ tf_cc_binary(
     deps = [":tf2xla_supported_ops_lib"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,
@@ -140,6 +141,7 @@ cc_library(
         ":tf2xla_proto_cc",
         ":tf2xla_util",
         ":xla_compiler",
+        "//tensorflow/compiler/aot:aot_only_var_handle_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",

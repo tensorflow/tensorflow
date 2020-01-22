@@ -207,6 +207,8 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
   SmallVector<int64_t, 1> layer_norm_size_values_;
 };
 
+LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder);
+
 }  // end namespace TFL
 }  // end namespace mlir
 

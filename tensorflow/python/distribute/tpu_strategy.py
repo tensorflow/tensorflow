@@ -559,7 +559,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         *args, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations):
-    if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+    if (isinstance(value, values.DistributedValues) or
+        tensor_util.is_tensor(value)
+       ) and values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self._num_replicas_in_sync)

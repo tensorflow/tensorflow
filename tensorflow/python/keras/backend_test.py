@@ -236,6 +236,10 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.is_keras_tensor(x), False)
     x = keras.Input(shape=(1,))
     self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    x = keras.Input(shape=(None,), ragged=True)
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    x = keras.Input(shape=(None, None), sparse=True)
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
     with self.assertRaises(ValueError):
       keras.backend.is_keras_tensor(0)
 
@@ -1782,7 +1786,6 @@ class TestCTC(test.TestCase):
               decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
     self.assertAllClose(log_prob_truth, log_prob_pred)
 
-  @test_util.run_v1_only('b/120545219')
   def test_ctc_batch_cost(self):
     with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)

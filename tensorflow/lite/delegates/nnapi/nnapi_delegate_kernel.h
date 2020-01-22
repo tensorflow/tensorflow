@@ -113,58 +113,42 @@ struct NNAPIOpMappingArgs {
 };
 
 // RAII NN API Model Destructor for use with std::unique_ptr
-struct NNFreeModel {
+class NNFreeModel {
+ public:
+  explicit NNFreeModel(const NnApi* nnapi) : nnapi_(nnapi) {}
   void operator()(ANeuralNetworksModel* model) {
-    NnApiImplementation()->ANeuralNetworksModel_free(model);
+    nnapi_->ANeuralNetworksModel_free(model);
   }
+
+ private:
+  const NnApi* nnapi_;
 };
 // RAII NN API Compilation Destructor for use with std::unique_ptr
-struct NNFreeCompilation {
+class NNFreeCompilation {
+ public:
+  explicit NNFreeCompilation(const NnApi* nnapi) : nnapi_(nnapi) {}
   void operator()(ANeuralNetworksCompilation* model) {
-    NnApiImplementation()->ANeuralNetworksCompilation_free(model);
+    nnapi_->ANeuralNetworksCompilation_free(model);
   }
+
+ private:
+  const NnApi* nnapi_;
 };
 
 // Manage NNAPI shared memory handle
 class NNMemory {
  public:
-#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
-  NNMemory(const NnApi* nnapi, const char* name, size_t size) {
-    if (name && size > 0) {
-      nnapi_ = nnapi;
-      byte_size_ = size;
-      fd_ = nnapi_->ASharedMemory_create(name, size);
-      data_ptr_ = reinterpret_cast<uint8_t*>(
-          mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
-      nnapi_->ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE,
-                                                 fd_, 0, &nn_memory_handle_);
-    }
-  }
-#else
-  NNMemory(const NnApi* /*nnapi*/, const char* /*name*/, size_t /*size*/) {}
-#endif
+  NNMemory(const NnApi* nnapi, const char* name, size_t size);
 
-  ~NNMemory() {
-#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
-    if (data_ptr_) {
-      munmap(data_ptr_, byte_size_);
-    }
-    if (nn_memory_handle_) {
-      nnapi_->ANeuralNetworksMemory_free(nn_memory_handle_);
-    }
-    if (fd_ > 0) close(fd_);
-#endif
-  }
+  ~NNMemory();
 
   ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
   uint8_t* get_data_ptr() { return data_ptr_; }
 
  private:
-#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
   const NnApi* nnapi_;
   int fd_ = 0;
   size_t byte_size_ = 0;
-#endif
   uint8_t* data_ptr_ = nullptr;
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
 };
@@ -239,7 +223,11 @@ struct NNAPIValidationFailure {
 // The kernel that represents the node sub set of TF Lite being run on NN API.
 class NNAPIDelegateKernel {
  public:
-  NNAPIDelegateKernel() { nnapi_ = NnApiImplementation(); }
+  explicit NNAPIDelegateKernel(const NnApi* nnapi)
+      : nnapi_(nnapi),
+        nn_model_(nullptr, NNFreeModel(nnapi_)),
+        nn_compilation_(nullptr, NNFreeCompilation(nnapi_)) {}
+  NNAPIDelegateKernel() : NNAPIDelegateKernel(NnApiImplementation()) {}
   ~NNAPIDelegateKernel() {
     for (auto content : allocation_memory_mapping_) {
       nnapi_->ANeuralNetworksMemory_free(content.second);
@@ -288,6 +276,8 @@ class NNAPIDelegateKernel {
   const NnApi* nnapi_;
   // ANN device handle.
   std::vector<ANeuralNetworksDevice*> nnapi_devices_;
+  // Name of the nnapi device, empty if nnapi_devices_ is empty;
+  std::string device_name_;
   // ANN API state.
   std::unique_ptr<ANeuralNetworksModel, NNFreeModel> nn_model_;
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>

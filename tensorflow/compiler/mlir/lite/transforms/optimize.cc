@@ -16,6 +16,7 @@ limitations under the License.
 // This transformation pass takes operations in TensorFlowLite dialect and
 // optimizes them to resulting operations in TensorFlowLite dialect.
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <functional>
@@ -80,19 +81,25 @@ bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
 }
 
-bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
-                                bool is_depthwise) {
+// Returns whether if `type1` dimensions are the same as the ending dimensions
+// of `type2`. This is more restricted than broadcastable.
+bool IsTailOfShape(Type type1, Type type2) {
+  auto tail_type = type1.dyn_cast<ShapedType>();
+  auto full_type = type2.dyn_cast<ShapedType>();
+  if (!tail_type || !full_type || tail_type.getRank() > full_type.getRank())
+    return false;
+  auto i1 = tail_type.getShape().rbegin(), e1 = tail_type.getShape().rend();
+  auto i2 = full_type.getShape().rbegin();
+  return std::equal(i1, e1, i2);
+}
+
+bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
+                                      const ArrayRef<int64_t> elements_shape,
+                                      bool is_depthwise) {
   // Make sure the val tensor has shape where all dimensions are 1 except
   // last one.
   // Also, val tensor must be of rank 1 or 4 or 0 (scalar).
-  const auto elements = val.dyn_cast<DenseElementsAttr>();
-  const auto elements_shape = elements.getType().getShape();
-  const auto filter_elements = filter.dyn_cast<DenseElementsAttr>();
-  const auto filter_shape = filter_elements.getType().getShape();
-  const auto elements_rank = elements.getType().getRank();
-  if (!elements || !filter_elements) {
-    return false;
-  }
+  const auto elements_rank = elements_shape.size();
   for (int i = 0; i < static_cast<int>(elements_shape.size()) - 1; ++i) {
     if (elements_shape[i] != 1) return false;
   }
@@ -110,6 +117,30 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
                     : filter_shape[0] != elements_depth))
     return false;
   return true;
+}
+
+bool CanFuseConvOrDepthwiseConv(Value filter, Attribute val,
+                                bool is_depthwise) {
+  const auto elements = val.dyn_cast<DenseElementsAttr>();
+  if (!elements) {
+    return false;
+  }
+  const auto elements_shape = elements.getType().getShape();
+  const auto filter_shape = filter.getType().cast<ShapedType>().getShape();
+  return CanFuseConvOrDepthwiseConvShapes(filter_shape, elements_shape,
+                                          is_depthwise);
+}
+
+bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
+                                bool is_depthwise) {
+  if (const auto elements = val.dyn_cast<DenseElementsAttr>()) {
+    if (const auto filter_elements = filter.dyn_cast<DenseElementsAttr>()) {
+      return CanFuseConvOrDepthwiseConvShapes(
+          filter_elements.getType().getShape(), elements.getType().getShape(),
+          is_depthwise);
+    }
+  }
+  return false;
 }
 
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
@@ -353,7 +384,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // so we have to update the bias.
       if (llvm::isa<SubOp>(binary_op)) cst_value.changeSign();
 
-      auto bias_and_slice = GetBiasDimAndSliceSize(filter_type.getShape());
+      auto bias_and_slice =
+          GetBiasDimAndSliceSize(filter_type.getShape(), fc_op);
       int64_t bias_size = bias_and_slice.first;
       int64_t slice_size = bias_and_slice.second;
       ShapedType new_bias_type =
@@ -425,10 +457,10 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   // has tailing channel dimension. This function is to provide a utility to
   // create the above information from the op property.
   static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
-      ArrayRef<int64_t> filter_shape) {
+      ArrayRef<int64_t> filter_shape, AffineOpType op) {
     // Channel dimension index is specified as op property
     auto channel_index_iter = filter_shape.begin();
-    std::advance(channel_index_iter, AffineOpType::GetChannelDimIndex());
+    std::advance(channel_index_iter, op.GetChannelDimIndex());
     // The slide size is the size of the data in higher dimensions.
     int64_t slice_size =
         std::accumulate(std::next(channel_index_iter), filter_shape.end(), 1,

@@ -27,7 +27,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:engine_utils",
+        "//tensorflow/python/keras/utils:engine_utils",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

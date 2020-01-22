@@ -245,26 +245,26 @@ func @testReshape(tensor<*xf32>, tensor<*xf32>) -> (tensor<100x100xf32>) {
 // tf.Reshape with incorrect element number.
 func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<100> : tensor<2xi32>
-  // expected-error @+1 {{mismatch in tensor elements and shape implied elements}}
+  // expected-error @+1 {{number of output elements (10000) does not match expected number of elements (1000)}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
 // -----
 // tf.Reshape with more than one -1 in the shape.
-func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
+func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<-1> : tensor<2xi32>
   // expected-error @+1 {{more than one component of shape are -1}}
-  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
 // -----
 // tf.Reshape with -1 in the shape can't infer the dimension.
-func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
+func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<[101, -1]> : tensor<2xi32>
   // expected-error @+1 {{one component of shape is -1 but couldn't infer the dimension}}
-  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
@@ -1278,6 +1278,14 @@ func @testVariableShapeWrongResultDimDynamic(%arg0: tensor<*x!tf.resource<tensor
 
 // -----
 
+func @testVariableShapeWrongNumResources(%arg0: tensor<1x2x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32> {
+  // expected-error @+1 {{requires input to have one resource}}
+  %0 = "tf.VariableShape"(%arg0)  : (tensor<1x2x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+
 // Test invalid tf.Const
 func @testConst() -> tensor<f32> {
   // expected-error @+1 {{attribute 'value' failed to satisfy constraint: constant vector/tensor}}
@@ -1441,6 +1449,14 @@ func @testConcatV2(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>, %axis: tens
 func @testConcatV2(%arg0: tensor<8x8xf32>, %arg1: tensor<?x4xf32>, %arg2: tensor<*xf32>, %arg3: tensor<8x?xf32>, %axis: tensor<i32>) -> tensor<*xf32> {
   %0 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %arg3, %axis) : (tensor<8x8xf32>, tensor<?x4xf32>, tensor<*xf32>, tensor<8x?xf32>, tensor<i32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @testInvalidInvertPermutationOp(%arg0: tensor<8x8xi32>) -> tensor<8x8xi32> {
+  // expected-error @+1 {{'tf.InvertPermutation' op requires input x to be 1-dimensional}}
+  %0 = "tf.InvertPermutation"(%arg0) : (tensor<8x8xi32>) -> tensor<8x8xi32>
+  return %0 : tensor<8x8xi32>
 }
 
 // -----
