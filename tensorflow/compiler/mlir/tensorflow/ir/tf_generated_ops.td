@@ -842,6 +842,10 @@ Computes the gradients of convolution with respect to the input.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_Conv3DOp : TF_Op<"Conv3D", [NoSideEffect]> {

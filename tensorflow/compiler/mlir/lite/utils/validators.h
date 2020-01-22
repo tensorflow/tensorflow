@@ -45,6 +45,10 @@ bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
 // Returns true if the attribute is an integer list of the form [1, X, Y, 1],
 bool TFIntListIs1XY1(const ArrayAttr &attr);
 
+// Returns true if every element of the attribute is 1. All elements of `attr`
+// must be `IntegerAttr`.
+bool TFIntListIsAllOnes(const ArrayAttr &attr);
+
 // Returns true iff the given value is a float tensor.
 // is "DT_FLOAT".
 inline bool TFTypeIsFloatTensor(Value *value) {

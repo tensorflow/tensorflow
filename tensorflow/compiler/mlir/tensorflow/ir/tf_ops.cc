@@ -417,6 +417,33 @@ void ConstOp::build(Builder *builder, OperationState &result, Type type,
 // Conv2DOp and Conv3DOp
 //===----------------------------------------------------------------------===//
 
+template <typename OpT>
+static LogicalResult VerifyConvOpAttributes(OpT op, int num_dims) {
+  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
+    return op.emitOpError()
+           << "requires result to be " << num_dims << "D tensor";
+
+  auto is_not_positive = [](Attribute val) {
+    return val.cast<IntegerAttr>().getValue().getSExtValue() <= 0;
+  };
+
+  int64_t strides_size = op.strides().size();
+  if (strides_size != num_dims)
+    return op.emitOpError() << "requires strides attribute length to be "
+                            << num_dims << "; actual length " << strides_size;
+  if (llvm::any_of(op.strides().getValue(), is_not_positive))
+    return op.emitOpError("requires positive strides");
+
+  int64_t dilations_size = op.strides().size();
+  if (op.dilations().size() != num_dims)
+    return op.emitOpError() << "requires dilations attribute length to be "
+                            << num_dims << "; actual length " << dilations_size;
+  if (llvm::any_of(op.dilations().getValue(), is_not_positive))
+    return op.emitOpError("requires positive dilations");
+
+  return success();
+}
+
 // Verifies that,
 // * Ranks of operands and result are valid
 // * Number of input channels is divisible by the number of filter input
@@ -429,37 +456,11 @@ template <typename OpT, typename std::enable_if<llvm::is_one_of<
 static LogicalResult Verify(OpT op) {
   int num_spatial_dims = std::is_same<OpT, Conv2DOp>() ? 2 : 3;
   int num_dims = 2 + num_spatial_dims;
+
   if (!IsOfRankOrUnranked(op.input(), num_dims) ||
       !IsOfRankOrUnranked(op.filter(), num_dims))
     return op.emitOpError()
            << "requires operands to be " << num_dims << "D tensor";
-  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
-    return op.emitOpError()
-           << "requires result to be " << num_dims << "D tensor";
-
-  int64_t input_channels = -1;
-  if (auto ty = op.input()->getType().template dyn_cast<RankedTensorType>()) {
-    std::string data_format = op.data_format().str();
-    tensorflow::TensorFormat format;
-    auto is_valid = FormatFromString(data_format, &format);
-    DCHECK(is_valid) << data_format;
-    int idx = tensorflow::GetTensorFeatureDimIndex(num_dims, format);
-    input_channels = ty.getDimSize(idx);
-  }
-
-  int64_t filter_channels = -1;
-  if (auto ty = op.filter()->getType().template dyn_cast<RankedTensorType>()) {
-    int idx = tensorflow::GetFilterTensorInputChannelsDimIndex(
-        num_dims, tensorflow::FORMAT_HWIO);
-    filter_channels = ty.getDimSize(idx);
-  }
-
-  if (input_channels != -1 && filter_channels != -1 &&
-      input_channels % filter_channels != 0)
-    return op.emitOpError()
-           << "requires the number of input channels to be divisible by the "
-              "number of filter input channels; found "
-           << input_channels << " and " << filter_channels << ", respectively";
 
   // EXPLICIT padding mode and the associated attribute is limited to Conv2D.
   // So, fetch attribute by string instead of the op.explicit_paddings()
@@ -485,26 +486,58 @@ static LogicalResult Verify(OpT op) {
       return op.emitOpError("requires non negative explicit paddings");
   }
 
-  auto is_not_positive = [](Attribute val) {
-    return val.cast<IntegerAttr>().getValue().getSExtValue() <= 0;
-  };
+  LogicalResult verify_result = VerifyConvOpAttributes(op, num_dims);
+  if (failed(verify_result)) {
+    return verify_result;
+  }
 
-  int64_t strides_size = op.strides().size();
-  if (strides_size != num_dims)
-    return op.emitOpError() << "requires strides attribute length to be "
-                            << num_dims << "; actual length " << strides_size;
-  if (llvm::any_of(op.strides().getValue(), is_not_positive))
-    return op.emitOpError("requires positive strides");
+  int64_t input_channels = -1;
+  if (auto ty = op.input()->getType().template dyn_cast<RankedTensorType>()) {
+    std::string data_format = op.data_format().str();
+    tensorflow::TensorFormat format;
+    auto is_valid = FormatFromString(data_format, &format);
+    DCHECK(is_valid) << data_format;
+    int idx = tensorflow::GetTensorFeatureDimIndex(num_dims, format);
+    input_channels = ty.getDimSize(idx);
+  }
 
-  int64_t dilations_size = op.strides().size();
-  if (op.dilations().size() != num_dims)
-    return op.emitOpError() << "requires dilations attribute length to be "
-                            << num_dims << "; actual length " << dilations_size;
-  if (llvm::any_of(op.dilations().getValue(), is_not_positive))
-    return op.emitOpError("requires positive dilations");
+  int64_t filter_channels = -1;
+  if (auto ty = op.filter()->getType().template dyn_cast<RankedTensorType>()) {
+    int idx = tensorflow::GetFilterTensorInputChannelsDimIndex(
+        num_dims, tensorflow::FORMAT_HWIO);
+    filter_channels = ty.getDimSize(idx);
+  }
+
+  if (input_channels != -1 && filter_channels != -1 &&
+      input_channels % filter_channels != 0)
+    return op.emitOpError()
+           << "requires the number of input channels to be divisible by the "
+              "number of filter input channels; found "
+           << input_channels << " and " << filter_channels << ", respectively";
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Conv2dBackpropInputOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(Conv2DBackpropInputOp op) {
+  int num_spatial_dims = 2;
+  int num_dims = 2 + num_spatial_dims;
+
+  if (!IsOfRankOrUnranked(op.out_backprop(), num_dims) ||
+      !IsOfRankOrUnranked(op.filter(), num_dims))
+    return op.emitOpError()
+           << "requires operands to be " << num_dims << "D tensor";
+
+  LogicalResult verify_result = VerifyConvOpAttributes(op, num_dims);
+  if (failed(verify_result)) {
+    return verify_result;
+  }
+
+  return success();
+}  // namespace TF
 
 //===----------------------------------------------------------------------===//
 // DivOp
