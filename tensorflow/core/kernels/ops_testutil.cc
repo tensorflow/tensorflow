@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
 #endif
@@ -33,7 +33,7 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
       TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
 
   device_type_ = device_type;
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (device_type == DEVICE_GPU) {
     managed_allocator_.reset(new GpuManagedAllocator());
     allocator_ = managed_allocator_.get();
@@ -43,7 +43,7 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
   }
 #else
   CHECK_NE(device_type, DEVICE_GPU)
-      << "Requesting GPU on binary compiled without GOOGLE_CUDA.";
+      << "Requesting GPU on binary compiled without GOOGLE_CUDA or TENSORFLOW_USE_ROCM.";
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 #endif
 }
@@ -51,7 +51,7 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
 Tensor* OpsTestBase::GetOutput(int output_index) {
   CHECK_LT(output_index, context_->num_outputs());
   Tensor* output = context_->mutable_output(output_index);
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (device_type_ == DEVICE_GPU) {
     managed_outputs_.resize(context_->num_outputs());
     // Copy the output tensor to managed memory if we haven't done so.
