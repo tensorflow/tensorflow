@@ -745,7 +745,7 @@ def cast(x, dtype, name=None):
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
-      x = ops.convert_to_tensor(x, dtype_hint=base_type, name="x")
+      x = ops.convert_to_tensor(x, name="x")
       if x.dtype.base_dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
     if x.dtype.is_complex and base_type.is_floating:
