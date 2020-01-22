@@ -1550,3 +1550,17 @@ tf_xla_py_test(
         "//tensorflow/python:standard_ops",
     ],
 )
+
+tf_xla_py_test(
+    name = "special_math_test",
+    size = "medium",
+    srcs = ["special_math_test.py"],
+    shard_count = 5,
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
