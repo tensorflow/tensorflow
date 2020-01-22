@@ -24,7 +24,6 @@ ifeq ($(TARGET), riscv32_mcu)
     -Wall \
     -Wextra \
     -Wsign-compare \
-    -Wdouble-promotion \
     -Wno-unused-parameter \
     -Wno-missing-field-initializers \
     -Wno-write-strings \

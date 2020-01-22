@@ -53,7 +53,7 @@ inline void BroadcastPrelu4DSlowFloat(
           auto in2_idx = SubscriptToIndex(desc2, b, y, x, c);
           auto in1_val = input1_data[in1_idx];
           auto in2_val = input2_data[in2_idx];
-          output_data[out_idx] = in1_val >= 0.0f ? in1_val : in1_val * in2_val;
+          output_data[out_idx] = in1_val >= 0.0 ? in1_val : in1_val * in2_val;
         }
       }
     }
@@ -67,9 +67,8 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   int32_t output_multiplier = 0;
   int output_shift = 0;
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
-    double real_multiplier = static_cast<double>(input->params.scale) *
-                             static_cast<double>(alpha->params.scale) /
-                             static_cast<double>(output->params.scale);
+    double real_multiplier =
+        input->params.scale * alpha->params.scale / output->params.scale;
     QuantizeMultiplierSmallerThanOneExp(real_multiplier, &output_multiplier,
                                         &output_shift);
   }

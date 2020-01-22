@@ -54,7 +54,6 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -Wall \
     -Wextra \
     -Wsign-compare \
-    -Wdouble-promotion \
     -Wno-unused-parameter \
     -Wno-missing-field-initializers \
     -Wno-write-strings \

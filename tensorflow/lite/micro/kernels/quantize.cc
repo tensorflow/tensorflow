@@ -60,7 +60,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   tflite::QuantizationParams op_params;
   op_params.zero_point = output->params.zero_point;
-  op_params.scale = static_cast<double>(output->params.scale);
+  op_params.scale = output->params.scale;
   switch (output->type) {
     case kTfLiteInt8:
       reference_ops::AffineQuantize(

@@ -152,9 +152,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         // same quantized range as the input and output tensors.
         TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point,
                           op_context.constant_values->params.zero_point);
-        TF_LITE_ENSURE_EQ(
-            context, static_cast<double>(op_context.output->params.scale),
-            static_cast<double>(op_context.constant_values->params.scale));
+        TF_LITE_ENSURE_EQ(context, op_context.output->params.scale,
+                          op_context.constant_values->params.scale);
         pad_value = *GetTensorData<uint8_t>(op_context.constant_values);
       }
       if (op_context.resizing_category == ResizingCategory::kImageStyle) {

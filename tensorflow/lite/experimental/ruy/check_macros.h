@@ -35,7 +35,7 @@ struct ToString {
 template <>
 struct ToString<float, void> {
   static void Run(float value, char* buf) {
-    snprintf(buf, kValueBufSize, "%.9g", static_cast<double>(value));
+    snprintf(buf, kValueBufSize, "%.9g", value);
   }
 };
 

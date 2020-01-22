@@ -46,7 +46,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   tflite::DequantizationParams op_params;
   op_params.zero_point = input->params.zero_point;
-  op_params.scale = static_cast<double>(input->params.scale);
+  op_params.scale = input->params.scale;
   switch (input->type) {
     case kTfLiteUInt8:
       reference_ops::Dequantize(
