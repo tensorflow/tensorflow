@@ -43,12 +43,14 @@ constexpr int kOutputTensor = 0;
                                                                                \
       int32 input1_multiplier;                                                 \
       int input1_shift;                                                        \
-      QuantizeMultiplierSmallerThanOneExp(input1->params.scale,                \
-                                          &input1_multiplier, &input1_shift);  \
+      QuantizeMultiplierSmallerThanOneExp(                                     \
+          static_cast<double>(input1->params.scale), &input1_multiplier,       \
+          &input1_shift);                                                      \
       int32 input2_multiplier;                                                 \
       int input2_shift;                                                        \
-      QuantizeMultiplierSmallerThanOneExp(input2->params.scale,                \
-                                          &input2_multiplier, &input2_shift);  \
+      QuantizeMultiplierSmallerThanOneExp(                                     \
+          static_cast<double>(input2->params.scale), &input2_multiplier,       \
+          &input2_shift);                                                      \
                                                                                \
       ComparisonParams op_params;                                              \
       op_params.left_shift = left_shift;                                       \
