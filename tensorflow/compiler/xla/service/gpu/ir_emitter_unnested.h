@@ -320,6 +320,11 @@ class IrEmitterUnnested : public IrEmitter,
   // Emits current block id.
   llvm::Value* EmitBlockId();
 
+  // Prints a given format string with the given arguments, prefixed with thread
+  // id and block id, and postfixed with a newline.
+  llvm::Value* EmitPrintfWithThreadId(absl::string_view fmt,
+                                      absl::Span<llvm::Value* const> arguments);
+
   Status Postprocess(HloInstruction* hlo) override;
 
   // Returns the last generated thunk.

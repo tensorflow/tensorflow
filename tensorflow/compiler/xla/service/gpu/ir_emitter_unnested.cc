@@ -2254,6 +2254,17 @@ llvm::Value* IrEmitterUnnested::EmitBlockId() {
                                         {}, &b_);
 }
 
+llvm::Value* IrEmitterUnnested::EmitPrintfWithThreadId(
+    absl::string_view fmt, absl::Span<llvm::Value* const> arguments) {
+  llvm::Value* thread_id = EmitThreadId(1024, b_.getInt32Ty());
+  llvm::Value* block_id = EmitBlockId();
+  std::vector<llvm::Value*> updated_arguments = {thread_id, block_id};
+  updated_arguments.insert(updated_arguments.end(), arguments.begin(),
+                           arguments.end());
+  return ::xla::gpu::EmitPrintf(absl::StrCat("[TID=%d,BID=%d] ", fmt, "\n"),
+                                updated_arguments, &b_);
+}
+
 // Given the IrArray index of a reduction input, returns the linear address of
 // the reduction output as if the reduction were going to keep the input
 // shape with the dimensions being reduced moved.
