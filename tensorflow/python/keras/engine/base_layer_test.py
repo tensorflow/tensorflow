@@ -630,11 +630,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
     out = self.evaluate(layer(x=x, y=y))
     self.assertAllClose(out, 2 * np.ones((10, 1)))
 
-  def test_relu_layer_with_dtype(self):
-    # Test case for GitHub issue 35430
-    x = keras.Input(shape=(), name='x', dtype='int64')
-    y = keras.layers.ReLU(max_value=100, dtype='int64')(x)
-
 
 class SymbolicSupportTest(test.TestCase):
 
