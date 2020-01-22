@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.conv_utils import convert_kernel
@@ -65,6 +66,29 @@ def get_source_inputs(tensor, layer=None, node_index=None):
           if all(x is not t for t in source_tensors):
             source_tensors.append(x)
       return source_tensors
+
+
+def validate_string_arg(input_data,
+                        allowable_strings,
+                        layer_name,
+                        arg_name,
+                        allow_none=False,
+                        allow_callables=False):
+  """Validates the correctness of a string-based arg."""
+  if allow_none and input_data is None:
+    return
+  elif allow_callables and callable(input_data):
+    return
+  elif isinstance(input_data,
+                  six.string_types) and input_data in allowable_strings:
+    return
+  else:
+    allowed_args = '`None`, ' if allow_none else ''
+    allowed_args += 'a `Callable`, ' if allow_callables else ''
+    allowed_args += 'or one of the following values: %s' % allowable_strings
+    raise ValueError(("%s's %s arg received an invalid value %s. " +
+                      'Allowed values are %s.') %
+                     (layer_name, arg_name, input_data, allowed_args))
 
 
 def count_params(weights):
