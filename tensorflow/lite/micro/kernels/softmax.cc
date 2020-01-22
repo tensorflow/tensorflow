@@ -229,9 +229,11 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {activations::Init, activations::Free,
-                                 activations::SoftmaxPrepare,
-                                 activations::SoftmaxEval};
+  static TfLiteRegistration r = {};
+  r.init = activations::Init;
+  r.free = activations::Free;
+  r.prepare = activations::SoftmaxPrepare;
+  r.invoke = activations::SoftmaxEval;
   return &r;
 }
 

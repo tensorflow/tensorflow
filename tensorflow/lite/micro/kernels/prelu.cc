@@ -105,8 +105,9 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_PRELU() {
-  static TfLiteRegistration r = {nullptr, nullptr, activations::PreluPrepare,
-                                 activations::PreluEval};
+  static TfLiteRegistration r = {};
+  r.prepare = activations::PreluPrepare;
+  r.invoke = activations::PreluEval;
   return &r;
 }
 

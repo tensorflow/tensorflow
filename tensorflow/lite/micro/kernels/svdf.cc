@@ -560,8 +560,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace svdf
 
 TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {svdf::Init, svdf::Free, svdf::Prepare,
-                                 svdf::Eval};
+  static TfLiteRegistration r = {};
+  r.init = svdf::Init;
+  r.free = svdf::Free;
+  r.prepare = svdf::Prepare;
+  r.invoke = svdf::Eval;
   return &r;
 }
 

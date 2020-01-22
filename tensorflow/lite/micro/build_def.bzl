@@ -8,13 +8,12 @@ load(
 )
 
 def micro_copts():
-    # TODO(b/139024129): include the followings as well:
-    # -Wmissing-field-initializers
     copts = [
         "-Wsign-compare",
         "-Wdouble-promotion",
         "-Wshadow",
         "-Wunused-variable",
+        "-Wmissing-field-initializers",
     ]
     return copts
 

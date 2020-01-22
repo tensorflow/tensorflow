@@ -27,8 +27,8 @@ ifeq ($(TARGET), riscv32_mcu)
     -Wdouble-promotion \
     -Wshadow \
     -Wunused-variable \
+    -Wmissing-field-initializers \
     -Wno-unused-parameter \
-    -Wno-missing-field-initializers \
     -Wno-write-strings \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \

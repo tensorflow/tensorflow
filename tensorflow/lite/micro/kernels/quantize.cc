@@ -87,8 +87,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {quantize::Init, quantize::Free,
-                                 quantize::Prepare, quantize::Eval};
+  static TfLiteRegistration r = {};
+  r.init = quantize::Init;
+  r.free = quantize::Free;
+  r.prepare = quantize::Prepare;
+  r.invoke = quantize::Eval;
   return &r;
 }
 

@@ -88,8 +88,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace reshape
 
 TfLiteRegistration* Register_RESHAPE() {
-  static TfLiteRegistration r = {nullptr, nullptr, reshape::Prepare,
-                                 reshape::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = reshape::Prepare;
+  r.invoke = reshape::Eval;
   return &r;
 }
 

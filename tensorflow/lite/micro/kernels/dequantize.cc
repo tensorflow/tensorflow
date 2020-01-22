@@ -70,8 +70,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace dequantize
 
 TfLiteRegistration* Register_DEQUANTIZE() {
-  static TfLiteRegistration r = {nullptr, nullptr, dequantize::Prepare,
-                                 dequantize::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = dequantize::Prepare;
+  r.invoke = dequantize::Eval;
   return &r;
 }
 

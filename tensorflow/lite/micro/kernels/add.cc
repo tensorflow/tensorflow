@@ -198,7 +198,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace add
 
 TfLiteRegistration* Register_ADD() {
-  static TfLiteRegistration r = {add::Init, add::Free, add::Prepare, add::Eval};
+  static TfLiteRegistration r = {};
+  r.init = add::Init;
+  r.free = add::Free;
+  r.prepare = add::Prepare;
+  r.invoke = add::Eval;
   return &r;
 }
 

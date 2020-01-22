@@ -208,13 +208,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace pad
 
 TfLiteRegistration* Register_PAD() {
-  static TfLiteRegistration r = {nullptr, nullptr, pad::Prepare, pad::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = pad::Prepare;
+  r.invoke = pad::Eval;
   return &r;
 }
 
 // Also register Pad as PadV2.
 TfLiteRegistration* Register_PADV2() {
-  static TfLiteRegistration r = {nullptr, nullptr, pad::Prepare, pad::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = pad::Prepare;
+  r.invoke = pad::Eval;
   return &r;
 }
 

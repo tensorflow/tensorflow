@@ -163,7 +163,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace mul
 
 TfLiteRegistration* Register_MUL() {
-  static TfLiteRegistration r = {nullptr, nullptr, mul::Prepare, mul::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = mul::Prepare;
+  r.invoke = mul::Eval;
   return &r;
 }
 
