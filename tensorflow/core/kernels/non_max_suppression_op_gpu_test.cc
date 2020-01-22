@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // These tests are copied from non_max_suppression_op_test.cc file and modified
 // to use GPU ops. See other file for test details.
 

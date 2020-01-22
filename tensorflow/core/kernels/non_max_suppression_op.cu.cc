@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #include <limits>
 
@@ -28,26 +28,11 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-#define TF_RETURN_IF_CUDA_ERROR(result)                   \
-  do {                                                    \
-    cudaError_t error(result);                            \
-    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {         \
-      return errors::Internal("Cuda call failed with ",   \
-                              cudaGetErrorString(error)); \
-    }                                                     \
-  } while (0)
-
-#define TF_OP_REQUIRES_CUDA_SUCCESS(context, result)                   \
-  do {                                                                 \
-    cudaError_t error(result);                                         \
-    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {                      \
-      context->SetStatus(errors::Internal("Cuda call failed with",     \
-                                          cudaGetErrorString(error))); \
-      return;                                                          \
-    }                                                                  \
-  } while (0)
-
-struct __align__(16) Box {
+struct 
+#if GOOGLE_CUDA
+__align__(16) 
+#endif
+Box {
   float x1, y1, x2, y2;
 };
 
@@ -133,7 +118,7 @@ __global__ void NMSReduce(const int* bitmask, const int bit_mask_len,
                           char* result_mask) {
   extern __shared__ int local[];
   // set global mask to accept all boxes
-  for (int box : CudaGridRangeX(bit_mask_len)) {
+  for (int box : GpuGridRangeX(bit_mask_len)) {
     local[box] = 0xFFFFFFFF;
   }
   __syncthreads();
@@ -146,7 +131,7 @@ __global__ void NMSReduce(const int* bitmask, const int bit_mask_len,
     accepted_boxes += 1;
     int offset = box * bit_mask_len;
     // update global mask with current box's mask
-    for (int b : CudaGridRangeX(bit_mask_len)) {
+    for (int b : GpuGridRangeX(bit_mask_len)) {
       local[b] &= ~bitmask[offset + b];
     }
     __syncthreads();
@@ -154,7 +139,7 @@ __global__ void NMSReduce(const int* bitmask, const int bit_mask_len,
   }
   // copy global mask to result_max char array. char array is needed for
   // cub::DeviceSelect later.
-  for (int box : CudaGridRangeX(num_boxes)) {
+  for (int box : GpuGridRangeX(num_boxes)) {
     result_mask[box] = CheckBit(local, box);
   }
 }
@@ -251,14 +236,14 @@ __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
 template <typename Index, typename T, typename... Args>
 __global__ void IndexMultiSelect(const int num_elements, const Index* indices,
                                  const T* original, T* selected, Args... args) {
-  for (const int idx : CudaGridRangeX(num_elements)) {
+  for (const int idx : GpuGridRangeX(num_elements)) {
     SelectHelper(idx, indices[idx], original, selected, args...);
   }
 }
 
 template <typename T>
 __global__ void Iota(const int num_elements, const T offset, T* to_fill) {
-  for (int idx : CudaGridRangeX(num_elements)) {
+  for (int idx : GpuGridRangeX(num_elements)) {
     to_fill[idx] = static_cast<T>(idx) + offset;
   }
 }
@@ -341,7 +326,7 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
   // do Cub::deviceSelect::flagged
   size_t flagged_buffer_size = 0;
-  cub::DeviceSelect::Flagged(static_cast<void*>(nullptr),  // temp_storage
+  gpuprim::DeviceSelect::Flagged(static_cast<void*>(nullptr),  // temp_storage
                              flagged_buffer_size,
                              static_cast<int*>(nullptr),   // input
                              static_cast<char*>(nullptr),  // selection flag
@@ -356,22 +341,22 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   TF_RETURN_IF_ERROR(context->allocate_temp(DataType::DT_INT32,
                                             TensorShape({1}), &d_num_selected));
 
-  cub::DeviceSelect::Flagged(
+  gpuprim::DeviceSelect::Flagged(
       (void*)cub_scratch.flat<int8>().data(),  // temp_storage
       flagged_buffer_size,
       d_indices.flat<int>().data(),  // input
       selected,                      // selection flag
       d_selected_indices,            // selected items
       d_num_selected.flat<int>().data(), num_boxes, device.stream());
-  cudaEvent_t copy_done;
+  gpuEvent_t copy_done;
   TF_RETURN_IF_CUDA_ERROR(
-      cudaEventCreateWithFlags(&copy_done, cudaEventDisableTiming));
+      gpuEventCreateWithFlags(&copy_done, gpuEventDisableTiming));
   device.memcpyDeviceToHost(h_selected_count, d_num_selected.flat<int>().data(),
                             sizeof(int));
-  TF_RETURN_IF_CUDA_ERROR(cudaEventRecord(copy_done, device.stream()));
-  TF_RETURN_IF_CUDA_ERROR(cudaEventSynchronize(copy_done));
+  TF_RETURN_IF_CUDA_ERROR(gpuEventRecord(copy_done, device.stream()));
+  TF_RETURN_IF_CUDA_ERROR(gpuEventSynchronize(copy_done));
   *h_nkeep = *h_selected_count;
-  cudaEventDestroy(copy_done);
+  gpuEventDestroy(copy_done);
   return Status::OK();
 }
 
@@ -394,7 +379,7 @@ Status CountIf(OpKernelContext* context, const float* dev_array, const Op& op,
   size_t workspace_size = 0;
   auto cuda_stream = tensorflow::GetGpuStream(context);
   auto device = context->eigen_gpu_device();
-  cub::DeviceSelect::If(nullptr, workspace_size, static_cast<float*>(nullptr),
+  gpuprim::DeviceSelect::If(nullptr, workspace_size, static_cast<float*>(nullptr),
                         static_cast<float*>(nullptr),
                         static_cast<int*>(nullptr), num_elements, op);
 
@@ -404,17 +389,17 @@ Status CountIf(OpKernelContext* context, const float* dev_array, const Op& op,
       DataType::DT_INT8, TensorShape({(int64)workspace_size}), &workspace));
   TF_RETURN_IF_ERROR(context->allocate_temp(DataType::DT_INT32,
                                             TensorShape({1}), &element_count));
-  cudaEvent_t copy_done;
+  gpuEvent_t copy_done;
   TF_RETURN_IF_CUDA_ERROR(
-      cudaEventCreateWithFlags(&copy_done, cudaEventDisableTiming));
-  TF_RETURN_IF_CUDA_ERROR(cub::DeviceSelect::If(
+      gpuEventCreateWithFlags(&copy_done, gpuEventDisableTiming));
+  TF_RETURN_IF_CUDA_ERROR(gpuprim::DeviceSelect::If(
       workspace.flat<int8>().data(), workspace_size, dev_array,
       scratch_output.flat<float>().data(), element_count.flat<int32>().data(),
       num_elements, op, cuda_stream));
   device.memcpyDeviceToHost(result, element_count.flat<int32>().data(),
                             sizeof(int));
-  TF_RETURN_IF_CUDA_ERROR(cudaEventRecord(copy_done, device.stream()));
-  TF_RETURN_IF_CUDA_ERROR(cudaEventSynchronize(copy_done));
+  TF_RETURN_IF_CUDA_ERROR(gpuEventRecord(copy_done, device.stream()));
+  TF_RETURN_IF_CUDA_ERROR(gpuEventSynchronize(copy_done));
   return Status::OK();
 }
 
@@ -437,7 +422,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
     return Status::OK();
   }
 
-  cudaError_t cuda_ret = cub::DeviceRadixSort::SortPairsDescending(
+  cudaError_t cuda_ret = gpuprim::DeviceRadixSort::SortPairsDescending(
       nullptr, cub_sort_temp_storage_bytes,
       static_cast<float*>(nullptr),  // scores
       static_cast<float*>(nullptr),  // sorted scores
@@ -477,7 +462,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
                               config.virtual_thread_count, 0,
                               d_indices.flat<int>().data()));
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
-  cuda_ret = cub::DeviceRadixSort::SortPairsDescending(
+  cuda_ret = gpuprim::DeviceRadixSort::SortPairsDescending(
       d_cub_sort_buffer.flat<int8>().data(), cub_sort_temp_storage_bytes,
       scores.flat<float>().data(), d_sorted_scores.flat<float>().data(),
       d_indices.flat<int>().data(), d_sorted_indices.flat<int>().data(),
