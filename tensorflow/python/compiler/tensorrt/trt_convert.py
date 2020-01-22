@@ -22,9 +22,9 @@ import collections
 import os
 import platform
 import tempfile
+from functools import partial
 
 import six as _six
-from functools import partial
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
