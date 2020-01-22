@@ -48,6 +48,9 @@ namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
+extern void broadcast_fp32(void* stream, float* dst, int dst_stride,
+                           int batches, float* src, int size);
+
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
@@ -1877,37 +1880,74 @@ port::Status ReorganizeMemory(Stream* stream,
   size_t matrix_byte_size = batch_stride * sizeof(MAPPED_T);  
   uint64_t cur_stride_size = matrix_byte_size;
 
+  struct memory_copy_op {
+    char* src_ptr;
+    char* dst_ptr;
+    uint64_t size;
+  };
+  std::vector<memory_copy_op> write_ops;
+
   for (int i = 1; i < batch_count; ++i) {
     if (reinterpret_cast<char*>(raw_ptrs[i]) == src_ptr + cur_stride_size) {
       cur_stride_size += matrix_byte_size;
     } else {
-      DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
-      DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
-      bool a_status =
-        gather 
-          ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
-          : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
-      if (!a_status) {
-        return port::Status(
-            port::error::INTERNAL,
-            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
-      }
+      write_ops.push_back(memory_copy_op{src_ptr, dst_ptr, cur_stride_size});
       src_ptr = reinterpret_cast<char*>(raw_ptrs[i]);
       dst_ptr = device_memory_ptr + i * matrix_byte_size;
       cur_stride_size = matrix_byte_size;
     }
   }
+  write_ops.push_back(memory_copy_op{src_ptr, dst_ptr, cur_stride_size});
 
-  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
-  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
-  bool a_status =
-      gather 
-        ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
-        : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
-  if (!a_status)
-    return port::Status(
-        port::error::INTERNAL,
-        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+  // if the requested operation is reducible to a broadcast (copying the same
+  // buffer multiple times to N uniformly distributed destinations), it may be
+  // more efficient to launch a single broadcast kernel than to launch N
+  // hipMemcpy's.
+  //
+  // The broadcast kernel is not guaranteed to be as optimized as hipMemcpy,
+  // therefore, only take the shortcut if we're expecting high launch overhead
+  // (TODO: benchmark this to pick the optimal parameters?)
+  //
+  // At present, broadcast is used if:
+  // * The default pathway would require more than 2 memcpy ops (high overhead)
+  // * And each memcpy op is sufficiently small (less than 8 MB)
+  // * And its size is multiple of 4 (because the kernel only supports 
+  //   multiples of 4) 
+  if (write_ops.size() > 2 
+    && write_ops[0].size < 8000000 
+    && !(write_ops[0].size & 3)) {
+    bool is_broadcast = true;
+    int stride = write_ops[1].dst_ptr - write_ops[0].dst_ptr;
+    for (int i = 1; i < write_ops.size(); i++) {
+      if (write_ops[i].src_ptr != write_ops[0].src_ptr ||
+          write_ops[i].size != write_ops[0].size ||
+          write_ops[i].dst_ptr - write_ops[i - 1].dst_ptr != stride ||
+          write_ops[i].size < stride
+          ) {
+        is_broadcast = false;
+        break;
+      }
+    }
+    if (is_broadcast && !(stride & 3)) {
+      broadcast_fp32(AsGpuStreamValue(stream),
+                     reinterpret_cast<float*>(write_ops[0].dst_ptr),
+                     stride >> 2, write_ops.size(),
+                     reinterpret_cast<float*>(write_ops[0].src_ptr),
+                     write_ops[0].size >> 2);
+      return port::Status::OK();
+    }
+  }
+  //printf("Skip broadcast\n");
+  for (auto& x : write_ops) {
+    DeviceMemoryBase src_mem = DeviceMemoryBase(x.src_ptr, x.size);
+    DeviceMemoryBase target_mem = DeviceMemoryBase(x.dst_ptr, x.size);
+    bool a_status = stream->ThenMemcpy(&target_mem, src_mem, x.size).ok();
+    if (!a_status) {
+      return port::Status(
+          port::error::INTERNAL,
+          "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+    }
+  }
   return port::Status::OK();
 }
 
@@ -1959,6 +1999,11 @@ port::Status ROCMBlas::AllocateStridedBuffer(
     *device_memory =
         DeviceMemory<MAPPED_T>(*(*temp_memory)->mutable_device_memory());
   }
+  assert(batch_count > 0);
+  char* device_memory_ptr = static_cast<char*>(device_memory->opaque());
+  char* src_ptr = reinterpret_cast<char*>(raw_ptrs[0]);
+  char* dst_ptr = device_memory_ptr;
+  uint64_t cur_stride_size = matrix_byte_size;
 
   reallocated = true;
 
@@ -2018,6 +2063,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   // Make sure the temporary memory are in-scope before the function returns
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> a_temp;
   bool reallocated_a, reallocated_b, reallocated_c;
+  //printf("DoBlasGemmBatchedInternal %d\n", batch_count);
   port::Status a_allocation_status =
       AllocateStridedBuffer<T>(a_raw_ptrs, batch_count, batch_stride_a,
                                scratch_allocator, stream, &a_temp, &a, true, reallocated_a);
