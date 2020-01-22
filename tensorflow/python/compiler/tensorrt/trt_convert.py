@@ -1119,6 +1119,9 @@ class TrtGraphConverterV2(object):
     if self._build_called_once:
       raise NotImplementedError("build() is already called. It is not "
                                 "supported to call build() more than once.")
+    if not input_fn:
+      raise RuntimeError("input_fn is None. Method build() needs input_fn "
+                         "to be specified in order to build TensorRT engines")
 
     def _rebuild_func():
       # Rebuild function from graph_def.
@@ -1140,23 +1143,27 @@ class TrtGraphConverterV2(object):
                               partial(_set_profile_generation_mode, True))
       _rebuild_func()
 
+    # Use the first input in explicit batch mode to build TensorRT engines
+    # after generating all the profiles. The first input is used but any of
+    # the inputs can be used because the shape of this input does not
+    # determine the engine and instead the shapes collected in profiles
+    # determine the engine.
+    first_input = None
     # Run inference:
     #   Builds TRT engines if self._need_trt_profiles is False.
     #   Builds TRT optimization profiles if self._need_trt_profiles is True.
-    inputs = []
     for inp in input_fn():
-      inputs.append(inp)
+      if not first_input:
+        first_input = inp
       self._converted_func(*map(ops.convert_to_tensor, inp))
     if self._need_trt_profiles:
       # Disable profile generation.
       self._for_each_trt_node(self._converted_graph_def,
                               partial(_set_profile_generation_mode, False))
       _rebuild_func()
-      # Run inference to build TRT engines out of generated optimization
-      # profiles. Any of the inputs can be used here because the shape of this
-      # input does not determine the engine but the shapes collected in
-      # profiles determine the engine.
-      self._converted_func(*map(ops.convert_to_tensor, inputs[0]))
+      # Run inference to build TensorRT engines out of generated optimization
+      # profiles.
+      self._converted_func(*map(ops.convert_to_tensor, first_input))
 
     self._build_called_once = True
 
