@@ -268,20 +268,6 @@ PyLocalClient::PyLocalClient(
   }
 }
 
-StatusOr<std::string> PyLocalClient::SerializeExecutable(
-    const PyLocalExecutable& executable) const {
-  return Unimplemented("Cannot serialize executables on platform '%s'",
-                       platform_name());
-}
-
-StatusOr<std::unique_ptr<PyLocalExecutable>>
-PyLocalClient::DeserializeExecutable(
-    const std::string& serialized,
-    std::shared_ptr<PyLocalClient> this_shared) const {
-  return Unimplemented("Cannot deserialize executables on platform '%s'",
-                       platform_name());
-}
-
 Status PyLocalClient::TransferToInfeed(const LiteralSlice& literal,
                                        std::shared_ptr<Device> device) {
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,

@@ -462,14 +462,6 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return LiteralToPython(std::move(literal_shared));
            })
-      .def("SerializeExecutable",
-           [](PyLocalClient* client,
-              PyLocalExecutable* executable) -> StatusOr<py::bytes> {
-             TF_ASSIGN_OR_RETURN(std::string serialized,
-                                 client->SerializeExecutable(*executable));
-             return py::bytes(serialized);
-           })
-      .def("DeserializeExecutable", &PyLocalClient::DeserializeExecutable)
       .def("CreateChannelHandle",
            [](PyLocalClient* client) {
              return client->client()->CreateChannelHandle();

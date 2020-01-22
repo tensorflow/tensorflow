@@ -39,8 +39,6 @@ limitations under the License.
 
 namespace xla {
 
-class PyLocalExecutable;
-
 class Device {
  public:
   explicit Device(int id, std::unique_ptr<LocalDeviceState> local_device_state,
@@ -171,19 +169,6 @@ class PyLocalClient {
   // source d2d stream, but some platforms use the destination d2d stream. This
   // function specifies which one the platform expects.
   virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
-
-  // Returns a platform-specific serialization of `executable`. This is meant
-  // for transferring executables and not for storage, and the serialization is
-  // not guaranteed to be stable over time.
-  virtual StatusOr<std::string> SerializeExecutable(
-      const PyLocalExecutable& executable) const;
-
-  // Deserializes a serialized executable as produced by
-  // SerializeExecutable(). `serialized` must have been produced by client of
-  // the same platform. `this_shared` should point to this PyLocalClient.
-  virtual StatusOr<std::unique_ptr<PyLocalExecutable>> DeserializeExecutable(
-      const std::string& serialized,
-      std::shared_ptr<PyLocalClient> this_shared) const;
 
  protected:
   std::string platform_name_;
@@ -353,7 +338,6 @@ class PyLocalExecutable {
 
   void Delete() { executable_ = nullptr; }
 
-  LocalExecutable* executable() const { return executable_.get(); }
   const string& name() const;
 
  private:
