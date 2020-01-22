@@ -77,7 +77,7 @@ COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
 # https://github.com/ipython/ipykernel/issues/422
-RUN ${PIP} install jupyter ipykernel==5.1.1 nbconvert==4.4.0 matplotlib
+RUN ${PIP} install jupyter ipykernel==5.1.1 nbformat==4.4.0 matplotlib
 RUN ${PIP} install jupyter_http_over_ws
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
