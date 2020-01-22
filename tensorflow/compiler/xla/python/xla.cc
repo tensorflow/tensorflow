@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
+#include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -651,6 +652,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
       .def("SetSharding", &XlaBuilder::SetSharding)
       .def("ClearSharding", &XlaBuilder::ClearSharding);
+
+  m.def("BufferToDLPackManagedTensor", BufferToDLPackManagedTensor);
+  m.def("DLPackManagedTensorToBuffer", DLPackManagedTensorToBuffer);
 
   // ops submodule, containing free functions that add operators to an
   // XlaBuilder.

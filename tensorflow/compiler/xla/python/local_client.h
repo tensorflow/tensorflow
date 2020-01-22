@@ -141,8 +141,10 @@ class PyLocalClient {
 
   int device_count() const { return devices_.size(); }
   int local_device_count() const { return local_devices_.size(); }
-  const std::vector<std::shared_ptr<Device>>& devices() { return devices_; }
-  const std::vector<std::shared_ptr<Device>>& local_devices() {
+  const std::vector<std::shared_ptr<Device>>& devices() const {
+    return devices_;
+  }
+  const std::vector<std::shared_ptr<Device>>& local_devices() const {
     return local_devices_;
   }
   const std::map<int, std::shared_ptr<Device>>& id_to_device() const {

@@ -122,7 +122,8 @@ SharedDeviceBuffer::MakeTuple(
   return std::make_shared<SharedDeviceBuffer>(
       allocator, device_ordinal,
       std::initializer_list<se::DeviceMemoryBase>{device_memory.Release()},
-      std::move(children), std::move(definition_event));
+      std::move(children), std::move(definition_event),
+      /*on_delete_callback=*/nullptr);
 }
 
 /* static */ StatusOr<std::shared_ptr<SharedDeviceBuffer>>
@@ -179,12 +180,14 @@ SharedDeviceBuffer::SharedDeviceBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal,
     absl::Span<se::DeviceMemoryBase const> device_memory,
     std::vector<std::shared_ptr<SharedDeviceBuffer>> children,
-    std::shared_ptr<BufferDefinitionEvent> definition_event)
+    std::shared_ptr<BufferDefinitionEvent> definition_event,
+    std::function<void()> on_delete_callback)
     : allocator_(allocator),
       device_ordinal_(device_ordinal),
       device_memory_(device_memory.begin(), device_memory.end()),
       children_(std::move(children)),
-      definition_event_(std::move(definition_event)) {}
+      definition_event_(std::move(definition_event)),
+      on_delete_callback_(std::move(on_delete_callback)) {}
 
 SharedDeviceBuffer::SharedDeviceBuffer(
     absl::Span<se::OwningDeviceMemory> device_memory,
@@ -210,6 +213,9 @@ SharedDeviceBuffer::~SharedDeviceBuffer() {
         LOG(ERROR) << "Buffer deallocation failed: " << status;
       }
     }
+  }
+  if (on_delete_callback_) {
+    on_delete_callback_();
   }
 }
 

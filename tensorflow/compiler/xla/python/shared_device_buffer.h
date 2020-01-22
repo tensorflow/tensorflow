@@ -120,6 +120,9 @@ class SharedDeviceBuffer {
   }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
   int device_ordinal() const { return device_ordinal_; }
+  absl::InlinedVector<se::DeviceMemoryBase, 1>& device_memory() {
+    return device_memory_;
+  }
   const absl::InlinedVector<se::DeviceMemoryBase, 1>& device_memory() const {
     return device_memory_;
   }
@@ -131,7 +134,8 @@ class SharedDeviceBuffer {
   SharedDeviceBuffer(se::DeviceMemoryAllocator* allocator, int device_ordinal,
                      absl::Span<se::DeviceMemoryBase const> device_memory,
                      std::vector<std::shared_ptr<SharedDeviceBuffer>> children,
-                     std::shared_ptr<BufferDefinitionEvent> definition_event);
+                     std::shared_ptr<BufferDefinitionEvent> definition_event,
+                     std::function<void()> on_delete_callback);
   SharedDeviceBuffer(absl::Span<se::OwningDeviceMemory> device_memory,
                      std::vector<std::shared_ptr<SharedDeviceBuffer>> children,
                      std::shared_ptr<BufferDefinitionEvent> definition_event);
@@ -152,6 +156,9 @@ class SharedDeviceBuffer {
   // single-stream execution case where events are not necessary for buffer
   // event sequencing.
   std::shared_ptr<BufferDefinitionEvent> definition_event_;
+
+  // A callback to call when the SharedDeviceBuffer is about to be destroyed.
+  std::function<void()> on_delete_callback_;
 };
 
 // Populates 'events' with the set of buffer definition events for all buffers
