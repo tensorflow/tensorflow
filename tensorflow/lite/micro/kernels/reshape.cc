@@ -25,7 +25,6 @@ namespace micro {
 namespace reshape {
 
 constexpr int kInputTensor = 0;
-constexpr int kShapeTensor = 1;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus ReshapeOutput(TfLiteContext* context, TfLiteNode* node) {

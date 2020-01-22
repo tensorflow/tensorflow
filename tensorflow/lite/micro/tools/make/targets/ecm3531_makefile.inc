@@ -43,6 +43,7 @@ ifeq ($(TARGET), ecm3531)
     -Wsign-compare \
     -Wdouble-promotion \
     -Wshadow \
+    -Wunused-variable \
     -Wno-unused-parameter \
     -Wno-missing-field-initializers \
     -Wno-write-strings \
