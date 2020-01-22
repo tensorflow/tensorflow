@@ -73,7 +73,7 @@ class ModuleTest(test.TestCase):
     tf.summary.image
     # If we use v2 API, check for create_file_writer,
     # otherwise check for FileWriter.
-    if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
+    if '._api.v2' in tf.bitwise.__name__:
       tf.summary.create_file_writer
     else:
       tf.summary.FileWriter

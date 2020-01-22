@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import sys
 
 from tensorflow.python.distribute import strategy_combinations
 
@@ -29,19 +28,11 @@ _strategies = [
     strategy_combinations.mirrored_strategy_with_one_gpu,
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
     strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.tpu_strategy,
 ]
-
-# TODO(b/145386854): The presence of GPU strategies upsets TPU initialization,
-# despite their test instances being skipped early on.
-if "test_tpu" in sys.argv[0]:
-  _strategies = [s for s in _strategies if "GPU" not in str(s)]
 
 
 named_strategies = collections.OrderedDict(
-    [(None, None)] +
-    [(str(s), s) for s in _strategies]
-)
+    [(None, None)] + [(str(s), s) for s in _strategies])
 
 
 class MaybeDistributionScope(object):

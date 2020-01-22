@@ -30,7 +30,6 @@ class _HostConstantOp : public OpKernel {
   explicit _HostConstantOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
   bool IsExpensive() override { return false; }
-  const Tensor* const_tensor() const override { return &tensor_; };
   ~_HostConstantOp() override {}
 
  private:

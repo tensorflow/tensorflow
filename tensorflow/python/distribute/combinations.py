@@ -79,8 +79,7 @@ class NamedGPUCombination(test_combinations.TestCombination):
 
     if not number_of_required_gpus and GPUCombination.GPU_TEST:
       return (False, "Test that doesn't require GPUs.")
-    elif (number_of_required_gpus > 0
-          and context.num_gpus() < number_of_required_gpus):
+    elif context.num_gpus() < number_of_required_gpus:
       return (False, ("Only {} of {} required GPUs are available.".format(
           context.num_gpus(), number_of_required_gpus)))
     else:

@@ -1,8 +1,3 @@
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
-
 package(
     default_visibility = [
         "//tensorflow:__subpackages__",
@@ -19,15 +14,6 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
     ],
-)
-
-# Export source files needed for mobile builds, which do not use granular targets.
-filegroup(
-    name = "mobile_srcs_only_runtime",
-    srcs = [
-        "math_util.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
 )
 
 exports_files([

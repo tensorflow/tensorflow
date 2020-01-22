@@ -81,8 +81,7 @@ void ClampScaleAndRound(const Device& d, ConstVec input, T min_range,
   switch (round_mode) {
     case ROUND_HALF_TO_EVEN:
       ClampScaleAndRound(d, input, min_range, max_range, scale, inverse_scale,
-                         Eigen::internal::scalar_round_half_to_even_op<T>(),
-                         output);
+                         Eigen::internal::scalar_round_op_google<T>(), output);
       break;
     case ROUND_HALF_UP:
       ClampScaleAndRound(d, input, min_range, max_range, scale, inverse_scale,
@@ -108,7 +107,7 @@ void ScaleAndRound(const Device& d, ConstVec input, T scale, T inverse_scale,
   switch (round_mode) {
     case ROUND_HALF_TO_EVEN:
       ScaleAndRound(d, input, scale, inverse_scale,
-                    Eigen::internal::scalar_round_half_to_even_op<T>(), output);
+                    Eigen::internal::scalar_round_op_google<T>(), output);
       break;
     case ROUND_HALF_UP:
       ScaleAndRound(d, input, scale, inverse_scale,

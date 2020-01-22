@@ -76,12 +76,10 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  unique_weights = object_identity.ObjectIdentitySet(weights)
-  weight_shapes = [w.shape.as_list() for w in unique_weights]
-  standardized_weight_shapes = [
-      [0 if w_i is None else w_i for w_i in w] for w in weight_shapes
-  ]
-  return int(sum(np.prod(p) for p in standardized_weight_shapes))
+  return int(
+      sum(
+          np.prod(p.shape.as_list())
+          for p in object_identity.ObjectIdentitySet(weights)))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):

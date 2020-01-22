@@ -16,11 +16,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_op.h"
 
 #include <stdio.h>
-
 #include <utility>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
@@ -39,10 +38,11 @@ string FormatToalExecTime(const ShowMultiNode* node,
         100.0 * node->proto().exec_micros() / root->proto().total_exec_micros();
   }
 
-  return absl::StrFormat(
-      "%30s",
-      absl::StrFormat("%s (%.2f%%, %.2f%%)",
-                      FormatTime(node->proto().exec_micros()), accu_pct, pct));
+  return strings::Printf(
+      "%30s", strings::Printf("%s (%.2f%%, %.2f%%)",
+                              FormatTime(node->proto().exec_micros()).c_str(),
+                              accu_pct, pct)
+                  .c_str());
 }
 string FormatCPUExecTime(const ShowMultiNode* node, const ShowMultiNode* root) {
   double accu_pct = 0.0;
@@ -54,10 +54,12 @@ string FormatCPUExecTime(const ShowMultiNode* node, const ShowMultiNode* root) {
           root->proto().total_cpu_exec_micros();
   }
 
-  return absl::StrFormat(
-      "%30s", absl::StrFormat("%s (%.2f%%, %.2f%%)",
-                              FormatTime(node->proto().cpu_exec_micros()),
-                              accu_pct, pct));
+  return strings::Printf(
+      "%30s",
+      strings::Printf("%s (%.2f%%, %.2f%%)",
+                      FormatTime(node->proto().cpu_exec_micros()).c_str(),
+                      accu_pct, pct)
+          .c_str());
 }
 string FormatAcceleratorExecTime(const ShowMultiNode* node,
                                  const ShowMultiNode* root) {
@@ -70,11 +72,12 @@ string FormatAcceleratorExecTime(const ShowMultiNode* node,
           root->proto().total_accelerator_exec_micros();
   }
 
-  return absl::StrFormat(
-      "%30s",
-      absl::StrFormat("%s (%.2f%%, %.2f%%)",
-                      FormatTime(node->proto().accelerator_exec_micros()),
-                      accu_pct, pct));
+  return strings::Printf(
+      "%30s", strings::Printf(
+                  "%s (%.2f%%, %.2f%%)",
+                  FormatTime(node->proto().accelerator_exec_micros()).c_str(),
+                  accu_pct, pct)
+                  .c_str());
 }
 }  // namespace
 
@@ -103,16 +106,16 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
                                         Timeline* timeline) {
   root_->ResetTotalStats();
   if (opts.output_type == kOutput[3]) {
-    absl::FPrintF(stderr, "Only 'code' view supports pprof output now.\n");
+    fprintf(stderr, "Only 'code' view supports pprof output now.\n");
     return root_.get();
   }
   if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
     root_->formatted_str = FormatNode(root_.get(), root_.get(), opts);
   }
   if (timeline) {
-    absl::FPrintF(stderr,
-                  "op view doesn't support timeline yet. "
-                  "Consider graph/scope/code view.\n");
+    fprintf(stderr,
+            "op view doesn't support timeline yet. "
+            "Consider graph/scope/code view.\n");
     return root_.get();
   }
   if (cnodes_map_.empty()) {
@@ -213,9 +216,10 @@ string TFOp::FormatMemoryNode(int64 node_total_bytes, int64 root_total_bytes,
     accu_pct = 100.0 * node_total_bytes / root_total_bytes;
     pct = 100.0 * node_bytes / root_total_bytes;
   }
-  return absl::StrFormat(
-      "%30s", absl::StrFormat("%s (%.2f%%, %.2f%%)", FormatMemory(node_bytes),
-                              accu_pct, pct));
+  return strings::Printf(
+      "%30s", strings::Printf("%s (%.2f%%, %.2f%%)",
+                              FormatMemory(node_bytes).c_str(), accu_pct, pct)
+                  .c_str());
 }
 
 string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
@@ -266,10 +270,12 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
       pct =
           100.0 * node->proto().parameters() / root->proto().total_parameters();
     }
-    attrs.push_back(absl::StrFormat(
-        "%30s", absl::StrFormat("%s params (%.2f%%, %.2f%%)",
-                                FormatNumber(node->proto().parameters()),
-                                accu_pct, pct)));
+    attrs.push_back(strings::Printf(
+        "%30s",
+        strings::Printf("%s params (%.2f%%, %.2f%%)",
+                        FormatNumber(node->proto().parameters()).c_str(),
+                        accu_pct, pct)
+            .c_str()));
   }
 
   if (opts.select.find(kShown[3]) != opts.select.end()) {
@@ -281,10 +287,11 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
       pct = 100.0 * node->proto().float_ops() / root->proto().total_float_ops();
     }
 
-    attrs.push_back(absl::StrFormat(
-        "%30s", absl::StrFormat("%s float_ops (%.2f%%, %.2f%%)",
-                                FormatNumber(node->proto().float_ops()),
-                                accu_pct, pct)));
+    attrs.push_back(strings::Printf(
+        "%30s", strings::Printf("%s float_ops (%.2f%%, %.2f%%)",
+                                FormatNumber(node->proto().float_ops()).c_str(),
+                                accu_pct, pct)
+                    .c_str()));
   }
 
   if (opts.select.find(kShown[5]) != opts.select.end()) {
@@ -301,18 +308,20 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
     for (const auto& gnode : node->proto().graph_nodes()) {
       total_runs += gnode.run_count();
     }
-    attrs.push_back(absl::StrFormat(
-        "%10s", absl::StrFormat("%d|%d", total_runs,
-                                node->proto().graph_nodes_size())));
+    attrs.push_back(strings::Printf(
+        "%10s",
+        strings::Printf("%lld|%d", total_runs, node->proto().graph_nodes_size())
+            .c_str()));
   }
 
-  string node_str =
-      absl::StrFormat("%-25s%s\n", node->name(), absl::StrJoin(attrs, ", "));
+  string node_str = strings::Printf("%-25s%s\n", node->name().c_str(),
+                                    absl::StrJoin(attrs, ", ").c_str());
 
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     string input_shape_str = FormatInputShapes(node->proto());
     if (!input_shape_str.empty()) {
-      node_str = absl::StrFormat("%s\n%s\n\n", node_str, input_shape_str);
+      node_str = strings::Printf("%s\n%s\n\n", node_str.c_str(),
+                                 input_shape_str.c_str());
     }
   }
   return node_str;

@@ -37,7 +37,6 @@ py_library(
 py_test(
     name = "activity_test",
     srcs = ["activity_test.py"],
-    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",
@@ -86,7 +85,6 @@ py_test(
     name = "liveness_test",
     testonly = True,
     srcs = ["liveness_test.py"],
-    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",
@@ -128,7 +126,6 @@ py_test(
 py_test(
     name = "reaching_definitions_test",
     srcs = ["reaching_definitions_test.py"],
-    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",

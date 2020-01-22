@@ -30,12 +30,11 @@ limitations under the License.
 //   Dim = {num_ngram}
 
 #include <ctype.h>
-
 #include <string>
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/string_util.h"

@@ -778,38 +778,20 @@ class MutableDenseHashTable final : public LookupInterface {
 
 }  // namespace lookup
 
-// Base class for kernels that take a LookupTable handle as the 0th input.
-class LookupTableOpKernel : public OpKernel {
- public:
-  explicit LookupTableOpKernel(OpKernelConstruction* ctx)
-      : OpKernel(ctx),
-        expected_input_0_(ctx->input_type(0) == DT_RESOURCE ? DT_RESOURCE
-                                                            : DT_STRING_REF) {}
-
- protected:
-  Status GetTable(OpKernelContext* ctx, lookup::LookupInterface** table) {
-    if (expected_input_0_ == DT_RESOURCE) {
-      return GetResourceLookupTable("table_handle", ctx, table);
-    } else {
-      return GetReferenceLookupTable("table_handle", ctx, table);
-    }
-  }
-
-  // Input 0 could be a STRING_REF or a RESOURCE
-  const DataType expected_input_0_;
-};
-
 // Table lookup op. Perform the lookup operation on the given table.
-class LookupTableFindOp : public LookupTableOpKernel {
+class LookupTableFindOp : public OpKernel {
  public:
-  using LookupTableOpKernel::LookupTableOpKernel;
+  explicit LookupTableFindOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     lookup::LookupInterface* table;
-    OP_REQUIRES_OK(ctx, GetTable(ctx, &table));
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {expected_input_0_, table->key_dtype(),
+    // Input 0 could be a STRING_REF or a RESOURCE
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     DataTypeVector expected_outputs = {table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
@@ -834,16 +816,18 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableFindV2").Device(DEVICE_CPU),
                         LookupTableFindOp);
 
 // Table insert op.
-class LookupTableInsertOp : public LookupTableOpKernel {
+class LookupTableInsertOp : public OpKernel {
  public:
-  using LookupTableOpKernel::LookupTableOpKernel;
+  explicit LookupTableInsertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     lookup::LookupInterface* table;
-    OP_REQUIRES_OK(ctx, GetTable(ctx, &table));
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {expected_input_0_, table->key_dtype(),
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
@@ -869,16 +853,18 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableInsertV2").Device(DEVICE_CPU),
                         LookupTableInsertOp);
 
 // Table remove op.
-class LookupTableRemoveOp : public LookupTableOpKernel {
+class LookupTableRemoveOp : public OpKernel {
  public:
-  using LookupTableOpKernel::LookupTableOpKernel;
+  explicit LookupTableRemoveOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     lookup::LookupInterface* table;
-    OP_REQUIRES_OK(ctx, GetTable(ctx, &table));
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {expected_input_0_, table->key_dtype()};
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
     const Tensor& key = ctx->input(1);
@@ -900,13 +886,13 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableRemoveV2").Device(DEVICE_CPU),
                         LookupTableRemoveOp);
 
 // Op that returns the size of the given table.
-class LookupTableSizeOp : public LookupTableOpKernel {
+class LookupTableSizeOp : public OpKernel {
  public:
-  using LookupTableOpKernel::LookupTableOpKernel;
+  explicit LookupTableSizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     lookup::LookupInterface* table;
-    OP_REQUIRES_OK(ctx, GetTable(ctx, &table));
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
     Tensor* out;
@@ -921,13 +907,13 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableSizeV2").Device(DEVICE_CPU),
                         LookupTableSizeOp);
 
 // Op that outputs tensors of all keys and all values.
-class LookupTableExportOp : public LookupTableOpKernel {
+class LookupTableExportOp : public OpKernel {
  public:
-  using LookupTableOpKernel::LookupTableOpKernel;
+  explicit LookupTableExportOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     lookup::LookupInterface* table;
-    OP_REQUIRES_OK(ctx, GetTable(ctx, &table));
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
     OP_REQUIRES_OK(ctx, table->ExportValues(ctx));
@@ -940,16 +926,18 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableExportV2").Device(DEVICE_CPU),
                         LookupTableExportOp);
 
 // Clear the table and insert data.
-class LookupTableImportOp : public LookupTableOpKernel {
+class LookupTableImportOp : public OpKernel {
  public:
-  using LookupTableOpKernel::LookupTableOpKernel;
+  explicit LookupTableImportOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     lookup::LookupInterface* table;
-    OP_REQUIRES_OK(ctx, GetTable(ctx, &table));
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {expected_input_0_, table->key_dtype(),
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
@@ -1107,7 +1095,6 @@ REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
 REGISTER_KERNEL(tstring, int32);
 REGISTER_KERNEL(tstring, int64);
-REGISTER_KERNEL(tstring, ResourceHandle);
 
 #undef REGISTER_KERNEL
 

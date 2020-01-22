@@ -44,11 +44,7 @@ from tensorflow.python.ops.losses import losses_impl
 VAR_MAP_V1 = {
     "GradientDescent": ("dense/kernel", "dense/bias"),
     "Adagrad": ("dense/kernel/Adagrad", "dense/kernel", "dense/bias/Adagrad",
-                "dense/bias"),
-    "Ftrl": ("dense/kernel/Ftrl", "dense/kernel", "dense/bias/Ftrl",
-             "dense/bias", "dense/kernel/Ftrl_1", "dense/bias/Ftrl_1"),
-    "RMSProp": ("dense/kernel", "dense/bias/RMSProp", "dense/bias/RMSProp_1",
-                "dense/bias", "dense/kernel/RMSProp_1", "dense/kernel/RMSProp")
+                "dense/bias")
 }
 
 VAR_MAP_V2 = {
@@ -65,7 +61,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   def _get_iterator(self, strategy, input_fn):
     iterator = strategy.make_input_fn_iterator(lambda _: input_fn())
-    self.evaluate(iterator.initializer)
+    self.evaluate(iterator.initialize())
     return iterator
 
   @combinations.generate(
@@ -219,7 +215,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             for replica in range(1, num_parameter_devices)
         ]
         variables = list(variables) + extended_variables
-        return set(v + ":0" for v in variables)
+        return set([v + ":0" for v in variables])
 
       self.assertEqual(
           get_expected_variables(len(distribution.extended.parameter_devices)),

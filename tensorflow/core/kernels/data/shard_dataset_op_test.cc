@@ -66,7 +66,7 @@ class ShardDatasetParams : public DatasetParams {
   bool require_non_empty_;
 };
 
-class ShardDatasetOpTest : public DatasetOpsTestBase {};
+class ShardDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test Case 1: simple case.
 ShardDatasetParams ShardDatasetParams1() {

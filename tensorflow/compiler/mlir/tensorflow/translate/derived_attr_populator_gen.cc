@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/TableGen/Operator.h"  // TF:llvm-project
+#include "mlir/TableGen/Operator.h"  // TF:local_config_mlir
 
 using llvm::LessRecord;
 using llvm::raw_ostream;
@@ -56,22 +56,13 @@ static void EmitOpAttrPopulators(const std::vector<Operator> &ops,
       const auto &attr = named_attr.attr;
       if (!attr.isDerivedAttr()) continue;
       auto retType = attr.getReturnType();
-      if (retType == "ShapedType" || retType == "mlir::TF::OperandShapeRange" ||
-          retType == "mlir::TF::ResultShapeRange") {
-        OUT(2) << "TF_RETURN_IF_ERROR(SetShapeAttribute(\"" << attr_name
-               << "\", op." << attr_name << "(), values));\n";
-      } else if (retType == "Type" ||
-                 retType == "mlir::OperandElementTypeRange" ||
-                 retType == "mlir::ResultElementTypeRange") {
-        OUT(2) << "TF_RETURN_IF_ERROR(SetTypeAttribute(\"" << attr_name
-               << "\", op." << attr_name << "(), values));\n";
-      } else if (attr.isSubClassOf("TF_DerivedOperandSizeAttr") ||
-                 attr.isSubClassOf("TF_DerivedResultSizeAttr")) {
-        OUT(2) << "TF_RETURN_IF_ERROR(SetSizeAttribute(\"" << attr_name
-               << "\", op." << attr_name << "(), values));\n";
+      if (retType == "Type" || retType == "mlir::OperandElementTypeRange" ||
+          retType == "mlir::ResultElementTypeRange") {
+        OUT(2) << "TF_RETURN_IF_ERROR(SetAttribute(\"" << attr_name << "\", op."
+               << attr_name << "(), values));\n";
       } else {
         PrintFatalError(op.getLoc(),
-                        "NYI: attribute populator for derived attributes");
+                        "NYI: Derived attributes other than DerivedTypeAttr");
       }
     }
 

@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #endif
 
@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #endif
@@ -369,6 +369,8 @@ class CSRSparseMatMulGPUOp : public OpKernel {
 
     CSRSparseMatrix c;
     Tensor c_row_ptrs;
+    Tensor c_col_inds;
+    Tensor c_values;
 
     // TODO(ebrevdo): Re-enable transposing within the GEMM kernel when cuSparse
     // stops spitting out CUSPARSE_STATUS_INTERNAL_ERROR values for transposes.
@@ -498,24 +500,22 @@ REGISTER_CPU(complex128)
                               .TypeConstraint<T>("type"),  \
                           CSRSparseMatMulGPUOp<DEV##Device, T>);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 
 #define REGISTER_GPU(T) REGISTER(GPU, T)
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
-#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
-#endif  // GOOGLE_CUDA
 
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 #undef REGISTER
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 namespace functor {
 template <typename T>
 struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
@@ -529,20 +529,11 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         adjoint_a_(adjoint_a),
         transpose_b_(transpose_b) {
     // TODO(ebrevdo): Figure out why transposed implementations crash cuSparse.
-#if GOOGLE_CUDA
     transA_ = transpose_a ? (adjoint_a ? CUSPARSE_OPERATION_TRANSPOSE
                                        : CUSPARSE_OPERATION_CONJUGATE_TRANSPOSE)
                           : CUSPARSE_OPERATION_NON_TRANSPOSE;
     transB_ = transpose_b ? CUSPARSE_OPERATION_TRANSPOSE
                           : CUSPARSE_OPERATION_NON_TRANSPOSE;
-#elif TENSORFLOW_USE_ROCM
-    transA_ = transpose_a
-                  ? (adjoint_a ? HIPSPARSE_OPERATION_TRANSPOSE
-                               : HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE)
-                  : HIPSPARSE_OPERATION_NON_TRANSPOSE;
-    transB_ = transpose_b ? HIPSPARSE_OPERATION_TRANSPOSE
-                          : HIPSPARSE_OPERATION_NON_TRANSPOSE;
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 
   Status Initialize() {
@@ -641,20 +632,20 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
 
  private:
   OpKernelContext* ctx_;
-  GpuSparse cuda_sparse_;
+  CudaSparse cuda_sparse_;
   bool initialized_;
   bool transpose_a_;
   bool adjoint_a_;
   bool transpose_b_;
-  GpuSparseMatrixDescriptor descrA_;
-  GpuSparseMatrixDescriptor descrB_;
-  GpuSparseMatrixDescriptor descrC_;
-  gpusparseOperation_t transA_;
-  gpusparseOperation_t transB_;
+  CudaSparseMatrixDescriptor descrA_;
+  CudaSparseMatrixDescriptor descrB_;
+  CudaSparseMatrixDescriptor descrC_;
+  cusparseOperation_t transA_;
+  cusparseOperation_t transB_;
 };
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

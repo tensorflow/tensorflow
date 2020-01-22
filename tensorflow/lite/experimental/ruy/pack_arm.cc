@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/pack.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 
 namespace ruy {
 
@@ -30,7 +30,8 @@ void Pack8bitNeonOutOfOrder(const void* src_ptr0, const void* src_ptr1,
                             int src_inc3, int src_rows, int src_zero_point,
                             std::int8_t* packed_ptr, int start_col, int end_col,
                             std::int32_t* sums_ptr, int input_xor) {
-  profiler::ScopeLabel label("Pack (kNeon, optimized for out-of-order cores)");
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for out-of-order cores)");
   asm volatile(
       // clang-format off
           "dup v26.16b, %w[input_xor]\n"
@@ -224,7 +225,8 @@ void CheckOffsetsInPackParams8bit(const Params&) {
 // No attempt made at making this code efficient on in-order cores yet.
 void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params) {
   CheckOffsetsInPackParams8bit(params);
-  profiler::ScopeLabel label("Pack (kNeon, optimized for out-of-order cores)");
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for out-of-order cores)");
   const void* src_ptr0 = params.src_ptr0;
   const void* src_ptr1 = params.src_ptr1;
   const void* src_ptr2 = params.src_ptr2;
@@ -449,7 +451,8 @@ void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params) {
 // at a time.
 void Pack8bitNeonOutOfOrder2Cols(const PackParams8bit& params) {
   CheckOffsetsInPackParams8bit(params);
-  profiler::ScopeLabel label("Pack (kNeon, optimized for out-of-order cores)");
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for out-of-order cores)");
   const void* src_ptr0 = params.src_ptr0;
   const void* src_ptr1 = params.src_ptr1;
   const int src_inc0 = params.src_inc0;
@@ -606,7 +609,8 @@ void Pack8bitNeonInOrder(const void* src_ptr0, const void* src_ptr1,
                          int src_rows, int src_zero_point,
                          std::int8_t* packed_ptr, int start_col, int end_col,
                          std::int32_t* sums_ptr, int input_xor) {
-  profiler::ScopeLabel label("Pack (kNeon, optimized for in-order cores)");
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for in-order cores)");
   asm volatile(
           // clang-format off
           "dup v26.16b, %w[input_xor]\n"
@@ -796,7 +800,7 @@ void Pack8bitNeonDotprodInOrder(const void* src_ptr0, const void* src_ptr1,
                                 std::int8_t* packed_ptr, int start_col,
                                 int end_col, std::int32_t* sums_ptr,
                                 int input_xor) {
-  profiler::ScopeLabel label(
+  gemmlowp::ScopedProfilingLabel label(
       "Pack (kNeonDotprod, optimized for in-order cores)");
   asm volatile(
           // clang-format off
@@ -1012,7 +1016,7 @@ void Pack8bitNeonDotprodOutOfOrder(const void* src_ptr0, const void* src_ptr1,
                                    int src_zero_point, std::int8_t* packed_ptr,
                                    int start_col, int end_col,
                                    std::int32_t* sums_ptr, int input_xor) {
-  profiler::ScopeLabel label(
+  gemmlowp::ScopedProfilingLabel label(
       "Pack (kNeonDotprod, optimized for out-of-order cores)");
   asm volatile(
       // clang-format off
@@ -1469,7 +1473,8 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
                              int src_inc0, int src_inc1, int src_inc2,
                              int src_inc3, int src_rows, int src_zero_point,
                              float* packed_ptr, int start_col, int end_col) {
-  profiler::ScopeLabel label("Pack (kNeon, optimized for out-of-order cores)");
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for out-of-order cores)");
   asm volatile(
       // clang-format off
           "mov w1, #0\n"
@@ -1604,7 +1609,8 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
                              int src_inc, int src_rows, int src_zero_point,
                              float* packed_ptr, int start_col, int end_col,
                              int output_stride) {
-  profiler::ScopeLabel label("Pack (kNeon, optimized for out-of-order cores)");
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for out-of-order cores)");
   asm volatile(
       // clang-format off
           "mov r1, #0\n"
@@ -1785,7 +1791,8 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
                           int src_inc0, int src_inc1, int src_inc2,
                           int src_inc3, int src_rows, int src_zero_point,
                           float* packed_ptr, int start_col, int end_col) {
-  profiler::ScopeLabel label("Pack (kNeon, optimized for in-order cores)");
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for in-order cores)");
 
   asm volatile(
           // clang-format off

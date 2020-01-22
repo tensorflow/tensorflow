@@ -1,0 +1,9 @@
+-*- mlir/utils/vim/README -*-
+
+This directory contains settings for the vim editor to work on MLIR *.mlir 
+files.  It comes with filetype detection rules in the (ftdetect),
+syntax highlighting (syntax), some minimal sensible default settings (ftplugin)
+and indentation plugins (indent).
+
+To install, copy all subdirectories to your $HOME/.vim/, or if you
+prefer, create symlinks to the files here.

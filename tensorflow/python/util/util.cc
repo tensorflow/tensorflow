@@ -277,16 +277,6 @@ int IsTensorHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
-// Returns 1 if `o` is an EagerTensor.
-// Returns 0 otherwise.
-// Returns -1 if an error occurred.
-int IsEagerTensorHelper(PyObject* o) {
-  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    return IsInstanceOfRegisteredType(to_check, "EagerTensor");
-  });
-  return check_cache->CachedLookup(o);
-}
-
 // Returns 1 if `o` is a ResourceVariable.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -522,23 +512,21 @@ bool IsCompositeTensorHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
-// Returns 1 if `o` is an instance of TypeSpec, but is not TensorSpec or
-// VariableSpec.
+// Returns 1 if `o` is an instance of TypeSpec, but is not TensorSpec.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
 bool IsTypeSpecHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_type_spec = IsInstanceOfRegisteredType(to_check, "TypeSpec");
-    int is_dense_spec = (IsInstanceOfRegisteredType(to_check, "TensorSpec") ||
-                         IsInstanceOfRegisteredType(to_check, "VariableSpec"));
-    if ((is_type_spec == -1) || (is_dense_spec == -1)) return -1;
-    return static_cast<int>(is_type_spec && !is_dense_spec);
+    int is_tensor_spec = IsInstanceOfRegisteredType(to_check, "TensorSpec");
+    if ((is_type_spec == -1) || (is_tensor_spec == -1)) return -1;
+    return static_cast<int>(is_type_spec && !is_tensor_spec);
   });
   return check_cache->CachedLookup(o);
 }
 
 // Returns 1 if `o` is a (non-string) sequence or CompositeTensor or
-// (non-TensorSpec and non-VariableSpec) TypeSpec.
+// (non-TensorSpec) TypeSpec.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
 int IsSequenceOrCompositeHelper(PyObject* o) {
@@ -880,7 +868,6 @@ bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
 bool IsMappingView(PyObject* o) { return IsMappingViewHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }
-bool IsEagerTensorSlow(PyObject* o) { return IsEagerTensorHelper(o) == 1; }
 bool IsResourceVariable(PyObject* o) {
   return IsResourceVariableHelper(o) == 1;
 }

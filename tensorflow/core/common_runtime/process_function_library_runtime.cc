@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -123,7 +122,7 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& key_prefix, int64 src_incarnation,
     gtl::ArraySlice<Tensor> tensors_to_send, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
-    RendezvousInterface* rendezvous) {
+    Rendezvous* rendezvous) {
   std::vector<string> keys;
   for (int i = 0; i < tensors_to_send.size(); ++i) {
     string name = strings::StrCat(key_prefix, i);
@@ -141,9 +140,8 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64 src_incarnation, int64 num_tensors,
     DeviceContext* device_context,
-    const std::vector<AllocatorAttributes>& alloc_attrs,
-    RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
-    StatusCallback done) {
+    const std::vector<AllocatorAttributes>& alloc_attrs, Rendezvous* rendezvous,
+    std::vector<Tensor>* received_tensors, StatusCallback done) {
   std::vector<string> keys;
   for (int64 i = 0; i < num_tensors; ++i) {
     string name = strings::StrCat(key_prefix, i);
@@ -409,18 +407,6 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
           GetColocationGroup(src_node, &colocation_group);
           VLOG(3) << "Considering src: " << src_node->name()
                   << " src_device: " << *src_device
-                  << " colo group: " << colocation_group;
-        }
-        // If colocation_group is not set and output producing node is assigned
-        // to a remote device, colocate the retval node with its input node.
-        // TODO(yujingzhang): Remove this when we support outputting tensors on
-        // remote devices.
-        const bool remote_src_device =
-            !src_device->empty() && GetFLR(*src_device) == nullptr;
-        if (colocation_group.empty() && remote_src_device) {
-          colocation_group =
-              absl::StrCat(kColocationGroupPrefix, it->src()->name());
-          VLOG(3) << "Considering src: " << src_node->name()
                   << " colo group: " << colocation_group;
         }
 
@@ -725,8 +711,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     options.graph_collector->CollectOptimizedGraph(def);
   }
 
-  VLOG(4) << "Main function graph to be partitioned:";
-  VLOG(4) << DebugString(graph->ToGraphDefDebug());
+  VLOG(2) << "Main function graph to be partitioned:";
+  VLOG(2) << DebugString(graph->ToGraphDefDebug());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
@@ -844,7 +830,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       auto attrs = AttrSlice(&shard.attr());
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;
-      VLOG(4) << DebugString(shard);
+      VLOG(2) << DebugString(shard);
 
       auto* component_handle = new FunctionLibraryRuntime::Handle;
       auto done = [this, status, unique_name, comp_data, component_handle,
@@ -852,7 +838,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         status->Update(s);
 
         VLOG(1) << "Finished instantiating component function " << unique_name
-                << " with handle " << *component_handle << " status: " << s;
+                << "with handle " << *component_handle << " status: " << s;
         if (status->ok()) {
           {
             mutex_lock l(mu_);

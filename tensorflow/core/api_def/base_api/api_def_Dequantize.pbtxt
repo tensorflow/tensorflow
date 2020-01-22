@@ -12,14 +12,7 @@ END
 The maximum scalar value possibly produced for the input.
 END
   }
-  attr {
-    name: "dtype"
-    description: <<END
-Type of the output tensor. Currently Dequantize supports float and bfloat16.
-If 'dtype' is 'bfloat16', it only supports 'MIN_COMBINED' mode.
-END
-  }
-  summary: "Dequantize the \'input\' tensor into a float or bfloat16 Tensor."
+  summary: "Dequantize the \'input\' tensor into a float Tensor."
   description: <<END
 [min_range, max_range] are scalar floats that specify the range for
 the output. The 'mode' attribute controls exactly which calculations are

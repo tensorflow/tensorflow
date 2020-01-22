@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 

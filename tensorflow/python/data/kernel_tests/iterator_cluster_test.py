@@ -17,15 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -40,9 +37,9 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
-class IteratorClusterTest(test.TestCase, parameterized.TestCase):
+class IteratorClusterTest(test.TestCase):
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_v1_only("b/120545219")
   def testRemoteIteratorWithoutRemoteCallFail(self):
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
@@ -98,7 +95,7 @@ class IteratorClusterTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(remote_op, feed_dict={target_placeholder: device1})
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_v1_only("b/120545219")
   def testRemoteIteratorUsingRemoteCallOp(self):
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
@@ -109,7 +106,7 @@ class IteratorClusterTest(test.TestCase, parameterized.TestCase):
                                    "/job:worker/replica:0/task:0/cpu:1",
                                    worker[0].target)
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_v1_only("b/120545219")
   def testRemoteIteratorUsingRemoteCallOpCrossProcess(self):
     workers, _ = test_util.create_local_cluster(2, 1)
 
@@ -117,7 +114,7 @@ class IteratorClusterTest(test.TestCase, parameterized.TestCase):
                                    "/job:worker/replica:0/task:1/cpu:0",
                                    workers[0].target)
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_v1_only("b/120545219")
   def testCaptureHashTableInSharedIterator(self):
     worker, _ = test_util.create_local_cluster(1, 1)
 
@@ -134,10 +131,10 @@ class IteratorClusterTest(test.TestCase, parameterized.TestCase):
     input_sentences = dataset_ops.Dataset.from_tensor_slices(
         ["brain brain tank salad surgery", "surgery brain"])
 
-    dataset = input_sentences.map(
-        lambda x: string_ops.string_split([x]).values).map(table.lookup)
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset, shared_name="shared_iterator")
+    iterator = (
+        input_sentences.map(lambda x: string_ops.string_split([x]).values).map(
+            table.lookup)
+        .make_initializable_iterator(shared_name="shared_iterator"))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -151,7 +148,7 @@ class IteratorClusterTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_v1_only("b/120545219")
   def testImplicitDisposeParallelMapDataset(self):
     # Tests whether a parallel map dataset will be cleaned up correctly when
     # the pipeline does not run it until exhaustion.

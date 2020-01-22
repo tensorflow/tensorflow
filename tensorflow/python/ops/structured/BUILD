@@ -34,7 +34,6 @@ py_library(
 py_test(
     name = "structured_tensor_test",
     srcs = ["structured_tensor_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",
@@ -50,7 +49,6 @@ py_test(
 py_test(
     name = "structured_tensor_spec_test",
     srcs = ["structured_tensor_spec_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",
@@ -66,7 +64,6 @@ py_test(
 py_test(
     name = "structured_tensor_slice_test",
     srcs = ["structured_tensor_slice_test.py"],
-    python_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",

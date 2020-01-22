@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import collections
 import warnings
-
 import numpy as np
 
 from tensorflow.python import tf2
@@ -90,6 +89,7 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
 
   def __init__(self, values, indices, dense_shape=None):
     """Creates an `IndexedSlices`."""
+    ops._get_graph_from_inputs([values, indices, dense_shape])  # pylint: disable=protected-access
     self._values = values
     self._indices = indices
     self._dense_shape = dense_shape

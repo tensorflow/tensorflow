@@ -70,7 +70,7 @@ class TensorDatasetParams : public DatasetParams {
   std::vector<Tensor> components_;
 };
 
-class TensorDatasetOpTest : public DatasetOpsTestBase {};
+class TensorDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test case 1: test a dataset that represents a single tuple of plain tensors.
 TensorDatasetParams PlainTensorDatasetParams() {
@@ -234,11 +234,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
   const std::vector<int>& breakpoints = test_case.breakpoints;
   int cardinality = 1;
   for (int breakpoint : breakpoints) {
-    VariantTensorDataWriter writer;
+    VariantTensorData data;
+    VariantTensorDataWriter writer(&data);
     TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    std::vector<const VariantTensorData*> data;
-    writer.GetData(&data);
-    VariantTensorDataReader reader(data);
+    TF_EXPECT_OK(writer.Flush());
+    VariantTensorDataReader reader(&data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
                                  test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));

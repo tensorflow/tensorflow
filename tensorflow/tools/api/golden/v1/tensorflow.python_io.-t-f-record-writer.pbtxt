@@ -1,8 +1,7 @@
 path: "tensorflow.python_io.TFRecordWriter"
 tf_class {
   is_instance: "<class \'tensorflow.python.lib.io.tf_record.TFRecordWriter\'>"
-  is_instance: "<class \'tensorflow.python._pywrap_record_io.RecordWriter\'>"
-  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
+  is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "

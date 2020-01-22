@@ -218,25 +218,17 @@ void XRTTupleAllocation::ReleaseBuffers() {
 }
 
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
-    const xla::ShapedBuffer& shaped_buffer, const xla::Shape& on_host_shape,
-    const xla::Shape& on_device_shape, xla::Backend* backend,
+    const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
     int device_ordinal, XRTTupleAllocation** allocation) {
   auto allocator = backend->memory_allocator();
 
-  *allocation = new XRTTupleAllocation(device_ordinal, allocator, on_host_shape,
-                                       on_device_shape);
+  *allocation = new XRTTupleAllocation(device_ordinal, allocator,
+                                       shaped_buffer.on_host_shape(),
+                                       shaped_buffer.on_device_shape());
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
   return Status::OK();
-}
-
-/*static*/ Status XRTTupleAllocation::CreateFromBuffer(
-    const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
-    int device_ordinal, XRTTupleAllocation** allocation) {
-  return CreateFromBuffer(shaped_buffer, shaped_buffer.on_host_shape(),
-                          shaped_buffer.on_device_shape(), backend,
-                          device_ordinal, allocation);
 }
 
 Status XRTTupleAllocation::ToLiteral(xla::Backend* backend,
@@ -648,8 +640,7 @@ Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
 
 xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>>
 XRTTupleAllocation::ToDeviceMemoryTree(
-    const std::function<xla::StatusOr<bool>(const xla::ShapeIndex&)>&
-        release_checker) {
+    const std::function<bool(const xla::ShapeIndex&)>& release_checker) {
   xla::ShapeTree<xla::MaybeOwningDeviceMemory> shaped_tree(on_device_shape());
   for (const auto& index_buffer : buffers_) {
     if (index_buffer.second == nullptr ||
@@ -658,9 +649,7 @@ XRTTupleAllocation::ToDeviceMemoryTree(
                                      index_buffer.first.ToString(),
                                      " has been released");
     }
-    TF_ASSIGN_OR_RETURN(bool should_release,
-                        release_checker(index_buffer.first));
-    if (!should_release) {
+    if (!release_checker(index_buffer.first)) {
       *shaped_tree.mutable_element(index_buffer.first) =
           index_buffer.second->allocation();
     } else {

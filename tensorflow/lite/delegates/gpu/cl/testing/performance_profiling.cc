@@ -123,10 +123,7 @@ Status RunModelSample(const std::string& model_name) {
 
   InferenceContext::CreateInferenceInfo create_info;
   create_info.precision = CalculationsPrecision::F16;
-  create_info.storage_type = GetFastestStorageType(env.device());
-  std::cout << "Precision: " << ToString(create_info.precision) << std::endl;
-  std::cout << "Storage type: " << ToString(create_info.storage_type)
-            << std::endl;
+  create_info.storage_type = TensorStorageType::TEXTURE_2D;
   InferenceContext context;
   RETURN_IF_ERROR(
       context.InitFromGraphWithTransforms(create_info, &graph_cl, &env));
@@ -134,27 +131,26 @@ Status RunModelSample(const std::string& model_name) {
   auto* queue = env.profiling_queue();
   ProfilingInfo profiling_info;
   RETURN_IF_ERROR(context.Profile(queue, &profiling_info));
-  std::cout << profiling_info.GetDetailedReport() << std::endl;
-  uint64_t mem_bytes = context.GetSizeOfMemoryAllocatedForIntermediateTensors();
-  std::cout << "Memory for intermediate tensors - "
-            << mem_bytes / 1024.0 / 1024.0 << " MB" << std::endl;
+  double total_ms_time = 0.0;
+  for (auto dispatch : profiling_info.dispatches) {
+    std::cout << dispatch.label << " - " << dispatch.GetTimeMs() << "ms"
+              << std::endl;
+    total_ms_time += dispatch.GetTimeMs();
+  }
+  std::cout << "Ideal total time - " << total_ms_time << std::endl;
 
-  const int num_runs_per_sec = std::max(
-      1, static_cast<int>(1000.0f / absl::ToDoubleMilliseconds(
-                                        profiling_info.GetTotalTime())));
+  int runs1000ms = std::max(1, static_cast<int>(1000.0f / total_ms_time));
 
-  const int kNumRuns = 10;
-  for (int i = 0; i < kNumRuns; ++i) {
+  for (int i = 0; i < 10; ++i) {
     const auto start = absl::Now();
-    for (int k = 0; k < num_runs_per_sec; ++k) {
+    for (int k = 0; k < runs1000ms; ++k) {
       RETURN_IF_ERROR(context.AddToQueue(env.queue()));
     }
     RETURN_IF_ERROR(env.queue()->WaitForCompletion());
     const auto end = absl::Now();
-    const double total_time_ms =
+    const double time_ms =
         static_cast<double>((end - start) / absl::Nanoseconds(1)) * 1e-6;
-    const double average_inference_time = total_time_ms / num_runs_per_sec;
-    std::cout << "Total time - " << average_inference_time << "ms" << std::endl;
+    std::cout << "Total time - " << time_ms / runs1000ms << "ms" << std::endl;
   }
 
   return OkStatus();
@@ -172,13 +168,13 @@ int main(int argc, char** argv) {
 
   auto load_status = tflite::gpu::cl::LoadOpenCL();
   if (!load_status.ok()) {
-    std::cerr << load_status.message();
+    std::cerr << load_status.error_message();
     return -1;
   }
 
   auto run_status = tflite::gpu::cl::RunModelSample(argv[1]);
   if (!run_status.ok()) {
-    std::cerr << run_status.message();
+    std::cerr << run_status.error_message();
     return -1;
   }
 

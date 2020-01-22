@@ -21,7 +21,6 @@ import gc
 import threading
 import weakref
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -42,7 +41,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 
 
-class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+class OpsTest(test_util.TensorFlowTestCase):
 
   def testExecuteBasic(self):
     three = constant_op.constant(3)
@@ -94,7 +93,7 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     graph = ops.Graph()
     with graph.as_default(), context.graph_mode():
       array_ops.placeholder(dtypes.int32)
-    self.assertLen(graph.get_operations(), 1)
+    self.assertEqual(1, len(graph.get_operations()))
 
   # See comments on handling of int32 tensors on GPU in
   # EagerTensor.__init__.
@@ -108,23 +107,23 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     split_dim = constant_op.constant(1)
     value = constant_op.constant([[0, 1, 2], [3, 4, 5]])
     result = array_ops.split(value, 1, axis=split_dim)
-    self.assertIsInstance(result, list)
-    self.assertLen(result, 1)
+    self.assertTrue(isinstance(result, list))
+    self.assertEqual(1, len(result))
     self.assertAllEqual([[0, 1, 2], [3, 4, 5]], result[0])
 
   def testExecuteListOutputLen0(self):
     empty = constant_op.constant([], dtype=dtypes.int32)
     result = array_ops.unstack(empty, 0)
-    self.assertIsInstance(result, list)
-    self.assertEmpty(result)
+    self.assertTrue(isinstance(result, list))
+    self.assertEqual(0, len(result))
 
   def testExecuteMultipleNonListOutput(self):
     x = constant_op.constant([1, 2, 3, 4, 5, 6])
     y = constant_op.constant([1, 3, 5])
     result = array_ops.listdiff(x, y)
     out, idx = result
-    self.assertIs(out, result.out)
-    self.assertIs(idx, result.idx)
+    self.assertTrue(out is result.out)
+    self.assertTrue(idx is result.idx)
     self.assertAllEqual([2, 4, 6], out)
     self.assertAllEqual([1, 3, 5], idx)
 
@@ -141,9 +140,9 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         shape,
         num_split=2)
     output_indices, output_values, output_shape = result
-    self.assertLen(output_indices, 2)
-    self.assertLen(output_values, 2)
-    self.assertLen(output_shape, 2)
+    self.assertEqual(2, len(output_indices))
+    self.assertEqual(2, len(output_values))
+    self.assertEqual(2, len(output_shape))
     self.assertEqual(output_indices, result.output_indices)
     self.assertEqual(output_values, result.output_values)
     self.assertEqual(output_shape, result.output_shape)
@@ -162,7 +161,7 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testComposition(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
     three_x = x + x + x
-    self.assertEqual(dtypes.int32, three_x.dtype)
+    self.assertEquals(dtypes.int32, three_x.dtype)
     self.assertAllEqual(3, three_x)
 
   def testOperatorOverrides(self):
@@ -314,8 +313,8 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     scalar_shape = constant_op.constant([], dtype=dtypes.int32)
 
     x = random_ops.random_uniform(scalar_shape)
-    self.assertEqual(0, x.shape.ndims)
-    self.assertEqual(dtypes.float32, x.dtype)
+    self.assertEquals(0, x.shape.ndims)
+    self.assertEquals(dtypes.float32, x.dtype)
 
     x = random_ops.random_uniform(
         scalar_shape, minval=constant_op.constant(5.),
@@ -365,17 +364,12 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x.set_shape(tensor_shape.TensorShape([None, 2]))
     self.assertEqual(x.get_shape(), (1, 2))
 
-  @parameterized.named_parameters(
-      ('Tensor', lambda: constant_op.constant(1.3+1j)),
-      ('Variable', lambda: resource_variable_ops.ResourceVariable(1.3+1j)))
-  def testCastToPrimitiveTypesFrom(self, value_fn):
-    x = value_fn()
+  def testCastScalarToPrimitiveTypes(self):
+    x = constant_op.constant(1.3)
     self.assertIsInstance(int(x), int)
     self.assertEqual(int(x), 1)
     self.assertIsInstance(float(x), float)
     self.assertAllClose(float(x), 1.3)
-    self.assertIsInstance(complex(x), complex)
-    self.assertAllClose(complex(x), 1.3+1j)
 
   def testCastNonScalarToPrimitiveTypesFails(self):
     x = constant_op.constant([1.3, 2])
@@ -393,7 +387,7 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual('3.14', '{:.2f}'.format(x))
 
   def testNoOpIsNone(self):
-    self.assertIsNone(control_flow_ops.no_op())
+    self.assertTrue(control_flow_ops.no_op() is None)
 
   def testEagerContextPreservedAcrossThreads(self):
     def init_fn():
@@ -401,7 +395,7 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with ops.init_scope():
         self.assertTrue(context.executing_eagerly())
         context_switches = context.context().context_switches
-        self.assertLen(context_switches.stack, 1)
+        self.assertEqual(len(context_switches.stack), 1)
         self.assertFalse(context_switches.stack[0].is_building_function)
         self.assertEqual(context_switches.stack[0].enter_context_fn,
                          context.eager_mode)
@@ -436,8 +430,8 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     del strong_x, strong_x_ref
     self.assertIs(weak_x_ref(), None)
     self.assertEqual([strong_y_ref], list(weak_key_dict))
-    self.assertLen(list(weak_key_dict), 1)
-    self.assertLen(weak_key_dict, 1)
+    self.assertEqual(1, len(list(weak_key_dict)))
+    self.assertEqual(1, len(weak_key_dict))
 
     del strong_y, strong_y_ref
     self.assertEqual([], list(weak_key_dict))

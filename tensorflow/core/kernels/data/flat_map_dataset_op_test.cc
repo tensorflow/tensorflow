@@ -76,7 +76,7 @@ class FlatMapDatasetParams : public DatasetParams {
   DataTypeVector type_arguments_;
 };
 
-class FlatMapDatasetOpTest : public DatasetOpsTestBase {};
+class FlatMapDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test case 1: normal case.
 FlatMapDatasetParams FlatMapDatasetParams1() {

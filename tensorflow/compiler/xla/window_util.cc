@@ -104,10 +104,8 @@ string ToString(const Window& window) {
         }
       };
 
-  if (window.dimensions_size() > 0) {
-    add_field("size",
-              [](const WindowDimension& dim) { return StrCat(dim.size()); });
-  }
+  add_field("size",
+            [](const WindowDimension& dim) { return StrCat(dim.size()); });
   if (HasStride(window)) {
     add_field(" stride",
               [](const WindowDimension& dim) { return StrCat(dim.stride()); });

@@ -34,7 +34,7 @@ class OpExpanderPass : public HloModulePass {
   virtual bool InstructionMatchesPattern(HloInstruction* instruction) = 0;
 
   // Returns a replacement for `instruction`, or nullptr if no replacement is
-  // needed (e.g. only the to_apply subcomputation of the instruction was
+  // neeeded (e.g. only the to_apply subcomputation of the instruction was
   // modified).
   virtual StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) = 0;

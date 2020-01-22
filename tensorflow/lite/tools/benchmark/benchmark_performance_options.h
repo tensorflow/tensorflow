@@ -56,8 +56,6 @@ class BenchmarkPerformanceOptions {
 
   virtual ~BenchmarkPerformanceOptions() {}
 
-  // Just run the benchmark just w/ default parameter values.
-  void Run();
   void Run(int argc, char** argv);
 
  protected:

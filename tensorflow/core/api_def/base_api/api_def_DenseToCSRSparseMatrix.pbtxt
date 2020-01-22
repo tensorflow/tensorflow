@@ -1,6 +1,5 @@
 op {
   graph_op_name: "DenseToCSRSparseMatrix"
-  visibility: HIDDEN
   in_arg {
     name: "dense_input"
     description: "A Dense tensor."

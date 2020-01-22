@@ -35,7 +35,10 @@ def tf_additional_grpc_deps_py():
     return []
 
 def tf_additional_license_deps():
-    return []
+    return select({
+        str(Label("//tensorflow:with_xla_support")): ["@llvm//:LICENSE.TXT"],
+        "//conditions:default": [],
+    })
 
 # Include specific extra dependencies when building statically, or
 # another set of dependencies otherwise. If "macos" is provided, that
@@ -64,6 +67,3 @@ def if_dynamic_kernels(extra_deps, otherwise = []):
         str(Label("//tensorflow:dynamic_loaded_kernels")): extra_deps,
         "//conditions:default": otherwise,
     })
-
-def register_extension_info(**kwargs):
-    pass

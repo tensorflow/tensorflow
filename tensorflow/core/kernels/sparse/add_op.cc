@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #endif
 
@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #endif
@@ -233,10 +233,8 @@ class CSRAddOp : public OpKernel {
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
-#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
-#endif
 
 #undef REGISTER_GPU
 
@@ -248,7 +246,7 @@ REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(
 
 #undef REGISTER
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 namespace functor {
 template <typename T>
 struct CSRSparseMatrixAdd<GPUDevice, T>
@@ -326,10 +324,10 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
 
  private:
   OpKernelContext* ctx_;
-  GpuSparse cuda_sparse_;
-  GpuSparseMatrixDescriptor descrA_;
-  GpuSparseMatrixDescriptor descrB_;
-  GpuSparseMatrixDescriptor descrC_;
+  CudaSparse cuda_sparse_;
+  CudaSparseMatrixDescriptor descrA_;
+  CudaSparseMatrixDescriptor descrB_;
+  CudaSparseMatrixDescriptor descrC_;
   const T alpha_;
   const T beta_;
   bool initialized_;
@@ -339,6 +337,6 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

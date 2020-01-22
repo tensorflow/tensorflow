@@ -1,8 +1,0 @@
-steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-f', '$_DOCKERFILE', '-t', 'gcr.io/$PROJECT_ID/$_IMAGE_NAME', '.']
-substitutions:
-  _DOCKERFILE: ''
-  _IMAGE_NAME: ''
-images:
-- 'gcr.io/$PROJECT_ID/$_IMAGE_NAME'

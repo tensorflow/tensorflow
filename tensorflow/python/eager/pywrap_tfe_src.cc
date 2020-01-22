@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
@@ -56,37 +54,33 @@ namespace {
 // This occurs when a PyFunc kernel is run. This behavior makes it safe in that
 // case, as well as the case where python decides to reuse the underlying
 // C++ thread in 2 python threads case.
-thread_local std::map<TFE_Context*, std::unique_ptr<TFE_Op>>
-    thread_local_eager_operation_map;                             // NOLINT
+thread_local std::unique_ptr<TFE_Op> thread_local_eager_operation =  // NOLINT
+    nullptr;
 thread_local std::unique_ptr<TF_Status> thread_local_tf_status =  // NOLINT
     nullptr;
 
-std::unique_ptr<TFE_Op> ReleaseThreadLocalOp(TFE_Context* ctx) {
-  auto it = thread_local_eager_operation_map.find(ctx);
-  if (it == thread_local_eager_operation_map.end()) {
+TFE_Op* ReleaseThreadLocalOp() {
+  if (thread_local_eager_operation == nullptr) {
     return nullptr;
   }
-  return std::move(it->second);
+  return thread_local_eager_operation.release();
 }
 
 TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
-              const char* raw_device_name, TF_Status* status) {
-  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
-  if (!op) {
-    op.reset(new TFE_Op{tensorflow::EagerOperation(ctx->context)});
+              TF_Status* status) {
+  TFE_Op* maybe_op = ReleaseThreadLocalOp();
+  if (maybe_op) {
+    TFE_OpReset(ctx, op_or_function_name, status, maybe_op);
+    return maybe_op;
+  } else {
+    return TFE_NewOp(ctx, op_or_function_name, status);
   }
-  status->status =
-      op->operation.Reset(op_or_function_name, raw_device_name, false, nullptr);
-  if (!status->status.ok()) {
-    op.reset();
-  }
-  return op.release();
 }
 
-void ReturnOp(TFE_Context* ctx, TFE_Op* op) {
-  if (op) {
-    op->operation.Clear();
-    thread_local_eager_operation_map[ctx].reset(op);
+void ReturnOp(TFE_Op* object) {
+  if (object) {
+    object->Clear();
+    thread_local_eager_operation.reset(object);
   }
 }
 
@@ -149,40 +143,6 @@ AttrToInputsMap* GetAttrToInputsMap(const tensorflow::OpDef& op_def) {
   return retval;
 }
 
-tensorflow::mutex all_attr_to_defaults_maps_lock(
-    tensorflow::LINKER_INITIALIZED);
-tensorflow::gtl::FlatMap<
-    string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>*
-GetAllAttrToDefaultsMaps() {
-  static auto* all_attr_to_defaults_maps = new tensorflow::gtl::FlatMap<
-      string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>;
-  return all_attr_to_defaults_maps;
-}
-
-tensorflow::gtl::FlatMap<string, tensorflow::DataType>* GetAttrToDefaultsMap(
-    const tensorflow::OpDef& op_def) {
-  tensorflow::mutex_lock l(all_attr_to_defaults_maps_lock);
-  auto* all_attr_to_defaults_maps = GetAllAttrToDefaultsMaps();
-
-  auto* output =
-      tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps, op_def.name());
-  if (output != nullptr) {
-    return output;
-  }
-
-  auto* new_map = new tensorflow::gtl::FlatMap<string, tensorflow::DataType>;
-
-  for (const auto& attr : op_def.attr()) {
-    if (attr.type() == "type" && attr.has_default_value()) {
-      new_map->insert({attr.name(), attr.default_value().type()});
-    }
-  }
-
-  (*all_attr_to_defaults_maps)[op_def.name()] = new_map;
-
-  return new_map;
-}
-
 struct FastPathOpExecInfo {
   TFE_Context* ctx;
   const char* device_name;
@@ -203,7 +163,6 @@ struct FastPathOpExecInfo {
   // DTypes can come from another input that has the same attr. So build that
   // map.
   const AttrToInputsMap* attr_to_inputs_map;
-  const tensorflow::gtl::FlatMap<string, tensorflow::DataType>* default_dtypes;
   tensorflow::gtl::FlatMap<string, tensorflow::DataType> cached_dtypes;
 };
 
@@ -839,12 +798,14 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
-  TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
-  auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
+  TFE_Op* op = GetOp(ctx, op_name, out_status);
+  auto cleaner = tensorflow::gtl::MakeCleanup([op] { ReturnOp(op); });
   if (!out_status->status.ok()) return;
-
-  for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
-    TFE_OpAddInput(op, inputs->at(i), out_status);
+  TFE_OpSetDevice(op, device_name, out_status);
+  if (out_status->status.ok()) {
+    for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
+      TFE_OpAddInput(op, inputs->at(i), out_status);
+    }
   }
   if (cancellation_manager && out_status->status.ok()) {
     TFE_OpSetCancellationManager(op, cancellation_manager, out_status);
@@ -1007,15 +968,15 @@ const char* TFE_GetPythonString(PyObject* o) {
 #endif
 }
 
-int64_t get_uid() { return _uid++; }
+int64_t get_uid() {
+  return _uid++;
+}
 
 PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 
 void TFE_DeleteContextCapsule(PyObject* context) {
   TFE_Context* ctx =
       reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
-  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
-  op.reset();
   TFE_DeleteContext(ctx);
 }
 
@@ -1905,28 +1866,18 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
-    tensorflow::DataType dtype =
-        static_cast<tensorflow::DataType>(t->handle->DataType());
-    if (dtype == tensorflow::DT_VARIANT) {
-      return PyTapeTensor(id, dtype, tensor);
-    }
-
-    tensorflow::Status status;
     tensorflow::TensorShape tensor_shape;
-    int num_dims = t->handle->NumDims(&status);
-    if (status.ok()) {
-      for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
-        if (!status.ok()) break;
-        tensor_shape.AddDim(dim_size);
-      }
-    }
+    const tensorflow::Status status = t->handle->Shape(&tensor_shape);
 
     if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
       return PyTapeTensor(id, static_cast<tensorflow::DataType>(0),
                           tensorflow::TensorShape({}));
     } else {
-      return PyTapeTensor(id, dtype, tensor_shape);
+      if (t->handle->dtype == tensorflow::DT_VARIANT) {
+        return PyTapeTensor(id, t->handle->dtype, tensor);
+      } else {
+        return PyTapeTensor(id, t->handle->dtype, tensor_shape);
+      }
     }
   }
   tensorflow::int64 id = FastTensorId(tensor);
@@ -1958,7 +1909,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
 
   auto l = MakeIntList(shape_tuple.get());
   // Replace -1, which represents accidental Nones which can occur in graph mode
-  // and can cause errors in shape construction with 0s.
+  // and can cause errors in shape cosntruction with 0s.
   for (auto& c : l) {
     if (c < 0) {
       c = 0;
@@ -2886,11 +2837,6 @@ tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
     }
   }
 
-  auto default_it = op_exec_info->default_dtypes->find(attr);
-  if (default_it != op_exec_info->default_dtypes->end()) {
-    return default_it->second;
-  }
-
   return tensorflow::DT_INVALID;
 }
 
@@ -2943,6 +2889,7 @@ bool OpGradientDoesntRequireOutputIndices(
           {"SparseSegmentMean", {true, {}}},
           {"SparseSegmentSqrtN", {true, {}}},
           {"UnsortedSegmentSum", {true, {}}},
+          {"UnsortedSegmentMax", {true, {}}},
           {"Abs", {true, {}}},
           {"Neg", {true, {}}},
           {"ReciprocalGrad", {true, {}}},
@@ -2957,7 +2904,6 @@ bool OpGradientDoesntRequireOutputIndices(
           {"Cos", {true, {}}},
           {"Tan", {true, {}}},
           {"Add", {true, {}}},
-          {"AddV2", {true, {}}},
           {"Sub", {true, {}}},
           {"Mul", {true, {}}},
           {"Div", {true, {}}},
@@ -2985,8 +2931,6 @@ bool OpGradientDoesntRequireOutputIndices(
 
           // Ops that don't require a subset of outputs.
           {"FusedBatchNorm", {false, {0, 1, 2}}},
-          {"FusedBatchNormV2", {false, {0, 1, 2}}},
-          {"FusedBatchNormV3", {false, {0, 1, 2}}},
       });
 
   auto it = m->find(op_name);
@@ -3034,8 +2978,6 @@ bool OpGradientDoesntRequireInputIndices(
 
           // Ops that don't require a subset of inputs.
           {"FusedBatchNorm", {false, {2}}},
-          {"FusedBatchNormV2", {false, {2}}},
-          {"FusedBatchNormV3", {false, {2}}},
       });
 
   auto it = m->find(op_name);
@@ -3473,8 +3415,6 @@ bool RunCallbacks(
 }  // namespace
 
 PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
-  tensorflow::profiler::TraceMe activity(
-      "TFE_Py_FastPathExecute_C", tensorflow::profiler::TraceMeLevel::kInfo);
   Py_ssize_t args_size = PyTuple_GET_SIZE(args);
   if (args_size < kFastPathExecuteInputStartIndex) {
     PyErr_SetString(
@@ -3487,12 +3427,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
 
   FastPathOpExecInfo op_exec_info;
 
-  TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
+  op_exec_info.ctx = reinterpret_cast<TFE_Context*>(
       PyCapsule_GetPointer(PyTuple_GET_ITEM(args, 0), nullptr));
-  op_exec_info.ctx = ctx;
   op_exec_info.args = args;
 
-  if (ctx == nullptr) {
+  if (op_exec_info.ctx == nullptr) {
     // The context hasn't been initialized. It will be in the slow path.
     RaiseFallbackException(
         "This function does not handle the case of the path where "
@@ -3527,16 +3466,16 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     return nullptr;
   }
 
-  TFE_Op* op = GetOp(ctx, op_name, op_exec_info.device_name, status);
-  auto cleaner = tensorflow::gtl::MakeCleanup([status, ctx, op] {
+  TFE_Op* op = GetOp(op_exec_info.ctx, op_name, status);
+  auto cleaner = tensorflow::gtl::MakeCleanup([status, op] {
     ReturnStatus(status);
-    ReturnOp(ctx, op);
+    ReturnOp(op);
   });
   if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
     return nullptr;
   }
 
-  const tensorflow::OpDef* op_def = op->operation.OpDef();
+  const tensorflow::OpDef* op_def = op->inference_ctx->op_def;
   if (op_def == nullptr) return nullptr;
 
   if (args_size < kFastPathExecuteInputStartIndex + op_def->input_arg_size()) {
@@ -3558,7 +3497,6 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   }
 
   op_exec_info.attr_to_inputs_map = GetAttrToInputsMap(*op_def);
-  op_exec_info.default_dtypes = GetAttrToDefaultsMap(*op_def);
 
   // Mapping of attr name to size - used to calculate the number of values
   // to be expected by the TFE_Execute run.
@@ -3569,7 +3507,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   for (int i = kFastPathExecuteInputStartIndex + op_def->input_arg_size();
        i < args_size; i += 2) {
     PyObject* py_attr_name = PyTuple_GET_ITEM(args, i);
-    const char* attr_name = TFE_GetPythonString(py_attr_name);
+    const tensorflow::StringPiece attr_name(TFE_GetPythonString(py_attr_name));
     PyObject* py_attr_value = PyTuple_GET_ITEM(args, i + 1);
 
     // Not creating an index since most of the time there are not more than a
@@ -3577,9 +3515,9 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     // TODO(nareshmodi): Maybe include the index as part of the
     // OpRegistrationData.
     for (const auto& attr : op_def->attr()) {
-      if (tensorflow::StringPiece(attr_name) == attr.name()) {
-        SetOpAttrWithDefaults(ctx, op, attr, attr_name, py_attr_value,
-                              &attr_list_sizes, status);
+      if (attr_name == attr.name()) {
+        SetOpAttrWithDefaults(op_exec_info.ctx, op, attr, attr_name.data(),
+                              py_attr_value, &attr_list_sizes, status);
 
         if (!status->status.ok()) {
           VLOG(1) << "Falling back to slow path for Op \"" << op_def->name()
@@ -3592,6 +3530,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         break;
       }
     }
+  }
+
+  TFE_OpSetDevice(op, op_exec_info.device_name, status);
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+    return nullptr;
   }
 
   // Flat attrs and inputs as required by the record_gradient call. The attrs
@@ -3874,21 +3817,16 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                                        EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
     TFE_TensorHandle* t = EagerTensor_Handle(arg);
+    tensorflow::TensorShape tensor_shape;
+    TF_RETURN_IF_ERROR(t->handle->Shape(&tensor_shape));
 
-    absl::StrAppend(&result->str, kDType,
-                    static_cast<tensorflow::DataType>(t->handle->DataType()));
+    absl::StrAppend(&result->str, kDType, t->handle->dtype);
+
     absl::StrAppend(&result->str, kShape);
-
-    tensorflow::Status status;
-    int num_dims = t->handle->NumDims(&status);
-    if (!status.ok()) return status;
-
     if (include_tensor_ranks_only) {
-      absl::StrAppend(&result->str, num_dims);
+      absl::StrAppend(&result->str, tensor_shape.dim_sizes().size());
     } else {
-      for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
-        if (!status.ok()) return status;
+      for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }
     }

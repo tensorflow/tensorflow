@@ -1,4 +1,9 @@
 op {
   graph_op_name: "Exp"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.exp"
+  }
+  endpoint {
+    name: "exp"
+  }
 }

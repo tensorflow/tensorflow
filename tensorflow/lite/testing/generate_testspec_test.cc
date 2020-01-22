@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/generate_testspec.h"
 
-#include <random>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -24,16 +22,16 @@ namespace testing {
 namespace {
 
 TEST(GenerateRandomTensor, FloatValue) {
-  std::mt19937 random_engine;
-  auto random_func = [&]() {
-    return std::uniform_real_distribution<float>(-0.5, 0.5)(random_engine);
+  static unsigned int seed = 0;
+  std::function<float(int)> float_rand = [](int idx) {
+    return static_cast<float>(rand_r(&seed)) / RAND_MAX - 0.5f;
   };
 
   std::set<float> values;
   float sum_x_square = 0.0f;
   float sum_x = 0.0f;
   for (int i = 0; i < 100; i++) {
-    const auto& data = GenerateRandomTensor<float>({1, 3, 4}, random_func);
+    const auto& data = GenerateRandomTensor<float>({1, 3, 4}, float_rand);
     for (float value : data) {
       values.insert(value);
       sum_x_square += value * value;

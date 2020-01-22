@@ -18,8 +18,7 @@ limitations under the License.
 #include <limits>
 #include <unordered_map>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 
 namespace tflite {
 namespace optimize {
@@ -27,8 +26,7 @@ namespace calibration {
 
 class MinMax {
  public:
-  TfLiteStatus Update(const float* values, size_t tensor_size,
-                      ErrorReporter* error_reporter);
+  TfLiteStatus Update(const float* values, size_t tensor_size);
 
   bool HasValues() const { return has_values_; }
 
@@ -50,10 +48,9 @@ class Logger {
  public:
   // Log the value for tensor at |tensor_index| which has |tensor_values|
   TfLiteStatus LogTensorValue(int tensor_index, const float* tensor_values,
-                              size_t tensor_size,
-                              ErrorReporter* error_reporter) {
-    return tensor_id_to_stats_map_[tensor_index].Update(
-        tensor_values, tensor_size, error_reporter);
+                              size_t tensor_size) {
+    return tensor_id_to_stats_map_[tensor_index].Update(tensor_values,
+                                                        tensor_size);
   }
 
   // Returns a map from tensor_index -> observed min max values.

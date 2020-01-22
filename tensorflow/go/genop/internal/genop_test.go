@@ -22,14 +22,13 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	adpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework/api_def_go_proto"
-	odpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto"
+	pb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework"
 )
 
 // Creates an ApiDef based on opdef and applies overrides
 // from apidefText (ApiDef text proto).
-func GetAPIDef(t *testing.T, opdef *odpb.OpDef, apidefText string) *adpb.ApiDef {
-	opdefList := &odpb.OpList{Op: []*odpb.OpDef{opdef}}
+func GetAPIDef(t *testing.T, opdef *pb.OpDef, apidefText string) *pb.ApiDef {
+	opdefList := &pb.OpList{Op: []*pb.OpDef{opdef}}
 	apimap, err := newAPIDefMap(opdefList)
 	if err != nil {
 		t.Fatal(err)
@@ -539,8 +538,8 @@ func TestOp(scope *Scope, bb tf.Output, aa tf.Output, optional ...TestOpAttr) (c
 
 	for _, test := range testdata {
 		t.Run(test.tag, func(t *testing.T) {
-			var opdef odpb.OpDef
-			var apidef *adpb.ApiDef
+			var opdef pb.OpDef
+			var apidef *pb.ApiDef
 			var buf bytes.Buffer
 			if err := proto.UnmarshalText(test.opdef, &opdef); err != nil {
 				t.Fatal(err)

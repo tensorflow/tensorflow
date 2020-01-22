@@ -41,9 +41,6 @@ class LocallyConnected1D(Layer):
   that is, a different set of filters is applied at each different patch
   of the input.
 
-  Note: layer attributes cannot be modified after the layer has been called
-  once (except the `trainable` attribute).
-
   Example:
   ```python
       # apply a unshared weight convolution 1d of length 3 to a sequence with
@@ -342,9 +339,6 @@ class LocallyConnected2D(Layer):
   to the `Conv2D` layer, except that weights are unshared,
   that is, a different set of filters is applied at each
   different patch of the input.
-
-  Note: layer attributes cannot be modified after the layer has been called
-  once (except the `trainable` attribute).
 
   Examples:
   ```python

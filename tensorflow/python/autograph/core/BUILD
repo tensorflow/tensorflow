@@ -47,7 +47,6 @@ py_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":core",
-        "//tensorflow/python/autograph/lang",
         "//tensorflow/python/autograph/operators",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
@@ -60,7 +59,6 @@ py_library(
 py_test(
     name = "converter_test",
     srcs = ["converter_test.py"],
-    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -72,7 +70,6 @@ py_test(
 py_test(
     name = "function_wrappers_test",
     srcs = ["function_wrappers_test.py"],
-    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -83,7 +80,6 @@ py_test(
 py_test(
     name = "naming_test",
     srcs = ["naming_test.py"],
-    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":core",

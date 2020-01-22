@@ -13,6 +13,7 @@ py_library(
         ":profiler_analysis_pb2_grpc",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
+        "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:util",
     ],
 )
@@ -48,7 +49,7 @@ py_binary(
     name = "capture_tpu_profile_bin",
     srcs = ["capture_tpu_profile.py"],
     main = "capture_tpu_profile.py",
-    python_version = "PY3",
+    python_version = "PY2",
     deps = [
         ":capture_tpu_profile_lib",
         "@absl_py//absl/flags",

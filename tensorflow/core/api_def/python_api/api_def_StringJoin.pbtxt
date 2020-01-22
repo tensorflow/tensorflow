@@ -1,4 +1,10 @@
 op {
   graph_op_name: "StringJoin"
-  visibility: HIDDEN
+  endpoint {
+    name: "strings.join"
+  }
+  endpoint {
+    name: "string_join"
+    deprecation_version: 2
+  }
 }

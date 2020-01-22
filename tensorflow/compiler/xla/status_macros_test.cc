@@ -90,7 +90,7 @@ TEST(StatusMacros, ReturnIfErrorOnError) {
   EXPECT_EQ(rc.status().code(), tensorflow::error::INTERNAL);
 }
 
-TEST(StatusMacros, AssignOrReturnSuccessfully) {
+TEST(StatusMacros, AssignOrReturnSuccessufully) {
   Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
     EXPECT_EQ(value, 42);

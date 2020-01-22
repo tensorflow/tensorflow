@@ -11,7 +11,6 @@ def tf_saved_model_test(name, data):
         srcs = [name + ".py"],
         deps = [
             "//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:common",
-            "//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:common_v1",
         ],
     )
 
@@ -23,5 +22,5 @@ def tf_saved_model_test(name, data):
     lit_test(
         name = name + ".py",
         data = [name] + data,
-        driver = "@llvm-project//mlir:run_lit.sh",
+        driver = "@local_config_mlir//:run_lit.sh",
     )

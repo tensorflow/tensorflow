@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import gc
 import time
-
 import six
 
 from tensorflow.python.eager import context

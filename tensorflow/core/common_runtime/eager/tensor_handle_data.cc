@@ -58,44 +58,44 @@ Status LocalTensorHandleData::NumElements(int64* num_elements) const {
   return Status::OK();
 }
 
-Status EmptyLocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
+Status AsyncLocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
   return errors::Unavailable(
-      "Unable to get a tensor for an empty handle. "
+      "Unable to get a tensor for an async handle. "
       "Please wait until it is ready");
 }
 
-Status EmptyLocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
+Status AsyncLocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
   return errors::Unavailable(
-      "Unable to get a tensor for an empty handle. "
+      "Unable to get a tensor for an async handle. "
       "Please wait until it is ready");
 }
 
-Status EmptyLocalTensorHandleData::Shape(TensorShape* shape) const {
+Status AsyncLocalTensorHandleData::Shape(TensorShape* shape) const {
   return errors::Unavailable(
-      "Unable to get shape information for an empty handle. "
+      "Unable to get shape information for an async handle. "
       "Please wait until it is ready");
 }
 
-Status EmptyLocalTensorHandleData::NumDims(int* num_dims) const {
+Status AsyncLocalTensorHandleData::NumDims(int* num_dims) const {
   return errors::Unavailable(
-      "Unable to get shape information for an empty handle. "
+      "Unable to get shape information for an async handle. "
       "Please wait until it is ready");
 }
 
-Status EmptyLocalTensorHandleData::Dim(int dim_index, int64* dim) const {
+Status AsyncLocalTensorHandleData::Dim(int dim_index, int64* dim) const {
   return errors::Unavailable(
-      "Unable to get shape information for an empty handle. "
+      "Unable to get shape information for an async handle. "
       "Please wait until it is ready");
 }
 
-Status EmptyLocalTensorHandleData::NumElements(int64* num_elements) const {
+Status AsyncLocalTensorHandleData::NumElements(int64* num_elements) const {
   return errors::Unavailable(
-      "Unable to get shape information for an empty handle. "
+      "Unable to get shape information for an async handle. "
       "Please wait until it is ready");
 }
 
-string EmptyLocalTensorHandleData::DebugString() const {
-  return "EmptyLocalTensorHandleData";
+string AsyncLocalTensorHandleData::DebugString() const {
+  return "AsyncLocalTensorHandleData";
 }
 
 }  // namespace tensorflow

@@ -43,7 +43,7 @@ using absl::StrJoin;
 
 bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
                                        const HloInstruction* operand) {
-  const auto operand_indices = instruction->OperandIndices(operand);
+  std::vector<int64> operand_indices = instruction->OperandIndices(operand);
   return absl::c_all_of(operand_indices, [instruction](int64 operand_index) {
     return instruction->IsElementwiseOnOperand(operand_index);
   });
@@ -553,11 +553,10 @@ bool HloCollectiveInstruction::IdenticalSlowPath(
 HloAllReduceInstruction::HloAllReduceInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    const std::vector<ReplicaGroup>& replica_groups,
     const absl::optional<int64>& channel_id)
     : HloCollectiveInstruction(HloOpcode::kAllReduce, shape, operands,
-                               replica_groups, channel_id),
-      constrain_layout_(constrain_layout) {
+                               replica_groups, channel_id) {
   AppendComputation(reduce_computation);
 }
 
@@ -570,29 +569,12 @@ bool HloAllReduceInstruction::IsNoop() const {
   return !channel_id();
 }
 
-HloInstructionProto HloAllReduceInstruction::ToProto() const {
-  HloInstructionProto proto = HloCollectiveInstruction::ToProto();
-  proto.set_constrain_layout(constrain_layout_);
-  return proto;
-}
-
-std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<string> result =
-      HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
-  if (constrain_layout_) {
-    result.push_back("constrain_layout=true");
-  }
-  return result;
-}
-
 bool HloAllReduceInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
-         constrain_layout() == casted_other.constrain_layout() &&
          eq_computations(to_apply(), casted_other.to_apply());
 }
 
@@ -601,23 +583,21 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, new_operands, to_apply(), replica_groups(), constrain_layout(),
-      channel_id());
+      shape, new_operands, to_apply(), replica_groups(), channel_id());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups,
-    const absl::optional<int64>& channel_id)
+    const std::vector<ReplicaGroup>& replica_groups)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
-                               replica_groups, channel_id) {}
+                               replica_groups, absl::nullopt) {}
 
 std::unique_ptr<HloInstruction>
 HloAllToAllInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
-  return absl::make_unique<HloAllToAllInstruction>(
-      shape, new_operands, replica_groups(), channel_id());
+  return absl::make_unique<HloAllToAllInstruction>(shape, new_operands,
+                                                   replica_groups());
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
@@ -1356,7 +1336,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     HloFusionInstruction* instruction_to_merge) {
   // Add all non-parameter fused instructions to 'unfused_instructions' to be
   // merged into 'this'. `old_to_new' maps the instructions in the fused node
-  // to the disassembled fusion instructions.
+  // to the disaseembled fusion instructions.
   // Note that we add the unfused instructions to this->parent_ computation.
   // This is necessary because the unique_id needs for an instruction and
   // it's only added when inserting to the computation.
@@ -2196,7 +2176,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
 std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> extra;
-  if (window_ != nullptr) {
+  if (window_ != nullptr && window_->dimensions_size() != 0) {
     extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
   }
   if (convolution_dimension_numbers_ != nullptr) {

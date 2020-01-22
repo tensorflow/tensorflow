@@ -70,7 +70,7 @@ class GcsThrottle {
   /**
    * Constructs a GcsThrottle.
    */
-  explicit GcsThrottle(EnvTime* env_time = nullptr);
+  explicit GcsThrottle(EnvTime* env_time = EnvTime::Default());
 
   /**
    * AdmitRequest updates the GcsThrottle to record a request will be made.

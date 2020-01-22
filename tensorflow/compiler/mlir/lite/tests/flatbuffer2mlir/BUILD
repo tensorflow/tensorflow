@@ -8,7 +8,7 @@ glob_lit_tests(
         ":extra_files",
         ":test_utilities",
     ],
-    driver = "@llvm-project//mlir:run_lit.sh",
+    driver = "@local_config_mlir//:run_lit.sh",
     test_file_exts = [
         "mlir",
         "cc",
@@ -20,11 +20,10 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        ":importer_test_legacy_reshape",
         ":importer_test_min_max",
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
-        "@llvm-project//llvm:FileCheck",
+        "@llvm//:FileCheck",
     ],
 )
 
@@ -32,10 +31,7 @@ filegroup(
 filegroup(
     name = "extra_files",
     srcs = glob(
-        [
-            "**/importer_test_min_max.cc.mlir",
-            "**/reshape.mlir",
-        ],
+        ["**/*.cc.mlir"],
     ),
 )
 
@@ -51,22 +47,6 @@ tf_native_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
-    ],
-)
-
-# A binary to produce legacy shape op which doesn't use the second operand.
-# A file check command is used to verify the imported result from this
-# binary format.
-tf_native_cc_binary(
-    name = "importer_test_legacy_reshape",
-    srcs = [
-        "importer_test_legacy_reshape.cc",
-    ],
-    deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm//:support",
     ],
 )

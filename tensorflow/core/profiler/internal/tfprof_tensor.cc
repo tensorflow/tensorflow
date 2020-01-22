@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-
 namespace tensorflow {
 namespace tfprof {
 void TFProfTensor::Display(string* formatted_str,
@@ -25,7 +22,7 @@ void TFProfTensor::Display(string* formatted_str,
   if (formatted_str) {
     if (formatted_str_.length() >= kTFProfTenosrMaxDisplayLen) {
       *formatted_str =
-          absl::StrCat(formatted_str_, "...omitted from display\n\n");
+          strings::StrCat(formatted_str_, "...omitted from display\n\n");
     } else {
       *formatted_str = formatted_str_;
     }
@@ -71,7 +68,7 @@ void TFProfTensor::Build() {
       break;
     }
     default: {
-      absl::FPrintF(stderr, "Not Supported type %d\n", tensor_->dtype());
+      fprintf(stderr, "Not Supported type %d\n", tensor_->dtype());
       break;
     }
   }

@@ -23,41 +23,36 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(buffer_size=[-1, None, 0, 42])))
+  @parameterized.parameters((-1), (0), (5))
   def testBufferSize(self, buffer_size):
     dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
     self.assertDatasetProduces(dataset, expected_output=range(10))
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(buffer_size=[-2, -42])))
+  @parameterized.parameters((-2), (-42))
   def testInvalidBufferSize(self, buffer_size):
     with self.assertRaises(errors.InvalidArgumentError):
       dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
       self.evaluate(dataset._variant_tensor)
 
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          combinations.combine(
-              buffer_size=[-1, None, 0, 42], slack_period=[1, 8])))
+  @parameterized.parameters(*[(buffer_size, slack_period)
+                              for buffer_size in (-1, None, 0, 5)
+                              for slack_period in (1, 8)])
   def testPrefetchWithSlack(self, buffer_size, slack_period):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset_ops.PrefetchDataset(
         dataset, buffer_size, slack_period=slack_period)
     self.assertDatasetProduces(dataset, expected_output=range(100))
 
-  @combinations.generate(combinations.combine(tf_api_version=1, mode="graph"))
-  def testPrefetchCancellation(self):
+  @test_util.run_v1_only("graph-mode specific test")
+  def testSkipEagerPrefetchCancellation(self):
 
     def map_py_fn(x):
       while x > -1:

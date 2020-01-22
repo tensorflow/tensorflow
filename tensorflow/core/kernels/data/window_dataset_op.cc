@@ -48,9 +48,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         window_size_(window_size),
         window_shift_(window_shift),
         window_stride_(window_stride),
-        drop_remainder_(drop_remainder),
-        output_dtypes_(input_->output_dtypes().size(), {DT_VARIANT}),
-        output_shapes_(input_->output_shapes().size(), TensorShape({})) {
+        drop_remainder_(drop_remainder) {
     input_->Ref();
   }
 
@@ -63,11 +61,16 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   }
 
   const DataTypeVector& output_dtypes() const override {
-    return output_dtypes_;
+    static DataTypeVector* output_dtypes =
+        new DataTypeVector(input_->output_dtypes().size(), {DT_VARIANT});
+    return *output_dtypes;
   }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
-    return output_shapes_;
+    static std::vector<PartialTensorShape>* output_shapes =
+        new std::vector<PartialTensorShape>(input_->output_shapes().size(),
+                                            TensorShape({}));
+    return *output_shapes;
   }
 
   string DebugString() const override {
@@ -261,15 +264,15 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       }
       // Save buffer.
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
+          writer->WriteScalar(strings::StrCat(kBufferSize), buffer_.size()));
       for (int64 i = 0; i < buffer_.size(); i++) {
         TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, buffer_[i].status));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
+            strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix),
             buffer_[i].result.size()));
         for (int64 j = 0; j < buffer_[i].result.size(); j++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
+              strings::StrCat(kBuffer, "[", i, "][", j, "]"),
               buffer_[i].result[j]));
         }
       }
@@ -287,19 +290,18 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // Restore buffer.
       int64 buffer_size = 0;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kBufferSize), &buffer_size));
+          reader->ReadScalar(strings::StrCat(kBufferSize), &buffer_size));
       buffer_.resize(buffer_size);
       for (int64 i = 0; i < buffer_size; i++) {
         int64 vector_size;
         TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &buffer_[i].status));
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
-            &vector_size));
+            strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix), &vector_size));
         buffer_[i].result.resize(vector_size);
         for (int64 j = 0; j < vector_size; j++) {
-          TF_RETURN_IF_ERROR(reader->ReadTensor(
-              full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
-              &buffer_[i].result[j]));
+          TF_RETURN_IF_ERROR(
+              reader->ReadTensor(strings::StrCat(kBuffer, "[", i, "][", j, "]"),
+                                 &buffer_[i].result[j]));
         }
       }
       return Status::OK();
@@ -367,8 +369,6 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   const int64 window_shift_;
   const int64 window_stride_;
   const bool drop_remainder_;
-  const DataTypeVector output_dtypes_;
-  const std::vector<PartialTensorShape> output_shapes_;
 };
 
 WindowDatasetOp::WindowDatasetOp(OpKernelConstruction* ctx)

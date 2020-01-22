@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -50,7 +49,7 @@ class QuantizedOpsTest(xla_test.XLATestCase):
         self.assertAllEqual(value, expected)
 
 
-class DequantizedOpsTest(xla_test.XLATestCase):
+class DeuantizedOpsTest(xla_test.XLATestCase):
 
   def pack_uint8_r2_to_uint32(self, test_input):
     num_rows, num_columns = test_input.get_shape().as_list()

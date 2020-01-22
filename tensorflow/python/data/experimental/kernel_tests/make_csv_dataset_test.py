@@ -21,21 +21,21 @@ import gzip
 import os
 import zlib
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class MakeCsvDatasetTest(test_base.DatasetTestBase):
 
   def _make_csv_dataset(self, filenames, batch_size, num_epochs=1, **kwargs):
     return readers.make_csv_dataset(
@@ -126,7 +126,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._verify_output(dataset, batch_size, num_epochs, label_name,
                         expected_output, expected_keys)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [
@@ -158,7 +157,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         column_defaults=record_defaults,
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withBatchSizeAndEpochs(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [
@@ -190,7 +188,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         column_defaults=record_defaults,
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withCompressionType(self):
     """Tests `compression_type` argument."""
     record_defaults = [
@@ -224,7 +221,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           compression_type=compression_type,
       )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withCompressionTypeAndNoColumnNames(self):
     """Tests `compression_type` argument."""
     record_defaults = [
@@ -273,7 +269,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           compression_type="ZLIB",
       )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withBadInputs(self):
     """Tests that exception is raised when input is malformed.
     """
@@ -309,7 +304,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           label_name="not_a_real_label",
           column_names=column_names)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withNoLabel(self):
     """Tests making a CSV dataset with no label provided."""
     record_defaults = [
@@ -339,7 +333,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         column_defaults=record_defaults,
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withNoHeader(self):
     """Tests that datasets can be created from CSV files with no header line.
     """
@@ -370,7 +363,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         column_defaults=record_defaults,
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withTypes(self):
     """Tests that defaults can be a dtype instead of a Tensor for required vals.
     """
@@ -402,7 +394,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         column_defaults=record_defaults,
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withNoColNames(self):
     """Tests that datasets can be created when column names are not specified.
 
@@ -436,7 +427,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         column_defaults=record_defaults,
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withTypeInferenceMismatch(self):
     # Test that error is thrown when num fields doesn't match columns
     column_names = ["col%d" % i for i in range(5)]
@@ -452,7 +442,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           batch_size=2,
           num_epochs=10)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withTypeInference(self):
     """Tests that datasets can be created when no defaults are specified.
 
@@ -479,7 +468,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         header=True,
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withTypeInferenceFallthrough(self):
     """Tests that datasets can be created when no defaults are specified.
 
@@ -510,7 +498,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         header=True,
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withNAValuesAndFieldDelim(self):
     """Tests that datasets can be created from different delim and na_value."""
     column_names = ["col%d" % i for i in range(5)]
@@ -533,7 +520,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         field_delim=" ",
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withSelectCols(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),
@@ -602,7 +588,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         select_columns=[column_names[i] for i in select_cols],
     )
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withSelectColsError(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),
@@ -641,7 +626,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           label_name=None,
           select_columns=["invalid_col_name"])
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMakeCSVDataset_withShuffle(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),
@@ -726,7 +710,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
       self.assertFalse(all_equal)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testIndefiniteRepeatShapeInference(self):
     column_names = ["col%d" % i for i in range(5)]
     inputs = [[",".join(x for x in column_names), "0,1,2,3,4", "5,6,7,8,9"], [

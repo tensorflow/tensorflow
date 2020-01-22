@@ -16,8 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/compute_engine_zone_provider.h"
 
 #include <utility>
-
-#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 namespace tensorflow {
 
 namespace {

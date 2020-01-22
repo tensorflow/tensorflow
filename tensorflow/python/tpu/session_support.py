@@ -222,7 +222,7 @@ class WatchdogManager(threading.Thread):
     self._session = None
     self._worker_manager = None
 
-  def _reset_manager(self, stopping=False):
+  def _reset_manager(self):
     """Reset the graph, session and worker manager."""
     self._graph = ops.Graph()
     self._session = session_lib.Session(
@@ -238,17 +238,11 @@ class WatchdogManager(threading.Thread):
       self._worker_manager = WorkerHeartbeatManager.from_devices(
           self._session, self._devices)
 
-    if stopping:
-      timeout_ms = -1
-      shutdown_mode = event_pb2.NOT_CONFIGURED
-    else:
-      timeout_ms = self.shutdown_timeout * 1000
-      shutdown_mode = event_pb2.WAIT_FOR_COORDINATOR
-
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
-            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms),
-            shutdown_mode=shutdown_mode))
+            watchdog_config=event_pb2.WatchdogConfig(
+                timeout_ms=self.shutdown_timeout * 1000,),
+            shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
 
   def configure_and_run(self):
     logging.info(
@@ -261,7 +255,10 @@ class WatchdogManager(threading.Thread):
 
   def stop(self):
     logging.info('Stopping worker watchdog.')
-    self._reset_manager(stopping=True)
+    self._worker_manager.configure(
+        event_pb2.WorkerHeartbeatRequest(
+            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=-1,),
+            shutdown_mode=event_pb2.NOT_CONFIGURED))
     self._running = False
     self.join()
 
@@ -297,14 +294,6 @@ def start_worker_watchdog(session,
     _WATCHDOG = WatchdogManager(session, devices, ping_interval,
                                 shutdown_timeout)
     _WATCHDOG.configure_and_run()
-
-
-def stop_worker_watchdog():
-  """Stop global worker watchdog."""
-  global _WATCHDOG
-  if _WATCHDOG is not None:
-    _WATCHDOG.stop()
-    _WATCHDOG = None
 
 
 class GracefulShutdownHook(session_run_hook.SessionRunHook):

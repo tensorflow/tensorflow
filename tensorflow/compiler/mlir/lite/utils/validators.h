@@ -19,8 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
 
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 
 namespace mlir {
 namespace TFL {
@@ -47,8 +47,8 @@ bool TFIntListIs1XY1(const ArrayAttr &attr);
 
 // Returns true iff the given value is a float tensor.
 // is "DT_FLOAT".
-inline bool TFTypeIsFloatTensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+inline bool TFTypeIsFloatTensor(Value *value) {
+  auto tensorType = value->getType().dyn_cast<TensorType>();
   if (!tensorType) return false;
   return tensorType.getElementType().isa<FloatType>();
 }

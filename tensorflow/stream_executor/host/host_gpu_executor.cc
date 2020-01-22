@@ -20,7 +20,6 @@ limitations under the License.
 #include <string.h>
 
 #include "absl/synchronization/notification.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
@@ -44,11 +43,7 @@ HostExecutor::~HostExecutor() {}
 
 DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64 memory_space) {
   CHECK_EQ(memory_space, 0);
-  // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
-  // This should probably be kept in sync with
-  // tensorflow::Allocator::kAllocatorAlignment.
-  return DeviceMemoryBase(
-      tensorflow::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
+  return DeviceMemoryBase(new char[size], size);
 }
 
 void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
@@ -57,7 +52,7 @@ void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
 }
 
 void HostExecutor::Deallocate(DeviceMemoryBase *mem) {
-  tensorflow::port::AlignedFree(mem->opaque());
+  delete[] static_cast<char *>(mem->opaque());
 }
 
 port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase *location,

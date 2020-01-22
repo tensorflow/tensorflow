@@ -48,19 +48,17 @@ TFE_TensorHandle* TFE_TensorHandleCache::Lookup(
   }
 
   scalar_cache_hits->GetCell()->IncrementBy(1);
-  auto* h = it->second;
-  return new TFE_TensorHandle{
-      std::unique_ptr<AbstractTensorHandleInterface>(h->handle->Copy())};
+  auto* handle = it->second;
+  handle->Ref();
+  return new TFE_TensorHandle(handle);
 }
 
 void TFE_TensorHandleCache::Insert(PyObject* value, tensorflow::DataType dtype,
                                    absl::string_view device_name,
-                                   TFE_TensorHandle* h) {
+                                   TFE_TensorHandle* handle) {
   Py_INCREF(value);
-  cache.emplace(
-      Key{PyObjectPtr{value}, dtype, device_name},
-      new TFE_TensorHandle{
-          std::unique_ptr<AbstractTensorHandleInterface>(h->handle->Copy())});
+  handle->handle->Ref();
+  cache.emplace(Key{PyObjectPtr{value}, dtype, device_name}, handle->handle);
 }
 
 void TFE_TensorHandleCache::Clear() {

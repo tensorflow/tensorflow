@@ -11,8 +11,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["src/testdata/add.bin"])
-
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
     "src/main/java/org/tensorflow/lite/annotations/*.java",
@@ -25,12 +23,6 @@ JAVA_SRCS = glob([
 aar_with_jni(
     name = "tensorflow-lite",
     android_library = ":tensorflowlite",
-    headers = [
-        "//tensorflow/lite:builtin_ops.h",
-        "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_experimental.h",
-        "//tensorflow/lite/c:common.h",
-    ],
 )
 
 # EXPERIMENTAL: AAR target for using TensorFlow ops with TFLite. Note that this
@@ -41,15 +33,20 @@ aar_with_jni(
     android_library = ":tensorflowlite_flex",
 )
 
+# DEPRECATED: AAR target that supports TensorFlow op execution with TFLite.
+# Please use `tensorflowlite-select-tf-ops` instead (along with the standard
+# `tensorflowlite` AAR).
+aar_with_jni(
+    name = "tensorflow-lite-with-select-tf-ops",
+    android_library = ":tensorflowlite_flex_deprecated",
+)
+
 # EXPERIMENTAL: AAR target for GPU acceleration. Note that this .aar contains
 # *only* the GPU delegate; clients must also include the core `tensorflow-lite`
 # runtime.
 aar_with_jni(
     name = "tensorflow-lite-gpu",
     android_library = ":tensorflowlite_gpu",
-    headers = [
-        "//tensorflow/lite/delegates/gpu:delegate.h",
-    ],
 )
 
 android_library(
@@ -73,6 +70,22 @@ android_library(
     proguard_specs = ["proguard.flags"],
     deps = [
         ":tensorflowlite_java",
+        ":tensorflowlite_native_flex",
+        "@org_checkerframework_qual",
+    ],
+)
+
+# DEPRECATED: Android target that supports TensorFlow op execution with TFLite.
+# Please use `tensorflowlite_flex`.
+android_library(
+    name = "tensorflowlite_flex_deprecated",
+    srcs = JAVA_SRCS + [
+        "//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate",
+    ],
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
+    deps = [
+        ":tensorflowlite",
         ":tensorflowlite_native_flex",
         "@org_checkerframework_qual",
     ],
@@ -139,35 +152,6 @@ java_test(
         ":tensorflowlitelib",
         "@com_google_truth",
         "@junit",
-    ],
-)
-
-java_test(
-    name = "TensorFlowLiteNoNativeLibTest",
-    size = "small",
-    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.lite.TensorFlowLiteNoNativeLibTest",
-    visibility = ["//visibility:private"],
-    deps = [
-        "@com_google_truth",
-        "@junit",
-        "@org_checkerframework_qual",
-    ],
-)
-
-java_test(
-    name = "TensorFlowLiteInvalidNativeLibTest",
-    size = "small",
-    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.lite.TensorFlowLiteInvalidNativeLibTest",
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/lite/java/src/test/native:libtensorflowlite_jni.so",
-        "@com_google_truth",
-        "@junit",
-        "@org_checkerframework_qual",
     ],
 )
 
@@ -363,12 +347,7 @@ cc_library(
 
 tflite_jni_binary(
     name = "libtensorflowlite_jni.so",
-    linkscript = ":tflite_version_script.lds",
     deps = [
-        # Note that we explicitly include the C API here for convenience, as it
-        # allows bundling of the C lib w/ AAR distribution.
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native",
     ],
@@ -385,7 +364,6 @@ tflite_jni_binary(
 # EXPERIMENTAL: Native target that supports GPU acceleration.
 tflite_jni_binary(
     name = "libtensorflowlite_gpu_jni.so",
-    linkscript = ":gpu_version_script.lds",
     deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",
     ],

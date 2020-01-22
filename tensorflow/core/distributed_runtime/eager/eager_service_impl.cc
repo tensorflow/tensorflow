@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
@@ -92,28 +91,16 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
-  {
-    mutex_lock l(contexts_mu_);
-    auto context_it = contexts_.find(request->context_id());
-    if (context_it != contexts_.end()) {
-      if (request->context_view_id() <
-          context_it->second->Context()->GetContextViewId()) {
-        return errors::InvalidArgument("EagerService:CreateContext failed. ",
-                                       "Context id: <", request->context_id(),
-                                       "> already exists.");
-      } else {
-        // For existing context with a stale context_view_id, close the old one
-        // and recreate with new view id. This is likely due to the worker
-        // disconnected and then reconnected after one or more cluster updates.
-        context_it->second->Unref();
-        contexts_.erase(context_it);
-      }
-    }
-  }
   // make sure env_ , env_->rendezvous_mgr available
   if (env_ == nullptr || env_->rendezvous_mgr == nullptr) {
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
+  }
+  std::vector<DeviceAttributes> cluster_device_attributes;
+  cluster_device_attributes.reserve(
+      request->cluster_device_attributes().size());
+  for (const auto& cluster_device : request->cluster_device_attributes()) {
+    cluster_device_attributes.push_back(cluster_device);
   }
 
   auto* r = env_->rendezvous_mgr->Find(request->context_id());
@@ -122,15 +109,6 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
       true));
-  int64 context_id = request->context_id();
-  std::function<void()> session_destroyer = [this, context_id, session_name]() {
-    env_->rendezvous_mgr->Cleanup(context_id);
-    auto s = env_->session_mgr->DeleteSession(session_name);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to destroy worker session '" << session_name
-                   << "' due to " << s.error_message();
-    }
-  };
 
   std::shared_ptr<WorkerSession> worker_session;
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
@@ -156,8 +134,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
-      request->lazy_copy_remote_function_inputs(), device_mgr, false, r,
-      GetDefaultCustomKernelCreator(), worker_session->cluster_flr());
+      device_mgr, false, r, GetDefaultCustomKernelCreator(),
+      worker_session->cluster_flr());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
@@ -171,16 +149,13 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
   TF_RETURN_IF_ERROR(worker_session->worker_cache()->GetEagerClientCache(
       &remote_eager_workers));
-  DistributedFunctionLibraryRuntime* cluster_flr =
-      eager::CreateClusterFLR(request->context_id(), ctx, worker_session.get());
 
   auto remote_mgr =
       absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);
   Status s = ctx->InitializeRemoteWorker(
       std::move(remote_eager_workers), worker_session->remote_device_mgr(),
       remote_workers, request->context_id(), request->context_view_id(),
-      std::move(rendezvous_creator), cluster_flr, std::move(remote_mgr),
-      std::move(session_destroyer));
+      std::move(rendezvous_creator), std::move(remote_mgr));
   if (!s.ok()) {
     VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
             << s.ToString();
@@ -197,9 +172,18 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     mutex_lock l(contexts_mu_);
     auto context_it = contexts_.find(request->context_id());
     if (context_it != contexts_.end()) {
-      return errors::InvalidArgument("EagerService:CreateContext failed. ",
-                                     "Context id: <", request->context_id(),
-                                     "> already exists.");
+      if (request->context_view_id() <
+          context_it->second->Context()->GetContextViewId()) {
+        return errors::InvalidArgument("EagerService:CreateContext failed. ",
+                                       "Context id: <", request->context_id(),
+                                       "> already exists.");
+      } else {
+        // For existing context with a stale context_view_id, close the old one
+        // and recreate with new view id. This is likely due to the worker
+        // disconnected and then reconnected after one or more cluster updates.
+        context_it->second->Unref();
+        contexts_.erase(context_it);
+      }
     }
     contexts_.emplace(request->context_id(),
                       new ServerContext(ctx, request->keep_alive_secs(), env_));
@@ -229,18 +213,23 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
         " but received update request at view #", request->context_view_id(),
         ". View id should only be continuously incremented.");
   }
-  // TODO(b/143914772): Potential memory leak if rendezvous has pending
-  // tensors for removed / replaced workers.
 
+  // Remove then recreate rendezvous. Necessary because rondezvous does not
+  // allow double initialization.
+  // NOTE: safe to clean up rendezvous on worker assuming the remote client
+  // calls to WaitForAllPendingNodes on all executors (for example, through
+  // `ClearCaches()`) before issuing requests to update contexts.
+  env_->rendezvous_mgr->Cleanup(request->context_id());
+  auto* r = env_->rendezvous_mgr->Find(request->context_id());
+
+  std::vector<DeviceAttributes> cluster_device_attributes;
+  cluster_device_attributes.reserve(
+      request->cluster_device_attributes().size());
+  for (const auto& cluster_device : request->cluster_device_attributes()) {
+    cluster_device_attributes.push_back(cluster_device);
+  }
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
-
-  // Hold `context_update_mu_` exclusively update the context state. This lock
-  // prevents other threads from processing an enqueued request at the same
-  // time. Each enqueue request will be processed either with context state
-  // before or after the update, but the exact ordering needs to be enforced
-  // by the client if desired.
-  mutex_lock l(context_update_mu_);
   TF_RETURN_IF_ERROR(env_->session_mgr->UpdateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
       true));
@@ -250,6 +239,10 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
       session_name, &worker_session));
 
   tensorflow::DeviceMgr* device_mgr = worker_session->device_mgr();
+
+  // Initialize remote tensor communication based on worker session.
+  TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+  ctx->ResetRendezvous(r);
 
   std::vector<string> remote_workers;
   worker_session->worker_cache()->ListWorkers(&remote_workers);
@@ -268,14 +261,10 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   TF_RETURN_IF_ERROR(worker_session->worker_cache()->GetEagerClientCache(
       &remote_eager_workers));
 
-  DistributedFunctionLibraryRuntime* cluster_flr =
-      eager::CreateClusterFLR(request->context_id(), ctx, worker_session.get());
-
-  ctx->ClearCachesAndThreadExecutors();
   Status s = ctx->UpdateRemoteWorker(
       device_mgr, std::move(remote_eager_workers),
       worker_session->remote_device_mgr(), remote_workers,
-      request->context_id(), cluster_flr);
+      request->context_id(), worker_session->cluster_flr());
   if (!s.ok()) {
     VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s.ToString();
     return s;
@@ -326,18 +315,29 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
                                    QueueResponse* queue_response) {
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
+  const tensorflow::AttrTypeMap* types;
+  bool is_function = false;
+  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp(name, &types, &is_function));
+  if (is_function && !eager_context->FindFunctionByName(name)) {
+    return errors::NotFound(
+        "'", name,
+        "' is neither a type of a primitive operation nor a name "
+        "of a function registered in binary running on ",
+        port::Hostname(),
+        ". One possible root cause is the client and server binaries are not "
+        "built with the same version. Please make sure the operation or "
+        "function is registered in the binary running in this process.");
+  }
   absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
       absl::nullopt;
-  if (operation.is_function()) {
-    if (operation.is_component_function()) {
-      remote_func_params = {operation.id(), operation.func_step_id()};
-    } else {
-      remote_func_params = {operation.id(), absl::nullopt};
-    }
+  if (operation.is_component_function()) {
+    remote_func_params = {operation.id(), operation.func_step_id()};
   }
-  op.reset(new tensorflow::EagerOperation(eager_context));
-  TF_RETURN_IF_ERROR(op->Reset(name, operation.device().c_str(), false,
-                               eager_executor, remote_func_params));
+  op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
+                                          types, eager_executor,
+                                          remote_func_params));
+
+  TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
 
   {
     profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
@@ -381,8 +381,7 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
                                  EnqueueResponse* response, uint64 stream_id) {
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat(
-            "EagerService:Enqueue#debug_str=", request->DebugString(), "#");
+        return absl::StrCat("EagerService:Enqueue:", request->DebugString());
       },
       profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
@@ -397,9 +396,6 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   Status s;
   for (const auto& item : request->queue()) {
     auto* queue_response = response->add_queue_response();
-    // Acquire shared lock to prevent handling enqueue requests while updating
-    // context (see UpdateContext).
-    tf_shared_lock l(context_update_mu_);
     if (item.has_operation()) {
       s = ExecuteOp(item.operation(), context->Context(), &executor,
                     queue_response);
@@ -463,16 +459,8 @@ Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
     // Swallow the error here.
     return Status::OK();
   }
-  core::ScopedUnref context_unref(context);
 
-  if (request->context_view_id() < context->Context()->GetContextViewId()) {
-    // Swallow the error here.
-    LOG(INFO) << "Ignoring CloseContext request with a stale context_view_id "
-              << request->context_view_id() << "  for context_id "
-              << request->context_id() << ". The current context_view_id is "
-              << context->Context()->GetContextViewId() << ".";
-    return Status::OK();
-  }
+  core::ScopedUnref context_unref(context);
 
   mutex_lock l(contexts_mu_);
   contexts_.erase(request->context_id());
@@ -490,7 +478,7 @@ Status EagerServiceImpl::RegisterFunction(
   // If the function is a component of a multi-device function, we only need to
   // register it locally.
   return eager_context->AddFunctionDef(
-      register_function.function_def(), register_function.library(),
+      register_function.function_def(),
       register_function.is_component_function());
 }
 
@@ -529,7 +517,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
 
 tensorflow::Status EagerServiceImpl::GetServerContext(
     uint64 context_id, ServerContext** server_context) {
-  tf_shared_lock l(contexts_mu_);
+  mutex_lock l(contexts_mu_);
   auto iter = contexts_.find(context_id);
   if (iter == contexts_.end()) {
     *server_context = nullptr;

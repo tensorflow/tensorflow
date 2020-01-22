@@ -19,9 +19,16 @@ limitations under the License.
 // Tracing interface
 
 #include <array>
+#include <atomic>
+#include <map>
+#include <memory>
 
+#include "absl/memory/memory.h"
+#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -89,6 +96,9 @@ inline void RecordEvent(EventCategory category, uint64 arg) {
 // Records an event for the duration of the instance lifetime through the
 // currently registered EventCollector.
 class ScopedRegion {
+  ScopedRegion(ScopedRegion&) = delete;             // Not copy-constructible.
+  ScopedRegion& operator=(ScopedRegion&) = delete;  // Not assignable.
+
  public:
   ScopedRegion(ScopedRegion&& other) noexcept  // Move-constructible.
       : collector_(other.collector_) {
@@ -104,7 +114,7 @@ class ScopedRegion {
 
   // Same as ScopedRegion(category, GetUniqueArg()), but faster if
   // EventCollector::IsEnaled() returns false.
-  explicit ScopedRegion(EventCategory category)
+  ScopedRegion(EventCategory category)
       : collector_(GetEventCollector(category)) {
     if (collector_) {
       collector_->StartRegion(GetUniqueArg());
@@ -129,8 +139,6 @@ class ScopedRegion {
   bool IsEnabled() const { return collector_ != nullptr; }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedRegion);
-
   const EventCollector* collector_;
 };
 

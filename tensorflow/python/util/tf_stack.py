@@ -33,11 +33,11 @@ from tensorflow.python import _tf_stack
 # when a thread is joined, so reusing the key does not introduce a correctness
 # issue. Moreover, get_ident is faster than storing and retrieving a unique
 # key in a thread local store.
-if six.PY2:
+if six.PY3:
+  _get_thread_key = threading.get_ident
+else:
   import thread  # pylint: disable=g-import-not-at-top
   _get_thread_key = thread.get_ident
-else:
-  _get_thread_key = threading.get_ident
 
 
 _source_mapper_stacks = collections.defaultdict(list)

@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/variant.h"
-
-#include <cstddef>
 #if defined(__x86_64__)
 #include <xmmintrin.h>
 #endif
@@ -37,7 +35,7 @@ namespace {
 template <typename T, bool BIG>
 struct Wrapper {
   T value;
-  char big[BIG ? 256 : 1];
+  char big[BIG ? 256 : 0];
   string TypeName() const { return "POD"; }
 };
 
@@ -93,7 +91,7 @@ class MaybeAlive {
 
  private:
   bool alive_;
-  char big_[BIG ? 256 : 1];
+  char big_[BIG ? 256 : 0];
   static int live_counter_;
 };
 
@@ -124,7 +122,7 @@ class DeleteCounter {
     rhs.counter_ = nullptr;
   }
   DeleteCounter(const DeleteCounter& rhs) = default;
-  char big_[BIG ? 256 : 1];
+  char big_[BIG ? 256 : 0];
   int* counter_;
 
   string TypeName() const { return "DeleteCounter"; }
@@ -214,88 +212,6 @@ TEST(VariantTest, MoveAndCopyBetweenBigAndSmallVariants) {
   }
   EXPECT_EQ(deleted_big, 2);
   EXPECT_EQ(deleted_small, 1);
-}
-
-namespace {
-
-template <bool BIG>
-class MoveAndCopyCounter {
- public:
-  MoveAndCopyCounter()
-      : big_{}, move_counter_(nullptr), copy_counter_(nullptr) {}
-  explicit MoveAndCopyCounter(int* move_counter, int* copy_counter)
-      : big_{}, move_counter_(move_counter), copy_counter_(copy_counter) {}
-
-  MoveAndCopyCounter& operator=(const MoveAndCopyCounter& rhs) {
-    copy_counter_ = rhs.copy_counter_;
-    if (copy_counter_) ++*copy_counter_;
-    return *this;
-  }
-  MoveAndCopyCounter& operator=(MoveAndCopyCounter&& rhs) {
-    move_counter_ = rhs.move_counter_;
-    if (move_counter_) ++*move_counter_;
-    return *this;
-  }
-  MoveAndCopyCounter(MoveAndCopyCounter&& rhs) {
-    move_counter_ = rhs.move_counter_;
-    if (move_counter_) ++*move_counter_;
-  }
-  MoveAndCopyCounter(const MoveAndCopyCounter& rhs) {
-    copy_counter_ = rhs.copy_counter_;
-    if (copy_counter_) ++*copy_counter_;
-  }
-  char big_[BIG ? 256 : 1];
-  int* move_counter_;
-  int* copy_counter_;
-
-  string TypeName() const { return "MoveAndCopyCounter"; }
-  void Encode(VariantTensorData* data) const {}
-  bool Decode(VariantTensorData data) { return false; }
-};
-
-}  // namespace
-
-TEST(VariantTest, EmplaceBigAndSmallVariants) {
-  {
-    int moved_big = 0;
-    int moved_small = 0;
-    int copied_big = 0;
-    int copied_small = 0;
-    Variant x = MoveAndCopyCounter</*BIG=*/true>(&moved_big, &copied_big);
-    EXPECT_EQ(moved_big, 1);
-    EXPECT_EQ(copied_big, 0);
-    Variant y = MoveAndCopyCounter</*BIG=*/false>(&moved_small, &copied_small);
-    EXPECT_EQ(moved_small, 1);
-    EXPECT_EQ(copied_small, 0);
-  }
-
-  {
-    int moved_big = 0;
-    int moved_small = 0;
-    int copied_big = 0;
-    int copied_small = 0;
-    Variant x(MoveAndCopyCounter</*BIG=*/true>(&moved_big, &copied_big));
-    EXPECT_EQ(moved_big, 1);
-    EXPECT_EQ(copied_big, 0);
-    Variant y(MoveAndCopyCounter</*BIG=*/false>(&moved_small, &copied_small));
-    EXPECT_EQ(moved_small, 1);
-    EXPECT_EQ(copied_small, 0);
-  }
-
-  {
-    int moved_big = 0;
-    int moved_small = 0;
-    int copied_big = 0;
-    int copied_small = 0;
-    Variant x;
-    x.emplace<MoveAndCopyCounter</*BIG=*/true>>(&moved_big, &copied_big);
-    EXPECT_EQ(moved_big, 0);
-    EXPECT_EQ(copied_big, 0);
-    Variant y;
-    y.emplace<MoveAndCopyCounter</*BIG=*/false>>(&moved_small, &copied_small);
-    EXPECT_EQ(moved_small, 0);
-    EXPECT_EQ(copied_small, 0);
-  }
 }
 
 template <bool BIG>
@@ -455,19 +371,6 @@ TEST(VariantTest, Tensor) {
   x.get<Tensor>()->flat<float>()(0) += 1.0f;
   EXPECT_EQ(x.get<Tensor>()->flat<float>()(0), 43.0f);
   EXPECT_EQ(x.TypeName(), "tensorflow::Tensor");
-
-  Tensor& foo_t = x.emplace<Tensor>("foo");
-  EXPECT_NE(x.get<Tensor>(), nullptr);
-  EXPECT_EQ(x.get<Tensor>()->scalar<tstring>()(), "foo");
-  EXPECT_EQ(&foo_t, x.get<Tensor>());
-  EXPECT_EQ(x.TypeName(), "tensorflow::Tensor");
-
-  Tensor& bar_t = x.emplace<Tensor>(DT_INT64, TensorShape({1}));
-  EXPECT_EQ(&bar_t, x.get<Tensor>());
-  bar_t.vec<int64>()(0) = 17;
-  EXPECT_EQ(x.get<Tensor>()->vec<int64>()(0), 17);
-  bar_t.vec<int64>()(0) += 1;
-  EXPECT_EQ(x.get<Tensor>()->vec<int64>()(0), 18);
 }
 
 TEST(VariantTest, NontrivialTensorVariantCopy) {
@@ -614,7 +517,7 @@ void PodUpdateTest() {
   struct Pod {
     int x;
     float y;
-    char big[BIG ? 256 : 1];
+    char big[BIG ? 256 : 0];
 
     string TypeName() const { return "POD"; }
   };
@@ -637,7 +540,7 @@ void TestEncodeDecodePod() {
   struct Pod {
     int x;
     float y;
-    char big[BIG ? 256 : 1];
+    char big[BIG ? 256 : 0];
 
     string TypeName() const { return "POD"; }
   };

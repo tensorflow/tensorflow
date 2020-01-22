@@ -455,8 +455,8 @@ def _eager_mode_decorator(f, args, kwargs):
 def recompute_grad(f):
   """An eager-compatible version of recompute_grad.
 
-  For f(*args, **kwargs), this supports gradients with respect to args or
-  kwargs, but kwargs are currently only supported in eager-mode.
+  For f(*args, **kwargs), this supports gradients with respect to args, or to
+  gradients with respect to any variables residing in the kwarg 'variables'.
   Note that for keras layer and model objects, this is handled automatically.
 
   Warning: If `f` was originally a tf.keras Model or Layer object, `g` will not
@@ -479,22 +479,20 @@ def recompute_grad(f):
     """Inner function closure for calculating gradients."""
     result = f(*args, **kwargs)
 
-    def grad(*dresult, **grad_kwargs):
+    def grad(dresult, variables=None):
       """Gradient function calculation for inner function."""
-      variables = grad_kwargs.get("variables")
       with backprop.GradientTape() as t:
-        id_args = [gen_array_ops.identity(x) for x in args]
-        t.watch(id_args)
+        t.watch(args)
         if variables is not None:
           t.watch(variables)
-        with ops.control_dependencies(dresult):
-          result = f(*id_args, **kwargs)
+        with ops.control_dependencies([dresult]):
+          result = f(*args, **kwargs)
       kw_vars = []
       if variables is not None:
         kw_vars = list(variables)
       grads = t.gradient(
-          result, list(id_args) + kw_vars, output_gradients=dresult)
-      return grads[:len(id_args)], grads[len(id_args):]
+          result, list(args) + kw_vars, output_gradients=[dresult])
+      return grads[:len(args)], grads[len(args):]
 
     return result, grad
 

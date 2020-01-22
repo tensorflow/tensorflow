@@ -25,15 +25,14 @@ import re
 import string
 import traceback
 import zipfile
-
 import numpy as np
 from six import StringIO
 
 # pylint: disable=g-import-not-at-top
 import tensorflow as tf
 from google.protobuf import text_format
-from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
+from tensorflow.lite.testing import string_util_wrapper
 from tensorflow.python.framework import graph_util as tf_graph_util
 
 # A map from names to functions which make test cases.
@@ -156,7 +155,7 @@ def format_result(t):
     values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
   else:
-    return _pywrap_string_util.SerializeAsHexString(t.flatten())
+    return string_util_wrapper.SerializeAsHexString(t.flatten())
 
 
 def write_examples(fp, examples):
@@ -317,8 +316,8 @@ def make_zip_of_tests(options,
   processed_labels = set()
 
   if options.make_edgetpu_tests:
-    extra_toco_options.inference_input_type = tf.uint8
-    extra_toco_options.inference_output_type = tf.uint8
+    extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
+    extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
     # Only count parameters when fully_quantize is True.
     parameter_count = 0
     for parameters in test_parameters:

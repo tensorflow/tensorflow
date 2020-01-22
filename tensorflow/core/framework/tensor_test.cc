@@ -413,8 +413,7 @@ TEST_F(TensorReshapeTest, Reshape) {
 
 #define TEST_RESHAPE(...)                                                  \
   {                                                                        \
-    int _tmp[] = {__VA_ARGS__};                                            \
-    constexpr int N = (sizeof(_tmp) / sizeof(int));                        \
+    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));        \
     TestReshape<TTypes<float, N>::Tensor, &Tensor::shaped<float, N>>(      \
         {__VA_ARGS__});                                                    \
     TestReshape<TTypes<float, N>::ConstTensor, &Tensor::shaped<float, N>>( \
@@ -443,8 +442,7 @@ TEST_F(TensorReshapeTest, Reshape) {
 TEST_F(TensorReshapeTest, BitcastReshapeDifferentSize) {
 #define TEST_BITCAST8_RESHAPE(...)                                    \
   {                                                                   \
-    int _tmp[] = {__VA_ARGS__};                                       \
-    constexpr int N = (sizeof(_tmp) / sizeof(int));                   \
+    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));   \
     TestReshape<TTypes<uint8, N>::Tensor,                             \
                 &Tensor::bit_casted_shaped<uint8, N>>({__VA_ARGS__}); \
   }
@@ -456,8 +454,7 @@ TEST_F(TensorReshapeTest, BitcastReshapeDifferentSize) {
 #undef TEST_BITCAST8_RESHAPE
 #define TEST_BITCAST16_RESHAPE(...)                                   \
   {                                                                   \
-    int _tmp[] = {__VA_ARGS__};                                       \
-    constexpr int N = (sizeof(_tmp) / sizeof(int));                   \
+    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));   \
     TestReshape<TTypes<int16, N>::Tensor,                             \
                 &Tensor::bit_casted_shaped<int16, N>>({__VA_ARGS__}); \
   }

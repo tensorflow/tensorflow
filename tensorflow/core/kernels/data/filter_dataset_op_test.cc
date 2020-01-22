@@ -78,7 +78,7 @@ class FilterDatasetParams : public DatasetParams {
   DataTypeVector type_arguments_;
 };
 
-class FilterDatasetOpTest : public DatasetOpsTestBase {};
+class FilterDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test case 1: norm case.
 FilterDatasetParams FilterDatasetParams1() {

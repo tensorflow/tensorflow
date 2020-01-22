@@ -51,7 +51,6 @@ from __future__ import print_function
 import collections
 import math
 import re
-
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2

@@ -72,7 +72,7 @@ void CheckInputOutputPrimitivetypeAreValid(const HloInstruction* hlo) {
 
   // The last operand is the feature index which must be int64.
   CHECK_EQ(hlo->operand(num_operands - 1)->shape().element_type(), S64)
-      << "Not yet implemented";
+      << "Not yet impelemented";
 
   // Check Outputs.
   if (hlo->shape().IsTuple()) {

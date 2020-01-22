@@ -53,10 +53,7 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
   It checks:
   0) None of `cluster_spec`, `task_type`, and `task_id` is `None`.
   1) task type is one of "chief", "worker" or "evaluator".
-  2) whether there is such a task type as `task_type` in the `cluster_spec`. The
-     only exception is `evaluator`. In other words, it is still a valid
-     configuration when `task_type` is `evaluator` but it doesn't appear in
-     `cluster_spec`. This is to be compatible with `TF_CONFIG` in Estimator.
+  2) whether there is such a task type as `task_type` in the `cluster_spec`.
   3) whether there is at most one "chief" job.
   4) whether there is at most one "evaluator" job.
   5) whether the `task_id` is smaller than the number of tasks for that
@@ -79,7 +76,7 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
         "Unrecognized task_type: %r, valid task types are: \"chief\", "
         "\"worker\", \"evaluator\" and \"ps\"." % task_type)
 
-  if task_type and task_type not in cluster_spec and task_type != "evaluator":
+  if task_type and task_type not in cluster_spec:
     raise ValueError("`task_type` %r not found in cluster_spec." % task_type)
 
   if len(cluster_spec.get("chief", [])) > 1:
@@ -88,8 +85,7 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
   if len(cluster_spec.get("evaluator", [])) > 1:
     raise ValueError("There must be at most one 'evaluator' job.")
 
-  # The `evaluator` job is allowed to be missing in `cluster_spec`.
-  if task_type in cluster_spec and task_id >= len(cluster_spec[task_type]):
+  if task_id >= len(cluster_spec[task_type]):
     raise ValueError(
         "The `task_id` %d exceeds the maximum id of %s." % (task_id, task_type))
 

@@ -1,4 +1,9 @@
 op {
   graph_op_name: "LogicalAnd"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.logical_and"
+  }
+  endpoint {
+    name: "logical_and"
+  }
 }

@@ -19,7 +19,7 @@ py_binary(
         "//tensorflow/python:platform",
         "@flatbuffers//:flatc",
     ],
-    python_version = "PY3",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
 )
 
@@ -74,7 +74,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -84,9 +84,6 @@ cc_test(
     name = "verifier_test",
     size = "small",
     srcs = ["verifier_test.cc"],
-    data = [
-        "//tensorflow/lite:testdata/sparse_tensor.bin",
-    ],
     tags = [
         "tflite_not_portable",
     ],
@@ -109,7 +106,6 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite:minimal_logging"],
 )
 
 cc_test(

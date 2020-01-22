@@ -350,7 +350,7 @@ class List(TrackableDataStructure, collections_abc.Sequence):
     return self
 
   def __add__(self, other):
-    return self._storage + getattr(other, "_storage", other)
+    return self.__class__(self._storage + getattr(other, "_storage", other))
 
   def __imul__(self, y):
     if y <= 0:
@@ -366,13 +366,13 @@ class List(TrackableDataStructure, collections_abc.Sequence):
     return self
 
   def __mul__(self, n):
-    return self._storage * n
+    return self.__class__(self._storage * n)
 
   def __rmul__(self, n):
     return self * n
 
   def __radd__(self, other):
-    return other + self._storage
+    return self.__class__(other) + self
 
   def __getitem__(self, key):
     return self._storage[key]
@@ -909,19 +909,9 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     else:
       is_namedtuple = True
     original_type = type(original_wrapped_tuple)
-    # Flag to poison saving if we can't re-construct a namedtupled because its
-    # __new__ takes different keyword arguments than its _fields.
-    self._self_tuple_is_constructable = True
     if is_namedtuple:
-      try:
-        # NamedTuples take N arguments, unlike tuple which takes a sequence.
-        substituted_wrapped_tuple = original_type(
-            **dict(zip(fields, substituted_wrapped_tuple)))
-      except TypeError:
-        wrapt.ObjectProxy.__init__(self, original_wrapped_tuple)
-        TrackableDataStructure.__init__(self)
-        self._self_tuple_is_constructable = False
-        return
+      substituted_wrapped_tuple = original_wrapped_tuple._replace(
+          **dict(zip(fields, substituted_wrapped_tuple)))
     else:
       substituted_wrapped_tuple = original_type(substituted_wrapped_tuple)
     wrapt.ObjectProxy.__init__(self, substituted_wrapped_tuple)
@@ -989,28 +979,6 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
   def __iadd__(self, y):
     """Avoid running self.__wrapped__ += y, which mutates `self`."""
     return self.__wrapped__ + y
-
-  @property
-  def _checkpoint_dependencies(self):
-    if not self._self_tuple_is_constructable:
-      raise ValueError(
-          ("Unable to save because the namedtuple {} is not constructable from "
-           "its _fields (i.e. __new__ is overridden). Expected keyword "
-           "arguments {}. If you do not need to save this object, consider "
-           "wrapping it in a custom object that does not inherit from tuple.")
-          .format(self.__wrapped__, self.__wrapped__._fields))
-    return super(_TupleWrapper, self)._checkpoint_dependencies
-
-  def __getattribute__(self, name):
-    if (hasattr(type(self), name)
-        and isinstance(getattr(type(self), name), property)):
-      # Bypass ObjectProxy for properties. Whether this workaround is necessary
-      # appears to depend on the Python version but not the wrapt version: 3.4
-      # in particular seems to look up properties on the wrapped object instead
-      # of the wrapper without this logic.
-      return object.__getattribute__(self, name)
-    else:
-      return super(_TupleWrapper, self).__getattribute__(name)
 
 
 def _is_function(x):

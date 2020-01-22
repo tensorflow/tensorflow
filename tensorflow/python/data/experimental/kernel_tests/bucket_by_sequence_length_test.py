@@ -25,11 +25,11 @@ from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -73,12 +73,14 @@ def _get_record_shape(sparse):
   return tensor_shape.TensorShape([None])
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BucketBySequenceLengthTest(test_base.DatasetTestBase,
                                  parameterized.TestCase):
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(param_no_padding=[True, False])))
+  @parameterized.named_parameters(
+      ("WithoutPadding", True),
+      ("WithPadding", False),
+  )
   def testBucketDropReminder(self, param_no_padding):
 
     boundaries = [10, 20, 30]
@@ -199,9 +201,10 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     _test_bucket_by_padding(param_no_padding)
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(param_no_padding=[True, False])))
+  @parameterized.named_parameters(
+      ("WithoutPadding", True),
+      ("WithPadding", False),
+  )
   def testBucket(self, param_no_padding):
 
     boundaries = [10, 20, 30]
@@ -344,9 +347,10 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
     self.assertAllEqual(batches[4], [[1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
                                      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(param_no_padding=[True, False])))
+  @parameterized.named_parameters(
+      ("WithoutPadding", True),
+      ("WithPadding", False),
+  )
   def testTupleElements(self, param_no_padding):
 
     def build_dataset(sparse):
@@ -377,10 +381,10 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     _test_tuple_elements_by_padding(param_no_padding)
 
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          combinations.combine(param_drop_remainder=[True, False])))
+  @parameterized.named_parameters(
+      ("DoDropRemainder", True),
+      ("DoNotDropRemainder", False),
+  )
   def testBucketSparse(self, param_drop_remainder):  # pylint: disable=g-doc-args
     """Tests bucketing of sparse tensors (case where `no_padding` == True).
 

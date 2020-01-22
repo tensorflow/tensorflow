@@ -899,16 +899,12 @@ class ASTCodeUpgrader(object):
                       type(api_change_spec))
     self._api_change_spec = api_change_spec
 
-  def process_file(self,
-                   in_filename,
-                   out_filename,
-                   no_change_to_outfile_on_error=False):
+  def process_file(self, in_filename, out_filename):
     """Process the given python file for incompatible changes.
 
     Args:
       in_filename: filename to parse
       out_filename: output file to write to
-      no_change_to_outfile_on_error: not modify the output file on errors
     Returns:
       A tuple representing number of files processed, log of actions, errors
     """
@@ -921,10 +917,7 @@ class ASTCodeUpgrader(object):
                                      temp_file)
     # pylint: enable=g-backslash-continuation
 
-    if no_change_to_outfile_on_error and ret[0] == 0:
-      os.remove(temp_file.name)
-    else:
-      shutil.move(temp_file.name, out_filename)
+    shutil.move(temp_file.name, out_filename)
     return ret
 
   def format_log(self, log, in_filename):

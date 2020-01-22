@@ -20,14 +20,13 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
-#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -60,7 +59,8 @@ class MetricCollector {
   ~MetricCollector() = default;
 
   // Collects the value with these labels.
-  void CollectValue(const std::array<string, NumLabels>& labels, Value value);
+  void CollectValue(const std::array<string, NumLabels>& labels,
+                    const Value& value);
 
  private:
   friend class internal::Collector;
@@ -211,38 +211,32 @@ class CollectionRegistry::RegistrationHandle {
 namespace internal {
 
 template <typename Value>
-void CollectValue(Value value, Point* point);
+void CollectValue(const Value& value, Point* point);
 
 template <>
-inline void CollectValue(int64 value, Point* const point) {
+inline void CollectValue(const int64& value, Point* const point) {
   point->value_type = ValueType::kInt64;
   point->int64_value = value;
 }
 
 template <>
-inline void CollectValue(string value, Point* const point) {
+inline void CollectValue(const string& value, Point* const point) {
   point->value_type = ValueType::kString;
-  point->string_value = std::move(value);
+  point->string_value = value;
 }
 
 template <>
-inline void CollectValue(bool value, Point* const point) {
+inline void CollectValue(const bool& value, Point* const point) {
   point->value_type = ValueType::kBool;
   point->bool_value = value;
 }
 
 template <>
-inline void CollectValue(HistogramProto value, Point* const point) {
+inline void CollectValue(const HistogramProto& value, Point* const point) {
   point->value_type = ValueType::kHistogram;
   // This is inefficient. If and when we hit snags, we can change the API to do
   // this more efficiently.
-  point->histogram_value = std::move(value);
-}
-
-template <>
-inline void CollectValue(Percentiles value, Point* const point) {
-  point->value_type = ValueType::kPercentiles;
-  point->percentiles_value = std::move(value);
+  point->histogram_value = value;
 }
 
 // Used by the CollectionRegistry class to collect all the values of all the
@@ -331,7 +325,7 @@ inline void WriteTimestamps<MetricKind::kCumulative>(
 
 template <MetricKind metric_kind, typename Value, int NumLabels>
 void MetricCollector<metric_kind, Value, NumLabels>::CollectValue(
-    const std::array<string, NumLabels>& labels, Value value) {
+    const std::array<string, NumLabels>& labels, const Value& value) {
   point_set_->points.emplace_back(new Point());
   auto* const point = point_set_->points.back().get();
   const std::vector<string> label_descriptions =
@@ -343,7 +337,7 @@ void MetricCollector<metric_kind, Value, NumLabels>::CollectValue(
     label->name = label_descriptions[i];
     label->value = labels[i];
   }
-  internal::CollectValue(std::move(value), point);
+  internal::CollectValue(value, point);
   internal::WriteTimestamps<metric_kind>(
       registration_time_millis_, collector_->collection_time_millis(), point);
 }

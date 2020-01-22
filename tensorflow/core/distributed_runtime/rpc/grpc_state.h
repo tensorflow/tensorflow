@@ -107,7 +107,8 @@ class RPCState : public GrpcClientCQTag {
 
     VLOG(2) << "Starting call: " << method_;
 
-    call_ = stub_->PrepareUnaryCall(context_.get(), method_, request_buf_, cq_);
+    call_ = std::move(
+        stub_->PrepareUnaryCall(context_.get(), method_, request_buf_, cq_));
     call_->StartCall();
     call_->Finish(&response_buf_, &status_, this);
   }
@@ -325,7 +326,7 @@ class ExchangeQueue {
                protobuf::Message* response, StatusCallback cb,
                std::string debug_string);
 
-  // Returns an exchange for which we can initiate request writing, if any.
+  // Returns an exchange for which we can initiated request writing, if any.
   // Returns nullptr if there is no such exchange.
   Exchange* GetReadyForRequestWriting();
 
@@ -674,7 +675,7 @@ class StreamingRPCDispatcher {
     context_->set_wait_for_ready(true);
 
     std::unique_ptr<grpc::GenericClientAsyncReaderWriter> call =
-        stub_->PrepareCall(context_.get(), method_, cq_);
+        std::move(stub_->PrepareCall(context_.get(), method_, cq_));
 
     state_.reset(new StreamingRPCState<Response>(std::move(call), context_));
   }

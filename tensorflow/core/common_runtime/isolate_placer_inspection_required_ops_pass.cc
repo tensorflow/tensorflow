@@ -48,7 +48,7 @@ Status IsolatePlacerInspectionRequiredOpsPass::Run(
   return status;
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 35,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 25,
                       IsolatePlacerInspectionRequiredOpsPass);
 
 }  // namespace tensorflow

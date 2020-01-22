@@ -28,14 +28,6 @@ limitations under the License.
 namespace tflite {
 namespace evaluation {
 
-namespace {
-
-Interpreter::TfLiteDelegatePtr CreateNullDelegate() {
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
-}
-
-}  // namespace
-
 std::string StripTrailingSlashes(const std::string& path) {
   int end = path.size();
   while (end > 0 && path[end - 1] == '/') {
@@ -113,54 +105,29 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
         delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
       });
 #else
-  return CreateNullDelegate();
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 #endif  // defined(__ANDROID__)
 }
 
 #if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    TfLiteGpuDelegateOptionsV2* options) {
+    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options) {
   return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
                                         &TfLiteGpuDelegateV2Delete);
 }
 #endif  // defined(__ANDROID__)
 
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate() {
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
+    tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
-  options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+  options.is_precision_loss_allowed = 1;
   options.inference_preference =
       TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 
-  return CreateGPUDelegate(&options);
+  return CreateGPUDelegate(model, &options);
 #else
-  return CreateNullDelegate();
-#endif  // defined(__ANDROID__)
-}
-
-Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
-    const std::string& library_directory_path, bool profiling) {
-#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
-  if (library_directory_path.empty()) {
-    TfLiteHexagonInit();
-  } else {
-    TfLiteHexagonInitWithPath(library_directory_path.c_str());
-  }
-
-  const TfLiteHexagonDelegateOptions options = {
-      /*debug_level=*/0, /*powersave_level=*/0, profiling,
-      /*print_graph_debug=*/false};
-  TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(&options);
-  if (!delegate) {
-    TfLiteHexagonTearDown();
-    return CreateNullDelegate();
-  }
-  return Interpreter::TfLiteDelegatePtr(delegate, [](TfLiteDelegate* delegate) {
-    TfLiteHexagonDelegateDelete(delegate);
-    TfLiteHexagonTearDown();
-  });
-#else
-  return CreateNullDelegate();
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 #endif  // defined(__ANDROID__)
 }
 

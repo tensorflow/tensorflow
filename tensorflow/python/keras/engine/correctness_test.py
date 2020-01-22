@@ -27,13 +27,23 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
+class Bias(keras.layers.Layer):
+  """Layer that add a bias to its inputs."""
+
+  def build(self, input_shape):
+    self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+  def call(self, inputs):
+    return inputs + self.bias
+
+
 class MultiInputSubclassed(keras.Model):
   """Subclassed Model that adds its inputs and then adds a bias."""
 
   def __init__(self):
     super(MultiInputSubclassed, self).__init__()
     self.add = keras.layers.Add()
-    self.bias = testing_utils.Bias()
+    self.bias = Bias()
 
   def call(self, inputs):
     added = self.add(inputs)
@@ -46,7 +56,7 @@ def multi_input_functional():
   input_2 = keras.Input(shape=(1,))
   input_3 = keras.Input(shape=(1,))
   added = keras.layers.Add()([input_1, input_2, input_3])
-  output = testing_utils.Bias()(added)
+  output = Bias()(added)
   return keras.Model([input_1, input_2, input_3], output)
 
 
@@ -55,8 +65,7 @@ def multi_input_functional():
 class SimpleBiasTest(keras_parameterized.TestCase):
 
   def _get_simple_bias_model(self):
-    model = testing_utils.get_model_from_layers([testing_utils.Bias()],
-                                                input_shape=(1,))
+    model = testing_utils.get_model_from_layers([Bias()], input_shape=(1,))
     model.compile(
         keras.optimizer_v2.gradient_descent.SGD(0.1),
         'mae',

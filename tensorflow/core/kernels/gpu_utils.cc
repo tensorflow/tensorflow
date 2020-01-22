@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/gpu_utils.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 
 #include <iterator>
 
@@ -40,6 +40,7 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
   if (RedzoneCheckDisabled()) {
     return buffer;
   }
+  se::DeviceMemoryBase output_tensor;
   auto output_rz_or = rz_allocator->AllocateBytes(buffer.size());
   if (!output_rz_or.ok()) {
     static std::once_flag rz_allocation_failure_logged;
@@ -56,9 +57,6 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
 
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
                    tensorflow::AutotuneResult* autotune_result) {
-  if (RedzoneCheckDisabled()) {
-    return;
-  }
   se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
@@ -249,4 +247,4 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA

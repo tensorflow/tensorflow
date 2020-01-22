@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 
 #include <map>
-#include <memory>
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -35,22 +34,31 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle,
     FunctionLibraryRuntime::DoneCallback done) {
-  auto target = options.target;
-  auto released_op = std::make_unique<EagerOperation>(ctx_);
-  Status s =
-      released_op->Reset(function_name.c_str(), target.c_str(), true, nullptr);
+  const tensorflow::AttrTypeMap* attr_types;
+  bool is_function = false;
+  Status s;
+  s = tensorflow::AttrTypeMapForOp(function_name.c_str(), &attr_types,
+                                   &is_function);
   if (!s.ok()) {
     done(s);
     return;
   }
-  if (!released_op->is_function()) {
+  if (!is_function) {
     done(errors::Internal(function_name, " is not a function."));
+    return;
+  }
+  auto target = options.target;
+  auto* released_op =
+      new EagerOperation(ctx_, function_name.c_str(), is_function, attr_types);
+  s = released_op->SetDeviceName(target.c_str());
+  if (!s.ok()) {
+    done(s);
     return;
   }
 
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
-  core::RefCountPtr<eager::EagerClient> eager_client;
+  eager::EagerClient* eager_client = nullptr;
   Device* device;
   s = ctx_->FindDeviceFromName(target.c_str(), &device);
   if (!s.ok()) {
@@ -75,25 +83,25 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   EnqueueRequest* request = new EnqueueRequest;
   EnqueueResponse* response = new EnqueueResponse;
 
-  request->set_context_id(context_id_);
+  const uint64 context_id = ctx_->GetContextId();
+  request->set_context_id(context_id);
 
   RegisterFunctionOp* register_function =
       request->add_queue()->mutable_register_function();
+  // TODO(yujingzhang): add FunctionDefLibrary to RegisterFunctionRequest to
+  // support nested functions.
   *register_function->mutable_function_def() =
       *func_lib_def.Find(function_name);
   register_function->set_is_component_function(true);
-  *register_function->mutable_library() =
-      func_lib_def.ReachableDefinitions(register_function->function_def())
-          .ToProto();
 
   eager_client->EnqueueAsync(
       request, response,
-      [this, request, response, handle, released_op = released_op.release(),
-       target, eager_client = eager_client.get(), done](const Status& s) {
+      [this, request, response, handle, released_op, target, context_id,
+       eager_client, done](const Status& s) {
         {
           mutex_lock l(mu_);
           *handle = function_data_.size();
-          function_data_.emplace_back(target, eager_client,
+          function_data_.emplace_back(target, context_id, eager_client,
                                       absl::WrapUnique(released_op));
         }
         done(s);
@@ -121,7 +129,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
     function_data = &function_data_[handle];
   }
 
-  EagerClient* eager_client = function_data->eager_client.get();
+  EagerClient* eager_client = function_data->eager_client;
   if (eager_client == nullptr) {
     done(errors::Internal("Could not find eager client"));
     return;
@@ -142,7 +150,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
   }
 
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
-  request->set_context_id(context_id_);
+  request->set_context_id(function_data->context_id);
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
   for (size_t i = 0; i < args->size(); ++i) {
     remote_op->add_inputs()->Swap(&(*args)[i]);
@@ -151,7 +159,6 @@ void EagerClusterFunctionLibraryRuntime::Run(
   // multi-device function's in order to get the global unqiue op_id generated
   // by the master context.
   remote_op->set_id(opts.op_id.value());
-  remote_op->set_is_function(true);
   remote_op->set_is_component_function(true);
   remote_op->set_func_step_id(opts.step_id);
   remote_op->set_name(op->Name());
@@ -185,7 +192,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
     function_data = &function_data_[handle];
   }
 
-  EagerClient* eager_client = function_data->eager_client.get();
+  EagerClient* eager_client = function_data->eager_client;
   if (eager_client == nullptr) {
     done(errors::Internal("Could not find eager client"));
     return;
@@ -193,7 +200,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
 
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   EnqueueResponse* response = new EnqueueResponse;
-  request->set_context_id(context_id_);
+  request->set_context_id(function_data->context_id);
   CleanupFunctionOp* cleanup_function =
       request->add_queue()->mutable_cleanup_function();
   cleanup_function->set_step_id(step_id);
@@ -203,16 +210,6 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
         delete request;
         delete response;
       });
-}
-
-DistributedFunctionLibraryRuntime* CreateClusterFLR(
-    const uint64 context_id, EagerContext* ctx, WorkerSession* worker_session) {
-  if (ctx->LazyCopyFunctionRemoteInputs()) {
-    return new EagerClusterFunctionLibraryRuntime(
-        context_id, ctx, worker_session->remote_device_mgr());
-  } else {
-    return worker_session->cluster_flr();
-  }
 }
 
 }  // namespace eager

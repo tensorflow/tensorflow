@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/tracing.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 
 #ifndef PLATFORM_WINDOWS
 #include <unistd.h>

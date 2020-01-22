@@ -36,9 +36,16 @@ class DatasetToGraphOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
+  // Enum describing what to do during serialization when external state is
+  // encountered.
+  enum class ExternalStatePolicy {
+    kWarn,
+    kIgnore,
+    kFail,
+  };
+
   const int op_version_;
-  SerializationContext::ExternalStatePolicy external_state_policy_ =
-      SerializationContext::ExternalStatePolicy::kWarn;
+  ExternalStatePolicy external_state_policy_ = ExternalStatePolicy::kWarn;
   bool strip_device_assignment_ = false;
 };
 

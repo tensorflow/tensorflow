@@ -33,10 +33,6 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
 
 
-class CallerMustSetThis(object):
-  pass
-
-
 class Symbol(collections.namedtuple('Symbol', ['name'])):
   """Represents a Python symbol."""
 
@@ -192,25 +188,20 @@ class QN(object):
     return ssf_string + ssfs[-1]
 
   def ast(self):
-    """AST representation."""
     # The caller must adjust the context appropriately.
     if self.has_subscript():
-      return gast.Subscript(
-          value=self.parent.ast(),
-          slice=gast.Index(self.qn[-1].ast()),
-          ctx=CallerMustSetThis)
+      return gast.Subscript(self.parent.ast(), gast.Index(self.qn[-1].ast()),
+                            None)
     if self.has_attr():
-      return gast.Attribute(
-          value=self.parent.ast(), attr=self.qn[-1], ctx=CallerMustSetThis)
+      return gast.Attribute(self.parent.ast(), self.qn[-1], None)
 
     base = self.qn[0]
     if isinstance(base, str):
-      return gast.Name(
-          base, ctx=CallerMustSetThis, annotation=None, type_comment=None)
+      return gast.Name(base, None, None)
     elif isinstance(base, StringLiteral):
-      return gast.Constant(base.value, kind=None)
+      return gast.Str(base.value)
     elif isinstance(base, NumberLiteral):
-      return gast.Constant(base.value, kind=None)
+      return gast.Num(base.value)
     else:
       assert False, ('the constructor should prevent types other than '
                      'str, StringLiteral and NumberLiteral')
@@ -242,8 +233,10 @@ class QnResolver(gast.NodeTransformer):
       # TODO(mdan): Support range and multi-dimensional indices.
       # Continuing silently because some demos use these.
       return node
-    if isinstance(s.value, gast.Constant):
-      subscript = QN(NumberLiteral(s.value.value))
+    if isinstance(s.value, gast.Num):
+      subscript = QN(NumberLiteral(s.value.n))
+    elif isinstance(s.value, gast.Str):
+      subscript = QN(StringLiteral(s.value.s))
     else:
       # The index may be an expression, case in which a name doesn't make sense.
       if anno.hasanno(node.slice.value, anno.Basic.QN):

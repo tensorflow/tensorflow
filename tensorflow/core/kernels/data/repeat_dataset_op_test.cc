@@ -62,7 +62,7 @@ class RepeatDatasetParams : public DatasetParams {
   int64 count_;
 };
 
-class RepeatDatasetOpTest : public DatasetOpsTestBase {};
+class RepeatDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 RepeatDatasetParams FiniteRepeatDatasetParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
@@ -317,11 +317,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, Roundtrip) {
   int cur_iteration = 0;
   std::vector<int> breakpoints = GetParam().breakpoints;
   for (int breakpoint : breakpoints) {
-    VariantTensorDataWriter writer;
+    VariantTensorData data;
+    VariantTensorDataWriter writer(&data);
     TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    std::vector<const VariantTensorData*> data;
-    writer.GetData(&data);
-    VariantTensorDataReader reader(data);
+    TF_EXPECT_OK(writer.Flush());
+    VariantTensorDataReader reader(&data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
                                  test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));

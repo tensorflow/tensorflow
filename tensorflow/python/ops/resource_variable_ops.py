@@ -33,7 +33,6 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_logging_ops
@@ -497,9 +496,6 @@ class BaseResourceVariable(variables.VariableV1):
     """The shape of this variable."""
     return self._shape
 
-  def set_shape(self, shape):
-    self._shape = self._shape.merge_with(shape)
-
   def _shape_as_list(self):
     if self.shape.ndims is None:
       return None
@@ -721,6 +717,10 @@ class BaseResourceVariable(variables.VariableV1):
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
 
+  def set_shape(self, shape):
+    """Unsupported."""
+    raise NotImplementedError("ResourceVariable does not implement set_shape()")
+
   __array_priority__ = 100
 
   def is_initialized(self, name=None):
@@ -811,7 +811,7 @@ class BaseResourceVariable(variables.VariableV1):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
-    # Note: not depending on the cached value here since this can be used to
+    # Note: not depending on the cached value here since this can used to
     # initialize the variable.
     with _handle_graph(self.handle):
       value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
@@ -842,7 +842,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -862,7 +863,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered addition has completed.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -883,7 +885,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered maximization has completed.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -904,7 +907,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered minimization has completed.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -924,7 +928,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered multiplication has completed.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -944,7 +949,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered division has completed.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -964,7 +970,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -1014,7 +1021,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -1068,7 +1076,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
     """
     return self._lazy_read(gen_state_ops.resource_scatter_nd_sub(
         self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
@@ -1117,7 +1126,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
     """
     return self._lazy_read(gen_state_ops.resource_scatter_nd_add(
         self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
@@ -1166,7 +1176,8 @@ class BaseResourceVariable(variables.VariableV1):
       name: the name of the operation.
 
     Returns:
-      The updated variable.
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
     """
     return self._lazy_read(gen_state_ops.resource_scatter_nd_update(
         self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
@@ -1190,17 +1201,10 @@ class BaseResourceVariable(variables.VariableV1):
               new_axis_mask=new_axis_mask,
               shrink_axis_mask=shrink_axis_mask))
 
-  def __complex__(self):
-    return complex(self.value().numpy())
-
   def __int__(self):
+    if self.dtype != dtypes.int32 and self.dtype != dtypes.int64:
+      raise TypeError("Non-integer variable can't be converted to integer.")
     return int(self.value().numpy())
-
-  def __long__(self):
-    return long(self.value().numpy())
-
-  def __float__(self):
-    return float(self.value().numpy())
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     del name
@@ -1511,10 +1515,8 @@ class ResourceVariable(BaseResourceVariable):
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
-      with ops.name_scope(
-          name,
-          "Variable", [] if init_from_fn else [initial_value],
-          skip_on_eager=False) as name:
+      with ops.name_scope(name, "Variable", []
+                          if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
@@ -1750,7 +1752,7 @@ class UninitializedVariable(BaseResourceVariable):
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
     with ops.init_scope():
-      with ops.name_scope(name, "Variable", skip_on_eager=False) as name:
+      with ops.name_scope(name, "Variable") as name:
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name
@@ -1846,74 +1848,6 @@ class _UnreadVariable(BaseResourceVariable):
                                                           self._dtype)
       _maybe_set_handle_data(self._dtype, self._handle, result)
       return result
-
-  def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).assign_sub(delta, use_locking, name,
-                                                     read_value)
-
-  def assign_add(self, delta, use_locking=None, name=None, read_value=True):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).assign_add(delta, use_locking, name,
-                                                     read_value)
-
-  def assign(self, value, use_locking=None, name=None, read_value=True):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).assign(value, use_locking, name,
-                                                 read_value)
-
-  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_sub(sparse_delta, use_locking,
-                                                      name)
-
-  def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_add(sparse_delta, use_locking,
-                                                      name)
-
-  def scatter_max(self, sparse_delta, use_locking=False, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_max(sparse_delta, use_locking,
-                                                      name)
-
-  def scatter_min(self, sparse_delta, use_locking=False, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_min(sparse_delta, use_locking,
-                                                      name)
-
-  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_mul(sparse_delta, use_locking,
-                                                      name)
-
-  def scatter_div(self, sparse_delta, use_locking=False, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_div(sparse_delta, use_locking,
-                                                      name)
-
-  def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_update(sparse_delta,
-                                                         use_locking, name)
-
-  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).batch_scatter_update(
-          sparse_delta, use_locking, name)
-
-  def scatter_nd_sub(self, indices, updates, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_nd_sub(indices, updates, name)
-
-  def scatter_nd_add(self, indices, updates, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_nd_add(indices, updates, name)
-
-  def scatter_nd_update(self, indices, updates, name=None):
-    with ops.control_dependencies([self._parent_op]):
-      return super(_UnreadVariable, self).scatter_nd_update(indices, updates,
-                                                            name)
 
   @property
   def op(self):
@@ -2030,24 +1964,3 @@ def copy_to_graph_uninitialized(var):
 ops.NotDifferentiable("Assert")
 ops.NotDifferentiable("VarIsInitializedOp")
 ops.NotDifferentiable("VariableShape")
-
-
-class VariableSpec(tensor_spec.DenseSpec):
-  """Describes a tf.Variable."""
-
-  __slots__ = []
-
-  value_type = property(lambda self: BaseResourceVariable)
-
-  def _to_components(self, value):
-    raise NotImplementedError
-
-  def _from_components(self, components):
-    raise NotImplementedError
-
-  def _from_compatible_tensor_list(self, tensor_list):
-    assert len(tensor_list) == 1
-    return tensor_list[0]
-
-
-_pywrap_utils.RegisterType("VariableSpec", VariableSpec)

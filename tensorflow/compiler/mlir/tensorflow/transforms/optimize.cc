@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include <iostream>
 
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
+#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -42,31 +42,24 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
   }
 };
 
-}  // namespace
-
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void CreateTFStandardPipeline(OpPassManager &pm,
-                              const StandardPipelineOptions &options) {
-  OpPassManager &func_pm = pm.nest<FuncOp>();
-
+void CreateTFStandardPipeline(OpPassManager &pm) {
   // First operates on the executor dialect:
   // - eliminate trivial switch/merge
   // - fuse islands as much as possible.
   // - materialize the eventual "pass-through" ops by inlining their content.
-  func_pm.addPass(tf_executor::CreateSwitchFoldPass());
-  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
-  func_pm.addPass(CreateMaterializePassthroughOpPass());
+  pm.addPass(tf_executor::CreateSwitchFoldPass());
+  pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  pm.addPass(CreateMaterializePassthroughOpPass());
 
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
-  func_pm.addPass(createCanonicalizerPass());
-  if (options.enable_inliner) {
-    pm.addPass(createInlinerPass());
-  }
-  pm.addPass(CreateTFShapeInferencePass());
-  pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
-  pm.addNestedPass<FuncOp>(createCSEPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(CreateTFOptimizePass());
+  pm.addPass(createCSEPass());
 }
+
+}  // namespace
 
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TFOptimizePass>();
@@ -75,7 +68,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
 static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");
 
 // Registers a pipeline builder function for the default canonicalize/optimizer.
-static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
+static mlir::PassPipelineRegistration<> pipeline(
     "tf-standard-pipeline",
     "Run all the passes involved in transforming/optimizing the graph after "
     "importing into MLIR, without any target specialization.",

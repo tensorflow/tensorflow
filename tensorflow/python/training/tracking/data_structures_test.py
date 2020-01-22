@@ -33,7 +33,6 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
@@ -426,10 +425,6 @@ class ListWrapperTest(test.TestCase):
     self.assertEqual([a, a], data_structures.ListWrapper([a]) + [a])
     self.assertEqual([a, a], [a] + data_structures.ListWrapper([a]))
     self.assertIsInstance(data_structures.ListWrapper([a]), list)
-    self.assertEqual(
-        tensor_shape.TensorShape([None, 2]).as_list(),
-        (data_structures.ListWrapper([None])
-         + tensor_shape.TensorShape([2])).as_list())
 
   def testAcceptsNonTrackableContent(self):
     l = data_structures.ListWrapper([1, 2, 3])
@@ -1161,10 +1156,10 @@ class TupleTests(test.TestCase, parameterized.TestCase):
     m = module.Module()
     m.nt = nt
     m.nt.x.append(variables.Variable(1.))
+    self.assertLen(m.nt.x._checkpoint_dependencies, 1)
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     ckpt = util.Checkpoint(m=m)
-    with self.assertRaises(ValueError):
-      ckpt.save(prefix)
+    ckpt.save(prefix)
 
   def testSameStructure(self):
     t = (variables.Variable(1.),)

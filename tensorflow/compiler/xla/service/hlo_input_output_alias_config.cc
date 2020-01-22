@@ -151,8 +151,7 @@ absl::optional<ShapeIndex> HloInputOutputAliasConfig::GetAliasedOutput(
 absl::optional<HloInputOutputAliasConfig::Alias>
 HloInputOutputAliasConfig::GetAliasedParameter(
     const ShapeIndex& output_index) const {
-  CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
-      << ToString() << " " << alias_.shape().ToString() << " " << output_index;
+  CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index));
   return alias_.element(output_index);
 }
 

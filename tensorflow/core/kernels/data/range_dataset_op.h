@@ -36,7 +36,6 @@ class RangeDatasetOp : public DatasetOpKernel {
 
  private:
   class Dataset;
-  DataTypeVector output_types_;
 };
 
 }  // namespace data

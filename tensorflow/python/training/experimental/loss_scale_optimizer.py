@@ -21,7 +21,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.util.tf_export import tf_export
@@ -68,8 +67,6 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
     super(MixedPrecisionLossScaleOptimizer, self).__init__(use_locking, name)
 
     self._loss_scale = loss_scale_module.get(loss_scale)
-    if self._loss_scale is None:
-      raise ValueError('loss_scale cannot be None')
     self._track_trackable(self._optimizer, 'base_optimizer')
     self._track_trackable(self._loss_scale, 'loss_scale')
 
@@ -128,12 +125,8 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
   def _scale_loss(self, loss):
     loss_scale = self._loss_scale()
     if callable(loss):
-      def new_loss():
-        loss_val = loss()
-        return loss_val * math_ops.cast(loss_scale, loss_val.dtype)
-      return new_loss
-    else:
-      return loss * math_ops.cast(loss_scale, loss.dtype)
+      return lambda: loss() * loss_scale
+    return loss * loss_scale
 
   def _unscale_grads(self, grads):
     loss_scale = self._loss_scale()

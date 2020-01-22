@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
-
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -111,18 +110,17 @@ template <typename PositionT>
 TfLiteStatus GatherStrings(TfLiteContext* context, const TfLiteTensor* input,
                            const TfLiteTensor* positions,
                            TfLiteTensor* output) {
+  // TODO(mgubin): Currently support only for 1D output tensors.
   DynamicBuffer buffer;
   const PositionT* indexes = GetTensorData<PositionT>(positions);
   const PositionT num_strings = GetStringCount(input);
-  const int num_indexes = NumElements(positions);
-
-  for (int i = 0; i < num_indexes; ++i) {
+  for (int i = 0; i < positions->dims->data[0]; ++i) {
     const PositionT pos = indexes[i];
     TF_LITE_ENSURE(context, pos < num_strings);
     const auto string_ref = GetString(input, pos);
     buffer.AddString(string_ref.str, string_ref.len);
   }
-  buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+  buffer.WriteToTensorAsVector(output);
   return kTfLiteOk;
 }
 

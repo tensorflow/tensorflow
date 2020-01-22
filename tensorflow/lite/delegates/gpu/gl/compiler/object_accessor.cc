@@ -300,23 +300,16 @@ std::string ToBufferType(DataType data_type) {
     case DataType::UINT16:
     case DataType::UINT32:
       return "uvec4";
-    case DataType::UINT64:
-      return "u64vec4_not_available_in_glsl";
     case DataType::INT8:
     case DataType::INT16:
     case DataType::INT32:
       return "ivec4";
-    case DataType::INT64:
-      return "i64vec4_not_available_in_glsl";
     case DataType::FLOAT16:
       return "uvec2";
     case DataType::FLOAT32:
       return "vec4";
-    case DataType::FLOAT64:
-      return "dvec4";
-    case DataType::UNKNOWN:
-      return "unknown_buffer_type";
-      // Do NOT add `default:'; we want build failure for new enum values.
+    default:
+      return "unknown";
   }
 }
 
@@ -338,7 +331,7 @@ struct TextureImageTypeGetter {
       case DataType::FLOAT32:
         return "image2D";
       default:
-        return "unknown_image_2d";
+        return "unknown";
     }
   }
 
@@ -354,7 +347,7 @@ struct TextureImageTypeGetter {
       case DataType::FLOAT32:
         return "image2DArray";
       default:
-        return "unknown_image_2d_array";
+        return "unknown";
     }
   }
 
@@ -425,7 +418,7 @@ std::string ToImageLayoutQualifier(DataType type) {
     case DataType::FLOAT32:
       return "rgba32f";
     default:
-      return "unknown_image_layout";
+      return "unknown";
   }
 }
 
@@ -440,7 +433,7 @@ std::string ToImagePrecision(DataType type) {
     case DataType::FLOAT32:
       return "highp";
     default:
-      return "unknown_image_precision";
+      return "unknown";
   }
 }
 

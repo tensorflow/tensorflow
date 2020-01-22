@@ -18,22 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
-
 from tensorflow.python.data.experimental.kernel_tests import sql_dataset_test_base
-from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
-                     parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
 
   # Test that SqlDataset can read from a database table.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSet(self):
     for _ in range(2):  # Run twice to verify statelessness of db operations.
       dataset = self._createSqlDataset(
@@ -48,7 +44,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
           num_test_iterations=2)
 
   # Test that SqlDataset works on a join query.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetJoinQuery(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -65,7 +60,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that SqlDataset can read a database entry with a null-terminator
   # in the middle of the text and place the entry in a `string` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetNullTerminator(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -82,7 +76,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
   # Test that SqlDataset works when used on two different queries.
   # Because the output types of the dataset must be determined at graph-creation
   # time, the two queries must have the same number and types of columns.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetReuseSqlDataset(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -107,7 +100,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that an `OutOfRangeError` is raised on the first call to
   # `get_next_str_only` if result set is empty.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadEmptyResultSet(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -118,7 +110,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
       self.evaluate(get_next())
 
   # Test that an error is raised when `driver_name` is invalid.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetWithInvalidDriverName(self):
     with self.assertRaises(errors.InvalidArgumentError):
       dataset = self._createSqlDataset(
@@ -129,7 +120,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
       self.assertDatasetProduces(dataset, expected_output=[])
 
   # Test that an error is raised when a column name in `query` is nonexistent
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetWithInvalidColumnName(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -140,7 +130,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
       self.evaluate(get_next())
 
   # Test that an error is raised when there is a syntax error in `query`.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetOfQueryWithSyntaxError(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -152,7 +141,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that an error is raised when the number of columns in `query`
   # does not match the length of `, output_types`.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetWithMismatchBetweenColumnsAndOutputTypes(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -166,7 +154,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
   # than a select query. In particular, the error refers to the number of
   # output types passed to the op not matching the number of columns in the
   # result set of the query (namely, 0 for an insert statement.)
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetOfInsertQuery(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -178,7 +165,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read an integer from a SQLite database table and
   # place it in an `int8` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt8(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -192,7 +178,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a negative or 0-valued integer from a
   # SQLite database table and place it in an `int8` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt8NegativeAndZero(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -206,7 +191,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a large (positive or negative) integer from
   # a SQLite database table and place it in an `int8` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt8MaxValues(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -221,7 +205,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read an integer from a SQLite database table and
   # place it in an `int16` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt16(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -235,7 +218,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a negative or 0-valued integer from a
   # SQLite database table and place it in an `int16` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt16NegativeAndZero(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -249,7 +231,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a large (positive or negative) integer from
   # a SQLite database table and place it in an `int16` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt16MaxValues(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -265,7 +246,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read an integer from a SQLite database table and
   # place it in an `int32` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt32(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -277,7 +257,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a negative or 0-valued integer from a
   # SQLite database table and place it in an `int32` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt32NegativeAndZero(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -291,7 +270,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a large (positive or negative) integer from
   # a SQLite database table and place it in an `int32` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt32MaxValues(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -307,7 +285,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a numeric `varchar` from a SQLite database
   # table and place it in an `int32` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt32VarCharColumnAsInt(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -321,7 +298,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read an integer from a SQLite database table
   # and place it in an `int64` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt64(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -335,7 +311,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a negative or 0-valued integer from a
   # SQLite database table and place it in an `int64` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt64NegativeAndZero(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -349,7 +324,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a large (positive or negative) integer from
   # a SQLite database table and place it in an `int64` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetInt64MaxValues(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -365,7 +339,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read an integer from a SQLite database table and
   # place it in a `uint8` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetUInt8(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -379,7 +352,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read the minimum and maximum uint8 values from a
   # SQLite database table and place them in `uint8` tensors.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetUInt8MinAndMaxValues(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -395,7 +367,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read an integer from a SQLite database table
   # and place it in a `uint16` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetUInt16(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -409,7 +380,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read the minimum and maximum uint16 values from a
   # SQLite database table and place them in `uint16` tensors.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetUInt16MinAndMaxValues(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -426,7 +396,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
   # Test that `SqlDataset` can read a 0-valued and 1-valued integer from a
   # SQLite database table and place them as `True` and `False` respectively
   # in `bool` tensors.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetBool(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -440,7 +409,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read an integer that is not 0-valued or 1-valued
   # from a SQLite database table and place it as `True` in a `bool` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetBoolNotZeroOrOne(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -454,7 +422,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
 
   # Test that `SqlDataset` can read a float from a SQLite database table
   # and place it in a `float64` tensor.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetFloat64(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -470,7 +437,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
   # Test that `SqlDataset` can read a float from a SQLite database table beyond
   # the precision of 64-bit IEEE, without throwing an error. Test that
   # `SqlDataset` identifies such a value as equal to itself.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetFloat64OverlyPrecise(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -492,7 +458,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
   # representing the largest integer representable as a 64-bit IEEE float
   # such that the previous integer is also representable as a 64-bit IEEE float.
   # Test that `SqlDataset` can distinguish these two numbers.
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetFloat64LargestConsecutiveWholeNumbersNotEqual(self):
     get_next = self.getNext(
         self._createSqlDataset(
@@ -507,7 +472,6 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
       self.evaluate(get_next())
 
   # Test that SqlDataset can stop correctly when combined with batch
-  @combinations.generate(test_base.default_test_combinations())
   def testReadResultSetWithBatchStop(self):
     dataset = self._createSqlDataset(
         query="SELECT * FROM data", output_types=(dtypes.int32))

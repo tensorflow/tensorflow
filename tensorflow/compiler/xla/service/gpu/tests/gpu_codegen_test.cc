@@ -46,20 +46,14 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
       ShapeUtil::ByteSizeOfElements);
 }
 
-void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
+void GpuCodegenTest::CompileAndVerifyPtx(
     std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern) {
   std::unique_ptr<Executable> executable =
       std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
   string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
-
-  // On the ROCM platform the "ptx" string is not populated for the compiled
-  // executable, and hence the "ptx_str" will be empty. So disabling the
-  // pattern check on the ROCm platform
-  if (!is_built_with_rocm_) {
-    StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
-    ASSERT_TRUE(filecheck_result.ok());
-    EXPECT_TRUE(filecheck_result.ValueOrDie());
-  }
+  StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
+  ASSERT_TRUE(filecheck_result.ok());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
 }  // namespace gpu

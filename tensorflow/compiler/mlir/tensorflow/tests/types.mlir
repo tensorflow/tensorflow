@@ -20,22 +20,22 @@ func @variantref(!tf.variantref) -> ()
 
 // -----
 
-// expected-error @+1 {{encountered unexpected token}}
+// expected-error @+1 {{tf.variant delimiter <...> mismatch}}
 func @invalid_type(!tf<"variant>">) -> ()
 
 // -----
 
-// expected-error @+1 {{expected non-function type}}
+// expected-error @+1 {{invalid type: tf.variant<>}}
 func @invalid_type(!tf.variant<>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected 'x' in dimension list}}
+// expected-error @+1 {{invalid type: tensor<??xf32>}}
 func @invalid_type(!tf.variant<tensor<??xf32>>) -> ()
 
 // -----
 
-// expected-error @+1 {{invalid kind of type specified}}
+// expected-error @+1 {{expected TensorType. Found: 'vector<3xf32>'}}
 func @invalid_type(!tf.variant<vector<3xf32>>) -> ()
 
 // -----
@@ -65,22 +65,22 @@ func @resourceref(!tf.resourceref) -> ()
 
 // -----
 
-// expected-error @+1 {{encountered unexpected token}}
+// expected-error @+1 {{tf.resource delimiter <...> mismatch}}
 func @invalid_type(!tf<"resource>">) -> ()
 
 // -----
 
-// expected-error @+1 {{expected non-function type}}
+// expected-error @+1 {{invalid type: tf.resource<>}}
 func @invalid_type(!tf.resource<>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected 'x' in dimension list}}
+// expected-error @+1 {{invalid type: tensor<??xf32>}}
 func @invalid_type(!tf.resource<tensor<??xf32>>) -> ()
 
 // -----
 
-// expected-error @+1 {{invalid kind of type specified}}
+// expected-error @+1 {{expected TensorType. Found: 'vector<3xf32>'}}
 func @invalid_type(!tf.resource<vector<3xf32>>) -> ()
 
 // -----

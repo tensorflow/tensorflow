@@ -30,7 +30,6 @@ How to use:
 
 model_path=""
 alias ADB='adb'
-host=""
 
 while [[ "$1" != "" ]]; do
   case $1 in
@@ -40,10 +39,6 @@ while [[ "$1" != "" ]]; do
       ;;
     -d | --device)
       shift
-      if [[ "$1" == "HOST" ]]
-      then
-      host="HOST"
-      fi
       alias ADB='adb -s '$1''
       ;;
     -h | --help)
@@ -62,36 +57,19 @@ exit
 fi
 
 SHELL_DIR=$(dirname "$0")
-BINARY_NAME=performance_profiling
-
-if [[ "$host" == "HOST" ]]
-then
-bazel build -c opt //"$SHELL_DIR":"$BINARY_NAME"
-chmod +x bazel-bin/"$SHELL_DIR"/"$BINARY_NAME"
-./bazel-bin/"$SHELL_DIR"/"$BINARY_NAME" "$model_path"
-exit
-fi
 
 model_name=${model_path##*/}  # finds last token after '/'
 
-OPENCL_DIR=/data/local/tmp/profiling_inference/
+declare OPENCL_DIR=/data/local/tmp/profiling_inference/
+declare BINARY_NAME=performance_profiling
 
 ADB shell mkdir -p $OPENCL_DIR
 
 ADB push "$model_path" "$OPENCL_DIR"
 
-declare -a BUILD_CONFIG
-abi_version=$(ADB shell getprop ro.product.cpu.abi | tr -d '\r')
-if [[ "$abi_version" == "armeabi-v7a" ]]; then
-#"32 bit"
-BUILD_CONFIG=( --config=android_arm -c opt --copt=-fPIE --linkopt=-pie )
-else
-#"64 bit"
-BUILD_CONFIG=( --config=android_arm64 -c opt )
-fi
-
-bazel build "${BUILD_CONFIG[@]}" //$SHELL_DIR:$BINARY_NAME
-
+# push executables and data files to device
+# bazel build --config=android_arm -c opt --copt=-fPIE --linkopt=-pie //$SHELL_DIR:$BINARY_NAME  # for 32bit version
+bazel build --config=android_arm64 -c opt //$SHELL_DIR:$BINARY_NAME
 ADB push bazel-bin/$SHELL_DIR/$BINARY_NAME $OPENCL_DIR
 
 ADB shell chmod +x $OPENCL_DIR/$BINARY_NAME

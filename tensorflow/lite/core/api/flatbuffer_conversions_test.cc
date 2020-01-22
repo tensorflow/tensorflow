@@ -93,12 +93,15 @@ TEST_F(FlatbufferConversionsTest, ParseBadSqueeze) {
                   "Input array not provided for operation 'squeeze'"));
 }
 
-TEST_F(FlatbufferConversionsTest, ParseDynamicReshape) {
+TEST_F(FlatbufferConversionsTest, ParseBadReshape) {
   const Operator* op = BuildTestOperator(
-      BuiltinOptions_ReshapeOptions, CreateReshapeOptions(builder_).Union());
+      BuiltinOptions_ReshapeOptions, CreateSqueezeOptions(builder_).Union());
   void* output_data = nullptr;
-  EXPECT_EQ(kTfLiteOk, ParseOpData(op, BuiltinOperator_RESHAPE, &mock_reporter_,
+  EXPECT_NE(kTfLiteOk, ParseOpData(op, BuiltinOperator_RESHAPE, &mock_reporter_,
                                    &mock_allocator_, &output_data));
+  EXPECT_THAT(mock_reporter_.GetAsString(),
+              ::testing::ContainsRegex(
+                  "Input array not provided for operation 'reshape'"));
 }
 
 TEST_F(FlatbufferConversionsTest, TestParseOpDataConv) {

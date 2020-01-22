@@ -1,7 +1,0 @@
-path: "tensorflow.experimental.tensorrt"
-tf_module {
-  member {
-    name: "Converter"
-    mtype: "<type \'type\'>"
-  }
-}

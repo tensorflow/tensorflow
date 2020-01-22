@@ -15,16 +15,15 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
-    "if_windows",
-    "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
+    "tf_cc_binary",
 )
 
 # For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_kernel_tests_linkstatic",
     "tf_proto_library",
@@ -116,7 +115,6 @@ tf_cuda_library(
     srcs = ["debug_io_utils.cc"],
     hdrs = ["debug_io_utils.h"],
     copts = tf_copts(),
-    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     linkstatic = 1,
     deps = [
         ":debug_callback_registry",

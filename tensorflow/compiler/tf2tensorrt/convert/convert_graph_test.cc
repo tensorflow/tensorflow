@@ -167,7 +167,6 @@ class ConvertAfterShapesTest : public ::testing::Test {
     params.minimum_segment_size = 1;
     params.graph_properties = &graph_properties;
     params.use_calibration = false;
-    params.trt_logger_name = "DefaultLogger";
 
     return ConvertAfterShapes(params);
   }

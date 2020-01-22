@@ -20,6 +20,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matvec.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -86,8 +87,13 @@ void MatMulDispatch(const void* run_options_ptr, T* out, T* lhs, T* rhs,
     return;
   }
 
-  MatMul<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
-                              transpose_lhs, transpose_rhs);
+  if (m == 1 || n == 1) {
+    // Despite being single threaded, this version of matrix * vector is faster.
+    xla::EigenMatVec<T>(out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
+  } else {
+    MatMul<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                transpose_lhs, transpose_rhs);
+  }
 }
 
 }  // namespace

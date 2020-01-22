@@ -21,7 +21,7 @@ limitations under the License.
 namespace xla {
 
 // Create a default ExecutionOptions proto; this proto has its debug options
-// populated to the default values taken from flags.
+// popupated to the default values taken from flags.
 ExecutionOptions CreateDefaultExecutionOptions();
 
 }  // namespace xla

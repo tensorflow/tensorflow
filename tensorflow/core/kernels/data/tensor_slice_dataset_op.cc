@@ -40,14 +40,13 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
-      gtl::InlinedVector<int64, 4> element_dim_sizes;
+      gtl::InlinedVector<int64, 4> partial_dim_sizes;
       // Handle scalar here. Check that everyone matches here? Or fail
       // at runtime?
       for (int i = 1; i < t.dims(); ++i) {
-        element_dim_sizes.push_back(t.dim_size(i));
+        partial_dim_sizes.push_back(t.dim_size(i));
       }
-      partial_shapes_.emplace_back(element_dim_sizes);
-      shapes_.emplace_back(std::move(element_dim_sizes));
+      shapes_.emplace_back(std::move(partial_dim_sizes));
     }
   }
 
@@ -60,7 +59,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   const DataTypeVector& output_dtypes() const override { return dtypes_; }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
-    return partial_shapes_;
+    return shapes_;
   }
 
   string DebugString() const override {
@@ -119,10 +118,11 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       }
       out_tensors->clear();
       out_tensors->reserve(dataset()->tensors_.size());
-      for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
+      for (int i = 0; i < dataset()->tensors_.size(); ++i) {
         const Tensor& t = dataset()->tensors_[i];
-        out_tensors->emplace_back(ctx->allocator({}), t.dtype(),
-                                  dataset()->shapes_[i]);
+        out_tensors->emplace_back(
+            ctx->allocator({}), t.dtype(),
+            TensorShape(dataset()->shapes_[i].dim_sizes()));
         TF_RETURN_IF_ERROR(
             batch_util::CopySliceToElement(t, &out_tensors->back(), index));
       }
@@ -157,8 +157,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   const std::vector<Tensor> tensors_;
   DataTypeVector dtypes_;
-  std::vector<TensorShape> shapes_;
-  std::vector<PartialTensorShape> partial_shapes_;
+  std::vector<PartialTensorShape> shapes_;
 };
 
 TensorSliceDatasetOp::TensorSliceDatasetOp(OpKernelConstruction* ctx)

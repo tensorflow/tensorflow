@@ -19,11 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-
 from absl import logging
 
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
-from tensorflow.python import pywrap_tfe
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.eager import context
@@ -35,7 +34,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 _GRPC_PREFIX = "grpc://"
-_LOCAL_MASTERS = ("", "local")
 
 
 @tf_export("config.experimental_connect_to_host")
@@ -60,12 +58,6 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
     x2 = array_ops.ones([2, 2])
     y = math_ops.matmul(x1, x2)
   ```
-
-  If TPU devices are part of the newly connected job, the TPU system is
-  automatically initialized, via the same mechanism as
-  `tf.tpu.experimental.initialize_tpu_system`. If the newly-connected job
-  aliases an already-connected TPU system, that system will be re-initialized
-  and existing variable buffers invalidated.
 
   Args:
     remote_host: a single or a list the remote server addr in host-port format.
@@ -112,18 +104,10 @@ def connect_to_cluster(cluster_spec_or_resolver,
       a cluster spec is passed. Will throw an error if the caller is currently
       already in some device scope.
   """
-  if not context.executing_eagerly():
-    raise ValueError(
-        "`tf.config.experimental_connect_to_cluster` can only be called in "
-        "eager mode."
-    )
   protocol = protocol or remote_utils.get_default_communication_protocol()
   if isinstance(cluster_spec_or_resolver, server_lib.ClusterSpec):
     cluster_spec = cluster_spec_or_resolver
   elif isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver):
-    if cluster_spec_or_resolver.master() in _LOCAL_MASTERS:
-      # Do nothing if the master is local.
-      return
     cluster_spec = cluster_spec_or_resolver.cluster_spec()
   else:
     raise ValueError(
@@ -134,7 +118,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
 
   # Automatically add local job, if not part of the cluster spec.
   if job_name not in cluster_spec.jobs:
-    local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
+    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
     job_def = cluster_def.job.add()
     job_def.name = job_name
     # TODO(fishx): Update this to make sure remote worker has valid ip address
@@ -148,10 +132,9 @@ def connect_to_cluster(cluster_spec_or_resolver,
       protocol=protocol,
       default_session_config=context.context().config)
 
-  if context.get_server_def() is None:
-    context.set_server_def(server_def)
-  else:
-    context.update_server_def(server_def)
+  # TODO(b/142500669): Don't leak existing grpc server if calling multiple
+  # times.
+  context.set_server_def(server_def)
 
   if make_master_device_default and isinstance(
       cluster_spec_or_resolver,

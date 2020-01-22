@@ -68,10 +68,10 @@ struct InitOutput<ResourceHandle, NDIMS, Device> {
 };
 
 template <int NDIMS, typename Device>
-struct InitOutput<tstring, NDIMS, Device> {
+struct InitOutput<string, NDIMS, Device> {
   static void run(const Device& d,
-                  typename TTypes<tstring, NDIMS>::Tensor output) {
-    output.device(d) = output.constant(tstring());
+                  typename TTypes<string, NDIMS>::Tensor output) {
+    output.device(d) = output.constant(string());
   }
 };
 

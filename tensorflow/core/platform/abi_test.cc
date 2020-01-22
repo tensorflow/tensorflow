@@ -25,17 +25,12 @@ struct MyRandomPODType {};
 TEST(AbiTest, AbiDemangleTest) {
   EXPECT_EQ(port::MaybeAbiDemangle(MakeTypeIndex<int>().name()), "int");
 
-#ifdef PLATFORM_WINDOWS
-  const char pod_type_name[] = "struct tensorflow::MyRandomPODType";
-#else
-  const char pod_type_name[] = "tensorflow::MyRandomPODType";
-#endif
   EXPECT_EQ(port::MaybeAbiDemangle(MakeTypeIndex<MyRandomPODType>().name()),
-            pod_type_name);
+            "tensorflow::MyRandomPODType");
 
   EXPECT_EQ(
-      port::MaybeAbiDemangle("help! i'm caught in a C++ mangle factoryasdf"),
-      "help! i'm caught in a C++ mangle factoryasdf");
+      port::MaybeAbiDemangle("help!  i'm caught in a C++ mangle factoryasdf"),
+      "help!  i'm caught in a C++ mangle factoryasdf");
 }
 
 }  // namespace tensorflow

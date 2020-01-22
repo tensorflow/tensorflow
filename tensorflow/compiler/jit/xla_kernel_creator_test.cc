@@ -95,17 +95,15 @@ AttrValue BoolAttr(bool b) {
 
 TEST_F(XlaKernelCreatorTest, OneFloatOneResourceArgument) {
   FunctionDef fdef = XTimesY();
-  (*fdef.mutable_attr())["_XlaMustCompile"] = BoolAttr(true);
+  (*fdef.mutable_attr())["_XlaCompile"] = BoolAttr(true);
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
-  NodeDef callsite =
-      ToNodeDef(R"pb(
-        name: 'XTimesY' op: 'XTimesY' input: 'a' input: 'b'
-      )pb");
-  (*callsite.mutable_attr())["_XlaMustCompile"] = BoolAttr(true);
 
-  // Note: need to set attribute on the created node.
-  Status status = xla_kernel_creator.CreateKernel(flr_, callsite, &kernel_);
+  Status status = xla_kernel_creator.CreateKernel(
+      flr_, ToNodeDef(R"pb(
+        name: 'XTimesY' op: 'XTimesY' input: 'a' input: 'b'
+      )pb"),
+      &kernel_);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   EXPECT_EQ("XTimesY", kernel_->name());
@@ -139,7 +137,7 @@ TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrNotSet) {
 
 TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrIsSetToFalse) {
   FunctionDef fdef = XTimesY();
-  (*fdef.mutable_attr())["_XlaMustCompile"] = BoolAttr(false);
+  (*fdef.mutable_attr())["_XlaCompile"] = BoolAttr(false);
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
 

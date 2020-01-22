@@ -45,7 +45,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/cuda_solvers.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/core/platform/cuda.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM

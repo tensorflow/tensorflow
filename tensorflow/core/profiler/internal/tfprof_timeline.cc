@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <utility>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 
 namespace tensorflow {
@@ -27,15 +27,15 @@ namespace tfprof {
 namespace {
 int kMaxDisplayedMemNode = 10;
 
-std::string GetTimeDevName(const std::string& dev) {
+string GetTimeDevName(const string& dev) {
   if (dev.find("stream") != dev.npos) {
-    return absl::StrCat("Op execution threads: ", dev);
+    return strings::StrCat("Op execution threads: ", dev);
   } else {
-    return absl::StrCat("Op scheduling threads: ", dev);
+    return strings::StrCat("Op scheduling threads: ", dev);
   }
 }
-std::string GetMemoryLaneName(const std::string& dev) {
-  return absl::StrCat("mem usage on:", dev);
+string GetMemoryLaneName(const string& dev) {
+  return strings::StrCat("mem usage on:", dev);
 }
 }  // namespace
 
@@ -104,7 +104,7 @@ void ChromeTraceFormatter::EmitCounter(
   Json::Value args2(Json::objectValue);
   // Need to reserve the same args for all locations.
   for (int i = 1; i < kMaxDisplayedMemNode; ++i) {
-    args2[absl::StrFormat("Top Allocation %02d", i)] = Json::Value("N/A");
+    args2[strings::Printf("Top Allocation %02d", i)] = Json::Value("N/A");
   }
   int count = 0;
   for (auto it = tensor_mem.rbegin(); it != tensor_mem.rend(); ++it) {
@@ -112,14 +112,14 @@ void ChromeTraceFormatter::EmitCounter(
       if (bytes < it->first || count >= kMaxDisplayedMemNode) {
         break;
       }
-      args2[absl::StrFormat("Top Allocation %02d", count)] =
-          Json::Value(absl::StrCat(it->first / 1000000.0, " MB from ", t));
+      args2[strings::Printf("Top Allocation %02d", count)] =
+          Json::Value(strings::StrCat(it->first / 1000000.0, " MB from ", t));
       ++count;
       bytes -= it->first;
     }
   }
-  args2[std::string("Not Displayed")] =
-      Json::Value(absl::StrFormat("%.2f MB", bytes / 1000000.0));
+  args2[strings::StrCat("Not Displayed")] =
+      Json::Value(strings::Printf("%.2f MB", bytes / 1000000.0));
   event2["args"] = args2;
   events_.push_back(event2);
 }
@@ -136,10 +136,10 @@ string ChromeTraceFormatter::Format() {
   Json::FastWriter writer;
   string trace_str = writer.write(trace);
   if (trace_str.length() > 200 * 1024 * 1024) {
-    absl::FPrintF(stderr,
-                  "Trace file is over 200MB. Chrome might not be able to "
-                  "display it. Consider to use filters (e.g. -min_micros "
-                  "> 1000 or -op_type .*gpu:0.* to reduce the size.\n");
+    fprintf(stderr,
+            "Trace file is over 200MB. Chrome might not be able to "
+            "display it. Consider to use filters (e.g. -min_micros "
+            "> 1000 or -op_type .*gpu:0.* to reduce the size.\n");
   }
   return trace_str;
 }
@@ -235,7 +235,7 @@ void Timeline::GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes) {
   }
 
   AllocateLanes();
-  absl::FPrintF(stdout, "generating trace file.\n");
+  fprintf(stdout, "generating trace file.\n");
   int64 flow_id = 1;
   for (const auto& process : alloc_nodes_) {
     for (const auto& lane : process.second) {
@@ -301,8 +301,8 @@ void Timeline::GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes) {
                                     dev.first, cur_bytes_in_use, tensor_mem);
     }
     if (IsPlacedOnAccelerator(dev.first)) {
-      absl::FPrintF(stdout, "%s peak memory: %.2f MB\n", dev.first,
-                    max_bytes_in_use / 1000000.0);
+      fprintf(stdout, "%s peak memory: %.2f MB\n", dev.first.c_str(),
+              max_bytes_in_use / 1000000.0);
     }
   }
   OutputTimeline();
@@ -321,23 +321,21 @@ void Timeline::GenerateCodeTimeline(const CodeNode* node) {
 }
 
 void Timeline::OutputTimeline() {
-  std::string outfile = absl::StrFormat("%s_%d", outfile_, step());
+  string outfile = strings::Printf("%s_%lld", outfile_.c_str(), step());
   Status s =
       WriteStringToFile(Env::Default(), outfile, chrome_formatter_.Format());
   if (!s.ok()) {
-    absl::FPrintF(stderr, "Failed to write timeline file: %s\nError: %s\n",
-                  outfile, s.ToString());
+    fprintf(stderr, "Failed to write timeline file: %s\nError: %s\n",
+            outfile.c_str(), s.ToString().c_str());
     return;
   }
-  absl::FPrintF(stdout,
-                "\n******************************************************\n");
-  absl::FPrintF(stdout,
-                "Timeline file is written to %s.\n"
-                "Open a Chrome browser, enter URL chrome://tracing and "
-                "load the timeline file.",
-                outfile);
-  absl::FPrintF(stdout,
-                "\n******************************************************\n");
+  fprintf(stdout, "\n******************************************************\n");
+  fprintf(stdout,
+          "Timeline file is written to %s.\n"
+          "Open a Chrome browser, enter URL chrome://tracing and "
+          "load the timeline file.",
+          outfile.c_str());
+  fprintf(stdout, "\n******************************************************\n");
   fflush(stdout);
 }
 

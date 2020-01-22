@@ -111,8 +111,7 @@ fi
 
 # Add extra params for rocm devices and libraries for ROCm container.
 if [[ "${CONTAINER_TYPE}" == "rocm" ]]; then
-  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video \
-  --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --shm-size 16G"
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
 else
   ROCM_EXTRA_PARAMS=""
 fi

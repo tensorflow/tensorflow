@@ -17,8 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_UTILS_H_
 
 #include <functional>
-
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 

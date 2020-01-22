@@ -19,16 +19,14 @@ from __future__ import print_function
 
 import os
 
-from absl.testing import parameterized
-
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import writers
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import function
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import string_ops
@@ -36,7 +34,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class TFRecordWriterTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(TFRecordWriterTest, self).setUp()
@@ -64,13 +63,11 @@ class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
   def _outputFilename(self):
     return os.path.join(self.get_temp_dir(), "tf_record.out.txt")
 
-  @combinations.generate(test_base.default_test_combinations())
   def testWrite(self):
     self.evaluate(self.writer_fn(self._createFile()))
     for i, r in enumerate(tf_record.tf_record_iterator(self._outputFilename())):
       self.assertAllEqual(self._record(i), r)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testWriteZLIB(self):
     options = tf_record.TFRecordOptions(tf_record.TFRecordCompressionType.ZLIB)
     self.evaluate(
@@ -79,7 +76,6 @@ class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
         tf_record.tf_record_iterator(self._outputFilename(), options=options)):
       self.assertAllEqual(self._record(i), r)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testWriteGZIP(self):
     options = tf_record.TFRecordOptions(tf_record.TFRecordCompressionType.GZIP)
     self.evaluate(
@@ -88,24 +84,20 @@ class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
         tf_record.tf_record_iterator(self._outputFilename(), options=options)):
       self.assertAllEqual(self._record(i), r)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testFailDataset(self):
     with self.assertRaises(TypeError):
       writers.TFRecordWriter(self._outputFilename(), "").write("whoops")
 
-  @combinations.generate(test_base.default_test_combinations())
   def testFailDType(self):
     input_dataset = dataset_ops.Dataset.from_tensors(10)
     with self.assertRaises(TypeError):
       writers.TFRecordWriter(self._outputFilename(), "").write(input_dataset)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testFailShape(self):
     input_dataset = dataset_ops.Dataset.from_tensors([["hello"], ["world"]])
     with self.assertRaises(TypeError):
       writers.TFRecordWriter(self._outputFilename(), "").write(input_dataset)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSideEffect(self):
     def writer_fn():
       input_dataset = readers.TFRecordDataset(self._createFile())
@@ -120,7 +112,6 @@ class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i, r in enumerate(tf_record.tf_record_iterator(self._outputFilename())):
       self.assertAllEqual(self._record(i), r)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testShard(self):
     filename = self._createFile()
     dataset = readers.TFRecordDataset([filename])

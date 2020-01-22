@@ -63,22 +63,16 @@ class RefcountingHashMap {
   std::shared_ptr<V> operator[](const K& key) {
     absl::MutexLock lock(&mu_);
     auto it = map_.find(key);
-    // We ensure that the entry has not expired in case deleter was running when
-    // we have entered this block.
-    if (it != map_.end()) {
-      if (std::shared_ptr<V> value = it->second.lock()) {
-        return value;
-      }
-      map_.erase(it);
+    if (it == map_.end()) {
+      // Create entry in the map and then set its value, so the value can
+      // contain a pointer back into the map.
+      it = map_.emplace(key, std::weak_ptr<V>()).first;
+      std::shared_ptr<V> value(value_factory_(key).release(),
+                               Deleter{&it->first, this});
+      it->second = value;  // Set the weak ptr to the shared ptr.
+      return value;
     }
-
-    // Create entry in the map and then set its value, so the value can
-    // contain a pointer back into the map.
-    it = map_.emplace(key, std::weak_ptr<V>()).first;
-    std::shared_ptr<V> value(value_factory_(key).release(),
-                             Deleter{&it->first, this});
-    it->second = value;  // Set the weak ptr to the shared ptr.
-    return value;
+    return it->second.lock();
   }
 
   // Runs a function over every key/value in the map.
@@ -105,9 +99,9 @@ class RefcountingHashMap {
       delete v;
       absl::MutexLock lock(&parent->mu_);
       auto it = parent->map_.find(*key);
-      if (it != parent->map_.end() && it->second.expired()) {
-        parent->map_.erase(it);
-      }
+      CHECK(it != parent->map_.end());
+      CHECK(it->second.expired());
+      parent->map_.erase(it);
     }
   };
 

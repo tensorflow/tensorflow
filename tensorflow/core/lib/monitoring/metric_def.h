@@ -20,8 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/lib/monitoring/types.h"
-#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -39,13 +38,7 @@ namespace monitoring {
 enum class MetricKind : int { kGauge = 0, kCumulative };
 
 // The type of the metric values.
-enum class ValueType : int {
-  kInt64 = 0,
-  kHistogram,
-  kString,
-  kBool,
-  kPercentiles
-};
+enum class ValueType : int { kInt64 = 0, kHistogram, kString, kBool };
 
 // Everything in the internal namespace is implementation details. Do not depend
 // on this.
@@ -62,11 +55,6 @@ inline ValueType GetValueType<int64>() {
 template <>
 inline ValueType GetValueType<HistogramProto>() {
   return ValueType::kHistogram;
-}
-
-template <>
-inline ValueType GetValueType<Percentiles>() {
-  return ValueType::kPercentiles;
 }
 
 template <>

@@ -23,7 +23,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 
 namespace tflite {
 

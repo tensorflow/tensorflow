@@ -60,12 +60,10 @@ TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
   TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
   gpu_opts.inference_preference =
       TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
-  gpu_opts.inference_priority1 =
-      s->allow_fp16 ? TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY
-                    : TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-  return evaluation::CreateGPUDelegate(&gpu_opts);
+  gpu_opts.is_precision_loss_allowed = s->allow_fp16 ? 1 : 0;
+  return evaluation::CreateGPUDelegate(s->model, &gpu_opts);
 #else
-  return evaluation::CreateGPUDelegate();
+  return evaluation::CreateGPUDelegate(s->model);
 #endif
 }
 
@@ -301,7 +299,7 @@ void RunInference(Settings* s) {
       break;
     default:
       LOG(FATAL) << "cannot handle output type "
-                 << interpreter->tensor(output)->type << " yet";
+                 << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
 

@@ -40,7 +40,7 @@ py_library(
         "//tensorflow/python/keras:backend_config",
         "//tensorflow/python/keras:base_layer_utils",
         "//tensorflow/python/keras:initializers",
-        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/keras:tf_utils",
     ],
 )
 
@@ -55,7 +55,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/keras:generic_utils",
     ],
 )
 
@@ -63,148 +63,143 @@ cuda_py_test(
     name = "adagrad_test",
     size = "medium",
     srcs = ["adagrad_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
     name = "adam_test",
     size = "medium",
     srcs = ["adam_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
     name = "adamax_test",
     size = "medium",
     srcs = ["adamax_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
+    shard_count = 4,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
     name = "adadelta_test",
     size = "medium",
     srcs = ["adadelta_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
     name = "ftrl_test",
     size = "medium",
     srcs = ["ftrl_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
     name = "gradient_descent_test",
     size = "medium",
     srcs = ["gradient_descent_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
     name = "nadam_test",
     size = "medium",
     srcs = ["nadam_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
-    shard_count = 8,
-    tags = [
-        "manual",
-        "no_oss",
-        "no_windows",
-        "notap",
-    ],
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
@@ -216,7 +211,14 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
+    ],
+    shard_count = 8,
+    tags = [
+        "manual",
+        "no_oss",
+        "no_rocm",
+        "no_windows",
+        "notap",
     ],
 )
 
@@ -224,33 +226,33 @@ cuda_py_test(
     name = "learning_rate_schedule_test",
     size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
     name = "rmsprop_test",
     size = "medium",
     srcs = ["rmsprop_test.py"],
-    shard_count = 2,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
-        "//tensorflow/python:array_ops",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:clip_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:clip_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
-        "//tensorflow/python/eager:def_function",
-        "@absl_py//absl/testing:parameterized",
     ],
+    shard_count = 2,
 )

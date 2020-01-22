@@ -60,7 +60,6 @@ class RemoteExecuteNode : public AsyncEagerNode {
     for (auto handle : inputs_) {
       handle->Ref();
     }
-    eager_client_->Ref();
   }
 
   ~RemoteExecuteNode() override {
@@ -71,7 +70,6 @@ class RemoteExecuteNode : public AsyncEagerNode {
     for (auto handle : inputs_) {
       handle->Unref();
     }
-    eager_client_->Unref();
   }
 
   Status Prepare() override {

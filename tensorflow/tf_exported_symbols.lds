@@ -3,8 +3,6 @@
 *perftools*gputools*
 *tf_*
 *TF_*
-*Eager*
 *TFE_*
 *nsync_*
 *stream_executor*
-*xla*

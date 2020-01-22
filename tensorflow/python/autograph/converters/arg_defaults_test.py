@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.converters import arg_defaults
 from tensorflow.python.autograph.core import converter_testing
-from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.platform import test
 
 
@@ -28,7 +28,8 @@ class ArgDefaultsTransformerTest(converter_testing.TestCase):
 
   def assertTransformedFirstLineIs(self, node, expected):
     self.assertEqual(
-        parser.unparse(node, include_encoding_marker=False).split('\n')[0],
+        compiler.ast_to_source(node,
+                               include_encoding_marker=False).split('\n')[0],
         expected)
 
   def test_no_args(self):

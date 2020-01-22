@@ -72,10 +72,6 @@ class ExecutableBuildOptions {
   int num_replicas() const { return num_replicas_; }
   ExecutableBuildOptions& set_num_replicas(int num_replicas);
 
-  // The number of partitions in this computation. Defaults to 1.
-  int num_partitions() const { return num_partitions_; }
-  ExecutableBuildOptions& set_num_partitions(int num_partitions);
-
   // Whether input and output buffers are aliased if the associated parameter is
   // passed-through XLA modules without being changed.
   bool alias_passthrough_params() const { return alias_passthrough_params_; }
@@ -90,7 +86,6 @@ class ExecutableBuildOptions {
   absl::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
-  int num_partitions_ = 1;
   bool alias_passthrough_params_ = false;
 };
 

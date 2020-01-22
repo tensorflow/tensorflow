@@ -83,8 +83,6 @@ def _proto_gen_impl(ctx):
     for dep in ctx.attr.deps:
         import_flags += dep.proto.import_flags
         deps += dep.proto.deps
-    import_flags = depset(import_flags).to_list()
-    deps = depset(deps).to_list()
 
     args = []
     if ctx.attr.gen_cc:
@@ -274,8 +272,8 @@ def internal_gen_well_known_protos_java(srcs):
     Args:
       srcs: the well known protos
     """
-    root = Label("%s//protobuf_java" % (native.repository_name())).workspace_root
-    pkg = native.package_name() + "/" if native.package_name() else ""
+    root = Label("%s//protobuf_java" % (REPOSITORY_NAME)).workspace_root
+    pkg = PACKAGE_NAME + "/" if PACKAGE_NAME else ""
     if root == "":
         include = " -I%ssrc " % pkg
     else:

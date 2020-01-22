@@ -57,7 +57,7 @@ cc_library(
         "//conditions:default": ["-lrt"],
     }),
     deps = [
-        ":nnapi_lib",
+        "//tensorflow/lite/nnapi:nnapi_lib",
     ],
 )
 
@@ -68,7 +68,7 @@ cc_library(
     deps = [
         ":nnapi_implementation",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:c_api_internal",
     ],
 )
 
@@ -76,43 +76,7 @@ cc_test(
     name = "nnapi_implementation_test",
     srcs = ["nnapi_implementation_test.cc"],
     deps = [
-        ":nnapi_implementation",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-# Cannot inject NNAPI instance on ios and windows
-cc_library(
-    name = "nnapi_handler",
-    srcs = select({
-        "//tensorflow:ios": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["nnapi_handler.cc"],
-    }),
-    hdrs = select({
-        "//tensorflow:ios": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["nnapi_handler.h"],
-    }),
-    deps = [
-        ":nnapi_implementation",
-        ":nnapi_lib",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/lite:framework",
-    ],
-)
-
-cc_test(
-    name = "nnapi_handler_test",
-    srcs = ["nnapi_handler_test.cc"],
-    tags = [
-        "no_mac",
-        "no_windows",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":nnapi_handler",
-        ":nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
         "@com_google_googletest//:gtest_main",
     ],
 )

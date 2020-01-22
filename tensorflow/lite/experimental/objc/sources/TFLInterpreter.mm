@@ -14,15 +14,13 @@
 
 #import "tensorflow/lite/experimental/objc/apis/TFLInterpreter.h"
 
-#include <vector>
-
 #import "TFLErrorUtil.h"
 #import "TFLQuantizationParameters+Internal.h"
 #import "TFLTensor+Internal.h"
 #import "tensorflow/lite/experimental/objc/apis/TFLInterpreterOptions.h"
 #import "tensorflow/lite/experimental/objc/apis/TFLTensor.h"
 
-#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/experimental/c/c_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -170,7 +168,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     return NO;
   }
 
-  std::vector<int> cDimensions(self.inputTensorCount);
+  int cDimensions[self.inputTensorCount];
   for (int dimIndex = 0; dimIndex < shape.count; ++dimIndex) {
     int dimension = shape[dimIndex].intValue;
     if (dimension <= 0) {
@@ -183,7 +181,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     cDimensions[dimIndex] = dimension;
   }
 
-  if (TfLiteInterpreterResizeInputTensor(self.interpreter, (int32_t)index, cDimensions.data(),
+  if (TfLiteInterpreterResizeInputTensor(self.interpreter, (int32_t)index, cDimensions,
                                        (int32_t)shape.count) != kTfLiteOk) {
     NSString *errorDescription = [NSString
         stringWithFormat:@"Failed to resize input tensor at index (%lu).", (unsigned long)index];

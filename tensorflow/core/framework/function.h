@@ -687,7 +687,7 @@ class FunctionLibraryRuntime {
     // tensors to the remote TensorHandles in the default device.
     absl::optional<int64> op_id = absl::nullopt;
 
-    RendezvousInterface* rendezvous = nullptr;
+    Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;

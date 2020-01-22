@@ -329,8 +329,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatY(
        [output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(output_id)->second;
          std::vector<int> uniform_params{dimension.w, dimension.h,
-                                         IntegralDivideRoundUp(dimension.c, 4),
-                                         /*padding=*/0};
+                                         IntegralDivideRoundUp(dimension.c, 4)};
          return GetByteBuffer(uniform_params);
        }},
   };

@@ -26,7 +26,6 @@ from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
@@ -70,8 +69,7 @@ def disable_lower_using_switch_merge(graph_def):
   return output_graph_def
 
 
-def _run_inline_graph_optimization(func, lower_control_flow,
-                                   aggressive_inlining):
+def _run_inline_graph_optimization(func, lower_control_flow):
   """Apply function inline optimization to the graph.
 
   Returns the GraphDef after Grappler's function inlining optimization is
@@ -81,9 +79,6 @@ def _run_inline_graph_optimization(func, lower_control_flow,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
-      function inlining (might be unsafe if function has stateful ops not
-      properly connected to control outputs).
 
   Returns:
     GraphDef
@@ -129,9 +124,6 @@ def _run_inline_graph_optimization(func, lower_control_flow,
   rewrite_options = config.graph_options.rewrite_options
   rewrite_options.min_graph_nodes = -1  # do not skip small graphs
   rewrite_options.optimizers.append("function")
-  if aggressive_inlining:
-    rewrite_options.function_optimization =\
-      rewriter_config_pb2.RewriterConfig.AGGRESSIVE
   return tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
@@ -412,9 +404,7 @@ def _construct_concrete_function(func, output_graph_def,
   return new_func
 
 
-def _convert_variables_to_constants_v2_impl(func,
-                                            lower_control_flow=True,
-                                            aggressive_inlining=False):
+def convert_variables_to_constants_v2(func, lower_control_flow=True):
   """Replaces all the variables in a graph with constants of the same values.
 
   TensorFlow 2.0 function for converting all Variable ops into Const ops holding
@@ -426,26 +416,16 @@ def _convert_variables_to_constants_v2_impl(func,
   The current implementation only works for graphs that do not contain any
   control flow or embedding related ops.
 
-  Note that the NodeDefs in the returned GraphDef contains the original node
-  names if they are created by the graph optimization. Converting the GraphDef
-  to concrete function will lose these debug information.
-
   Args:
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Inlining functions with stateful ops might lead to
-      undefined execution if function call doesn't have an outgoing control
-      edge and control outputs (they should be added automatically in TFv2).
-      Aggressive mode disables safety checks in Grappler function optimizer.
 
   Returns:
-    GraphDef containing a simplified version of the original and converted
-    input indices that were converted to constants.
+    ConcreteFunction containing a simplified version of the original.
   """
   # Inline the graph in order to remove functions when possible.
-  graph_def = _run_inline_graph_optimization(func, lower_control_flow,
-                                             aggressive_inlining)
+  graph_def = _run_inline_graph_optimization(func, lower_control_flow)
 
   # Gets list of all node defs include those in the library.
   node_defs = _get_node_defs_list(graph_def)
@@ -638,62 +618,5 @@ def _convert_variables_to_constants_v2_impl(func,
               output_node.input[idx] = input_name
 
   output_graph_def.versions.CopyFrom(graph_def.versions)
-  return (output_graph_def, converted_input_indices)
-
-
-def convert_variables_to_constants_v2(func,
-                                      lower_control_flow=True,
-                                      aggressive_inlining=False):
-  """Replaces all the variables in a graph with constants of the same values.
-
-  TensorFlow 2.0 function for converting all Variable ops into Const ops holding
-  the same values. This makes it possible to describe the network fully with a
-  single GraphDef file, and allows the removal of a lot of ops related to
-  loading and saving the variables. This function runs Grappler's function
-  inlining optimization in order to return a single subgraph.
-
-  The current implementation only works for graphs that do not contain any
-  control flow or embedding related ops.
-
-  Args:
-    func: ConcreteFunction.
-    lower_control_flow: Boolean indicating whether or not to lower control flow
-      ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
-      function inlining (might be unsafe if function has stateful ops, not
-      properly connected to control outputs). (default False)
-
-  Returns:
-    ConcreteFunction containing a simplified version of the original.
-  """
-  output_graph_def, converted_inputs = _convert_variables_to_constants_v2_impl(
-      func, lower_control_flow, aggressive_inlining)
-  return _construct_concrete_function(func, output_graph_def, converted_inputs)
-
-
-def convert_variables_to_constants_v2_as_graph(func,
-                                               lower_control_flow=True,
-                                               aggressive_inlining=False):
-  """Replaces all the variables in a graph with constants of the same values.
-
-  This function works as same as convert_variables_to_constants_v2, but it
-  returns the intermediate `GraphDef` as well. This `GraphDef` contains all the
-  debug information after all the transformations in the frozen phase.
-
-  Args:
-    func: ConcreteFunction.
-    lower_control_flow: Boolean indicating whether or not to lower control flow
-      ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
-      function inlining (might be unsafe if function has stateful ops, not
-      properly connected to control outputs).
-
-  Returns:
-    ConcreteFunction containing a simplified version of the original, and also
-    the intermediate GraphDef containing the node debug information for the
-    transformations in the frozen phase.
-  """
-  graph_def, converted_inputs = _convert_variables_to_constants_v2_impl(
-      func, lower_control_flow, aggressive_inlining)
-  frozen_func = _construct_concrete_function(func, graph_def, converted_inputs)
-  return frozen_func, graph_def
+  return _construct_concrete_function(func, output_graph_def,
+                                      converted_input_indices)

@@ -487,8 +487,7 @@ XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF16) {
 XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF32) {
   TestImpl<float>();
 }
-// TODO(b/147505663): Disabled for now.
-XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, DISABLED_TestF64) {
+XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF64) {
   TestImpl<double>();
 }
 

@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
 
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
+
 namespace tensorflow {
 namespace tfprof {
 namespace {}

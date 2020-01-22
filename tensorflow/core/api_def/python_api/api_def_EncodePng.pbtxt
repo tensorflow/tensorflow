@@ -3,5 +3,4 @@ op {
   endpoint {
     name: "image.encode_png"
   }
-  visibility: HIDDEN
 }

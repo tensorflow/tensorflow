@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""ScopedAnnotation allows the profiler to annotate device (e.g., GPU) events.
+"""ScopedAnnotation allows the profiler to track python events.
 
 Usage:
     with scoped_annotation.ScopedAnnotation('name'):
@@ -25,18 +25,18 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python.profiler.internal import _pywrap_scoped_annotation
+from tensorflow.python._pywrap_scoped_annotation import PythonScopedAnnotation
 
 
 class ScopedAnnotation(object):
   """Context manager that generates an annotation for the profiler."""
 
   def __init__(self, name, **kwargs):
-    if _pywrap_scoped_annotation.ScopedAnnotation.IsEnabled():
+    if PythonScopedAnnotation.IsEnabled():
       if kwargs:
         name += '#' + ','.join(key + '=' + str(value)
                                for key, value in six.iteritems(kwargs)) + '#'
-      self._scoped_annotation = _pywrap_scoped_annotation.ScopedAnnotation(name)
+      self._scoped_annotation = PythonScopedAnnotation(name)
     else:
       self._scoped_annotation = None
 

@@ -15,7 +15,6 @@ py_library(
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:monitoring",
     ],
 )
 
@@ -33,20 +32,20 @@ tf_py_test(
     name = "compat_test",
     size = "small",
     srcs = ["compat_test.py"],
-    tags = ["nofwdcompat"],
-    deps = [
+    additional_deps = [
         ":compat",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["nofwdcompat"],
 )
 
 tf_py_test(
     name = "disable_v2_behavior_test",
     size = "small",
     srcs = ["disable_v2_behavior_test.py"],
-    deps = [
+    additional_deps = [
         ":v2_compat",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
+        "//tensorflow/python:client_testlib",
     ],
 )

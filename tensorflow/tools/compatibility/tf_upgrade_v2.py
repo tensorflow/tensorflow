@@ -68,7 +68,7 @@ class TFAPIImportAnalysisSpec(ast_edits.APIAnalysisSpec):
 class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
   """List of maps that describe what changed in the API."""
 
-  def __init__(self, import_rename=False):
+  def __init__(self):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     # If the new argument is None, it will be removed.
@@ -508,27 +508,12 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             "checkpoint_dir": "ckpt_dir_or_file",
         }
     }
-    all_renames_v2.add_contrib_direct_import_support(
-        self.function_keyword_renames)
 
     # Mapping from function to the new name of the function
     # Add additional renames not in renames_v2.py to all_renames_v2.py.
     self.symbol_renames = all_renames_v2.symbol_renames
-    self.import_rename = import_rename
-    if self.import_rename:
-      self.import_renames = {
-          "tensorflow":
-              ast_edits.ImportRename(
-                  "tensorflow.compat.v2",
-                  excluded_prefixes=[
-                      "tensorflow.contrib", "tensorflow.flags",
-                      "tensorflow.compat.v1", "tensorflow.compat.v2",
-                      "tensorflow.google"
-                  ],
-              )
-      }
-    else:
-      self.import_renames = {}
+
+    self.import_renames = {}
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -1242,7 +1227,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.tensor_summary": summary_api_comment,
         "tf.summary.text": summary_api_comment,
     }
-    all_renames_v2.add_contrib_direct_import_support(self.function_warnings)
 
     for symbol, replacement in all_renames_v2.addons_symbol_mappings.items():
       warning = (
@@ -1388,7 +1372,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
                   "compat.v1.image.resize_nearest_neighbor."),
         },
     }
-    all_renames_v2.add_contrib_direct_import_support(self.function_arg_warnings)
 
     # Specially handled functions
     # Each transformer is a callable which will be called with the arguments
@@ -1608,7 +1591,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             arg_name="save_format",
             arg_value_ast=ast.Str("h5")),
     }
-    all_renames_v2.add_contrib_direct_import_support(self.function_transformers)
 
     self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
 
@@ -1992,7 +1974,7 @@ def _pool_seed_transformer(parent, node, full_name, name, logs):
 def _extract_glimpse_transformer(parent, node, full_name, name, logs):
 
   def _replace_uniform_noise_node(parent, old_value):
-    """Replaces old_value with 'uniform' or 'gaussian'."""
+    """Replaces old_value with 'uniform' or 'guassian'."""
     uniform = ast.Str(s="uniform")
     gaussian = ast.Str(s="gaussian")
     new_value = ast.IfExp(body=uniform, test=old_value, orelse=gaussian)

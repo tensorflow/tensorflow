@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +28,8 @@ import os
 from absl import logging
 import numpy as np
 
+import six
+
 # Note this module does *not* depend on any Python protocol buffers. The XLA
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
@@ -43,7 +44,8 @@ from tensorflow.compiler.xla.python.xla_extension import ops
 # pylint: disable=invalid-name
 
 
-class Backend(object, metaclass=abc.ABCMeta):
+@six.add_metaclass(abc.ABCMeta)
+class Backend(object):
   """Abstract base class for XLA backends."""
 
   def __init__(self, platform):
@@ -74,6 +76,13 @@ class Backend(object, metaclass=abc.ABCMeta):
   def buffer_from_pyval(self, pyval, device=None):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
+  def buffers_from_pyvals(self, pyvals_and_devices):
+    """Allocates buffers and populates them with `pyvals`."""
+    return [
+        self.buffer_from_pyval(pyval, device)
+        for pyval, device in pyvals_and_devices
+    ]
+
   @abc.abstractmethod
   def make_tuple(self, c_buffers, device):
     """Makes a tuple from a sequence of backend buffer objects."""
@@ -81,23 +90,6 @@ class Backend(object, metaclass=abc.ABCMeta):
   @abc.abstractmethod
   def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
-
-  @abc.abstractmethod
-  def get_default_device_assignment(self, num_replicas):
-    """Returns the default device assignment that `compile` would use.
-
-    If `compile_options.device_assignment` isn't set, `compile` will pick a
-    deterministic device assignment based on the number of replicas, possibly
-    optimizing for device locality. This method returns that assignment, which
-    is useful for e.g. manually replicating a value before passing it to a
-    compiled executable.
-
-    Args:
-      num_replicas: the number of replicas needed.
-
-    Returns:
-      A list of Devices of length `num_replicas` indexed by replica ID.
-    """
 
 
 class LocalBackend(Backend):
@@ -139,7 +131,6 @@ class LocalBackend(Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
-    options.num_partitions = compile_options.num_partitions
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
@@ -151,9 +142,6 @@ class LocalBackend(Backend):
                                         compile_options.argument_layouts,
                                         options, self.client,
                                         compile_options.device_assignment)
-
-  def get_default_device_assignment(self, num_replicas):
-    return self.client.GetDefaultDeviceAssignment(num_replicas)
 
   def serialize(self, executable):
     return self.client.SerializeExecutable(executable)
@@ -286,8 +274,6 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
-bfloat16 = _xla.bfloat16_dtype()
-
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
     PrimitiveType.S8: np.dtype('int8'),
@@ -298,7 +284,6 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
-    PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),
     PrimitiveType.F64: np.dtype('float64'),
@@ -397,6 +382,22 @@ class Buffer(object):
     return backend.buffer_from_pyval(pyval, device)
 
   @staticmethod
+  def from_pyvals(pyvals_and_devices, backend=None):
+    """Copies multiple Python values to freshly allocated on-device buffers.
+
+    Arguments:
+      pyvals_and_devices: a list of `(pyval, device)` pairs, where `pyval` is a
+        Python value to copy (e.g., a NumPy array), and `device` is an integer
+        device ordinal.
+      backend: a Backend object, or `None` to use the default local backend.
+
+    Returns:
+      A list of `Buffer` objects corresponding to `pyvals_and_devices`.
+    """
+    backend = backend or get_local_backend()
+    return backend.buffers_from_pyvals(pyvals_and_devices)
+
+  @staticmethod
   def make_tuple(buffers, device, backend=None):
     backend = backend or get_local_backend()
     return backend.make_tuple(buffers, device)
@@ -443,7 +444,7 @@ def shape_from_pyval(pyval):
   return convert(pyval)
 
 
-def transfer_to_infeed(value, device=None):
+def transfer_to_infeed(value, device_ordinal=0):
   """Transfers the given value into the XLA infeed queue.
 
   XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
@@ -453,31 +454,29 @@ def transfer_to_infeed(value, device=None):
   Args:
     value: the value that the caller would like to enqueue into the XLA infeed
       queue
-    device: the device to infeed the value to. Each device has a
+    device_ordinal: the device to infeed the value to. Each device has a
       distinct infeed queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  device = device or backend.local_devices()[0]
-  backend.client.TransferToInfeed(value, device)
+  backend.client.TransferToInfeed(value, device_ordinal)
 
 
-def transfer_from_outfeed(shape, device=None):
-  """Transfers a literal of the given shape from `device`'s outfeed.
+def transfer_from_outfeed(shape, device_ordinal=0):
+  """Transfers a literal of the given shape from `device_ordinal`'s outfeed.
 
   Args:
     shape: The shape of the value to transfer from outfeed.
-    device: The device from which to transfer the outfeed value. Each device has
-      a distinct outfeed queue..
+    device_ordinal: The device ordinal to transfer the outfeed value from. Each
+      device has a distinct outfeed queue..
 
   Returns:
     The literal value that is produced from the outfeed queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  device = device or backend.local_devices()[0]
   return backend.client.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent(), device)
+      shape.with_major_to_minor_layout_if_absent(), device_ordinal)
 
 
 DeviceAssignment = _xla.DeviceAssignment
@@ -519,7 +518,6 @@ class CompileOptions(object):
     self.dump_hlo_as_proto = None
     self.hlo_profile = None
     self.num_replicas = 1
-    self.num_partitions = 1
     self.argument_layouts = None
     self.result_layout = None
     self.device_assignment = None
@@ -593,13 +591,10 @@ class Computation(object):
   def GetReturnValueShape(self):
     return self._c_computation.GetProgramShape().result_shape()
 
-  def Hash(self):
-    return self._c_computation.Hash()
-
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
-#   def local_devices(self) -> [Device]:
+#   def DeviceOrdinals(self) -> [int]:
 #   def Execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
@@ -619,7 +614,8 @@ class Computation(object):
 #       sole, zero'th replica's output is returned instead, as a Buffer.
 #     """
 #
-# There are different implementations of Executable for different backends.
+# There are different implementations of Executable for the Local and XRT
+# backends.
 
 
 def execute_with_python_values(executable, arguments=(), backend=None):
@@ -629,7 +625,7 @@ def execute_with_python_values(executable, arguments=(), backend=None):
 
   def put(arg):
     return Buffer.from_pyval(
-        arg, device=executable.local_devices()[0], backend=backend)
+        arg, device=executable.DeviceOrdinals()[0], backend=backend)
 
   arguments = [put(arg) for arg in arguments]
   return executable.Execute(arguments).to_py()
@@ -648,14 +644,12 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
     A list of python values, one per replica.
   """
   backend = backend or get_local_backend()
-  devices = executable.local_devices()
+  device_ordinals = executable.DeviceOrdinals()
   # pylint: disable=g-complex-comprehension
-  flat_args = [(arg, devices[replica])
+  flat_args = [(arg, device_ordinals[replica])
                for replica, replica_args in enumerate(arguments)
                for arg in replica_args]
-  flat_arg_buffers = [
-      backend.buffer_from_pyval(pyval, device) for pyval, device in flat_args
-  ]
+  flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=backend)
   arg_buffers = []
   for replica_args in arguments:
     arg_buffers.append(flat_arg_buffers[:len(replica_args)])
@@ -743,17 +737,6 @@ class ComputationBuilder(object):
   def ClearOpMetadata(self):
     """Clear metadata for operations that are about to be enqueued."""
     self._builder.ClearOpMetadata()
-
-  def SetSharding(self, sharding):
-    """Set sharding that will be attached to all instructions until cleared."""
-    self._builder.SetSharding(sharding)
-
-  def ClearSharding(self):
-    """Clears the sharding.
-
-    Ops will be shared according to the default placement policy.
-    """
-    self._builder.ClearSharding()
 
   def CreateToken(self):
     """Enqueues a CreateToken op onto the computation.
@@ -1015,7 +998,7 @@ class ComputationBuilder(object):
     """
     replica_groups_protos = _get_replica_groups_protos(replica_groups)
     return ops.AllReduce(operand, computation.computation,
-                         replica_groups_protos, None, None)
+                         replica_groups_protos, None)
 
   def AllToAll(self,
                operand,
@@ -1507,7 +1490,7 @@ class ComputationBuilder(object):
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
       batch_group_count: number of batch groups for grouped convolution.
-    Returns: a XlaOp representing the ConvGeneralDilated operation.
+    Returns: a XlaOp representing the ConvGenralDilated operation.
     """
     if dimension_numbers is None:
       dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
@@ -1710,7 +1693,6 @@ _OTHER_OPS = [
     'Dot',
     'GetTupleElement',
     'ReducePrecision',
-    'RegularizedIncompleteBeta',
     'Rev',
     'Select',
     'SliceInDim',
@@ -1826,20 +1808,6 @@ class ConvolutionDimensionNumbers(object):
     self.output_batch_dimension = 0
     self.output_feature_dimension = 0
     self.output_spatial_dimensions = []
-
-
-class OpSharding(object):
-  """Python representation of a xla.OpSharding protobuf."""
-  __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings')
-
-  Type = _xla.OpSharding_Type
-
-  def __init__(self):
-    self.type = self.Type.REPLICATED
-    self.tile_assignment_dimensions = []
-    self.tile_assignment_devices = []
-    self.tuple_shardings = []
 
 
 class PrecisionConfig(object):

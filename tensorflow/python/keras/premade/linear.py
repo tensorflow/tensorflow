@@ -64,7 +64,7 @@ class LinearModel(training.Model):
                units=1,
                activation=None,
                use_bias=True,
-               kernel_initializer='zeros',
+               kernel_initializer='glorot_uniform',
                bias_initializer='zeros',
                kernel_regularizer=None,
                bias_regularizer=None,

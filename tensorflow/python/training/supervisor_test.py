@@ -555,7 +555,7 @@ class SupervisorTest(test.TestCase):
     def get_session(is_chief):
       g = ops.Graph()
       with g.as_default():
-        with ops.device("/job:localhost"):
+        with ops.device("/job:local"):
           v = variables.VariableV1(
               1, name="default_ready_for_local_init_op_v_" + str(uid))
           vadd = v.assign_add(1)
@@ -613,7 +613,7 @@ class SupervisorTest(test.TestCase):
     def get_session(is_chief):
       g = ops.Graph()
       with g.as_default():
-        with ops.device("/job:localhost"):
+        with ops.device("/job:local"):
           v = variables.VariableV1(
               1.0, name="ready_for_local_init_op_restore_v_" + str(uid))
           vadd = v.assign_add(1)

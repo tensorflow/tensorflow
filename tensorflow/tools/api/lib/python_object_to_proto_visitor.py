@@ -79,16 +79,8 @@ if sys.version_info.major == 3:
     return (member == 'with_traceback' or member in ('name', 'value') and
             isinstance(cls, type) and issubclass(cls, enum.Enum))
 else:
-  _NORMALIZE_TYPE = {
-      "<class 'abc.ABCMeta'>":
-          "<type 'type'>",
-      "<class 'pybind11_type'>":
-          "<class 'pybind11_builtins.pybind11_type'>",
-  }
-  _NORMALIZE_ISINSTANCE = {
-      "<class 'pybind11_object'>":
-          "<class 'pybind11_builtins.pybind11_object'>",
-  }
+  _NORMALIZE_TYPE = {"<class 'abc.ABCMeta'>": "<type 'type'>"}
+  _NORMALIZE_ISINSTANCE = {}
 
   def _SkipMember(cls, member):  # pylint: disable=unused-argument
     return False

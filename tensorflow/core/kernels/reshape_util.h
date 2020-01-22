@@ -21,8 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class OpKernelContext;
-
 // Reshapes the input indices and input shape to the target shape.
 void Reshape(OpKernelContext *context, const Tensor &input_indices_in,
              const Tensor &input_shape_in, const Tensor &target_shape_in,

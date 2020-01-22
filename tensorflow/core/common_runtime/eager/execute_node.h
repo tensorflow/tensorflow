@@ -45,11 +45,15 @@ namespace tensorflow {
 
 class ExecuteNodeArgs : public EagerKernelArgs {
  public:
-  explicit ExecuteNodeArgs(int count) : EagerKernelArgs(count) {}
-  ~ExecuteNodeArgs() override;
+  static Status CreateExecuteNodeArgs(
+      gtl::InlinedVector<TensorValue, 4>&& tensor_args, EagerContext* ctx,
+      const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+      std::unique_ptr<ExecuteNodeArgs>* args) {
+    args->reset(new ExecuteNodeArgs(std::move(tensor_args)));
+    return (*args)->Init(ctx, op_inputs);
+  }
 
-  Status Init(EagerContext* ctx,
-              const gtl::InlinedVector<TensorHandle*, 4>& op_inputs);
+  ~ExecuteNodeArgs() override;
 
   bool HasRemoteInputs() const override { return has_remote_inputs_; };
 
@@ -61,6 +65,12 @@ class ExecuteNodeArgs : public EagerKernelArgs {
 #endif  // IS_MOBILE_PLATFORM
 
  private:
+  explicit ExecuteNodeArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
+      : EagerKernelArgs(std::move(tensor_args)) {}
+
+  Status Init(EagerContext* ctx,
+              const gtl::InlinedVector<TensorHandle*, 4>& op_inputs);
+
   bool has_remote_inputs_ = false;
   TensorReferenceVector protected_tensors_;
 #if !defined(IS_MOBILE_PLATFORM)
@@ -76,7 +86,7 @@ class ExecuteNode : public EagerNode {
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
       core::RefCountPtr<KernelAndDevice> kernel,
       GraphCollector* graph_collector, const DataTypeVector& output_dtypes,
-      CancellationManager* cancellation_manager, bool async,
+      CancellationManager* cancellation_manager,
       absl::Span<TensorHandle*> retvals)
       : EagerNode(),
         ctx_(ctx),
@@ -84,36 +94,28 @@ class ExecuteNode : public EagerNode {
         remote_func_params_(remote_func_params),
         kernel_(std::move(kernel)),
         graph_collector_(graph_collector),
-        cancellation_manager_(cancellation_manager),
-        async_(async) {
+        cancellation_manager_(cancellation_manager) {
     // Copy the output handles, since the container for them might get
     // destroyed.
     for (auto handle : retvals) {
+      handle->Ref();
       retvals_.push_back(handle);
     }
 
-    if (async_) {
-      // This is required to ensure that the tensor handles stay alive across
-      // the execution.
-      for (auto handle : inputs_) {
-        handle->Ref();
-      }
-
-      for (auto handle : retvals_) {
-        handle->Ref();
-      }
+    // This is required to ensure that the tensor handles stay alive across the
+    // execution.
+    for (auto handle : inputs_) {
+      handle->Ref();
     }
   }
 
   ~ExecuteNode() override {
-    if (async_) {
-      for (auto handle : retvals_) {
-        handle->Unref();
-      }
+    for (auto handle : retvals_) {
+      handle->Unref();
+    }
 
-      for (auto handle : inputs_) {
-        handle->Unref();
-      }
+    for (auto handle : inputs_) {
+      handle->Unref();
     }
   }
 
@@ -149,7 +151,6 @@ class ExecuteNode : public EagerNode {
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
-  const bool async_;
   gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

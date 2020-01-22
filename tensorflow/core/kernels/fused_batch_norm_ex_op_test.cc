@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -464,7 +463,6 @@ constexpr bool kWithSideInput = true;  // side_input == true
 // -------------------------------------------------------------------------- //
 // FusedBatchNormEx[is_training=true].
 
-#if defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
 template <typename T>
 using FusedBatchNormExOpTrainingTest =
     FusedBatchNormExOpTestBase<T, float>;  // scale is always float
@@ -492,6 +490,7 @@ REGISTER_TYPED_TEST_SUITE_P(FusedBatchNormExOpTrainingTest,  //
                             TrainingWithReluInNHWCTest,      //
                             TrainingWithSideInputAndReluInNHWCTest);
 
+#if defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
 using FusedBatchNormExTrainingDataTypes = ::testing::Types<Eigen::half>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpTrainingTest,
                                FusedBatchNormExTrainingDataTypes);
@@ -500,7 +499,6 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpTrainingTest,
 // -------------------------------------------------------------------------- //
 // FusedBatchNormEx[is_training=false].
 
-#if defined(GOOGLE_CUDA)
 template <typename T>
 using FusedBatchNormExOpInferenceTest =
     FusedBatchNormExOpTestBase<T, float>;  // scale is always float
@@ -528,6 +526,7 @@ REGISTER_TYPED_TEST_SUITE_P(FusedBatchNormExOpInferenceTest,  //
                             InferenceWithReluInNHWCTest,      //
                             InferenceWithSideInputAndReluInNHWCTest);
 
+#if defined(GOOGLE_CUDA)
 using FusedBatchNormExInferenceDataTypes = ::testing::Types<Eigen::half, float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpInferenceTest,
                                FusedBatchNormExInferenceDataTypes);

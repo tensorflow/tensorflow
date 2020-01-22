@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_TFPROF_ADVISOR_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_TFPROF_ADVISOR_H_
 
-#include "absl/strings/str_format.h"
 #include "tensorflow/core/profiler/internal/advisor/accelerator_utilization_checker.h"
 #include "tensorflow/core/profiler/internal/advisor/checker.h"
 #include "tensorflow/core/profiler/internal/advisor/expensive_operation_checker.h"
@@ -63,9 +62,9 @@ class Advisor {
                                    stats_));
     }
     for (const auto& checker : ret.checkers()) {
-      absl::FPrintF(stdout, "\n%s:\n", checker.first);
+      fprintf(stdout, "\n%s:\n", checker.first.c_str());
       for (const string& r : checker.second.reports()) {
-        absl::FPrintF(stdout, "%s\n", r);
+        fprintf(stdout, "%s\n", r.c_str());
       }
     }
     fflush(stdout);

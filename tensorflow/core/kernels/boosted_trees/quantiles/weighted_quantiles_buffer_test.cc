@@ -30,8 +30,18 @@ using BufferEntry =
 class WeightedQuantilesBufferTest : public ::testing::Test {};
 
 TEST_F(WeightedQuantilesBufferTest, Invalid) {
-  EXPECT_DEATH(new Buffer(2, 0), "Invalid buffer specification");
-  EXPECT_DEATH(new Buffer(0, 2), "Invalid buffer specification");
+  EXPECT_DEATH(
+      ({
+        boosted_trees::quantiles::WeightedQuantilesBuffer<double, double>
+            buffer(2, 0);
+      }),
+      "Invalid buffer specification");
+  EXPECT_DEATH(
+      ({
+        boosted_trees::quantiles::WeightedQuantilesBuffer<double, double>
+            buffer(0, 2);
+      }),
+      "Invalid buffer specification");
 }
 
 TEST_F(WeightedQuantilesBufferTest, PushEntryNotFull) {
@@ -82,7 +92,7 @@ TEST_F(WeightedQuantilesBufferTest, PushEntryFullDeath) {
   // full.
   EXPECT_TRUE(buffer.IsFull());
   // Can't push any more entries before clearing.
-  EXPECT_DEATH(buffer.PushEntry(6, 6), "Buffer already full");
+  EXPECT_DEATH(({ buffer.PushEntry(6, 6); }), "Buffer already full");
 }
 
 }  // namespace

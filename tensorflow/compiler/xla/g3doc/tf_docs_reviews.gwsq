@@ -1,4 +1,4 @@
-send_cls_to('tf-docs-infra+reviews');
+send_cls_to('tf-docs+reviews');
 
 define Main {
   reassign_to_list(['blamb', 'markdaoust', 'yashkatariya', 'adamwood']);

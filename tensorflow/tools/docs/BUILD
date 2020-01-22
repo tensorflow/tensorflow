@@ -10,48 +10,18 @@ package(
 
 exports_files(["LICENSE"])
 
-py_library(
-    name = "tf_doctest_lib",
-    srcs = ["tf_doctest_lib.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//third_party/py/numpy",
-    ],
-)
-
 py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
     python_version = "PY3",
     tags = [
         "no_oss_py2",
-        "no_pip",
-        "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
         "notsan",
     ],
     deps = [
-        ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "tf_doctest_test",
-    srcs = ["tf_doctest_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_oss_py2",
-        "no_pip",
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
-    deps = [
-        ":tf_doctest_lib",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -119,9 +89,6 @@ py_test(
     srcs = ["parser_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # UNIX filepath separators are hardcoded.
-    ],
     deps = [
         ":parser",
         "//tensorflow/python:platform_test",
@@ -160,9 +127,6 @@ py_test(
     srcs = ["generate_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # UNIX filepath separators are hardcoded.
-    ],
     deps = [
         ":generate_lib",
         ":parser",
@@ -187,7 +151,7 @@ py_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
-    python_version = "PY3",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -207,16 +171,17 @@ py_binary(
     name = "generate2",
     srcs = ["generate2.py"],
     python_version = "PY3",
-    srcs_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         ":generate2_lib",
+        "@six_archive//:six",
     ],
 )
 
 py_library(
     name = "generate2_lib",
     srcs = ["generate2.py"],
-    srcs_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:util",
@@ -236,9 +201,6 @@ py_test(
     srcs = ["py_guide_parser_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # Windows line endings break comparisons.
-    ],
     deps = [
         ":py_guide_parser",
         "//tensorflow/python:client_testlib",

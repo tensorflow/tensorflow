@@ -220,14 +220,6 @@ const NnApi LoadNnApi() {
                          ANeuralNetworksExecution_setMeasureTiming);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_getDuration);
-  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
-                         ANeuralNetworksDevice_getExtensionSupport);
-  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
-                         ANeuralNetworksModel_getExtensionOperandType);
-  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
-                         ANeuralNetworksModel_getExtensionOperationType);
-  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
-                         ANeuralNetworksModel_setOperandExtensionData);
   return nnapi;
 }
 

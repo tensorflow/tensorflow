@@ -44,10 +44,10 @@ _TF_ACTIVATIONS_V2 = {
 def softmax(x, axis=-1):
   """Softmax converts a real vector to a vector of categorical probabilities.
 
-  The elements of the output vector are in range (0, 1) and sum to 1.
+  The the elements of the output vector are in range (0, 1) and sum to 1.
 
   Each vector is handled independently. The `axis` argument sets which axis
-  of the input the function is applied along.
+  of the input the finction is applied along.
 
   Softmax is often used as the activation for the last
   layer of a classification network because the result could be interpreted as
@@ -120,7 +120,7 @@ def selu(x):
   and the number of inputs is "large enough"
   (see references for more information).
 
-  ![]https://cdn-images-1.medium.com/max/1600/1*m0e8lZU_Zrkh4ESfQkY2Pw.png
+  ![](https://cdn-images-1.medium.com/max/1600/1*m0e8lZU_Zrkh4ESfQkY2Pw.png)
   (Courtesy: Blog on Towards DataScience at
   https://towardsdatascience.com/selu-make-fnns-great-again-snn-8d61526802a9)
 
@@ -153,7 +153,9 @@ def selu(x):
       [Self-Normalizing Neural Networks (Klambauer et al, 2017)]
       (https://arxiv.org/abs/1706.02515)
   """
-  return nn.selu(x)
+  alpha = 1.6732632423543772848170429916717
+  scale = 1.0507009873554804934193349852946
+  return scale * K.elu(x, alpha)
 
 
 @keras_export('keras.activations.softplus')
@@ -177,59 +179,30 @@ def softsign(x):
       x: Input tensor.
 
   Returns:
-      The softsign activation: `x / (abs(x) + 1)`.
+      The softplus activation: `x / (abs(x) + 1)`.
   """
   return nn.softsign(x)
 
 
-@keras_export('keras.activations.swish')
-def swish(x):
-  """Swish activation function.
-
-  Arguments:
-      x: Input tensor.
-
-  Returns:
-      The swish activation applied to `x`.
-  """
-  return nn.swish(x)
-
-
 @keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
-  """Applies the rectified linear unit activation function.
+  """Rectified Linear Unit.
 
-  With default values, this returns the standard ReLU activation:
-  `max(x, 0)`, the element-wise maximum of 0 and the input tensor.
+  With default values, it returns element-wise `max(x, 0)`.
 
-  Modifying default parameters allows you to use non-zero thresholds,
-  change the max value of the activation,
-  and to use a non-zero multiple of the input for values below the threshold.
-
-  For example:
-  >>> foo = tf.constant([-10, -5, 0.0, 5, 10], dtype = tf.float32)
-  >>> tf.keras.activations.relu(foo).numpy()
-  array([ 0.,  0.,  0.,  5., 10.], dtype=float32)
-  >>> tf.keras.activations.relu(foo, alpha=0.5).numpy()
-  array([-5. , -2.5,  0. ,  5. , 10. ], dtype=float32)
-  >>> tf.keras.activations.relu(foo, max_value=5).numpy()
-  array([0., 0., 0., 5., 5.], dtype=float32)
-  >>> tf.keras.activations.relu(foo, threshold=5).numpy()
-  array([-0., -0.,  0.,  0., 10.], dtype=float32)
+  Otherwise, it follows:
+  `f(x) = max_value` for `x >= max_value`,
+  `f(x) = x` for `threshold <= x < max_value`,
+  `f(x) = alpha * (x - threshold)` otherwise.
 
   Arguments:
-      x: Input `tensor` or `variable`.
-      alpha: A `float` that governs the slope for values lower than the
-        threshold.
-      max_value: A `float` that sets the saturation threshold (the largest value
-        the function will return).
-      threshold: A `float` giving the threshold value of the activation function
-        below which values will be damped or set to zero.
+      x: A tensor or variable.
+      alpha: A scalar, slope of negative section (default=`0.`).
+      max_value: float. Saturation threshold.
+      threshold: float. Threshold value for thresholded activation.
 
   Returns:
-      A `Tensor` representing the input tensor,
-      transformed by the relu activation function.
-      Tensor will be of the same shape and dtype of input `x`.
+      A tensor.
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
@@ -273,8 +246,9 @@ def sigmoid(x):
 
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
   >>> b = tf.keras.activations.sigmoid(a)
-  >>> b.numpy() >= 0.0
-  array([ True,  True,  True,  True,  True])
+  >>> b.numpy()
+  array([0.        , 0.26894143, 0.5       , 0.7310586 , 1.        ],
+         dtype=float32)
 
   Arguments:
       x: Input tensor.
@@ -392,7 +366,7 @@ def deserialize(name, custom_objects=None):
       x : String
 
   Returns:
-      TensorFlow Activation function denoted by input string.
+      Tensorlow Activation function denoted by input string.
 
   For example:
   >>> tf.keras.activations.deserialize('linear')
@@ -405,7 +379,7 @@ def deserialize(name, custom_objects=None):
   ValueError: Unknown activation function:abcd
 
   Args:
-    name: The name of the activation function.
+    name: The name of the actiuvation function.
     custom_objects: A {name:value} dictionary for activations not build into
       keras.
 

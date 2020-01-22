@@ -46,8 +46,8 @@ elif [[ -n "${GPU_VERSION}" ]]; then
   # Currently we create a special toolchain for clang when compiling with
   # cuda enabled. We can get rid of this once the default toolchain bazel
   # provides supports cuda.
-  if [[ "${COMPILER}" == clang* ]]; then
-    COMPILER="${COMPILER}-${GPU_VERSION}"
+  if [[ "${COMPILER}" == "clang" ]]; then
+    COMPILER="cuda-clang"
   fi
 fi
 

@@ -17,11 +17,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_ACCURACY_CSV_WRITER_H_
 
 #include <fstream>
-#include <memory>
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -29,16 +28,15 @@ namespace metrics {
 // columns. This supports a very limited set of CSV spec and doesn't do any
 // escaping.
 // Usage:
-// std::unqiue_str<std::ofstream> output_stream = ...
-// CSVWriter writer({"column1", "column2"}, std::move(output_stream));
+// std::ofstream * output_stream = ...
+// CSVWriter writer({"column1", "column2"}, output_stream);
 // writer.WriteRow({4, 5});
 // writer.Flush(); // flush results immediately.
 class CSVWriter {
  public:
-  CSVWriter(const std::vector<string>& columns,
-            std::unique_ptr<std::ofstream> output_stream)
-      : num_columns_(columns.size()), output_stream_(std::move(output_stream)) {
-    if (WriteRow(columns, output_stream_.get()) != kTfLiteOk) {
+  CSVWriter(const std::vector<string>& columns, std::ofstream* output_stream)
+      : num_columns_(columns.size()), output_stream_(output_stream) {
+    if (WriteRow(columns, output_stream_) != kTfLiteOk) {
       LOG(ERROR) << "Could not write column names to file";
     }
   }
@@ -50,7 +48,7 @@ class CSVWriter {
                  << " expected: " << num_columns_;
       return kTfLiteError;
     }
-    return WriteRow(values, output_stream_.get());
+    return WriteRow(values, output_stream_);
   }
 
   void Flush() { output_stream_->flush(); }
@@ -78,7 +76,7 @@ class CSVWriter {
     return kTfLiteOk;
   }
   const size_t num_columns_;
-  std::unique_ptr<std::ofstream> output_stream_;
+  std::ofstream* output_stream_;
 };
 }  // namespace metrics
 }  // namespace tensorflow

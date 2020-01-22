@@ -67,7 +67,7 @@ class StatusOrData {
       MakeValue(std::move(other.data_));
       MakeStatus();
     } else {
-      MakeStatus(other.status_);
+      MakeStatus(std::move(other.status_));
     }
   }
 
@@ -87,7 +87,7 @@ class StatusOrData {
       MakeValue(std::move(other.data_));
       MakeStatus();
     } else {
-      MakeStatus(other.status_);
+      MakeStatus(std::move(other.status_));
     }
   }
 
@@ -156,9 +156,7 @@ class StatusOrData {
 
   void Assign(Status&& status) {
     Clear();
-    // Note that we copy instead of moving the status here so that
-    // status.~StatusOrData() can call ok() without invoking UB.
-    status_ = status;
+    status_ = std::move(status);
     EnsureNotOk();
   }
 

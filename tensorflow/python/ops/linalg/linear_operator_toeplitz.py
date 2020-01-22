@@ -150,13 +150,12 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
 
       super(LinearOperatorToeplitz, self).__init__(
           dtype=self._row.dtype,
-          graph_parents=None,
+          graph_parents=[self._row, self._col],
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
-      self._set_graph_parents([self._row, self._col])
 
   def _check_row_col(self, row, col):
     """Static check of row and column."""

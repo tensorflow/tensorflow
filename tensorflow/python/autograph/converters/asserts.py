@@ -38,10 +38,8 @@ class AssertTransformer(converter.Base):
 
     if node.msg is None:
       return templates.replace(
-          template,
-          test=node.test,
-          msg=gast.Constant('Assertion error', kind=None))
-    elif isinstance(node.msg, gast.Constant):
+          template, test=node.test, msg=gast.Str('Assertion error'))
+    elif isinstance(node.msg, gast.Str):
       return templates.replace(template, test=node.test, msg=node.msg)
     else:
       raise NotImplementedError('can only convert string messages for now.')

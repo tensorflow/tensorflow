@@ -168,13 +168,11 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
-  auto module = CreateNewVerifiedModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary, computation->root_instruction());
   EXPECT_FALSE(
@@ -223,16 +221,16 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   //
   // (p0, p1) -> add -------------------------> sub
   //                 \-> abs1 -> rng -> abs2 -/
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
-    p0 = f32[] parameter(0)
-    p1 = f32[] parameter(1)
-    add = f32[] add(p0, p1)
-    abs1 = f32[] abs(add)
-    rng = f32[] rng(p1, abs1), distribution=rng_uniform
-    abs2 = f32[] abs(rng)
-    ROOT root = f32[] subtract(abs2, add)
+    p0 = f32[4,3]{1,0} parameter(0)
+    p1 = f32[4,3]{1,0} parameter(1)
+    add = f32[4,3]{1,0} add(p0, p1)
+    abs1 = f32[4,3]{1,0} abs(add)
+    rng = f32[4,3]{1,0} rng(abs1), distribution=rng_uniform
+    abs2 = f32[4,3]{1,0} abs(rng)
+    ROOT root = f32[4,3]{1,0} subtract(abs2, add)
   })")
                     .ValueOrDie();
   // We expect abs2 to be fused into root.
@@ -254,8 +252,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   //
   // (p0, p1) -> add -------------------------> sub
   //                 \-> abs1 -> log -> abs2 -/
-  //                                 \-> send -> send-done
-  module = ParseAndReturnVerifiedModule(R"(
+  //                                 \-> send
+  module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -265,7 +263,6 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     log = f32[4,3]{1,0} log(abs1)
     token0 = token[] after-all()
     send = f32[4,3]{1,0} send(log, token0), channel_id=1
-    send-done = token[] send-done(send), channel_id=1
     abs2 = f32[4,3]{1,0} abs(log)
     ROOT root = f32[4,3]{1,0} subtract(abs2, add)
   })")
@@ -288,8 +285,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   // (p0, p1) ---> add1 -----------> sub
   //          \         \-> add2 -/
   //           \-> log -/
-  //                   \-> send -> send-done
-  module = ParseAndReturnVerifiedModule(R"(
+  //                   \-> send
+  module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -298,7 +295,6 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     log = f32[4,3]{1,0} log(p0)
     token0 = token[] after-all()
     send = f32[4,3]{1,0} send(log, token0), channel_id=1
-    send-done = token[] send-done(send), channel_id=1
     add2 = f32[4,3]{1,0} add(log, add1)
     ROOT root = f32[4,3]{1,0} subtract(add1, add2)
   })")
@@ -324,7 +320,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   //                             \------> sub1
   //                              log -/
   //                                  \-> send
-  module = ParseAndReturnVerifiedModule(R"(
+  module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -334,7 +330,6 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     log = f32[4,3]{1,0} log(add2)
     token0 = token[] after-all()
     send = f32[4,3]{1,0} send(log, token0), channel_id=1
-    send-done = token[] send-done(send), channel_id=1
     sub1 = f32[4,3]{1,0} subtract(log, add2)
     sub2 = f32[4,3]{1,0} subtract(add2, add1)
     ROOT root = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub1, sub2)
@@ -366,13 +361,11 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
   HloInstruction* unary1 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kFloor, param0));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(unary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  builder.AddInstruction(HloInstruction::CreateSend(unary1, token, 0));
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
-  auto module = CreateNewVerifiedModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary2, computation->root_instruction());
   EXPECT_TRUE(
@@ -389,18 +382,14 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
       HloInstruction::CreateParameter(0, small_shape, "0"));
   auto param1 =
       builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "1"));
-  auto broadcast = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(shape, param0, {0}));
   HloInstruction* binary1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, broadcast, param1));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
-  auto module = CreateNewVerifiedModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary, computation->root_instruction());
   EXPECT_TRUE(
@@ -415,15 +404,15 @@ TEST_F(InstructionFusionTest, AllowBinarySameValueOperandsDuplication) {
   //
   // p0 -> add -------------------------> sub
   //           \-> abs1 -> rng -> abs2 -/
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
   HloModule test_module
   ENTRY OutputFusion {
-    p0 = f32[] parameter(0)
-    add = f32[] add(p0, p0)
-    abs1 = f32[] abs(add)
-    rng = f32[] rng(p0, abs1), distribution=rng_uniform
-    abs2 = f32[] abs(rng)
-    ROOT root = f32[] subtract(abs2, add)
+    p0 = f32[4,3]{1,0} parameter(0)
+    add = f32[4,3]{1,0} add(p0, p0)
+    abs1 = f32[4,3]{1,0} abs(add)
+    rng = f32[4,3]{1,0} rng(abs1), distribution=rng_uniform
+    abs2 = f32[4,3]{1,0} abs(rng)
+    ROOT root = f32[4,3]{1,0} subtract(abs2, add)
   })")
                     .ValueOrDie();
   // We expect abs2 to be fused into root.

@@ -5,7 +5,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_not_windows",
-    "if_windows",
     "tf_cc_test",
     "tf_copts",
 )
@@ -44,7 +43,6 @@ cc_library(
         "tensor_bundle.h",
     ],
     copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
-    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
         ":naming",
         "//tensorflow/core:core_cpu_lib",

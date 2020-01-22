@@ -198,25 +198,6 @@ class Variant {
     return *this;
   }
 
-  // Constructs a value of type T with the given args in-place in this Variant.
-  // Returns a reference to the newly constructed value.
-  // The signature is based on std::variant<Types...>::emplace() in C++17.
-  template <typename T, class... Args>
-  T& emplace(Args&&... args) {
-    ResetMemory();
-    is_inline_ = CanInlineType<T>();
-    if (is_inline_) {
-      new (&inline_value_)
-          InlineValue(InlineValue::Tag<T>{}, std::forward<Args>(args)...);
-      return static_cast<Variant::Value<T>*>(inline_value_.AsValueInterface())
-          ->value;
-    } else {
-      new (&heap_value_) HeapValue(
-          absl::make_unique<Value<T>>(InPlace(), std::forward<Args>(args)...));
-      return static_cast<Variant::Value<T>*>(heap_value_.get())->value;
-    }
-  }
-
   bool is_empty() const { return GetValue() == nullptr; }
 
   void clear() noexcept;
@@ -302,7 +283,7 @@ class Variant {
 
  private:
   struct in_place_t {};
-  static constexpr in_place_t InPlace() { return in_place_t{}; }
+  static constexpr in_place_t kInPlace{};
 
   struct ValueInterface {
     virtual ~ValueInterface() = default;
@@ -342,7 +323,7 @@ class Variant {
     const void* RawPtr() const final { return &value; }
 
     std::unique_ptr<ValueInterface> Clone() const final {
-      return absl::make_unique<Value>(InPlace(), value);
+      return absl::make_unique<Value>(kInPlace, value);
     }
 
     void MoveAssign(ValueInterface* memory) final {
@@ -352,11 +333,11 @@ class Variant {
     }
 
     void CloneInto(ValueInterface* memory) const final {
-      new (memory) Value(InPlace(), value);
+      new (memory) Value(kInPlace, value);
     }
 
     void MoveInto(ValueInterface* memory) final {
-      new (memory) Value(InPlace(), std::move(value));
+      new (memory) Value(kInPlace, std::move(value));
     }
 
     string TypeName() const final { return TypeNameVariant(value); }
@@ -384,7 +365,7 @@ class Variant {
   struct InlineValue {
     // We try to size InlineValue so that sizeof(Variant) <= 64 and it can fit
     // into the aligned space of a TensorBuffer.
-    static constexpr int kMaxValueSize = (64 - /*some extra padding=*/8);
+    static constexpr int kMaxValueSize = (64 - /*some extra padding=*/16);
 
     typedef char ValueDataArray[kMaxValueSize];
     alignas(kMaxInlineValueAlignSize) ValueDataArray value_data;
@@ -397,7 +378,7 @@ class Variant {
     template <typename VT, class... Args>
     explicit InlineValue(Tag<VT> /*tag*/, Args&&... args) noexcept {
       Value<VT>* inline_value_data = reinterpret_cast<Value<VT>*>(value_data);
-      new (inline_value_data) Value<VT>(InPlace(), std::forward<Args>(args)...);
+      new (inline_value_data) Value<VT>(kInPlace, std::forward<Args>(args)...);
     }
 
     InlineValue(const InlineValue& other) noexcept {
@@ -508,7 +489,7 @@ class Variant {
           InlineValue(InlineValue::Tag<VT>{}, std::forward<T>(value));
     } else {
       new (&heap_value_) HeapValue(
-          absl::make_unique<Value<VT>>(InPlace(), std::forward<T>(value)));
+          absl::make_unique<Value<VT>>(kInPlace, std::forward<T>(value)));
     }
   }
 };

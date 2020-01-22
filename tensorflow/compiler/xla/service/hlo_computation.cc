@@ -248,6 +248,11 @@ bool HloComputation::HasSideEffect() const {
   return false;
 }
 
+bool HloComputation::ContainsInstruction(
+    const HloInstruction* instruction) const {
+  return instruction_iterators_.contains(instruction);
+}
+
 Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
@@ -466,12 +471,6 @@ HloComputation::ComputeChannelDependencies() const {
   return channel_dependency_group;
 }
 
-static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
-  return absl::c_all_of(instruction->users(), [](HloInstruction* user) {
-    return user->opcode() == HloOpcode::kTrace;
-  });
-}
-
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   auto channel_dependency_group = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
@@ -485,7 +484,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // instructions to the post order at the end (necessarily they have no
       // users).
       trace_instructions.push_back(instruction.get());
-    } else if (HasOnlyTraceUsers(instruction.get())) {
+    } else if (instruction->users().empty()) {
       ComputeInstructionPostOrder(channel_dependency_group, &post_order,
                                   instruction.get(), &visited);
     }
@@ -641,17 +640,16 @@ HloComputationProto HloComputation::ToProto() const {
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     const HloComputationProto& proto,
-    const absl::flat_hash_map<int64, HloComputation*>& computation_map,
-    bool prohibit_empty_literal) {
+    const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
   absl::flat_hash_map<int64, HloInstruction*> instruction_map;
   absl::flat_hash_map<HloInstruction*, int64> to_proto_id;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
   int64 parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
-                        HloInstruction::CreateFromProto(
-                            instruction_proto, instruction_map, computation_map,
-                            prohibit_empty_literal));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloInstruction> instruction,
+        HloInstruction::CreateFromProto(instruction_proto, instruction_map,
+                                        computation_map));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }
@@ -844,7 +842,7 @@ bool HloComputation::Equal(const HloComputation& other,
       continue;
     }
     visited.emplace(pair);
-    // TODO(b/123082518): Avoid recursively invoking == because it may
+    // TODO(b/123082518): Avoid recursively invoking == becasue it may
     // cause a stack overflow with deeply nested subcomputations.
     bool identical_ignoring_operands = pair.first->Identical(
         *pair.second,

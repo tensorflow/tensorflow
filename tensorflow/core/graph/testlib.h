@@ -126,7 +126,7 @@ Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
 Node* Roll(Graph* g, Node* input, Node* shift, Node* axis);
 
 // Generates random parameters from the truncated standard normal distribution
-// of the input shape
+// of the nput shape
 Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);
 
 // Adds an error node in "g". The node's computation always

@@ -183,12 +183,6 @@ int64 MinVLogLevelFromEnv() {
 LogMessage::LogMessage(const char* fname, int line, int severity)
     : fname_(fname), line_(line), severity_(severity) {}
 
-LogMessage& LogMessage::AtLocation(const char* fname, int line) {
-  fname_ = fname;
-  line_ = line;
-  return *this;
-}
-
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
   static int64 min_log_level = MinLogLevelFromEnv();
@@ -242,7 +236,8 @@ void LogMessage::GenerateLogMessage() {
 
 void LogMessage::GenerateLogMessage() {
   static bool log_thread_id = EmitThreadIdFromEnv();
-  uint64 now_micros = EnvTime::NowMicros();
+  static EnvTime* env_time = tensorflow::EnvTime::Default();
+  uint64 now_micros = env_time->NowMicros();
   time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
   int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
   const size_t time_buffer_size = 30;

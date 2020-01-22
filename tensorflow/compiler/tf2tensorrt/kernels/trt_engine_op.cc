@@ -125,7 +125,7 @@ class TRTEngineOp : public AsyncOpKernel {
   // Verify that the input shapes are consistent and can be handled by this op.
   Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
 
-  // Return engine batch in cached_engine_batch_sizes_ which is closest to input
+  // Return engine batch in cached_engne_batch_sizes_ which is closest to input
   // batch.
   Status GetEngineInputShapes(
       const CacheType& cache,
@@ -142,7 +142,7 @@ class TRTEngineOp : public AsyncOpKernel {
   NameAttrList func_;
 
   // GraphDef representation of the segment.
-  GraphDef segment_graph_def_;
+  GraphDef segment_graph_;
 
   // Engine Precision mode.
   TrtPrecisionMode precision_mode_;
@@ -153,9 +153,6 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
-
-  // Whether to use implicit batch dimension for TensorRT
-  bool use_implicit_batch_;
 
   // Maximum number of cached engines
   int max_cached_engines_;
@@ -277,8 +274,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     FunctionLibraryRuntime* lib = context->function_library();
     OP_REQUIRES_OK(context,
                    ConstructFunctionHandle(lib, context->device()->name()));
-    OP_REQUIRES_OK(
-        context, FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_));
+    OP_REQUIRES_OK(context,
+                   FunctionDefToGraphDef(func_handle_, lib, &segment_graph_));
   }
   // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
   // backward compatibility reasons. Remove it once all known users switch to
@@ -292,13 +289,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   }
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
-
-  auto status = context->GetAttr("_use_implicit_batch", &use_implicit_batch_);
-  if (status.code() == tensorflow::error::NOT_FOUND) {
-    VLOG(2) << "Not found _use_implicit_batch in " << context->device()->name()
-            << ", thus setting _use_implicit_batch=true";
-    use_implicit_batch_ = true;
-  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -515,11 +505,6 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   if (retry) {
     LOG(WARNING) << "Failed to execute engine, "
                  << "retrying with native segment for " << name();
-    // Release any outputs that are allocated, ExecuteNativeSegment will
-    // re-allocate them and fail if they are currently allocated.
-    for (int i = 0; i < ctx->num_outputs(); i++) {
-      ctx->release_output(i);
-    }
     ExecuteNativeSegment(ctx, helper);
     return;
   }
@@ -529,25 +514,6 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                    EngineContext* engine_context) {
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
-
-  if (VLOG_IS_ON(2)) {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-    VLOG(2) << "  Network name: " << cuda_engine->getName();
-#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-    VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
-            << " bytes";
-    VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize()
-            << " bytes";
-    VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings()
-            << " inputs/outputs";
-    string binding_types = "";
-    for (int i = 0; i < cuda_engine->getNbBindings(); i++) {
-      binding_types += "    " + string(cuda_engine->getBindingName(i)) + ": " +
-                       DebugString(cuda_engine->getBindingDataType(i)) + "\n";
-    }
-    VLOG(2) << binding_types;
-  }
-
   const bool kRetry = true;
   // All inputs must have the same batch size, so just get it from the first
   // input.
@@ -617,7 +583,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
       }
     } else {
       const string msg =
-          StrCat("Output node ", output_name, " not found, at ", name());
+          StrCat("Ouput node ", output_name, " not found, at ", name());
       LOG(ERROR) << msg;
       ctx->SetStatus(errors::NotFound(msg));
       return !kRetry;
@@ -626,7 +592,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     if (!status.ok()) {
       LOG(ERROR) << "Allocating output failed with " << status;
       ctx->SetStatus(status);
-      return kRetry;
+      // Do not retry since we cannot allocate the same output twice.
+      // TODO(aaroey): ideally we should retry, fix this.
+      return !kRetry;
     }
     auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
@@ -713,10 +681,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // single element containing the only engine.
   if (static_engine_) {
     if (cache.size()) {
-      // TODO(laigd): need a better shape compatibility check for the case where
-      // implicit batch is disabled.
-      if (!use_implicit_batch_ ||
-          AreShapesCompatible(input_shapes, cache.begin()->first)) {
+      if (AreShapesCompatible(input_shapes, cache.begin()->first)) {
         return cache.begin()->second.get();
       }
       return &empty_context;
@@ -735,10 +700,9 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     // Static engine will have max_batch_size for batch size so that all inputs
     // will map to this single engine.
     std::vector<TensorShape> engine_input_shapes(input_shapes);
-    if (use_implicit_batch_) {
-      for (int i = 0; i < engine_input_shapes.size(); i++) {
-        engine_input_shapes[i].set_dim(0, max_batch_size);
-      }
+    for (int i = 0; i < engine_input_shapes.size(); i++) {
+      // TODO(tmorris): will all inputs have batch size as first dimension??
+      engine_input_shapes[i].set_dim(0, max_batch_size);
     }
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
@@ -753,7 +717,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     string tmp;
     // Swap with temporary empty string to deallocate the CPU memory.
     serialized_segment_.swap(tmp);
-    if (use_implicit_batch_ && (max_batch_size < batch_size)) {
+    if (max_batch_size < batch_size) {
       return &empty_context;
     }
     return cache.at(engine_input_shapes).get();
@@ -780,9 +744,9 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
-        segment_graph_def_, precision_mode_, batch_size, workspace_size_,
+        segment_graph_, precision_mode_, batch_size, workspace_size_,
         partial_shapes, &logger, allocator, calibrator_.get(), &engine,
-        use_calibration_, use_implicit_batch_, &convert_successfully);
+        use_calibration_, &convert_successfully);
     if (!status.ok()) {
       LOG(WARNING) << "Engine creation for " << name() << " failed. "
                    << "The native segment will be used instead. "
@@ -867,11 +831,11 @@ Status TRTEngineOp::AllocateCalibrationResources(
     // TODO(aaroey): maybe setting the max batch size using the python
     // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        this->segment_graph_def_, TrtPrecisionMode::INT8,
+        this->segment_graph_, TrtPrecisionMode::INT8,
         cres->calibrator_->getBatchSize(), this->workspace_size_,
         partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_,
-        /*use_calibration=*/true, this->use_implicit_batch_,
+        /*use_calibration=*/true,
         /*convert_successfully=*/nullptr);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;

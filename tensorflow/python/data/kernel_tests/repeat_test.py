@@ -17,33 +17,43 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import combinations
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-class RepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RepeatTest(test_base.DatasetTestBase):
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(count=[0, 3, 7])))
-  def testFiniteRepeat(self, count):
+  def testRepeatTensorDataset(self):
     """Test a dataset that repeats its input multiple times."""
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
-    dataset = dataset_ops.Dataset.from_tensors(components).repeat(count)
-    self.assertEqual(
-        [c.shape for c in components],
-        [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
-    self.assertDatasetProduces(dataset, [components] * count)
+    # This placeholder can be fed when dataset-definition subgraph
+    # runs (i.e. `init_op` below) to configure the number of
+    # repetitions used in a particular iterator.
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testInfiniteRepeat(self):
-    # NOTE(mrry): There's not a good way to test that the sequence is infinite.
-    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
+    def do_test(count):
+      dataset = dataset_ops.Dataset.from_tensors(components).repeat(count)
+      self.assertEqual(
+          [c.shape for c in components],
+          [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
+      self.assertDatasetProduces(dataset, [components] * count)
+
+    # Test a finite repetition.
+    do_test(3)
+
+    # test a different finite repetition.
+    do_test(7)
+
+    # Test an empty repetition.
+    do_test(0)
+
+    # Test an infinite repetition.
+    # NOTE(mrry): There's not a good way to test that the sequence
+    # actually is infinite.
     dataset = dataset_ops.Dataset.from_tensors(components).repeat(-1)
     self.assertEqual(
         [c.shape for c in components],
@@ -54,8 +64,7 @@ class RepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
       for component, result_component in zip(components, results):
         self.assertAllEqual(component, result_component)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRepeatRepeat(self):
+  def testRepeatRepeatTensorDataset(self):
     """Test the composition of repeat datasets."""
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
     inner_count, outer_count = 7, 14
@@ -67,6 +76,11 @@ class RepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
         [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
     self.assertDatasetProduces(dataset,
                                [components] * (inner_count * outer_count))
+
+  def testRepeatEmptyDataset(self):
+    """Test that repeating an empty dataset does not hang."""
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).skip(10).repeat(-1)
+    self.assertDatasetProduces(dataset, [])
 
 
 if __name__ == "__main__":

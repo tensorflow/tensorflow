@@ -91,7 +91,7 @@ class ReduceDatasetParams : public DatasetParams {
   bool use_inter_op_parallelism_;
 };
 
-class ReduceDatasetOpTest : public DatasetOpsTestBase {};
+class ReduceDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test case 1: the input function has one output.
 ReduceDatasetParams ReduceDatasetParams1() {

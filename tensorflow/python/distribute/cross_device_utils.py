@@ -35,9 +35,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 
 
-OP_INSTANCE_KEY_START_NUMBER = 100
-
-
 def aggregate_gradients_using_nccl(replica_grads):
   """Aggregate gradients using nccl allreduce."""
   agg_all_g_and_v = []
@@ -256,7 +253,7 @@ class CollectiveKeys(object):
 
   def __init__(self,
                group_key_start=1,
-               op_instance_key_start=OP_INSTANCE_KEY_START_NUMBER,
+               op_instance_key_start=100,
                variable_instance_key_start=1000000):
     """Initializes the object.
 
@@ -725,7 +722,7 @@ def is_indexed_slices(value):
   if isinstance(value, ops.IndexedSlices):
     return True
   assert isinstance(value, value_lib.DistributedValues)
-  return all(isinstance(v, ops.IndexedSlices) for v in value.values)
+  return all([isinstance(v, ops.IndexedSlices) for v in value.values])
 
 
 def split_by_sparsity(values):

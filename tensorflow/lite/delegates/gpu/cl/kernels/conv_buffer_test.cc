@@ -51,10 +51,8 @@ TEST_F(OpenCLOperationTest, ConvBufferSimpleWeights) {
     OperationDef op_def;
     op_def.precision = precision;
     auto data_type = DeduceDataTypeFromPrecision(precision);
-    op_def.src_tensors.push_back(
-        {data_type, TensorStorageType::BUFFER, Layout::HWC});
-    op_def.dst_tensors.push_back(
-        {data_type, TensorStorageType::BUFFER, Layout::HWC});
+    op_def.src_tensors.push_back({data_type, TensorStorageType::BUFFER});
+    op_def.dst_tensors.push_back({data_type, TensorStorageType::BUFFER});
     TensorFloat32 dst_tensor;
     ConvBuffer operation;
     ASSERT_OK(CreateConvBuffer(creation_context_, op_def, attr, &operation));
@@ -86,10 +84,8 @@ TEST_F(OpenCLOperationTest, ConvBuffer) {
     OperationDef op_def;
     op_def.precision = precision;
     auto data_type = DeduceDataTypeFromPrecision(precision);
-    op_def.src_tensors.push_back(
-        {data_type, TensorStorageType::BUFFER, Layout::HWC});
-    op_def.dst_tensors.push_back(
-        {data_type, TensorStorageType::BUFFER, Layout::HWC});
+    op_def.src_tensors.push_back({data_type, TensorStorageType::BUFFER});
+    op_def.dst_tensors.push_back({data_type, TensorStorageType::BUFFER});
     TensorFloat32 dst_tensor;
     ConvBuffer operation;
     ASSERT_OK(CreateConvBuffer(creation_context_, op_def, attr, &operation));

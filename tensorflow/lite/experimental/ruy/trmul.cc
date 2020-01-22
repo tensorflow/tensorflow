@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/allocator.h"
 #include "tensorflow/lite/experimental/ruy/block_map.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
@@ -261,13 +261,9 @@ int GetThreadCount(Context* context, int rows, int cols, int depth) {
 LoopStructure GetLoopStructure(int tentative_thread_count, int rows, int cols,
                                int depth,
                                int cache_friendly_traversal_threshold) {
-  if (tentative_thread_count == 1) {
-    // If we are in the GEMV case or the size is below the
-    // threshold, stay with the simple loop structure.
-    if ((cols == 1) ||
-        (rows + cols) * depth < cache_friendly_traversal_threshold) {
-      return LoopStructure::kSimple;
-    }
+  if (tentative_thread_count == 1 &&
+      (rows + cols) * depth < cache_friendly_traversal_threshold) {
+    return LoopStructure::kSimple;
   }
   return LoopStructure::kGeneral;
 }
@@ -275,10 +271,7 @@ LoopStructure GetLoopStructure(int tentative_thread_count, int rows, int cols,
 }  // namespace
 
 void TrMul(TrMulParams* params, Context* context) {
-  profiler::ScopeLabel label(
-      "TrMul (Path=0x%x, max_num_threads=%d, is_prepacked=(%d,%d))",
-      static_cast<int>(params->path), context->max_num_threads,
-      params->is_prepacked[Side::kLhs], params->is_prepacked[Side::kRhs]);
+  gemmlowp::ScopedProfilingLabel label("TrMul");
 
   PMatrix& packed_lhs = params->packed[Side::kLhs];
   PMatrix& packed_rhs = params->packed[Side::kRhs];
@@ -307,7 +300,7 @@ void TrMul(TrMulParams* params, Context* context) {
   // of this function is just an optimized, but functionally equivalent,
   // version of that.
   if (loop_structure == LoopStructure::kSimple) {
-    profiler::ScopeLabel label_simple("TrMulImpl, simple loop");
+    gemmlowp::ScopedProfilingLabel label_simple("TrMulImpl, simple loop");
     Tuning tuning = context->GetMainThreadTuning();
 
     const SidePair<int> origin{0, 0};
@@ -324,7 +317,7 @@ void TrMul(TrMulParams* params, Context* context) {
     return;
   }
 
-  profiler::ScopeLabel label_general("TrMulImpl, general case");
+  gemmlowp::ScopedProfilingLabel label_general("TrMulImpl, general case");
 
   auto* trace = NewTraceOrNull(&context->tracing, rows, depth, cols);
   TraceRecordStart(trace);

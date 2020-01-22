@@ -391,4 +391,8 @@ public final class Tensor {
   private static native int index(long handle);
 
   private static native String name(long handle);
+
+  static {
+    TensorFlowLite.init();
+  }
 }

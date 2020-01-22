@@ -17,8 +17,6 @@ syntax = "proto2";
 
 package tflite.evaluation;
 
-import "tensorflow/lite/tools/evaluation/proto/preprocessing_steps.proto";
-
 option cc_enable_arenas = true;
 option java_multiple_files = true;
 option java_package = "tflite.evaluation";
@@ -91,12 +89,26 @@ message ProcessMetrics {
 
 // Parameters that define how images are preprocessed.
 //
-// Next ID: 3
+// Next ID: 7
 message ImagePreprocessingParams {
   // Required.
-  repeated ImagePreprocessingStepParams steps = 1;
+  optional int32 image_height = 1;
+  // Required.
+  optional int32 image_width = 2;
   // Same as tflite::TfLiteType.
-  required int32 output_type = 2;
+  optional int32 output_type = 3;
+  // Fraction for central-cropping.
+  // A central cropping-fraction of 0.875 is considered best for Inception
+  // models, hence the default value. See:
+  // https://github.com/tensorflow/tpu/blob/master/models/experimental/inception/inception_preprocessing.py#L296
+  // Set to 0 to disable cropping.
+  optional float cropping_fraction = 4 [default = 0.875];
+  // Set this flag if the image is preprocessed and saved as binary file.
+  // In that case, we only do the quantization if needed.
+  optional bool load_raw_images = 5 [default = false];
+  // If this flag is true, the resize function will preserve the image's
+  // aspect ratio.
+  optional bool aspect_preserving = 6 [default = false];
 }
 
 // Parameters that control TFLite inference.
@@ -198,7 +210,7 @@ message InferenceProfilerMetrics {
 // Proto containing information about all the objects (predicted or
 // ground-truth) contained in an image.
 //
-// Next ID: 4
+// Next ID: 3
 message ObjectDetectionResult {
   // One instance of an object detected in an image.
   // Next ID: 4
@@ -226,10 +238,8 @@ message ObjectDetectionResult {
   }
 
   repeated ObjectInstance objects = 1;
-  // Filename of the image.
+  // Required for ground-truth data, to compare against inference results.
   optional string image_name = 2;
-  // Unique id for the image.
-  optional int64 image_id = 3;
 }
 
 // Proto containing ground-truth ObjectsSets for all images in a COCO validation

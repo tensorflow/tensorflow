@@ -63,18 +63,20 @@ class Scope(object):
     bound: Set[qual_names.QN], names that are bound to this scope. See
       https://docs.python.org/3/reference/executionmodel.html#binding-of-names
       for a precise definition.
-    globals: Set[qual_names.QN], names that are explicitly marked as global in
-      this scope. Note that this doesn't include free read-only vars bound to
-      global symbols.
-    free_vars: Set[qual_names.QN], the free variables in this scope. See
-      https://docs.python.org/3/reference/executionmodel.html for a precise
-      definition.
+    free: Set[qual_names.QN], names that are free variables in the context of
+      this scpe. This property only matches Python's notion of free variables
+      for isolated scopes. For example, the scope tracking the body of an if
+      statement will count a variable that it used but not bound as free,
+      even if it's actually bound elsewhere in the enclosing function.
     params: WeakValueDictionary[qual_names.QN, ast.Node], function arguments
       visible in this scope, mapped to the function node that defines them.
     enclosing_scope: Scope, the innermost isolated scope that is a transitive
       parent of this scope. May be the scope itself.
     referenced: Set[qual_names.QN], the totality of the symbols used by this
       scope and its parents.
+    free_vars: Set[qual_names.QN], the free variables in this scope. See
+      https://docs.python.org/3/reference/executionmodel.html for a precise
+      definition.
     is_final: bool, whether the scope is frozen or not.
 
   Note - simple statements may never delete and modify a symbol at the same
@@ -104,7 +106,6 @@ class Scope(object):
     self.deleted = set()
 
     self.bound = set()
-    self.globals = set()
 
     self.params = weakref.WeakValueDictionary()
 
@@ -173,7 +174,6 @@ class Scope(object):
         self.parent.read.update(self.read)
         self.parent.modified.update(self.modified)
         self.parent.bound.update(self.bound)
-        self.parent.globals.update(self.globals)
       else:
         # TODO(mdan): This is not accurate.
         self.parent.read.update(self.read - self.bound)
@@ -303,11 +303,6 @@ class ActivityAnalyzer(transformer.Base):
     self._enter_scope(False)
     node = self.generic_visit(node)
     self._exit_and_record_scope(node)
-    return node
-
-  def visit_Global(self, node):
-    for name in node.names:
-      self.scope.globals.add(qual_names.QN(name))
     return node
 
   def visit_Expr(self, node):

@@ -36,8 +36,6 @@ namespace {
 struct TridiagonalSystemShape {
   const int64 rank;
   const int64 num_equations;
-  TridiagonalSystemShape(int64 rk, int64 num_eqs)
-      : rank(rk), num_equations(num_eqs) {}
 };
 
 Status CheckSecondToLastDimension(const Shape& op_shape, int64 rank,
@@ -111,7 +109,9 @@ StatusOr<TridiagonalSystemShape> CheckSystemAndReturnShape(XlaOp lower_diagonal,
   TF_RETURN_IF_ERROR(CheckSecondToLastDimension(upper_diagonal_shape, rank, 1,
                                                 "upper diagonal"));
 
-  return TridiagonalSystemShape(rank, num_equations);
+  TridiagonalSystemShape result = {.rank = rank,
+                                   .num_equations = num_equations};
+  return result;
 }
 
 XlaOp Coefficient(XlaOp operand, int64 i) {

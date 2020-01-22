@@ -49,12 +49,10 @@ def test_moment_matching(
   sample_moments = []
   expected_moments = []
   variance_sample_moments = []
+  x = samples.flat
   for i in range(1, number_moments + 1):
-    if len(samples.shape) == 2:
-      strided_range = samples.flat[::(i - 1) * stride + 1]
-    else:
-      strided_range = samples[::(i - 1) * stride + 1, ...]
-    sample_moments.append(np.mean(strided_range**i, axis=0))
+    strided_range = x[::(i - 1) * stride + 1]
+    sample_moments.append(np.mean(strided_range ** i))
     expected_moments.append(dist.moment(i))
     variance_sample_moments.append(
         (dist.moment(2 * i) - dist.moment(i) ** 2) / len(strided_range))
@@ -68,7 +66,8 @@ def test_moment_matching(
         i * np.finfo(samples.dtype).eps)
     tiny = np.finfo(samples.dtype).tiny
     assert np.all(total_variance > 0)
-    total_variance = np.where(total_variance < tiny, tiny, total_variance)
+    if total_variance < tiny:
+      total_variance = tiny
     # z_test is approximately a unit normal distribution.
     z_test_scores.append(abs(
         (sample_moments[i - 1] - expected_moments[i - 1]) / np.sqrt(

@@ -29,7 +29,6 @@ class EnvTime {
   static constexpr uint64 kMicrosToNanos = 1000ULL;
   static constexpr uint64 kMillisToMicros = 1000ULL;
   static constexpr uint64 kMillisToNanos = 1000ULL * 1000ULL;
-  static constexpr uint64 kNanosToPicos = 1000ULL;
   static constexpr uint64 kSecondsToMillis = 1000ULL;
   static constexpr uint64 kSecondsToMicros = 1000ULL * 1000ULL;
   static constexpr uint64 kSecondsToNanos = 1000ULL * 1000ULL * 1000ULL;
@@ -37,27 +36,20 @@ class EnvTime {
   EnvTime() = default;
   virtual ~EnvTime() = default;
 
+  /// \brief Returns a default impl suitable for the current operating
+  /// system.
+  ///
+  /// The result of Default() belongs to this library and must never be deleted.
+  static EnvTime* Default();
+
   /// \brief Returns the number of nano-seconds since the Unix epoch.
-  static uint64 NowNanos();
+  virtual uint64 NowNanos() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  static uint64 NowMicros() { return NowNanos() / kMicrosToNanos; }
+  virtual uint64 NowMicros() const { return NowNanos() / kMicrosToNanos; }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  static uint64 NowSeconds() { return NowNanos() / kSecondsToNanos; }
-
-  /// \brief A version of NowNanos() that may be overridden by a subclass.
-  virtual uint64 GetOverridableNowNanos() const { return NowNanos(); }
-
-  /// \brief A version of NowMicros() that may be overridden by a subclass.
-  virtual uint64 GetOverridableNowMicros() const {
-    return GetOverridableNowNanos() / kMicrosToNanos;
-  }
-
-  /// \brief A version of NowSeconds() that may be overridden by a subclass.
-  virtual uint64 GetOverridableNowSeconds() const {
-    return GetOverridableNowNanos() / kSecondsToNanos;
-  }
+  virtual uint64 NowSeconds() const { return NowNanos() / kSecondsToNanos; }
 };
 
 }  // namespace tensorflow

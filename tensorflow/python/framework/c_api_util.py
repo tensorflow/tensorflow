@@ -44,14 +44,12 @@ class ScopedTFGraph(object):
 
   def __init__(self):
     self.graph = c_api.TF_NewGraph()
-    # Note: when we're destructing the global context (i.e when the process is
-    # terminating) we may have already deleted other modules. By capturing the
-    # DeleteGraph function here, we retain the ability to cleanly destroy the
-    # graph at shutdown, which satisfies leak checkers.
-    self.deleter = c_api.TF_DeleteGraph
 
   def __del__(self):
-    self.deleter(self.graph)
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api is not None and c_api.TF_DeleteGraph is not None:
+      c_api.TF_DeleteGraph(self.graph)
 
 
 class ScopedTFImportGraphDefOptions(object):
@@ -85,16 +83,14 @@ class ScopedTFFunction(object):
 
   def __init__(self, func):
     self.func = func
-    # Note: when we're destructing the global context (i.e when the process is
-    # terminating) we may have already deleted other modules. By capturing the
-    # DeleteFunction function here, we retain the ability to cleanly destroy the
-    # Function at shutdown, which satisfies leak checkers.
-    self.deleter = c_api.TF_DeleteFunction
 
   def __del__(self):
-    if self.func is not None:
-      self.deleter(self.func)
-      self.func = None
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api is not None and c_api.TF_DeleteFunction is not None:
+      if self.func is not None:
+        c_api.TF_DeleteFunction(self.func)
+        self.func = None
 
 
 class ApiDefMap(object):

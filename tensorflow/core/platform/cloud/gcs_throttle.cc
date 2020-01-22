@@ -19,18 +19,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-EnvTime* get_default_env_time() {
-  static EnvTime* default_env_time = new EnvTime;
-  return default_env_time;
-}
-}  // namespace
-
 GcsThrottle::GcsThrottle(EnvTime* env_time)
-    : last_updated_secs_(env_time ? env_time->GetOverridableNowSeconds()
-                                  : EnvTime::NowSeconds()),
+    : last_updated_secs_(env_time->NowSeconds()),
       available_tokens_(0),
-      env_time_(env_time ? env_time : get_default_env_time()) {}
+      env_time_(env_time) {}
 
 bool GcsThrottle::AdmitRequest() {
   mutex_lock l(mu_);
@@ -52,12 +44,12 @@ void GcsThrottle::SetConfig(GcsThrottleConfig config) {
   mutex_lock l(mu_);
   config_ = config;
   available_tokens_ = config.initial_tokens;
-  last_updated_secs_ = env_time_->GetOverridableNowSeconds();
+  last_updated_secs_ = env_time_->NowSeconds();
 }
 
 void GcsThrottle::UpdateState() {
   // TODO(b/72643279): Switch to a monotonic clock.
-  int64 now = env_time_->GetOverridableNowSeconds();
+  int64 now = env_time_->NowSeconds();
   uint64 delta_secs =
       std::max(int64{0}, now - static_cast<int64>(last_updated_secs_));
   available_tokens_ += delta_secs * config_.token_rate;

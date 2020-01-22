@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 

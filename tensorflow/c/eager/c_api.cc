@@ -26,13 +26,10 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
-#include "absl/algorithm/container.h"
 #include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
-#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -40,10 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -67,26 +61,22 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-
+#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 
 using tensorflow::int64;
@@ -95,8 +85,10 @@ using tensorflow::string;
 namespace {
 
 const tensorflow::OpDef* GetOpDef(TFE_Op* op, TF_Status* status) {
-  const tensorflow::OpDef* op_def = op->operation.OpDef();
-  if (op_def) return op_def;
+  if (op->inference_ctx) {
+    return op->inference_ctx->op_def;
+  }
+  const tensorflow::OpDef* op_def;
   status->status =
       tensorflow::OpDefForOp(op->operation.Name().c_str(), &op_def);
   return op_def;
@@ -236,7 +228,7 @@ tensorflow::Status GetReplacedFromExistingWorkers(
   std::vector<tensorflow::eager::KeepAliveResponse> responses(
       existing_workers->size());
   for (int i = 0; i < existing_workers->size(); i++) {
-    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
+    tensorflow::eager::EagerClient* eager_client;
     statuses[i] =
         client_cache->GetClient(existing_workers->at(i), &eager_client);
     if (!statuses[i].ok()) {
@@ -269,7 +261,6 @@ tensorflow::Status CreateRemoteContexts(
     tensorflow::uint64 context_view_id, int keep_alive_secs,
     const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
-    const bool lazy_copy_remote_function_inputs,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
@@ -285,7 +276,7 @@ tensorflow::Status CreateRemoteContexts(
       continue;
     }
 
-    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
+    tensorflow::eager::EagerClient* eager_client;
     statuses[i] = remote_eager_workers->GetClient(remote_worker, &eager_client);
     if (eager_client == nullptr) {
       statuses[i] = tensorflow::errors::Internal(
@@ -306,8 +297,6 @@ tensorflow::Status CreateRemoteContexts(
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
-    request.set_lazy_copy_remote_function_inputs(
-        lazy_copy_remote_function_inputs);
 
     eager_client->CreateContextAsync(
         &request, response,
@@ -327,7 +316,7 @@ tensorflow::Status CreateRemoteContexts(
 tensorflow::Status UpdateRemoteContexts(
     const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
     tensorflow::uint64 context_view_id, const tensorflow::ServerDef& server_def,
-    tensorflow::eager::EagerClientCache* remote_eager_workers,
+    tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
@@ -343,7 +332,7 @@ tensorflow::Status UpdateRemoteContexts(
       continue;
     }
 
-    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
+    tensorflow::eager::EagerClient* eager_client;
     statuses[i] = remote_eager_workers->GetClient(remote_worker, &eager_client);
     if (eager_client == nullptr) {
       statuses[i] = tensorflow::errors::Internal(
@@ -409,7 +398,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   // New server created for new server_def. Unused if updating server_def.
   std::unique_ptr<tensorflow::ServerInterface> new_server;
-  tensorflow::EagerContext* context = ctx->context;
   tensorflow::GrpcServer* grpc_server;
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
@@ -417,25 +405,26 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(
         ListRemoteWorkers(grpc_server, worker_name, &remote_workers));
   } else {
-    LOG_AND_RETURN_IF_ERROR(ListRemoteWorkers(context->GetServer(), worker_name,
-                                              &curr_remote_workers));
+    LOG_AND_RETURN_IF_ERROR(ListRemoteWorkers(
+        ctx->context->GetServer(), worker_name, &curr_remote_workers));
     // No need to check the cast here, since `ListRemoteWorkers` already checks
     // if the server is a GRPC server or not.
-    grpc_server = dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
+    grpc_server =
+        dynamic_cast<tensorflow::GrpcServer*>(ctx->context->GetServer());
     LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
     LOG_AND_RETURN_IF_ERROR(
         ListRemoteWorkers(grpc_server, worker_name, &remote_workers));
   }
 
-  tensorflow::uint64 context_id = context->GetContextId();
-  tensorflow::uint64 context_view_id = context->GetContextViewId();
+  tensorflow::uint64 context_id = ctx->context->GetContextId();
+  tensorflow::uint64 context_view_id = ctx->context->GetContextViewId();
   if (reset_context) {
     context_id = tensorflow::EagerContext::NewContextId();
     context_view_id = 0;
     // Make master eager context accessible by local eager service, which might
     // receive send tensor requests from remote workers.
-    LOG_AND_RETURN_IF_ERROR(
-        grpc_server->AddMasterEagerContextToEagerService(context_id, context));
+    LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
+        context_id, ctx->context));
   }
 
   std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
@@ -464,11 +453,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         &new_remote_device_mgr));
     remote_device_mgr = new_remote_device_mgr.get();
   } else {
-    context->ClearCachesAndDefaultExecutor();
-    // TODO(b/143914772): Potential memory leak if rendezvous has pending
-    // tensors for removed / replaced workers.
+    ctx->context->ClearCaches();
+    grpc_server->worker_env()->rendezvous_mgr->Cleanup(context_id);
 
-    remote_device_mgr = context->GetOwnedRemoteDeviceMgr();
+    remote_device_mgr = ctx->context->GetOwnedRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
       LOG_AND_RETURN_IF_ERROR(tensorflow::errors::InvalidArgument(
           "Updating context with an invalid set of remote devices."));
@@ -479,8 +467,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
                              &added_workers, &removed_workers,
                              &existing_workers);
     LOG_AND_RETURN_IF_ERROR(GetReplacedFromExistingWorkers(
-        &existing_workers, context_id, context->GetContextViewId(), server_def,
-        remote_eager_workers.get(), &replaced_workers));
+        &existing_workers, context_id, ctx->context->GetContextViewId(),
+        server_def, remote_eager_workers.get(), &replaced_workers));
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "Updating cluster with following changes";
       for (const string& w : added_workers) VLOG(1) << "  Added worker " << w;
@@ -516,7 +504,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   grpc_server->worker_env()->device_mgr->ListDeviceAttributes(
       &local_device_attributes);
 
-  // This request make sure that we can create Rendezvous properly between
+  // This request make sure that we can create Rendevzous properly between
   // Local and Remote context.
   tensorflow::eager::CreateContextRequest base_request;
   for (const auto& da : cluster_device_attributes) {
@@ -534,8 +522,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
         remote_workers, context_id, context_view_id, keep_alive_secs,
-        server_def, remote_eager_workers.get(), context->Executor().Async(),
-        context->LazyCopyFunctionRemoteInputs(), base_request));
+        server_def, remote_eager_workers.get(),
+        ctx->context->Executor().Async(), base_request));
   } else {
     // The master's context_view_id will be incremented by one
     // the UpdateRemoteMaster call later. We want all new workers and
@@ -544,8 +532,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     // context_view_id + 1.
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
         added_workers, context_id, context_view_id + 1, keep_alive_secs,
-        server_def, remote_eager_workers.get(), context->Executor().Async(),
-        context->LazyCopyFunctionRemoteInputs(), base_request));
+        server_def, remote_eager_workers.get(),
+        ctx->context->Executor().Async(), base_request));
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
         for (const string& w : existing_workers) {
@@ -554,63 +542,124 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       }
       LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
           existing_workers, context_id, context_view_id + 1, server_def,
-          remote_eager_workers.get(), base_request));
+          remote_eager_workers.get(), ctx->context->Executor().Async(),
+          base_request));
     }
   }
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
+
   auto session_name = tensorflow::strings::StrCat("eager_", context_id);
-  auto* device_mgr = grpc_server->worker_env()->device_mgr;
+  TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
+      session_name, server_def, base_request.cluster_device_attributes(),
+      true));
+
   std::shared_ptr<tensorflow::WorkerSession> worker_session;
+  TF_RETURN_IF_ERROR(
+      grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
+          session_name, &worker_session));
+
+  // Initialize remote tensor communication based on worker session.
+  TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+
+  auto* device_mgr = grpc_server->worker_env()->device_mgr;
+  auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
+      /*is_master=*/true, ctx->context);
 
   if (reset_context) {
-    TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
-        session_name, server_def, base_request.cluster_device_attributes(),
-        true));
-    TF_RETURN_IF_ERROR(
-        grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
-            session_name, &worker_session));
-
-    // Initialize remote tensor communication based on worker session.
-    TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
-
-    tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
-        tensorflow::eager::CreateClusterFLR(context_id, context,
-                                            worker_session.get());
-    auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
-        /*is_master=*/true, context);
-
-    LOG_AND_RETURN_IF_ERROR(context->InitializeRemoteMaster(
+    LOG_AND_RETURN_IF_ERROR(ctx->context->InitializeRemoteMaster(
         std::move(new_server), grpc_server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
-        remote_workers, context_id, r, device_mgr, keep_alive_secs, cluster_flr,
-        std::move(remote_mgr)));
-
-    // NOTE: We start the server after all other initialization, because the
-    // GrpcServer cannot be destroyed after it is started.
-    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+        remote_workers, context_id, r, device_mgr, keep_alive_secs,
+        worker_session->cluster_flr(), std::move(remote_mgr)));
   } else {
-    LOG_AND_RETURN_IF_ERROR(
-        grpc_server->worker_env()->session_mgr->UpdateSession(
-            session_name, server_def, base_request.cluster_device_attributes(),
-            true));
-    TF_RETURN_IF_ERROR(
-        grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
-            session_name, &worker_session));
-    tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
-        tensorflow::eager::CreateClusterFLR(context_id, context,
-                                            worker_session.get());
-    LOG_AND_RETURN_IF_ERROR(context->UpdateRemoteMaster(
-        grpc_server->worker_env(), std::move(remote_eager_workers),
-        added_workers, removed_workers, context_id, r, device_mgr,
-        keep_alive_secs, cluster_flr));
+    LOG_AND_RETURN_IF_ERROR(ctx->context->UpdateRemoteMaster(
+        grpc_server->worker_env(), worker_session,
+        std::move(remote_eager_workers), added_workers, removed_workers,
+        context_id, r, device_mgr, keep_alive_secs,
+        worker_session->cluster_flr()));
   }
+
+  // NOTE: We start the server after all other initialization, because the
+  // GrpcServer cannot be destroyed after it is started.
+  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 #undef LOG_AND_RETURN_IF_ERROR
 
   return tensorflow::Status::OK();
 }
 #endif  // !IS_MOBILE_PLATFORM
+
+tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
+                                           TFE_TensorHandle* input) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
+  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
+  if (!input_def.number_attr().empty() || !input_def.type_list_attr().empty()) {
+    // Some clients that are still setting their input attributes manually are
+    // adding input list to their op by calling `TFE_OpAddInput` for each of
+    // its elements instead of calling `TFE_OpAddInputList`. When this happens,
+    // we cannot detect the end of such list, thus lose track of the input
+    // arguments in the op definition. To guarantee backward compatibility with
+    // those clients, disable automatic inference in this case.
+    op->inference_ctx.reset(nullptr);
+    return tensorflow::Status::OK();
+  }
+  const std::string& type_attr = input_def.type_attr();
+  if (!type_attr.empty() && ictx->attrs.find(type_attr) == ictx->attrs.end()) {
+    op->operation.MutableAttrs()->Set(type_attr, input->handle->dtype);
+    ictx->attrs.insert(type_attr);
+  }
+  return tensorflow::Status::OK();
+}
+
+void OpInferSingleTypeInputListAttrs(TFE_Op* op,
+                                     const tensorflow::OpDef::ArgDef& input_def,
+                                     TFE_TensorHandle** inputs,
+                                     int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
+  if (ictx->attrs.find(input_def.number_attr()) == ictx->attrs.end()) {
+    op->operation.MutableAttrs()->Set(input_def.number_attr(), num_inputs);
+    ictx->attrs.insert(input_def.number_attr());
+  }
+  if (ictx->attrs.find(input_def.type_attr()) == ictx->attrs.end()) {
+    op->operation.MutableAttrs()->Set(input_def.type_attr(),
+                                      inputs[0]->handle->dtype);
+    ictx->attrs.insert(input_def.type_attr());
+  }
+}
+
+void OpInferMixedTypeInputListAttrs(TFE_Op* op,
+                                    const tensorflow::OpDef::ArgDef& input_def,
+                                    TFE_TensorHandle** inputs, int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
+  if (ictx->attrs.find(input_def.type_list_attr()) == ictx->attrs.end()) {
+    std::unique_ptr<tensorflow::DataType[]> dtypes(
+        new tensorflow::DataType[num_inputs]);
+    for (int i = 0; i < num_inputs; ++i) {
+      dtypes[i] = inputs[i]->handle->dtype;
+    }
+    op->operation.MutableAttrs()->Set(
+        input_def.type_list_attr(),
+        tensorflow::gtl::ArraySlice<const tensorflow::DataType>(dtypes.get(),
+                                                                num_inputs));
+    ictx->attrs.insert(input_def.type_list_attr());
+  }
+}
+
+tensorflow::Status OpInferInputListAttrs(TFE_Op* op, TFE_TensorHandle** inputs,
+                                         int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
+  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
+  if (!input_def.type_list_attr().empty()) {
+    OpInferMixedTypeInputListAttrs(op, input_def, inputs, num_inputs);
+  } else if (!input_def.type_attr().empty() &&
+             !input_def.number_attr().empty()) {
+    OpInferSingleTypeInputListAttrs(op, input_def, inputs, num_inputs);
+  } else {
+    return tensorflow::errors::InvalidArgument("Invalid input list definition");
+  }
+  return tensorflow::Status::OK();
+}
 
 }  // namespace
 
@@ -647,14 +696,11 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
 
-  return new TFE_Context{new tensorflow::EagerContext(
-      opts->session_options.options,
-      static_cast<tensorflow::ContextDevicePlacementPolicy>(
-          opts->device_placement_policy),
-      static_cast<tensorflow::ContextMirroringPolicy>(opts->mirroring_policy),
-      opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
-      /*device_mgr_owned*/ true, r,
-      tensorflow::GetDefaultCustomKernelCreator())};
+  return new TFE_Context(opts->session_options.options,
+                         opts->device_placement_policy, opts->mirroring_policy,
+                         opts->async, device_mgr.release(),
+                         /*device_mgr_owned*/ true, r,
+                         tensorflow::GetDefaultCustomKernelCreator());
 }
 
 TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
@@ -665,33 +711,24 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr);
 
-  return new TFE_Context{new tensorflow::EagerContext(
-      opts->session_options.options,
-      static_cast<tensorflow::ContextDevicePlacementPolicy>(
-          opts->device_placement_policy),
-      static_cast<tensorflow::ContextMirroringPolicy>(opts->mirroring_policy),
-      opts->async, opts->lazy_remote_inputs_copy, device_mgr,
-      /*device_mgr_owned*/ false, r,
-      tensorflow::GetDefaultCustomKernelCreator())};
+  return new TFE_Context(opts->session_options.options,
+                         opts->device_placement_policy, opts->mirroring_policy,
+                         opts->async, device_mgr, /*device_mgr_owned*/ false, r,
+                         tensorflow::GetDefaultCustomKernelCreator());
 }
 
-void TFE_DeleteContext(TFE_Context* ctx) {
-  // context->RefCountIsOne() should be true here.
-  // TODO(iga): Remove EagerContext refcounting.
-  ctx->context->Unref();
-
-  delete ctx;
-}
+void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
-  TF_DeviceList* l = new TF_DeviceList;
-  ctx->context->ListDevices(&l->response);
-  return l;
+  TF_DeviceList* list = new TF_DeviceList;
+  ctx->context->local_device_mgr()->ListDeviceAttributes(&list->response);
+  if (ctx->context->remote_device_mgr()) {
+    ctx->context->remote_device_mgr()->ListDeviceAttributes(&list->response);
+  }
+  return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx) {
-  ctx->context->ClearCachesAndThreadExecutors();
-}
+void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context->ClearCaches(); }
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
@@ -739,64 +776,6 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
 #endif  // !IS_MOBILE_PLATFORM
 }
 
-TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
-                                                 const char* worker_name,
-                                                 TF_Status* status) {
-#if defined(IS_MOBILE_PLATFORM)
-  status->status = tensorflow::errors::Unimplemented(
-      "TFE_ContextSetServerDef not supported on mobile");
-  return false;
-#else   // !defined(IS_MOBILE_PLATFORM)
-  tensorflow::EagerContext* context = ctx->context;
-  tensorflow::GrpcServer* grpc_server =
-      static_cast<tensorflow::GrpcServer*>(context->GetServer());
-
-  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
-  status->status = grpc_server->master_env()->worker_cache->GetEagerClientCache(
-      &remote_eager_workers);
-  if (!status->status.ok()) {
-    LOG(ERROR) << "Failed to get client cache for remote workers.";
-    return false;
-  }
-
-  // TODO(yuefengz): support partially specified `worker_name`.
-  tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
-  status->status = remote_eager_workers->GetClient(worker_name, &eager_client);
-  if (!status->status.ok()) {
-    return false;
-  }
-
-  // Send a rpc request to the worker to check aliveness.
-  tensorflow::eager::KeepAliveRequest request;
-  request.set_context_id(context->GetContextId());
-  tensorflow::eager::KeepAliveResponse response;
-
-  tensorflow::Status keep_alive_status;
-  tensorflow::Notification done;
-  eager_client->KeepAliveAsync(
-      &request, &response,
-      [&keep_alive_status, &done](const tensorflow::Status& s) {
-        keep_alive_status = s;
-        done.Notify();
-      });
-  done.WaitForNotification();
-
-  status->status = tensorflow::Status::OK();
-
-  // If `context_id` doesn't exist on the remote worker, an InvalidArgument
-  // error will return. But this still indicates that the remote worker is
-  // alive.
-  if (keep_alive_status.ok() ||
-      keep_alive_status.code() == tensorflow::error::INVALID_ARGUMENT) {
-    return true;
-  } else {
-    LOG(INFO) << "Remote worker " << worker_name
-              << " is not alive: " << keep_alive_status.error_message();
-    return false;
-  }
-#endif  // !IS_MOBILE_PLATFORM
-}
-
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
     TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
   ctx->context->SetThreadLocalDevicePlacementPolicy(
@@ -821,182 +800,108 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   if (h == nullptr) return;
-  tensorflow::profiler::TraceMe activity(
-      "TFE_DeleteTensorHandle", tensorflow::profiler::TraceMeLevel::kInfo);
+  VLOG(1) << "Deleting tensor handle " << h << " with internal handle "
+          << h->handle;
+  if (h->handle) {
+    h->handle->Unref();
+  }
   delete h;
 }
 
-tensorflow::TensorHandleInterface::~TensorHandleInterface() {
-  VLOG(1) << "Deleting tensor handle " << this << " with internal handle "
-          << handle_;
-  if (handle_) {
-    handle_->Unref();
-  }
-}
-
-bool tensorflow::TensorHandleInterface::IsValid(Status* status) const {
-  if (handle_ == nullptr) {
-    *status = tensorflow::errors::InvalidArgument(
-        "The passed in handle is a nullptr");
-    return false;
-  }
-
-  return true;
-}
-
 TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h) {
-  return h->handle->DataType();
-}
-
-TF_DataType tensorflow::TensorHandleInterface::DataType() const {
-  return static_cast<TF_DataType>(handle_->dtype);
+  return static_cast<TF_DataType>(h->handle->dtype);
 }
 
 int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr) {
+  if (h == nullptr || h->handle == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "The passed in handle is a nullptr");
     return -1;
   }
-
-  return h->handle->NumDims(&status->status);
-}
-
-int tensorflow::TensorHandleInterface::NumDims(Status* status) const {
-  if (!IsValid(status)) {
-    return -1;
-  }
-
   int result;
-  *status = handle_->NumDims(&result);
+  status->status = h->handle->NumDims(&result);
   return result;
 }
 
 int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr) {
+  if (h == nullptr || h->handle == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "The passed in handle is a nullptr");
     return -1;
   }
-
-  return h->handle->NumElements(&status->status);
-}
-
-int64_t tensorflow::TensorHandleInterface::NumElements(Status* status) const {
-  if (!IsValid(status)) {
-    return -1;
-  }
-
   tensorflow::int64 result;
-  *status = handle_->NumElements(&result);
+  status->status = h->handle->NumElements(&result);
   return result;
 }
 
 int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
                             TF_Status* status) {
-  if (h == nullptr) {
+  if (h == nullptr || h->handle == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "The passed in handle is a nullptr");
     return -1;
   }
-
-  return h->handle->Dim(dim_index, &status->status);
-}
-
-int64_t tensorflow::TensorHandleInterface::Dim(int dim_index,
-                                               Status* status) const {
-  if (!IsValid(status)) {
-    return -1;
-  }
-
   tensorflow::int64 result;
-  *status = handle_->Dim(dim_index, &result);
+  status->status = h->handle->Dim(dim_index, &result);
   return result;
 }
 
 const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr) {
+  if (h == nullptr || h->handle == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "The passed in handle is a nullptr");
     return nullptr;
   }
-  return h->handle->DeviceName(&status->status);
-}
-
-const char* tensorflow::TensorHandleInterface::DeviceName(
-    Status* status) const {
-  if (!IsValid(status)) {
-    return nullptr;
-  }
-  tensorflow::Device* d = handle_->op_device();
+  tensorflow::Device* d = h->handle->op_device();
   return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                         : d->name().c_str();
 }
 
 const char* TFE_TensorHandleBackingDeviceName(TFE_TensorHandle* h,
                                               TF_Status* status) {
-  if (h == nullptr) {
+  if (h == nullptr || h->handle == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "The passed in handle is a nullptr");
     return nullptr;
   }
-  return h->handle->BackingDeviceName(&status->status);
-}
-
-const char* tensorflow::TensorHandleInterface::BackingDeviceName(
-    Status* status) const {
-  if (!IsValid(status)) {
-    return nullptr;
-  }
-  tensorflow::Device* d = handle_->device();
+  tensorflow::Device* d = h->handle->device();
   return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                         : d->name().c_str();
 }
 
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
     TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr || !h->handle->IsValid(&status->status)) {
+  if (h == nullptr || h->handle == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "The passed in handle is a nullptr");
     return nullptr;
   }
 
-  return new TFE_TensorHandle{
-      std::unique_ptr<AbstractTensorHandleInterface>(h->handle->Copy())};
-}
+  h->handle->Ref();
 
-AbstractTensorHandleInterface* tensorflow::TensorHandleInterface::Copy() {
-  handle_->Ref();
-  return new TensorHandleInterface(handle_);
+  return new TFE_TensorHandle(h->handle);
 }
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr) {
+  if (h == nullptr || h->handle == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "The passed in handle is a nullptr");
     return nullptr;
   }
-
-  return h->handle->Resolve(&status->status);
-}
-
-TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
-  if (!IsValid(status)) {
-    return nullptr;
-  }
+  tensorflow::TensorHandle* handle = h->handle;
 
   // TODO(agarwal): move this implementation inside TFE_TensorHandle.
-  if (handle_->IsRemote()) {
+  if (handle->IsRemote()) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* h_cpu = nullptr;
-    *status = EagerCopyToDevice(handle_, handle_->Context(),
-                                &handle_->Context()->Executor(),
-                                handle_->Context()->HostCPU(), false, &h_cpu);
-    if (!status->ok()) {
+    status->status = EagerCopyToDevice(
+        handle, handle->Context(), &handle->Context()->Executor(),
+        handle->Context()->HostCPU(), false, &h_cpu);
+    if (!status->status.ok()) {
       return nullptr;
     }
-    *status = h_cpu->Tensor(&t);
-    if (!status->ok()) {
+    status->status = h_cpu->Tensor(&t);
+    if (!status->status.ok()) {
       h_cpu->Unref();
       return nullptr;
     }
@@ -1005,133 +910,25 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
     return retval;
   } else {
     tensorflow::Tensor tensor;
-    if (IsCPU(handle_->device())) {
+    if (IsCPU(handle->device())) {
       const tensorflow::Tensor* src = nullptr;
-      *status = handle_->Tensor(&src);
-      if (!status->ok()) return nullptr;
+      status->status = handle->Tensor(&src);
+      if (!status->status.ok()) return nullptr;
       tensor = *src;
     } else {
-      tensorflow::EagerContext* ctx = handle_->Context();
+      tensorflow::EagerContext* ctx = handle->Context();
       CHECK_NE(ctx, nullptr);
-      *status = handle_->CopyToDevice(*ctx, ctx->HostCPU(), &tensor);
-      if (!status->ok()) return nullptr;
+      status->status = h->handle->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
+      if (!status->status.ok()) return nullptr;
     }
     return tensorflow::TF_TensorFromTensor(tensor, status);
   }
 }
 
-void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr || !h->handle->IsValid(&status->status)) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "The passed in handle is a nullptr");
-    return nullptr;
-  }
-  tensorflow::TensorHandle* handle =
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle();
-
-  if (handle->IsRemote()) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "TFE_TensorHandleDevicePointer may not be called on a remote tensor "
-        "handle.");
-    return nullptr;
-  }
-  if (handle->device() != nullptr) {
-    status->status = handle->device()->Sync();
-    if (!status->status.ok()) {
-      return nullptr;
-    }
-  }
-  const tensorflow::Tensor* tensor;
-  status->status = handle->Tensor(&tensor);
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-  return const_cast<void*>(
-      static_cast<const void*>(tensor->tensor_data().data()));
-}
-
-TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
-    TFE_Context* ctx, const char* device_name, TF_DataType dtype,
-    const int64_t* dims, int num_dims, void* data, size_t len,
-    void (*deallocator)(void* data, size_t len, void* arg),
-    void* deallocator_arg, TF_Status* status) {
-  tensorflow::Device* device;
-  tensorflow::EagerContext* context = ctx->context;
-  status->status = context->FindDeviceFromName(device_name, &device);
-  if (!status->status.ok()) {
-    deallocator(data, len, deallocator_arg);
-    return nullptr;
-  }
-  std::vector<tensorflow::int64> dimvec(num_dims);
-  for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
-  }
-
-  if (dtype == TF_STRING || dtype == TF_RESOURCE ||
-      !tensorflow::DataTypeCanUseMemcpy(
-          static_cast<tensorflow::DataType>(dtype))) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Trying to create a tensor with a pointer to non-pod memory.");
-    deallocator(data, len, deallocator_arg);
-    return nullptr;
-  }
-  // TODO(apassos) do we need to wrap the deallocator here to make sure to sync
-  // the device?
-  TF_ManagedBuffer* buf =
-      new TF_ManagedBuffer(data, len, deallocator, deallocator_arg);
-
-  tensorflow::Tensor t(static_cast<tensorflow::DataType>(dtype),
-                       tensorflow::TensorShape(dimvec), buf);
-  buf->Unref();
-  tensorflow::TensorHandle* ret_handle;
-  status->status = tensorflow::TensorHandle::CreateLocalHandle(
-      t, device, context, &ret_handle);
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-  return new TFE_TensorHandle{
-      std::make_unique<tensorflow::TensorHandleInterface>(ret_handle)};
-}
-
-// This function will block till the operation that produces `h` has
-// completed. This is only valid on local TFE_TensorHandles. Returns the size in
-// bytes of the memory pointed to by the device pointer returned above.
-size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
-                                        TF_Status* status) {
-  if (h == nullptr || !h->handle->IsValid(&status->status)) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "The passed in handle is a nullptr");
-    return 0;
-  }
-  tensorflow::TensorHandle* handle =
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle();
-
-  if (handle->IsRemote()) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "TFE_TensorHandleDeviceMemorySize may not be called on a remote tensor "
-        "handle.");
-    return 0;
-  }
-  const tensorflow::Tensor* tensor;
-  status->status = handle->Tensor(&tensor);
-  if (!status->status.ok()) {
-    return 0;
-  }
-  return tensor->TotalBytes();
-}
-
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
-  std::unique_ptr<TFE_Op> new_op(
-      new TFE_Op{tensorflow::EagerOperation(ctx->context)});
-  status->status =
-      new_op->operation.Reset(op_or_function_name, nullptr, false, nullptr);
-  if (!status->status.ok()) {
-    new_op.reset();
-  }
-  return new_op.release();
+  return NewOrResetOp(ctx, op_or_function_name, status,
+                      /* op_to_reset= */ nullptr);
 }
 
 void TFE_DeleteOp(TFE_Op* op) { delete op; }
@@ -1142,7 +939,7 @@ void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
   tensorflow::Device* device = (op->operation.Device() == nullptr)
-                                   ? op->operation.EagerContext().HostCPU()
+                                   ? op->operation.EagerContext()->HostCPU()
                                    : op->operation.Device();
   return device->name().c_str();
 }
@@ -1156,23 +953,20 @@ void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
-  tensorflow::TensorHandle* h =
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-          input->handle.get())
-          ->Handle();
-  op->operation.AddInput(h);
-  status->status = op->operation.MaybeInferSingleInputAttrs(h);
+  op->operation.AddInput(input->handle);
+  if (op->inference_ctx) {
+    status->status = OpInferSingleInputAttrs(op, input);
+  }
 }
 
 void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
                         TF_Status* status) {
   for (int i = 0; i < num_inputs; ++i) {
-    op->operation.AddInput(
-        tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-            inputs[i]->handle.get())
-            ->Handle());
+    op->operation.AddInput(inputs[i]->handle);
   }
-  status->status = op->operation.InferInputListAttrs(num_inputs);
+  if (op->inference_ctx) {
+    status->status = OpInferInputListAttrs(op, inputs, num_inputs);
+  }
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
@@ -1405,16 +1199,15 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  absl::FixedArray<tensorflow::TensorHandle*> handle_retvals(*num_retvals);
   VLOG(1) << "Calling TFE_Execute() on op " << op;
+  absl::FixedArray<tensorflow::TensorHandle*> handle_retvals(*num_retvals);
   status->status = tensorflow::EagerExecute(&op->operation,
                                             handle_retvals.data(), num_retvals);
   if (!status->status.ok()) {
     return;
   }
   for (int i = 0; i < *num_retvals; ++i) {
-    retvals[i] = new TFE_TensorHandle{
-        std::make_unique<tensorflow::TensorHandleInterface>(handle_retvals[i])};
+    retvals[i] = new TFE_TensorHandle(handle_retvals[i]);
   }
 }
 
@@ -1424,18 +1217,15 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TF_Status* status) {
   tensorflow::TensorHandle* handle = nullptr;
   tensorflow::Device* device;
-  tensorflow::EagerContext* context = ctx->context;
-  status->status = context->FindDeviceFromName(device_name, &device);
+  status->status = ctx->context->FindDeviceFromName(device_name, &device);
   if (!status->status.ok()) {
     return nullptr;
   }
-  status->status = tensorflow::EagerCopyToDevice(
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle(),
-      context, &context->Executor(), device, false, &handle);
+  status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
+                                                 &ctx->context->Executor(),
+                                                 device, false, &handle);
   if (status->status.ok()) {
-    return new TFE_TensorHandle{
-        std::make_unique<tensorflow::TensorHandleInterface>(handle)};
+    return new TFE_TensorHandle(handle);
   }
   return nullptr;
 }
@@ -1483,12 +1273,11 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
-  tensorflow::EagerContext* context = ctx->context;
-  status->status = context->Executor().WaitForAllPendingNodes();
+  status->status = ctx->context->Executor().WaitForAllPendingNodes();
   if (!status->status.ok()) return;
-  tensorflow::mutex_lock ml(*context->MetadataMu());
-  status->status = MessageToBuffer(*context->RunMetadataProto(), buf);
-  context->ClearRunMetadata();
+  tensorflow::mutex_lock ml(*ctx->context->MetadataMu());
+  status->status = MessageToBuffer(*ctx->context->RunMetadataProto(), buf);
+  ctx->context->ClearRunMetadata();
 }
 
 namespace {

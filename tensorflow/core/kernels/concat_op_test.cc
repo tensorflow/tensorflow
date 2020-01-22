@@ -35,30 +35,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-template <typename T>
-void FillTensorWithRandomValues(Tensor* t, int string_length, int64* bytes) {
-  t->flat<T>().setRandom();
-  *bytes = t->flat<T>().size() * sizeof(T);
-}
-
-template <>
-void FillTensorWithRandomValues<tstring>(Tensor* t, int string_length,
-                                         int64* bytes) {
-  auto ts = t->flat<tstring>();
-  *bytes = 0;
-  for (int i = 0; i < ts.size(); i++) {
-    ts(i) = tstring(string_length, 'x');
-    *bytes += sizeof(ts(i)) + ts(i).size();
-  }
-}
-
 // For the benchmark, we set up two 2-dimensional tensors, each kDim1 x 'dim'
-// in size, and concat them together along "concat_dimension".  If T is
-// std::string, then the length of individual strings in the tensors will be
-// of length "string_length".
+// in size, and concat them together along "concat_dimension"
 template <typename T>
-static void ConcatHelper(int iters, int concat_dimension, int dim2,
-                         int string_length = 0) {
+static void ConcatHelper(int iters, int concat_dimension, int dim2) {
   testing::StopTiming();
   Graph* g = new Graph(OpRegistry::Global());
 
@@ -67,10 +47,9 @@ static void ConcatHelper(int iters, int concat_dimension, int dim2,
   Tensor concat_dim(DT_INT32, TensorShape({}));
   concat_dim.scalar<int32>()() = concat_dimension;
   Tensor in0(dt, TensorShape({kDim1, dim2}));
+  in0.flat<T>().setRandom();
   Tensor in1(dt, TensorShape({kDim1, dim2}));
-  int64 in0_bytes, in1_bytes;
-  FillTensorWithRandomValues<T>(&in0, string_length, &in0_bytes);
-  FillTensorWithRandomValues<T>(&in1, string_length, &in1_bytes);
+  in1.flat<T>().setRandom();
 
   Node* node;
   TF_CHECK_OK(
@@ -81,7 +60,8 @@ static void ConcatHelper(int iters, int concat_dimension, int dim2,
           .Attr("T", dt)
           .Finalize(g, &node));
 
-  testing::BytesProcessed(static_cast<int64>(iters) * (in0_bytes + in1_bytes));
+  testing::BytesProcessed(static_cast<int64>(iters) *
+                          ((kDim1 * dim2) + (kDim1 * dim2)) * sizeof(T));
   testing::StartTiming();
   test::Benchmark("cpu", g).Run(iters);
   testing::UseRealTime();
@@ -97,15 +77,6 @@ static void BM_ConcatDim1Float(int iters, int dim2) {
 
 BENCHMARK(BM_ConcatDim0Float)->Arg(1000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_ConcatDim1Float)->Arg(1000)->Arg(100000)->Arg(1000000);
-
-static void BM_ConcatDim0String(int iters, int dim2, int string_length) {
-  ConcatHelper<tstring>(iters, 0, dim2, string_length);
-}
-
-BENCHMARK(BM_ConcatDim0String)
-    ->ArgPair(1, 16)
-    ->ArgPair(1, 10000)
-    ->ArgPair(100, 16);
 
 static void BM_ConcatDim1uint8(int iters, int dim2) {
   ConcatHelper<uint8>(iters, 1, dim2);

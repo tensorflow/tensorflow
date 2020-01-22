@@ -21,7 +21,7 @@ limitations under the License.
 #ifdef _WIN32
 #define timegm _mkgmtime
 #endif
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 

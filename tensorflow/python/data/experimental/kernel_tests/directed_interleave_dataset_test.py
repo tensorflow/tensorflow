@@ -17,24 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
-                                    parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
 
-  @combinations.generate(test_base.default_test_combinations())
   def testBasic(self):
     selector_dataset = dataset_ops.Dataset.range(10).repeat(100)
     input_datasets = [
@@ -78,7 +76,6 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
     return freqs
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasets(self):
     random_seed.set_random_seed(1619)
     num_samples = 5000
@@ -98,7 +95,6 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       freqs = self._testSampleFromDatasetsHelper(probs_ds, classes, num_samples)
       self.assertLess(self._chi2(probs, freqs / num_samples), 1e-2)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSelectFromDatasets(self):
     words = [b"foo", b"bar", b"baz"]
     datasets = [dataset_ops.Dataset.from_tensors(w).repeat() for w in words]
@@ -111,7 +107,6 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
-  @combinations.generate(test_base.default_test_combinations())
   def testErrors(self):
     with self.assertRaisesRegexp(ValueError,
                                  r"vector of length `len\(datasets\)`"):

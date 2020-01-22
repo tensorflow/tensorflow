@@ -50,15 +50,12 @@ class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
     """Return a ConversionParams for test."""
     conversion_params = super(ExcludeUnsupportedInt32Test,
                               self).GetConversionParams(run_params)
-    conversion_params._replace(max_batch_size=100, maximum_cached_engines=1)
-    rewrite_config_with_trt = self.GetTrtRewriterConfig(
-        run_params=run_params,
-        conversion_params=conversion_params,
+    return conversion_params._replace(
+        max_batch_size=100,
+        maximum_cached_engines=1,
         # Disable layout optimizer, since it will convert BiasAdd with NHWC
         # format to NCHW format under four dimentional input.
-        disable_non_trt_optimizers=True)
-    return conversion_params._replace(
-        rewriter_config_template=rewrite_config_with_trt)
+        rewriter_config_template=trt_test.OptimizerDisabledRewriterConfig())
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

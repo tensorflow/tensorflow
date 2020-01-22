@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_EXPENSIVE_OPERATION_CHECKER_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_EXPENSIVE_OPERATION_CHECKER_H_
 
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "tensorflow/core/profiler/internal/advisor/checker.h"
 
 namespace tensorflow {
@@ -31,12 +29,12 @@ class ExpensiveOperationChecker : public Checker {
   AdviceProto::Checker Check(const AdvisorOptionsProto::CheckerOption& options,
                              const TFStats* stats) override {
     if (!stats) {
-      absl::FPrintF(
-          stderr, "Missing profiles (e.g. graph, run_meta). Skip %s\n", name());
+      fprintf(stderr, "Missing profiles (e.g. graph, run_meta). Skip %s\n",
+              name().c_str());
       return reports_;
     }
     if (stats->steps().empty()) {
-      absl::FPrintF(stderr, "Missing RunMetadata info. Skip %s\n", name());
+      fprintf(stderr, "Missing RunMetadata info. Skip %s\n", name().c_str());
     }
     CheckOpView(stats);
     CheckScopeView(stats);
@@ -46,7 +44,7 @@ class ExpensiveOperationChecker : public Checker {
 
   void CheckOpView(const TFStats* stats) {
     if (stats->steps().empty()) {
-      absl::FPrintF(stderr, "Missing run_meta for %s\n", name());
+      fprintf(stderr, "Missing run_meta for %s\n", name().c_str());
       return;
     }
     Options opts(3, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, -1, "micros", {".*"}, {".*"},
@@ -59,20 +57,21 @@ class ExpensiveOperationChecker : public Checker {
     std::vector<string> outputs;
     for (int i = 0; i < 3 && node->children_size() > 0; ++i) {
       node = &node->children(0);
-      outputs.push_back(absl::StrFormat(
+      outputs.push_back(strings::Printf(
           "top %d operation type: %s, "
           "cpu: %s, accelerator: %s, total: %s (%.2f%%)",
-          i + 1, node->name(), FormatTime(node->cpu_exec_micros()),
-          FormatTime(node->accelerator_exec_micros()),
-          FormatTime(node->exec_micros()),
+          i + 1, node->name().c_str(),
+          FormatTime(node->cpu_exec_micros()).c_str(),
+          FormatTime(node->accelerator_exec_micros()).c_str(),
+          FormatTime(node->exec_micros()).c_str(),
           100.0 * node->exec_micros() / (root.total_exec_micros() + 1e-10)));
     }
-    reports_.add_reports(absl::StrJoin(outputs, "\n"));
+    reports_.add_reports(str_util::Join(outputs, "\n"));
   }
 
   void CheckCodeView(const TFStats* stats) {
     if (!stats->has_code_traces()) {
-      absl::FPrintF(stderr, "Missing op_log (code traces) for %s\n", name());
+      fprintf(stderr, "Missing op_log (code traces) for %s\n", name().c_str());
       return;
     }
     Options opts(100, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, -1, "micros", {".*"},
@@ -90,7 +89,7 @@ class ExpensiveOperationChecker : public Checker {
 
     std::vector<string> outputs;
     CodeViewHelper(node, 0, &outputs);
-    reports_.add_reports(absl::StrJoin(outputs, "\n"));
+    reports_.add_reports(str_util::Join(outputs, "\n"));
   }
 
   void CheckScopeView(const TFStats* stats) {
@@ -103,13 +102,13 @@ class ExpensiveOperationChecker : public Checker {
     std::vector<string> outputs;
     for (int i = 0; i < 3 && i < root.children_size(); ++i) {
       const GraphNodeProto& node = root.children(i);
-      outputs.push_back(absl::StrFormat(
+      outputs.push_back(strings::Printf(
           "top %d graph node: %s, cpu: %s, accelerator: %s, total: %s", i + 1,
-          node.name(), FormatTime(node.cpu_exec_micros()),
-          FormatTime(node.accelerator_exec_micros()),
-          FormatTime(node.exec_micros())));
+          node.name().c_str(), FormatTime(node.cpu_exec_micros()).c_str(),
+          FormatTime(node.accelerator_exec_micros()).c_str(),
+          FormatTime(node.exec_micros()).c_str()));
     }
-    reports_.add_reports(absl::StrJoin(outputs, "\n"));
+    reports_.add_reports(str_util::Join(outputs, "\n"));
   }
 
   void CodeViewHelper(const MultiGraphNodeProto* node, int depth,
@@ -122,12 +121,12 @@ class ExpensiveOperationChecker : public Checker {
       if (c->total_exec_micros() < 1000) {
         continue;
       }
-      outputs->push_back(
-          absl::StrFormat("%s%s, cpu: %s, accelerator: %s, total: %s",
-                          std::string(depth * 2, ' '), c->name(),
-                          FormatTime(c->total_cpu_exec_micros()),
-                          FormatTime(c->total_accelerator_exec_micros()),
-                          FormatTime(c->total_exec_micros())));
+      outputs->push_back(strings::Printf(
+          "%s%s, cpu: %s, accelerator: %s, total: %s",
+          string(depth * 2, ' ').c_str(), c->name().c_str(),
+          FormatTime(c->total_cpu_exec_micros()).c_str(),
+          FormatTime(c->total_accelerator_exec_micros()).c_str(),
+          FormatTime(c->total_exec_micros()).c_str()));
       CodeViewHelper(c, depth + 1, outputs);
     }
   }

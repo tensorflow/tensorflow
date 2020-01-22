@@ -16,13 +16,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
-
-void ReportError(TfLiteContext* context, const char* format, ...) {}
 
 TEST(SimpleMemoryArenaTest, BasicArenaOperations) {
   TfLiteContext context;
@@ -87,7 +84,7 @@ TEST(SimpleMemoryArenaTest, InterleavedZeroAlloc) {
   EXPECT_EQ(allocs[3].offset, 2048);
 }
 
-TEST(SimpleMemoryArenaTest, TestClearPlan) {
+TEST(SimpleMemoryArenaTest, TestAfterClear) {
   TfLiteContext context;
   SimpleMemoryArena arena(64);
   ArenaAlloc allocs[9];
@@ -101,7 +98,7 @@ TEST(SimpleMemoryArenaTest, TestClearPlan) {
   EXPECT_EQ(allocs[1].offset, 2048);
   EXPECT_EQ(allocs[2].offset, 4096);
 
-  arena.ClearPlan();
+  arena.Clear();
 
   // Test with smaller allocs.
   arena.Allocate(&context, 32, 1023, &allocs[3]);
@@ -113,7 +110,7 @@ TEST(SimpleMemoryArenaTest, TestClearPlan) {
   EXPECT_EQ(allocs[4].offset, 1024);
   EXPECT_EQ(allocs[5].offset, 2048);
 
-  arena.ClearPlan();
+  arena.Clear();
 
   // Test larger allocs which should require a reallocation.
   arena.Allocate(&context, 32, 4095, &allocs[6]);
@@ -124,85 +121,6 @@ TEST(SimpleMemoryArenaTest, TestClearPlan) {
   EXPECT_EQ(allocs[6].offset, 0);
   EXPECT_EQ(allocs[7].offset, 4096);
   EXPECT_EQ(allocs[8].offset, 8192);
-}
-
-TEST(SimpleMemoryArenaTest, TestClearBuffer) {
-  TfLiteContext context;
-  context.ReportError = ReportError;
-  SimpleMemoryArena arena(64);
-  ArenaAlloc allocs[9];
-
-  arena.Allocate(&context, 32, 2047, &allocs[0]);
-  arena.Allocate(&context, 32, 2047, &allocs[1]);
-
-  // Should be a no-op.
-  ASSERT_EQ(arena.ReleaseBuffer(), kTfLiteOk);
-
-  // Commit and ensure resolved pointers are not null.
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
-  char* resolved_ptr = nullptr;
-  ASSERT_EQ(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
-  EXPECT_NE(resolved_ptr, nullptr);
-  resolved_ptr = nullptr;
-  ASSERT_EQ(arena.ResolveAlloc(&context, allocs[1], &resolved_ptr), kTfLiteOk);
-  EXPECT_NE(resolved_ptr, nullptr);
-
-  ASSERT_EQ(arena.ReleaseBuffer(), kTfLiteOk);
-  // Base pointer should be null.
-  ASSERT_EQ(arena.BasePointer(), 0);
-
-  // Tensors cannot be resolved after ClearBuffer().
-  ASSERT_NE(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
-
-  // Commit again and ensure resolved pointers are not null.
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
-  ASSERT_NE(arena.BasePointer(), 0);
-  resolved_ptr = nullptr;
-  ASSERT_EQ(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
-  EXPECT_NE(resolved_ptr, nullptr);
-  resolved_ptr = nullptr;
-  ASSERT_EQ(arena.ResolveAlloc(&context, allocs[1], &resolved_ptr), kTfLiteOk);
-  EXPECT_NE(resolved_ptr, nullptr);
-}
-
-// Test parameterized by whether ClearBuffer() is called before ClearPlan(), or
-// vice versa.
-class BufferAndPlanClearingTest : public ::testing::Test,
-                                  public ::testing::WithParamInterface<bool> {};
-
-TEST_P(BufferAndPlanClearingTest, TestClearBufferAndClearPlan) {
-  TfLiteContext context;
-  context.ReportError = ReportError;
-  SimpleMemoryArena arena(64);
-  ArenaAlloc allocs[9];
-
-  arena.Allocate(&context, 32, 2047, &allocs[0]);
-  arena.Allocate(&context, 32, 2047, &allocs[1]);
-
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
-
-  if (GetParam()) {
-    ASSERT_EQ(arena.ReleaseBuffer(), kTfLiteOk);
-    ASSERT_EQ(arena.ClearPlan(), kTfLiteOk);
-  } else {
-    ASSERT_EQ(arena.ClearPlan(), kTfLiteOk);
-    ASSERT_EQ(arena.ReleaseBuffer(), kTfLiteOk);
-  }
-
-  // Just committing won't work, allocations need to be made again.
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
-  char* resolved_ptr = nullptr;
-  ASSERT_NE(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
-
-  // Re-allocate tensors & commit.
-  arena.Allocate(&context, 32, 2047, &allocs[0]);
-  arena.Allocate(&context, 32, 2047, &allocs[1]);
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
-
-  // Pointer-resolution now works.
-  resolved_ptr = nullptr;
-  ASSERT_EQ(arena.ResolveAlloc(&context, allocs[1], &resolved_ptr), kTfLiteOk);
-  EXPECT_NE(resolved_ptr, nullptr);
 }
 
 }  // namespace

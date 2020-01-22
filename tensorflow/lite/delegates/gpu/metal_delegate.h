@@ -16,25 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 
-#ifdef SWIG
-#define TFL_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TFL_COMPILE_LIBRARY
-#define TFL_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TFL_COMPILE_LIBRARY
-#else
-#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
+#import <Metal/Metal.h>
 
 #ifdef __cplusplus
 extern "C" {
-#else
-// For "C" 'bool' is not built-in type.
-#include <stdbool.h>
 #endif  // __cplusplus
 
 typedef struct TfLiteDelegate TfLiteDelegate;
@@ -65,11 +50,19 @@ typedef struct {
 // When `options` is set to `nullptr`, the following default values are used:
 // .precision_loss_allowed = false,
 // .wait_type = kPassive,
-TFL_CAPI_EXPORT extern TfLiteDelegate* TFLGpuDelegateCreate(
-    const TFLGpuDelegateOptions* options);
+TfLiteDelegate* TFLGpuDelegateCreate(const TFLGpuDelegateOptions* options);
 
 // Destroys a delegate created with `TFLGpuDelegateCreate` call.
-TFL_CAPI_EXPORT extern void TFLGpuDelegateDelete(TfLiteDelegate* delegate);
+void TFLGpuDelegateDelete(TfLiteDelegate* delegate);
+
+// Binds Metal buffer to an input or an output tensor in the initialized
+// delegate. Bound buffer should have sufficient storage to accommodate all
+// elements of a tensor. Returns non-zero on success, or zero otherwise.
+//
+// *** Must be called *before* `Interpreter::ModifyGraphWithDelegate`. ***
+bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate,
+                                           int tensor_index,
+                                           id<MTLBuffer> metal_buffer);
 
 #ifdef __cplusplus
 }  // extern "C"

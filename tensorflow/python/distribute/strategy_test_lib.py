@@ -344,7 +344,7 @@ class DistributionTestBase(test.TestCase):
                               test_reinitialize=True,
                               ignore_order=False):
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
-    evaluate(iterator.initializer)
+    evaluate(iterator.initialize())
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
@@ -362,7 +362,7 @@ class DistributionTestBase(test.TestCase):
 
     # After re-initializing the iterator, should be able to iterate again.
     if test_reinitialize:
-      evaluate(iterator.initializer)
+      evaluate(iterator.initialize())
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
@@ -414,7 +414,7 @@ class DistributionTestBase(test.TestCase):
       ds = ds.batch(batch_size, drop_remainder=drop_remainder)
       i = strategy.make_dataset_iterator(ds)
 
-      self.evaluate(i.initializer)
+      self.evaluate(i.initialize())
 
       def run_and_concatenate(strategy, i):
         x, y = strategy.experimental_run(lambda z: z, i)

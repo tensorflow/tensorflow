@@ -1,6 +1,5 @@
 op {
   graph_op_name: "SparseTensorToCSRSparseMatrix"
-  visibility: HIDDEN
   in_arg {
     name: "indices"
     description: "SparseTensor indices."

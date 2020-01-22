@@ -108,7 +108,6 @@ template <typename Scalar>
 struct Matrix final {
   Matrix& operator=(const Matrix& other) {
     data = other.data;
-    cacheable = other.cacheable;
     layout = other.layout;
     zero_point = other.zero_point;
     return *this;
@@ -121,10 +120,6 @@ struct Matrix final {
   // The zero_point, i.e. which Scalar value is to be interpreted as zero.
   // When Scalar is floating-point, this must be 0.
   Scalar zero_point = 0;
-  // Clients of Ruy must set this flag to enable any caching behavior. Doesn't
-  // impact numerical results, but caching can impact observable metrics like
-  // latency, memory usage, power, etc.
-  bool cacheable = false;
 };
 
 inline void MakeSimpleLayout(int rows, int cols, Order order, Layout* layout) {

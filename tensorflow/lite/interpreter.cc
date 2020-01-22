@@ -19,9 +19,8 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
-#include <utility>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/graph_info.h"
@@ -129,15 +128,15 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
-  return primary_subgraph().SetInputs(std::move(inputs));
+  return primary_subgraph().SetInputs(inputs);
 }
 
 TfLiteStatus Interpreter::SetOutputs(std::vector<int> outputs) {
-  return primary_subgraph().SetOutputs(std::move(outputs));
+  return primary_subgraph().SetOutputs(outputs);
 }
 
 TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
-  return primary_subgraph().SetVariables(std::move(variables));
+  return primary_subgraph().SetVariables(variables);
 }
 
 TfLiteStatus Interpreter::AllocateTensors() {
@@ -156,7 +155,7 @@ void Interpreter::AddSubgraphs(int subgraphs_to_add,
   subgraphs_.reserve(base_index + subgraphs_to_add);
   for (int i = 0; i < subgraphs_to_add; ++i) {
     Subgraph* subgraph = new Subgraph(error_reporter_, external_contexts_,
-                                      &subgraphs_, &resources_);
+                                      &subgraphs_, &resource_variables_);
     subgraphs_.emplace_back(subgraph);
   }
 }
@@ -173,13 +172,6 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
 TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
                                             const std::vector<int>& dims) {
   return primary_subgraph().ResizeInputTensor(tensor_index, dims);
-}
-
-TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
-  // TODO(b/138790287): We could do this for all subgraphs whose tensors have
-  // been allocated. However, AllocateTensors() relies on Control Flow ops to
-  // allocate tensors on 'children' subgraphs. Revisit this if required.
-  return primary_subgraph().ReleaseNonPersistentMemory();
 }
 
 TfLiteStatus Interpreter::Invoke() {

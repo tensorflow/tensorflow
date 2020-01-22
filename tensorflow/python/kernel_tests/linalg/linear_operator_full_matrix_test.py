@@ -222,10 +222,7 @@ class NonSquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def operator_and_matrix(
-      self, build_info, dtype, use_placeholder,
-      ensure_self_adjoint_and_pd=False):
-    del ensure_self_adjoint_and_pd
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     matrix = linear_operator_test_util.random_normal(shape, dtype=dtype)
 

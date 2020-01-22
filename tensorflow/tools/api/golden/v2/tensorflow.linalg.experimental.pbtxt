@@ -1,7 +1,0 @@
-path: "tensorflow.linalg.experimental"
-tf_module {
-  member_method {
-    name: "conjugate_gradient"
-    argspec: "args=[\'operator\', \'rhs\', \'preconditioner\', \'x\', \'tol\', \'max_iter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1e-05\', \'20\', \'conjugate_gradient\'], "
-  }
-}

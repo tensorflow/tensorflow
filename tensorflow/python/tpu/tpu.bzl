@@ -41,7 +41,7 @@ def tpu_py_test(
     tags = [
         "tpu",
         "no_pip",
-        "no_gpu",
+        "nogpu",
         "nomac",
     ] + tags
 

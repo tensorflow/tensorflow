@@ -36,13 +36,11 @@ constexpr char kNext[] = "next";
 
 class RangeDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step,
-          DataTypeVector output_dtypes)
+  Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step)
       : DatasetBase(DatasetContext(ctx)),
         start_(start),
         stop_(stop),
-        step_(step),
-        output_dtypes_(output_dtypes) {}
+        step_(step) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
@@ -51,7 +49,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   const DataTypeVector& output_dtypes() const override {
-    return output_dtypes_;
+    static DataTypeVector* dtypes = new DataTypeVector({DT_INT64});
+    return *dtypes;
   }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
@@ -107,20 +106,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       out_tensors->reserve(1);
-      Tensor result(dataset()->output_dtypes()[0]);
-      switch (dataset()->output_dtypes()[0]) {
-#define HANDLE_TYPE(type)                                \
-  case DataTypeToEnum<type>::value: {                    \
-    out_tensors->emplace_back(static_cast<type>(next_)); \
-    break;                                               \
-  }
-        TF_CALL_NUMBER_TYPES(HANDLE_TYPE);
-#undef HANDLE_TYPE
-        default:
-          return errors::InvalidArgument(
-              "Unsupported data type: ",
-              DataTypeString(dataset()->output_dtypes()[0]));
-      }
+      out_tensors->emplace_back(next_);
       *end_of_sequence = false;
       next_ += dataset()->step_;
 
@@ -154,13 +140,10 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   const int64 start_;
   const int64 stop_;
   const int64 step_;
-  const DataTypeVector output_dtypes_;
 };
 
 RangeDatasetOp::RangeDatasetOp(OpKernelConstruction* ctx)
-    : DatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-}
+    : DatasetOpKernel(ctx) {}
 
 void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   int64 start;
@@ -174,7 +157,7 @@ void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   OP_REQUIRES(ctx, step != 0,
               errors::InvalidArgument("step must be a non-zero integer."));
 
-  *output = new Dataset(ctx, start, stop, step, output_types_);
+  *output = new Dataset(ctx, start, stop, step);
 }
 
 namespace {

@@ -69,7 +69,6 @@ import json
 import re
 import subprocess
 import sys
-
 from absl import app
 from absl import flags
 import six
@@ -327,7 +326,7 @@ def get_cuda_version_all():
 def get_cuda_version_default():
   """Retrieves default CUDA version.
 
-  Default version is the version found in `/usr/local/cuda/` installation.
+  Default verion is the version found in `/usr/local/cuda/` installation.
 
   stderr is silenced by default. Setting FLAGS.debug mode will not enable it.
   Remove `2> /dev/null` command from `cmds_linux['cuda_ver_dflt']` to enable

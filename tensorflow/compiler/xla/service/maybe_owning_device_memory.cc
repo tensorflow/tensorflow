@@ -17,8 +17,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 namespace xla {
 
-tensorflow::se::DeviceMemoryBase MaybeOwningDeviceMemory::AsDeviceMemoryBase()
-    const {
+tensorflow::se::DeviceMemoryBase MaybeOwningDeviceMemory::AsDeviceMemoryBase() {
   if (HasOwnership()) {
     return *absl::get<tensorflow::se::OwningDeviceMemory>(mem_);
   } else {

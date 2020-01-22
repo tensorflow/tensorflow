@@ -71,9 +71,8 @@ class DependencyOptimizer : public GraphOptimizer {
   // Main driver of dependency optimizations.
   Status OptimizeDependencies();
   // Replaces multiple cross-device control edges from the same device with a
-  // single control edge.  If `host_granularity` is true then group control
-  // edges from all devices on the same host.
-  void GroupCrossDeviceControlEdges(bool host_granularity);
+  // single control edge.
+  void GroupCrossDeviceControlEdges();
 
   bool fetch_nodes_known_;
   std::unordered_set<string> nodes_to_preserve_;

@@ -177,7 +177,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
  protected:
   GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
-      const HloInstruction* fusion) {
+      HloInstruction* fusion) {
     return [=]() {
       std::vector<llvm_ir::IrArray> ir_arrays;
       ir_arrays.reserve(fusion->operand_count());

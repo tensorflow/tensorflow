@@ -39,7 +39,7 @@ class OriginInfoTest(test.TestCase):
     """
     source = textwrap.dedent(source)
 
-    node = parser.parse(source)
+    node = parser.parse_str(source)
     fake_origin = origin_info.OriginInfo(
         loc=origin_info.Location('fake_filename', 3, 7),
         function_name='fake_function_name',
@@ -118,7 +118,7 @@ class OriginInfoTest(test.TestCase):
         return x  # comment
     """
     source = textwrap.dedent(source)
-    node = parser.parse(source)
+    node = parser.parse_str(source)
     origin_info.resolve(node, source, 'test_file', 10, 10)
 
     def_origin = anno.getanno(node, anno.Basic.ORIGIN)

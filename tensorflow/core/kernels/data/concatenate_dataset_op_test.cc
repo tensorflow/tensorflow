@@ -76,7 +76,7 @@ ConcatenateDatasetParams DifferentDtypeConcatenateDatasetParams() {
                                   /*node_name=*/kNodeName);
 }
 
-class ConcatenateDatasetOpTest : public DatasetOpsTestBase {};
+class ConcatenateDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 std::vector<GetNextTestCase<ConcatenateDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/SameShapeConcatenateDatasetParams(),

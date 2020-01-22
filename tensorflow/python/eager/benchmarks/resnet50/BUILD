@@ -39,6 +39,11 @@ cuda_py_test(
     name = "resnet50_test",
     size = "medium",
     srcs = ["resnet50_test.py"],
+    additional_deps = [
+        ":resnet50",
+        ":resnet50_test_util",
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
     shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/141617449): needs investigation
@@ -46,17 +51,18 @@ cuda_py_test(
         "oss_serial",
         "v1only",
     ],
-    deps = [
-        ":resnet50",
-        ":resnet50_test_util",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
 )
 
 cuda_py_test(
     name = "hvp_test",
     size = "medium",
     srcs = ["hvp_test.py"],
+    additional_deps = [
+        ":resnet50",
+        ":resnet50_test_util",
+        "//tensorflow/python/eager:forwardprop",
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
     shard_count = 7,
     tags = [
         "no_windows",  # TODO(b/141617449): needs investigation
@@ -66,19 +72,18 @@ cuda_py_test(
     ],
     # Times out
     xla_enable_strict_auto_jit = False,
-    deps = [
-        ":resnet50",
-        ":resnet50_test_util",
-        "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/eager:forwardprop",
-        "@six_archive//:six",
-    ],
 )
 
 cuda_py_test(
     name = "resnet50_graph_test",
     size = "medium",
     srcs = ["resnet50_graph_test.py"],
+    additional_deps = [
+        ":resnet50",
+        ":resnet50_test_lib",
+        "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
     shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/141617449): needs investigation
@@ -87,11 +92,5 @@ cuda_py_test(
         "notsan",
         "optonly",
         "oss_serial",
-    ],
-    deps = [
-        ":resnet50",
-        ":resnet50_test_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-        "//third_party/py/numpy",
     ],
 )

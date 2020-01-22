@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #endif
 
@@ -32,18 +32,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
-#endif
+#include "tensorflow/core/platform/cuda.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
-#elif TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/rocm/rocm_activation.h"
-using ::perftools::gputools::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -143,7 +138,7 @@ REGISTER_CPU(complex128)
 
 #undef REGISTER_CPU
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 
 template <typename Device, typename T>
 class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
@@ -361,10 +356,8 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
 
 REGISTER_GPU(GPU, float)
 REGISTER_GPU(GPU, double)
-#if GOOGLE_CUDA
 REGISTER_GPU(GPU, complex64)
 REGISTER_GPU(GPU, complex128)
-#endif
 
 namespace functor {
 
@@ -387,7 +380,7 @@ struct COOSparseMatrixToCSRSparseMatrix<GPUDevice> {
   Status operator()(OpKernelContext* c, const int rows, const int cols,
                     TTypes<int>::UnalignedVec coo_row_ind,
                     TTypes<int>::UnalignedVec csr_row_ptr) {
-    GpuSparse cuda_sparse(c);
+    CudaSparse cuda_sparse(c);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
     return cuda_sparse.Coo2csr(coo_row_ind.data(),
                                /*nnz*/ coo_row_ind.size(),
@@ -398,7 +391,7 @@ extern template struct COOSparseMatrixToCSRSparseMatrix<GPUDevice>;
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 #undef REGISTER_GPU
 

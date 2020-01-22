@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -55,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
+#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -67,8 +66,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/annotated_traceme.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -84,7 +82,7 @@ bool IsInitializationOp(const Node* node) {
 
 // Helper routines for collecting step stats.
 namespace nodestats {
-inline int64 NowInNsec() { return EnvTime::NowNanos(); }
+inline int64 NowInNsec() { return Env::Default()->NowNanos(); }
 
 void SetScheduled(NodeExecStatsInterface* stats, int64 micros) {
   if (!stats) return;
@@ -175,13 +173,9 @@ struct NodeItem {
   bool is_initialization_op : 1;  // True iff IsInitializationOp(node)
   bool is_recv_or_switch : 1;     // True iff IsRecv(node) || IsSwitch(node)
   bool is_next_iteration : 1;     // True iff IsNextIteration(node)
-  bool is_noop : 1;  // True iff item->kernel->type_string_view() == "NoOp")
 
   // The kernel for this node.
   OpKernel* kernel = nullptr;
-
-  // If the kernel is a Const op, this containts points to the constant tensor.
-  const Tensor* const_tensor = nullptr;
 
   // Cached values of node->num_inputs() and node->num_outputs(), to
   // avoid levels of indirection.
@@ -664,8 +658,6 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     CHECK(item->kernel);
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
-    item->const_tensor = item->kernel->const_tensor();
-    item->is_noop = (item->kernel->type_string_view() == "NoOp");
     item->is_enter = IsEnter(n);
     if (item->is_enter) {
       bool is_constant_enter;
@@ -702,23 +694,10 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
 
     // Initialize static information about the frames in the graph.
     frame_info->nodes->push_back(item);
-    if (item->is_enter) {
+    if (IsEnter(n)) {
       string enter_name;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &enter_name));
       EnsureFrameInfo(enter_name)->input_count++;
-    }
-
-    // Record information about whether each output of the op is used.
-    std::vector<bool> used_outputs(n->num_outputs(), false);
-    for (const Edge* e : n->out_edges()) {
-      if (e->src_output() >= 0) {
-        used_outputs[e->src_output()] = true;
-      }
-    }
-    for (bool used_output : used_outputs) {
-      if (!used_output) {
-        metrics::RecordUnusedOutput(n->type_string());
-      }
     }
   }
 
@@ -1309,7 +1288,7 @@ class ExecutorState {
 
   int64 step_id_;
   // Not owned.
-  RendezvousInterface* rendezvous_;
+  Rendezvous* rendezvous_;
   Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
@@ -1659,7 +1638,7 @@ bool MightTrace(const NodeItem& item,
                 const tracing::EventCollector* event_collector) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
+  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
   // `tracing::ScopedRegion` check subsets of these properties internally in
   // their constructors, the cost of passing the necessary arguments to them can
   // be significant, so we avoid constructing them in the common case (when we
@@ -1668,9 +1647,9 @@ bool MightTrace(const NodeItem& item,
     return true;
   }
 
-  if (profiler::ScopedAnnotation::IsEnabled()) return true;
+  if (tracing::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMe::Active(
+  return profiler::TraceMeRecorder::Active(
       profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
@@ -1681,8 +1660,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (step_container_ && step_container_->step_id()) {
           id = step_container_->step_id();
         }
-        return absl::StrCat("ExecutorState::Process#id=", id,
-                            ",iter_num=", tagged_node.input_iter, "#");
+        return absl::StrCat("ExecutorState::Process#id=", id, "#");
       },
       2);
   WithContext wc(context_);
@@ -1874,8 +1852,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
-                return strings::StrCat(op_kernel->name_view(), ":",
-                                       op_kernel->type_string_view());
+                int64 id = step_id_;
+                if (step_container_ && step_container_->step_id()) {
+                  id = step_container_->step_id();
+                }
+                return strings::StrCat(
+                    op_kernel->name(), ":", op_kernel->type_string(),
+                    "#id=", id, ",device=", device->name(), ",async=true#");
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1885,28 +1868,24 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
 
-        if (TF_PREDICT_FALSE(item.is_noop)) {
-          nodestats::SetOpEnd(stats);
-        } else if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
+        if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
+          const string& op_name = op_kernel->name();
+          int64 id = step_id_;
+          if (step_container_ && step_container_->step_id()) {
+            id = step_container_->step_id();
+          }
+          const string kernel_label = strings::StrCat(
+              op_name, ":", op_kernel->type_string(), "#id=", id,
+              ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                                       op_kernel->name_view());
-          profiler::AnnotatedTraceMe activity(
-              [&] {
-                return strings::StrCat(op_kernel->name_view(), ":",
-                                       op_kernel->type_string_view());
-              },
+                                       op_name);
+          // 'TraceMe' will trace the OpKernel scheduling time.
+          profiler::TraceMe activity(
+              absl::string_view(kernel_label),
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+          // 'ScopedAnnotation' will trace the OpKernel execution time.
+          tracing::ScopedAnnotation annotation(kernel_label);
           device->Compute(op_kernel, &ctx);
-          nodestats::SetOpEnd(stats);
-          s = ProcessOutputs(item, &ctx, &outputs, stats);
-        } else if (item.const_tensor != nullptr && !ctx.track_allocations()) {
-          // Special case for ConstantOp, which is very common.
-          nodestats::SetOpEnd(stats);
-          outputs.resize(1);
-          outputs[0].has_value = true;
-          outputs[0].val_field_is_set = true;
-          outputs[0].alloc_attr = ctx.output_alloc_attr(0);
-          outputs[0].val.Init(*item.const_tensor);
         } else {
           // In the common case, avoid creating any tracing objects.
           if (op_kernel->IsExpensive()) {
@@ -1916,9 +1895,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           } else {
             device->Compute(op_kernel, &ctx);
           }
-          nodestats::SetOpEnd(stats);
-          s = ProcessOutputs(item, &ctx, &outputs, stats);
         }
+
+        nodestats::SetOpEnd(stats);
+        s = ProcessOutputs(item, &ctx, &outputs, stats);
         if (s.ok() && impl_->device_record_tensor_accesses_) {
           // Get the list of all tensors accessed during the execution
           ctx.retrieve_accessed_tensors(&accessed_tensors);
@@ -2155,9 +2135,8 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   auto activity_handle = absl::make_unique<profiler::TraceMe>(
       [&]() {
-        return strings::StrCat(
-            "ExecutorPropagateOutputs:", item->kernel->name_view(),
-            "#id=", step_id_, "#");
+        return strings::StrCat("ExecutorPropagateOutputs:",
+                               item->kernel->name(), "#id=", step_id_, "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
@@ -2563,7 +2542,7 @@ void ExecutorState::Finish() {
       }
     }
     delete this;
-    runner([step_id, status, done_cb = std::move(done_cb)]() {
+    runner([=]() {
       profiler::TraceMe traceme(
           [&] {
             return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2579,10 +2558,10 @@ void ExecutorState::Finish() {
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    device->Sync([this, step_id, runner = std::move(runner),
-                  done_cb = std::move(done_cb)](const Status& status) mutable {
+    device->Sync([=](Status new_status) mutable {
+      status.Update(new_status);
       delete this;
-      runner([step_id, status, done_cb = std::move(done_cb)]() {
+      runner([=]() {
         profiler::TraceMe traceme(
             [&] {
               return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2593,7 +2572,7 @@ void ExecutorState::Finish() {
     });
   } else {
     delete this;
-    runner([step_id, status, done_cb = std::move(done_cb)]() {
+    runner([=]() {
       profiler::TraceMe traceme(
           [&] {
             return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2955,9 +2934,8 @@ Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
                              OpKernel** kernel) {
   const auto device_type = DeviceType(device->attributes().device_type());
   auto allocator = device->GetAllocator(AllocatorAttributes());
-  return CreateOpKernel(device_type, device, allocator, flib,
-                        device->resource_manager(), ndef, graph_def_version,
-                        kernel);
+  return CreateOpKernel(device_type, device, allocator, flib, ndef,
+                        graph_def_version, kernel);
 }
 
 void DeleteNonCachedKernel(OpKernel* kernel) { delete kernel; }

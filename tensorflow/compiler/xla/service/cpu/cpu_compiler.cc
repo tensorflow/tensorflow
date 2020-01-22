@@ -60,9 +60,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
+#include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
@@ -92,6 +94,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
+#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
@@ -156,6 +159,7 @@ CpuCompiler::CpuCompiler() {
   // Initialize LLVM's MC layer for the native target.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetDisassembler();
 }
 
 namespace {
@@ -247,6 +251,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ZeroSizedHloElimination>();
 
   pipeline.AddPass<DynamicIndexSplitter>();
+  pipeline.AddPass<CpuHloSupportChecker>();
+
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, module->config().debug_options(),
+      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
@@ -330,6 +339,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<CpuInstructionFusion>();
 
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, module->config().debug_options(),
+      ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
   return pipeline.Run(module).status();
 }
 
@@ -348,7 +360,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "simplification after layout assignment");
+        "simplification after layout assignement");
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
@@ -407,8 +419,20 @@ auto memory_alignment = [](LogicalBuffer::Color) { return kMemoryAlignment; };
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
   llvm::TargetOptions target_options;
-  // Always allow FMA fusion. This increases precision instead of decreasing it.
-  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
+  // In LLVM backend flags, UnsafeFPMath does not explicitly imply NoInfs, etc.
+  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
+    target_options.UnsafeFPMath = true;
+    target_options.NoInfsFPMath =
+        !module_config.debug_options().xla_cpu_fast_math_honor_infs();
+    target_options.NoNaNsFPMath =
+        !module_config.debug_options().xla_cpu_fast_math_honor_nans();
+    target_options.NoSignedZerosFPMath = true;
+  } else {
+    target_options.UnsafeFPMath = false;
+    target_options.NoInfsFPMath = false;
+    target_options.NoNaNsFPMath = false;
+    target_options.NoSignedZerosFPMath = false;
+  }
   return target_options;
 }
 
@@ -524,7 +548,7 @@ namespace {
 
 // Post-compilation callback functor for use by SimpleOrcJIT.
 //
-// Dumps machine code if dumping is enabled for the module.
+// Dumps disassembled machine code if dumping is enabled for the module.
 struct OrcJITPostCompilationHook {
   // Gets an std::function that implements this hook.
   static std::function<void(const llvm::object::ObjectFile& obj_file)> Create(
@@ -540,19 +564,29 @@ struct OrcJITPostCompilationHook {
   // Constructor can't be private because we want to call it from
   // std::make_shared, but users should call Create() instead.
   explicit OrcJITPostCompilationHook(const HloModule* module)
-      : module(module) {}
+      : module(module),
+        target_machine(SimpleOrcJIT::InferTargetMachineForJIT(
+            CompilerTargetOptions(module->config()),
+            CodeGenOptLevel(module->config()))),
+        disassembler(*target_machine) {}
 
  private:
   void operator()(const llvm::object::ObjectFile& obj_file) {
     if (!DumpingEnabledForHloModule(*module)) {
       return;
     }
-    DumpToFileInDir(*module, /*file_suffix=*/"o",
-                    absl::string_view(obj_file.getData().data(),
-                                      obj_file.getData().size()));
+    StatusOr<DisassemblerResult> disasm_or =
+        disassembler.DisassembleObjectFile(obj_file);
+    string text = disasm_or.ok() ? std::move(disasm_or).ValueOrDie().text
+                                 : absl::StrCat("Error disassembling: ",
+                                                disasm_or.status().ToString());
+    DumpToFileInDirOrStdout(*module, /*file_suffix=*/"s", text);
   }
 
   const HloModule* module;
+  // disassembler keeps references to data inside of target_machine.
+  std::unique_ptr<llvm::TargetMachine> target_machine;
+  Disassembler disassembler;
 };
 
 }  // namespace
@@ -585,8 +619,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
-      llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
-      post_optimization_ir_hook,
+      pre_optimization_ir_hook, post_optimization_ir_hook,
       OrcJITPostCompilationHook::Create(module.get()));
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
@@ -888,16 +921,19 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       if (!DumpingEnabledForHloModule(*module)) {
         return;
       }
-      DumpToFileInDir(*module, /*file_suffix=*/"o",
-                      absl::string_view(obj_file.getData().data(),
-                                        obj_file.getData().size()));
+      StatusOr<DisassemblerResult> disasm_or =
+          Disassembler(*target_machine).DisassembleObjectFile(obj_file);
+      string text = disasm_or.ok()
+                        ? std::move(disasm_or).ValueOrDie().text
+                        : absl::StrCat("Error disassembling: ",
+                                       disasm_or.status().ToString());
+      DumpToFileInDirOrStdout(*module, /*file_suffix=*/"s", text);
     };
 
     CompilerFunctor compiler_functor(
         target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
-        llvm_ir::GetCpuFastMathFlags(module->config()),
         pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook);
     std::unique_ptr<llvm::MemoryBuffer> object_file =
         compiler_functor(llvm_module);

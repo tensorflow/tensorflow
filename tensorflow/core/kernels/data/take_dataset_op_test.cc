@@ -19,7 +19,7 @@ namespace {
 
 constexpr char kNodeName[] = "take_dataset";
 
-class TakeDatasetOpTest : public DatasetOpsTestBase {};
+class TakeDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test case 1: take fewer than input size.
 TakeDatasetParams TakeLessTakeDatasetParams() {

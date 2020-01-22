@@ -102,17 +102,13 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(
   auto dim_numbers = convolution->convolution_dimension_numbers();
   auto lhs = convolution->mutable_operand(0);
   auto rhs = convolution->mutable_operand(1);
-  int64 num_groups = convolution->batch_group_count();
-  int64 input_batch_dimension = dim_numbers.input_batch_dimension();
-  int64 input_batch = lhs->shape().dimensions(input_batch_dimension);
+  int64 batch_group_count = convolution->batch_group_count();
 
-  // TODO(b/139748189): Support 'num_grous' > 1 when input_batch !=
-  // num_groups.
-  if (num_groups == 1 || input_batch != num_groups) {
+  if (batch_group_count == 1) {
     return Status::OK();
   }
 
-  VLOG(2) << "Dealing with batch_group_count " << num_groups
+  VLOG(2) << "Dealing with batch_group_count " << batch_group_count
           << " for convolution " << convolution->ToString() << "\n";
 
   int64 output_batch_dimension = dim_numbers.output_batch_dimension();
@@ -129,8 +125,15 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(
         convolution->shape(), dim_numbers.output_batch_dimension(),
         dim_numbers.output_feature_dimension());
 
+    int64 num_groups = convolution->batch_group_count();
+    int64 input_batch_dimension = dim_numbers.input_batch_dimension();
+    int64 input_batch = lhs->shape().dimensions(input_batch_dimension);
     int64 input_feature_dimension = dim_numbers.input_feature_dimension();
     int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
+
+    CHECK_EQ(input_batch, num_groups)
+        << "Feature group count should be equal to number of input features "
+           "for depthwise convolution";
 
     auto add = [&](std::unique_ptr<HloInstruction> inst) {
       return computation_->AddInstruction(std::move(inst));

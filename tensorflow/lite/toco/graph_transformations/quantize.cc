@@ -53,7 +53,6 @@ bool SupportsQuantization(Model* model, const Operator& op) {
       OperatorType::kConv,
       OperatorType::kDepthToSpace,
       OperatorType::kDepthwiseConv,
-      OperatorType::kDiv,
       OperatorType::kEqual,
       OperatorType::kExpandDims,
       OperatorType::kFullyConnected,

@@ -63,6 +63,7 @@ enum class TokKind {
   kw_replicated,
   kw_nan,
   kw_inf,
+  kw_sparse,
 
   kNegInf,  // -inf
 

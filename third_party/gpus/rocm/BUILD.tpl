@@ -137,11 +137,4 @@ cc_library(
     ],
 )
 
-cc_import(
-    name = "hipsparse",
-    hdrs = glob(["rocm/include/hipsparse/**",]),
-    shared_library = "rocm/lib/%{hipsparse_lib}",
-    visibility = ["//visibility:public"],
-)
-
 %{copy_rules}

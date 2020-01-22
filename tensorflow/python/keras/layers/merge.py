@@ -93,7 +93,9 @@ class _Merge(Layer):
       raise ValueError('A merge layer should be called '
                        'on a list of at least 2 inputs. '
                        'Got ' + str(len(input_shape)) + ' inputs.')
-    batch_sizes = {s[0] for s in input_shape if s is not None} - {None}
+    batch_sizes = [s[0] for s in input_shape if s is not None]
+    batch_sizes = set(batch_sizes)
+    batch_sizes -= set([None])
     if len(batch_sizes) > 1:
       raise ValueError(
           'Can not merge tensors with different '
@@ -192,7 +194,9 @@ class _Merge(Layer):
       else:
         shape = input_shape[i][1:]
       output_shape = self._compute_elemwise_op_output_shape(output_shape, shape)
-    batch_sizes = {s[0] for s in input_shape if s is not None} - {None}
+    batch_sizes = [s[0] for s in input_shape if s is not None]
+    batch_sizes = set(batch_sizes)
+    batch_sizes -= set([None])
     if len(batch_sizes) == 1:
       output_shape = (list(batch_sizes)[0],) + output_shape
     else:
@@ -225,24 +229,18 @@ class Add(_Merge):
 
   Examples:
 
-  >>> input_shape = (2, 3, 4)
-  >>> x1 = tf.random.normal(input_shape)
-  >>> x2 = tf.random.normal(input_shape)
-  >>> y = tf.keras.layers.Add()([x1, x2])
-  >>> print(y.shape)
-  (2, 3, 4)
+  ```python
+      import keras
 
-  Used in a functional model:
-
-  >>> input1 = tf.keras.layers.Input(shape=(16,))
-  >>> x1 = tf.keras.layers.Dense(8, activation='relu')(input1)
-  >>> input2 = tf.keras.layers.Input(shape=(32,))
-  >>> x2 = tf.keras.layers.Dense(8, activation='relu')(input2)
-  >>> # equivalent to `added = tf.keras.layers.add([x1, x2])`
-  >>> added = tf.keras.layers.Add()([x1, x2])
-  >>> out = tf.keras.layers.Dense(4)(added)
-  >>> model = tf.keras.models.Model(inputs=[input1, input2], outputs=out)
-
+      input1 = keras.layers.Input(shape=(16,))
+      x1 = keras.layers.Dense(8, activation='relu')(input1)
+      input2 = keras.layers.Input(shape=(32,))
+      x2 = keras.layers.Dense(8, activation='relu')(input2)
+      # equivalent to `added = keras.layers.add([x1, x2])`
+      added = keras.layers.Add()([x1, x2])
+      out = keras.layers.Dense(4)(added)
+      model = keras.models.Model(inputs=[input1, input2], outputs=out)
+  ```
   """
 
   def _merge_function(self, inputs):
@@ -311,30 +309,9 @@ class Multiply(_Merge):
 class Average(_Merge):
   """Layer that averages a list of inputs.
 
-  It takes as input a list of tensors, all of the same shape, and returns
+  It takes as input a list of tensors,
+  all of the same shape, and returns
   a single tensor (also of the same shape).
-
-  Example:
-
-  >>> x1 = np.ones((2, 2))
-  >>> x2 = np.zeros((2, 2))
-  >>> y = tf.keras.layers.Average()([x1, x2])
-  >>> y.numpy().tolist()
-  [[0.5, 0.5], [0.5, 0.5]]
-
-  Usage in a functional model:
-
-  >>> input1 = tf.keras.layers.Input(shape=(16,))
-  >>> x1 = tf.keras.layers.Dense(8, activation='relu')(input1)
-  >>> input2 = tf.keras.layers.Input(shape=(32,))
-  >>> x2 = tf.keras.layers.Dense(8, activation='relu')(input2)
-  >>> avg = tf.keras.layers.Average()([x1, x2])
-  >>> out = tf.keras.layers.Dense(4)(avg)
-  >>> model = tf.keras.models.Model(inputs=[input1, input2], outputs=out)
-
-  Raises:
-    ValueError: If there is a shape mismatch between the inputs and the shapes
-      cannot be broadcasted to match.
   """
 
   def _merge_function(self, inputs):
@@ -408,24 +385,11 @@ class Concatenate(_Merge):
     for i in range(len(reduced_inputs_shapes)):
       del reduced_inputs_shapes[i][self.axis]
       shape_set.add(tuple(reduced_inputs_shapes[i]))
-
-    if len(shape_set) != 1:
-      err_msg = ('A `Concatenate` layer requires inputs with matching shapes '
-                 'except for the concat axis. Got inputs shapes: %s' %
-                 input_shape)
-      # Make sure all the shapes have same ranks.
-      ranks = set(len(shape) for shape in shape_set)
-      if len(ranks) != 1:
-        raise ValueError(err_msg)
-      # Get the only rank for the set.
-      (rank,) = ranks
-      for axis in range(rank):
-        # Skip the Nones in the shape since they are dynamic, also the axis for
-        # concat has been removed above.
-        unique_dims = set(
-            shape[axis] for shape in shape_set if shape[axis] is not None)
-        if len(unique_dims) > 1:
-          raise ValueError(err_msg)
+    if len(shape_set) > 1:
+      raise ValueError('A `Concatenate` layer requires '
+                       'inputs with matching shapes '
+                       'except for the concat axis. '
+                       'Got inputs shapes: %s' % (input_shape))
 
   def _merge_function(self, inputs):
     return K.concatenate(inputs, axis=self.axis)
@@ -598,34 +562,29 @@ class Dot(_Merge):
 
 @keras_export('keras.layers.add')
 def add(inputs, **kwargs):
-  """Functional interface to the `tf.keras.layers.Add` layer.
+  """Functional interface to the `Add` layer.
 
   Arguments:
-      inputs: A list of input tensors (at least 2) with the same shape.
+      inputs: A list of input tensors (at least 2).
       **kwargs: Standard layer keyword arguments.
 
   Returns:
-      A tensor as the sum of the inputs. It has the same shape as the inputs.
+      A tensor, the sum of the inputs.
 
   Examples:
 
-  >>> input_shape = (2, 3, 4)
-  >>> x1 = tf.random.normal(input_shape)
-  >>> x2 = tf.random.normal(input_shape)
-  >>> y = tf.keras.layers.add([x1, x2])
-  >>> print(y.shape)
-  (2, 3, 4)
+  ```python
+      import keras
 
-  Used in a functiona model:
+      input1 = keras.layers.Input(shape=(16,))
+      x1 = keras.layers.Dense(8, activation='relu')(input1)
+      input2 = keras.layers.Input(shape=(32,))
+      x2 = keras.layers.Dense(8, activation='relu')(input2)
+      added = keras.layers.add([x1, x2])
 
-  input1 = tf.keras.layers.Input(shape=(16,))
-  x1 = tf.keras.layers.Dense(8, activation='relu')(input1)
-  input2 = tf.keras.layers.Input(shape=(32,))
-  x2 = tf.keras.layers.Dense(8, activation='relu')(input2)
-  added = tf.keras.layers.add([x1, x2])
-  out = tf.keras.layers.Dense(4)(added)
-  model = tf.keras.models.Model(inputs=[input1, input2], outputs=out)
-
+      out = keras.layers.Dense(4)(added)
+      model = keras.models.Model(inputs=[input1, input2], outputs=out)
+  ```
   """
   return Add(**kwargs)(inputs)
 
@@ -675,25 +634,7 @@ def multiply(inputs, **kwargs):
 
 @keras_export('keras.layers.average')
 def average(inputs, **kwargs):
-  """Functional interface to the `tf.keras.layers.Average` layer.
-
-  Example:
-
-  >>> x1 = np.ones((2, 2))
-  >>> x2 = np.zeros((2, 2))
-  >>> y = tf.keras.layers.Average()([x1, x2])
-  >>> y.numpy().tolist()
-  [[0.5, 0.5], [0.5, 0.5]]
-
-  Usage in a functional model:
-
-  >>> input1 = tf.keras.layers.Input(shape=(16,))
-  >>> x1 = tf.keras.layers.Dense(8, activation='relu')(input1)
-  >>> input2 = tf.keras.layers.Input(shape=(32,))
-  >>> x2 = tf.keras.layers.Dense(8, activation='relu')(input2)
-  >>> avg = tf.keras.layers.Average()([x1, x2])
-  >>> out = tf.keras.layers.Dense(4)(avg)
-  >>> model = tf.keras.models.Model(inputs=[input1, input2], outputs=out)
+  """Functional interface to the `Average` layer.
 
   Arguments:
       inputs: A list of input tensors (at least 2).
@@ -701,10 +642,6 @@ def average(inputs, **kwargs):
 
   Returns:
       A tensor, the average of the inputs.
-
-  Raises:
-    ValueError: If there is a shape mismatch between the inputs and the shapes
-      cannot be broadcasted to match.
   """
   return Average(**kwargs)(inputs)
 

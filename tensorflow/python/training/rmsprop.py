@@ -52,14 +52,10 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export(v1=["train.RMSPropOptimizer"])
 class RMSPropOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the RMSProp algorithm (Tielemans et al.
+  """Optimizer that implements the RMSProp algorithm.
 
-  2012).
-
-  References:
-    Coursera slide 29:
-    Hinton, 2012
-    ([pdf](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf))
+  See the
+  [paper](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
   """
 
   def __init__(self,

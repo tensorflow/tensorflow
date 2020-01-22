@@ -82,7 +82,7 @@ se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 // `buffer_type` determines what buffer would be filled out with.
 //
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
-// initialized to zero on the first use.
+// initalized to zero on the first use.
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64* rng_state, se::DeviceMemoryBase buffer);
 

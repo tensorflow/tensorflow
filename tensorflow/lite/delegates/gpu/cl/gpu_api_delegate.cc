@@ -146,36 +146,9 @@ class Delegate {
     }
 
     InferenceOptions options;
-    options.usage = InferenceUsage::FAST_SINGLE_ANSWER;
-    if (options_.compile_options.precision_loss_allowed == 0) {
-      options.priority1 = InferencePriority::MAX_PRECISION;
-      switch (options_.compile_options.inference_priority) {
-        case TfLiteGpuInferencePriority::
-            TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION:
-          options.priority2 = InferencePriority::MIN_MEMORY_USAGE;
-          options.priority3 = InferencePriority::MIN_LATENCY;
-          break;
-        case TfLiteGpuInferencePriority::
-            TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY:
-          options.priority2 = InferencePriority::MIN_LATENCY;
-          options.priority3 = InferencePriority::MIN_MEMORY_USAGE;
-          break;
-      }
-    } else {
-      options.priority1 = InferencePriority::MIN_LATENCY;
-      switch (options_.compile_options.inference_priority) {
-        case TfLiteGpuInferencePriority::
-            TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION:
-          options.priority2 = InferencePriority::MAX_PRECISION;
-          options.priority3 = InferencePriority::MIN_MEMORY_USAGE;
-          break;
-        case TfLiteGpuInferencePriority::
-            TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY:
-          options.priority2 = InferencePriority::MIN_MEMORY_USAGE;
-          options.priority3 = InferencePriority::MAX_PRECISION;
-          break;
-      }
-    }
+    options.priority = ToPriority(options_.compile_options.inference_priority);
+    options.allow_precision_loss =
+        options_.compile_options.precision_loss_allowed != 0;
     std::unique_ptr<InferenceBuilder> builder;
     RETURN_IF_ERROR(
         environment_->NewInferenceBuilder(options, std::move(graph), &builder));

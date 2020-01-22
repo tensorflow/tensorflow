@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #endif
 
@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #endif
 
@@ -101,24 +101,22 @@ class CSRMulOp : public OpKernel {
       Name("SparseMatrixMul").Device(DEVICE_##DEV).TypeConstraint<T>("T"), \
       CSRMulOp<DEV##Device, T>);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 
 #define REGISTER_GPU(T) REGISTER(GPU, T)
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
-#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
-#endif
 
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 #undef REGISTER
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 
 namespace functor {
 
@@ -161,15 +159,13 @@ class CSRSparseMatrixMulScalar<GPUDevice, T> {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if GOOGLE_CUDA
 DECLARE_GPU_SPEC(std::complex<float>);
 DECLARE_GPU_SPEC(std::complex<double>);
-#endif
 
 #undef DECLARE_GPU_SPEC
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

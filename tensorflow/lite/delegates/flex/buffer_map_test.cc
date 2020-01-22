@@ -34,7 +34,7 @@ using UniqueTfLiteTensor =
 template <typename T>
 UniqueTfLiteTensor MakeLiteTensor(const std::vector<int>& shape,
                                   const std::vector<T>& data) {
-  auto tensor = UniqueTfLiteTensor(new TfLiteTensor(), [](TfLiteTensor* t) {
+  auto tensor = UniqueTfLiteTensor(new TfLiteTensor, [](TfLiteTensor* t) {
     TfLiteTensorDataFree(t);
     TfLiteIntArrayFree(t->dims);
     delete t;
@@ -42,6 +42,9 @@ UniqueTfLiteTensor MakeLiteTensor(const std::vector<int>& shape,
   tensor->allocation_type = kTfLiteDynamic;
   tensor->type = typeToTfLiteType<T>();
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
+  tensor->data.raw = nullptr;
+  tensor->is_variable = false;
+  memset(&tensor->quantization, 0, sizeof(TfLiteQuantization));
   TfLiteTensorRealloc(data.size() * sizeof(T), tensor.get());
   memcpy(tensor->data.raw, data.data(), data.size() * sizeof(T));
   return tensor;
@@ -50,7 +53,7 @@ UniqueTfLiteTensor MakeLiteTensor(const std::vector<int>& shape,
 template <>
 UniqueTfLiteTensor MakeLiteTensor<string>(const std::vector<int>& shape,
                                           const std::vector<string>& data) {
-  auto tensor = UniqueTfLiteTensor(new TfLiteTensor(), [](TfLiteTensor* t) {
+  auto tensor = UniqueTfLiteTensor(new TfLiteTensor, [](TfLiteTensor* t) {
     TfLiteTensorDataFree(t);
     TfLiteIntArrayFree(t->dims);
     delete t;
@@ -58,6 +61,9 @@ UniqueTfLiteTensor MakeLiteTensor<string>(const std::vector<int>& shape,
   tensor->allocation_type = kTfLiteDynamic;
   tensor->type = typeToTfLiteType<string>();
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
+  tensor->data.raw = nullptr;
+  tensor->is_variable = false;
+  memset(&tensor->quantization, 0, sizeof(TfLiteQuantization));
   TfLiteTensorRealloc(data.size() * sizeof(string), tensor.get());
 
   DynamicBuffer b;

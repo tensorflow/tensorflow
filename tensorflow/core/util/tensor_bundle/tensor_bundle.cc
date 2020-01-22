@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
@@ -778,14 +779,8 @@ BundleReader::~BundleReader() {
       delete pair.second->file();
     }
   }
-  for (auto& temp : data_) {
-    delete temp.second;
-  }
-  for (auto& temp : tensor_slices_) {
-    delete temp.second;
-  }
-  data_.clear();
-  tensor_slices_.clear();
+  gtl::STLDeleteValues(&data_);
+  gtl::STLDeleteValues(&tensor_slices_);
 }
 
 Status BundleReader::GetBundleEntryProto(StringPiece key,

@@ -571,6 +571,7 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
     self.assertTrue(np.isnan(batch_mean.squeeze()))
     self.assertTrue(np.isnan(batch_variance.squeeze()))
 
+  # TODO(cais): Tests for Infs and NaNs during distributed execution.
   # TODO(cais): Benchmark the slowdown due to callbacks and inserted nodes.
 
 if __name__ == "__main__":

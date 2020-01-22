@@ -18,4 +18,3 @@ recursive-include tensorflow_core/include/google *.inc
 recursive-include tensorflow_core/include/include *.h
 recursive-include tensorflow_core/include/third_party *
 recursive-include tensorflow_core/include/unsupported *
-

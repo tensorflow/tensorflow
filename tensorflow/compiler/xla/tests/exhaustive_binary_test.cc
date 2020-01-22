@@ -131,7 +131,7 @@ template <typename T, typename std::enable_if<
                           std::is_same<T, float>::value ||
                           std::is_same<T, double>::value>::type* = nullptr>
 T ReferenceMax(T x, T y) {
-  // We need to propagate NAN here because std::max may not propagate NAN.
+  // We need to propagate NAN here becasue std::max may not propagate NAN.
   if (std::fpclassify(x) == FP_NAN) {
     return x;
   }
@@ -146,7 +146,7 @@ template <typename T, typename std::enable_if<
                           std::is_same<T, float>::value ||
                           std::is_same<T, double>::value>::type* = nullptr>
 T ReferenceMin(T x, T y) {
-  // We need to propagate NAN here because std::max may not propagate NAN.
+  // We need to propagate NAN here becasue std::max may not propagate NAN.
   if (std::fpclassify(x) == FP_NAN) {
     return x;
   }
@@ -235,12 +235,7 @@ class Exhaustive32BitOrMoreBinaryTest
 };
 
 using ExhaustiveF32BinaryTest = Exhaustive32BitOrMoreBinaryTest<F32>;
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
-    ExhaustiveF32BinaryTest);  // TODO(b/139702016) go/are-your-tests-running
-
 using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
-    ExhaustiveF64BinaryTest);  // TODO(b/139702016) go/are-your-tests-running
 
 #if defined(BINARY_TEST_TARGET_F32)
 #define BINARY_TEST_FLOAT_32(test_name, ...)     \
@@ -324,7 +319,7 @@ INSTANTIATE_TEST_SUITE_P(
 // for each sub-test to avoid timeout because the implementation of ExpectNear
 // more than 2x slower for binary test.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnitudeNormalValues, ExhaustiveF32BinaryTest,
+    LargeAndSmallMagnituedNormalValues, ExhaustiveF32BinaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<float>(40000,
                                                                          2000)),
@@ -407,7 +402,7 @@ INSTANTIATE_TEST_SUITE_P(
 // Similar to ExhaustiveF64BinaryTest, we use a smaller set of inputs for each
 // for each sub-test comparing with the unary test to avoid timeout.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnitudeNormalValues, ExhaustiveF64BinaryTest,
+    LargeAndSmallMagnituedNormalValues, ExhaustiveF64BinaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000)),

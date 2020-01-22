@@ -1,3 +1,0 @@
-Client responsible for communicating the Cloud TPU API. Released seperately from tensorflow.
-
-https://pypi.org/project/cloud-tpu-client/

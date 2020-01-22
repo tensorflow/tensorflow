@@ -136,10 +136,6 @@ class Graph {
   // for a value.
   virtual Status AddConsumer(NodeId consumer, ValueId value) = 0;
 
-  // Replace input value for given node.
-  virtual Status ReplaceInput(NodeId node, ValueId old_value,
-                              ValueId new_value) = 0;
-
   // Removes a consumer for the given value. If value does not have any
   // consumers it becomes graph's output.
   virtual Status RemoveConsumer(NodeId consumer, ValueId value) = 0;
@@ -272,7 +268,8 @@ class Model : public Graph<TensorT> {
     }
 
     // Check if the node is a consumer of this value.
-    if (IsInput(producer, value)) {
+    if (std::find(n->inputs.begin(), n->inputs.end(), value_ptr) !=
+        n->inputs.end()) {
       return InvalidArgumentError("Node is a consumer of the value");
     }
     // TODO(akulik): detect circular dependency?
@@ -298,43 +295,6 @@ class Model : public Graph<TensorT> {
     return OkStatus();
   }
 
-  Status ReplaceInput(NodeId node, ValueId old_value, ValueId new_value) final {
-    ValueDef* v_old;
-    RETURN_IF_ERROR(LookupValue(old_value, &v_old));
-    Value<TensorT>* value_old_ptr = v_old->value.get();
-    ValueDef* v_new;
-    RETURN_IF_ERROR(LookupValue(new_value, &v_new));
-    Value<TensorT>* value_new_ptr = v_new->value.get();
-    NodeDef* n;
-    RETURN_IF_ERROR(LookupNode(node, &n));
-    Node* node_ptr = n->node.get();
-
-    // Check if the node is a consumer of old_value.
-    if (!IsInput(node, old_value)) {
-      return InvalidArgumentError("old_value must be input of node.");
-    }
-
-    // Check if the node is not a consumer of new_value.
-    if (IsInput(node, new_value)) {
-      return InvalidArgumentError("new_value can not be input of node.");
-    }
-
-    // Check if this value has the same producer already
-    if (node_ptr == v_new->producer) {
-      return InvalidArgumentError("new_value can not be output of node.");
-    }
-
-    for (int i = 0; i < n->inputs.size(); ++i) {
-      if (n->inputs[i] == value_old_ptr) {
-        n->inputs[i] = value_new_ptr;
-        break;
-      }
-    }
-    v_new->consumers.push_back(node_ptr);
-    Erase(&v_old->consumers, node_ptr);
-    return OkStatus();
-  }
-
   Status AddConsumer(NodeId consumer, ValueId value) final {
     ValueDef* v;
     RETURN_IF_ERROR(LookupValue(value, &v));
@@ -349,7 +309,8 @@ class Model : public Graph<TensorT> {
     }
 
     // check if this value has the same consumer already
-    if (IsInput(consumer, value)) {
+    if (std::find(n->inputs.begin(), n->inputs.end(), value_ptr) !=
+        n->inputs.end()) {
       return InvalidArgumentError("Node is already a consumer of the value");
     }
 
@@ -365,7 +326,8 @@ class Model : public Graph<TensorT> {
     NodeDef* n;
     RETURN_IF_ERROR(LookupNode(consumer, &n));
     Node* node_ptr = n->node.get();
-    if (!IsInput(consumer, value)) {
+    if (std::find(n->inputs.begin(), n->inputs.end(), value_ptr) ==
+        n->inputs.end()) {
       return InvalidArgumentError("Node is not a consumer of the value");
     }
     Erase(&n->inputs, value_ptr);
@@ -445,19 +407,6 @@ class Model : public Graph<TensorT> {
     std::vector<Node*> consumers;
     std::unique_ptr<Value<TensorT>> value;
   };
-
-  bool IsInput(NodeId node, ValueId value) {
-    if (node >= nodes_.size() || value >= values_.size()) {
-      return false;
-    }
-    const NodeDef& n = nodes_[node];
-    const ValueDef& v = values_[value];
-    if (!n.node || !v.value) {
-      return false;
-    }
-    return std::find(n.inputs.begin(), n.inputs.end(), v.value.get()) !=
-           n.inputs.end();
-  }
 
   template <typename T>
   static void Erase(std::vector<T>* values, T value) {
@@ -573,6 +522,12 @@ Status RemoveFollowingNode(Graph<TensorT>* graph, const Node* to_remove,
 
 // Removes to_remove node.
 // Requires that node has one input and one output;
+// If to_remove doesn't have producer, all consumers of to_remove, will use
+//   to_remove input as input
+// If to_remove doesn't have consumers, producer of to_remove will have output
+//   of to_remove.
+// If to_remove has producer and consumer(s), consumer(s) will have as input
+//   output of producer
 template <typename TensorT>
 Status RemoveOneInputOneOutputNode(Graph<TensorT>* graph,
                                    const Node* to_remove) {
@@ -586,14 +541,20 @@ Status RemoveOneInputOneOutputNode(Graph<TensorT>* graph,
   auto output_id = outputs[0]->id;
   Node* producer = graph->FindProducer(input_id);
   auto consumers = graph->FindConsumers(output_id);
-  RETURN_IF_ERROR(graph->DeleteNode(to_remove->id));
-  for (auto& consumer : consumers) {
-    RETURN_IF_ERROR(graph->ReplaceInput(consumer->id, output_id, input_id));
-  }
-  RETURN_IF_ERROR(graph->DeleteValue(output_id));
-  if (!producer && consumers.empty()) {
+  if (!producer && consumers.empty()) {  // degenerate case
+    RETURN_IF_ERROR(graph->DeleteNode(to_remove->id));
     RETURN_IF_ERROR(graph->DeleteValue(input_id));
+    return graph->DeleteValue(output_id);
   }
+  if (!producer) {
+    RETURN_IF_ERROR(graph->DeleteNode(to_remove->id));
+    RETURN_IF_ERROR(graph->DeleteValue(output_id));
+    for (auto& consumer : consumers) {
+      RETURN_IF_ERROR(graph->AddConsumer(consumer->id, input_id));
+    }
+    return OkStatus();
+  }
+  return RemoveFollowingNode(graph, to_remove, producer);
   return OkStatus();
 }
 

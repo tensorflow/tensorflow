@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstddef>
-#include <cstdint>
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <iostream>
+#include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -607,10 +612,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* fw_hidden_state =
       GetVariableInput(context, node, kFwHiddenStateTensor);
-  TF_LITE_ENSURE(context, fw_hidden_state != nullptr);
   TfLiteTensor* bw_hidden_state =
       GetVariableInput(context, node, kBwHiddenStateTensor);
-  TF_LITE_ENSURE(context, bw_hidden_state != nullptr);
 
   TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
   TfLiteTensor* bw_output = params->merge_outputs

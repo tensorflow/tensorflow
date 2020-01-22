@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 
-#include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
@@ -41,7 +40,6 @@ void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
   // It does care whether we assign to it a Scalar* or a const Scalar*.
   dst->data = data_ptr;
   dst->zero_point = params.zero_point;
-  dst->cacheable = params.cacheable;
 }
 
 template <typename GemmParamsType, typename RuySpecType>
@@ -81,19 +79,8 @@ struct GemmImplUsingRuy {
     ruy::BasicSpec<AccumScalar, DstScalar> ruy_spec;
     MakeRuySpec(params, &ruy_spec);
 
-// If Ruy is not selected intentionally (TFLITE_WITH_RUY not defined)
-// and GEMMLOWP_NEON is absent, we fall back to Ruy for some quantized
-// kernels. Some Ruy paths are still experimental, so we restrict to reference
-// code in that case.
-#if !defined(TFLITE_WITH_RUY) && !defined(GEMMLOWP_NEON)
-    constexpr ruy::Path kRuyPath =
-        ruy::Path::kReference | ruy::Path::kStandardCpp;
-#else
-    constexpr ruy::Path kRuyPath = ruy::kAllPaths;
-#endif
-
-    ruy::Mul<kRuyPath>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
-                       &ruy_dst);
+    ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
+                             &ruy_dst);
   }
 };
 

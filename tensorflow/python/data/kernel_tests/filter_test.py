@@ -30,31 +30,28 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-def _test_combinations():
+def new_and_legacy_filter_fn_combinations():
 
-  def filter_fn(dataset, predicate):
+  def new_filter_fn(dataset, predicate):
     return dataset.filter(predicate)
 
   def legacy_filter_fn(dataset, predicate):
     return dataset.filter_with_legacy_function(predicate)
 
-  filter_combinations = combinations.combine(
+  return (combinations.combine(
       tf_api_version=[1, 2],
       mode=["eager", "graph"],
-      apply_filter=combinations.NamedObject("filter_fn", filter_fn))
-
-  legacy_filter_combinations = combinations.combine(
-      tf_api_version=1,
-      mode=["eager", "graph"],
-      apply_filter=combinations.NamedObject("legacy_filter_fn",
-                                            legacy_filter_fn))
-
-  return filter_combinations + legacy_filter_combinations
+      apply_filter=combinations.NamedObject("new_filter_fn", new_filter_fn)) +
+          combinations.combine(
+              tf_api_version=1,
+              mode=["eager", "graph"],
+              apply_filter=combinations.NamedObject("legacy_filter_fn",
+                                                    legacy_filter_fn)))
 
 
 class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(new_and_legacy_filter_fn_combinations())
   def testFilterDataset(self, apply_filter):
     components = (np.arange(7, dtype=np.int64),
                   np.array([[1, 2, 3]], dtype=np.int64) *
@@ -90,14 +87,14 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Test an empty dataset.
     do_test(0, 1)
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(new_and_legacy_filter_fn_combinations())
   def testFilterRange(self, apply_filter):
     dataset = dataset_ops.Dataset.range(4)
     dataset = apply_filter(dataset,
                            lambda x: math_ops.not_equal(math_ops.mod(x, 3), 2))
     self.assertDatasetProduces(dataset, expected_output=[0, 1, 3])
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(new_and_legacy_filter_fn_combinations())
   def testFilterDict(self, apply_filter):
     dataset = dataset_ops.Dataset.range(10).map(
         lambda x: {"foo": x * 2, "bar": x**2})
@@ -107,7 +104,7 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[(i * 2 + i**2) for i in range(10) if not (i**2) % 2])
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(new_and_legacy_filter_fn_combinations())
   def testUseStepContainerInFilter(self, apply_filter):
     input_data = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int64)
 
@@ -122,7 +119,7 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = apply_filter(dataset, _predicate)
     self.assertDatasetProduces(dataset, expected_output=[input_data[0]])
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(new_and_legacy_filter_fn_combinations())
   def testSparse(self, apply_filter):
 
     def _map_fn(i):
@@ -140,7 +137,7 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, expected_output=[_map_fn(i * 2)[0] for i in range(5)])
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(new_and_legacy_filter_fn_combinations())
   def testShortCircuit(self, apply_filter):
     dataset = dataset_ops.Dataset.zip(
         (dataset_ops.Dataset.range(10),
@@ -149,7 +146,7 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, expected_output=[(i, True) for i in range(10)])
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(new_and_legacy_filter_fn_combinations())
   def testParallelFilters(self, apply_filter):
     dataset = dataset_ops.Dataset.range(10)
     dataset = apply_filter(dataset, lambda x: math_ops.equal(x % 2, 0))

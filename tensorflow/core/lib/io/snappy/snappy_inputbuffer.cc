@@ -27,8 +27,7 @@ SnappyInputBuffer::SnappyInputBuffer(
       output_buffer_capacity_(output_buffer_bytes),
       input_buffer_(new char[input_buffer_capacity_]),
       output_buffer_(new char[output_buffer_capacity_]),
-      next_in_(input_buffer_.get()),
-      bytes_read_(0) {}
+      next_in_(input_buffer_.get()) {}
 
 Status SnappyInputBuffer::ReadNBytes(int64 bytes_to_read, tstring* result) {
   result->clear();
@@ -48,14 +47,17 @@ Status SnappyInputBuffer::ReadNBytes(int64 bytes_to_read, tstring* result) {
   return Status::OK();
 }
 
-int64 SnappyInputBuffer::Tell() const { return bytes_read_; }
+int64 SnappyInputBuffer::Tell() const {
+  // TODO(srbs): Implement this.
+  return -1;
+}
 
 Status SnappyInputBuffer::Reset() {
   file_pos_ = 0;
   avail_in_ = 0;
   avail_out_ = 0;
   next_in_ = input_buffer_.get();
-  bytes_read_ = 0;
+
   return Status::OK();
 }
 
@@ -67,7 +69,7 @@ size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
     next_out_ += can_read_bytes;
     avail_out_ -= can_read_bytes;
   }
-  bytes_read_ += can_read_bytes;
+
   return can_read_bytes;
 }
 

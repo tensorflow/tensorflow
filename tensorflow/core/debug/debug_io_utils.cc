@@ -27,6 +27,8 @@ limitations under the License.
 #ifndef PLATFORM_WINDOWS
 #include "grpcpp/create_channel.h"
 #else
+// winsock2.h is used in grpc, so Ws2_32.lib is needed
+#pragma comment(lib, "Ws2_32.lib")
 #endif  // #ifndef PLATFORM_WINDOWS
 
 #include "absl/strings/ascii.h"

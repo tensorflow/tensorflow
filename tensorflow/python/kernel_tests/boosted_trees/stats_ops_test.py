@@ -46,24 +46,6 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
         axis=2)
     return stats_summary
 
-  def add_f_dim_and_append_zeros(self, stats_summaries):
-    """Transform a list of stats summaries, adding a feature dimension.
-
-    The input shape is a list of arrays of shape [max_splits, num_buckets,
-    logits+hess dim]. This transformation returns a list of arrays of shape
-    [max_splits, 1, num_buckets + 1, logits+hess dim].
-
-    Args:
-      stats_summaries: a list of numpy arrays.
-
-    Returns:
-      A list of numpy arrays.
-    """
-    return [
-        self._append_zeros_for_default_bucket(np.expand_dims(feature, axis=1))
-        for feature in stats_summaries
-    ]
-
   def _get_stats_summary_for_split(self):
     return [
         [
@@ -178,7 +160,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[0.833333], [0.8]], right_node_contribs)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestGainsWithoutRegularization_v1_op(self):
+  def testCalculateBestGainsWithoutRegularization(self):
     """Testing Gain calculation without any regularization."""
     with self.cached_session() as sess:
       max_splits = 7
@@ -207,76 +189,19 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([[[-.592593], [-.75]], [[-.076923], [.568966]]],
                           self.evaluate(right_node_contribs_list))
 
-  def testCalculateBestFeaturesInvalidSplitType_v2_op(self):
+  def testCalculateBestMultiDimFeatureSplitsWithoutRegularization(self):
     """Testing best split calculation without any regularization."""
-    candidate_feature_ids = [9, 12]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    stats_summaries = self.add_f_dim_and_append_zeros(stats_summaries)
-
-    with self.assertRaisesRegexp(Exception, 'Incorrect split type'):
-      self.evaluate(
-          boosted_trees_ops.calculate_best_feature_split_v2(
-              node_id_range,
-              stats_summaries,
-              split_types=['INVALID'] * len(candidate_feature_ids),
-              candidate_feature_ids=candidate_feature_ids,
-              l1=0.0,
-              l2=0.0,
-              tree_complexity=0.0,
-              min_node_weight=0,
-              logits_dimension=1))
-
-  def testCalculateBestFeaturesWithoutRegularization_v2_op(self):
-    """Testing best split calculation without any regularization."""
-    candidate_feature_ids = [9, 12]
-    node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    stats_summaries = self.add_f_dim_and_append_zeros(stats_summaries)
-
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range,
-             stats_summaries,
-             split_types=['inequality'] * len(candidate_feature_ids),
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.0,
-             l2=0.0,
-             tree_complexity=0.0,
-             min_node_weight=0,
-             logits_dimension=1))
-
-    # Get same result as v1 op (CalculateBestGainsPerFeature), and find the
-    # feature_id and dimension that has the best gain per node.
-    self.assertAllEqual([1, 2], node_ids)
-    self.assertAllClose([0.02823, 0.41184], gains)
-    self.assertAllEqual([1, 1], thresholds)
-    self.assertAllEqual([12, 9], feature_ids)
-    f_dim = 0  # Both features only have one dimension.
-    self.assertAllEqual([f_dim] * 2, feature_dimensions)
-    # The left node contrib will be later added to the previous node value to
-    # make the left node value, and the same for right node contrib.
-    self.assertAllClose([[-.6], [.568966]], left_node_contribs)
-    self.assertAllClose([[-.076923], [-.75]], right_node_contribs)
-    self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
-
-  def testCalculateBestMultiDimFeatureSplitsWithoutRegularization_v2_op(self):
-    """Testing best split without any regularization for a multi-dim feature."""
-    candidate_feature_ids = [4]
-    node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
     stats_summary = self._append_zeros_for_default_bucket(stats_summary)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
@@ -284,11 +209,10 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
              logits_dimension=1))
 
     # Get same result as v1 op (CalculateBestGainsPerFeature), and find the
-    # feature_id and dimension that has the best gain per node.
+    # feature dimension that has the best gain.
     self.assertAllEqual([1, 2], node_ids)
     self.assertAllClose([0.02823, 0.41184], gains)
     self.assertAllEqual([1, 1], thresholds)
-    self.assertAllEqual([4, 4], feature_ids)
     self.assertAllEqual([1, 0], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
@@ -296,22 +220,18 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[-.076923], [-.75]], right_node_contribs)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestMultiDimFeatureSplitWMissingValuesWORegularization_v2_op(
-      self):
+  def testCalculateBestMultiDimFeatureSplitWMissingValuesWORegularization(self):
     """Testing best split calculation without any regularization."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
@@ -322,44 +242,39 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     # feature dimension that has the best gain.
     self.assertAllEqual([1, 2], node_ids)
     self.assertAllClose([0.116495, 0.60429], gains)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([1, 1], thresholds)
+    self.assertAllEqual([1, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
     self.assertAllClose([[-0.631579], [-0.770833]], left_node_contribs)
     self.assertAllClose([[0.833333], [0.8]], right_node_contribs)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestMultiDimFeatureEqualitySplitsWithoutRegularization_v2_op(
-      self):
+  def testCalculateBestMultiDimFeatureEqualitySplitsWithoutRegularization(self):
     """Testing best split calculation without any regularization."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['equality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
              min_node_weight=0,
-             logits_dimension=1))
+             logits_dimension=1,
+             split_type='equality'))
 
     self.assertAllEqual([1, 2], node_ids)
     # 0.116495 = (-0.05)^2/0.06 + 0.36^2/0.57 - 0.31^2/0.63
     # 0.60429 = (-0.4)^2/0.5 + 0.37^2/0.48 - 0.03^2/0.98
     self.assertAllClose([0.116495, 0.60429], gains)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([2, 2], thresholds)
+    self.assertAllEqual([1, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
     # left contrib 0.83 = 0.05/0.06, 0.8 = 0.4/0.5
@@ -368,48 +283,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[-0.631579], [-0.770833]], right_node_contribs)
     self.assertAllEqual([_EQUALITY_DEFAULT_RIGHT] * 2, split_types)
 
-  def testCalculateBestMultiDimFeatureMixedSplitTypeWithoutRegularization_v2_op(
-      self):
-    """Testing best split calculation without any regularization."""
-    candidate_feature_ids = [9, 12]
-    node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Add in feature dimension.
-    stats_summaries = [
-        np.expand_dims(feature, axis=1) for feature in stats_summaries
-    ]
-
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range,
-             stats_summaries,
-             split_types=['inequality', 'equality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.0,
-             l2=0.0,
-             tree_complexity=0.0,
-             min_node_weight=0,
-             logits_dimension=1))
-
-    self.assertAllEqual([1, 2], node_ids)
-    # 0.116495 = (-0.05)^2/0.06 + 0.36^2/0.57 - 0.31^2/0.63
-    # 0.60429 = (-0.4)^2/0.5 + 0.37^2/0.48 - 0.03^2/0.98
-    self.assertAllClose([0.116495, 0.60429], gains)
-    self.assertAllEqual([12, 12], feature_ids)
-    f_dim = 0  # Both features only have one dimension.
-    self.assertAllEqual([f_dim, f_dim], feature_dimensions)
-    self.assertAllEqual([2, 2], thresholds)
-    # Same result as equality only test, as feature_1 is chose for both nodes.
-    # left contrib 0.83 = 0.05/0.06, 0.8 = 0.4/0.5
-    self.assertAllClose([[0.833333], [.8]], left_node_contribs)
-    # right contrib -0.6315 = -0.36/0.57, -0.7708 = -0.37/0.48
-    self.assertAllClose([[-0.631579], [-0.770833]], right_node_contribs)
-    # Feature 1 is inequality.
-    self.assertAllEqual([_EQUALITY_DEFAULT_RIGHT, _EQUALITY_DEFAULT_RIGHT],
-                        split_types)
-
-  def testCalculateBestGainsWithL2_v1_op(self):
+  def testCalculateBestGainsWithL2(self):
     """Testing Gain calculation with L2."""
     with self.cached_session() as sess:
       max_splits = 7
@@ -438,22 +312,19 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([[[-.424658], [-.6]], [[-.043478], [.485294]]],
                           self.evaluate(right_node_contribs_list))
 
-  def testCalculateMultiDimBestFeatureSplitsWithL2_v2_op(self):
+  def testCalculateMultiDimBestFeatureSplitsWithL2(self):
     """Testing best split calculation with L2."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
     stats_summary = self._append_zeros_for_default_bucket(stats_summary)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.1,
              tree_complexity=0.0,
@@ -463,31 +334,27 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     # Get same result as v1 op (CalculateBestGainsPerFeature), and find the
     # feature dimension that has the best gain.
     self.assertAllEqual([1, 2], node_ids)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 0], feature_dimensions)
     self.assertAllClose([0.01879096, 0.33931375], gains)
     self.assertAllEqual([1, 1], thresholds)
+    self.assertAllEqual([1, 0], feature_dimensions)
     # # The left node contrib will be later added to the previous node value to
     # # make the left node value, and the same for right node contrib.
     self.assertAllClose([[-.5], [.485294]], left_node_contribs)
     self.assertAllClose([[-.043478], [-.6]], right_node_contribs)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateMultiDimBestFeatureSplitsWithMissingValuesL2_v2_op(self):
+  def testCalculateMultiDimBestFeatureSplitsWithMissingValuesL2(self):
     """Testing best split calculation with L2."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.1,
              tree_complexity=0.0,
@@ -497,44 +364,40 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     # Get same result as v1 op (CalculateBestGainsPerFeature), and find the
     # feature dimension that has the best gain.
     self.assertAllEqual([1, 2], node_ids)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllClose([0.077414, 0.501868], gains)
     self.assertAllEqual([1, 1], thresholds)
+    self.assertAllEqual([1, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
     self.assertAllClose([[-0.537313], [-0.637931]], left_node_contribs)
     self.assertAllClose([[0.3125], [0.666667]], right_node_contribs)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateMultiDimBestFeatureEqualitySplitsWithL2_v2_op(self):
+  def testCalculateMultiDimBestFeatureEqualitySplitsWithL2(self):
     """Testing best split calculation with L2."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['equality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.1,
              tree_complexity=0.0,
              min_node_weight=0,
-             logits_dimension=1))
+             logits_dimension=1,
+             split_type='equality'))
 
     self.assertAllEqual([1, 2], node_ids)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     # 0.077414 = 0.05^2/0.16 + 0.36^2/0.67 - 0.31^2/0.73
     # 0.501868 = 0.4^2/0.6 + 0.37^2/0.58 - 0.03^2/1.08
     self.assertAllClose([0.077414, 0.501868], gains)
     self.assertAllEqual([2, 2], thresholds)
+    self.assertAllEqual([1, 1], feature_dimensions)
     # # The left node contrib will be later added to the previous node value to
     # # make the left node value, and the same for right node contrib.
     # left contrib 0.3125 = 0.05/0.16, 0.6667 = 0.4/0.6
@@ -571,7 +434,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT, _INEQUALITY_DEFAULT_LEFT],
                         split_types)
 
-  def testCalculateBestGainsWithL1_v1_op(self):
+  def testCalculateBestGainsWithL1(self):
     """Testing Gain calculation with L1."""
     with self.cached_session() as sess:
       max_splits = 7
@@ -603,24 +466,22 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([[0.0, 0.191207], [0.01, 0.191207]],
                           self.evaluate(gains_list))
 
-  def testCalculateBestMultiDimFeatureSplitsWithL1_v2_op(self):
+  def testCalculateBestMultiDimFeatureSplitsWithL1(self):
     """Testing best split calculation with L1."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
     stats_summary = self._append_zeros_for_default_bucket(stats_summary)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.1,
-             l2=0.0,
+    l1 = 0.1
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=l1,
+             l2=0.,
              tree_complexity=0.0,
              min_node_weight=0,
              logits_dimension=1))
@@ -628,32 +489,29 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     # Get same result as v1 op (CalculateBestGainsPerFeature), and find the
     # feature dimension that has the best gain.
     self.assertAllEqual([1, 2], node_ids)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     # Gain should also include an adjustment of the gradient by l1.
     self.assertAllClose([0.01, 0.191207], gains)
     self.assertAllEqual([1, 1], thresholds)
     self.assertAllClose([[-0.4], [-0.5]], left_node_contribs)
     self.assertAllClose([[0.], [0.396552]], right_node_contribs)
+    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestMultiDimFeatureSplitsWithMissingValuesL1_v2_op(self):
+  def testCalculateBestMultiDimFeatureSplitsWithMissingValuesL1(self):
     """Testing best split calculation with L1."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.1,
-             l2=0.0,
+    l1 = 0.1
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=l1,
+             l2=0.,
              tree_complexity=0.0,
              min_node_weight=0,
              logits_dimension=1))
@@ -661,8 +519,6 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     # Get same result as v1 op (CalculateBestGainsPerFeature), and find the
     # feature dimension that has the best gain.
     self.assertAllEqual([1, 2], node_ids)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     # Gain should also include an adjustment of the gradient by l1.
     # (0.36-0.1)^2/0.57 + 0 - (0.31-0.1)^2/0.63 = 0.048597
     # (0.37-0.1)^2/0.48 + (-0.4+0.1)^2/0.5 = 0.331875
@@ -673,37 +529,35 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[-0.45614], [-0.5625]], left_node_contribs)
     # -(-0.4+0.1)/0.5 = 0.6
     self.assertAllClose([[0.], [0.6]], right_node_contribs)
+    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestMultiDimFeatureEqualitySplitsWithL1_v2_op(self):
+  def testCalculateBestMultiDimFeatureEqualitySplitsWithL1(self):
     """Testing best split calculation with L1."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
-    stats_summary = self._append_zeros_for_default_bucket(stats_summary)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['equality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.1,
-             l2=0.0,
+    l1 = 0.1
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=l1,
+             l2=0.,
              tree_complexity=0.0,
              min_node_weight=0,
-             logits_dimension=1))
+             logits_dimension=1,
+             split_type='equality'))
 
     self.assertAllEqual([1, 2], node_ids)
     # 0.048597 = 0 + 0.26^2/0.57 - 0.21^2/0.63
     # 0.501868 = 0.3^2/0.5 + 0.27^2/0.48 - 0
     self.assertAllClose([0.048597, 0.331875], gains)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([2, 2], thresholds)
+    self.assertAllEqual([1, 1], feature_dimensions)
     # # The left node contrib will be later added to the previous node value to
     # # make the left node value, and the same for right node contrib.
     # left contrib 0 (-0.05>-0.1), 0.6 = 0.3/0.5
@@ -739,7 +593,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[0.0], [0.6]], right_node_contribs)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestGainsWithTreeComplexity_v1_op(self):
+  def testCalculateBestGainsWithTreeComplexity(self):
     """Testing best gain calculation with tree complexity."""
     with self.cached_session() as sess:
       max_splits = 7
@@ -772,25 +626,24 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([[[-.424658], [-.6]], [[-.043478], [.485294]]],
                           self.evaluate(right_node_contribs_list))
 
-  def testCalculateBestMultiDimFeatureSplitsWithTreeComplexity_v2_op(self):
+  def testCalculateBestMultiDimFeatureSplitsWithTreeComplexity(self):
     """Testing best split calculation with tree complexity."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
     stats_summary = self._append_zeros_for_default_bucket(stats_summary)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.0,
-             l2=0.1,
-             tree_complexity=3,
+    l2 = 0.1
+    tree_complexity = 3.
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.,
+             l2=l2,
+             tree_complexity=tree_complexity,
              min_node_weight=0,
              logits_dimension=1))
 
@@ -799,32 +652,29 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([1, 2], node_ids)
     # Gain should also include an adjustment of the gradient by l1.
     self.assertAllClose([-2.98120904, -2.66068625], gains)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 0], feature_dimensions)
     self.assertAllEqual([1, 1], thresholds)
     self.assertAllClose([[-0.5], [0.485294]], left_node_contribs)
     self.assertAllClose([[-0.043478], [-.6]], right_node_contribs)
+    self.assertAllEqual([1, 0], feature_dimensions)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestMultiDimFeatureSplitsWMissingValsTreeComplexity_v2_op(
-      self):
+  def testCalculateBestMultiDimFeatureSplitsWMissingValsTreeComplexity(self):
     """Testing best split calculation with tree complexity."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.0,
-             l2=0.1,
-             tree_complexity=3,
+    l2 = 0.1
+    tree_complexity = 3.
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.,
+             l2=l2,
+             tree_complexity=tree_complexity,
              min_node_weight=0,
              logits_dimension=1))
 
@@ -833,41 +683,38 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([1, 2], node_ids)
     # Gain should also include an adjustment of the gradient by l1.
     self.assertAllClose([-2.922586, -2.498132], gains)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([1, 1], thresholds)
     self.assertAllClose([[-0.537313], [-0.637931]], left_node_contribs)
     self.assertAllClose([[0.3125], [0.666667]], right_node_contribs)
+    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestMultiDimFeatureEqualitySplitsWithTreeComplexity_v2_op(
-      self):
+  def testCalculateBestMultiDimFeatureEqualitySplitsWithTreeComplexity(self):
     """Testing best split calculation with tree complexity."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summaries = self._get_stats_summary_for_split()
-    # Convert from list of arrays to a single array and reshape to [max_splits,
-    # feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summaries, 0, 1)
+    stats_summary = np.asarray(self._get_stats_summary_for_split())
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['equality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.0,
-             l2=0.1,
-             tree_complexity=3,
+    l2 = 0.1
+    tree_complexity = 3.
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.,
+             l2=l2,
+             tree_complexity=tree_complexity,
              min_node_weight=0,
-             logits_dimension=1))
+             logits_dimension=1,
+             split_type='equality'))
 
     self.assertAllEqual([1, 2], node_ids)
     # -2.922586 = 0.05^2/0.16 + 0.36^2/0.67 - 0.31^2/0.73 - 3
     # -2.498132 = 0.4^2/0.6 + 0.37^2/0.58 - 0.03^2/1.08 - 3
     self.assertAllClose([-2.922586, -2.498132], gains)
     self.assertAllEqual([2, 2], thresholds)
-    self.assertAllEqual([4, 4], feature_ids)
     self.assertAllEqual([1, 1], feature_dimensions)
     # # The left node contrib will be later added to the previous node value to
     # # make the left node value, and the same for right node contrib.
@@ -904,7 +751,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[0.3125], [0.666667]], right_node_contribs)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateBestGainsWithMinNodeWeight_v1_op(self):
+  def testCalculateBestGainsWithMinNodeWeight(self):
     """Testing Gain calculation with min node weight."""
     with self.cached_session() as sess:
       max_splits = 7
@@ -951,9 +798,8 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([[[-0.75]], [[-0.014925]]],
                           self.evaluate(right_node_contribs_list))
 
-  def testCalculateMultiDimBestSplitsWithMinNodeWeight_v2_op(self):
+  def testCalculateMultiDimBestSplitsWithMinNodeWeight(self):
     """Testing best split calculation with min node weight."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     stats_summary = np.asarray([
         [
@@ -964,7 +810,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
-        ],  # f_dim 0
+        ],  # feature 0
         [
             [[0., 0.], [0., 0.], [.08, .09], [0., 0.]],  # node 0; ignored
             [[0., 0.], [.3, .5], [-.05, .6], [.06, .07]],  # node 1
@@ -973,37 +819,34 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
-        ],  # f_dim 1
+        ],  # feature 1
     ])  # feature_dim * shape=[max_splits, num_buckets, 2]
-    # Reshape to [max_splits, feature_dim, num_buckets, 2].
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
     stats_summary = np.moveaxis(stats_summary, 0, 1)
     stats_summary = self._append_zeros_for_default_bucket(stats_summary)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.0,
-             l2=0.0,
-             tree_complexity=0.0,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.,
+             l2=0.,
+             tree_complexity=0.,
              min_node_weight=1,
              logits_dimension=1))
 
     self.assertAllEqual([1, 2], node_ids)
     # Gain should also include an adjustment of the gradient by l1.
     self.assertAllClose([0.098013, 0.931596], gains)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([1, 1], thresholds)
     self.assertAllClose([[-.6], [-0.315789]], left_node_contribs)
     self.assertAllClose([[-0.014925], [2.53846]], right_node_contribs)
+    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
-  def testCalculateMultiDimBestSplitsWithMissingValuesMinNodeWeight_v2_op(self):
+  def testCalculateMultiDimBestSplitsWithMissingValuesMinNodeWeight(self):
     """Testing best split calculation with min node weight."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     stats_summary = np.asarray([
         [
@@ -1014,7 +857,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
-        ],  # f_dim 0
+        ],  # feature 0
         [
             [[0., 0.], [0., 0.], [.08, .09], [0., 0.]],  # node 0; ignored
             [[0., 0.], [.3, .5], [-.05, .6], [.06, .07]],  # node 1
@@ -1023,31 +866,29 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
-        ],  # f_dim 1
+        ],  # feature 1
     ])  # feature_dim * shape=[max_splits, num_buckets, 2]
-    # Reshape to [max_splits, feature_dim, num_buckets, 2].
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
     stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
-             l1=0.0,
-             l2=0.0,
-             tree_complexity=0.0,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.,
+             l2=0.,
+             tree_complexity=0.,
              min_node_weight=1,
              logits_dimension=1))
 
     self.assertAllEqual([1, 2], node_ids)
     # Gain should also include an adjustment of the gradient by l1.
     self.assertAllClose([0.149398, 3.332075], gains)
-    self.assertAllEqual([4, 4], feature_ids)
-    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([1, 1], thresholds)
     self.assertAllClose([[-0.631579], [-0.359223]], left_node_contribs)
     self.assertAllClose([[0.083333], [7.999989]], right_node_contribs)
+    self.assertAllEqual([1, 1], feature_dimensions)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
 
   def testSparseCalculateBestSplitsWithMinNodeWeight(self):
@@ -1101,8 +942,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([_INEQUALITY_DEFAULT_RIGHT, _INEQUALITY_DEFAULT_LEFT],
                         split_types)
 
-  def testCalculateBestGainsWithMinNodeWeightNoSplitOnFeaturePossible_v1_op(
-      self):
+  def testCalculateBestGainsWithMinNodeWeightNoSplitOnFeturePossible(self):
     """Testing Gain calculation without any regularization."""
     with self.cached_session() as sess:
       max_splits = 7
@@ -1155,10 +995,8 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
            max_splits=max_splits)
       self.assertAllEqual([[], []], self.evaluate(node_ids_list))
 
-  def testCalculateBestMultiDimFeatureSplitsWithNoSplitOnFeaturePossible_v2_op(
-      self):
+  def testCalculateBestMultiDimFeatureSplitsWithNoSplitOnFeaturePossible(self):
     """Testing best split calculation with min node weight and no split."""
-    candidate_feature_ids = [4]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     stats_summary = np.asarray([
         [
@@ -1169,7 +1007,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
-        ],  # f_dim 0
+        ],  # feature 0
         [
             [[0., 0.], [0., 0.], [.08, .09], [0., 0.]],  # node 0; ignored
             [[0., 0.], [.3, .5], [-.05, .06], [.06, .7]],  # node 1
@@ -1178,72 +1016,15 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
             [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
-        ],  # f_dim 1
+        ],  # feature 1
     ])  # feature_dim * shape=[max_splits, num_buckets, 2]
-    # Reshape to [max_splits, feature_dim, num_buckets, 2].
-    stats_summary = np.moveaxis(stats_summary, 0, 1)
-    stats_summary = self._append_zeros_for_default_bucket(stats_summary)
-
-    (node_ids, _, _, _, _, _, _,
-     _) = boosted_trees_ops.calculate_best_feature_split_v2(
-         node_id_range, [stats_summary],
-         split_types=['inequality'],
-         candidate_feature_ids=candidate_feature_ids,
-         l1=0.0,
-         l2=0.0,
-         tree_complexity=0.0,
-         min_node_weight=1,
-         logits_dimension=1)
-
-    # We can't split either of the nodes on the first feature.
-    self.assertAllEqual([1], node_ids)
-
-    # Now check when we can't split on any feature.
-    (node_ids, _, _, _, _, _, _,
-     _) = boosted_trees_ops.calculate_best_feature_split_v2(
-         node_id_range, [stats_summary],
-         split_types=['inequality'],
-         candidate_feature_ids=candidate_feature_ids,
-         l1=0.0,
-         l2=0.0,
-         tree_complexity=0.0,
-         min_node_weight=10,
-         logits_dimension=1)
-    self.assertAllEqual([], node_ids)
-
-  def testCalculateBestMultiDimFeatureEqualitySplitsWithNoSplitPossible_v2_op(
-      self):
-    """Testing best split calculation with min node weight and no split."""
-    candidate_feature_ids = [4]
-    node_id_range = [1, 3]  # node 1 through 2 will be processed.
-    stats_summary = np.asarray([
-        [
-            [[0., 0.], [.08, .09], [0., 0.], [0., 0.]],  # node 0; ignored
-            [[0., 0.], [.15, .36], [.06, .7], [.1, .2]],  # node 1
-            [[0., 0.], [-.33, .068], [0., 0.], [.3, .04]],  # node 2
-            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 3; ignored
-            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
-            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
-            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
-        ],  # f_dim 0
-        [
-            [[0., 0.], [0., 0.], [.08, .09], [0., 0.]],  # node 0; ignored
-            [[0., 0.], [.3, .5], [-.05, .06], [.06, .7]],  # node 1
-            [[.1, .1], [.2, -.05], [-.4, .05], [.07, .08]],  # node 2
-            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 3; ignored
-            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
-            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
-            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
-        ],  # f_dim 1
-    ])  # feature_dim * shape=[max_splits, num_buckets, 2]
-    # Reshape to [max_splits, feature_dim, num_buckets, 2].
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
     stats_summary = np.moveaxis(stats_summary, 0, 1)
 
-    (node_ids, _, _, _, _, _, _,
-     _) = boosted_trees_ops.calculate_best_feature_split_v2(
-         node_id_range, [stats_summary],
-         split_types=['equality'],
-         candidate_feature_ids=candidate_feature_ids,
+    (node_ids, _, _, _, _, _,
+     _) = boosted_trees_ops.calculate_best_feature_split(
+         node_id_range,
+         stats_summary,
          l1=0.0,
          l2=0.0,
          tree_complexity=0.0,
@@ -1254,11 +1035,62 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([1], node_ids)
 
     # Now check when we can't split on any feature
-    (node_ids, _, _, _, _, _, _,
-     _) = boosted_trees_ops.calculate_best_feature_split_v2(
-         node_id_range, [stats_summary],
-         split_types=['equality'],
-         candidate_feature_ids=candidate_feature_ids,
+    (node_ids, _, _, _, _, _,
+     _) = boosted_trees_ops.calculate_best_feature_split(
+         node_id_range,
+         stats_summary,
+         l1=0.0,
+         l2=0.0,
+         tree_complexity=0.0,
+         min_node_weight=10,
+         logits_dimension=1)
+    self.assertAllEqual([], node_ids)
+
+  def testCalculateBestMultiDimFeatureEqualitySplitsWithNoSplitPossible(self):
+    """Testing best split calculation with min node weight and no split."""
+    node_id_range = [1, 3]  # node 1 through 2 will be processed.
+    stats_summary = np.asarray([
+        [
+            [[0., 0.], [.08, .09], [0., 0.], [0., 0.]],  # node 0; ignored
+            [[0., 0.], [.15, .36], [.06, .7], [.1, .2]],  # node 1
+            [[0., 0.], [-.33, .068], [0., 0.], [.3, .04]],  # node 2
+            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 3; ignored
+            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
+            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
+            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
+        ],  # feature 0
+        [
+            [[0., 0.], [0., 0.], [.08, .09], [0., 0.]],  # node 0; ignored
+            [[0., 0.], [.3, .5], [-.05, .06], [.06, .7]],  # node 1
+            [[.1, .1], [.2, -.05], [-.4, .05], [.07, .08]],  # node 2
+            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 3; ignored
+            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 4; ignored
+            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 5; ignored
+            [[0., 0.], [0., 0.], [0., 0.], [0., 0.]],  # node 6; ignored
+        ],  # feature 1
+    ])  # feature_dim * shape=[max_splits, num_buckets, 2]
+    # reshape to [max_splits, feature_dim, num_buckets, 2]
+    stats_summary = np.moveaxis(stats_summary, 0, 1)
+
+    (node_ids, _, _, _, _, _,
+     _) = boosted_trees_ops.calculate_best_feature_split(
+         node_id_range,
+         stats_summary,
+         l1=0.0,
+         l2=0.0,
+         tree_complexity=0.0,
+         min_node_weight=1,
+         logits_dimension=1,
+         split_type='equality')
+
+    # We can't split either of the nodes on the first feature
+    self.assertAllEqual([1], node_ids)
+
+    # Now check when we can't split on any feature
+    (node_ids, _, _, _, _, _,
+     _) = boosted_trees_ops.calculate_best_feature_split(
+         node_id_range,
+         stats_summary,
          l1=0.0,
          l2=0.0,
          tree_complexity=0.0,
@@ -1670,8 +1502,8 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self._verify_precision(length=50000000)
 
 
-class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
-  """Tests multi-class/multi-regression for best splits using V2 op."""
+class BestMultiDimFeatureSplitMultiClass(StatsOpsTest):
+  """Tests multi-class/multi-regression for best splits."""
 
   logits_dim = 2
 
@@ -1734,7 +1566,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsSingleClassVsMultiClass(self):
     """Testing same results using same grads/hess with both single and multi."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
 
     # Build same stats summary in single class and multi-class form (using
@@ -1758,25 +1589,23 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     # [max_splits, feature_dim, num_buckets, 4]
     diag_stats_summary = self._add_feature_dim(diag_stats_summary)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
              min_node_weight=0,
              logits_dimension=1))
 
-    (diag_node_ids, diag_gains, diag_feature_ids, diag_feature_dimensions,
-     diag_thresholds, diag_left_node_contribs, diag_right_node_contribs,
+    (diag_node_ids, diag_gains, diag_feature_dimensions, diag_thresholds,
+     diag_left_node_contribs, diag_right_node_contribs,
      diag_split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [diag_stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             diag_stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
@@ -1785,9 +1614,8 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
     self.assertAllEqual(node_ids, diag_node_ids)
     self.assertAllClose(gains, diag_gains)
-    self.assertAllEqual(feature_ids, diag_feature_ids)
-    self.assertAllEqual(feature_dimensions, diag_feature_dimensions)
     self.assertAllEqual(thresholds, diag_thresholds)
+    self.assertAllEqual(feature_dimensions, diag_feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
     zeros = np.zeros_like(left_node_contribs)
@@ -1801,7 +1629,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsDiagonalVsFull(self):
     """Test results are same using diagonal hessian and full hessian."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
 
     # Build same stats summary in diagonal and full hessian form, respectively.
@@ -1824,26 +1651,24 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     ]
     # [max_splits, feature_dim, num_buckets, logits_dim + logits_dim**2]
     full_stats_summary = self._add_feature_dim(full_stats_summary)
-    (diag_node_ids, diag_gains, diag_feature_ids, diag_feature_dimensions,
-     diag_thresholds, diag_left_node_contribs, diag_right_node_contribs,
+    (diag_node_ids, diag_gains, diag_feature_dimensions, diag_thresholds,
+     diag_left_node_contribs, diag_right_node_contribs,
      diag_split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [diag_stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             diag_stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
              min_node_weight=0,
              logits_dimension=self.logits_dim))
 
-    (full_node_ids, full_gains, full_feature_ids, full_feature_dimensions,
-     full_thresholds, full_left_node_contribs, full_right_node_contribs,
+    (full_node_ids, full_gains, full_feature_dimensions, full_thresholds,
+     full_left_node_contribs, full_right_node_contribs,
      full_split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [full_stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             full_stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
@@ -1852,9 +1677,8 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
     self.assertAllEqual(diag_node_ids, full_node_ids)
     self.assertAllClose(diag_gains, full_gains)
-    self.assertAllEqual(diag_feature_ids, full_feature_ids)
-    self.assertAllEqual(diag_feature_dimensions, full_feature_dimensions)
     self.assertAllEqual(diag_thresholds, full_thresholds)
+    self.assertAllEqual(diag_feature_dimensions, full_feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
     self.assertAllClose(diag_left_node_contribs, full_left_node_contribs)
@@ -1863,18 +1687,16 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsWithoutRegularization(self):
     """Testing best split calculation without any regularization."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     # [max_splits, feature_dim, num_buckets, 2*logits_dim]
     stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
     stats_summary = self._append_zeros_for_default_bucket(stats_summary)
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
@@ -1884,7 +1706,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     self.assertAllEqual([1, 2], node_ids)
     self.assertAllClose([0.912981, 1.446218], gains)
     self.assertAllEqual([2, 1], thresholds)
-    self.assertAllEqual([14, 14], feature_ids)
     self.assertAllEqual([0, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
@@ -1896,17 +1717,15 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsWMissingValuesWoRegularization(self):
     """Testing best split calculation without any regularization."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     # [max_splits, feature_dim, num_buckets, 2*logits_dim]
     stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
@@ -1916,7 +1735,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     self.assertAllEqual([1, 2], node_ids)
     self.assertAllClose([0.912981, 2.79444], gains)
     self.assertAllEqual([0, 1], thresholds)
-    self.assertAllEqual([14, 14], feature_ids)
     self.assertAllEqual([0, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
@@ -1928,19 +1746,17 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsWithL2(self):
     """Testing best split calculation inith L2 regularization."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     # [max_splits, feature_dim, num_buckets, 2*logits_dim]
     stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
     stats_summary = self._append_zeros_for_default_bucket(stats_summary)
 
     l2 = 0.1
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=l2,
              tree_complexity=0.0,
@@ -1950,7 +1766,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     self.assertAllEqual([1, 2], node_ids)
     self.assertAllClose([0.475669, 1.009791], gains)
     self.assertAllEqual([1, 1], thresholds)
-    self.assertAllEqual([14, 14], feature_ids)
     self.assertAllEqual([0, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
@@ -1962,18 +1777,16 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsWithMissingValuesL2(self):
     """Testing best split calculation inith L2 regularization."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     # [max_splits, feature_dim, num_buckets, 2*logits_dim]
     stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
 
     l2 = 0.1
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=l2,
              tree_complexity=0.0,
@@ -1983,7 +1796,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     self.assertAllEqual([1, 2], node_ids)
     self.assertAllClose([0.475669, 3.467833], gains)
     self.assertAllEqual([1, 0], thresholds)
-    self.assertAllEqual([14, 14], feature_ids)
     self.assertAllEqual([0, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
@@ -1996,17 +1808,15 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsWithMinNodeWeight(self):
     """Testing best split calculation with min_node_weight."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     # [max_splits, feature_dim, num_buckets, 2*logits_dim]
     stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
 
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
@@ -2017,7 +1827,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     self.assertAllEqual([1, 2], node_ids)
     self.assertAllClose([0.912981, 2.79444], gains)
     self.assertAllEqual([0, 1], thresholds)
-    self.assertAllEqual([14, 14], feature_ids)
     self.assertAllEqual([0, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
@@ -2029,19 +1838,17 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsWithTreeComplexity(self):
     """Testing best split calculation with tree complexity."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     # [max_splits, feature_dim, num_buckets, 2*logits_dim]
     stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
 
     l2 = 0.1
     tree_complexity = 3.
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=l2,
              tree_complexity=tree_complexity,
@@ -2053,7 +1860,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     # L2 test result, but subtracted by tree_complexity.
     self.assertAllClose([-2.524331, 0.467833], gains)
     self.assertAllEqual([1, 0], thresholds)
-    self.assertAllEqual([14, 14], feature_ids)
     self.assertAllEqual([0, 1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.
@@ -2066,18 +1872,16 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
 
   def testCalculateBestFeatureSplitsWithMinNodeNoSplitOnFeaturePossible(self):
     """Test when parent node hessian doesn't meet min node weight."""
-    candidate_feature_ids = [14]
     node_id_range = [1, 3]  # node 1 through 2 will be processed.
     # [max_splits, feature_dim, num_buckets, 2*logits_dim]
     stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
 
     min_node_weight = 0.8
-    (node_ids, gains, feature_ids, feature_dimensions, thresholds,
-     left_node_contribs, right_node_contribs, split_types) = self.evaluate(
-         boosted_trees_ops.calculate_best_feature_split_v2(
-             node_id_range, [stats_summary],
-             split_types=['inequality'],
-             candidate_feature_ids=candidate_feature_ids,
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
              l1=0.0,
              l2=0.0,
              tree_complexity=0.0,
@@ -2088,7 +1892,6 @@ class BestMultiDimFeatureSplitMultiClassV2Op(StatsOpsTest):
     self.assertAllEqual([2], node_ids)
     self.assertAllClose([2.79444], gains)
     self.assertAllEqual([1], thresholds)
-    self.assertAllEqual([14], feature_ids)
     self.assertAllEqual([1], feature_dimensions)
     # The left node contrib will be later added to the previous node value to
     # make the left node value, and the same for right node contrib.

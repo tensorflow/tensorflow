@@ -25,7 +25,6 @@ import json
 import re
 import shutil
 import tempfile
-
 import six
 
 CodeLine = collections.namedtuple("CodeLine", ["cell_number", "code"])

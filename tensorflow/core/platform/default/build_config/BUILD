@@ -1,16 +1,20 @@
 # Description:
 # Platform-specific build configurations.
 
-load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
-load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
-
 package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
+
+load("//tensorflow:tensorflow.bzl", "check_deps")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
+load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
+load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
 cc_library(
     name = "gtest",
@@ -129,8 +133,15 @@ cc_library(
     name = "proto_parsing",
     copts = tf_copts(),
     deps = [
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_cc",
     ],
+)
+
+# Minimal lib so that tools used for mobile compilation
+# don't have to depend on platformlib.
+cc_library(
+    name = "logging",
+    copts = tf_copts(),
 )
 
 # Minimal lib to be used by tensorflow/core:framework_lite.
@@ -143,18 +154,59 @@ cc_library(
 )
 
 cc_library(
+    name = "base",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
+    name = "port",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
+    name = "protobuf",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
+    name = "env",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
+    name = "other",
+    srcs = [],
+    copts = tf_copts(),
+    deps = [
+        "@com_googlesource_code_re2//:re2",
+        "@farmhash_archive//:farmhash",
+        "@fft2d",
+        "@highwayhash//:sip_hash",
+    ],
+)
+
+cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
         ":gif",
         ":jpeg",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_cc",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
         "@fft2d",
         "@highwayhash//:sip_hash",
         "@zlib_archive//:zlib",
     ],
+)
+
+cc_library(
+    name = "stacktrace",
+    srcs = [],
 )
 
 cc_library(
@@ -183,10 +235,39 @@ cc_library(
 )
 
 cc_library(
+    name = "protos_cc_impl",
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:protos_all_cc_impl",
+    ],
+)
+
+cc_library(
+    name = "protos_cc",
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "test_lite_main",
+    testonly = 1,
+    linkstatic = 1,
+    deps = [],
+)
+
+cc_library(
     name = "test_main",
     testonly = 1,
     linkstatic = 1,
     deps = [],
+)
+
+filegroup(
+    name = "android_proto_lib_portable_proto",
+    srcs = [],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -232,4 +313,16 @@ cc_library(
         ["@local_config_sycl//sycl:syclrt"],
         ["@local_config_sycl//sycl:sycl_headers"],
     ),
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = glob(["*.h"]),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
+    visibility = ["//visibility:public"],
 )

@@ -22,7 +22,6 @@ import gc
 import time
 
 from absl.testing import parameterized
-from six.moves import xrange
 import tensorflow as tf
 
 from tensorflow.python.eager import forwardprop

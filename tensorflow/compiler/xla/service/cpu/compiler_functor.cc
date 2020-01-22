@@ -66,13 +66,13 @@ class FilteredPassManager : public llvm::legacy::PassManager {
   explicit FilteredPassManager(bool disable_expensive_passes)
       : disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
-    bool pass_disabled =
-        disable_expensive_passes_ && p->getPassName().contains("Unroll loops");
-    if (!pass_disabled) {
-      llvm::legacy::PassManager::add(p);
-    } else {
-      delete p;
+    if (disable_expensive_passes_) {
+      llvm::StringRef PassName = p->getPassName();
+      if (PassName.contains("Unroll loops")) {
+        return;
+      }
     }
+    llvm::legacy::PassManager::add(p);
   }
 
  private:
@@ -123,7 +123,10 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
 
   CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
-  runtime::RewriteIRRuntimeFunctions(&module, fast_math_flags_);
+  const auto& opts = target_machine_->Options;
+  bool fast_math_enabled = opts.UnsafeFPMath && opts.NoInfsFPMath &&
+                           opts.NoNaNsFPMath && opts.NoSignedZerosFPMath;
+  runtime::RewriteIRRuntimeFunctions(&module, fast_math_enabled);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> stream_buffer;

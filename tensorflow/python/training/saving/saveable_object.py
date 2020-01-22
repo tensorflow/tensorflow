@@ -45,10 +45,7 @@ class SaveSpec(object):
       self.device = device
     else:
       self.dtype = tensor.dtype
-      if device is not None:
-        self.device = device
-      else:
-        self.device = tensor.device
+      self.device = tensor.device
 
   @property
   def tensor(self):

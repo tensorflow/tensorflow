@@ -796,8 +796,9 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   std::vector<int> strides = {1, 1, 1, 1};
   auto conv = ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
 
-  auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), conv,
-                              ops::Squeeze::Attrs().Axis({2}));
+  ops::Squeeze::Attrs attrs;
+  attrs = attrs.Axis({2});
+  auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), conv, attrs);
 
   auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), squeeze, bias);
   auto fetch = ops::Identity(s.WithOpName("fetch"), bias_add);

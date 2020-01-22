@@ -26,7 +26,7 @@ static DialectRegistration<TFControlFlow::TFControlFlowDialect>
     tf_control_flow_ops;
 static DialectRegistration<TF::TensorFlowDialect> tf_ops;
 static DialectRegistration<tf_executor::TensorFlowExecutorDialect>
-    tf_executor_dialect;
+    tf_excutor_dialect;
 static DialectRegistration<tf_device::TensorFlowDeviceDialect>
     tf_device_dialect;
 static DialectRegistration<tf_saved_model::TensorFlowSavedModelDialect>

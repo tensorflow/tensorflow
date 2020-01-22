@@ -40,9 +40,7 @@ cc_toolchain_suite(
 cc_toolchain(
     name = "cc-compiler-local",
     all_files = ":crosstool_wrapper_driver_is_not_gcc",
-    ar_files = ":crosstool_wrapper_driver_is_not_gcc",
-    as_files = ":crosstool_wrapper_driver_is_not_gcc",
-    compiler_files = ":crosstool_wrapper_driver_is_not_gcc",
+    compiler_files = ":empty",
     dwp_files = ":empty",
     linker_files = ":crosstool_wrapper_driver_is_not_gcc",
     objcopy_files = ":empty",
@@ -82,9 +80,7 @@ cc_toolchain_config(
 cc_toolchain(
     name = "cc-compiler-darwin",
     all_files = ":crosstool_wrapper_driver_is_not_gcc",
-    ar_files = ":crosstool_wrapper_driver_is_not_gcc",
-    as_files = ":crosstool_wrapper_driver_is_not_gcc",
-    compiler_files = ":crosstool_wrapper_driver_is_not_gcc",
+    compiler_files = ":empty",
     dwp_files = ":empty",
     linker_files = ":crosstool_wrapper_driver_is_not_gcc",
     objcopy_files = ":empty",
@@ -120,9 +116,7 @@ cc_toolchain_config(
 cc_toolchain(
     name = "cc-compiler-windows",
     all_files = ":windows_msvc_wrapper_files",
-    ar_files = ":windows_msvc_wrapper_files",
-    as_files = ":windows_msvc_wrapper_files",
-    compiler_files = ":windows_msvc_wrapper_files",
+    compiler_files = ":empty",
     dwp_files = ":empty",
     linker_files = ":windows_msvc_wrapper_files",
     objcopy_files = ":empty",

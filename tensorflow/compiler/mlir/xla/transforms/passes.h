@@ -18,32 +18,24 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 
 namespace mlir {
 
 class FuncOp;
-class ModuleOp;
 class Operation;
 template <typename T>
 class OpPassBase;
 
 namespace xla_hlo {
 
-/// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
-/// false, emits an error if there is any operation that can't be legalized.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass(
-    bool allow_partial_conversion = false);
-
-/// Lowers from TF dialect's control flow to HLO dialect's control flow.
-std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeTFControlFlowPass();
+/// Lowers from TF dialect to HLO dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass();
 
 /// Converts the provided Operation as well as all nested operations into HLO
-/// dialect using the conversion patterns registered by the HLO dialect. When
-/// allow_partial_conversion is false, emits an error if there is any operation
-/// that can't be legalized.
-LogicalResult legalizeTF(Operation* op, bool allow_partial_conversion = false);
+/// dialect using the conversion patterns registered by the HLO dialect.
+LogicalResult legalizeTF(Operation* op);
 
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeControlFlowPass();
@@ -64,9 +56,6 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 
 // Lowers from LHLO dialect to Linalg dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
-
-// Lowers from LHLO dialect to GPU dialect.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass();
 
 // Fuses linalg ops obtained after LHLO lowering.
 std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();

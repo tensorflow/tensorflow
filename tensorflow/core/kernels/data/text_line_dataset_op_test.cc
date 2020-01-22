@@ -63,10 +63,10 @@ class TextLineDatasetParams : public DatasetParams {
   int64 buffer_size_;
 };
 
-class TextLineDatasetOpTest : public DatasetOpsTestBase {};
+class TextLineDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 Status CreateTestFiles(const std::vector<tstring>& filenames,
-                       const std::vector<tstring>& contents,
+                       const std::vector<string>& contents,
                        CompressionType compression_type) {
   if (filenames.size() != contents.size()) {
     return tensorflow::errors::InvalidArgument(
