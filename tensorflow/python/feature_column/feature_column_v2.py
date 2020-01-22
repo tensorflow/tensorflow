@@ -1079,19 +1079,21 @@ def shared_embedding_columns(categorical_columns,
     raise ValueError(
         'All categorical_columns must be subclasses of _CategoricalColumn. '
         'Given: {}, of type: {}'.format(c0, type(c0)))
-  if isinstance(c0,
-                (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn)):  # pylint: disable=protected-access
+  while isinstance(
+      c0, (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn,  # pylint: disable=protected-access
+           fc_old._SequenceCategoricalColumn, SequenceCategoricalColumn)):  # pylint: disable=protected-access
     c0 = c0.categorical_column
   for c in sorted_columns[1:]:
-    if isinstance(
-        c, (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn)):  # pylint: disable=protected-access
+    while isinstance(
+        c, (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn,  # pylint: disable=protected-access
+            fc_old._SequenceCategoricalColumn, SequenceCategoricalColumn)):  # pylint: disable=protected-access
       c = c.categorical_column
     if not isinstance(c, type(c0)):
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '
-          'the same type, or be weighted_categorical_column of the same type. '
-          'Given column: {} of type: {} does not match given column: {} of '
-          'type: {}'.format(c0, type(c0), c, type(c)))
+          'the same type, or be weighted_categorical_column or sequence column '
+          'of the same type. Given column: {} of type: {} does not match given '
+          'column: {} of type: {}'.format(c0, type(c0), c, type(c)))
     if num_buckets != c._num_buckets:  # pylint: disable=protected-access
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '
@@ -1251,17 +1253,17 @@ def shared_embedding_columns_v2(categorical_columns,
     raise ValueError(
         'All categorical_columns must be subclasses of CategoricalColumn. '
         'Given: {}, of type: {}'.format(c0, type(c0)))
-  if isinstance(c0, WeightedCategoricalColumn):
+  while isinstance(c0, (WeightedCategoricalColumn, SequenceCategoricalColumn)):
     c0 = c0.categorical_column
   for c in sorted_columns[1:]:
-    if isinstance(c, WeightedCategoricalColumn):
+    while isinstance(c, (WeightedCategoricalColumn, SequenceCategoricalColumn)):
       c = c.categorical_column
     if not isinstance(c, type(c0)):
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '
-          'the same type, or be weighted_categorical_column of the same type. '
-          'Given column: {} of type: {} does not match given column: {} of '
-          'type: {}'.format(c0, type(c0), c, type(c)))
+          'the same type, or be weighted_categorical_column or sequence column '
+          'of the same type. Given column: {} of type: {} does not match given '
+          'column: {} of type: {}'.format(c0, type(c0), c, type(c)))
     if num_buckets != c.num_buckets:
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '

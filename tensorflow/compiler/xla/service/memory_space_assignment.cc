@@ -132,14 +132,20 @@ std::string InstructionCountPrefetchIntervalPicker::ToNoCopyDebugString(
   return absl::StrCat("Overlapped HLOs = ", end_time - start_time);
 }
 
-void CostAnalysisPrefetchIntervalPicker::SetInstructionSchedule(
-    const absl::flat_hash_map<const HloInstruction*, int64>&
-        instruction_schedule) {
-  // First create a vector of elapsed times of HLO instructions.
-  std::vector<float> instructions_elapsed_time(instruction_schedule.size(),
-                                               0.0);
+CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    float min_async_copy_to_overlap_ratio,
+    float max_async_copy_to_overlap_ratio)
+    : cost_analysis_(cost_analysis),
+      min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
+      max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio) {
+  instruction_schedule_ =
+      &cost_analysis_.hlo_live_range().instruction_schedule();
 
-  for (const auto& instruction_and_logical_time : instruction_schedule) {
+  // First create a vector of elapsed times of HLO instructions.
+  std::vector<float> instructions_elapsed_time(instruction_schedule_->size(),
+                                               0.0);
+  for (const auto& instruction_and_logical_time : *instruction_schedule_) {
     float elapsed_time = cost_analysis_.cost_analysis().optimal_seconds(
         *instruction_and_logical_time.first);
     int64 logical_time = instruction_and_logical_time.second;
@@ -321,8 +327,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
           << options_.max_size_in_bytes;
 
   AddInputAndOutputRequiredAssignments();
-  options_.prefetch_interval_picker->SetInstructionSchedule(
-      hlo_live_range_.instruction_schedule());
 
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
@@ -838,8 +842,9 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   //                                     ^      ^
   //                                   Copy    Copy
   //                                   Start   Done
-  options_.prefetch_interval_picker->Begin(use, start_time,
-                                           latest_prefetch_time);
+  options_.prefetch_interval_picker->Begin(
+      use, (*prev_allocation_in_default_mem_it)->earliest_available_time(),
+      latest_prefetch_time);
   VLOG(4) << "Trying prefetch picker = "
           << options_.prefetch_interval_picker->ToDebugString();
   while (!options_.prefetch_interval_picker->Done()) {
@@ -964,7 +969,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   alternate_mem_interval.start = start_time;
 
   // Prefer the offset that was previously used for the previous allocation.
-  int64 preferred_offset = -1;
+  absl::optional<int64> preferred_offset;
   if (prev_allocation != nullptr) {
     preferred_offset = prev_allocation->chunk().offset;
     // If there is a previous allocation, set the start time one after the end
@@ -973,7 +978,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   }
 
   VLOG(4) << "We can eliminate copy to alternate memory. Preferred offset = "
-          << preferred_offset;
+          << (preferred_offset ? *preferred_offset : -1);
   // In case there are additional uses after this use, we rely on the last use
   // time to try to reserve a chunk in the heap simulator. This is to prevent
   // the following scenario:
@@ -995,23 +1000,19 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   // for the entire live range. This can result in unnecessary copies. By using
   // the last use time, we try to find an allocation that is available for the
   // entire Producer to Use2 range.
-  alternate_mem_interval.end = last_use_time;
-  ChunkCandidate chunk_candidate =
-      FindChunkCandidate(alternate_mem_interval, preferred_offset);
-  alternate_mem_interval.end = end_time;
+  absl::optional<ChunkCandidate> chunk_candidate = FindBestNoCopyChunkCandidate(
+      end_time, last_use_time, preferred_offset, &alternate_mem_interval);
   // Check if the new heap size fits within limits. Also ensure if a
   // preferred offset was provided, that offset was used.
-  if (chunk_candidate.heap_size <= available_heap_size() &&
-      (preferred_offset == -1 ||
-       preferred_offset == chunk_candidate.chunk.offset)) {
+  if (chunk_candidate) {
     VLOG(3) << "Keep the buffer in alternate memory. Offset = "
-            << chunk_candidate.chunk.offset
-            << ", size = " << chunk_candidate.chunk.size
-            << ", heap_size = " << chunk_candidate.heap_size
+            << chunk_candidate->chunk.offset
+            << ", size = " << chunk_candidate->chunk.size
+            << ", heap_size = " << chunk_candidate->heap_size
             << ", prefetch picker = "
             << options_.prefetch_interval_picker->ToNoCopyDebugString(
                    non_bitcast_operand->shape(), start_time, end_time);
-    AddToPendingChunks(alternate_mem_interval, chunk_candidate);
+    AddToPendingChunks(alternate_mem_interval, *chunk_candidate);
 
     // If there was a previous allocation, the buffer location is the
     // same as the previous. Otherwise, it is the operand.
@@ -1023,12 +1024,41 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
       allocations->push_back(
           absl::make_unique<MemorySpaceAssignment::Allocation>(
               non_bitcast_operand, defining_position, MemorySpace::kAlternate,
-              chunk_candidate.chunk, start_time, end_time));
+              chunk_candidate->chunk, start_time, end_time));
     }
     allocations->back()->AddUse(use);
     return true;
   }
   return false;
+}
+
+absl::optional<AlternateMemoryBestFitHeap::ChunkCandidate>
+AlternateMemoryBestFitHeap::FindBestNoCopyChunkCandidate(
+    int64 end_time, int64 last_use_time, absl::optional<int64> preferred_offset,
+    BufferInterval* alternate_mem_interval) const {
+  if (!preferred_offset) {
+    // Find a chunk that's as long living as possible.
+    for (alternate_mem_interval->end = last_use_time;
+         alternate_mem_interval->end >= end_time;
+         --alternate_mem_interval->end) {
+      ChunkCandidate chunk_candidate =
+          FindChunkCandidate(*alternate_mem_interval);
+      if (chunk_candidate.heap_size <= available_heap_size()) {
+        alternate_mem_interval->end = end_time;
+        return chunk_candidate;
+      }
+    }
+    return absl::nullopt;
+  }
+  // If a preferred offset is given, try to find an allocation at that offset
+  // only.
+  alternate_mem_interval->end = end_time;
+  ChunkCandidate chunk_candidate =
+      FindChunkCandidate(*alternate_mem_interval, *preferred_offset);
+  if (chunk_candidate.chunk.offset == *preferred_offset) {
+    return chunk_candidate;
+  }
+  return absl::nullopt;
 }
 
 /*static*/ int64 MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(
@@ -1410,7 +1440,9 @@ Status MemorySpaceAssignment::SimplifyGraph() {
            computation->MakeInstructionPostOrder()) {
         if (computation->IsSafelyRemovable(instruction) &&
             instruction->user_count() == 0 && !instruction->HasSideEffect() &&
-            instruction != computation->root_instruction()) {
+            instruction != computation->root_instruction() &&
+            instruction->opcode() != HloOpcode::kCopyStart &&
+            instruction->opcode() != HloOpcode::kCopyDone) {
           VLOG(4) << "Instruction removed: " << instruction->ToString();
           // Ensure the exported preset assignments don't contain a reference to
           // the removed instruction.

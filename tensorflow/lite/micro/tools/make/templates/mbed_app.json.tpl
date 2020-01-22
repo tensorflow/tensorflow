@@ -4,5 +4,5 @@
             "value": 65536
 	}
     },
-  "requires": ["bare-metal"]
+    "requires": ["bare-metal"]
 }

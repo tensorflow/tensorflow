@@ -68,14 +68,14 @@ TfLiteStatus FlatBufferIntVectorToArray(
                            op_name);
     return kTfLiteError;
   } else {
-    int num_dimensions = flat_vector->size();
+    size_t num_dimensions = flat_vector->size();
     if (num_dimensions > max_size_of_buffer / sizeof(int)) {
       error_reporter->Report(
           "Found too many dimensions in the input array of operation '%s'.\n",
           op_name);
       return kTfLiteError;
     } else {
-      for (int i = 0; i < num_dimensions; ++i) {
+      for (size_t i = 0; i < num_dimensions; ++i) {
         buffer[i] = flat_vector->Get(i);
       }
     }

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 

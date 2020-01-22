@@ -290,7 +290,8 @@ class KerasObjectLoader(tf_load.Loader):
     model_is_functional_or_sequential = (
         metadata.get('is_graph_network', False) or
         metadata['class_name'] == 'Sequential')
-    if (generic_utils.LAYER_UNDEFINED_CONFIG_KEY in config or
+    if (config is None or
+        generic_utils.LAYER_UNDEFINED_CONFIG_KEY in config or
         not model_is_functional_or_sequential):
       return None  # Revive as custom model.
 

@@ -494,6 +494,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         IncrementOutstandingThreads();
         thread_pool_->Schedule([this]() { WorkerManagerThread(); });
         if (ctx_->stats_aggregator()) {
+          IncrementOutstandingThreads();
           thread_pool_->Schedule([this]() { StatsThread(); });
         }
         threads_initialized_ = true;
@@ -983,7 +984,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 l, std::chrono::milliseconds(kStatsReportingPeriodMillis));
           }
           if (cancelled_) {
-            break;
+            DecrementOutstandingThreads();
+            return;
           }
           num_current_active_workers = num_current_active_workers_;
           num_current_workers = num_current_workers_;

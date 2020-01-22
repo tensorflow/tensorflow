@@ -18,8 +18,9 @@ package_group(
 )
 
 exports_files([
-    "run_lit.sh",
     "LICENSE.TXT",
+    "include/mlir/Dialect/LLVMIR/LLVMOps.td",
+    "run_lit.sh",
 ])
 
 cc_library(
@@ -975,6 +976,10 @@ gentbl(
         (
             "-gen-spirv-enum-avail-defs",
             "include/mlir/Dialect/SPIRV/SPIRVEnumAvailability.cpp.inc",
+        ),
+        (
+            "-gen-spirv-capability-implication",
+            "include/mlir/Dialect/SPIRV/SPIRVCapabilityImplication.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -2456,12 +2461,13 @@ filegroup(
 
 exports_files(
     [
-        "include/mlir/Dialect/StandardOps/Ops.td",
-        "include/mlir/Analysis/CallInterfaces.td",
-        "include/mlir/Transforms/InliningUtils.h",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/IR/OpAsmInterface.td",
         "include/mlir/Analysis/CallInterfaces.h",
+        "include/mlir/Analysis/CallInterfaces.td",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/Dialect/StandardOps/Ops.td",
+        "include/mlir/IR/OpAsmInterface.td",
+        "include/mlir/IR/OpBase.td",
+        "include/mlir/Transforms/InliningUtils.h",
     ],
     visibility = ["@llvm-project//mlir:friends"],
 )

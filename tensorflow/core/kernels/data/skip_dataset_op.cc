@@ -72,7 +72,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
-    return count_ < 0 ? 0 : std::max(0LL, n - count_);
+    return count_ < 0 ? 0 : std::max(int64{0}, n - count_);
   }
 
   Status CheckExternalState() const override {

@@ -457,8 +457,8 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
 
 {{INCLUDE_XLA_DATA_PROTO}}
 {{INCLUDE_HLO_PROFILE_PRINTER_DATA_PROTO}}
-#include "{{TF_HEADER_ROOT}}/compiler/tf2xla/xla_compiled_cpu_function.h"
-#include "{{TF_HEADER_ROOT}}/core/platform/types.h"
+#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace Eigen { struct ThreadPoolDevice; }
 namespace xla { class ExecutableRunOptions; }
@@ -659,7 +659,6 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{CLASS}}", opts.class_name},
       {"{{DECLS_FROM_OBJ_FILE}}",
        absl::StrJoin(metadata_result.header_variable_decls, "\n")},
-      {"{{TF_HEADER_ROOT}}", compile_result.tensorflow_header_root},
       {"{{ENTRY}}", compile_result.entry_point},
       {"{{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}}",
        metadata_result.hlo_profile_printer_data_access_shim},

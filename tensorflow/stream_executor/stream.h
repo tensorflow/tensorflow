@@ -1912,6 +1912,18 @@ class Stream {
                           ScratchAllocator *workspace_allocator,
                           dnn::ProfileResult *output_profile_result);
 
+  // Enqueue a CTCLoss operation onto the stream.
+  // See DnnSupport::DoCtcLoss for more details.
+  Stream &ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
+                      const DeviceMemory<float> &probs_data,
+                      absl::Span<const int> labels_data,
+                      absl::Span<const int> labels_lengths_data,
+                      absl::Span<const int> input_lengths_data,
+                      DeviceMemory<float> *costs_data,
+                      const dnn::RnnStateTensorDescriptor &grads_desc,
+                      DeviceMemory<float> *grads_data,
+                      ScratchAllocator *workspace_allocator);
+
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
   Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,

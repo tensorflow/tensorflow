@@ -1212,7 +1212,11 @@ void LoadDynamicKernels() {
 }
 
 void* GlobalKernelRegistry() {
-  static KernelRegistry* global_kernel_registry = new KernelRegistry;
+  static KernelRegistry* global_kernel_registry = []() {
+    KernelRegistry* registry = new KernelRegistry;
+    OpRegistry::Global()->RegisterValidator(ValidateKernelRegistrations);
+    return registry;
+  }();
   return global_kernel_registry;
 }
 

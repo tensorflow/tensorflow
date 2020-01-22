@@ -106,7 +106,7 @@ py_test(
         ":get_layer_policy",
         ":policy",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
     ],
 )
 

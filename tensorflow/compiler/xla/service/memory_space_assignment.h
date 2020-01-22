@@ -107,6 +107,8 @@ class MemorySpaceAssignmentCostAnalysis {
 
   int64 GetScheduleEndTime() const;
 
+  const HloLiveRange& hlo_live_range() const { return hlo_live_range_; }
+
  private:
   const HloCostAnalysis& cost_analysis_;
   float async_copy_bandwidth_bytes_per_second_;
@@ -120,18 +122,6 @@ class PrefetchIntervalPicker {
  public:
   PrefetchIntervalPicker() = default;
   virtual ~PrefetchIntervalPicker() = default;
-
-  // Sets the instruction schedule.
-  // TODO(yuemmawang) Get rid of this method, and perform the operations in
-  // CostAnalysisPrefetchIntervalPicker::SetInstructionSchedule in
-  // CostAnalysisPrefetchIntervalPicker's constructor.
-  // CostAnalysisPrefetchIntervalPicker can now use its
-  // cost_analysis_.hlo_live_range_ to get the instruction schedule.
-  virtual void SetInstructionSchedule(
-      const absl::flat_hash_map<const HloInstruction*, int64>&
-          instruction_schedule) {
-    instruction_schedule_ = &instruction_schedule;
-  }
 
   // Returns true if the buffer can be allocated in alternate memory space
   // without any copies (prefetches).
@@ -218,14 +208,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
       float min_async_copy_to_overlap_ratio,
-      float max_async_copy_to_overlap_ratio)
-      : cost_analysis_(cost_analysis),
-        min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
-        max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio) {}
-
-  void SetInstructionSchedule(
-      const absl::flat_hash_map<const HloInstruction*, int64>&
-          instruction_schedule) override;
+      float max_async_copy_to_overlap_ratio);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
                                           int64 end_time) const override;
@@ -386,6 +369,10 @@ class MemorySpaceAssignment {
     // Returns the defining position for this allocation.
     virtual HloPosition defining_position() const { return defining_position_; }
 
+    // Returns the time the buffer is first available to be used. For
+    // Allocation, this is start_time.
+    virtual int64 earliest_available_time() const { return start_time_; }
+
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
     Chunk chunk() const { return chunk_; }
@@ -451,6 +438,13 @@ class MemorySpaceAssignment {
 
     HloInstruction* copy_start() const { return copy_start_; }
     HloInstruction* copy_done() const { return copy_done_; }
+
+    // Returns the time the buffer is first available to be used. For For
+    // CopyAllocation, this is when the copy ends, which is
+    // copy_done_schedule_before.
+    int64 earliest_available_time() const override {
+      return copy_done_schedule_before_;
+    }
 
     int64 copy_start_schedule_after() const {
       return copy_start_schedule_after_;
@@ -660,6 +654,14 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       BufferInterval alternate_mem_interval,
       HloInstruction* non_bitcast_operand,
       MemorySpaceAssignment::AllocationSequence* allocations);
+
+  // For a no-copy allocation, find the best possible chunk candidate, where it
+  // has the longest possible availability if no preferred offset is given, or
+  // at the preferred_offset if it is given.
+  absl::optional<ChunkCandidate> FindBestNoCopyChunkCandidate(
+      int64 end_time, int64 last_use_time,
+      absl::optional<int64> preferred_offset,
+      BufferInterval* alternate_mem_interval) const;
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();

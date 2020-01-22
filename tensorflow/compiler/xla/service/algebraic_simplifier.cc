@@ -3353,6 +3353,25 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     return Status::OK();
   }
 
+  HloInstruction* pad;
+  HloInstruction* pad_operand;
+  if (Match(slice, m::Slice(m::Pad(&pad, m::Op(&pad_operand), m::Op())))) {
+    bool slice_undoes_pad = true;
+    for (int64 i = 0; i < slice->shape().rank(); ++i) {
+      if (slice->slice_starts(i) !=
+          pad->padding_config().dimensions(i).edge_padding_low()) {
+        slice_undoes_pad = false;
+      }
+      if (slice->slice_strides(i) - 1 !=
+          pad->padding_config().dimensions(i).interior_padding()) {
+        slice_undoes_pad = false;
+      }
+    }
+    if (slice_undoes_pad && ReplaceInstructionIfSameShape(slice, pad_operand)) {
+      return Status::OK();
+    }
+  }
+
   if (slice->operand(0)->opcode() == HloOpcode::kSlice &&
       IsUnstridedSlice(slice) && IsUnstridedSlice(slice->operand(0))) {
     HloInstruction* operand_slice = slice->mutable_operand(0);

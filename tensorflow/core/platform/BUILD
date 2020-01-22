@@ -32,6 +32,11 @@ load(
     "tf_windows_aware_platform_deps",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_binary",
+    "cc_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_chromiumos",
     "if_not_android",
@@ -91,6 +96,8 @@ exports_files(
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+exports_files(["rocm_rocdl_path.h"])
 
 cc_library(
     name = "abi",
@@ -849,7 +856,6 @@ tf_cc_tests(
         "strcat_test.cc",
         "stringpiece_test.cc",
         "stringprintf_test.cc",
-        "subprocess_test.cc",
         "vmodule_benchmark_test.cc",
     ],
     create_named_test_suite = True,
@@ -871,6 +877,20 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib_archive//:zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "subprocess_test",
+    size = "small",
+    srcs = ["subprocess_test.cc"],
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":subprocess",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1358,6 +1378,7 @@ filegroup(
         "protobuf_internal.h",
         "random.cc",
         "random.h",
+        "subprocess.h",
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",
@@ -1412,6 +1433,12 @@ bzl_library(
     name = "build_config_root_bzl",
     srcs = [
         "build_config_root.bzl",
-        "//tensorflow/core/platform/default:build_config_root.bzl",
-    ],
+    ] + tf_platform_alias("build_config_root.bzl"),
+)
+
+bzl_library(
+    name = "rules_cc_bzl",
+    srcs = [
+        "rules_cc.bzl",
+    ] + tf_platform_alias("rules_cc.bzl"),
 )

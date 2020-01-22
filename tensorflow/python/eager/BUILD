@@ -1,6 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -154,21 +153,18 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
-        "//tensorflow/python/tpu:topology",
         "//third_party/py/numpy",
     ],
 )
 
-distribute_py_test(
+cuda_py_test(
     name = "context_test",
     size = "small",
     srcs = ["context_test.py"],
-    main = "context_test.py",
     python_version = "PY3",
     deps = [
         ":context",
         ":test",
-        "//tensorflow/python/tpu",
     ],
 )
 
@@ -443,6 +439,7 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:op_callbacks",
         "//tensorflow/python:tensor_shape",
     ],
 )

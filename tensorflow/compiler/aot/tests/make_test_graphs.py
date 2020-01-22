@@ -154,6 +154,14 @@ def tftop_k(_):
   array_ops.identity(output[1], name='indices')
 
 
+def tfvariable_readonly(_):
+  x = variables.Variable(1000.0, name='x')
+  old_x = x.value()
+  with ops.control_dependencies([old_x]):
+    new_value = math_ops.add(old_x, 42.0)
+  array_ops.identity(new_value, name='result')
+
+
 def tfvariable(_):
   x = variables.Variable(1000.0, name='x')
   old_x = x.value()
@@ -198,6 +206,7 @@ def main(_):
   write_graph(tfsplits, FLAGS.out_dir)
   write_graph(tftop_k, FLAGS.out_dir)
   write_graph(tfvariable, FLAGS.out_dir)
+  write_graph(tfvariable_readonly, FLAGS.out_dir)
   write_graph(tfvariable_sequential_updates, FLAGS.out_dir)
 
 

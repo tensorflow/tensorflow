@@ -329,7 +329,7 @@ class ScatterTest(test.TestCase):
         indices = np.array([2, 0, 5])
         self.evaluate(op(ref, indices, updates))
 
-        # Indicies out of range should not fail.
+        # Indices out of range should not fail.
         indices = np.array([-1, 0, 5])
         self.evaluate(op(ref, indices, updates))
         indices = np.array([2, 0, 6])

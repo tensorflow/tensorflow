@@ -141,8 +141,10 @@ class PyLocalClient {
 
   int device_count() const { return devices_.size(); }
   int local_device_count() const { return local_devices_.size(); }
-  const std::vector<std::shared_ptr<Device>>& devices() { return devices_; }
-  const std::vector<std::shared_ptr<Device>>& local_devices() {
+  const std::vector<std::shared_ptr<Device>>& devices() const {
+    return devices_;
+  }
+  const std::vector<std::shared_ptr<Device>>& local_devices() const {
     return local_devices_;
   }
   const std::map<int, std::shared_ptr<Device>>& id_to_device() const {
@@ -224,7 +226,7 @@ class PyLocalBuffer {
       const std::vector<PyLocalBuffer*> buffers,
       std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device);
 
-  PyLocalBuffer(Shape on_host_shape,
+  PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
                 std::shared_ptr<SharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client,
                 std::shared_ptr<Device> device);
@@ -235,6 +237,7 @@ class PyLocalBuffer {
   PyLocalBuffer& operator=(PyLocalBuffer&&) = delete;
 
   const Shape& on_host_shape() const { return on_host_shape_; }
+  const Shape& on_device_shape() const { return on_device_shape_; }
   std::shared_ptr<Device> device() const { return device_; }
   const std::string& platform_name() const { return client_->platform_name(); }
   std::shared_ptr<PyLocalClient> client() const { return client_; }
@@ -276,6 +279,7 @@ class PyLocalBuffer {
  private:
   const std::shared_ptr<PyLocalClient> client_;
   const Shape on_host_shape_;
+  const Shape on_device_shape_;
   const std::shared_ptr<Device> device_;
   mutable absl::Mutex mu_;
   std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);

@@ -715,7 +715,8 @@ def tf_fingerprint_deps():
         "@farmhash_archive//:farmhash",
     ]
 
-def tf_protobuf_deps():
+def tf_protobuf_deps(use_lite_protos = False):
+    _ignore = use_lite_protos
     return if_static(
         [
             clean_dep("@com_google_protobuf//:protobuf"),
@@ -753,9 +754,8 @@ def tf_logging_deps():
 def tf_monitoring_deps():
     return ["//tensorflow/core/platform/default:monitoring"]
 
-def tf_portable_deps_no_runtime():
+def tf_portable_deps_no_runtime(use_lite_protos = False):
     return [
-        "@com_google_protobuf//:protobuf",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -763,7 +763,7 @@ def tf_portable_deps_no_runtime():
         "//tensorflow/core:mobile_additional_lib_deps",
         "//tensorflow/core:protos_all_cc_impl",
         "@farmhash_archive//:farmhash",
-    ]
+    ] + tf_protobuf_deps(use_lite_protos)
 
 def tf_google_mobile_srcs_no_runtime():
     return []

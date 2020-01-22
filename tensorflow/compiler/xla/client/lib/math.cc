@@ -689,6 +689,211 @@ XlaOp Digamma(XlaOp input) {
   });
 }
 
+// Incomplete gamma functions
+
+namespace {
+
+// Helper function for computing Igamma using a power series.
+XlaOp IgammaSeries(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
+                   xla::PrimitiveType type) {
+  // vals: (enabled, r, c, ans, x)
+  // 'enabled' is a predication mask that says for which elements we should
+  // execute the loop body. Disabled elements have no effect in the loop body.
+  // TODO(phawkins): in general this isn't an optimal implementation on any
+  // backend. For example, on GPU, we should probably vectorize to the warp
+  // size, and then run independent loops for each warp's worth of
+  // data.
+  auto cond = [&](absl::Span<const XlaOp> vals,
+                  XlaBuilder* builder) -> StatusOr<XlaOp> {
+    XlaOp enabled = vals[0];
+    return Any(enabled);
+  };
+  auto body = [&](absl::Span<const XlaOp> vals,
+                  XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    XlaOp enabled = vals[0];
+    XlaOp r = vals[1];
+    XlaOp c = vals[2];
+    XlaOp ans = vals[3];
+    XlaOp x = vals[4];
+    r = r + ScalarLike(r, 1);
+    c = c * (x / r);
+    ans = ans + c;
+    return std::vector<XlaOp>{
+        And(enabled, Gt(c / ans, Epsilon(builder, type))),
+        Select(enabled, r, vals[1]), Select(enabled, c, vals[2]),
+        Select(enabled, ans, vals[3]), Select(enabled, x, vals[4])};
+  };
+  auto& b = *ax.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    std::vector<XlaOp> vals = {enabled, a, FullLike(a, 1), FullLike(a, 1), x};
+    TF_ASSIGN_OR_RETURN(vals, WhileLoopHelper(cond, body, vals, "igamma", &b));
+    XlaOp ans = vals[3];
+    return (ans * ax) / a;
+  });
+}
+
+// Helper function for computing Igammac using a continued fraction.
+XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
+                               xla::PrimitiveType type) {
+  // vals: enabled, ans, t, y, z, c, pkm1, qkm1, pkm2, qkm2
+  auto cond = [&](absl::Span<const XlaOp> vals,
+                  XlaBuilder* builder) -> StatusOr<XlaOp> {
+    XlaOp enabled = vals[0];
+    XlaOp c = vals[5];
+    return And(Lt(c, ScalarLike(c, 2000)), Any(enabled));
+  };
+  auto body = [&](absl::Span<const XlaOp> vals,
+                  XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    XlaOp enabled = vals[0];
+    XlaOp ans = vals[1];
+    XlaOp t = vals[2];
+    XlaOp y = vals[3];
+    XlaOp z = vals[4];
+    XlaOp c = vals[5];
+    XlaOp pkm1 = vals[6];
+    XlaOp qkm1 = vals[7];
+    XlaOp pkm2 = vals[8];
+    XlaOp qkm2 = vals[9];
+    c = c + ScalarLike(c, 1);
+    y = y + ScalarLike(y, 1);
+    z = z + ScalarLike(z, 2);
+    XlaOp yc = y * c;
+    XlaOp pk = pkm1 * z - pkm2 * yc;
+    XlaOp qk = qkm1 * z - qkm2 * yc;
+    XlaOp qk_is_nonzero = Ne(qk, ScalarLike(qk, 0));
+    XlaOp r = pk / qk;
+    t = Select(qk_is_nonzero, Abs((ans - r) / r), FullLike(t, 1));
+    ans = Select(qk_is_nonzero, r, ans);
+    pkm2 = pkm1;
+    pkm1 = pk;
+    qkm2 = qkm1;
+    qkm1 = qk;
+    XlaOp rescale = Gt(Abs(pk), Reciprocal(Epsilon(builder, type)));
+    pkm2 = Select(rescale, pkm2 * Epsilon(builder, type), pkm2);
+    pkm1 = Select(rescale, pkm1 * Epsilon(builder, type), pkm1);
+    qkm2 = Select(rescale, qkm2 * Epsilon(builder, type), qkm2);
+    qkm1 = Select(rescale, qkm1 * Epsilon(builder, type), qkm1);
+    return std::vector<XlaOp>{And(enabled, Gt(t, Epsilon(builder, type))),
+                              Select(enabled, ans, vals[1]),
+                              Select(enabled, t, vals[2]),
+                              Select(enabled, y, vals[3]),
+                              Select(enabled, z, vals[4]),
+                              c,
+                              Select(enabled, pkm1, vals[6]),
+                              Select(enabled, qkm1, vals[7]),
+                              Select(enabled, pkm2, vals[8]),
+                              Select(enabled, qkm2, vals[9])};
+  };
+
+  auto& b = *ax.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    XlaOp y = ScalarLike(a, 1) - a;
+    XlaOp z = x + y + ScalarLike(x, 1);
+    XlaOp c = ScalarLike(x, 0);
+    XlaOp pkm2 = FullLike(x, 1);
+    XlaOp qkm2 = x;
+    XlaOp pkm1 = x + ScalarLike(x, 1);
+    XlaOp qkm1 = z * x;
+    XlaOp ans = pkm1 / qkm1;
+    XlaOp t = FullLike(x, 1);
+    std::vector<XlaOp> vals = {enabled, ans,  t,    y,    z,
+                               c,       pkm1, qkm1, pkm2, qkm2};
+    TF_ASSIGN_OR_RETURN(vals, WhileLoopHelper(cond, body, vals, "igammac", &b));
+    ans = vals[1];
+    return ans * ax;
+  });
+}
+
+}  // namespace
+
+XlaOp Igamma(XlaOp a, XlaOp x) {
+  auto& b = *a.builder();
+  auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
+    XlaOp is_nan = Or(IsNan(a), IsNan(x));
+    XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp use_igammac = And(Gt(x, ScalarLike(x, 1)), Gt(x, a));
+    XlaOp ax = a * Log(x) - x - Lgamma(a);
+    XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
+    ax = Exp(ax);
+    XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    XlaOp output = Select(
+        use_igammac,
+        ScalarLike(a, 1) -
+            IgammacContinuedFraction(ax, x, a, And(enabled, use_igammac), type),
+        IgammaSeries(ax, x, a, And(enabled, Not(use_igammac)), type));
+    output = Select(underflow, ZerosLike(output), output);
+    output = Select(x_is_zero, ZerosLike(output), output);
+    output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
+    return output;
+  };
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
+    TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
+    if (a_shape != x_shape) {
+      return InvalidArgument(
+          "Arguments to Igamma must have equal shapes and types; got %s and %s",
+          a_shape.ToString(), x_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
+    bool needs_upcast =
+        a_shape.element_type() == F16 || a_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      a = ConvertElementType(a, F32);
+      x = ConvertElementType(x, F32);
+    }
+    XlaOp result = doit(a, x, a_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, a_shape.element_type());
+    }
+    return result;
+  });
+}
+
+XlaOp Igammac(XlaOp a, XlaOp x) {
+  auto& b = *a.builder();
+  auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
+    XlaOp out_of_range = Or(Le(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp use_igamma = Or(Lt(x, ScalarLike(x, 1)), Lt(x, a));
+    XlaOp ax = a * Log(x) - x - Lgamma(a);
+    XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
+    XlaOp enabled = Not(Or(out_of_range, underflow));
+    ax = Exp(ax);
+    XlaOp result =
+        Select(use_igamma,
+               ScalarLike(a, 1) -
+                   IgammaSeries(ax, x, a, And(enabled, use_igamma), type),
+               IgammacContinuedFraction(ax, x, a, And(enabled, Not(use_igamma)),
+                                        type));
+    return Select(underflow, ZerosLike(a),
+                  Select(out_of_range, FullLike(a, 1), result));
+  };
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
+    TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
+    if (a_shape != x_shape) {
+      return InvalidArgument(
+          "Arguments to Igammac must have equal shapes and types; "
+          "got %s and %s",
+          a_shape.ToString(), x_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igammac", a));
+    bool needs_upcast =
+        a_shape.element_type() == F16 || a_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      a = ConvertElementType(a, F32);
+      x = ConvertElementType(x, F32);
+    }
+    XlaOp result = doit(a, x, a_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, a_shape.element_type());
+    }
+    return result;
+  });
+}
 // Implements Banker's rounding: numbers that are equidistant between two
 // integers are rounded towards even.
 XlaOp RoundToEven(XlaOp x) {

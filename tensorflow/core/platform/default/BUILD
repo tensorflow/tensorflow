@@ -1,6 +1,10 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
@@ -504,6 +508,8 @@ filegroup(
         "mutex.h",
         "mutex_data.h",
         "notification.h",
+        "subprocess.cc",
+        "subprocess.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
     ],

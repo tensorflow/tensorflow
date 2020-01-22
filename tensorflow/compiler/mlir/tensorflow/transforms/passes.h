@@ -61,6 +61,13 @@ void CreateTFStandardPipeline(OpPassManager& pm,
 
 // Propagates device attributes of resources from callers to callees.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass();
+
+// Creates a pass that promotes resource reads/writes in the main function to
+// inputs and outputs of the main function, assuming that resource operations
+// have already been decomposed and function calls have already been inlined.
+// The pass also annotates the input arguments for resources with the indices
+// of their aliasing output arguments.
+std::unique_ptr<OpPassBase<ModuleOp>> CreatePromoteResourcesToArgsPass();
 }  // namespace TF
 
 namespace TFControlFlow {

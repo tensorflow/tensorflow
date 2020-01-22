@@ -158,8 +158,6 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
           base->shape(), HloInstruction::FusionKind::kLoop, base));
 
   // Update candidate_ and all_fusion_candidates_.
-  std::vector<std::pair<HloInstruction*, int64>> new_fusibles =
-      GetNewFusibles(base, to_fuse);
   int64 index;
   if (candidates_index_.contains(input_fusion)) {
     index = candidates_index_[input_fusion];
@@ -168,13 +166,6 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
     InsertOrDie(&candidates_index_, input_fusion, index);
     candidates_.emplace_back(input_fusion);
     all_fusion_candidates_.push_back(input_fusion);
-  }
-
-  // Update the worklist_.
-  FusionCandidate& candidate_node = candidates_[index];
-  for (auto it : new_fusibles) {
-    candidate_node.fusibles.emplace_back(it.first, it.second);
-    worklist_.emplace(input_fusion, it.first, it.second);
   }
 
   reachability_->Replace(base, input_fusion);
@@ -199,13 +190,19 @@ bool MultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {
 }
 
 std::vector<std::pair<HloInstruction*, int64>>
-MultiOutputFusion::GetNewFusibles(HloInstruction* fusion,
-                                  HloInstruction* fused) {
+MultiOutputFusion::GetNewFusibles(HloInstruction* instr1,
+                                  HloInstruction* instr2) {
+  HloInstruction* fusion = instr1;
+  HloInstruction* fused = instr2;
+  if (is_fused(instr1)) {
+    fusion = instr2;
+    fused = instr1;
+  }
+
   FusionCandidate& fusion_node = candidates_[get_candidate_id(fusion)];
   FusionCandidate& fused_node = candidates_[get_candidate_id(fused)];
 
-  // Update the fusible list for fusion. Variable new_fusibles keeps
-  // track of the new or changed entries.
+  // The second entry of the pair is an old profit value.
   std::vector<std::pair<HloInstruction*, int64>> new_fusibles;
   absl::flat_hash_set<HloInstruction*> in_list;
   auto it = fusion_node.fusibles.begin();
@@ -216,11 +213,7 @@ MultiOutputFusion::GetNewFusibles(HloInstruction* fusion,
       continue;
     }
     in_list.insert(instr);
-    int64 profit = GetProfit(instr, fusion);
-    if (profit > it->second) {
-      it->second = profit;
-      new_fusibles.emplace_back(instr, profit);
-    }
+    new_fusibles.emplace_back(instr, it->second);
     ++it;
   }
 
@@ -235,16 +228,17 @@ MultiOutputFusion::GetNewFusibles(HloInstruction* fusion,
     if (in_list.contains(instr)) {
       continue;
     }
-    int64 profit = GetProfit(instr, fusion);
-    fusion_node.fusibles.emplace_back(instr, profit);
-    new_fusibles.emplace_back(instr, profit);
+    // Set old profit to zero because instr is not originally fusible to
+    // fusion_node.
+    new_fusibles.emplace_back(instr, 0);
   }
   fused_node.fusibles.clear();
 
   return new_fusibles;
 }
 
-void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
+void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
+                                         HloInstruction* instr2) {
   HloInstruction* fusion = instr1;
   HloInstruction* fused = instr2;
   if (is_fused(instr1)) {
@@ -264,13 +258,34 @@ void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
   // Update the reachability graph.
   UpdateReachability(fusion, fused, all_fusion_candidates_,
                      [this](HloInstruction* instr) { return is_fused(instr); });
+}
 
-  std::vector<std::pair<HloInstruction*, int64>> new_fusibles =
-      GetNewFusibles(fusion, fused);
-
-  // Update the worklist_.
+void MultiOutputFusion::UpdateAfterFuse(
+    HloInstruction* fusion,
+    const std::vector<std::pair<HloInstruction*, int64>>& new_fusibles,
+    bool new_fusion_node) {
+  FusionCandidate& candidate_node = candidates_[candidates_index_[fusion]];
   for (auto it : new_fusibles) {
-    worklist_.emplace(fusion, it.first, it.second);
+    int64 profit = GetProfit(it.first, fusion);
+    if (new_fusion_node) {
+      // If `fusion' is a new fusion node, then add all fusibles.
+      if (profit > 0) {
+        candidate_node.fusibles.emplace_back(it.first, profit);
+        worklist_.emplace(fusion, it.first, profit);
+      }
+    } else {
+      if (profit > it.second) {
+        // If the new profit is higher than the old profit, add the fusible
+        // into worklist.
+        worklist_.emplace(fusion, it.first, profit);
+      }
+      if (it.second == 0) {
+        // If the old profit is zero, that means `it.first' is not
+        // originally fusible to the base op of `fusion', so we must add it
+        // to candidate_node.fusibles.
+        candidate_node.fusibles.emplace_back(it.first, profit);
+      }
+    }
   }
 }
 
@@ -388,17 +403,23 @@ bool MultiOutputFusion::Perform() {
                 << instr2->fused_instructions_computation()->ToString(
                        HloPrintOptions().set_indent_amount(1));
       }
-      Update(instr1, instr2);
-      HloInstruction* ret = Fuse(instr1, instr2);
-      if (ret != instr1) {
+      UpdateBeforeFuse(instr1, instr2);
+      std::vector<std::pair<HloInstruction*, int64>> new_fusibles =
+          GetNewFusibles(instr1, instr2);
+      HloInstruction* fusion = Fuse(instr1, instr2);
+      if (fusion != instr1) {
         set_is_fused(instr1);
       }
-      if (ret != instr2) {
+      if (fusion != instr2) {
         set_is_fused(instr2);
       }
+      UpdateAfterFuse(
+          fusion, new_fusibles,
+          /*new_fusion_node=*/(fusion != instr1) && (fusion != instr2));
+
       changed = true;
-      VLOG(2) << "After fusion, \t this: " << ret->name() << "\n"
-              << ret->fused_instructions_computation()->ToString(
+      VLOG(2) << "After fusion, \t this: " << fusion->name() << "\n"
+              << fusion->fused_instructions_computation()->ToString(
                      HloPrintOptions().set_indent_amount(1));
     }
   }

@@ -19,6 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
+import numpy as np
+
+from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
@@ -36,7 +39,39 @@ from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
 
 
-class InputIterationTest(test.TestCase, parameterized.TestCase):
+def get_dataset_from_tensor_slices(inp_array):
+  dataset = dataset_ops.DatasetV2.from_tensor_slices(inp_array)
+  # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
+  if not tf2.enabled():
+    dataset = dataset_ops.Dataset.from_tensor_slices(inp_array)
+  return dataset
+
+
+class AssertFlattenedMixin(object):
+  """Mixin for specialized asserts."""
+
+  def assert_equal_flattened(self, expected_results, actual_results):
+    """Asserts that flattened results are equal.
+
+    Due to the number of replicas in the strategy, the output may have a
+    different structure and needs to be flattened for comparison.
+
+    Args:
+      expected_results: The results expected as a result of a computation.
+      actual_results: The actual results of a computation.
+    """
+    self.assertEqual(len(expected_results), len(actual_results))
+
+    for i, expected_result in enumerate(expected_results):
+      final_result = []
+      actual_result = actual_results[i]
+      for val in actual_result:
+        final_result.extend(val.numpy())
+      self.assertAllEqual(expected_result, final_result)
+
+
+class InputIterationTest(test.TestCase, parameterized.TestCase,
+                         AssertFlattenedMixin):
 
   @combinations.generate(
       combinations.combine(
@@ -64,7 +99,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           distribution=strategy_combinations.strategies_minus_tpu,
           mode=["eager"]))
   def testFullEager(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
     def train_step(data):
       return math_ops.square(data)
@@ -75,7 +110,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       output = distribution.experimental_local_results(
           distribution.experimental_run_v2(train_step, args=(x,)))
       results.append(output)
-    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
+    self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -83,7 +118,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testStepInFunction(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
     @def_function.function
     def train_step(data):
@@ -95,7 +130,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       output = distribution.experimental_local_results(
           distribution.experimental_run_v2(train_step, args=(x,)))
       results.append(output)
-    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
+    self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -103,7 +138,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testRunInFunction(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
     def train_step(data):
       return math_ops.square(data)
@@ -118,7 +153,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     for x in dist_dataset:
       output = f_train_step(x)
       results.append(output)
-    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
+    self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -128,7 +163,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           ],
           mode=["eager"]))
   def testNestedOutput(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([0, 1, 2, 3]).batch(2)
+    dataset = get_dataset_from_tensor_slices([0, 1, 2, 3]).batch(2)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     @def_function.function
@@ -157,7 +192,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testRunInFunctionAutoGraphApplication(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
     def train_step(data):
       return math_ops.square(data)
@@ -172,7 +207,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     for x in dist_dataset:
       output = f_train_step(x)
       results.append(output)
-    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
+    self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -201,7 +236,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
       return number_of_steps, product_of_means
 
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
 
     number_of_steps, product_of_means = f_train_step(dist_dataset)
@@ -264,7 +299,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testDynamicShapes(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     @def_function.function
@@ -285,7 +320,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testDynamicShapesWithGetNextOutsideFunction(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     @def_function.function
@@ -305,7 +340,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testStrategyReduceWithDynamicShapes(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     @def_function.function
@@ -321,7 +356,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testStrategyReduceWithDynamicShapesRank2(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices(
+    dataset = get_dataset_from_tensor_slices(
         [[1., 1.], [1., 1.], [1., 1.]]).batch(4)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
@@ -338,7 +373,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testDynamicShapesWithSizeOp(self, distribution):
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     @def_function.function
@@ -359,9 +394,9 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       ))
   def testDynamicShapesWithFirstReplicaNotMaximumShape(self, distribution):
     def dataset_fn(_):
-      dataset1 = self._get_dataset_from_tensor_slices([[1., 2.], [1., 2.]])
-      dataset2 = self._get_dataset_from_tensor_slices([[1., 2., 3.],
-                                                       [1., 2., 3.]])
+      dataset1 = get_dataset_from_tensor_slices([[1., 2.], [1., 2.]])
+      dataset2 = get_dataset_from_tensor_slices([[1., 2., 3.],
+                                                 [1., 2., 3.]])
       dataset = dataset1.concatenate(dataset2)
       dataset = dataset.batch(2, drop_remainder=True)
       return dataset
@@ -390,7 +425,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     # drop_remainder=True on the dataset, then DistributedIterator will use a
     # different (and more efficient) code path which avoids some control flow
     # ops.
-    dataset = self._get_dataset_from_tensor_slices([5., 6.]).batch(
+    dataset = get_dataset_from_tensor_slices([5., 6.]).batch(
         2, drop_remainder=True)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
@@ -411,7 +446,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
   def testDatasetDistributeNotDivisibleDrop(self, distribution):
     # If each batch is not evenly divisible by the number of workers,
     # the remainder will be dropped.
-    dataset = self._get_dataset_from_tensor_slices([5., 6.]).batch(
+    dataset = get_dataset_from_tensor_slices([5., 6.]).batch(
         1, drop_remainder=True)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
@@ -433,7 +468,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     # Setting drop_remainder=False on the dataset causes DistributedIterator
     # to use get_next_as_optional(), even if the batched dataset is evenly
     # divisible by the number of workers.
-    dataset = self._get_dataset_from_tensor_slices([5., 6.]).batch(
+    dataset = get_dataset_from_tensor_slices([5., 6.]).batch(
         2, drop_remainder=False)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
@@ -469,10 +504,10 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
         results.append(output)
       return results
 
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = train(dist_dataset)
-    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
+    self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -489,7 +524,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       return distribution.experimental_local_results(
           distribution.experimental_run_v2(train_step, args=(input_data,)))
 
-    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     iterator = iter(dist_dataset)
     results = []
@@ -498,36 +533,65 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     for _ in range(2):
       output = f_train_step(next(iterator))
       results.append(output)
-    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
-
-  def _get_dataset_from_tensor_slices(self, inp_array):
-    dataset = dataset_ops.DatasetV2.from_tensor_slices(inp_array)
-    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
-    if not tf2.enabled():
-      dataset = dataset_ops.Dataset.from_tensor_slices(inp_array)
-    return dataset
-
-  def _assert_equal_flattened(self, expected_results, actual_results):
-    """Asserts that flattened results are equal.
-
-    Due to the number of replicas in the strategy, the output may have a
-    different structure and needs to be flattened for comparison.
-
-    Args:
-      expected_results: The results expected as a result of a computation.
-      actual_results: The actual results of a computation.
-    """
-    self.assertEqual(len(expected_results), len(actual_results))
-
-    for i, expected_result in enumerate(expected_results):
-      final_result = []
-      actual_result = actual_results[i]
-      for val in actual_result:
-        final_result.extend(val.numpy())
-      self.assertAllEqual(expected_result, final_result)
+    self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
 
-class GradientTapeTest(test.TestCase, parameterized.TestCase):
+class GradientTapeTest(test.TestCase, parameterized.TestCase,
+                       AssertFlattenedMixin):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testStepInFunctionGradient(self, distribution):
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+
+    @def_function.function
+    def train_step(x):
+      def computation(x):
+        return math_ops.square(x)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)  # Manually watch non-variable tensors.
+        y = computation(x)
+      grads = tape.gradient(y, x)
+      return grads
+
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    results = []
+    for x in dist_dataset:
+      output = distribution.experimental_local_results(
+          distribution.experimental_run_v2(train_step, args=(x,)))
+      results.append(output)
+    self.assert_equal_flattened([[10., 12.], [14., 16.]], results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testRunInFunctionGradient(self, distribution):
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+
+    @def_function.function
+    def run(x):
+      def train_step(x):
+        def computation(x):
+          return math_ops.square(x)
+        with backprop.GradientTape() as tape:
+          tape.watch(x)  # Manually watch non-variable tensors.
+          y = computation(x)
+        grads = tape.gradient(y, x)
+        return grads
+      return distribution.experimental_local_results(
+          distribution.experimental_run_v2(train_step, args=(x,)))
+
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    results = []
+    for x in dist_dataset:
+      output = run(x)
+      results.append(output)
+    self.assert_equal_flattened([[10., 12.], [14., 16.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -556,6 +620,62 @@ class GradientTapeTest(test.TestCase, parameterized.TestCase):
       grads = distribution.experimental_local_results(train_step())
       self.assertLen(grads, distribution.num_replicas_in_sync)
       self.assertTrue(all(g is not None for g in grads))
+
+
+class KerasModelsTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_lstm(self, distribution):
+
+    batch_size = 32
+
+    def create_lstm_model():
+      model = keras.models.Sequential()
+      # We only have LSTM variables so we can detect no gradient issues more
+      # easily.
+      model.add(
+          keras.layers.LSTM(1, return_sequences=False, input_shape=(10, 1)))
+      return model
+
+    def create_lstm_data():
+      seq_length = 10
+
+      x_train = np.random.rand(batch_size, seq_length, 1).astype("float32")
+      y_train = np.random.rand(batch_size, 1).astype("float32")
+      return x_train, y_train
+
+    x, y = create_lstm_data()
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.batch(batch_size, drop_remainder=True)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = create_lstm_model()
+      optimizer = keras.optimizer_v2.gradient_descent.SGD()
+
+    @def_function.function
+    def train_step(input_iterator):
+
+      def step_fn(inputs):
+        inps, targ = inputs
+        with backprop.GradientTape() as tape:
+          output = model(inps)
+          loss = math_ops.reduce_mean(
+              keras.losses.binary_crossentropy(
+                  y_true=targ, y_pred=output, from_logits=False))
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        return loss
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(input_iterator),))
+      return distribution.experimental_local_results(outputs)
+
+    train_step(input_iterator)
 
 
 if __name__ == "__main__":

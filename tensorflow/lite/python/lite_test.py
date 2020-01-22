@@ -531,6 +531,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       # Convert model and ensure model is not None.
       converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                     [out_tensor])
+      converter.experimental_new_converter = enable_mlir
       graphviz_dir = self.get_temp_dir()
       converter.dump_graphviz_dir = graphviz_dir
       converter.dump_graphviz_video = True
@@ -571,6 +572,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
+    converter.experimental_new_converter = False
     log_dir = self.get_temp_dir()
     converter.conversion_summary_dir = log_dir
     tflite_model = converter.convert()

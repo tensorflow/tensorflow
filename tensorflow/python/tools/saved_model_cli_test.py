@@ -25,6 +25,7 @@ import pickle
 import shutil
 import sys
 
+from absl.testing import parameterized
 import numpy as np
 from six import StringIO
 
@@ -38,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_cli
 from tensorflow.python.training.tracking import tracking
@@ -56,7 +58,7 @@ def captured_output():
     sys.stdout, sys.stderr = old_out, old_err
 
 
-class SavedModelCLITestCase(test.TestCase):
+class SavedModelCLITestCase(test.TestCase, parameterized.TestCase):
 
   def testShowCommandAll(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
@@ -726,35 +728,44 @@ Defined Functions:
     with self.assertRaisesRegexp(ValueError, 'Unable to find signature_def'):
       saved_model_cli.aot_compile_cpu(args)
 
-  def testAOTCompileCPUFreezesAndCompiles(self):
+  class AOTCompileDummyModel(tracking.AutoTrackable):
+    """Model compatible with XLA compilation."""
+
+    def __init__(self):
+      self.var = variables.Variable(1.0, name='my_var')
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+    ])
+    def func2(self, x, y):
+      return {'res': x + self.var}
+
+  @parameterized.named_parameters(('VariablesToFeedNone', ''),
+                                  ('VariablesToFeedAll', 'all'),
+                                  ('VariablesToFeedMyVar', 'my_var'))
+  def testAOTCompileCPUFreezesAndCompiles(self, variables_to_feed):
     if not test.is_built_with_xla():
       self.skipTest('Skipping test because XLA is not compiled in.')
 
-    class DummyModel(tracking.AutoTrackable):
-      """Model compatible with XLA compilation."""
-
-      def __init__(self):
-        self.var = variables.Variable(1.0, name='my_var')
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32)
-      ])
-      def func2(self, x):
-        return {'res': x + self.var}
-
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
-    dummy_model = DummyModel()
+    dummy_model = self.AOTCompileDummyModel()
     with self.cached_session():
       self.evaluate(dummy_model.var.initializer)
       save.save(dummy_model, saved_model_dir)
 
     self.parser = saved_model_cli.create_parser()
     output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
-    args = self.parser.parse_args(
-        ['aot_compile_cpu', '--dir', saved_model_dir, '--tag_set', 'serve',
-         '--output_prefix', output_prefix,
-         '--cpp_class', 'Generated'])  # Use the default seving signature_key.
-    saved_model_cli.aot_compile_cpu(args)
+    args = self.parser.parse_args([
+        'aot_compile_cpu', '--dir', saved_model_dir, '--tag_set', 'serve',
+        '--output_prefix', output_prefix, '--variables_to_feed',
+        variables_to_feed, '--cpp_class', 'Generated'
+    ])  # Use the default seving signature_key.
+    with test.mock.patch.object(logging, 'warn') as captured_warn:
+      saved_model_cli.aot_compile_cpu(args)
+    self.assertRegexpMatches(
+        str(captured_warn.call_args),
+        'Signature input key \'y\'.*has been pruned while freezing the graph.')
     self.assertTrue(file_io.file_exists('{}.o'.format(output_prefix)))
     self.assertTrue(file_io.file_exists('{}.h'.format(output_prefix)))
     self.assertTrue(file_io.file_exists('{}_metadata.o'.format(output_prefix)))
@@ -762,8 +773,12 @@ Defined Functions:
         file_io.file_exists('{}_makefile.inc'.format(output_prefix)))
     header_contents = file_io.read_file_to_string('{}.h'.format(output_prefix))
     self.assertIn('class Generated', header_contents)
-    self.assertIn('arg_x_data', header_contents)
-    self.assertIn('result_res_data', header_contents)
+    self.assertIn('arg_feed_x_data', header_contents)
+    self.assertIn('result_fetch_res_data', header_contents)
+    # arg_y got filtered out as it's not used by the output.
+    self.assertNotIn('arg_feed_y_data', header_contents)
+    if variables_to_feed:
+      self.assertIn('var_param_my_var', header_contents)
     makefile_contents = file_io.read_file_to_string(
         '{}_makefile.inc'.format(output_prefix))
     self.assertIn('-D_GLIBCXX_USE_CXX11_ABI=', makefile_contents)

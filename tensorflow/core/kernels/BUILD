@@ -2358,7 +2358,11 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util/ctc:ctc_beam_search_lib",
         "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
-    ],
+    ] + if_cuda([
+        ":gpu_utils",
+        ":conv_ops_gpu_hdrs",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
 )
 
 tf_cc_test(
@@ -5365,6 +5369,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )

@@ -42,6 +42,8 @@ enum HostEventType {
   kExecutorDoneCallback,
   kMemoryAllocation,
   kMemoryDeallocation,
+  // Performance counter related.
+  kRemotePerf,
   // tf.data captured function events.
   kTfDataCapturedFunctionRun,
   kTfDataCapturedFunctionRunWithBorrowedArgs,
@@ -95,6 +97,7 @@ enum StatType {
   kMemcpyDetails,
   kMemallocDetails,
   kKernelDetails,
+  kStream,
   // Stats added when processing traces.
   kGroupId,
   kStepName,
@@ -102,6 +105,13 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  // Performance counter related.
+  kRawValue,
+  kScaledValue,
+  kThreadId,
+  // XLA metadata map related.
+  kSelfDurationPs,
+  kMinDurationPs,
   // Device capability related.
   kDevCapClockRateKHz,
   kDevCapCoreCount,

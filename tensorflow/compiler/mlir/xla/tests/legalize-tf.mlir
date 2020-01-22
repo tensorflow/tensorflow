@@ -1985,10 +1985,10 @@ func @bitcast_smaller_output_width(%arg0: tensor<2xf32>) -> tensor<2xf16> {
 }
 
 // CHECK-LABEL: reshape
-func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<1x1xf32> {
+func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<2x1xf32> {
   // CHECK:  "xla_hlo.reshape"
-  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xi32>) -> tensor<1x1xf32>
-  return %0 : tensor<1x1xf32>
+  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+  return %0 : tensor<2x1xf32>
 }
 
 // CHECK-LABEL: reshape_dynamic

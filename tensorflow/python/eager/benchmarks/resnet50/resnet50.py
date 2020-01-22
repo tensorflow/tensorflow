@@ -186,6 +186,10 @@ class ResNet50(tf.keras.Model):
           the last convolutional layer, and thus the output of the model will be
           a 2D tensor.
       - `max` means that global max pooling will be applied.
+    block3_strides: whether to add a stride of 2 to block3 to make it compatible
+      with tf.slim ResNet implementation.
+    average_pooling: whether to do average pooling of block4 features before
+      global pooling.
     classes: optional number of classes to classify images into, only to be
       specified if `include_top` is True.
 
@@ -199,6 +203,8 @@ class ResNet50(tf.keras.Model):
                trainable=True,
                include_top=True,
                pooling=None,
+               block3_strides=False,
+               average_pooling=True,
                classes=1000):
     super(ResNet50, self).__init__(name=name)
 
@@ -207,6 +213,9 @@ class ResNet50(tf.keras.Model):
       raise ValueError('Unknown data_format: %s. Valid values: %s' %
                        (data_format, valid_channel_values))
     self.include_top = include_top
+    self.block3_strides = block3_strides
+    self.average_pooling = average_pooling
+    self.pooling = pooling
 
     def conv_block(filters, stage, block, strides=(2, 2)):
       return _ConvBlock(
@@ -229,8 +238,9 @@ class ResNet50(tf.keras.Model):
         name='conv1')
     bn_axis = 1 if data_format == 'channels_first' else 3
     self.bn_conv1 = layers.BatchNormalization(axis=bn_axis, name='bn_conv1')
-    self.max_pool = layers.MaxPooling2D(
-        (3, 3), strides=(2, 2), data_format=data_format)
+    self.max_pool = layers.MaxPooling2D((3, 3),
+                                        strides=(2, 2),
+                                        data_format=data_format)
 
     self.l2a = conv_block([64, 64, 256], stage=2, block='a', strides=(1, 1))
     self.l2b = id_block([64, 64, 256], stage=2, block='b')
@@ -248,12 +258,24 @@ class ResNet50(tf.keras.Model):
     self.l4e = id_block([256, 256, 1024], stage=4, block='e')
     self.l4f = id_block([256, 256, 1024], stage=4, block='f')
 
-    self.l5a = conv_block([512, 512, 2048], stage=5, block='a')
+    # Striding layer that can be used on top of block3 to produce feature maps
+    # with the same resolution as the TF-Slim implementation.
+    if self.block3_strides:
+      self.subsampling_layer = layers.MaxPooling2D((1, 1),
+                                                   strides=(2, 2),
+                                                   data_format=data_format)
+      self.l5a = conv_block([512, 512, 2048],
+                            stage=5,
+                            block='a',
+                            strides=(1, 1))
+    else:
+      self.l5a = conv_block([512, 512, 2048], stage=5, block='a')
     self.l5b = id_block([512, 512, 2048], stage=5, block='b')
     self.l5c = id_block([512, 512, 2048], stage=5, block='c')
 
-    self.avg_pool = layers.AveragePooling2D(
-        (7, 7), strides=(7, 7), data_format=data_format)
+    self.avg_pool = layers.AveragePooling2D((7, 7),
+                                            strides=(7, 7),
+                                            data_format=data_format)
 
     if self.include_top:
       self.flatten = layers.Flatten()
@@ -272,21 +294,46 @@ class ResNet50(tf.keras.Model):
       else:
         self.global_pooling = None
 
-  def call(self, inputs, training=True):
+  def call(self, inputs, training=True, intermediates_dict=None):
+    """Call the ResNet50 model.
+
+    Args:
+      inputs: Images to compute features for.
+      training: Whether model is in training phase.
+      intermediates_dict: `None` or dictionary. If not None, accumulate feature
+        maps from intermediate blocks into the dictionary.
+        ""
+
+    Returns:
+      Tensor with featuremap.
+    """
+
     x = self.conv1(inputs)
     x = self.bn_conv1(x, training=training)
     x = tf.nn.relu(x)
-    x = self.max_pool(x)
+    if intermediates_dict is not None:
+      intermediates_dict['block0'] = x
 
+    x = self.max_pool(x)
+    if intermediates_dict is not None:
+      intermediates_dict['block0mp'] = x
+
+    # Block 1 (equivalent to "conv2" in Resnet paper).
     x = self.l2a(x, training=training)
     x = self.l2b(x, training=training)
     x = self.l2c(x, training=training)
+    if intermediates_dict is not None:
+      intermediates_dict['block1'] = x
 
+    # Block 2 (equivalent to "conv3" in Resnet paper).
     x = self.l3a(x, training=training)
     x = self.l3b(x, training=training)
     x = self.l3c(x, training=training)
     x = self.l3d(x, training=training)
+    if intermediates_dict is not None:
+      intermediates_dict['block2'] = x
 
+    # Block 3 (equivalent to "conv4" in Resnet paper).
     x = self.l4a(x, training=training)
     x = self.l4b(x, training=training)
     x = self.l4c(x, training=training)
@@ -294,11 +341,25 @@ class ResNet50(tf.keras.Model):
     x = self.l4e(x, training=training)
     x = self.l4f(x, training=training)
 
+    if self.block3_strides:
+      x = self.subsampling_layer(x)
+      if intermediates_dict is not None:
+        intermediates_dict['block3'] = x
+    else:
+      if intermediates_dict is not None:
+        intermediates_dict['block3'] = x
+
     x = self.l5a(x, training=training)
     x = self.l5b(x, training=training)
     x = self.l5c(x, training=training)
 
-    x = self.avg_pool(x)
+    if self.average_pooling:
+      x = self.avg_pool(x)
+      if intermediates_dict is not None:
+        intermediates_dict['block4'] = x
+    else:
+      if intermediates_dict is not None:
+        intermediates_dict['block4'] = x
 
     if self.include_top:
       return self.fc1000(self.flatten(x))

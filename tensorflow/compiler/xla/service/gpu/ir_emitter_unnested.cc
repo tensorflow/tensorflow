@@ -1835,21 +1835,40 @@ namespace {
 
 // Returns true if the fusion contains any instruction that is likely
 // translated to complex LLVM IR, such as loops, and prevent vectorization.
-bool MayPreventVectorization(const HloInstruction& fusion_hlo) {
-  CHECK_EQ(fusion_hlo.opcode(), HloOpcode::kFusion);
-  return absl::c_any_of(
-      fusion_hlo.fused_instructions_computation()->instructions(),
-      [&](const HloInstruction* instr) {
-        switch (instr->opcode()) {
-          case HloOpcode::kReduce:
-          case HloOpcode::kReduceWindow:
-          case HloOpcode::kSort:
-          case HloOpcode::kDot:
-            return true;
-          default:
-            return false;
-        }
-      });
+bool MayPreventVectorization(const HloInstruction& hlo) {
+  if (hlo.opcode() == HloOpcode::kFusion) {
+    return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
+                          [](const HloInstruction* instr) {
+                            switch (instr->opcode()) {
+                              case HloOpcode::kReduce:
+                              case HloOpcode::kReduceWindow:
+                              case HloOpcode::kSort:
+                              case HloOpcode::kDot:
+                              case HloOpcode::kSin:
+                              case HloOpcode::kCos:
+                              case HloOpcode::kPower:
+                              case HloOpcode::kAtan2:
+                                return true;
+                              default:
+                                return false;
+                            }
+                          });
+  } else if (hlo.IsElementwise()) {
+    // Unfused elementwise operations are usually memory bound, unroll them.
+    switch (hlo.opcode()) {
+        // The following elementwise operation implementations contain branches.
+        // LLVM vectorizer doesn't work in that case.
+        // The unrolled code is faster when it isn't vectorized.
+      case HloOpcode::kSin:
+      case HloOpcode::kCos:
+      case HloOpcode::kPower:
+      case HloOpcode::kAtan2:
+        return true;
+      default:
+        return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -1858,9 +1877,7 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
   int unroll_factor = 1;
-  // Unfused elementwise operations are usually memory bound, unroll them.
-  if (hlo.IsElementwise() ||
-      (hlo.opcode() == HloOpcode::kFusion && !MayPreventVectorization(hlo))) {
+  if (!MayPreventVectorization(hlo)) {
     unroll_factor = ComputeMaxUnrollFactor(&hlo);
   }
 

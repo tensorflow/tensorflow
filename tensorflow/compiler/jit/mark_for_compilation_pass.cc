@@ -1872,6 +1872,8 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "Einsum",
                                      "EmptyTensorList",
                                      "ExtractImagePatches",
+                                     "Igamma",
+                                     "Igammac",
                                      "FFT",
                                      "FFT2D",
                                      "FFT3D",
