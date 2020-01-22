@@ -77,6 +77,7 @@ cc_test(
     ],
     deps = [
         ":bitmap_helpers",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
