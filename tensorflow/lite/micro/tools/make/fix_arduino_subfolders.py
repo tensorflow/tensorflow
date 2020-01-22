@@ -28,7 +28,7 @@ import six
 
 def rename_example_subfolder_files(library_dir):
   """Moves source files in example subfolders to equivalents at root."""
-  patterns = ['*.h', '*.cpp','*.c']
+  patterns = ['*.h', '*.cpp', '*.c']
   for pattern in patterns:
     search_path = os.path.join(library_dir, 'examples/*/*', pattern)
     for source_file_path in glob.glob(search_path):
