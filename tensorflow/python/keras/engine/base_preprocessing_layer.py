@@ -54,6 +54,7 @@ class PreprocessingLayer(Layer):
     pass
 
 
+@keras_export('keras.layers.experimental.preprocessing.CombinerPreprocessingLayer')
 class CombinerPreprocessingLayer(PreprocessingLayer):
   """Base class for PreprocessingLayers that do computation using a Combiner.
 
@@ -216,6 +217,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
         self.state_variables[var_name].assign(value)
 
 
+@keras_export('keras.layers.experimental.preprocessing.Combiner')
 class Combiner(object):
   """Functional object that defines a shardable computation.
 
