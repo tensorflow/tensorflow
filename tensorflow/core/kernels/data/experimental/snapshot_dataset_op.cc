@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <random>
 
+#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -1420,9 +1421,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         string GetSnapshotFilename() {
           mutex_lock l(mu_);
           string snapshot_data_filename = io::JoinPath(
-              run_dir_,
-              absl::StrCat(strings::Printf("%08llu", next_file_index_),
-                           ".snapshot"));
+              run_dir_, absl::StrFormat("%08u.snapshot", next_file_index_));
           next_file_index_++;
           return snapshot_data_filename;
         }

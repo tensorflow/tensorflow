@@ -5369,6 +5369,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )
