@@ -931,6 +931,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
