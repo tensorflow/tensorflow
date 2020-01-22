@@ -386,6 +386,7 @@ cc_library(
     hdrs = if_xla_available([
         ":compiled_model.h",
     ]),
+    tags = ["no_rocm"],
     deps = if_xla_available([
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/core/platform:types",
