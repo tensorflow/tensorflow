@@ -76,9 +76,9 @@ static Graph* InTopK(int num_targets, int num_classes, T top_k) {
 BM_InTopK(int64, 64, 1000, 10, cpu);
 BM_InTopK(int64, 64, 10000, 10, cpu);
 
-#ifdef GOOGLE_CUDA
+#ifdef GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_InTopK(int64, 64, 1000, 10, gpu);
 BM_InTopK(int64, 64, 10000, 10, gpu);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
