@@ -229,7 +229,9 @@ class SingleOpModel {
     std::vector<int8_t> quantized_output(num_inputs);
     std::vector<float> scales_inv(num_channel);
     for (int i = 0; i < num_channel; ++i) {
-      scales_inv[i] = 1.0f / params->scale->data[i];
+      const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                   : params->scale->data[i];
+      scales_inv[i] = 1.0f / scale;
     }
     optimize::utils::SymmetricPerChannelQuantizeValues(
         input_data.data(), scales_inv, shape, channel_index, &quantized_output);
@@ -246,7 +248,9 @@ class SingleOpModel {
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
     for (int i = 0; i < num_inputs; ++i) {
-      quantized_output[i] = input_data[i] / params->scale->data[i];
+      const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                   : params->scale->data[i];
+      quantized_output[i] = input_data[i] / scale;
     }
     PopulateTensor(index, /*offset=*/0, quantized_output.data(),
                    quantized_output.data() + quantized_output.size());
@@ -373,6 +377,7 @@ class SingleOpModel {
   // Enables NNAPI delegate application during interpreter creation.
   static void SetForceUseNnapi(bool use_nnapi);
   static bool GetForceUseNnapi();
+  int CountOpsExecutedByCpuKernel();
 
  protected:
   int32_t GetTensorSize(int index) const;

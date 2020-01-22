@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 
@@ -231,6 +232,22 @@ TfLiteTensor* MicroInterpreter::tensor(size_t index) {
     return nullptr;
   }
   return &context_.tensors[index];
+}
+
+TfLiteStatus MicroInterpreter::ResetVariableTensors() {
+  const size_t length = tensors_size();
+  for (size_t i = 0; i < length; ++i) {
+    TfLiteTensor* cur_tensor = tensor(i);
+    if (cur_tensor->is_variable) {
+      TfLiteStatus status = tflite::ResetVariableTensor(cur_tensor);
+      if (status != kTfLiteOk) {
+        error_reporter_->Report("Failed to reset variable tensor at index: %d",
+                                i);
+        return status;
+      }
+    }
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

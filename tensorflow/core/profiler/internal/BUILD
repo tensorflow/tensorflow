@@ -390,6 +390,7 @@ cc_library(
     visibility = [
         "//perftools/accelerators/xprof/xprofilez:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
+        "//third_party/tf_runtime_google:__subpackages__",
     ],
     deps = [
         "//tensorflow/core:lib",

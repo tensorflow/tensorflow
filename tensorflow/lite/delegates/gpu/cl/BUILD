@@ -1,5 +1,8 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -54,10 +57,9 @@ cc_test(
     name = "buffer_test",
     srcs = ["buffer_test.cc"],
     linkstatic = True,
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
-        "tflite_not_portable_ios",
     ],
     deps = [
         ":buffer",
@@ -411,10 +413,9 @@ cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
     linkstatic = True,
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
-        "tflite_not_portable_ios",
     ],
     deps = [
         ":cl_test",
@@ -468,10 +469,9 @@ cc_test(
     name = "texture2d_test",
     srcs = ["texture2d_test.cc"],
     linkstatic = True,
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
-        "tflite_not_portable_ios",
     ],
     deps = [
         ":cl_test",
@@ -495,5 +495,3 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
-
-tflite_portable_test_suite()

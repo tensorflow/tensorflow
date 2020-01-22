@@ -308,26 +308,53 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
                         absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder) {
   std::vector<llvm::Type*> argument_types;
+
+  // Variadic arguments implicit promotion [1] converts float to double,
+  // and bool/char/short are converted to int.
+  // [1] https://en.cppreference.com/w/cpp/language/variadic_arguments
+  auto requires_int32_promotion = [](llvm::Type* type) {
+    return type->isIntegerTy(/*BitWidth=*/1) ||
+           type->isIntegerTy(/*BitWidth=*/8) ||
+           type->isIntegerTy(/*BitWidth=*/16);
+  };
+  auto requires_double_promotion = [](llvm::Type* type) {
+    return type->isFloatingPointTy();
+  };
+
   for (auto argument : arguments) {
-    argument_types.push_back(argument->getType());
+    llvm::Type* type = argument->getType();
+    if (requires_double_promotion(type)) {
+      argument_types.push_back(builder->getDoubleTy());
+    } else if (requires_int32_promotion(type)) {
+      argument_types.push_back(builder->getInt32Ty());
+    } else {
+      argument_types.push_back(type);
+    }
   }
   auto* arguments_type = llvm::StructType::create(argument_types);
   llvm::Value* arguments_ptr = builder->CreateAlloca(arguments_type);
   for (size_t i = 0; i < arguments.size(); ++i) {
+    llvm::Value* value = arguments[i];
+    llvm::Type* type = value->getType();
+    if (requires_double_promotion(type)) {
+      value = builder->CreateFPCast(value, builder->getDoubleTy());
+    } else if (requires_int32_promotion(type)) {
+      value = builder->CreateIntCast(value, builder->getInt32Ty(),
+                                     /*isSigned=*/true);
+    }
     builder->CreateStore(
         arguments[i],
         builder->CreateGEP(arguments_ptr,
                            {builder->getInt64(0), builder->getInt32(i)}));
   }
+  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
   return builder->CreateCall(
       builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           "vprintf",
-          llvm::FunctionType::get(builder->getInt32Ty(),
-                                  {builder->getInt8Ty()->getPointerTo(),
-                                   arguments_type->getPointerTo()},
+          llvm::FunctionType::get(builder->getInt32Ty(), {ptr_ty, ptr_ty},
                                   /*isVarArg=*/false)),
       {builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)),
-       arguments_ptr});
+       builder->CreatePointerCast(arguments_ptr, ptr_ty)});
 }
 
 // Helper function to emit call to AMDGPU shfl_down function.

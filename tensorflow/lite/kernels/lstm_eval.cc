@@ -17,15 +17,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-
-#ifdef GEMMLOWP_PROFILING
-#include "profiling/profiler.h"
-#endif
-
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -104,6 +100,7 @@ inline float GetTensorScale(const TfLiteTensor* tensor) {
 // for bidirectional LSTMs with merge_outputs. In this case, the batched
 // operations cannot be used since they assume that the batched outputs are
 // contiguous, and we manually loop over the batched outputs.
+// LINT.IfChange
 inline void LstmStepFloat(
     const float* input_ptr, const float* input_to_input_weights_ptr,
     const float* input_to_forget_weights_ptr,
@@ -132,9 +129,7 @@ inline void LstmStepFloat(
     float* output_state_ptr, float* cell_state_ptr, float* input_gate_scratch,
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
     float* output_ptr) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::ScopedProfilingLabel label("LstmStepFloat");
-#endif
+  ruy::profiler::ScopeLabel label("LstmStepFloat");
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -320,38 +315,39 @@ inline void LstmStepFloat(
   // n_output), we unroll batched operations.
   if (use_projection_weight) {
     if (use_projection_bias) {
-      for (int k = 0; k < n_batch; k++) {
+      for (int b = 0; b < n_batch; b++) {
         std::copy_n(projection_bias_ptr, n_output,
-                    output_ptr + k * output_batch_leading_dim);
+                    output_ptr + b * output_batch_leading_dim);
       }
     } else {
-      for (int k = 0; k < n_batch; k++) {
-        std::fill_n(output_ptr + k * output_batch_leading_dim, n_output, 0.0f);
+      for (int b = 0; b < n_batch; b++) {
+        std::fill_n(output_ptr + b * output_batch_leading_dim, n_output, 0.0f);
       }
     }
-    for (int k = 0; k < n_batch; k++) {
+    for (int b = 0; b < n_batch; b++) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           projection_weights_ptr, n_output, n_cell,
-          output_gate_scratch + k * n_cell,
-          /*n_batch=*/1, output_ptr + k * output_batch_leading_dim,
+          output_gate_scratch + b * n_cell,
+          /*n_batch=*/1, output_ptr + b * output_batch_leading_dim,
           /*result_stride=*/1);
       if (params->proj_clip > 0.0) {
-        tensor_utils::ClipVector(output_ptr + k * output_batch_leading_dim,
+        tensor_utils::ClipVector(output_ptr + b * output_batch_leading_dim,
                                  n_output, params->proj_clip,
-                                 output_ptr + k * output_batch_leading_dim);
+                                 output_ptr + b * output_batch_leading_dim);
       }
     }
   } else {
-    for (int k = 0; k < n_batch; k++) {
-      std::copy_n(output_gate_scratch + k * n_output, n_output,
-                  output_ptr + k * output_batch_leading_dim);
+    for (int b = 0; b < n_batch; b++) {
+      std::copy_n(output_gate_scratch + b * n_output, n_output,
+                  output_ptr + b * output_batch_leading_dim);
     }
   }
-  for (int k = 0; k < n_batch; k++) {
-    std::copy_n(output_ptr + k * output_batch_leading_dim, n_output,
-                output_state_ptr + k * n_output);
+  for (int b = 0; b < n_batch; b++) {
+    std::copy_n(output_ptr + b * output_batch_leading_dim, n_output,
+                output_state_ptr + b * n_output);
   }
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
 // Same as above but with quantized weight matrices. In detail:
 // Input of size 'n_batch * n_input':
@@ -466,9 +462,7 @@ inline void LstmStepHybrid(
     int8_t* quantized_aux_input_ptr, int8_t* quantized_output_state_ptr,
     int8_t* quantized_cell_state_ptr, float* output_state_ptr,
     float* cell_state_ptr, float* output_ptr) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::ScopedProfilingLabel label("LstmStepHybrid");
-#endif
+  ruy::profiler::ScopeLabel label("LstmStepHybrid");
   // Since we have already checked that weights are all there or none, we
   // can check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -500,9 +494,9 @@ inline void LstmStepHybrid(
   // For each batch and cell: compute input_weight * input.
   // Skip if input is all zeros.
   if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
-    float unused_min, unused_max;
     for (int b = 0; b < n_batch; ++b) {
       const int offset = b * n_input;
+      float unused_min, unused_max;
       tensor_utils::SymmetricQuantizeFloats(
           input_ptr + offset, n_input, quantized_input_ptr + offset,
           &unused_min, &unused_max, &scaling_factors[b]);
@@ -549,9 +543,9 @@ inline void LstmStepHybrid(
   // Skip if auxiliary input is not available or all zeros.
   if (aux_input_ptr != nullptr &&
       !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
-    float unused_min, unused_max;
     for (int b = 0; b < n_batch; ++b) {
       const int offset = b * n_aux_input;
+      float unused_min, unused_max;
       tensor_utils::SymmetricQuantizeFloats(
           aux_input_ptr + offset, n_aux_input, quantized_aux_input_ptr + offset,
           &unused_min, &unused_max, &scaling_factors[b]);
@@ -597,9 +591,9 @@ inline void LstmStepHybrid(
 
   if (!tensor_utils::IsZeroVector(output_state_ptr, n_batch * n_output)) {
     // Save quantization and matmul computation for all zero input.
-    float unused_min, unused_max;
     for (int b = 0; b < n_batch; ++b) {
       const int offset = b * n_output;
+      float unused_min, unused_max;
       tensor_utils::SymmetricQuantizeFloats(output_state_ptr + offset, n_output,
                                             quantized_output_state_ptr + offset,
                                             &unused_min, &unused_max,
@@ -750,20 +744,20 @@ inline void LstmStepHybrid(
   // n_output), we unroll the batched operations.
   if (use_projection_weight) {
     if (use_projection_bias) {
-      for (int k = 0; k < n_batch; k++) {
+      for (int b = 0; b < n_batch; b++) {
         std::copy_n(projection_bias_ptr, n_output,
-                    output_ptr + k * output_batch_leading_dim);
+                    output_ptr + b * output_batch_leading_dim);
       }
     } else {
-      for (int k = 0; k < n_batch; k++) {
-        std::fill_n(output_ptr + k * output_batch_leading_dim, n_output, 0.0f);
+      for (int b = 0; b < n_batch; b++) {
+        std::fill_n(output_ptr + b * output_batch_leading_dim, n_output, 0.0f);
       }
     }
     if (!tensor_utils::IsZeroVector(output_gate_scratch, n_batch * n_cell)) {
       // Save quantization and matmul computation for all zero input.
-      float unused_min, unused_max;
       for (int b = 0; b < n_batch; ++b) {
         const int offset = b * n_cell;
+        float unused_min, unused_max;
         tensor_utils::SymmetricQuantizeFloats(
             output_gate_scratch + offset, n_cell,
             quantized_cell_state_ptr + offset, &unused_min, &unused_max,
@@ -773,30 +767,30 @@ inline void LstmStepHybrid(
         product_scaling_factors[b] =
             scaling_factors[b] * projection_weights_scale;
       }
-      for (int k = 0; k < n_batch; k++) {
+      for (int b = 0; b < n_batch; b++) {
         tensor_utils::MatrixBatchVectorMultiplyAccumulate(
             projection_weights_ptr, n_output, n_cell,
-            quantized_cell_state_ptr + k * n_cell, &product_scaling_factors[k],
-            /*n_batch=*/1, output_ptr + k * output_batch_leading_dim,
+            quantized_cell_state_ptr + b * n_cell, &product_scaling_factors[b],
+            /*n_batch=*/1, output_ptr + b * output_batch_leading_dim,
             /*result_stride=*/1);
       }
     }
     if (params->proj_clip > 0.0) {
-      for (int k = 0; k < n_batch; k++) {
-        tensor_utils::ClipVector(output_ptr + k * output_batch_leading_dim,
+      for (int b = 0; b < n_batch; b++) {
+        tensor_utils::ClipVector(output_ptr + b * output_batch_leading_dim,
                                  n_output, params->proj_clip,
-                                 output_ptr + k * output_batch_leading_dim);
+                                 output_ptr + b * output_batch_leading_dim);
       }
     }
   } else {
-    for (int k = 0; k < n_batch; k++) {
-      std::copy_n(output_gate_scratch + k * n_output, n_output,
-                  output_ptr + k * output_batch_leading_dim);
+    for (int b = 0; b < n_batch; b++) {
+      std::copy_n(output_gate_scratch + b * n_output, n_output,
+                  output_ptr + b * output_batch_leading_dim);
     }
   }
-  for (int k = 0; k < n_batch; k++) {
-    std::copy_n(output_ptr + k * output_batch_leading_dim, n_output,
-                output_state_ptr + k * n_output);
+  for (int b = 0; b < n_batch; b++) {
+    std::copy_n(output_ptr + b * output_batch_leading_dim, n_output,
+                output_state_ptr + b * n_output);
   }
 }
 
@@ -954,6 +948,7 @@ inline void LstmStepInteger(
     int16_t* scratch_0_ptr, int16_t* scratch_1_ptr, int16_t* scratch_2_ptr,
     int16_t* scratch_3_ptr, int8_t* scratch_4_ptr, int32_t* scratch_5_ptr,
     CpuBackendContext* context) {
+  ruy::profiler::ScopeLabel label("LstmStepInteger");
   // Get hyper parameters.
   const bool use_cifg = (input_to_input_weight_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weight_ptr != nullptr);
@@ -1126,6 +1121,7 @@ inline void LstmStepInteger(
 
 }  // namespace
 
+// LINT.IfChange
 TfLiteStatus EvalFloat(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
     const TfLiteTensor* input_to_forget_weights,
@@ -1306,6 +1302,7 @@ TfLiteStatus EvalFloat(
   }
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
 TfLiteStatus EvalHybrid(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,

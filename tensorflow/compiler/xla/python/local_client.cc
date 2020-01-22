@@ -299,9 +299,9 @@ StatusOr<Literal> PyLocalClient::TransferFromOutfeed(
 }
 
 StatusOr<DeviceAssignment> PyLocalClient::GetDefaultDeviceAssignment(
-    int num_replicas) const {
-  return client_->backend().computation_placer()->AssignDevices(
-      num_replicas, /*computation_count=*/1);
+    int num_replicas, int num_partitions) const {
+  return client_->backend().computation_placer()->AssignDevices(num_replicas,
+                                                                num_partitions);
 }
 
 /* static */
@@ -683,18 +683,23 @@ PyLocalExecutable::PyLocalExecutable(
           std::make_shared<DeviceAssignment>(device_assignment)) {
   VLOG(1) << "PyLocalExecutable " << name() << " device_assignment:\n"
           << device_assignment_->ToString();
-  int num_replicas = device_assignment_->replica_count();
+  const int num_replicas = device_assignment_->replica_count();
+  const int num_partitions = device_assignment_->computation_count();
   for (int replica = 0; replica < num_replicas; ++replica) {
-    int device_id = (*device_assignment_)(replica, 0);
-    std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
-    if (device->host_id() != client_->host_id()) {
-      VLOG(3) << "Non-local device: " << device_id;
-      continue;
+    for (int partition = 0; partition < num_partitions; ++partition) {
+      int device_id = (*device_assignment_)(replica, partition);
+      std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
+      if (device->host_id() != client_->host_id()) {
+        VLOG(3) << "Non-local device: " << device_id;
+        continue;
+      }
+      local_logical_devices_.emplace_back(replica, partition);
+      local_devices_.push_back(device);
     }
-    local_replicas_.push_back(replica);
-    local_devices_.push_back(device);
   }
   CHECK_GE(local_devices_.size(), 1) << device_assignment_->ToString();
+  CHECK_LE(local_devices_.size(), client_->local_device_count())
+      << "Inconsistent local device count.";
 }
 
 const std::string& PyLocalExecutable::name() const {
@@ -710,13 +715,13 @@ const std::string& PyLocalExecutable::name() const {
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
     absl::Span<PyLocalBuffer* const> argument_handles, int replica,
-    const RunId& run_id) {
-  const int device_id = (*device_assignment_)(replica, 0);
+    int partition, const RunId& run_id) {
+  const int device_id = (*device_assignment_)(replica, partition);
   std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
   CHECK_EQ(device->host_id(), client_->host_id());
   int device_ordinal = device->local_device_state()->device_ordinal();
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
-  VLOG(3) << "Replica " << replica
+  VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
   absl::flat_hash_set<BufferDefinitionEvent*> events;
@@ -812,50 +817,70 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
         "Attempted to execute computation with %d replicas using Execute()",
         num_replicas());
   }
-  return ExecuteHelper(argument_handles, /*replica=*/0, RunId());
+  if (num_partitions() != 1) {
+    return InvalidArgument(
+        "Attempted to execute computation with %d partitions using Execute()",
+        num_partitions());
+  }
+  return ExecuteHelper(argument_handles, /*replica=*/0, /*partition=*/0,
+                       RunId());
 }
 
 StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
 PyLocalExecutable::ExecutePerReplica(
     absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) {
   tensorflow::profiler::TraceMe traceme("LocalExecutable::ExecutePerReplica");
-  int num_local_replicas = local_replicas_.size();
-  const int num_local_devices = client_->local_device_count();
-
-  if (argument_handles.size() != num_local_replicas) {
+  if (num_partitions() != 1) {
     return InvalidArgument(
-        "Attempted to execute with %d local replicas when local replica count "
-        "is %d (total replica count: %d)",
-        argument_handles.size(), num_local_replicas, num_replicas());
+        "Attempted to execute computation with %d partitions using "
+        "ExecutePerReplica()",
+        num_partitions());
   }
-  if (argument_handles.size() > num_local_devices) {
+  return ExecuteOnLocalDevices(argument_handles);
+}
+
+StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
+PyLocalExecutable::ExecuteOnLocalDevices(
+    absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) {
+  tensorflow::profiler::TraceMe traceme(
+      "LocalExecutable::ExecuteOnLocalDevices");
+
+  const int num_local_devices = local_devices_.size();
+
+  if (argument_handles.size() != num_local_devices) {
     return InvalidArgument(
-        "Attempted to execute with %d replicas when device count is %d",
-        argument_handles.size(), num_local_devices);
+        "Attempted to execute with %d argument lists when local device "
+        "count is %d (total replica count: %d, partition count: %d)",
+        argument_handles.size(), num_local_devices, num_replicas(),
+        num_partitions());
   }
 
-  VLOG(1) << "Executing replicated computation; num_replicas=" << num_replicas()
-          << " num_local_replicas=" << num_local_replicas;
+  VLOG(1) << "Executing computation; num_replicas=" << num_replicas()
+          << " num_partitions=" << num_partitions()
+          << " num_local_devices=" << num_local_devices;
   std::vector<StatusOr<std::unique_ptr<PyLocalBuffer>>> results(
-      num_local_replicas);
-  if (num_local_replicas == 1) {
-    // Fast-path if there is only one replica — run the computation on the
+      num_local_devices);
+  if (num_local_devices == 1) {
+    // Fast-path if there is only one device — run the computation on the
     // current thread.
+    const auto [replica, partition] = local_logical_devices_[0];
     results[0] =
-        ExecuteHelper(argument_handles[0], local_replicas_[0], RunId());
+        ExecuteHelper(argument_handles[0], replica, partition, RunId());
   } else {
     RunId run_id;
     absl::Mutex mu;
-    int running = num_local_replicas;
+    int running = num_local_devices;
     int failed = 0;
     Status first_failure_status;
 
-    for (int i = 0; i < num_local_replicas; ++i) {
-      const int replica = local_replicas_[i];
+    for (int i = 0; i < num_local_devices; ++i) {
+      const int replica = local_logical_devices_[i].first;
+      const int partition = local_logical_devices_[i].second;
       std::shared_ptr<Device> device = local_devices_[i];
       const LocalDeviceState& device_state = *device->local_device_state();
-      device_state.execute_thread()->Schedule([&, replica, i] {
-        results[i] = ExecuteHelper(argument_handles[i], replica, run_id);
+      device_state.execute_thread()->Schedule([&, replica, partition, i] {
+        results[i] =
+            ExecuteHelper(argument_handles[i], replica, partition, run_id);
 
         absl::MutexLock lock(&mu);
         --running;
@@ -897,16 +922,17 @@ PyLocalExecutable::ExecutePerReplica(
   VLOG(1) << "Replicated execution complete.";
 
   std::vector<std::unique_ptr<PyLocalBuffer>> wrapped_results(
-      num_local_replicas);
-  for (int i = 0; i < num_local_replicas; ++i) {
+      num_local_devices);
+  for (int i = 0; i < num_local_devices; ++i) {
+    auto [replica, partition] = local_logical_devices_[i];
     auto& statusor = results[i];
     if (!statusor.ok()) {
       return AppendStatus(
           statusor.status(),
-          absl::StrFormat(
-              "while running replica %d of a replicated computation (other "
-              "replicas may have failed as well).",
-              local_replicas_[i]));
+          absl::StrFormat("while running replica %d and partition %d of a"
+                          "replicated computation (other "
+                          "replicas may have failed as well).",
+                          replica, partition));
     }
     wrapped_results[i] = std::move(statusor.ValueOrDie());
   }
@@ -942,8 +968,9 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
           device_assignment->computation_count());
     }
   } else {
-    TF_ASSIGN_OR_RETURN(device_assignment, client->GetDefaultDeviceAssignment(
-                                               options.num_replicas()));
+    TF_ASSIGN_OR_RETURN(device_assignment,
+                        client->GetDefaultDeviceAssignment(
+                            options.num_replicas(), options.num_partitions()));
   }
 
   if (!argument_layouts) {

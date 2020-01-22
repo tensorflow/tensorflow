@@ -2775,7 +2775,7 @@ void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
 }
 
 void MIOpenDeallocatorCallback(void* ctx, void* mem) {
-  // Don't need dealloactor since the TensorFlow heap will automatically reclaim
+  // Don't need deallocator since the TensorFlow heap will automatically reclaim
   // the memory
 }
 
@@ -4178,7 +4178,7 @@ bool MIOpenSupport::DoPoolBackward(
       return false;
     }
   } else {
-    LOG(ERROR) << "Failed to calcuate tensor size to chain forward and "
+    LOG(ERROR) << "Failed to calculate tensor size to chain forward and "
                   "backward pooling";
   }
 
@@ -4274,7 +4274,7 @@ bool MIOpenSupport::DoPoolBackward(
       return false;
     }
   } else {
-    LOG(ERROR) << "Failed to calcuate tensor size to chain forward and "
+    LOG(ERROR) << "Failed to calculate tensor size to chain forward and "
                   "backward pooling";
   }
 
@@ -4412,7 +4412,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
     }
   } else {
     LOG(ERROR)
-        << "Failed to calcuate tensor size to chain forward and backward LRN";
+        << "Failed to calculate tensor size to chain forward and backward LRN";
   }
 
   status = wrap::miopenLRNForward(miopen.handle(), normalize.handle(), &alpha,

@@ -111,6 +111,9 @@ tf_cc_test(
     name = "cluster_function_library_runtime_test",
     srcs = ["cluster_function_library_runtime_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":worker_session",
         "//tensorflow/core:framework_internal",

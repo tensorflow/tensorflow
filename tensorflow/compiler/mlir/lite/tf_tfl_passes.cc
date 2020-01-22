@@ -125,7 +125,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   if (pass_config.emit_builtin_tflite_ops) {
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
-    pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
+    pass_manager->addPass(
+        mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());

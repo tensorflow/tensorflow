@@ -734,7 +734,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       //      is finite and b is either +/-Inf or NaN, then our normal
       //      calculation would end up returing (+/-1, NaN), as opposed to (NaN,
       //      NaN).
-      // 5/6) We always calculate the imagninary value as sin(2b)/denominator.
+      // 5/6) We always calculate the imaginary value as sin(2b)/denominator.
       //      When the denominator is infinity, this assures us that the zero is
       //      the correct sign. However if our imaginary input results in
       //      sin(2b) = NaN, we calculate our imaginary result as NaN.

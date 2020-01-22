@@ -158,3 +158,16 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_py_test(
+    name = "revive_test",
+    size = "medium",
+    srcs = ["saved_model/revive_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

@@ -20,11 +20,51 @@ limitations under the License.
 
 #include "mlir/IR/Diagnostics.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
 
 namespace mlir {
 namespace TF {
+//===----------------------------------------------------------------------===//
+// Utility iterators
+//===----------------------------------------------------------------------===//
+
+// An iterator for the tensor shapes of an op's operands of shaped types.
+// Returns llvm::None if a operand is unranked; returns ArrayRef<int64_t> as the
+// shape otherwise.
+class OperandShapeIterator final
+    : public llvm::mapped_iterator<Operation::operand_iterator,
+                                   llvm::Optional<ArrayRef<int64_t>> (*)(
+                                       Value)> {
+ public:
+  using reference = llvm::Optional<ArrayRef<int64_t>>;
+
+  /// Initializes the operand shape iterator to the specified operand iterator.
+  explicit OperandShapeIterator(Operation::operand_iterator it);
+};
+
+using OperandShapeRange = iterator_range<OperandShapeIterator>;
+
+// An iterator for the tensor shapes of an op's results of shaped types.
+// Returns llvm::None if a result is unranked; returns ArrayRef<int64_t> as the
+// shape otherwise.
+class ResultShapeIterator final
+    : public llvm::mapped_iterator<Operation::result_iterator,
+                                   llvm::Optional<ArrayRef<int64_t>> (*)(
+                                       Value)> {
+ public:
+  using reference = llvm::Optional<ArrayRef<int64_t>>;
+
+  /// Initializes the result shape iterator to the specified result iterator.
+  explicit ResultShapeIterator(Operation::result_iterator it);
+};
+
+using ResultShapeRange = iterator_range<ResultShapeIterator>;
+
+//===----------------------------------------------------------------------===//
+// TensorFlow types
+//===----------------------------------------------------------------------===//
 
 namespace TensorFlowTypes {
 // List of supported TensorFlowType kinds, necessary for isa/dyn_cast.

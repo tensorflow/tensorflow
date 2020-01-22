@@ -180,6 +180,22 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "loss_scale_benchmark",
+    size = "medium",
+    srcs = ["loss_scale_benchmark.py"],
+    deps = [
+        ":loss_scale_optimizer",
+        ":test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:loss_scaling_gradient_tape",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+    ],
+)
+
 py_library(
     name = "test_util",
     srcs = ["test_util.py"],

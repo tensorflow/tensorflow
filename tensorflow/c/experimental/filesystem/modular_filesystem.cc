@@ -18,11 +18,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 // TODO(mihaimaruseac): After all filesystems are converted, all calls to
@@ -433,6 +432,10 @@ Status ModularWritableFile::Tell(int64* position) {
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   *position = ops_->tell(file_.get(), plugin_status.get());
   return StatusFromTF_Status(plugin_status.get());
+}
+
+Status RegisterFilesystemPlugin(const std::string& dso_path) {
+  return filesystem_registration::RegisterFilesystemPluginImpl(dso_path);
 }
 
 }  // namespace tensorflow

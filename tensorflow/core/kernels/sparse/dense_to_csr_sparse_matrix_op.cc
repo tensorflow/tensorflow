@@ -361,8 +361,10 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
 
 REGISTER_GPU(GPU, float)
 REGISTER_GPU(GPU, double)
+#if GOOGLE_CUDA
 REGISTER_GPU(GPU, complex64)
 REGISTER_GPU(GPU, complex128)
+#endif
 
 namespace functor {
 

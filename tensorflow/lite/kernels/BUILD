@@ -333,6 +333,7 @@ cc_library(
         # cpu_backend_gemm.h about why ruy is the generic path.
         "//tensorflow/lite/experimental/ruy",
         "//tensorflow/lite/experimental/ruy:path",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
@@ -590,11 +591,11 @@ cc_library(
         "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
-        "@gemmlowp//:profiler",
     ],
 )
 
@@ -607,6 +608,7 @@ cc_library(
         ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",

@@ -536,9 +536,10 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
     transB_ = transpose_b ? CUSPARSE_OPERATION_TRANSPOSE
                           : CUSPARSE_OPERATION_NON_TRANSPOSE;
 #elif TENSORFLOW_USE_ROCM
-    transA_ = transpose_a ? (adjoint_a ? HIPSPARSE_OPERATION_TRANSPOSE
-                                       : HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE)
-                          : HIPSPARSE_OPERATION_NON_TRANSPOSE;
+    transA_ = transpose_a
+                  ? (adjoint_a ? HIPSPARSE_OPERATION_TRANSPOSE
+                               : HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE)
+                  : HIPSPARSE_OPERATION_NON_TRANSPOSE;
     transB_ = transpose_b ? HIPSPARSE_OPERATION_TRANSPOSE
                           : HIPSPARSE_OPERATION_NON_TRANSPOSE;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

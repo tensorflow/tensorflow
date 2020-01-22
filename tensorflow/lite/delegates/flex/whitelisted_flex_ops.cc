@@ -108,6 +108,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "Einsum",
           "Elu",
           "EluGrad",
+          "Empty",
           "EncodeWav",
           "EnsureShape",
           "Enter",

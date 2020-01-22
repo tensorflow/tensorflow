@@ -45,6 +45,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
+from tensorflow.python.util.deprecation import deprecated
 
 
 def get_distributed_dataset(dataset,
@@ -348,8 +349,7 @@ class DistributedIterator(object):
 class DistributedIteratorV1(DistributedIterator):
   """Input Iterator for tf.data.DatasetV1."""
 
-  # TODO(anjalisridhar): Move to using `initializer` instead to be consistent
-  # with tf.data iterator APIs.
+  @deprecated(None, "Use the iterator's `initializer` property instead.")
   def initialize(self):
     """Initialze underlying iterators.
 
@@ -360,6 +360,7 @@ class DistributedIteratorV1(DistributedIterator):
 
   @property
   def initializer(self):
+    """Returns a list of ops that initialize the iterator."""
     return self.initialize()
 
   # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.

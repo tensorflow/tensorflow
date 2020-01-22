@@ -708,11 +708,11 @@ def if_tflite_experimental_runtime(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def tflite_experimental_runtime_linkopts():
+def tflite_experimental_runtime_linkopts(if_true = [], if_false = []):
     return if_tflite_experimental_runtime(
         if_true = [
             # "//tensorflow/lite/experimental/tf_runtime:interpreter",
             # "//tensorflow/lite/experimental/tf_runtime:model",
-        ],
-        if_false = [],
+        ] + if_true,
+        if_false = [] + if_false,
     )

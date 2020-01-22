@@ -285,6 +285,7 @@ cuda_py_test(
     name = "ctc_loss_op_test",
     size = "medium",
     srcs = ["ctc_loss_op_test.py"],
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ctc_ops",

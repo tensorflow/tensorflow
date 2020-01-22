@@ -55,14 +55,14 @@ def LHLO_BufferOrTuple : AnyTypeOf<[LHLO_Buffer, LHLO_TupleBuffer]>;
 class LHLO_Op<string mnemonic, list<OpTrait> traits> : Op<LHLO_Dialect,
                                                           mnemonic, traits>;
 
-def LHLO_ConstOp : BASE_HLO_ConstOp, LHLO_Op<"constant", []> {
+def LHLO_ConstOp : LHLO_Op<"constant", []>, BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value,
     LHLO_Buffer:$output
   );
 }
 
-def LHLO_IotaOp : BASE_HLO_IotaOp, LHLO_Op<"iota", []> {
+def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension,
                    LHLO_Buffer:$output);
 }
@@ -256,6 +256,13 @@ def LHLO_ConvOp : LHLO_Op<"conv", []>, BASE_HLO_ConvOp {
   let arguments = (ins
     LHLO_Buffer:$lhs,
     LHLO_Buffer:$rhs,
+    LHLO_Buffer:$output
+  );
+}
+
+def LHLO_CopyOp: LHLO_Op<"copy", []>, BASE_HLO_CopyOp {
+  let arguments = (ins
+    LHLO_Buffer:$operand,
     LHLO_Buffer:$output
   );
 }

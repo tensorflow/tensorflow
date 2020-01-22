@@ -154,7 +154,8 @@ class Client(object):
       return self._service
 
     if not _GOOGLE_API_CLIENT_INSTALLED:
-      raise RuntimeError('Missing runtime dependency on the Google API client.')
+      raise RuntimeError('Missing runtime dependency on the Google API client. '
+                         'Run `pip install cloud-tpu-client` to fix.')
 
     credentials = self._credentials
     if credentials is None or credentials == 'default':
@@ -187,6 +188,13 @@ class Client(object):
                        'doublecheck the tpu argument in the TPUClusterResolver '
                        'constructor. Exception: %s' % (self._tpu, e))
 
+  def _get_tpu_property(self, key):
+    if self._use_api:
+      metadata = self._fetch_cloud_tpu_metadata()
+      return metadata.get(key)
+
+    return None
+
   def __enter__(self):
     self._open = True
 
@@ -205,12 +213,19 @@ class Client(object):
 
   def state(self):
     """Return state of the TPU."""
-    if self._use_api:
-      metadata = self._fetch_cloud_tpu_metadata()
-      if 'state' in metadata:
-        return metadata['state']
+    return self._get_tpu_property('state')
 
-    return None
+  def health(self):
+    """Return health of the TPU."""
+    return self._get_tpu_property('health')
+
+  def runtime_version(self):
+    """Return runtime version of the TPU."""
+    return self._get_tpu_property('tensorflowVersion')
+
+  def accelerator_type(self):
+    """Return accelerator type of the TPU."""
+    return self._get_tpu_property('acceleratorType')
 
   def api_available(self):
     """Return if the Cloud TPU API is available, if not certain features will not work."""
@@ -228,11 +243,11 @@ class Client(object):
     """Return a list of tpu endpoints."""
     if not self._use_api:
       return list(_environment_var_to_network_endpoints(self._tpu))
-    response = self._fetch_cloud_tpu_metadata()  # pylint: disable=protected-access
+    response = self._fetch_cloud_tpu_metadata()
 
-    if 'state' in response and response['state'] != 'READY':
+    if response.get('state') != 'READY':
       raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
-                         (self._tpu, response['state']))
+                         (self._tpu, response.get('state')))
     if 'networkEndpoints' in response:
       return response['networkEndpoints']
     else:

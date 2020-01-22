@@ -74,6 +74,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kCeil:
       func_builder.create<lhlo::CeilOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kCopy:
+      func_builder.create<lhlo::CopyOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kCos:
       func_builder.create<lhlo::CosOp>(loc, rets, args, attrs);
       break;

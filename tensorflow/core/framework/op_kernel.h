@@ -303,6 +303,7 @@ class OpKernelConstruction {
   OpKernelConstruction(DeviceType device_type, DeviceBase* device,
                        Allocator* allocator, const NodeDef* node_def,
                        const OpDef* op_def, FunctionLibraryRuntime* flib,
+                       ResourceMgr* resource_mgr,
                        const DataTypeSlice& input_types,
                        const MemoryTypeSlice& input_memory_types,
                        const DataTypeSlice& output_types,
@@ -330,6 +331,8 @@ class OpKernelConstruction {
   // complete. See comment above.
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp);
+  Status allocate_temp(DataType type, const TensorShape& shape,
+                       Tensor* out_temp, AllocatorAttributes allocator_attr);
 
   // Allocates a Tensor of the specified type and shape which the Op
   // plans to maintain as persistent state. out_persistent holds the
@@ -389,6 +392,9 @@ class OpKernelConstruction {
   // CHECK_NOTNULL(function_library())->Instantiate("Foo", ...).
   FunctionLibraryRuntime* function_library() const { return flib_; }
 
+  // Shared resources accessible to this kernel.
+  ResourceMgr* resource_manager() const { return resource_mgr_; }
+
   // The GraphDef version whose behavior we should follow.
   int graph_def_version() const { return graph_def_version_; }
 
@@ -417,6 +423,7 @@ class OpKernelConstruction {
   const NodeDef* def_;
   const OpDef* op_def_;
   FunctionLibraryRuntime* flib_;
+  ResourceMgr* const resource_mgr_;
   DataTypeSlice input_types_;
   MemoryTypeSlice input_memory_types_;
   DataTypeSlice output_types_;
@@ -1420,6 +1427,10 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
                       const NodeDef& def, int graph_def_version,
                       OpKernel** kernel);
+Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
+                      Allocator* allocator, FunctionLibraryRuntime* flib,
+                      ResourceMgr* resource_mgr, const NodeDef& def,
+                      int graph_def_version, OpKernel** kernel);
 
 // Returns into 'device_types' the subset of prioritized_types that this
 // binary has registered for the given NodeDef.

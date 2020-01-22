@@ -322,11 +322,13 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(0., self.evaluate(assign.assign(0.)))
         assign_add = x.assign_add(3.14)
         self.assertAllClose(3.14, self.evaluate(assign_add))
-        self.assertAllClose(3.14 * 2,
-                            self.evaluate(assign_add.assign_add(3.14)))
+        self.assertAllClose(3.14 * 3,
+                            self.evaluate(x.assign_add(3.14).assign_add(3.14)))
+        self.assertAllClose(3.14 * 3, x)
         assign_sub = x.assign_sub(3.14)
-        self.assertAllClose(3.14, self.evaluate(assign_sub))
-        self.assertAllClose(0., self.evaluate(assign_sub.assign_sub(3.14)))
+        self.assertAllClose(3.14 * 2, self.evaluate(assign_sub))
+        self.assertAllClose(0.,
+                            self.evaluate(x.assign_sub(3.14).assign_sub(3.14)))
 
         # Assign with read_value=False
         self.assertIsNone(self.evaluate(x.assign(1., read_value=False)))

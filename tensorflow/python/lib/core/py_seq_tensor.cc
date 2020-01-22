@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
+#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
@@ -296,7 +298,7 @@ struct Converter {
     if (!status.ok()) {
       return status;
     }
-    *h = new TFE_TensorHandle{TensorHandleInterface(handle)};
+    *h = new TFE_TensorHandle{std::make_unique<TensorHandleInterface>(handle)};
     return Status::OK();
   }
 };
@@ -598,10 +600,90 @@ struct ConverterTraits<bool> {
 
 typedef Converter<bool> BoolConverter;
 
+// Convert a Python numpy.ndarray object to a TFE_TensorHandle.
+// The two may share underlying storage so changes to one may reflect in the
+// other.
+TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
+  tensorflow::TensorHandle* handle;
+  tensorflow::Tensor t;
+  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
+  if (cppstatus.ok()) {
+    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
+        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
+  }
+  if (!cppstatus.ok()) {
+    PyErr_SetString(PyExc_ValueError,
+                    tensorflow::strings::StrCat(
+                        "Failed to convert a NumPy array to a Tensor (",
+                        cppstatus.error_message(), ").")
+                        .c_str());
+    return nullptr;
+  }
+  return new TFE_TensorHandle{
+      std::make_unique<tensorflow::TensorHandleInterface>(handle)};
+}
+
 }  // namespace
 
+// TODO(b/147743551): This function handles enough conversions to justify
+// promoting to something like PyObjectToTensorHandle.
+// TODO(b/147828820): Handle Tensors properly.
 TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
                                           DataType dtype) {
+  // Shortcut: __array__ objects (such as Pandas data frames).
+  // These objects are efficiently handled by Numpy. We transform them into
+  // Numpy arrays and handle them in the Numpy case below. Note that Tensors
+  // implement the __array__ function, and will be handled in this shortcut.
+  Safe_PyObjectPtr array =
+      make_safe(PyArray_FromArrayAttr(obj, nullptr, nullptr));
+  if (array == nullptr) {
+    return nullptr;
+  }
+  if (array.get() == Py_NotImplemented) {
+    // The Py_NotImplemented returned from PyArray_FromArrayAttr is not
+    // Py_INCREF'ed, so we don't want the Safe_PyObjectPtr to Py_DECREF it.
+    array.release();
+  } else {
+    // PyArray_FromArrayAttr ensures that `array` is a PyArrayObject, so all
+    // we have to do is replace `obj` with it and continue.
+    obj = array.get();
+  }
+
+  // Shortcut: Numpy arrays.
+  if (PyArray_Check(obj)) {
+    int desired_np_dtype = -1;
+    if (dtype != tensorflow::DT_INVALID) {
+      if (!tensorflow::TF_DataType_to_PyArray_TYPE(
+               static_cast<TF_DataType>(dtype), &desired_np_dtype)
+               .ok()) {
+        PyErr_SetString(
+            PyExc_TypeError,
+            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
+                .c_str());
+        return nullptr;
+      }
+    }
+
+    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(obj);
+    int array_dtype = PyArray_TYPE(array);
+
+    Safe_PyObjectPtr safe_value(nullptr);
+    // Use Numpy to convert between types if needed.
+    if ((desired_np_dtype >= 0 && desired_np_dtype != array_dtype) ||
+        !PyArray_ISCARRAY(array)) {
+      int new_dtype = desired_np_dtype >= 0 ? desired_np_dtype : array_dtype;
+      safe_value = tensorflow::make_safe(
+          PyArray_FromAny(obj, PyArray_DescrFromType(new_dtype), 0, 0,
+                          NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST, nullptr));
+      if (PyErr_Occurred()) return nullptr;
+      if (safe_value == nullptr) {
+        PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
+      }
+      obj = safe_value.get();
+    }
+    return NumpyToTFE_TensorHandle(ctx, obj);
+  }
+
   ConverterState state;
   Status status = InferShapeAndType(obj, &state);
   if (!status.ok()) {
@@ -612,6 +694,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   if (dtype != DT_INVALID) {
     requested_dtype = dtype;
   }
+
   // NOTE(josh11b): If don't successfully convert to the requested type,
   // we just try instead to create a tensor of the inferred type and
   // let the caller convert it to the requested type using a cast
@@ -728,7 +811,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
         PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
         return nullptr;
       }
-      return new TFE_TensorHandle{TensorHandleInterface(h)};
+      return new TFE_TensorHandle{std::make_unique<TensorHandleInterface>(h)};
     }
 
     default:
