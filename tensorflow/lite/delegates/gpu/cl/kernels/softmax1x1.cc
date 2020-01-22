@@ -37,7 +37,7 @@ std::string GetSoftmaxKernelCode(
                                            "tensor_size.z", "tensor_size.w"},
                                  op_def.dst_tensors[0]);
 
-  const std::string batch_id = op_def.batch_support ? "batch_id" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "batch_id" : "";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -47,7 +47,7 @@ std::string GetSoftmaxKernelCode(
   c += "    int2 size,\n";
   c += "    float4 mask\n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int batch_id = get_global_id(1);\n";
     c += "  if (batch_id >= tensor_size.w) return;\n";
   }
