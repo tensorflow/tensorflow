@@ -35,7 +35,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 64;
+constexpr int kMaxChannels = 256;
 
 struct OpData {
   TfLitePaddingValues padding;
@@ -224,6 +224,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
     // Depthwise conv is quantized along dimension 3:
     // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 3);
     TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
                       affine_quantization->scale->size);
     TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
@@ -258,8 +259,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace depthwise_conv
 
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {depthwise_conv::Init, depthwise_conv::Free,
-                                 depthwise_conv::Prepare, depthwise_conv::Eval};
+  static TfLiteRegistration r = {};
+  r.init = depthwise_conv::Init;
+  r.free = depthwise_conv::Free;
+  r.prepare = depthwise_conv::Prepare;
+  r.invoke = depthwise_conv::Eval;
   return &r;
 }
 

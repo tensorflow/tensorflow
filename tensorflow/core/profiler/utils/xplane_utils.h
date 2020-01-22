@@ -24,6 +24,9 @@ namespace profiler {
 // Returns the plane with the given name or nullptr if not found.
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
 
+// Returns the plane with the given name, create it if necessary.
+XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

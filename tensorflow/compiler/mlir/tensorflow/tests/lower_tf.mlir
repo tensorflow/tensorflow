@@ -1,5 +1,29 @@
 // RUN: tf-opt %s -test-tf-lower-tf | FileCheck %s --dump-input-on-failure
 
+// CHECK-LABEL: invert_permutation
+func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {
+  // CHECK-NEXT: %[[UPDATES:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3, 4]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK-NEXT: %[[PERM:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-NEXT: %[[INDICES:.*]] = "tf.Transpose"(%arg0, %[[PERM]]) : (tensor<5xi32>, tensor<2xi32>) -> tensor<5x1xi32>
+  // CHECK-NEXT: "tf.TensorScatterUpdate"(%arg0, %[[INDICES]], %[[UPDATES]]) : (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
+  %0 = "tf.InvertPermutation"(%arg0) : (tensor<5xi32>) -> tensor<5xi32>
+  return %0 : tensor<5xi32>
+}
+
+// CHECK-LABEL: invert_permutation_dynamic
+func @invert_permutation_dynamic(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  // CHECK: tf.InvertPermutation
+  %0 = "tf.InvertPermutation"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL: invert_permutation_unranked
+func @invert_permutation_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  // CHECK: tf.InvertPermutation
+  %0 = "tf.InvertPermutation"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
 // CHECK-LABEL: simple_pack
 // CHECK-SAME: %[[ARG0:.*]]: tensor<3x5xf32>, %[[ARG1:.*]]: tensor<3x5xf32>
 func @simple_pack(%arg0: tensor<3x5xf32>, %arg1: tensor<3x5xf32>) -> tensor<2x3x5xf32> {

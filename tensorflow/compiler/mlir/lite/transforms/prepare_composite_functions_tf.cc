@@ -22,19 +22,20 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
@@ -45,6 +46,8 @@ namespace mlir {
 namespace TFL {
 namespace {
 
+constexpr char kTFAPIImplements[] = "tf.api_implements";
+
 // Abstracts the conversion of the embedded lookup composite function.
 class ConvertEmbeddedLookupFunc {
  public:
@@ -53,8 +56,8 @@ class ConvertEmbeddedLookupFunc {
   void RewriteFunc() {
     func_.setAttr(kTFImplements,
                   StringAttr::get("embedding_lookup", func_.getContext()));
-    Value* lookup = func_.getArgument(1);
-    Value* value = func_.getArgument(0);
+    Value lookup = func_.getArgument(1);
+    Value value = func_.getArgument(0);
     auto output_type = func_.getType().getResult(0);
 
     OpBuilder builder(func_.getBody());
@@ -93,13 +96,13 @@ class PrepareCompositeFunctionsPass
   explicit PrepareCompositeFunctionsPass() {}
 
  private:
+  void ConvertTFImplements(FuncOp func, StringAttr attr);
+  void ConvertTFAPIImplements(FuncOp func, StringAttr attr);
   void runOnFunction() override;
 };
 
-void PrepareCompositeFunctionsPass::runOnFunction() {
-  auto func = getFunction();
-  auto attr = func.getAttrOfType<StringAttr>(kTFImplements);
-  if (!attr) return;
+void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
+                                                        StringAttr attr) {
   if (attr.getValue() == "embedding_matmul") {
     func.eraseBody();
     func.addEntryBlock();
@@ -125,6 +128,41 @@ void PrepareCompositeFunctionsPass::runOnFunction() {
     if (failed(convert_layer_norm_lstm_cell_simple.RewriteFunc())) {
       return signalPassFailure();
     }
+  }
+}
+
+void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
+                                                           StringAttr attr) {
+  // Keras lstm tf.api_implements usually has attribute like "lstm_abcde91...".
+  // TODO(b/147436982): we need to make sure that only the
+  // outputs(full sequence) is used, not the last_output, not the new_states.
+  // We will discard everything except the outputs.
+  // And the outputs is in the shape of [batch, time, units].
+  if (attr.getValue().startswith("lstm_")) {
+    func.eraseBody();
+    func.addEntryBlock();
+
+    OpBuilder builder(func.getBody());
+    if (failed(ConvertKerasLSTMLayer(func, &builder)))
+      return signalPassFailure();
+  }
+}
+
+void PrepareCompositeFunctionsPass::runOnFunction() {
+  auto func = getFunction();
+  // We have two kinds of implements:
+  // 1) tf._implements.
+  // 2) tf.api_implements.
+  // We need to handle them separately.
+  auto tf_implements_attr = func.getAttrOfType<StringAttr>(kTFImplements);
+  if (tf_implements_attr) {
+    ConvertTFImplements(func, tf_implements_attr);
+  } else {
+    auto tf_api_implements_attr =
+        func.getAttrOfType<StringAttr>(kTFAPIImplements);
+    if (!tf_api_implements_attr) return;
+    // TODO(b/147536816): Keras lstm should set up the correct attributes.
+    ConvertTFAPIImplements(func, tf_api_implements_attr);
   }
 }
 }  // namespace

@@ -172,9 +172,6 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -223,7 +220,10 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_oss_py2"],  # b/138443278
+    tags = [
+        "no_oss_py2",
+        "notap",
+    ],  # b/138443278
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -941,7 +941,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/139815303): enable after this is fixed.
-        "no_rocm",
         "notap",  # TODO(b/139815303): enable after this is fixed.
     ],
     deps = [
@@ -995,7 +994,6 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":single_loss_example",
@@ -1213,7 +1211,7 @@ distribute_py_test(
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/saving",
     ],
 )
 
@@ -1226,7 +1224,7 @@ distribute_py_test(
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/saving",
         "//tensorflow/python/saved_model",
     ],
 )

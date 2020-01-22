@@ -9,7 +9,7 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@local_config_mlir//:subpackages"],
+    includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/...",
         "//tensorflow/lite/...",
@@ -23,7 +23,6 @@ cc_library(
     ],
     hdrs = [
         "quantize_model.h",
-        "//tensorflow/compiler/mlir/lite:transforms/passes.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",
@@ -36,9 +35,9 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -53,6 +52,6 @@ tf_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )

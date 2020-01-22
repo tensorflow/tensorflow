@@ -112,7 +112,8 @@ def _inverse_circulant(circulant_operator):
       is_non_singular=circulant_operator.is_non_singular,
       is_self_adjoint=circulant_operator.is_self_adjoint,
       is_positive_definite=circulant_operator.is_positive_definite,
-      is_square=True)
+      is_square=True,
+      input_output_dtype=circulant_operator.dtype)
 
 
 @linear_operator_algebra.RegisterInverse(

@@ -32,10 +32,10 @@ func @binary_ops_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32
   // CHECK-NEXT:   %2 = subi %1, %arg1 : tensor<4xi32>
   %2 = "xla_hlo.sub"(%1, %arg1) {name = "sub.5"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
 
-  // CHECK-NEXT:   %3 = divis %2, %arg1 : tensor<4xi32>
+  // CHECK-NEXT:   %3 = divi_signed %2, %arg1 : tensor<4xi32>
   %3 = "xla_hlo.div"(%2, %arg1) {name = "div.6"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
 
-  // CHECK-NEXT:   %4 = remis %3, %arg1 : tensor<4xi32>
+  // CHECK-NEXT:   %4 = remi_signed %3, %arg1 : tensor<4xi32>
   %4 = "xla_hlo.remainder"(%3, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
 
   // CHECK-NEXT:   return %4 : tensor<4xi32>

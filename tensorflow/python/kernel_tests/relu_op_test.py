@@ -22,7 +22,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -80,8 +79,6 @@ class ReluTest(test.TestCase):
   def testReluInt8x4GoodShape(self):
     if not test.is_gpu_available(cuda_only=True):
       self.skipTest("No GPU available")
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support int8x4 type")
     inputs = np.array([[-50, 7, 23, 0], [-1, -5, 6, 11]])
     np_relu = self._npRelu(inputs)
     tf_relu = nn_ops.relu(constant_op.constant(inputs, dtypes.qint8))
@@ -92,8 +89,6 @@ class ReluTest(test.TestCase):
   def testReluInt8x4BadShape(self):
     if not test.is_gpu_available(cuda_only=True):
       self.skipTest("No GPU available")
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support int8x4 type")
     inputs = constant_op.constant(
         np.array([[-50, 7, 23], [0, 1, -5], [6, -2, 11]]), dtypes.qint8)
     with self.assertRaisesRegexp(
@@ -122,7 +117,6 @@ class ReluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.relu, [x]))
-    print("relu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   # The gradient for fp16 is inaccurate due to the low-precision.
@@ -171,7 +165,6 @@ class ReluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.relu, [x]))
-    print("relu (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradGradFloat32(self):
@@ -190,7 +183,6 @@ class ReluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(f, [x]))
-    print("relu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
@@ -209,7 +201,6 @@ class ReluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(f, [x]))
-    print("relu (float64) gradient of gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradientScalar(self):
@@ -283,7 +274,6 @@ class Relu6Test(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.relu6, [x]))
-    print("relu6 (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
@@ -294,7 +284,6 @@ class Relu6Test(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.relu6, [x]))
-    print("relu6 (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
 
@@ -345,7 +334,6 @@ class LeakyReluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.leaky_relu, [x]))
-    print("leaky_relu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
@@ -356,48 +344,43 @@ class LeakyReluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.leaky_relu, [x]))
-    print("leaky_relu (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradGradFloat32(self):
-    with compat.forward_compatibility_horizon(2018, 11, 2):
-      with self.cached_session():
+    with self.cached_session():
 
-        def f(x):
-          assert x.dtype == dtypes.float32
-          with backprop.GradientTape() as tape:
-            tape.watch(x)
-            y = nn_ops.leaky_relu(x)
-          return tape.gradient(y, x)
+      def f(x):
+        assert x.dtype == dtypes.float32
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.leaky_relu(x)
+        return tape.gradient(y, x)
 
-        x = np.asarray(
-            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-            dtype=np.float32,
-            order="F")
-        err = gradient_checker_v2.max_error(
-            *gradient_checker_v2.compute_gradient(f, [x]))
-      print("leaky_relu (float32) gradient of gradient err = ", err)
-      self.assertLess(err, 1e-4)
+      x = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float32,
+          order="F")
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
+    self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
-    with compat.forward_compatibility_horizon(2018, 11, 2):
-      with self.cached_session():
+    with self.cached_session():
 
-        def f(x):
-          assert x.dtype == dtypes.float64
-          with backprop.GradientTape() as tape:
-            tape.watch(x)
-            y = nn_ops.leaky_relu(x)
-          return tape.gradient(y, x)
+      def f(x):
+        assert x.dtype == dtypes.float64
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.leaky_relu(x)
+        return tape.gradient(y, x)
 
-        x = np.asarray(
-            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-            dtype=np.float64,
-            order="F")
-        err = gradient_checker_v2.max_error(
-            *gradient_checker_v2.compute_gradient(f, [x]))
-      print("leaky_relu (float64) gradient of gradient err = ", err)
-      self.assertLess(err, 1e-10)
+      x = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float64,
+          order="F")
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [x]))
+    self.assertLess(err, 1e-10)
 
   def testGradientScalar(self):
     x = variables.Variable(-100.)
@@ -463,7 +446,6 @@ class EluTest(test.TestCase):
       x = np.asarray(x_val, dtype=np.float32, order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.elu, [x]))
-    print("elu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
@@ -472,7 +454,6 @@ class EluTest(test.TestCase):
       x = np.asarray(x_val, dtype=np.float64, order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.elu, [x]))
-    print("elu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
   def testGradGrad(self):
@@ -507,7 +488,6 @@ class EluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(f, [x]))
-    print("elu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
@@ -526,7 +506,6 @@ class EluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(f, [x]))
-    print("elu (float64) gradient of gradient err = ", err)
     self.assertLess(err, 1e-6)
 
 
@@ -567,7 +546,6 @@ class SeluTest(test.TestCase):
       x = np.asarray(x_val, dtype=np.float32, order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.selu, [x]))
-    print("selu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
@@ -576,7 +554,6 @@ class SeluTest(test.TestCase):
       x = np.asarray(x_val, dtype=np.float64, order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(nn_ops.selu, [x]))
-    print("selu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
   def testGradGradFloat32(self):
@@ -595,7 +572,6 @@ class SeluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(f, [x]))
-    print("selu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
@@ -614,7 +590,6 @@ class SeluTest(test.TestCase):
           order="F")
       err = gradient_checker_v2.max_error(
           *gradient_checker_v2.compute_gradient(f, [x]))
-    print("selu (float64) gradient of gradient err = ", err)
     self.assertLess(err, 1e-6)
 
 

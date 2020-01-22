@@ -16,14 +16,14 @@ limitations under the License.
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
 
@@ -39,15 +39,15 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
                                      PatternRewriter& rewriter) const override {
     const auto& lhs = op.lhs();
     const auto& rhs = op.rhs();
-    const auto& lhs_type = lhs->getType().template cast<MemRefType>();
-    const auto& rhs_type = rhs->getType().template cast<MemRefType>();
+    const auto& lhs_type = lhs.getType().template cast<MemRefType>();
+    const auto& rhs_type = rhs.getType().template cast<MemRefType>();
     const auto& element_type = lhs_type.getElementType();
 
     if (lhs_type.getShape() != rhs_type.getShape()) {
       return this->matchFailure();
     }
     const auto& shape = lhs_type.getShape();
-    SmallVector<Value*, 4> induction_vars;
+    SmallVector<Value, 4> induction_vars;
     const auto loc = op.getLoc();
     for (int i = 0; i < shape.size(); ++i) {
       auto forOp = rewriter.create<AffineForOp>(loc, 0, shape[i]);
@@ -56,13 +56,12 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
     }
     auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
     auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
-    Operation* result = MapLhloOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(op), element_type, {l, r}, rewriter);
-    if (result == nullptr) {
+    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(op), element_type, {l, r}, &rewriter);
+    if (opResult == nullptr) {
       return this->matchFailure();
     }
-    rewriter.create<StoreOp>(loc, result->getResult(0), op.out(),
-                             induction_vars);
+    rewriter.create<StoreOp>(loc, opResult, op.out(), induction_vars);
     rewriter.eraseOp(op);
     return this->matchSuccess();
   }

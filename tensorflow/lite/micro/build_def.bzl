@@ -7,6 +7,16 @@ load(
     _flatbuffer_cc_library = "flatbuffer_cc_library",
 )
 
+def micro_copts():
+    copts = [
+        "-Wsign-compare",
+        "-Wdouble-promotion",
+        "-Wshadow",
+        "-Wunused-variable",
+        "-Wmissing-field-initializers",
+    ]
+    return copts
+
 def cc_library(**kwargs):
     kwargs.pop("build_for_embedded", False)
     _cc_library(**kwargs)

@@ -55,6 +55,7 @@ class DequantizeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis));
     OP_REQUIRES(ctx, axis == -1,
                 errors::InvalidArgument("axis must be -1' is ", axis));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
   ~DequantizeOp() override = default;
@@ -86,7 +87,6 @@ class DequantizeOp : public XlaOpKernel {
     xla::XlaOp input = ctx->Input(0);
     xla::XlaOp output;
 
-    // TODO(ylc): Support bfloat16.
     output = xla::ConvertElementType(input, xla::F32);
 
     auto scale = ScalarLike(output, scale_factor);
@@ -94,8 +94,14 @@ class DequantizeOp : public XlaOpKernel {
     output = xla::Add(xla::Mul(xla::Add(output, halfrange), scale),
                       ScalarLike(output, min_range));
 
+    if (dtype_ == DT_BFLOAT16) {
+      output = xla::ConvertElementType(output, xla::BF16);
+    }
     ctx->SetOutput(0, output);
   }
+
+ private:
+  DataType dtype_;
 };
 
 REGISTER_XLA_OP(Name("Dequantize").TypeConstraint("T", kQuantizedType),

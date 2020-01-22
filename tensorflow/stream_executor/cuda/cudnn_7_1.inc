@@ -559,11 +559,11 @@ cudnnStatus_t CUDNNWINAPI cudnnGetConvolutionNdForwardOutputDim(
                                 const cudnnTensorDescriptor_t       inputTensorDesc,
                                 const cudnnFilterDescriptor_t       filterDesc,
                                 int                                 nbDims,
-                                int                                 tensorOuputDimA[] ) {
+                                int                                 tensorOutputDimA[] ) {
   using FuncPtr = cudnnStatus_t (CUDNNWINAPI *)(const cudnnConvolutionDescriptor_t, const cudnnTensorDescriptor_t, const cudnnFilterDescriptor_t, int, int []);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudnnGetConvolutionNdForwardOutputDim");
   if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(convDesc, inputTensorDesc, filterDesc, nbDims, tensorOuputDimA);
+  return func_ptr(convDesc, inputTensorDesc, filterDesc, nbDims, tensorOutputDimA);
 }
 
 cudnnStatus_t CUDNNWINAPI cudnnDestroyConvolutionDescriptor(

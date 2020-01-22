@@ -147,7 +147,7 @@ def trace_model_call(model, input_signature=None):
 
     with base_layer_utils.call_context().enter(
         model, inputs=inputs, build_graph=False, training=False, saving=True):
-      outputs_list = nest.flatten(model(inputs=inputs, training=False))
+      outputs_list = nest.flatten(model(inputs, training=False))
 
     try:
       output_names = model.output_names
@@ -211,8 +211,8 @@ def model_metadata(model, include_optimizer=True, require_config=True):
         metadata['training_config']['optimizer_config'] = optimizer_config
       except AttributeError:
         pass  # If the model has an optimizer, but not all of the attributes
-              # loss, _compile_metrics, etc., then it was not compiled using
-              # model.compile. In this case, do not save the training config.
+        # loss, _compile_metrics, etc., then it was not compiled using
+        # model.compile. In this case, do not save the training config.
   return metadata
 
 

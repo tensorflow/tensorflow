@@ -15,18 +15,19 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":profiler_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/util:ptr_util",
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
             "//tensorflow/core/profiler/convert:run_metadata_to_trace_events",
-            "//tensorflow/core/platform",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -67,6 +68,18 @@ cc_library(
 )
 
 cc_library(
+    name = "annotated_traceme",
+    hdrs = ["annotated_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":scoped_annotation",
+        ":traceme",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
@@ -88,6 +101,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "annotated_traceme.h",
         "profiler_session.cc",
         "profiler_session.h",
         "scoped_annotation.h",

@@ -70,12 +70,16 @@ class EagerClusterFunctionLibraryRuntime
 
   struct FunctionData {
     const string target;
-    EagerClient* eager_client = nullptr;
+    core::RefCountPtr<EagerClient> eager_client;
     std::unique_ptr<EagerOperation> op;
 
     FunctionData(const string& target, EagerClient* eager_client,
                  std::unique_ptr<EagerOperation> op)
-        : target(target), eager_client(eager_client), op(std::move(op)) {}
+        : target(target),
+          eager_client(core::RefCountPtr<EagerClient>(eager_client)),
+          op(std::move(op)) {
+      eager_client->Ref();
+    }
   };
 
   mutable mutex mu_;

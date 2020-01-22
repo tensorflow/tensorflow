@@ -20,11 +20,11 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/IR/Visitors.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/IR/Visitors.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -71,19 +71,19 @@ struct ReplicateInvariantOpHoistingPass
 // }
 void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
                           Block* replicate_block, TF::ShapeOp shape_op) {
-  Value* input = shape_op.input();
+  Value input = shape_op.input();
   // If ShapeOp operand is replicate tensor block argument, replace with the
   // associated first replica operand.
-  if (auto block_arg = llvm::dyn_cast<BlockArgument>(input)) {
-    if (block_arg->getOwner() != replicate_block) return;
+  if (auto block_arg = input.dyn_cast<BlockArgument>()) {
+    if (block_arg.getOwner() != replicate_block) return;
 
     shape_op.setOperand(
-        replicate_op.getOperand(num_replicas * block_arg->getArgNumber()));
+        replicate_op.getOperand(num_replicas * block_arg.getArgNumber()));
 
     return;
   }
 
-  Operation* input_def = input->getDefiningOp();
+  Operation* input_def = input.getDefiningOp();
 
   // If ShapeOp operand is a ReadVariableOp result where the ReadVariableOp
   // operand is a replicate resource block argument, replace ShapeOp with
@@ -96,13 +96,13 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   // shape has not changed in replicate prior to read. Currently after both
   // ResourceOpLiftingPass and TPURewritePass, there should not be any updates
   // to resources prior to their respective ReadVariableOp.
-  if (auto block_arg = llvm::dyn_cast<BlockArgument>(read_var_op.resource())) {
-    if (block_arg->getOwner() != replicate_block) return;
+  if (auto block_arg = read_var_op.resource().dyn_cast<BlockArgument>()) {
+    if (block_arg.getOwner() != replicate_block) return;
 
     OpBuilder builder(shape_op);
     auto new_shape_op = builder.create<TF::VariableShapeOp>(
         shape_op.getLoc(), shape_op.getType(),
-        replicate_op.getOperand(num_replicas * block_arg->getArgNumber()));
+        replicate_op.getOperand(num_replicas * block_arg.getArgNumber()));
     shape_op.replaceAllUsesWith(new_shape_op.getOperation());
     shape_op.erase();
   }
@@ -111,8 +111,8 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
 // Checks if op and inner op operands are all replicate invariant.
 bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
   auto result = op->walk([&](Operation* inner_op) {
-    for (Value* operand : inner_op->getOperands()) {
-      Region* parent_region = operand->getParentRegion();
+    for (Value operand : inner_op->getOperands()) {
+      Region* parent_region = operand.getParentRegion();
       if (!parent_region || !parent_region->isProperAncestor(replicate_region))
         return WalkResult::interrupt();
     }

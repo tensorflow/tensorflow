@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/lstm_eval.h"
+#include "tensorflow/lite/kernels/lstm_shared.h"
 
 namespace tflite {
 namespace ops {
@@ -49,68 +50,18 @@ struct OpData {
   TfLiteLSTMKernelType kernel_type;
 
   // If the lstm is layer norm.
-  bool is_layer_norm_lstm;
+  bool use_layer_norm_lstm;
 
   // These fields are only used by full kernel.
   int scratch_tensor_index;
-  lstm_eval::QuantizedLstmParameter quantized_lstm_param;
+  lstm_eval::IntegerLstmParameter integer_lstm_param;
 };
 
-// For full inputs kernel (24-inputs).
-// Please note the 20-input full kernel is deprecated and only kept
-// here for backward compatibility.
 namespace full {
-
-// Input Tensors of size {n_batch, n_input}
-constexpr int kInputTensor = 0;
-
-// Input weight tensors of size: {n_cell, n_input}
-constexpr int kInputToInputWeightsTensor = 1;  // Optional
-constexpr int kInputToForgetWeightsTensor = 2;
-constexpr int kInputToCellWeightsTensor = 3;
-constexpr int kInputToOutputWeightsTensor = 4;
-
-// Recurrent weight tensors of size {n_cell, n_output}
-constexpr int kRecurrentToInputWeightsTensor = 5;  // Optional
-constexpr int kRecurrentToForgetWeightsTensor = 6;
-constexpr int kRecurrentToCellWeightsTensor = 7;
-constexpr int kRecurrentToOutputWeightsTensor = 8;
-
-// Peephole weights tensors of size {n_cell}, representing a diagonal matrix.
-constexpr int kCellToInputWeightsTensor = 9;    // Optional
-constexpr int kCellToForgetWeightsTensor = 10;  // Optional
-constexpr int kCellToOutputWeightsTensor = 11;  // Optional
-
-// Gates bias tensors of size {n_cell}
-constexpr int kInputGateBiasTensor = 12;  // Optional
-constexpr int kForgetGateBiasTensor = 13;
-constexpr int kCellGateBiasTensor = 14;
-constexpr int kOutputGateBiasTensor = 15;
-
-// Projection weight tensor of size {n_output, n_cell}
-constexpr int kProjectionWeightsTensor = 16;  // Optional
-// Projection bias tensor of size {n_output}
-constexpr int kProjectionBiasTensor = 17;  // Optional
-
-// These state tensors are defined as variable tensors, and will be modified by
-// this op.
-constexpr int kInputActivationStateTensor = 18;
-constexpr int kInputCellStateTensor = 19;
-
-// Layer norm coefficient tensors of size {n_cell}, representing a diagonal
-// matrix.
-constexpr int kInputLayerNormCoefficientsTensor = 20;   // Optional
-constexpr int kForgetLayerNormCoefficientsTensor = 21;  // Optional
-constexpr int kCellLayerNormCoefficientsTensor = 22;    // Optional
-constexpr int kOutputLayerNormCoefficientsTensor = 23;  // Optional
-
-// Output tensors.
-constexpr int kOutputTensor = 0;
-
 namespace {
 TfLiteStatus PopulateQuantizedLstmParams(
     TfLiteContext* context, TfLiteNode* node,
-    lstm_eval::QuantizedLstmParameter* quantized_lstm_param) {
+    lstm_eval::IntegerLstmParameter* integer_lstm_param) {
   // Calculate quantized clip for projection and cell.
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
   const float cell_clip = params->cell_clip;
@@ -126,22 +77,22 @@ TfLiteStatus PopulateQuantizedLstmParams(
   auto* proj_params = static_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
-    quantized_lstm_param->quantized_cell_clip = static_cast<int32_t>(
+    integer_lstm_param->quantized_cell_clip = static_cast<int32_t>(
         std::min(std::max(cell_clip / cell_params->scale->data[0], -32768.0f),
                  32767.0f));
   } else {
-    quantized_lstm_param->quantized_cell_clip = 0;
+    integer_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
-    quantized_lstm_param->quantized_proj_clip = static_cast<int32_t>(std::min(
+    integer_lstm_param->quantized_proj_clip = static_cast<int32_t>(std::min(
         std::max(proj_clip / proj_params->scale->data[0], -128.0f), 127.0f));
   } else {
-    quantized_lstm_param->quantized_proj_clip = 0;
+    integer_lstm_param->quantized_proj_clip = 0;
   }
 
   // Calculate effective scales.
   OpData* op_data = static_cast<OpData*>(node->user_data);
-  const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
+  const bool use_layer_norm_lstm = op_data->use_layer_norm_lstm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
@@ -196,7 +147,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   std::vector<float> intermediate_scale;
   std::vector<int32> intermediate_zp;
   for (int i = 0; i < 4; ++i) {
-    if (is_layer_norm_lstm) {
+    if (use_layer_norm_lstm) {
       const TfLiteTensor* intermediate = GetIntermediates(context, node, i);
       auto* params = static_cast<TfLiteAffineQuantization*>(
           intermediate->quantization.params);
@@ -267,7 +218,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
     cell_to_output_weight_scale = cell_to_output_weights->params.scale;
   }
 
-  if (is_layer_norm_lstm) {
+  if (use_layer_norm_lstm) {
     if (!use_cifg) {
       layer_norm_input_scale = input_layer_norm_coefficients->params.scale;
     }
@@ -295,7 +246,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   TF_LITE_ENSURE(context, CheckedLog2(cell_state->params.scale, &cell_scale));
 
   TF_LITE_ENSURE(context, cell_scale <= -9);
-  quantized_lstm_param->cell_scale = cell_scale;
+  integer_lstm_param->cell_scale = cell_scale;
   input_scale = input->params.scale;
 
   // Calculate effective scales.
@@ -345,73 +296,71 @@ TfLiteStatus PopulateQuantizedLstmParams(
 
   // Decompose scales.
   QuantizeMultiplier(effective_input_to_input_scale,
-                     &quantized_lstm_param->effective_input_to_input_scale_a,
-                     &quantized_lstm_param->effective_input_to_input_scale_b);
-  QuantizeMultiplier(
-      effective_recurrent_to_input_scale,
-      &quantized_lstm_param->effective_recurrent_to_input_scale_a,
-      &quantized_lstm_param->effective_recurrent_to_input_scale_b);
+                     &integer_lstm_param->effective_input_to_input_scale_a,
+                     &integer_lstm_param->effective_input_to_input_scale_b);
+  QuantizeMultiplier(effective_recurrent_to_input_scale,
+                     &integer_lstm_param->effective_recurrent_to_input_scale_a,
+                     &integer_lstm_param->effective_recurrent_to_input_scale_b);
   QuantizeMultiplier(effective_cell_to_input_scale,
-                     &quantized_lstm_param->effective_cell_to_input_scale_a,
-                     &quantized_lstm_param->effective_cell_to_input_scale_b);
+                     &integer_lstm_param->effective_cell_to_input_scale_a,
+                     &integer_lstm_param->effective_cell_to_input_scale_b);
   QuantizeMultiplier(effective_input_to_forget_scale,
-                     &quantized_lstm_param->effective_input_to_forget_scale_a,
-                     &quantized_lstm_param->effective_input_to_forget_scale_b);
+                     &integer_lstm_param->effective_input_to_forget_scale_a,
+                     &integer_lstm_param->effective_input_to_forget_scale_b);
   QuantizeMultiplier(
       effective_recurrent_to_forget_scale,
-      &quantized_lstm_param->effective_recurrent_to_forget_scale_a,
-      &quantized_lstm_param->effective_recurrent_to_forget_scale_b);
+      &integer_lstm_param->effective_recurrent_to_forget_scale_a,
+      &integer_lstm_param->effective_recurrent_to_forget_scale_b);
   QuantizeMultiplier(effective_cell_to_forget_scale,
-                     &quantized_lstm_param->effective_cell_to_forget_scale_a,
-                     &quantized_lstm_param->effective_cell_to_forget_scale_b);
+                     &integer_lstm_param->effective_cell_to_forget_scale_a,
+                     &integer_lstm_param->effective_cell_to_forget_scale_b);
   QuantizeMultiplier(effective_input_to_cell_scale,
-                     &quantized_lstm_param->effective_input_to_cell_scale_a,
-                     &quantized_lstm_param->effective_input_to_cell_scale_b);
-  QuantizeMultiplier(
-      effective_recurrent_to_cell_scale,
-      &quantized_lstm_param->effective_recurrent_to_cell_scale_a,
-      &quantized_lstm_param->effective_recurrent_to_cell_scale_b);
+                     &integer_lstm_param->effective_input_to_cell_scale_a,
+                     &integer_lstm_param->effective_input_to_cell_scale_b);
+  QuantizeMultiplier(effective_recurrent_to_cell_scale,
+                     &integer_lstm_param->effective_recurrent_to_cell_scale_a,
+                     &integer_lstm_param->effective_recurrent_to_cell_scale_b);
   QuantizeMultiplier(effective_input_to_output_scale,
-                     &quantized_lstm_param->effective_input_to_output_scale_a,
-                     &quantized_lstm_param->effective_input_to_output_scale_b);
+                     &integer_lstm_param->effective_input_to_output_scale_a,
+                     &integer_lstm_param->effective_input_to_output_scale_b);
   QuantizeMultiplier(
       effective_recurrent_to_output_scale,
-      &quantized_lstm_param->effective_recurrent_to_output_scale_a,
-      &quantized_lstm_param->effective_recurrent_to_output_scale_b);
+      &integer_lstm_param->effective_recurrent_to_output_scale_a,
+      &integer_lstm_param->effective_recurrent_to_output_scale_b);
   QuantizeMultiplier(effective_cell_to_output_scale,
-                     &quantized_lstm_param->effective_cell_to_output_scale_a,
-                     &quantized_lstm_param->effective_cell_to_output_scale_b);
+                     &integer_lstm_param->effective_cell_to_output_scale_a,
+                     &integer_lstm_param->effective_cell_to_output_scale_b);
   QuantizeMultiplier(effective_proj_scale,
-                     &quantized_lstm_param->effective_proj_scale_a,
-                     &quantized_lstm_param->effective_proj_scale_b);
+                     &integer_lstm_param->effective_proj_scale_a,
+                     &integer_lstm_param->effective_proj_scale_b);
   QuantizeMultiplier(effective_hidden_scale,
-                     &quantized_lstm_param->effective_hidden_scale_a,
-                     &quantized_lstm_param->effective_hidden_scale_b);
+                     &integer_lstm_param->effective_hidden_scale_a,
+                     &integer_lstm_param->effective_hidden_scale_b);
   QuantizeMultiplier(layer_norm_input_scale,
-                     &quantized_lstm_param->layer_norm_input_scale_a,
-                     &quantized_lstm_param->layer_norm_input_scale_b);
+                     &integer_lstm_param->layer_norm_input_scale_a,
+                     &integer_lstm_param->layer_norm_input_scale_b);
   QuantizeMultiplier(layer_norm_forget_scale,
-                     &quantized_lstm_param->layer_norm_forget_scale_a,
-                     &quantized_lstm_param->layer_norm_forget_scale_b);
+                     &integer_lstm_param->layer_norm_forget_scale_a,
+                     &integer_lstm_param->layer_norm_forget_scale_b);
   QuantizeMultiplier(layer_norm_cell_scale,
-                     &quantized_lstm_param->layer_norm_cell_scale_a,
-                     &quantized_lstm_param->layer_norm_cell_scale_b);
+                     &integer_lstm_param->layer_norm_cell_scale_a,
+                     &integer_lstm_param->layer_norm_cell_scale_b);
   QuantizeMultiplier(layer_norm_output_scale,
-                     &quantized_lstm_param->layer_norm_output_scale_a,
-                     &quantized_lstm_param->layer_norm_output_scale_b);
+                     &integer_lstm_param->layer_norm_output_scale_a,
+                     &integer_lstm_param->layer_norm_output_scale_b);
 
-  quantized_lstm_param->hidden_zp = intermediate_zp[4];
+  integer_lstm_param->hidden_zp = intermediate_zp[4];
 
   // 10000 is used to make sure the kernel logic does not overflow.
   if (!use_cifg) {
-    quantized_lstm_param->inv_large_value[0] =
+    integer_lstm_param->inv_large_value[0] =
         std::min(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
   }
-  quantized_lstm_param->inv_large_value[1] =
+  integer_lstm_param->inv_large_value[1] =
       std::min(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
-  quantized_lstm_param->inv_large_value[2] =
+  integer_lstm_param->inv_large_value[2] =
       std::min(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
-  quantized_lstm_param->inv_large_value[3] =
+  integer_lstm_param->inv_large_value[3] =
       std::min(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
 
   return kTfLiteOk;
@@ -427,12 +376,13 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return op_data;
 }
 
+// LINT.IfChange
 // Check that input tensor dimensions matches with each other.
 TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                                         TfLiteNode* node, int n_input,
                                         int n_output, int n_cell,
-                                        bool is_layer_norm_lstm,
-                                        bool is_fully_quantized) {
+                                        bool use_layer_norm_lstm,
+                                        bool is_integer) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
 
   // Making sure clipping parameters have valid values.
@@ -516,7 +466,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(
         context, cell_to_input_weights->type,
-        is_fully_quantized ? kTfLiteInt16 : input_to_forget_weights->type);
+        is_integer ? kTfLiteInt16 : input_to_forget_weights->type);
   }
 
   const TfLiteTensor* cell_to_forget_weights =
@@ -526,7 +476,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(
         context, cell_to_forget_weights->type,
-        is_fully_quantized ? kTfLiteInt16 : input_to_forget_weights->type);
+        is_integer ? kTfLiteInt16 : input_to_forget_weights->type);
   }
 
   const TfLiteTensor* cell_to_output_weights =
@@ -536,7 +486,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(
         context, cell_to_output_weights->type,
-        is_fully_quantized ? kTfLiteInt16 : input_to_forget_weights->type);
+        is_integer ? kTfLiteInt16 : input_to_forget_weights->type);
   }
 
   // Making sure the peephole weights are there all or none.
@@ -557,7 +507,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   } else {
     TF_LITE_ENSURE_EQ(context, input_gate_bias->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, input_gate_bias->dims->data[0], n_cell);
-    if (is_fully_quantized) {
+    if (is_integer) {
       TF_LITE_ENSURE_EQ(context, input_gate_bias->type, kTfLiteInt32);
     } else {
       TF_LITE_ENSURE_EQ(context, input_gate_bias->type, kTfLiteFloat32);
@@ -568,7 +518,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       GetInput(context, node, kForgetGateBiasTensor);
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->data[0], n_cell);
-  if (is_fully_quantized) {
+  if (is_integer) {
     TF_LITE_ENSURE_EQ(context, forget_gate_bias->type, kTfLiteInt32);
   } else {
     TF_LITE_ENSURE_EQ(context, forget_gate_bias->type, kTfLiteFloat32);
@@ -577,7 +527,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   const TfLiteTensor* cell_bias = GetInput(context, node, kCellGateBiasTensor);
   TF_LITE_ENSURE_EQ(context, cell_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, cell_bias->dims->data[0], n_cell);
-  if (is_fully_quantized) {
+  if (is_integer) {
     TF_LITE_ENSURE_EQ(context, cell_bias->type, kTfLiteInt32);
   } else {
     TF_LITE_ENSURE_EQ(context, cell_bias->type, kTfLiteFloat32);
@@ -587,7 +537,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       GetInput(context, node, kOutputGateBiasTensor);
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->data[0], n_cell);
-  if (is_fully_quantized) {
+  if (is_integer) {
     TF_LITE_ENSURE_EQ(context, output_gate_bias->type, kTfLiteInt32);
   } else {
     TF_LITE_ENSURE_EQ(context, output_gate_bias->type, kTfLiteFloat32);
@@ -608,7 +558,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (projection_bias != nullptr) {
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->data[0], n_output);
-    if (is_fully_quantized) {
+    if (is_integer) {
       TF_LITE_ENSURE_EQ(context, projection_bias->type, kTfLiteInt32);
     } else {
       TF_LITE_ENSURE_EQ(context, projection_bias->type, kTfLiteFloat32);
@@ -624,7 +574,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       ((projection_weights != nullptr) || (projection_bias == nullptr));
   TF_LITE_ENSURE(context, projection_tensors_consistent == true);
 
-  if (is_layer_norm_lstm) {
+  if (use_layer_norm_lstm) {
     const TfLiteTensor* input_layer_norm_coefficients = GetOptionalInputTensor(
         context, node, kInputLayerNormCoefficientsTensor);
     if (use_cifg) {
@@ -634,7 +584,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->size, 1);
       TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->data[0],
                         n_cell);
-      if (is_fully_quantized) {
+      if (is_integer) {
         TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->type,
                           kTfLiteInt16);
       } else {
@@ -649,7 +599,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->data[0],
                       n_cell);
-    if (is_fully_quantized) {
+    if (is_integer) {
       TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->type,
                         kTfLiteInt16);
     } else {
@@ -663,7 +613,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->data[0],
                       n_cell);
-    if (is_fully_quantized) {
+    if (is_integer) {
       TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->type,
                         kTfLiteInt16);
     } else {
@@ -677,7 +627,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->data[0],
                       n_cell);
-    if (is_fully_quantized) {
+    if (is_integer) {
       TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->type,
                         kTfLiteInt16);
     } else {
@@ -688,6 +638,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
 TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
     TfLiteContext* context, int32_t zero_point,
@@ -750,8 +701,8 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   const TfLiteTensor* projection_bias =
       GetOptionalInputTensor(context, node, kProjectionBiasTensor);
 
-  lstm_eval::QuantizedLstmParameter* quantized_lstm_params =
-      &op_data->quantized_lstm_param;
+  lstm_eval::IntegerLstmParameter* integer_lstm_params =
+      &op_data->integer_lstm_param;
 
   const TfLiteTensor* intermediate =
       &context->tensors[node->intermediates->data[4]];
@@ -763,7 +714,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   // When there is layer normalization, the gate bias does not apply to matmul
   // directly:
   //      y = ln(w * x + w * r + w * c) + b.
-  const bool is_layer_norm = op_data->is_layer_norm_lstm;
+  const bool is_layer_norm = op_data->use_layer_norm_lstm;
 
   // Forget gate.
   const TfLiteTensor* forget_gate_bias =
@@ -772,13 +723,13 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, input_zero_point, input_to_forget_weights, forget_gate_bias,
-          &(quantized_lstm_params->input_to_forget_effective_bias)));
+          &(integer_lstm_params->input_to_forget_effective_bias)));
 
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_forget_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_forget_effective_bias)));
+          &(integer_lstm_params->recurrent_to_forget_effective_bias)));
 
   // Modulation gate.
   const TfLiteTensor* cell_gate_bias =
@@ -787,12 +738,12 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, input_zero_point, input_to_cell_weights, cell_gate_bias,
-          &(quantized_lstm_params->input_to_cell_effective_bias)));
+          &(integer_lstm_params->input_to_cell_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_cell_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_cell_effective_bias)));
+          &(integer_lstm_params->recurrent_to_cell_effective_bias)));
 
   // Output gate.
   const TfLiteTensor* output_gate_bias =
@@ -801,13 +752,13 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, input_zero_point, input_to_output_weights, output_gate_bias,
-          &(quantized_lstm_params->input_to_output_effective_bias)));
+          &(integer_lstm_params->input_to_output_effective_bias)));
 
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_output_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_output_effective_bias)));
+          &(integer_lstm_params->recurrent_to_output_effective_bias)));
 
   // Input gate. The calculation is only meaningful for non-cifg case.
   const TfLiteTensor* input_gate_bias =
@@ -816,24 +767,25 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, input_zero_point, input_to_input_weights, input_gate_bias,
-          &(quantized_lstm_params->input_to_input_effective_bias)));
+          &(integer_lstm_params->input_to_input_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_input_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_input_effective_bias)));
+          &(integer_lstm_params->recurrent_to_input_effective_bias)));
 
   // Projection bias. The calculation is only meaningful for with projection.
   TF_LITE_ENSURE_OK(context,
                     PrecomputeZeroPointTimesWeightWithBias(
                         context, hidden_zp, projection_weights, projection_bias,
-                        &(quantized_lstm_params->projection_effective_bias)));
+                        &(integer_lstm_params->projection_effective_bias)));
   return kTfLiteOk;
 }
 
 // Resize the output, state tensors based on the sizes of the input tensors.
 // Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
+// LINT.IfChange
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = static_cast<OpData*>(node->user_data);
 
@@ -849,13 +801,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* forget_layer_norm_coefficients = GetOptionalInputTensor(
         context, node, kForgetLayerNormCoefficientsTensor);
     if (forget_layer_norm_coefficients == nullptr) {
-      op_data->is_layer_norm_lstm = false;
+      op_data->use_layer_norm_lstm = false;
     } else {
-      op_data->is_layer_norm_lstm = true;
+      op_data->use_layer_norm_lstm = true;
     }
   } else if (node->inputs->size == 20) {
     // This is deprecated and is only kept here for backward compatibility.
-    op_data->is_layer_norm_lstm = false;
+    op_data->use_layer_norm_lstm = false;
   } else {
     context->ReportError(
         context, "The LSTM Full kernel expects 20 or 24 inputs. Got %d inputs",
@@ -863,12 +815,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
+  const bool use_layer_norm_lstm = op_data->use_layer_norm_lstm;
 
   // Inferring batch size, number of outputs and number of cells from the
   // input tensors.
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const bool is_fully_quantized = input->type == kTfLiteInt8;
+  const bool is_integer = input->type == kTfLiteInt8;
   TF_LITE_ENSURE(context, input->dims->size > 1);
   const int n_batch = input->dims->data[0];
   const int n_input = input->dims->data[1];
@@ -889,7 +841,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Check that input tensor dimensions matches with each other.
   TF_LITE_ENSURE_OK(context, CheckInputTensorDimensions(
                                  context, node, n_input, n_output, n_cell,
-                                 is_layer_norm_lstm, is_fully_quantized));
+                                 use_layer_norm_lstm, is_integer));
 
   // Get the pointer to output, activation_state and cell_state tensors.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -920,7 +872,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
     node->temporaries = TfLiteIntArrayCreate(7);
-  } else if (is_fully_quantized) {
+  } else if (is_integer) {
     node->temporaries = TfLiteIntArrayCreate(6);
   } else {
     node->temporaries = TfLiteIntArrayCreate(1);
@@ -929,7 +881,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Create a scratch buffer tensor for float case and hybrid case.
   // TODO(jianlijianli): Create a is_float boolean and reorginze the temporary
   // buffer allocation logic.
-  if (!is_fully_quantized) {
+  if (!is_integer) {
     node->temporaries->data[0] = op_data->scratch_tensor_index;
     TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
     scratch_buffer->type = input->type;
@@ -1037,9 +989,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  if (is_fully_quantized) {
+  if (is_integer) {
     // Populate quantization parameters.
-    PopulateQuantizedLstmParams(context, node, &op_data->quantized_lstm_param);
+    PopulateQuantizedLstmParams(context, node, &op_data->integer_lstm_param);
 
     // Allocate scratch buffer. Need 6 16bit buffer with size n_batch * n_cell
     // and 1 8bit buffer with size n_batch * n_cell. We also need 1 32 bit
@@ -1077,7 +1029,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
+// LINT.IfChange
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
   OpData* op_data = static_cast<OpData*>(node->user_data);
@@ -1219,9 +1173,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             forget_layer_norm_coefficients, cell_layer_norm_coefficients,
             output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
             cell_bias, output_gate_bias, projection_weights, projection_bias,
-            params, &op_data->quantized_lstm_param, activation_state,
-            cell_state, output, scratch0, scratch1, scratch2, scratch3,
-            scratch4, scratch5, CpuBackendContext::GetFromContext(context));
+            params, &op_data->integer_lstm_param, activation_state, cell_state,
+            output, scratch0, scratch1, scratch2, scratch3, scratch4, scratch5,
+            CpuBackendContext::GetFromContext(context));
         return kTfLiteOk;
       }
     }
@@ -1232,6 +1186,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
 }  // namespace full
 

@@ -33,7 +33,6 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -253,10 +252,7 @@ def einsum(equation, *inputs, **kwargs):
       - the format of `equation` is incorrect,
       - number of inputs or their shapes are inconsistent with `equation`.
   """
-  if fwd_compat.forward_compatible(2019, 10, 18):
-    return _einsum_v2(equation, *inputs, **kwargs)
-  else:
-    return _einsum_v1(equation, *inputs, **kwargs)
+  return _einsum_v2(equation, *inputs, **kwargs)
 
 
 def _einsum_v1(equation, *inputs, **kwargs):
@@ -725,8 +721,8 @@ def _get_opt_einsum_contract_path(equation, shaped_inputs_tuple, optimize):
 
 
 # Cache the possibly expensive opt_einsum.contract_path call using lru_cache
-# from the Python3 standard library.
-if six.PY3:
+# from the Python3+ standard library.
+if not six.PY2:
   _get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
       _get_opt_einsum_contract_path)
 

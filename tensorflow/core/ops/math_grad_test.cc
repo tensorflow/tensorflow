@@ -962,6 +962,29 @@ TEST_F(MathGradTest, Xlogy) {
                                 TensorShape({2, 1})));
 }
 
+TEST_F(MathGradTest, Xlog1py) {
+  auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},
+                                 TensorShape({2, 3}));
+  auto y = test::AsTensor<float>({.5f, 2.f}, TensorShape({2, 1}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](float x, float y) -> float {
+    return x == 0. ? 0. : std::log1p(y);
+  };
+  auto h = [](float x, float y) -> float {
+    return x == 0. ? 0. : x / (y + 1.);
+  };
+  SymGrad("Xlog1py", x, y, &dx, &dy);
+  test::ExpectClose(
+      dx, test::AsTensor<float>({g(0.f, .5f), g(0.f, 0.f), g(2.f, .5f),
+                                 g(3.f, 2.f), g(4.f, 2.f), g(5.f, 2.f)},
+                                TensorShape({2, 3})));
+  test::ExpectClose(
+      dy, test::AsTensor<float>({h(0.f, .5f) + h(0.f, 0.f) + h(2.f, .5f),
+                                 h(3.f, 2.f) + h(4.f, 2.f) + h(5.f, 2.f)},
+                                TensorShape({2, 1})));
+}
+
 TEST_F(MathGradTest, Xdivy) {
   auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},
                                  TensorShape({2, 3}));

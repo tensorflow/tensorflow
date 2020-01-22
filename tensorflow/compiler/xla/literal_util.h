@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/sparse_index_array.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -101,46 +100,6 @@ class LiteralUtil {
           std::initializer_list<std::initializer_list<NativeT>>>>
           values,
       const Layout& layout);
-
-  // Creates a literal with a sparse layout and the given indices and values.
-  // The shape is initialized from the given dimensions.  The minor dimension of
-  // the indices array must equal the rank of the shape (i.e. size of the
-  // dimensions array). The major dimension of the indices array must equal the
-  // number of elements in the values array. The maximum number of elements in
-  // the array is taken from the max_indices() value of the index array.
-  //
-  // XLA assumes that sparse literals are in sorted order for all operations. If
-  // the `sort` argument is true, then the indices and values will be sorted
-  // while copying them into the literal. If you have ensured that the indices
-  // and values are already sorted, then you may set the `sort` argument to
-  // false to skip the sorting step.
-  //
-  // For example:
-  //
-  //   CreateSparse(
-  //     {12, 12, 12},
-  //     SparseIndexArray(10, 3,
-  //                      Array2D{
-  //                        {0, 1, 2},
-  //                        {3, 4, 5},
-  //                        {6, 7, 8},
-  //                        {9, 10, 11},
-  //                      }),
-  //     {1.0, 2.0 3.0, 4.0})
-  //
-  // This creates an array with shape F64[12,12,12]sparse{10}, that has the
-  // following non-zero values:
-  //
-  //     [0,  1,  2]: 1.0
-  //     [3,  4,  5]: 2.0
-  //     [6,  7,  8]: 3.0
-  //     [9, 10, 11]: 4.0
-  //
-  template <typename NativeT>
-  static Literal CreateSparse(absl::Span<const int64> dimensions,
-                              SparseIndexArray indices,
-                              absl::Span<const NativeT> values,
-                              bool sort = true);
 
   // Creates a scalar literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
@@ -415,21 +374,6 @@ template <typename NativeT>
     ++i0;
   }
   return CreateR4FromArray4DWithLayout(tmp, layout);
-}
-
-template <typename NativeT>
-/* static */ Literal LiteralUtil::CreateSparse(
-    absl::Span<const int64> dimensions, SparseIndexArray indices,
-    absl::Span<const NativeT> values, bool sort) {
-  int64 num_elements = values.size();
-  int64 rank = dimensions.size();
-  CHECK_EQ(num_elements, indices.index_count());
-  CHECK_EQ(rank, indices.rank());
-  Literal literal(ShapeUtil::MakeShapeWithSparseLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(), dimensions,
-      indices.max_indices()));
-  literal.PopulateSparse(indices, values, sort);
-  return literal;
 }
 
 template <typename NativeT>

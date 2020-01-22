@@ -18,6 +18,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -257,5 +258,11 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
     }
   }
 }
+
+int setenv(const char* name, const char* value, int overwrite) {
+  return ::setenv(name, value, overwrite);
+}
+
+int unsetenv(const char* name) { return ::unsetenv(name); }
 
 }  // namespace tensorflow

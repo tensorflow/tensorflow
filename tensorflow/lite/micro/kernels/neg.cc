@@ -48,8 +48,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace neg
 
 TfLiteRegistration* Register_NEG() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 /*prepare=*/nullptr, neg::Eval};
+  static TfLiteRegistration r = {};
+  r.invoke = neg::Eval;
   return &r;
 }
 

@@ -261,6 +261,12 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return InputsWithCorrectTypes(node, context,
                                     {kTfLiteUInt8, kTfLiteInt32});
     }
+    case kTfLiteBuiltinSpaceToDepth: {
+      return InputsWithCorrectTypes(node, context, {kTfLiteUInt8});
+    }
+    case kTfLiteBuiltinDepthToSpace: {
+      return InputsWithCorrectTypes(node, context, {kTfLiteUInt8});
+    }
     default:
       return false;
   }

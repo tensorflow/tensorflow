@@ -106,6 +106,7 @@ def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt),
 def : Pat<(TF_CheckNumericsOp $arg, $msg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_SnapshotOp $arg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
+def : Pat<(TF_PlaceholderWithDefaultOp $arg), (TF_IdentityOp $arg)>;
 
 //===----------------------------------------------------------------------===//
 // Op removal patterns.
@@ -135,10 +136,10 @@ def : Pat<(TF_ReshapeOp
 // Casts result type of $1 to a quantized type by using the quantization
 // parameters from the type in $0.
 class UpdateShapeWithAxis<int i> : NativeCodeCall<
-  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1->getType(), " # i # ")">;
+  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1.getType(), " # i # ")">;
 
 class UsedBy<string op> : Constraint<
-  CPred<"llvm::isa<mlir::TFL::" # op # "Op>(*$0->getUsers().begin())">>;
+  CPred<"llvm::isa<mlir::TFL::" # op # "Op>(*$0.getUsers().begin())">>;
 
 // When the op is passing-through, the output types of the quantized ops need
 // to be updated as well. Since the quantize op manages its own type by the

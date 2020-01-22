@@ -188,7 +188,7 @@ namespace tensorflow {
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);

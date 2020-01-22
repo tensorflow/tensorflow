@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Contains utilities for conversion of TF proto types to GViz types.
+"""Contains utilities for conversion of TF stats proto types to GViz types.
 
 Usage:
     gviz_data_table = generate_chart_table(stats_table)
@@ -27,7 +27,7 @@ import gviz_api
 
 
 def get_chart_table_args(stats_table):
-  """Creates gviz DataTable object from a a TensorFlow stats table.
+  """Creates gviz DataTable object from a TensorFlow stats table.
 
   Args:
     stats_table: A tf_stats_pb2.TfStatsTable.

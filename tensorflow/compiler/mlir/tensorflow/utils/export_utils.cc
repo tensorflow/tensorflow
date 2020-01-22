@@ -23,17 +23,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -65,8 +65,12 @@ Status ConvertLocation(mlir::Location inst_loc,
       debug_info->add_original_node_names(name_loc.getName().c_str());
     }
   } else if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
-    for (auto loc : fused.getLocations()) {
-      TF_RETURN_IF_ERROR(ConvertLocation(loc, debug_info));
+    auto locations = fused.getLocations();
+    if (locations.size() <= 1)
+      return errors::InvalidArgument("expected experimental debuf info.");
+    // skip the first one, which is the name of the node_def.
+    for (int i = 0; i < locations.size() - 1; ++i) {
+      TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
     }
   }
   return Status::OK();
@@ -218,12 +222,12 @@ static bool IsRefTypeControlOp(mlir::Operation* op) {
 
   auto op_name = op_name_or_status.ConsumeValueOrDie();
   if (op_name.equals("NextIteration"))
-    return mlir::getElementTypeOrSelf(op->getOperand(0)->getType())
+    return mlir::getElementTypeOrSelf(op->getOperand(0).getType())
         .isa<mlir::TF::TensorFlowRefType>();
 
   if (op_name.equals("Enter") || op_name.equals("Exit") ||
       op_name.equals("Switch") || op_name.equals("Merge")) {
-    return getElementTypeOrSelf(op->getResult(0)->getType())
+    return getElementTypeOrSelf(op->getResult(0).getType())
         .isa<mlir::TF::TensorFlowRefType>();
   }
   return false;
