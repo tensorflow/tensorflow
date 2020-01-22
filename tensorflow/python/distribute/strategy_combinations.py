@@ -256,7 +256,8 @@ strategies_minus_tpu = [
 
 tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
-    tpu_strategy_one_step
+    tpu_strategy_one_step,
+    cloud_tpu_strategy,
 ]
 
 all_strategies = strategies_minus_tpu + tpu_strategies
