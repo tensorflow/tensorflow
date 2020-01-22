@@ -1055,6 +1055,26 @@ class TextVectorizationOutputTest(
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
 
+  def test_split_equals_zero_on_adapt():
+    dummy_data = ["Foo", "bar", "foo foo", "foo bar", "foobar."]
+    predict_data = ["foo", "bar", "foobar", "foo foo", "OOV"]
+    expected_output = [[0, 0, 0, 0, 1],
+                       [1, 0, 0, 0, 0],
+                       [0, 1, 0, 0, 0],
+                       [0, 0, 1, 0, 0],
+                       [1, 0, 0, 0, 0]]
+
+    inputs = keras.Input(shape=(1, ), dtype=string, name="text")
+    layers = get_layer_class()(
+        max_tokens=5,
+        split=None,
+        output_mode="binary")
+    layers.adapt(np.asarray(dummy_data))
+    outputs = layers(inputs)
+    model = keras.Model(inputs, outputs)
+    predictions = model.predict(predict_data)
+    self.assertAllEqual(expected_output, predictions)
+
 
 @keras_parameterized.run_all_keras_modes
 class TextVectorizationModelBuildingTest(
