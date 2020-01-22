@@ -102,11 +102,12 @@ class TopKTest(test.TestCase):
     self._validateTopK(inputs, 2, [[0.4, 0.3], [0.4, 0.3]], [[3, 1], [2, 1]])
 
   def testTop3(self):
-    k = 5
-    inputs = np.random.permutation(np.linspace(0, 100, 6140, dtype=np.float64))
-    indices = np.argsort(-inputs)[:k]
-    values = -np.sort(-inputs)[:k]
-    self._validateTopK(inputs, k, values, indices)
+    for k in range(3,11,2):
+      for dim in range(512, 12288, 512):
+        inputs = np.random.permutation(np.linspace(0, 100, dim, dtype=np.float64))
+        indices = np.argsort(-inputs)[:k]
+        values = -np.sort(-inputs)[:k]
+        self._validateTopK(inputs, k, values, indices)
 
   def testTop1AllNan(self):
     inputs = [[np.NaN, np.NaN], [np.NaN, np.NaN]]
