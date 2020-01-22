@@ -3306,14 +3306,9 @@ def log_sigmoid(x, name=None):
   we use `y = -tf.nn.softplus(-x)`.
 
   Usage Example:
-   >>> tensor1 = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
-   >>> tensor2 = [2.0, 5.7]
+   >>> tensor1 = [-100.0, 0.0, 100.0]
    >>> tf.math.log_sigmoid(tensor1, name='log_sigmoid_tensor1')
-   <tf.Tensor: shape=(6,), dtype=float32, numpy=
-     array([-0.6931472 , -0.31326166, -0.12692805, -0.04858733, -0.01814996,
-     -0.00671535], dtype=float32)>
-   >>> tf.math.log_sigmoid(tensor2, name='log_sigmoid_tensor2')
-   <tf.Tensor: shape=(2,), dtype=float32, numpy=array([-0.12692805, -0.00334038], dtype=float32)>
+   <tf.Tensor: shape=(3,), dtype=float32, numpy=array([-1.000000e+02, -6.931472e-01, -3.783506e-44], dtype=float32)>
 
   Args:
     x: A Tensor with type `float32` or `float64`.
