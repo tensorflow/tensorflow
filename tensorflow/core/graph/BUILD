@@ -121,6 +121,7 @@ filegroup(
         "costmodel.h",
         "default_device.h",
         "edgeset.h",
+        "gpu_fusion_pass.h",
         "graph.h",
         "graph_constructor.h",  # NOTE(mrry): Don't include the .cc since it depends on common_runtime.
         "graph_def_builder.h",
@@ -175,6 +176,7 @@ filegroup(
 filegroup(
     name = "core_cpu_impl_srcs",
     srcs = [
+        "gpu_fusion_pass.cc",
         "gradients.cc",
         "mkl_layout_pass.cc",
         "mkl_tfconversion_pass.cc",

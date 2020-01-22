@@ -1559,12 +1559,9 @@ tf_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
     tags = [
-<<<<<<< HEAD
-        "no_rocm",
-=======
         "gpu",
         "no_oss",
->>>>>>> google_upstream/master
+        "no_rocm",
         "noasan",
         "nomsan",
         "requires-gpu-sm70",

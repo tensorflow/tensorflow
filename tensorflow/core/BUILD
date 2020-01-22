@@ -2385,36 +2385,6 @@ alias(
 # TODO(mrry): Refactor graph_constructor.cc so that it does not depend on code
 # in "common_runtime/", and then the entire "graph/" directory can be included
 # in this library.
-<<<<<<< HEAD
-GRAPH_HDRS = [
-    "graph/algorithm.h",
-    "graph/collective_order.h",
-    "graph/colors.h",
-    "graph/control_flow.h",
-    "graph/costmodel.h",
-    "graph/default_device.h",
-    "graph/edgeset.h",
-    "graph/graph.h",
-    "graph/graph_constructor.h",  # NOTE(mrry): Don't include the .cc since it depends on common_runtime.
-    "graph/graph_def_builder.h",
-    "graph/graph_def_builder_util.h",
-    "graph/graph_node_util.h",
-    "graph/graph_partition.h",
-    "graph/mkl_layout_pass.h",
-    "graph/mkl_tfconversion_pass.h",
-    "graph/node_builder.h",
-    "graph/optimizer_cse.h",
-    "graph/subgraph.h",
-    "graph/tensor_id.h",
-    "graph/testlib.h",
-    "graph/types.h",
-    "graph/validate.h",
-    "graph/while_context.h",
-    "graph/gpu_fusion_pass.h",
-]
-
-=======
->>>>>>> google_upstream/master
 tf_cuda_library(
     name = "graph",
     srcs = ["//tensorflow/core/graph:graph_srcs"],
@@ -2625,15 +2595,7 @@ tf_cuda_library(
         "common_runtime/step_stats_collector.cc",
         "common_runtime/threadpool_device.cc",
         "common_runtime/threadpool_device_factory.cc",
-<<<<<<< HEAD
-        "graph/gradients.cc",
-        "graph/mkl_layout_pass.cc",
-        "graph/mkl_tfconversion_pass.cc",
-        "graph/quantize_training.cc",
-        "graph/gpu_fusion_pass.cc",
-=======
         "//tensorflow/core/graph:core_cpu_impl_srcs",
->>>>>>> google_upstream/master
         "//tensorflow/core/public:session.h",
         "//tensorflow/core/public:session_options.h",
         "//tensorflow/core/public:version.h",

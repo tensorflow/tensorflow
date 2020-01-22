@@ -285,11 +285,8 @@ cuda_py_test(
     name = "ctc_loss_op_test",
     size = "medium",
     srcs = ["ctc_loss_op_test.py"],
-<<<<<<< HEAD
     tags = ["no_rocm"],
-=======
     xla_enable_strict_auto_jit = False,  # b/148153828
->>>>>>> google_upstream/master
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ctc_ops",
