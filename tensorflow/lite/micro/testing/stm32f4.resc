@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 
-# This docker configuration file lets you emulate a Blue Pill board
-# on an x86 desktop or laptop, which can be useful for debugging and
-# automated testing.
-FROM antmicro/renode:latest
+using sysbus
 
-LABEL maintainer="Pete Warden <petewarden@google.com>"
+mach create
+machine LoadPlatformDescription @platforms/cpus/stm32f4.repl
+
+# These lines are needed to show the results of DebugLog calls in the output.
+machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart @ cpu"
+showAnalyzer cpu.uartSemihosting Antmicro.Renode.Analyzers.LoggingUartAnalyzer
+
+logFile @/tmp/renode_stm32f4_log.txt
+
+macro reset
+"""
+    sysbus LoadELF $bin
+"""
+
+runMacro $reset
+

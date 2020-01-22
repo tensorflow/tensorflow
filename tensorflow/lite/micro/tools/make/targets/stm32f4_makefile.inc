@@ -55,8 +55,7 @@ ifeq ($(TARGET), stm32f4)
   EXCLUDED_SRCS := \
     $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/debug_log.c
   MICROLITE_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(MICROLITE_CC_SRCS))
-  # Stm32f4 is reusing the bluepill renode scripts for now
-  TEST_SCRIPT := tensorflow/lite/micro/testing/test_bluepill_binary.sh
+  TEST_SCRIPT := tensorflow/lite/micro/testing/test_stm32f4_binary.sh
   # TODO, non working tests.. the micro_speech example and conv_test.cc/depthwise_conv_test.cc partly works
   EXCLUDED_TESTS := \
     tensorflow/lite/micro/micro_interpreter_test.cc \

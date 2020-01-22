@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# This docker configuration file lets you emulate a Blue Pill board
+# This docker configuration file lets you emulate a stm32f4 board
 # on an x86 desktop or laptop, which can be useful for debugging and
 # automated testing.
 FROM antmicro/renode:latest
