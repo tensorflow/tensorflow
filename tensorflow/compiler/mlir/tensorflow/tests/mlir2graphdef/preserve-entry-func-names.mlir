@@ -1,10 +1,10 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
+// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s --dump-input-on-failure
 
 func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
 attributes {tf.entry_function = {inputs = "foo,bar", outputs = "Add"}} {
   %0 = "tf.Placeholder.input"(%arg0) {device = "", dtype = "tfdtype$DT_INT32", shape = "tfshape$dim { size: 10 }"} : (tensor<10xi32>) -> tensor<10xi32>
   %1 = "tf.Placeholder.input"(%arg1) {device = "", dtype = "tfdtype$DT_INT32", shape = "tfshape$dim { size: 10 }"} : (tensor<10xi32>) -> tensor<10xi32>
-  // This node would be renamed to bar1
+  // This node would be renamed to bar1 [note: if imported from TF graphdef this would not be possible]
   %2 = "tf.Identity"(%1) {device = "", dtype = "tfdtype$DT_INT32"} : (tensor<10xi32>) -> tensor<10xi32> loc ("bar")
   // The following node would be renamed to bar2
   %3 = "tf.Identity"(%2) {device = "", dtype = "tfdtype$DT_INT32"} : (tensor<10xi32>) -> tensor<10xi32> loc ("bar")
@@ -12,10 +12,12 @@ attributes {tf.entry_function = {inputs = "foo,bar", outputs = "Add"}} {
   return %4 : tensor<10xi32>
 }
 
-// CHECK: name: "bar1"
+// CHECK: name: "[[BAR_ID:.*]]"
 // CHECK-NEXT: op: "Identity"
-// CHECK: name: "bar2"
+// CHECK-NEXT: input: "bar"
+// CHECK: name: "{{.*}}"
 // CHECK-NEXT: op: "Identity"
+// CHECK-NEXT: input: "[[BAR_ID]]"
 // CHECK: name: "Add"
 // CHECK-NEXT: op: "Add"
 // CHECK: name: "foo"

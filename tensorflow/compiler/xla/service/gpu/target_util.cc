@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 
 #include "absl/strings/str_cat.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/core/platform/logging.h"

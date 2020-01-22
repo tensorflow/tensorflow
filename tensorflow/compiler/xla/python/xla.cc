@@ -142,6 +142,16 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   return Status::OK();
 }
 
+StatusOr<std::shared_ptr<Device>> LookupDeviceOrdinal(
+    PyLocalClient* client, int device_ordinal, absl::string_view caller_name) {
+  if (device_ordinal < 0 || device_ordinal >= client->local_device_count()) {
+    return InvalidArgument(
+        "%s got bad device_ordinal: %d (num_local_devices=%d)", caller_name,
+        device_ordinal, client->local_device_count());
+  }
+  return client->local_devices()[device_ordinal];
+}
+
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
@@ -367,11 +377,31 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_devices", &PyLocalClient::local_devices)
       .def("host_id", &PyLocalClient::host_id)
       .def("GetDefaultDeviceAssignment",
+           [](PyLocalClient* client, int num_replicas, int num_partitions)
+               -> StatusOr<std::vector<std::vector<std::shared_ptr<Device>>>> {
+             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                                 client->GetDefaultDeviceAssignment(
+                                     num_replicas, num_partitions));
+             std::vector<std::vector<std::shared_ptr<Device>>> result;
+             result.resize(num_replicas);
+             for (int r = 0; r < num_replicas; ++r) {
+               result[r].resize(num_partitions);
+               for (int p = 0; p < num_partitions; ++p) {
+                 int device_id = device_assignment(r, p);
+                 auto iter = client->id_to_device().find(device_id);
+                 CHECK(iter != client->id_to_device().end()) << device_id;
+                 result[r][p] = iter->second;
+               }
+             }
+             return result;
+           })
+      // TODO(skye): delete after all callers can handle 2D output
+      .def("GetDefaultDeviceAssignment",
            [](PyLocalClient* client, int num_replicas)
                -> StatusOr<std::vector<std::shared_ptr<Device>>> {
-             TF_ASSIGN_OR_RETURN(
-                 DeviceAssignment device_assignment,
-                 client->GetDefaultDeviceAssignment(num_replicas));
+             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                                 client->GetDefaultDeviceAssignment(
+                                     num_replicas, /*num_partitions=*/1));
              std::vector<std::shared_ptr<Device>> result;
              for (int i = 0; i < num_replicas; ++i) {
                int device_id = device_assignment(i, 0);
@@ -381,13 +411,27 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return result;
            })
+      // TODO(phawkins): delete overload that accepts a device_ordinal after
+      // all callers have been updated to pass a Device.
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return client->TransferToInfeed(literal, device_ordinal);
+             TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
+                                 LookupDeviceOrdinal(client, device_ordinal,
+                                                     "TransferToInfeed"));
+             return client->TransferToInfeed(literal, device);
            })
+      .def("TransferToInfeed",
+           [](PyLocalClient* client, const LiteralSlice& literal,
+              std::shared_ptr<Device> device) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return client->TransferToInfeed(literal, device);
+           })
+      // TODO(phawkins): delete overload that accepts a device_ordinal after
+      // all callers have been updated to pass a Device.
       .def("TransferFromOutfeed",
            [](PyLocalClient* client, const Shape& shape,
               int device_ordinal) -> StatusOr<py::object> {
@@ -395,8 +439,24 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<Literal> literal_shared;
              {
                py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(Literal literal, client->TransferFromOutfeed(
-                                                        shape, device_ordinal));
+               TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
+                                   LookupDeviceOrdinal(client, device_ordinal,
+                                                       "TransferFromOutfeed"));
+               TF_ASSIGN_OR_RETURN(Literal literal,
+                                   client->TransferFromOutfeed(shape, device));
+               literal_shared = std::make_shared<Literal>(std::move(literal));
+             }
+             return LiteralToPython(std::move(literal_shared));
+           })
+      .def("TransferFromOutfeed",
+           [](PyLocalClient* client, const Shape& shape,
+              std::shared_ptr<Device> device) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             std::shared_ptr<Literal> literal_shared;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(Literal literal,
+                                   client->TransferFromOutfeed(shape, device));
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }
              return LiteralToPython(std::move(literal_shared));
@@ -440,31 +500,7 @@ PYBIND11_MODULE(xla_extension, m) {
             py::gil_scoped_release gil_release;
             return PyLocalBuffer::FromLiterals(
                 std::move(leaves), tree.shape, std::move(py_buffer_ref),
-                std::move(client), device->local_device_ordinal());
-          })
-      // TODO(skyewm): get rid of this overload once everyone passes Device
-      .def_static(
-          "from_python",
-          [](const pybind11::object& argument,
-             std::shared_ptr<PyLocalClient> client,
-             int device_ordinal) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
-            GlobalPyRefManager()->CollectGarbage();
-            TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
-                                GetPythonBufferTree(argument));
-            std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-                GlobalPyRefManager()->ManageReferences(
-                    absl::MakeSpan(tree.arrays));
-            tree.arrays.clear();
-
-            std::vector<BorrowingLiteral> leaves;
-            leaves.insert(leaves.end(),
-                          std::make_move_iterator(tree.leaves.begin()),
-                          std::make_move_iterator(tree.leaves.end()));
-
-            py::gil_scoped_release gil_release;
-            return PyLocalBuffer::FromLiterals(
-                std::move(leaves), tree.shape, std::move(py_buffer_ref),
-                std::move(client), device_ordinal);
+                std::move(client), std::move(device));
           })
       .def_static("make_tuple",
                   [](const std::vector<PyLocalBuffer*> buffers,
@@ -478,24 +514,15 @@ PYBIND11_MODULE(xla_extension, m) {
                           "Cannot make tuple on device '%s' with '%s' backend",
                           device->DebugString(), client->platform_name());
                     }
-                    return PyLocalBuffer::MakeTuple(
-                        buffers, client, device->local_device_ordinal());
+                    return PyLocalBuffer::MakeTuple(buffers, std::move(client),
+                                                    std::move(device));
                   })
-      // TODO(skyewm): get rid of this overload once everyone passes Device
-      .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
       .def("copy_to_device",
            [](PyLocalBuffer* buffer, std::shared_ptr<Device> dst_device) {
              CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(dst_device->local_device_ordinal());
-           })
-      // TODO(skyewm): get rid of this overload once everyone passes Device
-      .def("copy_to_device",
-           [](PyLocalBuffer* buffer, int dst_device_ordinal) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(dst_device_ordinal);
+             return buffer->CopyToDevice(std::move(dst_device));
            })
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
@@ -518,12 +545,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyLocalBuffer::on_host_shape)
-      .def("device",
-           [](PyLocalBuffer* buffer) -> std::shared_ptr<Device> {
-             return buffer->client()->local_devices()[buffer->device_ordinal()];
-           })
-      // TODO(skyewm): get rid of `device_ordinal` once everything uses `device`
-      .def("device_ordinal", &PyLocalBuffer::device_ordinal)
+      .def("device", &PyLocalBuffer::device)
       .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
@@ -546,21 +568,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("Compile", &PyLocalExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
       .def("local_devices", &PyLocalExecutable::local_devices)
-      // TODO(skyewm): get rid of this once everything uses `local_devices`
-      .def("DeviceOrdinals",
-           [](const PyLocalExecutable& executable) {
-             std::vector<int> device_ordinals;
-             for (std::shared_ptr<Device> device : executable.local_devices()) {
-               device_ordinals.push_back(device->local_device_ordinal());
-             }
-             return device_ordinals;
-           })
       .def("SizeOfGeneratedCodeInBytes",
            &PyLocalExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      // TODO: remove when all callers switch to ExecuteOnLocalDevices
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("ExecuteOnLocalDevices", &PyLocalExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<DebugOptions>(m, "DebugOptions")
@@ -595,6 +611,8 @@ PYBIND11_MODULE(xla_extension, m) {
           &ExecutableBuildOptions::set_result_layout)
       .def_property("num_replicas", &ExecutableBuildOptions::num_replicas,
                     &ExecutableBuildOptions::set_num_replicas)
+      .def_property("num_partitions", &ExecutableBuildOptions::num_partitions,
+                    &ExecutableBuildOptions::set_num_partitions)
       .def_property_readonly(
           "debug_options", &ExecutableBuildOptions::mutable_debug_options,
           py::return_value_policy::reference, py::keep_alive<1, 0>());

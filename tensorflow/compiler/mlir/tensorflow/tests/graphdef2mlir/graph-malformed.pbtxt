@@ -1,6 +1,6 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - 2>&1 | FileCheck %s; test ${PIPESTATUS[0]} -ne 0
+# RUN: not tf-mlir-translate -graphdef-to-mlir %s -o - 2>&1 | FileCheck %s
 
 this is not a valid graph def
 
-#CHECK: {{(.|\.)+ Error parsing Protobuf:.*}}
-#CHECK: {{(.|\.)+ Graph import failed: Invalid argument: Could not parse input file}}
+# CHECK: Error parsing Protobuf
+# CHECK: Graph import failed: Invalid argument: Could not parse input proto

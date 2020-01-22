@@ -160,7 +160,7 @@ class BufferValue {
   BufferValue(HloInstruction* instruction, const ShapeIndex& index, Id id);
 
  private:
-  // The definining instruction and index are not stored here; they can be found
+  // The defining instruction and index are not stored here; they can be found
   // in the LogicalBuffer and HloValue subclasses. This class exists only to
   // support migrations from TuplePointsToAnalysis to HloDataflowAnalysis, by
   // allowing abstract use of LogicalBuffer or HloValue. After those migrations

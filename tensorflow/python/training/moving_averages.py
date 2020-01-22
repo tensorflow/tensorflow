@@ -175,7 +175,7 @@ def weighted_moving_average(value,
     if truediv:
       return math_ops.truediv(numerator, denominator, name=scope.name)
     else:
-      return math_ops.div(numerator, denominator, name=scope.name)
+      return math_ops.divide(numerator, denominator, name=scope.name)
 
 
 def _zero_debias(strategy, unbiased_var, value, decay):
@@ -437,25 +437,25 @@ class ExponentialMovingAverage(object):
         # For variables: to lower communication bandwidth across devices we keep
         # the moving averages on the same device as the variables. For other
         # tensors, we rely on the existing device allocation mechanism.
-        if isinstance(var, variables.Variable):
-          if ops.executing_eagerly_outside_functions():
-            init_value = var.read_value()
+        with ops.init_scope():
+          if isinstance(var, variables.Variable):
+            avg = slot_creator.create_slot(
+                var,
+                var.initialized_value(),
+                self.name,
+                colocate_with_primary=True)
+            # NOTE(mrry): We only add `tf.Variable` objects to the
+            # `MOVING_AVERAGE_VARIABLES` collection.
+            ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
           else:
-            init_value = var.initialized_value()
-          avg = slot_creator.create_slot(
-              var, init_value, self.name, colocate_with_primary=True)
-          # NOTE(mrry): We only add `tf.Variable` objects to the
-          # `MOVING_AVERAGE_VARIABLES` collection.
-          ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
-        else:
-          avg = slot_creator.create_zeros_slot(
-              var,
-              self.name,
-              colocate_with_primary=(var.op.type in [
-                  "Variable", "VariableV2", "VarHandleOp"
-              ]))
-          if self._zero_debias:
-            zero_debias_true.add(avg.experimental_ref())
+            avg = slot_creator.create_zeros_slot(
+                var,
+                self.name,
+                colocate_with_primary=(var.op.type in [
+                    "Variable", "VariableV2", "VarHandleOp"
+                ]))
+            if self._zero_debias:
+              zero_debias_true.add(avg.experimental_ref())
         self._averages[var.experimental_ref()] = avg
 
     with ops.name_scope(self.name) as scope:
@@ -554,7 +554,7 @@ class ExponentialMovingAverage(object):
     for v in moving_avg_variables:
       name_map[self.average_name(v)] = v
     # Make sure we restore variables without moving averages as well.
-    moving_avg_variable_names = set([v.name for v in moving_avg_variables])
+    moving_avg_variable_names = set(v.name for v in moving_avg_variables)
     for v in list(set(variables.global_variables())):
       if v.name not in moving_avg_variable_names and v.op.name not in name_map:
         name_map[v.op.name] = v

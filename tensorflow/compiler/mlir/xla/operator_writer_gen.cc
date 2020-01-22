@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
@@ -25,8 +26,8 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
-#include "mlir/TableGen/Operator.h"  // TF:local_config_mlir
+#include "mlir/Support/STLExtras.h"  // TF:llvm-project
+#include "mlir/TableGen/Operator.h"  // TF:llvm-project
 
 using llvm::raw_ostream;
 using llvm::RecordKeeper;
@@ -42,12 +43,29 @@ static std::string GetDefaultAttrExport(
   Attribute attr = named_attr.attr;
   StringRef storage_type = attr.getStorageType();
   // For some attribute types we have a general conversion, so use that.
-  if (!attr.isEnumAttr() && (storage_type.endswith("IntegerAttr") ||
+  if (!attr.isEnumAttr() && (storage_type.endswith("BoolAttr") ||
                              storage_type.endswith("FloatAttr") ||
+                             storage_type.endswith("IntegerAttr") ||
                              storage_type.endswith("StringAttr"))) {
     return "Convert" + attr.getReturnType().str();
   }
   return "Convert_" + named_attr.name.str();
+}
+
+static std::string GetClientBuilder(const Operator& op) {
+  static const auto* kOpToXLABuilderMap =
+      new llvm::StringMap<StringRef>{{"ReverseOp", "Rev"},
+                                     {"ConcatenateOp", "ConcatInDim"},
+                                     {"ConvOp", "ConvGeneralDilated"}};
+
+  StringRef op_name = op.getCppClassName();
+
+  // Default case where the client builder method names closely follow the op
+  // names in the dialect. For e.g., AddOp -> xla::Add method.
+  if (!kOpToXLABuilderMap->count(op_name)) return op_name.drop_back(2);
+
+  // Otherwise, if the op to client builder method mapping is provided.
+  return kOpToXLABuilderMap->lookup(op_name);
 }
 
 static void BuildOperator(const Operator& op, raw_ostream* output) {
@@ -71,7 +89,7 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
       }
 
       // Otherwise, this is a varidiac operand list.
-      os << "    std::vector<xla::XlaOp> xla_arg_" << index << ";"
+      os << "    std::vector<xla::XlaOp> xla_arg_" << index << ";\n"
          << "    for (auto operand : xla_op.getODSOperands(" << operand_number++
          << "))\n      xla_arg_" << index
          << ".push_back(value_map[operand]);\n";
@@ -85,10 +103,15 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
        << op.getArgName(index) << "());\n";
   }
 
-  // Assumes that the client builder method names closely follow the op names
-  // in the dialect. For e.g., AddOp -> xla::Add method.
-  StringRef op_name = op.getCppClassName();
-  os << "    auto xla_result = xla::" << op_name.drop_back(2) << "(";
+  // Emit call to client API
+  os << "    auto xla_result = xla::" << GetClientBuilder(op) << "(";
+
+  // If all operands are variadic, then pass the builder explicitly to xla
+  // client API call
+  if (op.getNumOperands() == op.getNumVariadicOperands()) {
+    os << "lowering_context.builder";
+    if (op.getNumArgs() != 0) os << ", ";
+  }
 
   // Emit each of the arguments.
   interleaveComma(llvm::seq<int>(0, op.getNumArgs()), os,

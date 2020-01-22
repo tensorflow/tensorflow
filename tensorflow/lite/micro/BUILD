@@ -2,10 +2,22 @@ load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
 )
+load(
+    "//tensorflow/lite/micro:build_def.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+cc_library(
+    name = "micro_compatibility",
+    hdrs = [
+        "compatibility.h",
+    ],
+    build_for_embedded = True,
 )
 
 cc_library(
@@ -17,13 +29,11 @@ cc_library(
         "micro_allocator.cc",
         "micro_error_reporter.cc",
         "micro_interpreter.cc",
-        "micro_mutable_op_resolver.cc",
         "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
         "test_helpers.cc",
     ],
     hdrs = [
-        "compatibility.h",
         "debug_log.h",
         "debug_log_numbers.h",
         "memory_helpers.h",
@@ -35,12 +45,14 @@ cc_library(
         "simple_memory_allocator.h",
         "test_helpers.h",
     ],
+    build_for_embedded = True,
     copts = [
         "-Werror",
         "-Wdouble-promotion",
         "-Wsign-compare",
     ],
     deps = [
+        ":micro_compatibility",
         ":micro_utils",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
@@ -59,6 +71,7 @@ cc_library(
     hdrs = [
         "micro_utils.h",
     ],
+    build_for_embedded = True,
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
@@ -93,6 +106,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        ":micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

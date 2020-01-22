@@ -141,4 +141,29 @@ using ::tflite::gpu::metal::SingleOpModel;
                          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}];
 }
 
+- (void)testMirrorPadOperation {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 3, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 1, 7, 1);
+
+  PadAttributes attr;
+  attr.prepended = BHWC(0, 0, 2, 0);
+  attr.appended = BHWC(0, 0, 2, 0);
+  attr.type = PaddingContentType::REFLECT;
+
+  SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({3.0, 2.0, 1.0, 2.0, 3.0, 2.0, 1.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
+
 @end

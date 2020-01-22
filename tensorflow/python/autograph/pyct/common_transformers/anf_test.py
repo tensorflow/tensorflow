@@ -524,7 +524,7 @@ class AnfConfiguredTest(AnfTestBase):
     # Checking that the nodes for `True`, `False`, and `None` can be manipulated
     # by a configuration.  This is non-trivial, because in Python 2 those are
     # represented as `Name`, which is the same node type as variable references.
-    specials = (gast.Name, gast.NameConstant)
+    specials = (gast.Name, gast.Constant)
     config = [(anf.ASTEdgePattern(gast.Call, anf.ANY, specials), anf.REPLACE)]
 
     def test_function(f):

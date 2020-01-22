@@ -14,6 +14,6 @@
 # limitations under the License.
 # ==============================================================================*/
 
-# This is a placeholder for a compile-only test for intractive_graphviz tool.
+# This is a placeholder for a compile-only test for interactive_graphviz tool.
 
 exit 0

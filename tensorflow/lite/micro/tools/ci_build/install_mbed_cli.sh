@@ -15,6 +15,4 @@
 # ==============================================================================
 #
 # Installs the latest Mbed command-line toolchain.
-
 pip install mbed-cli
-apt install -y gcc-arm-none-eabi 

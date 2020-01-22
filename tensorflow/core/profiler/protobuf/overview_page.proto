@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import "google/protobuf/any.proto";
+import "tensorflow/core/profiler/protobuf/input_pipeline.proto";
+import "tensorflow/core/profiler/protobuf/op_stats.proto";
+
+// Overview result for a TensorFlow Op.
+message OverviewTfOp {
+  // Name of the Op.
+  string name = 1;
+  // Category of the Op.
+  string category = 2;
+  // The amount of time that this Op takes by itself
+  // as fraction of the total execution time on the device or host.
+  double self_time_fraction = 3;
+  // The cumulative time upto this Op as fraction of the total execution time.
+  double cumulative_time_fraction = 4;
+  // How many GFlops/sec that this Op achieves.
+  double flop_rate = 5;
+}
+
+// Overview result for general analysis.
+message OverviewPageAnalysis {
+  // MXU utilization in percentage.
+  double mxu_utilization_percent = 1;
+  // Percentage of the device time that is idle.
+  double device_idle_time_percent = 2;
+  // Percentage of the host time that is idle.
+  double host_idle_time_percent = 3;
+  // Top TF Ops executed on the device.
+  repeated OverviewTfOp top_device_ops = 4;
+  // Remark text in the performance summary section.
+  string remark_text = 5;
+  // Color of the remark text.
+  string remark_color = 6;
+  // FLOP rate utilization relative to the roofline in percentage.
+  double flop_rate_utilization_relative_to_roofline_percent = 7;
+  // Memory bandwidth utilization relative to the hw limit in percentage.
+  double memory_bw_utilization_relative_to_hw_limit_percent = 8;
+}
+
+// Overview result for a performance tip to users.
+message OverviewPageTip {
+  // Link to the tip.
+  string link = 1;
+}
+
+message GenericRecommendation {
+  // Indicates if kernel launch is a performance bottleneck. Possible values:
+  // "no", "moderate", "high".
+  string kernel_launch_bottleneck = 1;
+  // A statement that recommends if we need to further investigate kernel-launch
+  // performance.
+  string kernel_launch_statement = 2;
+  // Indicates if all other is a performance bottleneck. Possible values: "no",
+  // "moderate", "high".
+  string all_other_bottleneck = 3;
+  // A statement that recommends if we need to further investigate all-other
+  // performance.
+  string all_other_statement = 4;
+}
+
+// Overview result for the recommendation section.
+message OverviewPageRecommendation {
+  // Possible performance bottleneck: "host", "device", "both".
+  string bottleneck = 1;
+  // A statement that recommends the next steps for investigating the
+  // bottleneck.
+  string statement = 2;
+  // A list of tips for improving host performance.
+  repeated OverviewPageTip host_tips = 3;
+  // A list of tips for improving device performance.
+  repeated OverviewPageTip device_tips = 4;
+  // A list of links to related useful documents.
+  repeated OverviewPageTip documentation_tips = 5;
+  // // The recommendation made to the user. Can be unpacked into a
+  // GenericRecommendation.
+  google.protobuf.Any recommendation = 6;
+  // A list of tips for FAQ.
+  repeated OverviewPageTip faq_tips = 7;
+  // A list of tips for inference run.
+  repeated OverviewPageTip inference_tips = 8;
+}
+
+message OverviewPage {
+  // The run environment of the profiled session.
+  RunEnvironment run_environment = 5;
+  // The step-time result.
+  InputPipelineAnalysisResult input_analysis = 2;
+  // The other analysis result.
+  OverviewPageAnalysis analysis = 3;
+  // The recommendation made to the user.
+  OverviewPageRecommendation recommendation = 4;
+  reserved 1;
+}

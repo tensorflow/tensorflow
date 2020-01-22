@@ -316,6 +316,24 @@ TEST_F(QuantizeConvModelTest, Uint8InputAndOutput) {
   }
 }
 
+class QuantizeConvNoBiasModelTest : public QuantizeModelTest {
+ protected:
+  QuantizeConvNoBiasModelTest() {
+    input_model_ = ReadModel(internal::kConvModelWithNoBias);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeConvNoBiasModelTest, QuantizationSucceeds) {
+  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
+                              TensorType_INT8, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+  const uint8_t* buffer = builder_.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+}
+
 class QuantizeConcatModelTest : public QuantizeModelTest {
  protected:
   QuantizeConcatModelTest() {
@@ -1097,6 +1115,65 @@ TEST_F(QuantizeLSTM2Test, VerifyLSTM) {
   }
 }
 
+class QuantizeSVDFTest : public QuantizeModelTest {
+ protected:
+  QuantizeSVDFTest() {
+    input_model_ = ReadModel(internal::kSvdfCalibrated);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeSVDFTest, VerifySVDF) {
+  // Quantize model.
+  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
+                              TensorType_INT8, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  // Read expected model.
+  auto expected_fb_model = ReadModel(internal::kSvdfQuantized);
+  auto expected_read_only_model = expected_fb_model->GetModel();
+  ModelT expected_model;
+  expected_read_only_model->UnPackTo(&expected_model);
+
+  // Comparison.
+  ASSERT_EQ(model_.subgraphs.size(), expected_model.subgraphs.size());
+  for (size_t subgraph_idx = 0; subgraph_idx < model_.subgraphs.size();
+       subgraph_idx++) {
+    const auto graph = model_.subgraphs[subgraph_idx].get();
+    const auto expected_graph = expected_model.subgraphs[subgraph_idx].get();
+    ASSERT_EQ(graph->tensors.size(), expected_graph->tensors.size());
+    for (size_t i = 0; i < graph->tensors.size(); i++) {
+      const auto tensor = graph->tensors[i].get();
+      const auto expected_tensor = expected_graph->tensors[i].get();
+      EXPECT_EQ(tensor->buffer, expected_tensor->buffer);
+      EXPECT_EQ(tensor->is_variable, expected_tensor->is_variable);
+      EXPECT_EQ(tensor->shape, expected_tensor->shape);
+      EXPECT_EQ(tensor->name, expected_tensor->name);
+      EXPECT_EQ(tensor->type, expected_tensor->type);
+      const auto quantization_params = tensor->quantization.get();
+      const auto expected_quantization_params =
+          expected_tensor->quantization.get();
+      if (quantization_params != nullptr ||
+          expected_quantization_params != nullptr) {
+        EXPECT_NE(quantization_params, nullptr);
+        EXPECT_NE(expected_quantization_params, nullptr);
+        EXPECT_EQ(quantization_params->scale,
+                  expected_quantization_params->scale);
+        EXPECT_EQ(quantization_params->zero_point,
+                  expected_quantization_params->zero_point);
+      }
+    }
+  }
+  ASSERT_EQ(model_.buffers.size(), expected_model.buffers.size());
+  for (size_t buffer_idx = 0; buffer_idx < model_.buffers.size();
+       ++buffer_idx) {
+    const auto buffer = model_.buffers[buffer_idx].get()->data;
+    const auto expected_buffer = expected_model.buffers[buffer_idx].get()->data;
+    EXPECT_EQ(buffer, expected_buffer);
+  }
+}
+
 class QuantizeFCTest : public QuantizeModelTest {
  protected:
   QuantizeFCTest() {
@@ -1183,6 +1260,152 @@ TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
   }
 }
 
+class QuantizePackTest : public QuantizeModelTest {
+ protected:
+  QuantizePackTest() {
+    input_model_ = ReadModel(internal::kModelPack);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizePackTest, VerifyPack) {
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto subgraph = model_.subgraphs[0].get();
+
+  // The model should only have 3 inputs and 1 output.
+  EXPECT_EQ(subgraph->inputs.size(), 3);
+  EXPECT_EQ(subgraph->outputs.size(), 1);
+
+  const auto& op1 = subgraph->operators[1].get();
+  const auto& op2 = subgraph->operators[2].get();
+  const auto& op3 = subgraph->operators[3].get();
+  const auto& op4 = subgraph->operators[4].get();
+
+  ASSERT_EQ(model_.operator_codes[op1->opcode_index].get()->builtin_code,
+            BuiltinOperator_QUANTIZE);
+  ASSERT_EQ(model_.operator_codes[op2->opcode_index].get()->builtin_code,
+            BuiltinOperator_QUANTIZE);
+  ASSERT_EQ(model_.operator_codes[op3->opcode_index].get()->builtin_code,
+            BuiltinOperator_PACK);
+  ASSERT_EQ(model_.operator_codes[op4->opcode_index].get()->builtin_code,
+            BuiltinOperator_DEQUANTIZE);
+
+  const auto& pack_input0 = subgraph->tensors[op3->inputs[0]].get();
+  const auto& pack_input1 = subgraph->tensors[op3->inputs[1]].get();
+  const auto& pack_input2 = subgraph->tensors[op3->inputs[2]].get();
+
+  const auto& pack_output = subgraph->tensors[op3->outputs[0]].get();
+
+  // Check quantization parameters for input and output.
+  EXPECT_FLOAT_EQ(pack_input0->quantization->scale[0],
+                  pack_input1->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(pack_input1->quantization->scale[0],
+                  pack_input2->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(pack_input0->quantization->zero_point[0],
+                  pack_input1->quantization->zero_point[0]);
+  EXPECT_FLOAT_EQ(pack_input1->quantization->zero_point[0],
+                  pack_input2->quantization->zero_point[0]);
+
+  EXPECT_FLOAT_EQ(pack_input1->quantization->scale[0],
+                  pack_output->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(pack_input1->quantization->zero_point[0],
+                  pack_output->quantization->zero_point[0]);
+
+  // Check type of input and output.
+  EXPECT_EQ(pack_output->type, TensorType_INT8);
+  EXPECT_EQ(pack_input0->type, TensorType_INT8);
+  EXPECT_EQ(pack_input1->type, TensorType_INT8);
+  EXPECT_EQ(pack_input2->type, TensorType_INT8);
+}
+
+class QuantizeMinimumMaximumTest
+    : public QuantizeModelTest,
+      public testing::WithParamInterface<const char*> {
+ protected:
+  QuantizeMinimumMaximumTest() {
+    input_model_ = ReadModel(GetParam());
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+  const auto& subgraph = model_.subgraphs[0];
+
+  // Check that the first op is Quantize and the last is Dequant.
+  const auto& quant_op = subgraph->operators[0];
+  const auto& dequant_op = subgraph->operators[subgraph->operators.size() - 1];
+  const int32_t quant_idx = quant_op->opcode_index;
+  const int32_t dequant_idx = dequant_op->opcode_index;
+  EXPECT_EQ(model_.operator_codes[quant_idx]->builtin_code,
+            BuiltinOperator_QUANTIZE);
+  EXPECT_EQ(model_.operator_codes[dequant_idx]->builtin_code,
+            BuiltinOperator_DEQUANTIZE);
+  const auto& requant1 = subgraph->operators[1].get();
+  // Check that we have RE operator.
+  auto requant1_builtin_code =
+      model_.operator_codes[requant1->opcode_index].get()->builtin_code;
+  ASSERT_TRUE(requant1_builtin_code == tflite::BuiltinOperator_QUANTIZE);
+
+  const auto& requant2 = subgraph->operators[2].get();
+  // Check that we have RE operator.
+  auto requant2_builtin_code =
+      model_.operator_codes[requant2->opcode_index].get()->builtin_code;
+  ASSERT_TRUE(requant2_builtin_code == tflite::BuiltinOperator_QUANTIZE);
+
+  const auto& op = subgraph->operators[3].get();
+
+  // Check that we have MINIMUM or MAXIMUM operator.
+  auto op_builtin_code =
+      model_.operator_codes[op->opcode_index].get()->builtin_code;
+  ASSERT_TRUE(op_builtin_code == tflite::BuiltinOperator_MINIMUM ||
+              op_builtin_code == tflite::BuiltinOperator_MAXIMUM);
+
+  // Check that we have two inputs and one output.
+  ASSERT_EQ(op->inputs.size(), 2);
+  ASSERT_EQ(op->outputs.size(), 1);
+
+  // Check that all is quantized.
+  auto output = subgraph->tensors[op->outputs[0]].get();
+  auto input1 = subgraph->tensors[op->outputs[0]].get();
+  auto input2 = subgraph->tensors[op->outputs[0]].get();
+
+  EXPECT_EQ(output->type, TensorType_INT8);
+  EXPECT_EQ(input1->type, TensorType_INT8);
+  EXPECT_EQ(input2->type, TensorType_INT8);
+
+  // Check if the quantization params of the minimum/maximum inputs match
+  // after requantization
+  EXPECT_EQ(input1->quantization->scale, input2->quantization->scale);
+  EXPECT_EQ(input1->quantization->zero_point, input2->quantization->zero_point);
+
+  // Check the input quantization params match the output ones.
+  EXPECT_EQ(output->quantization->scale, input1->quantization->scale);
+  EXPECT_EQ(output->quantization->zero_point, input1->quantization->zero_point);
+  EXPECT_EQ(output->quantization->scale, input2->quantization->scale);
+  EXPECT_EQ(output->quantization->zero_point, input2->quantization->zero_point);
+
+  EXPECT_EQ(subgraph->tensors.size(), 7);
+
+  EXPECT_EQ(subgraph->tensors[0]->name, "input_int8");
+  EXPECT_EQ(subgraph->tensors[1]->name, "output_int8");
+  EXPECT_EQ(subgraph->tensors[2]->name, "output/y");
+  EXPECT_EQ(subgraph->tensors[3]->name, "input_requantized");
+  EXPECT_EQ(subgraph->tensors[4]->name, "output/y_requantized");
+  EXPECT_EQ(subgraph->tensors[5]->name, "input");
+  EXPECT_EQ(subgraph->tensors[6]->name, "output");
+}
+
+INSTANTIATE_TEST_SUITE_P(MinimumMaximumTestInst, QuantizeMinimumMaximumTest,
+                         testing::ValuesIn({internal::kModelWithMinimumOp,
+                                            internal::kModelWithMaximumOp}));
+
 class QuantizeUnpackTest : public QuantizeModelTest {
  protected:
   QuantizeUnpackTest() {
@@ -1191,7 +1414,6 @@ class QuantizeUnpackTest : public QuantizeModelTest {
     readonly_model_->UnPackTo(&model_);
   }
 };
-
 TEST_F(QuantizeUnpackTest, VerifyUnpack) {
   auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
 

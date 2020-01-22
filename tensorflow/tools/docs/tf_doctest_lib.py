@@ -42,19 +42,22 @@ class _FloatExtractor(object):
   # re.split.
   _FLOAT_RE = re.compile(
       r"""
-      (?:                        # (Non-capturing) Only start a match if:
-         ^|                      # * At the Start of string, or
-         (?<=[^\w.]              # * if the pervious character was not:
-                                 #   * a word char or "."
-         ))
       (                          # Captures the float value.
-        [-+]?                    # Optional Sign
+        (?:
+           [-+]|                 # Start with a sign is okay anywhere.
+           (?:                   # Otherwise:
+               ^|                # Start after the start of string
+               (?<=[^\w.])       # Not after a word char, or a .
+           )
+        )
         (?:                      # Digits and exponent - something like:
           {digits_dot_maybe_digits}{exponent}?|   # "1.0" "1." "1.0e3", "1.e3"
           {dot_digits}{exponent}?|                # ".1" ".1e3"
-          {digits}{exponent}                      # "1e3"
+          {digits}{exponent}|                     # "1e3"
+          {digits}(?=j)                           # "300j"
         )
       )
+      j?                         # Optional j for cplx numbers, not captured.
       (?=                        # Only accept the match if
         $|                       # * At the end of the string, or
         [^\w.]                   # * Next char is not a word char or "."
@@ -112,8 +115,7 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
 
   _ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
 
-  def _allclose(self, want, got, rtol=1e-6, atol=1e-6):
-    # Same default as: tensorflow/python/framework/test_util.py "assertAllClose"
+  def _allclose(self, want, got, rtol=1e-3, atol=1e-3):
     return np.allclose(want, got, rtol=rtol, atol=atol)
 
   def check_output(self, want, got, optionflags):
@@ -188,7 +190,7 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     message = textwrap.dedent("""\n
         #############################################################
         Check the documentation
-        (go/testable-docstrings) on how to write testable docstrings.
+        (https://www.tensorflow.org/community/contribute/docs_ref) on how to write testable docstrings.
         #############################################################""")
 
     got.append(message)

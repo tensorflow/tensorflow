@@ -53,7 +53,7 @@ env GOROOT=/usr/local/go
 env PATH=$GOROOT/bin:$PATH
 
 # Install python 3.6.
-RUN add-apt-repository ppa:jonathonf/python-3.6 && \
+RUN add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && apt-get install -y \
     python3.6 python3.6-dev python3-pip python3.6-venv && \
     rm -rf /var/lib/apt/lists/* && \

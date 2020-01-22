@@ -2,6 +2,10 @@ load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
 )
+load(
+    "//tensorflow/lite/micro:build_def.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -13,6 +17,7 @@ cc_library(
     hdrs = [
         "memory_planner.h",
     ],
+    build_for_embedded = True,
     copts = [
         "-Werror",
         "-Wdouble-promotion",
@@ -42,6 +47,7 @@ cc_library(
         ":memory_planner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/micro:micro_compatibility",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -54,6 +60,7 @@ cc_library(
     hdrs = [
         "greedy_memory_planner.h",
     ],
+    build_for_embedded = True,
     copts = [
         "-Werror",
         "-Wdouble-promotion",
@@ -63,6 +70,7 @@ cc_library(
         ":memory_planner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/micro:micro_compatibility",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

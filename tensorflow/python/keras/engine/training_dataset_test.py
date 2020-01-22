@@ -27,7 +27,6 @@ import six
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
@@ -56,12 +55,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_calling_model_on_same_dataset(self):
-    if ((not testing_utils.should_run_eagerly()) and
-        testing_utils.get_model_type() == 'subclass' and
-        context.executing_eagerly() and
-        (not testing_utils.should_run_tf_function())):
-      self.skipTest('b/120673224')
-
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = 'rmsprop'
     loss = 'mse'

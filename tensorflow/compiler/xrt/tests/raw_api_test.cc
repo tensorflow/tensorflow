@@ -1527,7 +1527,7 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
       xla::Shape(program_shape.result()), xla::S64));
 }
 
-// Tests the XRT device memory compation API (XRTCompactAllocations).
+// Tests the XRT device memory compaction API (XRTCompactAllocations).
 TEST(RawApiTest, TestDeviceMemoryCompaction) {
   static const int kNumAllocs = 32;
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());

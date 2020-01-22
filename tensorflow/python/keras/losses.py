@@ -92,12 +92,17 @@ class Loss(object):
     losses_utils.ReductionV2.validate(reduction)
     self.reduction = reduction
     self.name = name
+    # SUM_OVER_BATCH is only allowed in losses managed by `fit` or
+    # CannedEstimators.
+    self._allow_sum_over_batch_size = False
 
   def __call__(self, y_true, y_pred, sample_weight=None):
     """Invokes the `Loss` instance.
 
     Args:
-      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`
+      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`, except
+        sparse loss functions such as sparse categorical crossentropy where
+        shape = `[batch_size, d0, .. dN-1]`
       y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
       sample_weight: Optional `sample_weight` acts as a
         coefficient for the loss. If a scalar is provided, then the loss is
@@ -148,16 +153,22 @@ class Loss(object):
     """Invokes the `Loss` instance.
 
     Args:
-      y_true: Ground truth values, with the same shape as 'y_pred'.
-      y_pred: The predicted values.
+      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`, except
+        sparse loss functions such as sparse categorical crossentropy where
+        shape = `[batch_size, d0, .. dN-1]`
+      y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
+
+    Returns:
+      Loss values with the shape `[batch_size, d0, .. dN-1]`.
     """
     NotImplementedError('Must be implemented in subclasses.')
 
   def _get_reduction(self):
     """Handles `AUTO` reduction cases and returns the reduction value."""
-    if distribution_strategy_context.has_strategy() and (
-        self.reduction == losses_utils.ReductionV2.AUTO or
-        self.reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+    if (not self._allow_sum_over_batch_size and
+        distribution_strategy_context.has_strategy() and
+        (self.reduction == losses_utils.ReductionV2.AUTO or
+         self.reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)):
       raise ValueError(
           'Please use `tf.keras.losses.Reduction.SUM` or '
           '`tf.keras.losses.Reduction.NONE` for loss reduction when losses are '

@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -52,6 +53,12 @@ enum class CudnnConvKind {
 };
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
+
+StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
+    const HloCustomCallInstruction* instr);
+
+StatusOr<se::dnn::DataType> GetDnnDataType(
+    const HloCustomCallInstruction* conv);
 
 // Converts a CudnnConvKind value to a string.
 string CudnnConvKindToString(CudnnConvKind kind);
@@ -157,6 +164,12 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
+// Returns whether unnested_hlo is an input fusion whose root is either a slice
+// or a tuple of slices. If verify_no_strides is true, returns false unless all
+// ROOT slices have no strides.
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides = false);
+
 struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.
   bool is_row_reduction;
@@ -169,7 +182,8 @@ struct ReductionDimensions {
   std::array<int64, 3> dimensions;
 };
 
-// Given the reduction operation, returns ReductionDimensions.
+// Given the input shape and dimensions to reduce for a reduction, returns
+// ReductionDimensions.
 //
 // Prerequisite: the reduction instruction passes the check
 // IsReductionFromOrToContiguousDimensions, which guarantees either the
@@ -177,7 +191,8 @@ struct ReductionDimensions {
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
 
-// Get tiling per thread for the given reduction in dimensions [D, H, W].
+// Get tiling per thread for the given reduction in dimensions [D, H, W] per
+// thread.
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions);
 

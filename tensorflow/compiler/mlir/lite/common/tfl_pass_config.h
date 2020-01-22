@@ -31,10 +31,11 @@ struct PassConfig {
       : emit_builtin_tflite_ops(true),
         lower_tensor_list_ops(false),
         trim_functions_whitelist({}),
-        quant_specs(specs),
+        quant_specs(std::move(specs)),
         skip_control_dialect(false),
         form_clusters(false),
-        inline_functions(false) {}
+        inline_functions(false),
+        unfold_batch_matmul(true) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -57,6 +58,9 @@ struct PassConfig {
   // Inline function calls within the main function in the MLIR module, prior
   // to legalization to TFLite.
   bool inline_functions;
+  // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
+  // of tfl.fully_connected ops.
+  bool unfold_batch_matmul;
 };
 
 }  // namespace TFL

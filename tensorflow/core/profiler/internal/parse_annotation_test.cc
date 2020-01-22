@@ -123,6 +123,30 @@ TEST(ParseAnnotationTest, ExtraMetadataSeparatorTest) {
   EXPECT_TRUE(annotation.metadata.empty());
 }
 
+TEST(ParseAnnotationTest, QuotedMetadata) {
+  Annotation annotation = ParseAnnotation(
+      "name#k1=(v11,v12),k2=[v21,v22,v23],k3={v31,v32}, k4=\"v41,v42\","
+      "(k51,k52)='v51,v52'#");
+  EXPECT_EQ(annotation.metadata.at(0).key, "k1");
+  EXPECT_EQ(annotation.metadata.at(0).value, "(v11,v12)");
+  EXPECT_EQ(annotation.metadata.at(1).key, "k2");
+  EXPECT_EQ(annotation.metadata.at(1).value, "[v21,v22,v23]");
+  EXPECT_EQ(annotation.metadata.at(2).key, "k3");
+  EXPECT_EQ(annotation.metadata.at(2).value, "{v31,v32}");
+  EXPECT_EQ(annotation.metadata.at(3).key, "k4");
+  EXPECT_EQ(annotation.metadata.at(3).value, "\"v41,v42\"");
+  EXPECT_EQ(annotation.metadata.at(4).key, "(k51,k52)");
+  EXPECT_EQ(annotation.metadata.at(4).value, "'v51,v52'");
+}
+
+// Make sure unmatched quotes don't die.
+TEST(ParseAnnotationTest, UnmatchedQuotedMetadata) {
+  Annotation annotation = ParseAnnotation("name#k1=v1,k2=(v2,k3=v3#");
+  EXPECT_EQ(annotation.metadata.at(0).key, "k1");
+  EXPECT_EQ(annotation.metadata.at(0).value, "v1");
+  EXPECT_EQ(annotation.metadata.at(1).key, "k2");
+  EXPECT_EQ(annotation.metadata.at(1).value, "(v2,k3=v3");
+}
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

@@ -233,6 +233,15 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
     # Clean up unrelated source file.
     os.remove(unrelated_source_path)
 
+  def testLoadingPythonSourceFileWithNonAsciiChars(self):
+    source_path = tempfile.mktemp()
+    with open(source_path, "wb") as source_file:
+      source_file.write(u"print('\U0001f642')\n".encode("utf-8"))
+    source_lines, _ = source_utils.load_source(source_path)
+    self.assertEqual(source_lines, [u"print('\U0001f642')", u""])
+    # Clean up unrelated source file.
+    os.remove(source_path)
+
 
 @test_util.run_v1_only("b/120545219")
 class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):

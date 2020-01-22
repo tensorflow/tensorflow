@@ -521,21 +521,30 @@ func @select_multidim(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor
 // CHECK:  return
 }
 
-func @select_v2(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
+func @select_v2_same_shape(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
   return %0: tensor<8xf32>
 
-// CHECK-LABEL: select_v2
+// CHECK-LABEL: select_v2_same_shape
 // CHECK:  "tfl.select"(%arg0, %arg1, %arg2)
 // CHECK:  return
 }
 
-func @select_v2_multidim(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
-  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8x3xf32>, tensor<8x3xf32>) -> tensor<8x3xf32>
+func @select_v2_multidim(%arg0: tensor<3xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<8x3xf32>, tensor<8x3xf32>) -> tensor<8x3xf32>
   return %0: tensor<8x3xf32>
 
 // CHECK-LABEL: select_v2_multidim
-// CHECK:  "tfl.select"(%arg0, %arg1, %arg2)
+// CHECK:  "tfl.select_v2"(%arg0, %arg1, %arg2)
+// CHECK:  return
+}
+
+func @select_v2_broadcast(%arg0: tensor<4xi1>, %arg1: tensor<3x4xf32>, %arg2: tensor<8x3x4xf32>) -> tensor<8x3x4xf32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<4xi1>, tensor<3x4xf32>, tensor<8x3x4xf32>) -> tensor<8x3x4xf32>
+  return %0: tensor<8x3x4xf32>
+
+// CHECK-LABEL: select_v2_broadcast
+// CHECK:  "tfl.select_v2"(%arg0, %arg1, %arg2)
 // CHECK:  return
 }
 

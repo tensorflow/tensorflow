@@ -139,7 +139,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'units\', \'activation\', \'use_bias\', \'kernel_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'bias_regularizer\'], varargs=None, keywords=kwargs, defaults=[\'1\', \'None\', \'True\', \'glorot_uniform\', \'zeros\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'units\', \'activation\', \'use_bias\', \'kernel_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'bias_regularizer\'], varargs=None, keywords=kwargs, defaults=[\'1\', \'None\', \'True\', \'zeros\', \'zeros\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

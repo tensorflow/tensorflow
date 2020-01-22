@@ -231,7 +231,7 @@ class Server(object):
     """
     # Specifying port 0 means that the OS will choose a free port for the
     # server.
-    return Server({"local": ["localhost:0"]},
+    return Server({"localhost": ["localhost:0"]},
                   protocol="grpc",
                   config=config,
                   start=start)

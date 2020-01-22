@@ -141,19 +141,14 @@ class EagerContext : public core::RefCounted {
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
 
-  // TODO(apassos) make this return a constant reference
-  gtl::FlatMap<string, Device*, StringPieceHasher>* device_map() {
-    return &devices_map_;
-  }
-
-  // TODO(apassos) make this return a constant reference
-  std::vector<Device*>* devices() { return &devices_; }
-  const std::vector<DeviceType>& prioritized_device_type_list() {
+  const std::vector<DeviceType>& prioritized_device_type_list() const {
     return prioritized_device_type_list_;
   }
 
-  // Clears the kernel caches.
-  void ClearCaches();
+  // Clear pending nodes in thread executors and kernel caches.
+  void ClearCachesAndThreadExecutors();
+  // Clear pending nodes in default executor and kernel caches.
+  void ClearCachesAndDefaultExecutor();
 
   // Sets the device placement policy for the current thread.
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);
@@ -171,16 +166,14 @@ class EagerContext : public core::RefCounted {
 
   bool LazyCopyFunctionRemoteInputs() const;
 
-  bool FindFunctionByName(const string& name);
+  bool FindFunctionByName(const string& name) const;
 
   Status FindFunctionOpData(const string& name,
                             const tensorflow::OpRegistrationData** op_data);
 
   const FunctionDef* FindFunctionDef(const string& name);
 
-  Status FindDeviceByName(const string& name, Device** result) const;
-
-  Device* HostCPU() const { return devices_[0]; }
+  Device* HostCPU() const { return host_cpu_device_; }
   Device* CanonicalDevice(Device* d) const {
     return HostCPU() == d ? nullptr : d;
   }
@@ -257,6 +250,8 @@ class EagerContext : public core::RefCounted {
   void SetShouldStoreGraphs(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
+
+  void ListDevices(std::vector<tensorflow::DeviceAttributes>* devices);
 
   void StartStep();
   void EndStep();
@@ -386,7 +381,7 @@ class EagerContext : public core::RefCounted {
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
 
  private:
-  void InitDeviceMapAndAsync();
+  void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
       const std::vector<const FunctionDef*>& function_defs,
@@ -453,11 +448,8 @@ class EagerContext : public core::RefCounted {
   // multi-device function on remote worker.
   OwnedOrUnownedHelper<DynamicDeviceMgr> remote_device_manager_;
 
-  // Devices owned by device_manager
-  std::vector<Device*> devices_;
+  Device* host_cpu_device_;  // Owned by device_manager
   std::vector<DeviceType> prioritized_device_type_list_;
-  // All devices are not owned.
-  gtl::FlatMap<string, Device*, StringPieceHasher> devices_map_;
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
 

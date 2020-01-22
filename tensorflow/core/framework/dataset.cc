@@ -348,6 +348,20 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   return allocated_bytes;
 }
 
+int64 GetTotalBytes(const std::vector<Tensor>& element) {
+  int64 total_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      total_bytes += dataset->TotalBytes();
+    } else {
+      total_bytes += tensor.TotalBytes();
+    }
+  }
+  return total_bytes;
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&
@@ -464,10 +478,8 @@ const char DatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
 const char DatasetBase::kDatasetGraphOutputNodeKey[] =
     "_DATASET_GRAPH_OUTPUT_NODE";
 
-BackgroundWorker::BackgroundWorker(Env* env, const string& name) {
-  thread_.reset(env->StartThread({} /* thread_options */, name,
-                                 [this]() { WorkerLoop(); }));
-}
+BackgroundWorker::BackgroundWorker(Env* env, const char* name)
+    : env_(env), name_(name) {}
 
 BackgroundWorker::~BackgroundWorker() {
   {
@@ -486,6 +498,10 @@ BackgroundWorker::~BackgroundWorker() {
 void BackgroundWorker::Schedule(std::function<void()> work_item) {
   {
     mutex_lock l(mu_);
+    if (!thread_) {
+      thread_ = absl::WrapUnique(env_->StartThread(
+          {} /* thread_options */, name_, [this]() { WorkerLoop(); }));
+    }
     work_queue_.push_back(std::move(work_item));
   }
   cond_var_.notify_one();

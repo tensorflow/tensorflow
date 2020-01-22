@@ -23,6 +23,16 @@ limitations under the License.
 
 namespace tflite {
 
+// Namespace used for unittests.
+namespace internal {
+// Sets up all of the data structure members for a runtime tensor
+// based on the contents of a serialized tensor.
+TfLiteStatus InitializeRuntimeTensor(
+    SimpleMemoryAllocator* allocator, const tflite::Tensor& flatbuffer_tensor,
+    const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
+    ErrorReporter* error_reporter, TfLiteTensor* result);
+}  // namespace internal
+
 typedef struct {
   TfLiteNode node;
   const TfLiteRegistration* registration;
@@ -35,36 +45,18 @@ class MicroAllocator {
   // The lifetime of the model, tensor allocator and error reporter must be at
   // least as long as that of the allocator object, since the allocator needs
   // them to be accessible during its entire lifetime.
+
+  // Note: Please use __declspec(align(16)) to make sure tensor_arena is 16
+  // bytes aligned, otherwise some head room will be wasted.
   MicroAllocator(TfLiteContext* context, const Model* model,
                  uint8_t* tensor_arena, size_t arena_size,
                  ErrorReporter* error_reporter);
 
-  // Specify a particular tensor as pre-allocated.  This means that this tensor
-  // will internally point to the supplied buffer, and no new memory will be
-  // provided.  The buffer must live at least as long as the allocator, since
-  // the buffer will be used every time an op is invoked which uses the
-  // specified tensor.  Most commonly this is useful when a platform-provided
-  // DMA buffer is used as an input, and it is desirable to avoid unnecessarily
-  // allocating a new buffer and copying from the DMA buffer. The user must
-  // ensure the buffer is valid throughout each interpreter run, and is not
-  // prematurely overwritten.
-  TfLiteStatus RegisterPreallocatedInput(uint8_t* buffer, size_t input_index);
-
-  // Sets up all of the data structure members for a runtime tensor based on the
-  // contents of a serialized tensor. This method doesn't allocate any memory,
-  // all allocations happen subsequently in AllocateTensors.
-  TfLiteStatus InitializeRuntimeTensor(
-      const tflite::Tensor& flatbuffer_tensor,
-      const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
-      ErrorReporter* error_reporter, TfLiteTensor* result,
-      uint8_t* preallocated_buffer = nullptr);
-
-  // Run through the model and allocate all necessary input, output and
-  // intermediate tensors except for those already provided via calls to
-  // registerPreallocatedInput.
-  // WARNING: doing any allocation after calling is method has the risk of
-  // corruption tensor data so this method is the last method to be called in
-  // this class.
+  // Runs through the model and allocates all necessary input, output and
+  // intermediate tensors.
+  // WARNING: doing any allocation after calling this method has the risk of
+  // corrupting tensor data so this method should be the last method to be
+  // called in this class.
   TfLiteStatus FinishTensorAllocation();
 
   // Run through the model to allocate nodes and registrations. We need to keep
@@ -75,12 +67,12 @@ class MicroAllocator {
       NodeAndRegistration** node_and_registrations);
 
  private:
+  TfLiteStatus Init();
+
   const Model* model_;
-  SimpleMemoryAllocator memory_allocator_;
+  SimpleMemoryAllocator* memory_allocator_;
   ErrorReporter* error_reporter_;
   TfLiteContext* context_;
-  uint8_t* arena_;
-  size_t arena_size_;
   // Indicating if the allocator is ready for allocation.
   bool active_ = false;
 

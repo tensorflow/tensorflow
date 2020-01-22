@@ -29,10 +29,12 @@ std::string GetPaddingCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor(
-      "src_data", {"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
+      "src_data",
+      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
       op_def.src_tensors[0]);
   TensorCodeGenerator dst_tensor(
-      "dst_data", {"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      "dst_data",
+      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
       op_def.dst_tensors[0]);
 
   const std::string dst_batch = op_def.batch_support ? "B" : "";
@@ -79,7 +81,7 @@ std::string GetPaddingCode(
     c += "    int s_z = channel - prepended.z;\n";
     c += "    if (s_z >= 0 && s_z < src_channels) {\n";
     c += "      FLT4 t = " +
-         src_tensor.Read4D("s_x", "s_y", "s_z / 4", src_batch) + ";\n";
+         src_tensor.ReadWHSB("s_x", "s_y", "s_z / 4", src_batch) + ";\n";
     c += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
     c += "      result" + s + " = t_ar[s_z % 4];\n";
     c += "    }\n";
@@ -88,7 +90,7 @@ std::string GetPaddingCode(
   c += "  }\n";
   std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
   c += PostProcess(linked_operations, {"result", x_3dcoord, "Y", "Z"});
-  c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", dst_batch);
+  c += "  " + dst_tensor.WriteWHSB("result", "X", "Y", "Z", dst_batch);
   c += "}\n";
 
   return c;
@@ -128,9 +130,9 @@ Status Padding::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Channels()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(prepended_));
   return OkStatus();
 }
@@ -138,7 +140,7 @@ Status Padding::BindArguments() {
 int3 Padding::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

@@ -116,7 +116,7 @@ class MultiPlatformManager {
   static port::StatusOr<Platform*> InitializePlatformWithId(
       const Platform::Id& id, const std::map<string, string>& options);
 
-  // Retrives the platforms satisfying the given filter, i.e. returns true.
+  // Retrieves the platforms satisfying the given filter, i.e. returns true.
   // Returned Platforms are always initialized.
   static port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
       const std::function<bool(const Platform*)>& filter);
@@ -134,7 +134,7 @@ class MultiPlatformManager {
   // during allocation of such Platforms, to avoid spurious reporting at program
   // exit.
 
-  // Interface for a listener that gets notfied at certain events.
+  // Interface for a listener that gets notified at certain events.
   class Listener {
    public:
     virtual ~Listener() = default;

@@ -1,6 +1,7 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 
 package(
     default_visibility = [
@@ -11,16 +12,34 @@ package(
 
 common_copts = ["-Wall"]
 
+flatbuffer_py_library(
+    name = "schema_py",
+    srcs = ["//tensorflow/lite/schema:schema.fbs"],
+)
+
 py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
     data = [
+        ":schema_py",
         "//tensorflow/lite/schema:schema.fbs",
         "//tensorflow/python:platform",
-        "@flatbuffers//:flatc",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "visualize_test",
+    srcs = ["visualize_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":visualize",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+    ],
 )
 
 tf_cc_binary(
@@ -84,6 +103,9 @@ cc_test(
     name = "verifier_test",
     size = "small",
     srcs = ["verifier_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/sparse_tensor.bin",
+    ],
     tags = [
         "tflite_not_portable",
     ],
@@ -106,6 +128,7 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
+    deps = ["//tensorflow/lite:minimal_logging"],
 )
 
 cc_test(

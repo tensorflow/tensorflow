@@ -43,16 +43,18 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestOperations) {
   using tflite::BuiltinOperator_CONV_2D;
   using tflite::BuiltinOperator_RELU;
-  using tflite::MicroMutableOpResolver;
+  using tflite::MicroOpResolver;
   using tflite::OpResolver;
 
   static TfLiteRegistration r = {tflite::MockInit, tflite::MockFree,
                                  tflite::MockPrepare, tflite::MockInvoke};
 
-  MicroMutableOpResolver micro_mutable_op_resolver;
-  micro_mutable_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r, 0, 2);
-  micro_mutable_op_resolver.AddCustom("mock_custom", &r, 0, 3);
-  OpResolver* resolver = &micro_mutable_op_resolver;
+  // We need space for 7 operators because of 2 ops, one with 3 versions, one
+  // with 4 versions.
+  MicroOpResolver<7> micro_op_resolver;
+  micro_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r, 0, 2);
+  micro_op_resolver.AddCustom("mock_custom", &r, 0, 3);
+  OpResolver* resolver = &micro_op_resolver;
 
   const TfLiteRegistration* registration =
       resolver->FindOp(BuiltinOperator_CONV_2D, 0);
@@ -60,6 +62,8 @@ TF_LITE_MICRO_TEST(TestOperations) {
   TF_LITE_MICRO_EXPECT_EQ(nullptr, registration->init(nullptr, nullptr, 0));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(nullptr, nullptr));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(nullptr, nullptr));
+
+  TF_LITE_MICRO_EXPECT_EQ(7, micro_op_resolver.GetRegistrationLength());
 
   registration = resolver->FindOp(BuiltinOperator_CONV_2D, 10);
   TF_LITE_MICRO_EXPECT_EQ(nullptr, registration);
@@ -78,6 +82,25 @@ TF_LITE_MICRO_TEST(TestOperations) {
 
   registration = resolver->FindOp("nonexistent_custom", 0);
   TF_LITE_MICRO_EXPECT_EQ(nullptr, registration);
+}
+
+TF_LITE_MICRO_TEST(TestOpRegistrationOverflow) {
+  using tflite::BuiltinOperator_CONV_2D;
+  using tflite::BuiltinOperator_RELU;
+  using tflite::MicroOpResolver;
+  using tflite::OpResolver;
+
+  static TfLiteRegistration r = {tflite::MockInit, tflite::MockFree,
+                                 tflite::MockPrepare, tflite::MockInvoke};
+
+  MicroOpResolver<4> micro_op_resolver;
+  // Register 7 ops, but only 4 is expected because the class is created with
+  // that limit..
+  micro_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r, 0, 2);
+  micro_op_resolver.AddCustom("mock_custom", &r, 0, 3);
+  OpResolver* resolver = &micro_op_resolver;
+
+  TF_LITE_MICRO_EXPECT_EQ(4, micro_op_resolver.GetRegistrationLength());
 }
 
 TF_LITE_MICRO_TESTS_END

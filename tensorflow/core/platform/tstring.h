@@ -16,24 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_TSTRING_H_
 #define TENSORFLOW_CORE_PLATFORM_TSTRING_H_
 
+#include <ostream>
 #include <string>
 
 // TODO(b/138799229): Used to toggle until global presubmits pass.
-// #define USE_TSTRING
+#define USE_TSTRING
 
 #ifdef USE_TSTRING
 
-// The inclusion of absl/strings/string_view.h in tstring.h would preclude the
-// use of tstring in tflite.  Given that, in order to mitigate the forced
-// inclusion of absl/strings/string_view.h while providing convenience methods
-// for implicit conversion, we replace explicit uses of absl::string_view with a
-// forward declaration and associated templates.
+#include "absl/strings/string_view.h"
+
 namespace absl {
-class string_view;
+#ifdef ABSL_NAMESPACE_BEGIN
+ABSL_NAMESPACE_BEGIN
+#endif  // ABSL_NAMESPACE_BEGIN
 class AlphaNum;
 #ifdef PLATFORM_GOOGLE
 class Cord;
 #endif  // PLATFORM_GOOGLE
+#ifdef ABSL_NAMESPACE_END
+ABSL_NAMESPACE_END
+#endif  // ABSL_NAMESPACE_END
 }  // namespace absl
 
 namespace tensorflow {
@@ -81,10 +84,8 @@ class tstring {
 
   tstring(size_t n, char c) : str_(n, c) {}
 
-  template <typename T,
-            typename std::enable_if<std::is_same<T, absl::string_view>::value,
-                                    T>::type* = nullptr>
-  explicit tstring(const T& str) : str_(str.data(), str.size()) {}
+  explicit tstring(const absl::string_view& str)
+      : str_(str.data(), str.size()) {}
 
 #ifdef PLATFORM_GOOGLE
   template <typename T,
@@ -93,7 +94,7 @@ class tstring {
   explicit tstring(const T& cord) : str_(string(cord)) {}
 #endif  // PLATFORM_GOOGLE
 
-  tstring(tstring&&) noexcept = default;
+  tstring(tstring&&) = default;
 
   ~tstring() = default;
 
@@ -105,10 +106,7 @@ class tstring {
     return *this;
   }
 
-  template <typename T,
-            typename std::enable_if<std::is_same<T, absl::string_view>::value,
-                                    T>::type* = nullptr>
-  tstring& operator=(const T& str) {
+  tstring& operator=(const absl::string_view& str) {
     str_.assign(str.data(), str.size());
 
     return *this;
@@ -137,7 +135,7 @@ class tstring {
     return *this;
   }
 
-  tstring& operator=(tstring&&) noexcept = default;
+  tstring& operator=(tstring&&) = default;
 
   bool operator<(const tstring& o) const { return str_ < o.str_; }
 
@@ -153,19 +151,18 @@ class tstring {
 
   operator std::string() const { return str_; }
 
-  template <typename T,
-            typename std::enable_if<std::is_same<T, absl::string_view>::value,
-                                    T>::type* = nullptr>
-  operator T() const {
-    return T(str_.data(), str_.size());
+  operator absl::string_view() const {
+    return absl::string_view(str_.data(), str_.size());
   }
 
+#ifdef PLATFORM_GOOGLE
   template <typename T,
             typename std::enable_if<std::is_same<T, absl::AlphaNum>::value,
                                     T>::type* = nullptr>
   operator T() const {
     return T(str_);
   }
+#endif  // PLATFORM_GOOGLE
 
   bool empty() const { return str_.empty(); }
 
@@ -286,16 +283,6 @@ inline std::ostream& operator<<(std::ostream& o, const tstring& str) {
 }
 
 }  // namespace tensorflow
-
-namespace std {
-template <>
-struct hash<tensorflow::tstring> {
-  size_t operator()(const tensorflow::tstring& o) const {
-    std::hash<std::string> fn;
-    return fn(o.str_);
-  }
-};
-}  // namespace std
 
 #else  // USE_TSTRING
 

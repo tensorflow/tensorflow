@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -130,7 +131,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
             (None, input_dim, 4, 4, 4),
         ],
         [
-            (keras.layers.GRU(output_dim)),
+            (keras.layers.GRUV1(output_dim)),
             [np.random.random((input_dim, output_dim)),
              np.random.random((output_dim, output_dim)),
              np.random.random((output_dim,)),
@@ -143,7 +144,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
             (None, 4, input_dim),
         ],
         [
-            (keras.layers.LSTM(output_dim)),
+            (keras.layers.LSTMV1(output_dim)),
             [np.random.random((input_dim, output_dim)),
              np.random.random((output_dim, output_dim)),
              np.random.random((output_dim,)),
@@ -382,9 +383,6 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
   def test_sequential_model_saving(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    # TODO(b/145951332): skip TF format for now.
-    if save_format in ['tf', 'tensorflow']:
-      return
 
     with self.cached_session():
       model = keras.models.Sequential()
@@ -419,23 +417,17 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       self.assertAllClose(out, out2, atol=1e-05)
 
       # test that new updates are the same with both models
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3, 3))
       model.train_on_batch(x, y)
       new_model.train_on_batch(x, y)
 
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3, 3))
       eval_out = model.evaluate(x, y)
       eval_out2 = new_model.evaluate(x, y)
       self.assertArrayNear(eval_out, eval_out2, 0.001)
 
       out = model.predict(x)
       out2 = new_model.predict(x)
-
-      # TODO(b/120930751) This tolerance should be 1e-05,
-      # very concerning that its not.
-      self.assertAllClose(out, out2, atol=1e-03)
+      # The model has been trained on two batches. So the tolerance is larger.
+      self.assertAllClose(out, out2, atol=0.01)
 
   @test_util.run_deprecated_v1
   def test_sequential_model_saving_without_input_shape(self):
@@ -494,9 +486,6 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
   def test_sequential_model_saving_2(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    # TODO(b/145133418): skip tf format for now.
-    if save_format in ['tf', 'tensorflow']:
-      return
 
     with self.cached_session():
       # test with custom optimizer, loss
@@ -616,10 +605,6 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
 
     model = keras.models.load_model(saved_model_dir)
 
-    # TODO(b/145150660): skip the checking for tf format.
-    if save_format in ['tf', 'tensorflow']:
-      return
-
     self.assertAllClose(mean, model.layers[1].arguments['mu'])
     self.assertAllClose(std, model.layers[1].arguments['std'])
 
@@ -631,7 +616,7 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       # out of proportion. Note that it fits into the internal HDF5
       # attribute memory limit on its own but because h5py converts
       # the list of layer names into numpy array, which uses the same
-      # amout of memory for every item, it increases the memory
+      # amount of memory for every item, it increases the memory
       # requirements substantially.
       x = keras.Input(shape=(2,), name='input_' + ('x' * (2**15)))
       f = x
@@ -664,9 +649,6 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
   def test_saving_model_with_long_weights_names(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    # TODO(b/145139873): skip tf format for now.
-    if save_format in ['tf', 'tensorflow']:
-      return
 
     with self.cached_session():
       x = keras.Input(shape=(2,), name='nested_model_input')
@@ -693,14 +675,15 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
       model = keras.models.load_model(saved_model_dir)
 
-      # Check that the HDF5 files contains chunked array
-      # of weight names.
-      with h5py.File(saved_model_dir, 'r') as h5file:
-        num_weight_arrays = len(
-            [attr for attr in h5file['model_weights']['nested_model'].attrs
-             if attr.startswith('weight_names')])
-      # The chunking of layer names array should have happened.
-      self.assertGreater(num_weight_arrays, 0)
+      if save_format in ['h5', 'hdf5', 'keras']:
+        # Check that the HDF5 files contains chunked array
+        # of weight names.
+        with h5py.File(saved_model_dir, 'r') as h5file:
+          num_weight_arrays = len(
+              [attr for attr in h5file['model_weights']['nested_model'].attrs
+               if attr.startswith('weight_names')])
+        # The chunking of layer names array should have happened.
+        self.assertGreater(num_weight_arrays, 0)
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
@@ -799,9 +782,6 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
 
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    # TODO(b/143487125): skip tf format for now.
-    if save_format in ['tf', 'tensorflow']:
-      return
 
     model = _make_model()
     model.compile(
@@ -826,6 +806,20 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
     self.assertNear(
         evaluation_results['sparse_categorical_crossentropy'] +
         evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
+
+  def test_save_uncompiled_model_with_optimizer(self):
+    saved_model_dir = self._save_model_dir()
+    save_format = testing_utils.get_save_format()
+    model = keras.models.Sequential([keras.layers.Dense(1, input_shape=(3,))])
+    # Set the model's optimizer but don't compile. This can happen if the model
+    # is trained with a custom training loop.
+    model.optimizer = keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001)
+    model.save(saved_model_dir, save_format=save_format)
+
+    if save_format in ['tf', 'tensorflow']:
+      loaded = keras.models.load_model(saved_model_dir)
+      self.assertIsInstance(loaded.optimizer,
+                            keras.optimizer_v2.optimizer_v2.OptimizerV2)
 
 
 # Factory functions to create models that will be serialized inside a Network.
@@ -1084,7 +1078,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     self._weight_loading_test_template(SubclassedModel)
 
   def _new_layer_weight_loading_test_template(
-      self, first_model_fn, second_model_fn, restore_init_fn):
+      self, first_model_fn, second_model_fn):
     with self.cached_session() as session:
       model = first_model_fn()
       temp_dir = self.get_temp_dir()
@@ -1107,12 +1101,13 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       self.addCleanup(shutil.rmtree, temp_dir)
 
       second_model = second_model_fn()
-      second_model.load_weights(prefix)
+      status = second_model.load_weights(prefix)
       second_model(x)
-      self.evaluate(restore_init_fn(second_model))
+      status.run_restore_ops()
       second_model.save_weights(prefix)
       # Check that the second model's checkpoint loads into the original model
-      model.load_weights(prefix)
+      status = model.load_weights(prefix)
+      status.run_restore_ops(session)
       y = self.evaluate(model(x))
       self.assertAllClose(ref_y, y)
 
@@ -1129,12 +1124,9 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       y = keras.layers.Dense(1, name='second')(x)
       b = keras.layers.Dense(3, name='secondjr')(y)
       return keras.models.Model(a, b)
-    def _restore_init_fn(restore_model):
-      return [v.initializer for v in restore_model.layers[-1].variables]
 
     self._new_layer_weight_loading_test_template(
-        _save_graph_model, _restore_graph_model,
-        _restore_init_fn)
+        _save_graph_model, _restore_graph_model)
 
   @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_graph_model_added_no_weight_layer(self):
@@ -1146,16 +1138,12 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     def _restore_graph_model():
       a = keras.layers.Input(shape=(2,))
       x = keras.layers.Dense(3, name='first')(a)
-      y = keras.layers.Dropout(rate=0.1)(x)
-      b = keras.layers.Dense(1, name='second')(y)
-      return keras.models.Model(a, b)
-    def _restore_init_fn(restore_model):
-      del restore_model  # unused
-      return []
+      b = keras.layers.Dense(1, name='second')(x)
+      y = keras.layers.Dropout(rate=0.1)(b)
+      return keras.models.Model(a, y)
 
     self._new_layer_weight_loading_test_template(
-        _save_graph_model, _restore_graph_model,
-        _restore_init_fn)
+        _save_graph_model, _restore_graph_model)
 
   @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_subclassed_model_added_layer(self):
@@ -1171,12 +1159,8 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       def call(self, a):
         return self.b_layer(self.y_layer(self.x_layer(a)))
 
-    def _restore_init_fn(restore_model):
-      return [v.initializer for v in restore_model.y_layer.variables]
-
     self._new_layer_weight_loading_test_template(
-        SubclassedModel, SubclassedModelRestore,
-        _restore_init_fn)
+        SubclassedModel, SubclassedModelRestore)
 
   @test_util.run_in_graph_and_eager_modes
   def test_incompatible_checkpoint(self):
@@ -1233,7 +1217,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     self.assertEqual(44., self.evaluate(v))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_nonexistant_prefix_directory(self):
+  def test_nonexistent_prefix_directory(self):
     m = keras.Model()
     v = m.add_weight(name='v', shape=[])
     self.evaluate(v.assign(42.))

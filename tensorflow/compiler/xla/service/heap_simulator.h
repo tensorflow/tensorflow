@@ -57,6 +57,8 @@ class HeapSimulator {
     int64 size;
 
     int64 chunk_end() const { return offset + size; }
+
+    bool OverlapsWith(Chunk other_chunk) const;
   };
 
   // Result represents the result of the heap simulation.
@@ -284,6 +286,39 @@ class NoFragmentationStatsHeap : public HeapAlgorithm {
   int64 max_heap_size_ = 0;
 };
 
+// Node in BufferIntervalTree that stores the alloc and free times of a buffer,
+// and the chunk assigned to it.
+struct BufferIntervalTreeNode {
+  // Alloc time.
+  int64 start;
+  // Free time.
+  int64 end;
+  // Maximum free time of all nodes in the subtree where this node is the root.
+  int64 subtree_end;
+  // Allocated chunk for the buffer.
+  HeapSimulator::Chunk chunk;
+  // Left child.
+  BufferIntervalTreeNode* left;
+  // Right child.
+  BufferIntervalTreeNode* right;
+};
+
+// An interval tree that can query buffers overlapping in time.
+class BufferIntervalTree {
+ public:
+  using Chunk = HeapSimulator::Chunk;
+  // Adds a buffer to the interval tree, with the time interval and allocated
+  // chunk specified.
+  void Add(int64 start, int64 end, const Chunk& chunk);
+
+  // Returns vector of allocated chunks that overlap with the given time
+  // interval.
+  std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) const;
+
+ private:
+  std::list<BufferIntervalTreeNode> node_storage_;
+};
+
 // GlobalDecreasingSizeBestFitHeap collects the live intervals of all buffers,
 // then allocates them in decreasing spatial or temporal size regardless of the
 // alloc/free time. It internally tracks the allocated buffers and their live
@@ -334,39 +369,6 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
   static BufferIntervalCompare GetSpatialBufferIntervalCompare();
 
  protected:
-  // Node in BufferIntervalTree that stores the alloc and free times of a
-  // buffer, and the chunk assigned to it.
-  struct BufferIntervalTreeNode {
-    // Alloc time.
-    int64 start;
-    // Free time.
-    int64 end;
-    // Maximum free time of all nodes in the subtree where this node is the
-    // root.
-    int64 subtree_end;
-    // Allocated chunk for the buffer.
-    HeapSimulator::Chunk chunk;
-    // Left child.
-    BufferIntervalTreeNode* left;
-    // Right child.
-    BufferIntervalTreeNode* right;
-  };
-
-  // An interval tree that can query buffers overlapping in time.
-  class BufferIntervalTree {
-   public:
-    // Adds a buffer to the interval tree, with the time interval and allocated
-    // chunk specified.
-    void Add(int64 start, int64 end, const Chunk& chunk);
-
-    // Returns vector of allocated chunks that overlap with the given time
-    // interval.
-    std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) const;
-
-   private:
-    std::list<BufferIntervalTreeNode> node_storage_;
-  };
-
   // The candidate contains a chunk and the resultant heap size if this
   // chunk is to be committed.
   struct ChunkCandidate {

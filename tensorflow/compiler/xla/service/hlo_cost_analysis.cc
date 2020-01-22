@@ -102,7 +102,9 @@ Status HloCostAnalysis::HandleElementwiseOp(
   if (opcode == HloOpcode::kExp || opcode == HloOpcode::kLog ||
       opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
       opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
-      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos) {
+      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos ||
+      opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog1p ||
+      opcode == HloOpcode::kAtan2) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -324,7 +326,7 @@ Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   for (auto dim : dnums.lhs_contracting_dimensions()) {
     reduction_width *= lhs_shape.dimensions(dim);
   }
-  // Each output elment requires reduction_width FMA operations.
+  // Each output element requires reduction_width FMA operations.
   current_properties_[kFlopsKey] =
       kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
   return Status::OK();

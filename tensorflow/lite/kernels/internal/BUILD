@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
@@ -41,6 +42,7 @@ NEON_FLAGS_IF_APPLICABLE = select({
 cc_library(
     name = "compatibility",
     hdrs = ["compatibility.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels:op_macros",
@@ -48,17 +50,9 @@ cc_library(
 )
 
 cc_library(
-    name = "scoped_profiling_label_wrapper",
-    hdrs = ["scoped_profiling_label_wrapper.h"],
-    copts = tflite_copts(),
-    # TODO(b/145820877): Add in a select statement once we can figure out a way
-    # to make it play nicely with copybara.
-    deps = ["@gemmlowp//:profiler"],
-)
-
-cc_library(
     name = "types",
     hdrs = ["types.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":compatibility",
@@ -187,6 +181,13 @@ config_setting(
 )
 
 config_setting(
+    name = "windows",
+    values = {
+        "cpu": "x64_windows",
+    },
+)
+
+config_setting(
     name = "raspberry_pi_with_neon",
     define_values = {
         "raspberry_pi_with_neon": "true",
@@ -245,7 +246,7 @@ cc_library(
         ":transpose_utils",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -259,6 +260,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -296,6 +298,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -305,6 +308,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -415,6 +419,7 @@ cc_library(
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
+        "reference/densify.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
@@ -461,11 +466,11 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
-        ":scoped_profiling_label_wrapper",
         "@gemmlowp//:fixedpoint",
         "//third_party/eigen3",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -475,6 +480,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -490,6 +496,7 @@ cc_library(
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
+        "reference/densify.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
@@ -517,7 +524,6 @@ cc_library(
         ":compatibility",
         ":quantization_util",
         ":round",
-        ":scoped_profiling_label_wrapper",
         ":strided_slice_logic",
         ":legacy_types",
         ":tensor",
@@ -526,6 +532,7 @@ cc_library(
         "@gemmlowp",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -535,6 +542,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -545,6 +553,7 @@ cc_library(
         "tensor.h",
         "tensor_ctypes.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -731,6 +740,7 @@ cc_library(
         ":freebsd": [
             ":sse_tensor_utils",
         ],
+        ":windows": [":sse_tensor_utils"],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],
@@ -967,6 +977,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )

@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
@@ -8,6 +13,10 @@ package(
         "//tensorflow/core/lib/strings:__pkg__",
         # tensorflow/core/lib/histogram uses array_slice
         "//tensorflow/core/lib/histogram:__pkg__",
+        # tensorflow/core/framework uses array_slice, map_util, and flatmap
+        "//tensorflow/core/framework:__pkg__",
+        # tensorflow/core/util uses array_slice, inlined_vector
+        "//tensorflow/core/util:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -47,6 +56,14 @@ cc_library(
 cc_library(
     name = "flatmap",
     hdrs = ["flatmap.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
+        "//tensorflow/core/lib/histogram:__pkg__",
+        "//tensorflow/core/lib/random:__pkg__",
+        "//tensorflow/core/lib/strings:__pkg__",
+    ],
     deps = [
         "//tensorflow/core/lib/gtl:flatrep",
         "//tensorflow/core/lib/hash",
@@ -175,6 +192,36 @@ filegroup(
     name = "legacy_android_gif_internal_headers",
     srcs = [
         "cleanup.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "array_slice.h",
+        "flatmap.h",
+        "flatrep.h",
+        "inlined_vector.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "cleanup.h",
+        "edit_distance.h",
+        "flatset.h",
+        "int_type.h",
+        "iterator_range.h",
+        "manual_constructor.h",
+        "map_util.h",
+        "optional.h",
+        "priority_queue_util.h",
+        "subtle/map_traits.h",
+        "top_n.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

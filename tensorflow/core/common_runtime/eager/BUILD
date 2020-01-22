@@ -97,6 +97,8 @@ tf_cuda_library(
         ":kernel_and_device",
         ":tensor_handle",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -216,8 +218,8 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/profiler/lib:annotated_traceme",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/core/profiler/lib:scoped_annotation",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
@@ -326,6 +328,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/memory",
+        "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
@@ -435,6 +438,23 @@ tf_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "attr_builder.h",
+        "context.h",
+        "eager_executor.h",
+        "eager_operation.h",
+        "kernel_and_device.h",
+        "tensor_handle.h",
+        "tensor_handle_data.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )
 

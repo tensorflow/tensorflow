@@ -7,10 +7,12 @@ glob_lit_tests(
         ":debug_info_files",
         ":test_utilities",
     ],
-    driver = "@local_config_mlir//:run_lit.sh",
+    driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = [
         "pbtxt",
-        "py",
+        # TODO(fengliuai): reenable these tests after the fused loc is
+        # supported in the diagnostic handler.
+        # "py",
     ],
 )
 
@@ -31,7 +33,8 @@ filegroup(
         ":saved_model_error",
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
-        "@llvm//:FileCheck",
+        "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )
 

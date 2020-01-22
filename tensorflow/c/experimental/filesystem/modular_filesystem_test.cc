@@ -12,26 +12,32 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
+
 #include <memory>
 #include <random>
 #include <string>
 
-#include "tensorflow/c/tf_status.h"
-#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/stacktrace_handler.h"
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
-// TODO(b/143949264): Testing is not yet supported on Windows. Will implement
-// testing on Windows when implementing modular filesystems on Windows.
 #if defined(PLATFORM_WINDOWS)
-#error Windows is not yet supported.  Need mkdir().
-#endif
+// Make mkdir resolve to _mkdir to create the test temporary directory.
+#include <direct.h>
+#define mkdir(name, mode) _mkdir(name)
+
+// Windows defines the following macros to convert foo to fooA or fooW,
+// depending on the type of the string argument. We don't use these macros, so
+// undefine them here.
+#undef LoadLibrary
+#undef CopyFile
+#undef DeleteFile
+#undef TranslateName
+#endif  // defined(PLATFORM_WINDOWS)
 
 // The tests defined here test the compliance of filesystems with the API
 // defined by `filesystem_interface.h`.
@@ -86,9 +92,6 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   }
 
   void SetUp() override {
-    // TODO(b/143949264): Testing is not yet supported on Windows. Will
-    // implement testing on Windows when implementing modular filesystems on
-    // Windows.
     if (mkdir(root_dir_.c_str(), 0755) != 0) {
       int error_code = errno;
       GTEST_SKIP() << "Cannot create working directory: "
@@ -142,7 +145,7 @@ int ModularFileSystemTest::rng_val_;
 
 // As some of the implementations might be missing, the tests should still pass
 // if the returned `Status` signals the unimplemented state.
-bool UninmplementedOrReturnsCode(Status actual_status, Code expected_code) {
+bool UnimplementedOrReturnsCode(Status actual_status, Code expected_code) {
   Code actual_code = actual_status.code();
   return (actual_code == Code::UNIMPLEMENTED) || (actual_code == expected_code);
 }
@@ -151,7 +154,8 @@ TEST_P(ModularFileSystemTest, TestTranslateName) {
   const std::string generic_path = GetURIForPath("some_path");
   FileSystem* fs = nullptr;
   Status s = env_->GetFileSystemForFile(generic_path, &fs);
-  if (fs == nullptr || !s.ok()) GTEST_SKIP() << "No filesystem registered";
+  if (fs == nullptr || !s.ok())
+    GTEST_SKIP() << "No filesystem registered: " << s;
 
   // First, test some interesting corner cases concerning empty URIs
   if (GetParam().empty()) {
@@ -188,186 +192,193 @@ TEST_P(ModularFileSystemTest, TestCreateFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateFileNonExisting) {
   const std::string filepath = GetURIForPath("dir_not_found/a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateFileExistingDir) {
   const std::string filepath = GetURIForPath("a_file");
   Status status = env_->CreateDir(filepath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateFilePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string new_path = GetURIForPath("a_file/a_file");
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(new_path, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestAppendFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewAppendableFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestAppendFileNonExisting) {
   const std::string filepath = GetURIForPath("dir_not_found/a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewAppendableFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestAppendFileExistingDir) {
   const std::string filepath = GetURIForPath("a_file");
   Status status = env_->CreateDir(filepath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewAppendableFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateThenAppendFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   std::unique_ptr<WritableFile> same_file;
   status = env_->NewAppendableFile(filepath, &same_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestAppendFilePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_path = GetURIForPath("a_file/a_file");
   std::unique_ptr<WritableFile> same_file;
   status = env_->NewAppendableFile(new_path, &same_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestReadFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<RandomAccessFile> new_file;
   Status status = env_->NewRandomAccessFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestReadFileNonExisting) {
   const std::string filepath = GetURIForPath("dir_not_found/a_file");
   std::unique_ptr<RandomAccessFile> new_file;
   Status status = env_->NewRandomAccessFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestReadFileExistingDir) {
   const std::string filepath = GetURIForPath("a_file");
   Status status = env_->CreateDir(filepath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   std::unique_ptr<RandomAccessFile> new_file;
   status = env_->NewRandomAccessFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateThenReadFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   std::unique_ptr<RandomAccessFile> same_file;
   status = env_->NewRandomAccessFile(filepath, &same_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestReadFilePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_path = GetURIForPath("a_file/a_file");
   std::unique_ptr<RandomAccessFile> same_file;
   status = env_->NewRandomAccessFile(new_path, &same_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateMemoryRegion) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<ReadOnlyMemoryRegion> region;
   Status status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &region);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateMemoryRegionNonExisting) {
   const std::string filepath = GetURIForPath("dir_not_found/a_file");
   std::unique_ptr<ReadOnlyMemoryRegion> region;
   Status status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &region);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateMemoryRegionExistingDir) {
   const std::string filepath = GetURIForPath("a_file");
   Status status = env_->CreateDir(filepath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   std::unique_ptr<ReadOnlyMemoryRegion> new_file;
   status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &new_file);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateMemoryRegionFromEmptyFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   std::unique_ptr<ReadOnlyMemoryRegion> region;
   status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &region);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::INVALID_ARGUMENT);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::INVALID_ARGUMENT);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateMemoryRegionFromFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string test_data("asdf");
   status = new_file->Append(test_data);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
   status = new_file->Flush();
-  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported: " << status;
   status = new_file->Close();
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 
   std::unique_ptr<ReadOnlyMemoryRegion> region;
   status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &region);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   if (!status.ok())
-    GTEST_SKIP() << "NewReadOnlyMemoryRegionFromFile() not supported";
+    GTEST_SKIP() << "NewReadOnlyMemoryRegionFromFile() not supported: "
+                 << status;
   EXPECT_EQ(region->length(), test_data.size());
   EXPECT_STREQ(reinterpret_cast<const char*>(region->data()),
                test_data.c_str());
@@ -377,248 +388,264 @@ TEST_P(ModularFileSystemTest, TestCreateMemoryRegionFromFilePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   std::string new_path = GetURIForPath("a_file/a_file");
   std::unique_ptr<ReadOnlyMemoryRegion> region;
   status = env_->NewReadOnlyMemoryRegionFromFile(new_path, &region);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateDir) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateDirNoParent) {
   const std::string dirpath = GetURIForPath("dir_not_found/a_dir");
   Status status = env_->CreateDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateDirWhichIsFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->CreateDir(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateDirTwice) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   status = env_->CreateDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
 }
 
 TEST_P(ModularFileSystemTest, TestCreateDirPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_path = GetURIForPath("a_file/a_dir");
   status = env_->CreateDir(new_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDir) {
   const std::string dirpath = GetURIForPath("a/path/to/a/dir");
   Status status = env_->RecursivelyCreateDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirInATree) {
   const std::string dirpath = GetURIForPath("a/path/to/a/dir");
   Status status = env_->RecursivelyCreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "RecursivelyCreateDir() not supported: " << status;
 
   const std::string new_dirpath = GetURIForPath("a/path/to/a/another/dir");
   status = env_->RecursivelyCreateDir(new_dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirWhichIsFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->RecursivelyCreateDir(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirTwice) {
   const std::string dirpath = GetURIForPath("a/path/to/a/dir");
   Status status = env_->RecursivelyCreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "RecursivelyCreateDir() not supported: " << status;
 
   status = env_->RecursivelyCreateDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_path = GetURIForPath("a_file/a_dir");
   status = env_->RecursivelyCreateDir(new_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedDir) {
   const std::string parent_path = GetURIForPath("some/path");
   Status status = env_->RecursivelyCreateDir(parent_path);
-  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "RecursivelyCreateDir() not supported: " << status;
 
   const std::string new_dirpath = GetURIForPath("some/path/that/is/extended");
   status = env_->RecursivelyCreateDir(new_dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedFile) {
   const std::string parent_path = GetURIForPath("some/path");
   Status status = env_->RecursivelyCreateDir(parent_path);
-  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "RecursivelyCreateDir() not supported: " << status;
 
   const std::string filepath = GetURIForPath("some/path/to_a_file");
   std::unique_ptr<WritableFile> file;
   status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_dirpath = GetURIForPath("some/path/to_a_file/error");
   status = env_->RecursivelyCreateDir(new_dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->DeleteFile(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteFileFromDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string filepath = GetURIForPath("a_dir/a_file");
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->DeleteFile(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteFileDoesNotExist) {
   const std::string filepath = GetURIForPath("a_file");
   Status status = env_->DeleteFile(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteFileWhichIsDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   status = env_->DeleteFile(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteFilePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_path = GetURIForPath("a_file/a_new_file");
   status = env_->DeleteFile(new_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   status = env_->DeleteDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteDirectoryFromDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string target_path = GetURIForPath("a_dir/another_dir");
   EXPECT_EQ(env_->CreateDir(target_path).code(), Code::OK);
 
   status = env_->DeleteDir(target_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteDirectoryDoesNotExist) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->DeleteDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteDirectoryNotEmpty) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string filepath = GetURIForPath("a_dir/a_file");
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->DeleteDir(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteDirectoryWhichIsFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->DeleteDir(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteDirectoryPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_path = GetURIForPath("a_file/a_dir");
   status = env_->DeleteDir(new_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteRecursivelyEmpty) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
   status = env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 0);
 }
@@ -626,25 +653,26 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyEmpty) {
 TEST_P(ModularFileSystemTest, TestDeleteRecursivelyNotEmpty) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string some_path = GetURIForPath("a_dir/another_dir");
   status = env_->CreateDir(some_path);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string another_path = GetURIForPath("a_dir/yet_another_dir");
   status = env_->CreateDir(another_path);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string filepath = GetURIForPath("a_dir/a_file");
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
   status = env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 0);
 }
@@ -656,7 +684,7 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyDoesNotExist) {
   int64 undeleted_dirs = 0;
   Status status =
       env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 1);
 }
@@ -665,7 +693,8 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyAFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
@@ -678,189 +707,203 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_path = GetURIForPath("a_file/a_dir");
   int64 undeleted_files, undeleted_dirs;
   status = env_->DeleteRecursively(new_path, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedDir) {
   const std::string parent_path = GetURIForPath("parent/path");
   Status status = env_->RecursivelyCreateDir(parent_path);
-  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "RecursivelyCreateDir() not supported: " << status;
 
   const std::string new_dirpath = GetURIForPath("parent/path/that/is/extended");
   status = env_->RecursivelyCreateDir(new_dirpath);
-  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "RecursivelyCreateDir() not supported: " << status;
 
   const std::string path = GetURIForPath("parent/path/that");
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
   status = env_->DeleteRecursively(path, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 0);
 
   // Parent directory must still exist
   status = env_->FileExists(parent_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedFile) {
   const std::string parent_path = GetURIForPath("some/path");
   Status status = env_->RecursivelyCreateDir(parent_path);
-  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "RecursivelyCreateDir() not supported: " << status;
 
   const std::string filepath = GetURIForPath("some/path/to_a_file");
   std::unique_ptr<WritableFile> file;
   status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   int64 undeleted_files = 0;
   int64 undeleted_dirs = 0;
   status = env_->DeleteRecursively(filepath, &undeleted_files, &undeleted_dirs);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(undeleted_files, 0);
   EXPECT_EQ(undeleted_dirs, 0);
 
   // Parent directory must still exist
   status = env_->FileExists(parent_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_new_file");
   status = env_->RenameFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported: " << status;
 
   status = env_->FileExists(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
   status = env_->FileExists(new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFileOverwrite) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_new_file");
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->RenameFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported: " << status;
 
   status = env_->FileExists(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
   status = env_->FileExists(new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFileSourceNotFound) {
   const std::string filepath = GetURIForPath("a_file");
   const std::string new_filepath = GetURIForPath("a_new_file");
   Status status = env_->RenameFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFileDestinationParentNotFound) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_dir/a_file");
   status = env_->RenameFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFileSourceIsDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_new_file");
   status = env_->RenameFile(dirpath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFileTargetIsDirectory) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string dirpath = GetURIForPath("a_dir");
   status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   status = env_->RenameFile(filepath, dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFileSourcePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string old_filepath = GetURIForPath("a_file/x");
   const std::string new_filepath = GetURIForPath("a_new_file");
   status = env_->RenameFile(old_filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFileTargetPathIsInvalid) {
   const std::string old_filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> old_file;
   Status status = env_->NewWritableFile(old_filepath, &old_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_file/a_new_file");
   status = env_->RenameFile(old_filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFileCompareContents) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string test_data("asdf");
   status = file->Append(test_data);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
   status = file->Flush();
-  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported: " << status;
   status = file->Close();
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_new_file");
   status = env_->RenameFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported: " << status;
 
   uint64 size;
   status = env_->GetFileSize(new_filepath, &size);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported: " << status;
   EXPECT_EQ(size, test_data.size());
 }
 
@@ -868,127 +911,135 @@ TEST_P(ModularFileSystemTest, TestCopyFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_new_file");
   status = env_->CopyFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "CopyFile() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "CopyFile() not supported: " << status;
 
   status = env_->FileExists(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   status = env_->FileExists(new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestCopyFileOverwrite) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_new_file");
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->CopyFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "CopyFile() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "CopyFile() not supported: " << status;
 
   status = env_->FileExists(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   status = env_->FileExists(new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestCopyFileSourceNotFound) {
   const std::string filepath = GetURIForPath("a_file");
   const std::string new_filepath = GetURIForPath("a_new_file");
   Status status = env_->CopyFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestCopyFileSourceIsDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_new_file");
   status = env_->CopyFile(dirpath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCopyFileTargetIsDirectory) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string dirpath = GetURIForPath("a_dir");
   status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   status = env_->CopyFile(filepath, dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCopyFileSourcePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string old_filepath = GetURIForPath("a_file/x");
   const std::string new_filepath = GetURIForPath("a_new_file");
   status = env_->CopyFile(old_filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCopyFileTargetPathIsInvalid) {
   const std::string old_filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> old_file;
   Status status = env_->NewWritableFile(old_filepath, &old_file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_file/a_new_file");
   status = env_->CopyFile(old_filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestCopyFileCompareContents) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string test_data("asdf");
   status = file->Append(test_data);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
   status = file->Flush();
-  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported: " << status;
   status = file->Close();
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 
   const std::string new_filepath = GetURIForPath("a_new_file");
   status = env_->CopyFile(filepath, new_filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported: " << status;
 
   uint64 size;
   status = env_->GetFileSize(filepath, &size);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported: " << status;
   EXPECT_EQ(size, test_data.size());
 
   status = env_->GetFileSize(new_filepath, &size);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported: " << status;
   EXPECT_EQ(size, test_data.size());
 }
 
@@ -996,36 +1047,38 @@ TEST_P(ModularFileSystemTest, TestFileExists) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->FileExists(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestFileExistsButIsDirectory) {
   const std::string filepath = GetURIForPath("a_file");
   Status status = env_->CreateDir(filepath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   status = env_->FileExists(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestFileExistsNotFound) {
   const std::string filepath = GetURIForPath("a_file");
   Status status = env_->FileExists(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestFileExistsPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string target_path = GetURIForPath("a_file/a_new_file");
   status = env_->FileExists(target_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestFilesExist) {
@@ -1034,7 +1087,8 @@ TEST_P(ModularFileSystemTest, TestFilesExist) {
   for (const auto& filename : filenames) {
     std::unique_ptr<WritableFile> file;
     Status status = env_->NewWritableFile(filename, &file);
-    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+    if (!status.ok())
+      GTEST_SKIP() << "NewWritableFile() not supported: " << status;
   }
 
   EXPECT_TRUE(env_->FilesExist(filenames, /*status=*/nullptr));
@@ -1043,7 +1097,7 @@ TEST_P(ModularFileSystemTest, TestFilesExist) {
   EXPECT_TRUE(env_->FilesExist(filenames, &statuses));
   EXPECT_EQ(statuses.size(), filenames.size());
   for (const auto& status : statuses)
-    EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+    EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestFilesExistAllFailureModes) {
@@ -1056,20 +1110,21 @@ TEST_P(ModularFileSystemTest, TestFilesExistAllFailureModes) {
   };
 
   Status status = env_->CreateDir(filenames[0]);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   std::unique_ptr<WritableFile> file;
   status = env_->NewWritableFile(filenames[1], &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   std::vector<Status> statuses;
   EXPECT_FALSE(env_->FilesExist(filenames, &statuses));
   EXPECT_EQ(statuses.size(), filenames.size());
-  EXPECT_PRED2(UninmplementedOrReturnsCode, statuses[0], Code::OK);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, statuses[1], Code::OK);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, statuses[2],
+  EXPECT_PRED2(UnimplementedOrReturnsCode, statuses[0], Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, statuses[1], Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, statuses[2],
                Code::FAILED_PRECONDITION);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, statuses[3], Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, statuses[3], Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestFilesExistsNoFiles) {
@@ -1085,12 +1140,13 @@ TEST_P(ModularFileSystemTest, TestStatEmptyFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   FileStatistics stat;
   status = env_->Stat(filepath, &stat);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Stat() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Stat() not supported: " << status;
   EXPECT_FALSE(stat.is_directory);
   EXPECT_EQ(stat.length, 0);
 }
@@ -1099,20 +1155,21 @@ TEST_P(ModularFileSystemTest, TestStatNonEmptyFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string test_data("asdf");
   status = file->Append(test_data);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
   status = file->Flush();
-  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported: " << status;
   status = file->Close();
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 
   FileStatistics stat;
   status = env_->Stat(filepath, &stat);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Stat() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Stat() not supported: " << status;
   EXPECT_FALSE(stat.is_directory);
   EXPECT_EQ(stat.length, test_data.size());
 }
@@ -1120,12 +1177,12 @@ TEST_P(ModularFileSystemTest, TestStatNonEmptyFile) {
 TEST_P(ModularFileSystemTest, TestStatDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   FileStatistics stat;
   status = env_->Stat(dirpath, &stat);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Stat() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Stat() not supported: " << status;
   EXPECT_TRUE(stat.is_directory);
 }
 
@@ -1133,67 +1190,71 @@ TEST_P(ModularFileSystemTest, TestStatNotFound) {
   const std::string dirpath = GetURIForPath("a_dir");
   FileStatistics stat;
   Status status = env_->Stat(dirpath, &stat);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestStatPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string target_path = GetURIForPath("a_file/a_new_file");
   FileStatistics stat;
   status = env_->Stat(target_path, &stat);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestIsDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   status = env_->IsDirectory(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestIsDirectoryFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = env_->IsDirectory(filepath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestIsDirectoryNotFound) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->IsDirectory(dirpath);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestIsDirectoryPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string target_path = GetURIForPath("a_file/a_new_file");
   status = env_->IsDirectory(target_path);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestGetFileSizeEmptyFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   uint64 size;
   status = env_->GetFileSize(filepath, &size);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported: " << status;
   EXPECT_EQ(size, 0);
 }
 
@@ -1201,56 +1262,58 @@ TEST_P(ModularFileSystemTest, TestGetFileSizeNonEmptyFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string test_data("asdf");
   status = file->Append(test_data);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
   status = file->Flush();
-  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported: " << status;
   status = file->Close();
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 
   uint64 size;
   status = env_->GetFileSize(filepath, &size);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported: " << status;
   EXPECT_EQ(size, test_data.size());
 }
 
 TEST_P(ModularFileSystemTest, TestGetFileSizeDirectory) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   uint64 size;
   status = env_->GetFileSize(dirpath, &size);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestGetFileSizeNotFound) {
   const std::string filepath = GetURIForPath("a_dir");
   uint64 size;
   Status status = env_->GetFileSize(filepath, &size);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestGetFileSizePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string target_path = GetURIForPath("a_file/a_new_file");
   uint64 size;
   status = env_->GetFileSize(target_path, &size);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestGetChildren) {
   const std::string dirpath = GetURIForPath("dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   // If updating, make sure to update expected_children below.
   const std::vector<std::string> filenames = {
@@ -1260,7 +1323,8 @@ TEST_P(ModularFileSystemTest, TestGetChildren) {
   for (const auto& filename : filenames) {
     std::unique_ptr<WritableFile> file;
     status = env_->NewWritableFile(filename, &file);
-    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+    if (!status.ok())
+      GTEST_SKIP() << "NewWritableFile() not supported: " << status;
   }
 
   // If updating, make sure to update expected_children below.
@@ -1270,13 +1334,13 @@ TEST_P(ModularFileSystemTest, TestGetChildren) {
   };
   for (const auto& dirname : dirnames) {
     status = env_->CreateDir(dirname);
-    if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+    if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
   }
 
   std::vector<std::string> children;
   status = env_->GetChildren(dirpath, &children);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetChildren() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetChildren() not supported: " << status;
 
   // All entries must show up in the vector.
   // Must contain only the last name in filenames and dirnames.
@@ -1291,11 +1355,11 @@ TEST_P(ModularFileSystemTest, TestGetChildren) {
 TEST_P(ModularFileSystemTest, TestGetChildrenEmpty) {
   const std::string dirpath = GetURIForPath("dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported: " << status;
 
   std::vector<std::string> children;
   status = env_->GetChildren(dirpath, &children);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(children.size(), 0);
 }
 
@@ -1303,30 +1367,32 @@ TEST_P(ModularFileSystemTest, TestGetChildrenOfFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   std::vector<std::string> children;
   status = env_->GetChildren(filepath, &children);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestGetChildrenPathNotFound) {
   const std::string target_path = GetURIForPath("a_dir");
   std::vector<std::string> children;
   Status status = env_->GetChildren(target_path, &children);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::NOT_FOUND);
 }
 
 TEST_P(ModularFileSystemTest, TestGetChildrenPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string target_path = GetURIForPath("a_file/a_new_dir");
   std::vector<std::string> children;
   status = env_->GetChildren(target_path, &children);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 TEST_P(ModularFileSystemTest, TestGetMatchingPaths) {
@@ -1342,19 +1408,22 @@ TEST_P(ModularFileSystemTest, TestGetMatchingPaths) {
   for (const auto& filename : matching_filenames) {
     std::unique_ptr<WritableFile> file;
     Status status = env_->NewWritableFile(filename, &file);
-    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+    if (!status.ok())
+      GTEST_SKIP() << "NewWritableFile() not supported: " << status;
   }
 
   for (const auto& filename : other_filenames) {
     std::unique_ptr<WritableFile> file;
     Status status = env_->NewWritableFile(filename, &file);
-    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+    if (!status.ok())
+      GTEST_SKIP() << "NewWritableFile() not supported: " << status;
   }
 
   std::vector<std::string> results;
   Status status = env_->GetMatchingPaths(GetURIForPath("/a*"), &results);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetMatchingPaths() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok())
+    GTEST_SKIP() << "GetMatchingPaths() not supported: " << status;
   EXPECT_EQ(results.size(), matching_filenames.size());
   for (const auto& match : matching_filenames)
     EXPECT_NE(std::find(results.begin(), results.end(), match), results.end());
@@ -1363,7 +1432,7 @@ TEST_P(ModularFileSystemTest, TestGetMatchingPaths) {
 TEST_P(ModularFileSystemTest, TestGetMatchingPathsEmptyFileSystem) {
   std::vector<std::string> results;
   Status status = env_->GetMatchingPaths(GetURIForPath("a*"), &results);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(results.size(), 0);
 }
 
@@ -1378,13 +1447,15 @@ TEST_P(ModularFileSystemTest, TestGetMatchingPathsEmptyPattern) {
   for (const auto& filename : filenames) {
     std::unique_ptr<WritableFile> file;
     Status status = env_->NewWritableFile(filename, &file);
-    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+    if (!status.ok())
+      GTEST_SKIP() << "NewWritableFile() not supported: " << status;
   }
 
   std::vector<std::string> results;
   Status status = env_->GetMatchingPaths(GetURIForPath(""), &results);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetMatchingPaths() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok())
+    GTEST_SKIP() << "GetMatchingPaths() not supported: " << status;
   EXPECT_EQ(results.size(), 1);
   EXPECT_NE(std::find(results.begin(), results.end(), GetURIForPath("")),
             results.end());
@@ -1401,13 +1472,15 @@ TEST_P(ModularFileSystemTest, TestGetMatchingPathsLiteralMatch) {
   for (const auto& filename : filenames) {
     std::unique_ptr<WritableFile> file;
     Status status = env_->NewWritableFile(filename, &file);
-    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+    if (!status.ok())
+      GTEST_SKIP() << "NewWritableFile() not supported: " << status;
   }
 
   std::vector<std::string> results;
   Status status = env_->GetMatchingPaths(filenames[0], &results);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "GetMatchingPaths() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok())
+    GTEST_SKIP() << "GetMatchingPaths() not supported: " << status;
   EXPECT_EQ(results.size(), 1);
   EXPECT_NE(std::find(results.begin(), results.end(), filenames[0]),
             results.end());
@@ -1424,13 +1497,15 @@ TEST_P(ModularFileSystemTest, TestGetMatchingPathsNoMatch) {
   for (const auto& filename : filenames) {
     std::unique_ptr<WritableFile> file;
     Status status = env_->NewWritableFile(filename, &file);
-    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+    if (!status.ok())
+      GTEST_SKIP() << "NewWritableFile() not supported: " << status;
   }
 
   std::vector<std::string> results;
   Status status = env_->GetMatchingPaths(GetURIForPath("x?y*"), &results);
-  if (!status.ok()) GTEST_SKIP() << "GetMatchingPaths() not supported";
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok())
+    GTEST_SKIP() << "GetMatchingPaths() not supported: " << status;
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(results.size(), 0);
 }
 
@@ -1438,18 +1513,19 @@ TEST_P(ModularFileSystemTest, TestAppendAndTell) {
   const std::string filename = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filename, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   int64 position;
   status = file->Tell(&position);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Tell() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Tell() not supported: " << status;
   EXPECT_EQ(position, 0);
 
   const std::string test_data("asdf");
   status = file->Append(test_data);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
 
   status = file->Tell(&position);
   EXPECT_EQ(status.code(), Code::OK);
@@ -1460,40 +1536,43 @@ TEST_P(ModularFileSystemTest, TestClose) {
   const std::string filename = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filename, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   status = file->Close();
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 }
 
 TEST_P(ModularFileSystemTest, TestRoundTrip) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string test_data("asdf");
   status = file->Append(test_data);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
 
   status = file->Flush();
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported: " << status;
 
   status = file->Close();
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 
   std::unique_ptr<RandomAccessFile> read_file;
   status = env_->NewRandomAccessFile(filepath, &read_file);
-  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewRandomAccessFile() not supported: " << status;
 
   char scratch[64 /* big enough to accomodate test_data */] = {0};
   StringPiece result;
   status = read_file->Read(0, test_data.size(), &result, scratch);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(test_data, result);
 }
 
@@ -1501,24 +1580,26 @@ TEST_P(ModularFileSystemTest, TestRoundTripWithAppendableFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string test_data("asdf");
   status = file->Append(test_data);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
 
   status = file->Flush();
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported: " << status;
 
   status = file->Close();
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 
   std::unique_ptr<WritableFile> same_file;
   status = env_->NewAppendableFile(filepath, &same_file);
-  if (!status.ok()) GTEST_SKIP() << "NewAppendableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewAppendableFile() not supported: " << status;
 
   const std::string more_test_data("qwer");
   EXPECT_EQ(same_file->Append(more_test_data).code(), Code::OK);
@@ -1527,13 +1608,14 @@ TEST_P(ModularFileSystemTest, TestRoundTripWithAppendableFile) {
 
   std::unique_ptr<RandomAccessFile> read_file;
   status = env_->NewRandomAccessFile(filepath, &read_file);
-  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewRandomAccessFile() not supported: " << status;
 
   char scratch[64 /* big enough for test_data and more_test_data */] = {0};
   StringPiece result;
   status = read_file->Read(0, test_data.size() + more_test_data.size(), &result,
                            scratch);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
   EXPECT_EQ(test_data + more_test_data, result);
   EXPECT_EQ(
       read_file->Read(test_data.size(), more_test_data.size(), &result, scratch)
@@ -1546,30 +1628,32 @@ TEST_P(ModularFileSystemTest, TestReadOutOfRange) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewWritableFile() not supported: " << status;
 
   const std::string test_data("asdf");
   status = file->Append(test_data);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported: " << status;
 
   status = file->Flush();
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported: " << status;
 
   status = file->Close();
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
-  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported: " << status;
 
   std::unique_ptr<RandomAccessFile> read_file;
   status = env_->NewRandomAccessFile(filepath, &read_file);
-  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+  if (!status.ok())
+    GTEST_SKIP() << "NewRandomAccessFile() not supported: " << status;
 
   char scratch[64 /* must be bigger than test_data */] = {0};
   StringPiece result;
   // read at least 1 byte more than test_data
   status = read_file->Read(0, test_data.size() + 1, &result, scratch);
-  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OUT_OF_RANGE);
+  EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OUT_OF_RANGE);
 }
 
 // The URI schemes that need to be tested are provided by the user via flags
@@ -1587,30 +1671,40 @@ static std::vector<std::string>* SchemeVector() {
   return schemes;
 }
 
-static std::vector<std::string> GetSchemes() {
-  std::vector<std::string>* user_schemes = SchemeVector();
-  std::vector<std::string> all_schemes;
+// `INSTANTIATE_TEST_SUITE_P` is called once for every `TEST_P`. However, we
+// only want to analyze the user provided schemes and those that are registered
+// only once. Hence, this function keeping another static pointer to a vector
+// which contains only the schemes under test.
+//
+// Without this additional step, when there are schemes available but the user
+// only requests schemes that don't exist, first instantiation of the test would
+// filter out all the user provided schemes (as they are not registered) but
+// subsequent instantiations would return all registered schemes (since the
+// vector with the user provided schemes is cleared).
+static std::vector<std::string>* GetSchemesFromUserOrEnv() {
+  std::vector<std::string>* all_schemes = new std::vector<std::string>;
   tensorflow::Status status =
-      tensorflow::Env::Default()->GetRegisteredFileSystemSchemes(&all_schemes);
+      tensorflow::Env::Default()->GetRegisteredFileSystemSchemes(all_schemes);
 
   if (status.ok()) {
+    std::vector<std::string>* user_schemes = SchemeVector();
     if (!user_schemes->empty()) {
-      auto is_registered_scheme = [&all_schemes](const auto& scheme) {
-        return std::find(all_schemes.begin(), all_schemes.end(), scheme) ==
-               all_schemes.end();
+      auto is_requested_scheme = [user_schemes](const auto& scheme) {
+        return std::find(user_schemes->begin(), user_schemes->end(), scheme) ==
+               user_schemes->end();
       };
-      auto end = std::remove_if(user_schemes->begin(), user_schemes->end(),
-                                is_registered_scheme);
-      user_schemes->erase(end, user_schemes->end());
-      return *user_schemes;
+      auto end = std::remove_if(all_schemes->begin(), all_schemes->end(),
+                                is_requested_scheme);
+      all_schemes->erase(end, all_schemes->end());
     }
-
-    // Next, try all schemes available
-    if (!all_schemes.empty()) return all_schemes;
   }
 
-  // Fallback: no filesystems present, hence no tests
-  return std::vector<std::string>();
+  return all_schemes;
+}
+
+static std::vector<std::string> GetSchemes() {
+  static std::vector<std::string>* schemes = GetSchemesFromUserOrEnv();
+  return *schemes;
 }
 
 INSTANTIATE_TEST_SUITE_P(ModularFileSystem, ModularFileSystemTest,
@@ -1618,32 +1712,11 @@ INSTANTIATE_TEST_SUITE_P(ModularFileSystem, ModularFileSystemTest,
 
 // Loads a shared object implementing filesystem functionality.
 static bool LoadDSO(const std::string& dso) {
-  void* dso_handle;
-  tensorflow::Status status =
-      tensorflow::Env::Default()->LoadLibrary(dso.c_str(), &dso_handle);
-  if (!status.ok()) {
-    VLOG(0) << "Couldn't load DSO: " << status;
-    return false;
-  }
-
-  void* dso_symbol;
-  status = tensorflow::Env::Default()->GetSymbolFromLibrary(
-      dso_handle, "TF_InitPlugin", &dso_symbol);
-  if (!status.ok()) {
-    VLOG(0) << "Couldn't load TF_InitPlugin: " << status;
-    return false;
-  }
-
-  TF_Status* s = TF_NewStatus();
-  (reinterpret_cast<void (*)(TF_Status*)>(dso_symbol))(s);
-  if (!s->status.ok()) {
-    VLOG(0) << "Couldn't initialize plugin: " << s->status;
-    TF_DeleteStatus(s);
-    return false;
-  }
-  TF_DeleteStatus(s);
-
-  return true;
+  tensorflow::Status status = RegisterFilesystemPlugin(dso);
+  if (!status.ok())
+    VLOG(0) << "Filesystems from '" << dso
+            << "' could not be registered: " << status;
+  return status.ok();
 }
 
 // Tests whether a URI scheme results in a filesystem that is supported.

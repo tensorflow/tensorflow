@@ -325,7 +325,7 @@ def _AssertCompatible(values, dtype):
   except ValueError as e:
     [mismatch] = e.args
     if dtype is None:
-      raise TypeError("List of Tensors when single Tensor expected")
+      raise TypeError("Expected any non-tensor type, got a tensor instead.")
     else:
       raise TypeError("Expected %s, got %s of type '%s' instead." %
                       (dtype.name, repr(mismatch), type(mismatch).__name__))

@@ -2,7 +2,7 @@
 
 # TODO(b/123403203) actually make TFLite use ruy.
 
-load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_base", "ruy_copts_skylake", "ruy_visibility")
+load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_avxvnni", "ruy_copts_base", "ruy_copts_skylake", "ruy_copts_sse42", "ruy_visibility")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
 load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
 
@@ -118,7 +118,7 @@ cc_library(
         ":opt_set",
         ":platform",
         ":time",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -196,7 +196,7 @@ cc_library(
         ":path",
         ":side_pair",
         ":size_util",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -361,8 +361,7 @@ cc_library(
         ":size_util",
         ":spec",
         ":tune",
-        "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -384,7 +383,7 @@ cc_library(
         ":path",
         ":platform",
         ":tune",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -400,7 +399,7 @@ cc_library(
         ":kernel_common",
         ":opt_set",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -415,7 +414,7 @@ cc_library(
         ":opt_set",
         ":pack_common",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -435,7 +434,7 @@ cc_library(
         ":kernel_common",
         ":opt_set",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -452,7 +451,7 @@ cc_library(
         ":pack_common",
         ":path",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -488,7 +487,7 @@ cc_library(
         ":kernel_common",
         ":opt_set",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -505,7 +504,7 @@ cc_library(
         ":pack_common",
         ":path",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -525,6 +524,120 @@ cc_library(
 )
 # End: AVX2 compilation units.
 
+# SSE42 compilation units.
+#
+# TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+# Optimization is not finished. In particular the dimensions of the kernel
+# blocks can be changed as desired.
+#
+# These must use the same compiler options.
+RUY_COPTS_BUILT_FOR_SSE42 = ruy_copts_base() + ruy_copts_sse42()
+
+cc_library(
+    name = "kernel_sse42",
+    srcs = [
+        "kernel_sse42.cc",
+    ],
+    copts = RUY_COPTS_BUILT_FOR_SSE42,
+    deps = [
+        ":check_macros",
+        ":kernel_common",
+        ":opt_set",
+        ":platform",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+    ],
+)
+
+cc_library(
+    name = "pack_sse42",
+    srcs = [
+        "pack_sse42.cc",
+    ],
+    copts = RUY_COPTS_BUILT_FOR_SSE42,
+    deps = [
+        ":check_macros",
+        ":matrix",
+        ":opt_set",
+        ":pack_common",
+        ":path",
+        ":platform",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+    ],
+)
+
+cc_library(
+    name = "have_built_path_for_sse42",
+    srcs = [
+        "have_built_path_for_sse42.cc",
+    ],
+    hdrs = [
+        "have_built_path_for.h",
+    ],
+    copts = RUY_COPTS_BUILT_FOR_SSE42,
+    deps = [
+        ":opt_set",
+        ":platform",
+    ],
+)
+# End: SSE42 compilation units.
+
+# AVX-VNNI compilation units.
+#
+# TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+# Optimization is not finished. In particular the dimensions of the kernel
+# blocks can be changed as desired.
+#
+# These must use the same compiler options.
+RUY_COPTS_BUILT_FOR_AVX_VNNI = ruy_copts_base() + ruy_copts_avxvnni()
+
+cc_library(
+    name = "kernel_avxvnni",
+    srcs = [
+        "kernel_avxvnni.cc",
+    ],
+    copts = RUY_COPTS_BUILT_FOR_AVX_VNNI,
+    deps = [
+        ":check_macros",
+        ":kernel_common",
+        ":opt_set",
+        ":platform",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+    ],
+)
+
+cc_library(
+    name = "pack_avxvnni",
+    srcs = [
+        "pack_avxvnni.cc",
+    ],
+    copts = RUY_COPTS_BUILT_FOR_AVX_VNNI,
+    deps = [
+        ":check_macros",
+        ":matrix",
+        ":opt_set",
+        ":pack_common",
+        ":path",
+        ":platform",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+    ],
+)
+
+cc_library(
+    name = "have_built_path_for_avxvnni",
+    srcs = [
+        "have_built_path_for_avxvnni.cc",
+    ],
+    hdrs = [
+        "have_built_path_for.h",
+    ],
+    copts = RUY_COPTS_BUILT_FOR_AVX_VNNI,
+    deps = [
+        ":opt_set",
+        ":platform",
+    ],
+)
+# End: AVX-VNNI compilation units.
+
 cc_library(
     name = "kernel",
     hdrs = [
@@ -539,7 +652,9 @@ cc_library(
         ":kernel_arm",  # fixdeps: keep
         ":kernel_avx2",  # fixdeps: keep
         ":kernel_avx512",  # fixdeps: keep
+        ":kernel_avxvnni",  # fixdeps: keep
         ":kernel_common",
+        ":kernel_sse42",  # fixdeps: keep
         ":matrix",
         ":opt_set",
         ":path",
@@ -548,8 +663,7 @@ cc_library(
         ":size_util",
         ":spec",
         ":tune",
-        "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -569,11 +683,13 @@ cc_library(
         ":pack_arm",  # fixdeps: keep
         ":pack_avx2",  # fixdeps: keep
         ":pack_avx512",  # fixdeps: keep
+        ":pack_avxvnni",  # fixdeps: keep
         ":pack_common",
+        ":pack_sse42",  # fixdeps: keep
         ":path",
         ":platform",
         ":tune",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -585,6 +701,8 @@ cc_library(
     deps = [
         ":have_built_path_for_avx2",
         ":have_built_path_for_avx512",
+        ":have_built_path_for_avxvnni",
+        ":have_built_path_for_sse42",
         ":platform",
     ],
 )
@@ -657,7 +775,7 @@ cc_library(
         ":trace",
         ":trmul_params",
         ":tune",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -691,7 +809,7 @@ cc_library(
         ":trmul",
         ":trmul_params",
         ":tune",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -739,6 +857,7 @@ cc_library(
         ":time",
         "@com_google_googletest//:gtest",
         ":platform",
+        "//tensorflow/lite/experimental/ruy/profiler:profiler",
     ] + ruy_test_ext_deps(),
 )
 
@@ -756,7 +875,7 @@ ruy_benchmark(
     ],
     deps = [
         "//tensorflow/lite/experimental/ruy:test_lib",
-        "@gemmlowp//:profiler",  # Note also tagged as req_dep.
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -837,6 +956,6 @@ ruy_benchmark_opt_sets(
     ],
     deps = [
         "//tensorflow/lite/experimental/ruy:test_lib",
-        "@gemmlowp//:profiler",  # Note also tagged as req_dep.
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )

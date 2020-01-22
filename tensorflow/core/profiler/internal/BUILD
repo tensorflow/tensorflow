@@ -390,6 +390,7 @@ cc_library(
     visibility = [
         "//perftools/accelerators/xprof/xprofilez:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
+        "//third_party/tf_runtime_google:__subpackages__",
     ],
     deps = [
         "//tensorflow/core:lib",
@@ -521,5 +522,16 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "profiler_interface.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )

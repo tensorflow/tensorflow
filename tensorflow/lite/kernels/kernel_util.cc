@@ -23,12 +23,28 @@ limitations under the License.
 
 namespace tflite {
 
+// Per-axis
 TfLiteStatus PopulateConvolutionQuantizationParams(
     TfLiteContext* context, const TfLiteTensor* input,
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
     const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
     int32_t* per_channel_multiplier, int* per_channel_shift) {
+  const auto* affine_quantization =
+      reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
+  return PopulateConvolutionQuantizationParams(
+      context, input, filter, bias, output, activation, multiplier, shift,
+      output_activation_min, output_activation_max, per_channel_multiplier,
+      per_channel_shift, affine_quantization->scale->size);
+}
+
+// Per-axis & per-tensor
+TfLiteStatus PopulateConvolutionQuantizationParams(
+    TfLiteContext* context, const TfLiteTensor* input,
+    const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
+    const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
+    int32_t* output_activation_min, int32_t* output_activation_max,
+    int32_t* per_channel_multiplier, int* per_channel_shift, int num_channels) {
   TF_LITE_ENSURE_EQ(context, input->quantization.type,
                     kTfLiteAffineQuantization);
   TF_LITE_ENSURE_EQ(context, filter->quantization.type,
@@ -49,18 +65,21 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     //  Currently only Int8 is supported for per channel quantization.
     TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
     TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size, num_channels);
     TF_LITE_ENSURE_EQ(
-        context, affine_quantization->scale->size,
+        context, num_channels,
         filter->dims->data[affine_quantization->quantized_dimension]);
   }
 
   // Populate multiplier and shift using affine quantization.
-  const int num_channels = affine_quantization->scale->size;
   const float input_scale = input->params.scale;
   const float output_scale = output->params.scale;
   const float* filter_scales = affine_quantization->scale->data;
   for (int i = 0; i < num_channels; ++i) {
-    const double filter_scale = static_cast<double>(filter_scales[i]);
+    // If per-tensor quantization parameter is specified, broadcast it along the
+    // quantization dimension (channels_out).
+    const float scale = is_per_channel ? filter_scales[i] : filter_scales[0];
+    const double filter_scale = static_cast<double>(scale);
     const double effective_output_scale = static_cast<double>(input_scale) *
                                           filter_scale /
                                           static_cast<double>(output_scale);
@@ -84,8 +103,11 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     // Populate quantization parameteters with multiplier and shift.
     QuantizeMultiplier(real_multiplier, multiplier, &exponent);
     *shift = -exponent;
-    CalculateActivationRangeUint8(activation, output, output_activation_min,
-                                  output_activation_max);
+  }
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, activation, output, output_activation_min,
+        output_activation_max));
   }
   return kTfLiteOk;
 }
@@ -174,26 +196,6 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
-                                   TfLiteTensor* output, int32_t* act_min,
-                                   int32_t* act_max) {
-  const int32_t qmin = std::numeric_limits<uint8_t>::min();
-  const int32_t qmax = std::numeric_limits<uint8_t>::max();
-
-  CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
-                                        act_max);
-}
-
-void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
-                                  TfLiteTensor* output, int32_t* act_min,
-                                  int32_t* act_max) {
-  const int32_t qmin = std::numeric_limits<int8_t>::min();
-  const int32_t qmax = std::numeric_limits<int8_t>::max();
-
-  CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
-                                        act_max);
-}
-
 bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
@@ -205,9 +207,9 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
                                         TfLiteIntArray** output_shape) {
-  int64_t dims1 = NumDimensions(input1);
-  int64_t dims2 = NumDimensions(input2);
-  int64_t out_dims = std::max(dims1, dims2);
+  int dims1 = NumDimensions(input1);
+  int dims2 = NumDimensions(input2);
+  int out_dims = std::max(dims1, dims2);
   if (NumElements(input1) == 0) {
     *output_shape = TfLiteIntArrayCopy(input1->dims);
     return kTfLiteOk;
@@ -215,10 +217,35 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
   for (int i = 0; i < out_dims; ++i) {
-    int64_t d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
-    int64_t d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
+    int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
+    int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
     TF_LITE_ENSURE(context, d1 == d2 || d1 == 1 || d2 == 1);
     shape->data[out_dims - i - 1] = std::max(d1, d2);
+  }
+  *output_shape = shape.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
+                                        const TfLiteTensor* input1,
+                                        const TfLiteTensor* input2,
+                                        const TfLiteTensor* input3,
+                                        TfLiteIntArray** output_shape) {
+  int dims1 = NumDimensions(input1);
+  int dims2 = NumDimensions(input2);
+  int dims3 = NumDimensions(input3);
+  int out_dims = std::max(std::max(dims1, dims2), dims3);
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
+      TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
+  for (int i = 0; i < out_dims; ++i) {
+    int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
+    int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
+    int d3 = i >= dims3 ? 1 : SizeOfDimension(input3, dims3 - i - 1);
+    int max_value = std::max(std::max(d1, d2), d3);
+    TF_LITE_ENSURE(context, d1 == 1 || d1 == max_value);
+    TF_LITE_ENSURE(context, d2 == 1 || d2 == max_value);
+    TF_LITE_ENSURE(context, d3 == 1 || d3 == max_value);
+    shape->data[out_dims - i - 1] = max_value;
   }
   *output_shape = shape.release();
   return kTfLiteOk;

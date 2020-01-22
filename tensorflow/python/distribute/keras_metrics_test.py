@@ -101,7 +101,7 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
               metric, args=(iterator.get_next(),)))
       batches_per_update = distribution.num_replicas_in_sync
 
-      self.evaluate(iterator.initialize())
+      self.evaluate(iterator.initializer)
       self.evaluate([v.initializer for v in metric.variables])
 
       batches_consumed = 0

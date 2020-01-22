@@ -46,6 +46,14 @@ bool GenerateTestSpecFromTensorflowModel(
     const std::vector<string>& input_layer_shape,
     const std::vector<string>& output_layer);
 
+// Generate test spec by executing TFLite model on random inputs.
+bool GenerateTestSpecFromTFLiteModel(
+    std::iostream& stream, const string& tflite_model_path, int num_invocations,
+    const std::vector<string>& input_layer,
+    const std::vector<string>& input_layer_type,
+    const std::vector<string>& input_layer_shape,
+    const std::vector<string>& output_layer);
+
 // Generates random values that are filled into the tensor.
 template <typename T, typename RandomFunction>
 std::vector<T> GenerateRandomTensor(const std::vector<int>& shape,

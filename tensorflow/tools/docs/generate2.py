@@ -1,3 +1,4 @@
+# lint as: python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +21,9 @@ python generate2.py --output_dir=/tmp/out
 
 Requires a local installation of `tensorflow_docs`:
 
-  ```
-  pip install git+https://github.com/tensorflow/docs
-  ```
+```
+pip install git+https://github.com/tensorflow/docs
+```
 """
 
 from __future__ import absolute_import
@@ -34,7 +35,6 @@ import textwrap
 
 from absl import app
 from absl import flags
-from distutils.version import LooseVersion
 
 import tensorflow as tf
 
@@ -45,17 +45,18 @@ from tensorflow_docs.api_generator import parser
 
 import tensorboard
 import tensorflow_estimator
+from tensorflow.python.framework import ops
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
 
+
 # Use tensorflow's `tf_inspect`, which is aware of `tf_decorator`.
-parser.tf_inspect = tf_inspect
+parser.inspect = tf_inspect
 
 # `tf` has an `__all__` that doesn't list important things like `keras`.
 # The doc generator recognizes `__all__` as the list of public symbols.
 # So patch `tf.__all__` to list everything.
 tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
-
 
 FLAGS = flags.FLAGS
 
@@ -64,75 +65,69 @@ flags.DEFINE_string(
     "/code/stable/tensorflow",
     "A url to prepend to code paths when creating links to defining code")
 
-flags.DEFINE_string(
-    "output_dir", "/tmp/out",
-    "A directory, where the docs will be output to.")
+flags.DEFINE_string("output_dir", "/tmp/out",
+                    "A directory, where the docs will be output to.")
 
 flags.DEFINE_bool("search_hints", True,
                   "Include meta-data search hints at the top of each file.")
 
-flags.DEFINE_string("site_path", "",
-                    "The prefix ({site-path}/api_docs/python/...) used in the "
-                    "`_toc.yaml` and `_redirects.yaml` files")
+flags.DEFINE_string(
+    "site_path", "", "The prefix ({site-path}/api_docs/python/...) used in the "
+    "`_toc.yaml` and `_redirects.yaml` files")
+
+_PRIVATE_MAP = {
+    "tf": ["python", "core", "compiler", "examples", "tools", "contrib"],
+    # There's some aliasing between the compats and v1/2s, so it's easier to
+    # block by name and location than by deleting, or hiding objects.
+    "tf.compat.v1.compat": ["v1", "v2"],
+    "tf.compat.v2.compat": ["v1", "v2"]
+}
+
+tf.__doc__ = """
+  ## TensorFlow
+
+  ```
+  pip install tensorflow
+  ```
+  """
 
 
-if tf.__version__.startswith('1'):
-  PRIVATE_MAP = {
-      'tf.test': ['mock'],
-      'tf': ['python', 'core', 'compiler', 'examples', 'tools', 'contrib'],
-      # There's some aliasing between the compats and v1/2s, so it's easier to
-      # block by name and location than by deleting, or hiding objects.
-      'tf.compat.v1.compat': ['v1', 'v2'],
-      'tf.compat.v2.compat': ['v1', 'v2']
-  }
+def generate_raw_ops_doc():
+  """Generates docs for `tf.raw_ops`."""
 
-  DO_NOT_DESCEND_MAP = {
-      'tf': ['cli', 'lib', 'wrappers', 'contrib'],
-  }
-else:
-  PRIVATE_MAP = {
-      'tf': ['python', 'core', 'compiler', 'examples', 'tools'],
-      # There's some aliasing between the compats and v1/2s, so it's easier to
-      # block by name and location than by deleting, or hiding objects.
-      'tf.compat.v1.compat': ['v1', 'v2'],
-      'tf.compat.v2.compat': ['v1', 'v2']
-  }
-  DO_NOT_DESCEND_MAP = {}
-  tf.__doc__ = """
-    ## TensorFlow
+  warning = textwrap.dedent("""\n
+    Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops.
+    See [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
+    for details. Unless you are library writer, you likely do not need to use
+    these ops directly.""")
 
-    ```
-    pip install tensorflow
-    ```
-    """
+  table_header = textwrap.dedent("""
 
-_raw_ops_doc = textwrap.dedent("""\n
-  Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops. See \
-  [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
-  for details. Unless you are library writer, you likely do not need to use these
-  ops directly.""")
+      | Op Name | Has Gradient |
+      |---------|:------------:|""")
 
-if LooseVersion(tf.__version__) < LooseVersion('2'):
-  tf.raw_ops.__doc__ = _raw_ops_doc
-  tf.contrib.__doc__ = """
-    Contrib module containing volatile or experimental code.
+  parts = [tf.raw_ops.__doc__, warning, table_header]
 
-    Warning: The `tf.contrib` module will not be included in TensorFlow 2.0. Many
-    of its submodules have been integrated into TensorFlow core, or spun-off into
-    other projects like [`tensorflow_io`](https://github.com/tensorflow/io), or
-    [`tensorflow_addons`](https://github.com/tensorflow/addons). For instructions
-    on how to upgrade see the
-    [Migration guide](https://www.tensorflow.org/guide/migrate).
-    """
-else:
-  tf.raw_ops.__doc__ += _raw_ops_doc
+  for op_name in sorted(dir(tf.raw_ops)):
+    try:
+      ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
+      has_gradient = "\N{HEAVY CHECK MARK}\N{VARIATION SELECTOR-16}"
+    except LookupError:
+      has_gradient = "\N{CROSS MARK}"
+
+    parts.append("| {} | {} |".format(op_name, has_gradient))
+
+  return "\n".join(parts)
+
+
+tf.raw_ops.__doc__ = generate_raw_ops_doc()
 
 
 # The doc generator isn't aware of tf_export.
 # So prefix the score tuples with -1 when this is the canonical name, +1
 # otherwise. The generator chooses the name with the lowest score.
-class TfExportAwareDocGeneratorVisitor(
-    doc_generator_visitor.DocGeneratorVisitor):
+class TfExportAwareDocGeneratorVisitor(doc_generator_visitor.DocGeneratorVisitor
+                                      ):
   """A `tf_export` aware doc_visitor."""
 
   def _score_name(self, name):
@@ -214,30 +209,25 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
   )
 
-  if LooseVersion(tf.__version__) < LooseVersion('2'):
-    root_title = 'TensorFlow'
-  elif LooseVersion(tf.__version__) >= LooseVersion('2'):
-    root_title = 'TensorFlow 2.0'
-
   doc_generator = generate_lib.DocGenerator(
-      root_title=root_title,
+      root_title="TensorFlow 2",
       py_modules=[("tf", tf)],
       base_dir=base_dirs,
       search_hints=search_hints,
       code_url_prefix=code_url_prefixes,
       site_path=FLAGS.site_path,
       visitor_cls=TfExportAwareDocGeneratorVisitor,
-      private_map=PRIVATE_MAP,
-      do_not_descend_map=DO_NOT_DESCEND_MAP)
+      private_map=_PRIVATE_MAP)
 
   doc_generator.build(output_dir)
 
 
 def main(argv):
   del argv
-  build_docs(output_dir=FLAGS.output_dir,
-             code_url_prefix=FLAGS.code_url_prefix,
-             search_hints=FLAGS.search_hints)
+  build_docs(
+      output_dir=FLAGS.output_dir,
+      code_url_prefix=FLAGS.code_url_prefix,
+      search_hints=FLAGS.search_hints)
 
 
 if __name__ == "__main__":

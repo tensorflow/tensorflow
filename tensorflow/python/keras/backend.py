@@ -909,9 +909,14 @@ def _initialize_variables(session):
     # marked as initialized.
     is_initialized = session.run(
         [variables_module.is_variable_initialized(v) for v in candidate_vars])
+    # TODO(kathywu): Some metric variables loaded from SavedModel are never
+    # actually used, and do not have an initializer.
+    should_be_initialized = [
+        (not is_initialized[n]) and v.initializer is not None
+        for n, v in enumerate(candidate_vars)]
     uninitialized_vars = []
-    for flag, v in zip(is_initialized, candidate_vars):
-      if not flag:
+    for flag, v in zip(should_be_initialized, candidate_vars):
+      if flag:
         uninitialized_vars.append(v)
       v._keras_initialized = True
     if uninitialized_vars:
@@ -980,9 +985,9 @@ def is_keras_tensor(x):
   True
 
   """
-  if not isinstance(x, (ops.Tensor,
-                        variables_module.Variable,
-                        sparse_tensor.SparseTensor)):
+  if not isinstance(x,
+                    (ops.Tensor, variables_module.Variable,
+                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
   return hasattr(x, '_keras_history')
@@ -1035,7 +1040,7 @@ def placeholder(shape=None,
     dtype = floatx()
   if not shape:
     if ndim:
-      shape = tuple([None for _ in range(ndim)])
+      shape = (None,) * ndim
   with get_graph().as_default():
     if sparse:
       x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
@@ -1300,7 +1305,6 @@ def zeros(shape, dtype=None, name=None):
     v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
     if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
-    track_variable(v)
     return v
 
 
@@ -1335,7 +1339,6 @@ def ones(shape, dtype=None, name=None):
     v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
     if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
-    track_variable(v)
     return v
 
 
@@ -1450,12 +1453,10 @@ def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
 
   Example:
 
-  # TensorFlow example
   >>> kvar = tf.keras.backend.random_uniform_variable((2,3), 0, 1)
   >>> kvar
   <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
   dtype=float32)>
-
   """
   if dtype is None:
     dtype = floatx()
@@ -1486,12 +1487,10 @@ def random_normal_variable(shape, mean, scale, dtype=None, name=None,
 
   Example:
 
-  # TensorFlow example
   >>> kvar = tf.keras.backend.random_normal_variable((2,3), 0, 1)
   >>> kvar
   <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
   dtype=float32)>
-
   """
   if dtype is None:
     dtype = floatx()
@@ -1628,27 +1627,23 @@ def dot(x, y):
 
   Examples:
 
-  # dot product between tensors
   >>> x = tf.keras.backend.placeholder(shape=(2, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
   <tf.Tensor ... shape=(2, 4) dtype=float32>
 
-  # dot product between tensors
   >>> x = tf.keras.backend.placeholder(shape=(32, 28, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
   <tf.Tensor ... shape=(32, 28, 4) dtype=float32>
 
-  # Theano-like behavior example
   >>> x = tf.keras.backend.random_uniform_variable(shape=(2, 3), low=0, high=1)
   >>> y = tf.keras.backend.ones((4, 3, 5))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> tf.keras.backend.int_shape(xy)
   (2, 4, 5)
-
   """
   if ndim(x) is not None and (ndim(x) > 2 or ndim(y) > 2):
     x_shape = []
@@ -1768,7 +1763,7 @@ def batch_dot(x, y, axes=None):
     else:
       axes = [x_ndim - 1, y_ndim - 2]
 
-  if py_any([isinstance(a, (list, tuple)) for a in axes]):
+  if py_any(isinstance(a, (list, tuple)) for a in axes):
     raise ValueError('Multiple target dimensions are not supported. ' +
                      'Expected: None, int, (int, int), ' +
                      'Provided: ' + str(axes))
@@ -1922,6 +1917,24 @@ def gather(reference, indices):
 
   Returns:
       A tensor of same type as `reference`.
+
+  Examples:
+
+  >>> var = tf.keras.backend.variable([[1, 2, 3], [4, 5, 6]])
+  >>> tf.keras.backend.eval(var)
+  array([[1., 2., 3.],
+         [4., 5., 6.]], dtype=float32)
+  >>> var_gathered = tf.keras.backend.gather(var, [0])
+  >>> tf.keras.backend.eval(var_gathered)
+  array([[1., 2., 3.]], dtype=float32)
+  >>> var_gathered = tf.keras.backend.gather(var, [1])
+  >>> tf.keras.backend.eval(var_gathered)
+  array([[4., 5., 6.]], dtype=float32)
+  >>> var_gathered = tf.keras.backend.gather(var, [0,1,0])
+  >>> tf.keras.backend.eval(var_gathered)
+  array([[1., 2., 3.],
+         [4., 5., 6.],
+         [1., 2., 3.]], dtype=float32)
   """
   return array_ops.gather(reference, indices)
 
@@ -2400,7 +2413,6 @@ def maximum(x, y):
 
   Examples:
 
-  # maximum of two tensors
   >>> x = tf.Variable([[1, 2], [3, 4]])
   >>> y = tf.Variable([[2, 1], [0, -1]])
   >>> m = tf.keras.backend.maximum(x, y)
@@ -2408,7 +2420,6 @@ def maximum(x, y):
   <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
   array([[2, 2],
          [3, 4]], dtype=int32)>
-
   """
   return math_ops.maximum(x, y)
 
@@ -3223,11 +3234,43 @@ def reverse(x, axes):
 
 
 # VALUE MANIPULATION
+_VALUE_SET_CODE_STRING = """
+  >>> K = tf.keras.backend  # Common keras convention
+  >>> v = K.variable(1.)
+
+  >>> # reassign
+  >>> K.set_value(v, 2.)
+  >>> print(K.get_value(v))
+  2.0
+
+  >>> # increment
+  >>> K.set_value(v, K.get_value(v) + 1)
+  >>> print(K.get_value(v))
+  3.0
+
+  Variable semantics in TensorFlow 2 are eager execution friendly. The above 
+  code is roughly equivalent to:
+
+  >>> v = tf.Variable(1.)
+
+  >>> _ = v.assign(2.)
+  >>> print(v.numpy())
+  2.0
+
+  >>> _ = v.assign_add(1.)
+  >>> print(v.numpy())
+  3.0"""[3:]  # Prune first newline and indent to match the docstring template.
 
 
 @keras_export('keras.backend.get_value')
 def get_value(x):
   """Returns the value of a variable.
+
+  `backend.get_value` is the compliment of `backend.set_value`, and provides
+  a generic interface for reading from variables while abstracting away the
+  differences between TensorFlow 1.x and 2.x semantics.
+
+  {snippet}
 
   Arguments:
       x: input variable.
@@ -3280,8 +3323,14 @@ def batch_get_value(tensors):
 def set_value(x, value):
   """Sets the value of a variable, from a Numpy array.
 
+  `backend.set_value` is the compliment of `backend.get_value`, and provides
+  a generic interface for assigning to variables while abstracting away the
+  differences between TensorFlow 1.x and 2.x semantics.
+
+  {snippet}
+
   Arguments:
-      x: Tensor to set to a new value.
+      x: Variable to set to a new value.
       value: Value to set the tensor to, as a Numpy array
           (of the same shape).
   """
@@ -3346,6 +3395,10 @@ def batch_set_value(tuples):
           assign_ops.append(assign_op)
           feed_dict[assign_placeholder] = value
         get_session().run(assign_ops, feed_dict=feed_dict)
+
+
+get_value.__doc__ = get_value.__doc__.format(snippet=_VALUE_SET_CODE_STRING)
+set_value.__doc__ = set_value.__doc__.format(snippet=_VALUE_SET_CODE_STRING)
 
 
 @keras_export('keras.backend.print_tensor')
@@ -4580,7 +4633,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
     target = flatten(target)
     output = array_ops.reshape(output, [-1, output_shape[-1]])
 
-  if py_any([_is_symbolic_tensor(v) for v in [target, output]]):
+  if py_any(_is_symbolic_tensor(v) for v in [target, output]):
     with get_graph().as_default():
       res = nn.sparse_softmax_cross_entropy_with_logits_v2(
           labels=target, logits=output)
@@ -5424,9 +5477,9 @@ def local_conv(inputs,
     if data_format == 'channels_first':
       slices.append(slice(None))
 
-    slices.extend([slice(position[d] * strides[d],
-                         position[d] * strides[d] + kernel_size[d])
-                   for d in spatial_dimensions])
+    slices.extend(
+        slice(position[d] * strides[d], position[d] * strides[d] +
+              kernel_size[d]) for d in spatial_dimensions)
 
     if data_format == 'channels_last':
       slices.append(slice(None))
@@ -5549,47 +5602,17 @@ def bias_add(x, bias, data_format=None):
     raise ValueError(
         'Unexpected bias dimensions %d, expect to be 1 or %d dimensions' %
         (len(bias_shape), ndim(x)))
-  # pylint: disable=g-no-augmented-assignment
-  if ndim(x) == 5:
+
+  if len(bias_shape) == 1:
     if data_format == 'channels_first':
-      if len(bias_shape) == 1:
-        x = x + reshape(bias, (1, bias_shape[0], 1, 1, 1))
-      else:
-        x = x + reshape(bias, (1, bias_shape[3]) + bias_shape[:3])
-    elif data_format == 'channels_last':
-      if len(bias_shape) == 1:
-        x = x + reshape(bias, (1, 1, 1, bias_shape[0]))
-      else:
-        x = x + reshape(bias, (1,) + bias_shape)
-  elif ndim(x) == 4:
+      return nn.bias_add(x, bias, data_format='NCHW')
+    return nn.bias_add(x, bias, data_format='NHWC')
+  if ndim(x) in (3, 4, 5):
     if data_format == 'channels_first':
-      if len(bias_shape) == 1:
-        if _has_nchw_support():
-          x = nn.bias_add(x, bias, data_format='NCHW')
-        else:
-          x = x + reshape(bias, (1, bias_shape[0], 1, 1))
-      else:
-        x = x + reshape(bias, (1, bias_shape[2]) + bias_shape[:2])
-    elif data_format == 'channels_last':
-      if len(bias_shape) == 1:
-        x = nn.bias_add(x, bias, data_format='NHWC')
-      else:
-        x = x + reshape(bias, (1,) + bias_shape)
-  elif ndim(x) == 3:
-    if data_format == 'channels_first':
-      if len(bias_shape) == 1:
-        x = x + reshape(bias, (1, bias_shape[0], 1))
-      else:
-        x = x + reshape(bias, (1, bias_shape[1], bias_shape[0]))
-    elif data_format == 'channels_last':
-      if len(bias_shape) == 1:
-        x = x + reshape(bias, (1, 1, bias_shape[0]))
-      else:
-        x = x + reshape(bias, (1,) + bias_shape)
-  else:
-    x = nn.bias_add(x, bias)
-  # pylint: enable=g-no-augmented-assignment
-  return x
+      bias_reshape_axis = (1, bias_shape[-1]) + bias_shape[:-1]
+      return x + reshape(bias, bias_reshape_axis)
+    return x + reshape(bias, (1,) + bias_shape)
+  return nn.bias_add(x, bias)
 
 
 # RANDOMNESS

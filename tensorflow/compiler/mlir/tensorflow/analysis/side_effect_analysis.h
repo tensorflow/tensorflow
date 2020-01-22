@@ -22,10 +22,10 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Region.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Region.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 
 namespace mlir {
 namespace TF {
@@ -42,12 +42,12 @@ class ResourceAliasAnalysis {
   ResourceAliasAnalysis(ResourceAliasAnalysis&&) = default;
 
   // Returns if the analysis fails to resolve a resource-type value.
-  bool IsUnknownResource(const Value* resource) const;
+  bool IsUnknownResource(const Value resource) const;
 
   // Returns the set unique IDs which `resource` could alias. Requires that
   // IsUnknownResource(resource) == true.
   const llvm::SmallSet<int64_t, 8>& GetResourceUniqueIds(
-      const Value* resource) const;
+      const Value resource) const;
 
  private:
   ResourceAliasAnalysis() = default;
@@ -56,13 +56,13 @@ class ResourceAliasAnalysis {
   void AnalyzeFunction(FuncOp func_op);
 
   // Maps each resource-type value to a set of unique IDs that it could alias.
-  llvm::SmallDenseMap<const Value*, llvm::SmallSet<int64_t, 8>, 8>
+  llvm::SmallDenseMap<Value, llvm::SmallSet<int64_t, 8>, 8>
       resource_value_to_ids_;
 };
 
 // An analysis that runs on a function and infers the control predecessors and
 // successors for each op, based on side-effects on known and unknown resources.
-// Side-effecting ops on uknown resources are conservatively treated as
+// Side-effecting ops on unknown resources are conservatively treated as
 // interfering with all known resource op accesses. It distinguishes accesses
 // based on whether they are read-only, and read-only ops do not interfer with
 // each other.
@@ -105,7 +105,7 @@ class SideEffectAnalysis {
   void ConsumeChildAnalyses(
       llvm::SmallVector<SideEffectAnalysis, 4>&& children);
 
-  // Updates control_predecessors_ for `op` that is being visted, on the given
+  // Updates control_predecessors_ for `op` that is being visited, on the given
   // `resource_id`.
   void AddPredecessorsForAccess(int64_t resource_id, Operation* op,
                                 bool read_only);
@@ -124,7 +124,7 @@ class SideEffectAnalysis {
       sorted_control_successors_;
 
   // Internal per-resource data structure when we build the dependencies.
-  struct PerResourceAcessInfo {
+  struct PerResourceAccessInfo {
     // Last op that writes the resource before the current op being analyzed.
     Operation* last_write = nullptr;
     // Read ops since last_write before the current op being analyzed.
@@ -139,7 +139,7 @@ class SideEffectAnalysis {
     // write for a the current write being analyzed.
     bool tracked_last_unknown_write_for_write = false;
   };
-  llvm::SmallDenseMap<int64_t, PerResourceAcessInfo, 8>
+  llvm::SmallDenseMap<int64_t, PerResourceAccessInfo, 8>
       per_resource_access_info_;
 };
 

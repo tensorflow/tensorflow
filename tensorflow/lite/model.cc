@@ -129,23 +129,23 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
-    const char* buffer, size_t buffer_size, TfLiteVerifier* extra_verifier,
-    ErrorReporter* error_reporter) {
+    const char* caller_owned_buffer, size_t buffer_size,
+    TfLiteVerifier* extra_verifier, ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
-  flatbuffers::Verifier base_verifier(reinterpret_cast<const uint8_t*>(buffer),
-                                      buffer_size);
+  flatbuffers::Verifier base_verifier(
+      reinterpret_cast<const uint8_t*>(caller_owned_buffer), buffer_size);
   if (!VerifyModelBuffer(base_verifier)) {
     error_reporter->Report("The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 
-  if (extra_verifier &&
-      !extra_verifier->Verify(buffer, buffer_size, error_reporter)) {
+  if (extra_verifier && !extra_verifier->Verify(caller_owned_buffer,
+                                                buffer_size, error_reporter)) {
     return nullptr;
   }
 
-  return BuildFromBuffer(buffer, buffer_size, error_reporter);
+  return BuildFromBuffer(caller_owned_buffer, buffer_size, error_reporter);
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
@@ -375,8 +375,6 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     return kTfLiteError;
   }
 
-  // Affine-quantization.
-  quantization->type = kTfLiteAffineQuantization;
   const size_t num_scales = src_quantization->scale()->size();
 
   // Ensure that the quantization dimension is valid.
@@ -401,6 +399,8 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     return kTfLiteError;
   }
 
+  // Affine-quantization.
+  quantization->type = kTfLiteAffineQuantization;
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
   affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
@@ -558,15 +558,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const auto* src_quantization = tensor->quantization();
     TfLiteQuantization quantization;
     if (ParseQuantization(src_quantization, &quantization, dims) != kTfLiteOk) {
+      error_reporter_->Report("Tensor %d has invalid quantization parameters.",
+                              i);
       status = kTfLiteError;
-      continue;
-    }
-
-    const auto* src_sparsity = tensor->sparsity();
-    TfLiteSparsity* sparsity = nullptr;
-    if (ParseSparsity(src_sparsity, &sparsity) != kTfLiteOk) {
-      status = kTfLiteError;
-      continue;
     }
 
     bool is_variable = tensor->is_variable();
@@ -579,6 +573,15 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
 
+      // TODO(b/144999664): Only constant sparse tensor is supported now.
+      const auto* src_sparsity = tensor->sparsity();
+      TfLiteSparsity* sparsity = nullptr;
+      if (ParseSparsity(src_sparsity, &sparsity) != kTfLiteOk) {
+        error_reporter_->Report("Tensor %d has invalid sparsity parameters.",
+                                i);
+        status = kTfLiteError;
+      }
+
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_, sparsity) != kTfLiteOk) {
@@ -587,7 +590,6 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      // TODO(b/144999664): Non-constant sparse tensor is not supported now.
       if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
                                                  dims, quantization,
                                                  is_variable) != kTfLiteOk) {

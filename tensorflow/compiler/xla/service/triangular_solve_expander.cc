@@ -313,7 +313,7 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
         // (namely, X[i * block_size:] = 0), L[i, :i] @ X[:i]
         if (backward) {
           start = {j * block_size,
-                   std::max(0LL, (num_blocks - i) * block_size)};
+                   std::max(int64{0}, (num_blocks - i) * block_size)};
           end = {k, n};
         } else {
           start = {j * block_size, 0};

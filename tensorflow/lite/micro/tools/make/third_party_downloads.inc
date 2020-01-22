@@ -20,20 +20,16 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/5deff575d14ed255616d23b61d7b95f3b6dd19a8.zip"
-CMSIS_MD5 := "3adb1a3d4b7aabfbb40972c609730c9e"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/d76d5e3acb87cf089daf50b31f991026149ecb6c.zip"
+CMSIS_MD5 := "866f79cfb86f7aee29a320aeda530aca"
 
-AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.0.0.zip"
-AM_SDK_MD5 := "70332bc6968602bd85bee600ca81d06f"
+AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
+AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
+AM_SDK_DEST := AmbiqSuite-Rel2.2.0
 
-AP3_URL := "https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276c087d95aab7cb234f1d4c9eaaba.zip"
-AP3_MD5 := "fc9cbda4562ea97ce21b6df542b66597"
-
-CUST_CMSIS_URL := "https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
-CUST_CMSIS_MD5 := "4fb327201034ee0a820b72de1e807d27"
-
-SPARKFUN_EDGE_BSP_URL := "https://github.com/sparkfun/SparkFun_Edge_BSP/archive/620f5f7a69fc69e38cda8132b69302d9c28ba0dd.zip"
-SPARKFUN_EDGE_BSP_MD5 := "10fb37d721c782327edc981d3b5b07cf"
+SF_BSPS_URL := "https://github.com/sparkfun/SparkFun_Apollo3_AmbiqSuite_BSPs/archive/v0.0.7.zip"
+SF_BSPS_MD5 := "34199f7e754735661d1c8a70a40ca7a3"
+SF_BSPS_DEST := boards_sfe
 
 STM32_BARE_LIB_URL := "https://github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
 STM32_BARE_LIB_MD5 := "282bff40d4d0b92278fd123a3b6e3123"
@@ -54,3 +50,12 @@ KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2019_11_21.zip"
 PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"
+
+PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_01_13.zip"
+PERSON_MODEL_INT8_MD5 := "8a7d2c70325f53136faea6dde517b8cc"
+
+EMBARC_OSP_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_osp/archive/embarc_mli.zip"
+EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
+
+EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/6316034d421cbbb59756239908d7c9a99075a3bb.zip"
+EMBARC_MLI_MD5 := "db0910cf0e07e43f74ae7a31de485d56"

@@ -152,6 +152,9 @@ class OpKernel {
                           kOpIsExpensiveThresholdCycles);
   }
 
+  // Returns a pointer to the tensor stored inside constant ops.
+  virtual const Tensor* const_tensor() const { return nullptr; }
+
   // Updates the dynamic cost estimate, which is used to determine whether this
   // op is expensive. The new cost estimate is a weighted average of the old
   // cost estimate and the latest cost.
@@ -169,7 +172,9 @@ class OpKernel {
   // Accessors.
   const NodeDef& def() const { return *def_; }
   const string& name() const;              // Same as def().name()
+  absl::string_view name_view() const { return name_view_; }
   const string& type_string() const;       // Same as def().op()
+  absl::string_view type_string_view() const { return type_string_view_; }
   const string& requested_device() const;  // Same as def().device()
 
   int num_inputs() const { return input_types_.size(); }
@@ -228,6 +233,8 @@ class OpKernel {
   const MemoryTypeVector output_memory_types_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+  const absl::string_view name_view_;
+  const absl::string_view type_string_view_;
   const int graph_def_version_;
   const bool is_deferred_;
   bool expensive_;
@@ -258,10 +265,10 @@ class AsyncOpKernel : public OpKernel {
   typedef std::function<void()> DoneCallback;
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
-  AsyncOpKernel* AsAsync() final { return this; }
-  const AsyncOpKernel* AsAsync() const final { return this; }
+  AsyncOpKernel* AsAsync() override { return this; }
+  const AsyncOpKernel* AsAsync() const override { return this; }
 
-  void Compute(OpKernelContext* context) final;
+  void Compute(OpKernelContext* context) override;
 };
 
 // Wraps a tensor that is held by an Op across calls to Compute(). For memory
@@ -296,6 +303,7 @@ class OpKernelConstruction {
   OpKernelConstruction(DeviceType device_type, DeviceBase* device,
                        Allocator* allocator, const NodeDef* node_def,
                        const OpDef* op_def, FunctionLibraryRuntime* flib,
+                       ResourceMgr* resource_mgr,
                        const DataTypeSlice& input_types,
                        const MemoryTypeSlice& input_memory_types,
                        const DataTypeSlice& output_types,
@@ -323,6 +331,8 @@ class OpKernelConstruction {
   // complete. See comment above.
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp);
+  Status allocate_temp(DataType type, const TensorShape& shape,
+                       Tensor* out_temp, AllocatorAttributes allocator_attr);
 
   // Allocates a Tensor of the specified type and shape which the Op
   // plans to maintain as persistent state. out_persistent holds the
@@ -382,6 +392,9 @@ class OpKernelConstruction {
   // CHECK_NOTNULL(function_library())->Instantiate("Foo", ...).
   FunctionLibraryRuntime* function_library() const { return flib_; }
 
+  // Shared resources accessible to this kernel.
+  ResourceMgr* resource_manager() const { return resource_mgr_; }
+
   // The GraphDef version whose behavior we should follow.
   int graph_def_version() const { return graph_def_version_; }
 
@@ -410,6 +423,7 @@ class OpKernelConstruction {
   const NodeDef* def_;
   const OpDef* op_def_;
   FunctionLibraryRuntime* flib_;
+  ResourceMgr* const resource_mgr_;
   DataTypeSlice input_types_;
   MemoryTypeSlice input_memory_types_;
   DataTypeSlice output_types_;
@@ -1413,6 +1427,10 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
                       const NodeDef& def, int graph_def_version,
                       OpKernel** kernel);
+Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
+                      Allocator* allocator, FunctionLibraryRuntime* flib,
+                      ResourceMgr* resource_mgr, const NodeDef& def,
+                      int graph_def_version, OpKernel** kernel);
 
 // Returns into 'device_types' the subset of prioritized_types that this
 // binary has registered for the given NodeDef.

@@ -39,9 +39,10 @@ class Pad : public NodeShader {
     auto input = ctx.graph->FindInputs(ctx.node->id)[0];
     auto attr = absl::any_cast<PadAttributes>(ctx.node->operation.attributes);
 
-    if (attr.type != PaddingContentType::ZEROS) {
+    if (attr.type != PaddingContentType::ZEROS &&
+        attr.type != PaddingContentType::REFLECT) {
       return UnimplementedError(
-          "Padding with content type ~= ZEROS is not supported.");
+          "Only ZERO and REFLECT padding types are supported.");
     }
     if (attr.appended.h < 0 || attr.appended.w < 0 || attr.appended.c < 0 ||
         attr.prepended.h < 0 || attr.prepended.w < 0 || attr.prepended.c < 0) {
@@ -57,10 +58,32 @@ class Pad : public NodeShader {
          int4(attr.prepended.w, attr.prepended.h, attr.prepended.c, 0)},
         {"src_channels", input->tensor.shape.c},
     };
+    std::string reflection = "";
+    if (attr.type == PaddingContentType::REFLECT) {
+      reflection = R"(
+        if (src_x < 0) {
+          src_x *= -1;
+        }
+
+        if (src_y < 0) {
+          src_y *= -1;
+        }
+
+        if (src_x >= $input_data_0_w$) {
+          int diff = src_x - $input_data_0_w$;
+          src_x = $input_data_0_w$ - 1 - diff - 1;
+        }
+
+        if (src_y >= $input_data_0_h$) {
+          int diff = src_y - $input_data_0_h$;
+          src_y = $input_data_0_h$ - 1 - diff - 1;
+        })";
+    }
 
     std::string source = R"(
   int src_x = gid.x - $prepended.x$;
   int src_y = gid.y - $prepended.y$;
+  )" + reflection + R"(
   if (src_x >= 0 && src_x < $input_data_0_w$ && src_y >= 0 && src_y < $input_data_0_h$) {
     int start_channel = gid.z * 4;
     for (int i = 0; i < 4; ++i) {

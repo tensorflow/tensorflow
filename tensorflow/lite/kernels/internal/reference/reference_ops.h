@@ -29,6 +29,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/round.h"
-#include "tensorflow/lite/kernels/internal/scoped_profiling_label_wrapper.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -193,7 +193,7 @@ inline void Relu(const RuntimeShape& input_shape, const T* input_data,
 template <typename T>
 inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Relu1 (not fused)");
+  ruy::profiler::ScopeLabel label("Relu1 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const T val = input_data[i];
@@ -206,7 +206,7 @@ inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
 
 inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
-  ScopedProfilingLabelWrapper label("Relu6 (not fused)");
+  ruy::profiler::ScopeLabel label("Relu6 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
@@ -221,7 +221,7 @@ template <typename T>
 inline void ReluX(const tflite::ReluParams& params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Quantized ReluX (not fused)");
+  ruy::profiler::ScopeLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const int32 val = static_cast<int32_t>(input_data[i]);
@@ -239,7 +239,7 @@ template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Quantized ReluX (not fused)");
+  ruy::profiler::ScopeLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   const T max_value = params.quantized_activation_max;
   const T min_value = params.quantized_activation_min;
@@ -254,7 +254,7 @@ inline void ReluX(const tflite::ActivationParams& params,
 inline void LeakyRelu(const tflite::LeakyReluParams& params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
-  ScopedProfilingLabelWrapper label("LeakyRelu (not fused)");
+  ruy::profiler::ScopeLabel label("LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
@@ -269,7 +269,7 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
                               const T* input_data,
                               const RuntimeShape& output_shape,
                               T* output_data) {
-  ScopedProfilingLabelWrapper label("LeakyRelu (not fused)");
+  ruy::profiler::ScopeLabel label("LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   static const int32 quantized_min = std::numeric_limits<T>::min();
   static const int32 quantized_max = std::numeric_limits<T>::max();
@@ -426,7 +426,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, int16* output_data) {
-  ScopedProfilingLabelWrapper label("Mul/Int16");
+  ruy::profiler::ScopeLabel label("Mul/Int16");
 
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
@@ -445,7 +445,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, uint8* output_data) {
-  ScopedProfilingLabelWrapper label("Mul/Int16Uint8");
+  ruy::profiler::ScopeLabel label("Mul/Int16Uint8");
   int32 output_offset = params.output_offset;
   int32 output_activation_min = params.quantized_activation_min;
   int32 output_activation_max = params.quantized_activation_max;
@@ -582,7 +582,7 @@ inline void Div(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, uint8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  ScopedProfilingLabelWrapper label("Div/8bit");
+  ruy::profiler::ScopeLabel label("Div/8bit");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
@@ -696,7 +696,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const float* input2_data,
                                const RuntimeShape& output_shape,
                                float* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/float");
+  ruy::profiler::ScopeLabel label("BroadcastSub4DSlow/float");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -737,7 +737,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const uint8* input2_data,
                                const RuntimeShape& output_shape,
                                uint8* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/uint8");
+  ruy::profiler::ScopeLabel label("BroadcastSub4DSlow/uint8");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -801,7 +801,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const int32* input2_data,
                                const RuntimeShape& output_shape,
                                int32* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/int32");
+  ruy::profiler::ScopeLabel label("BroadcastSub4DSlow/int32");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -841,7 +841,7 @@ void BroadcastSub4DSlow(const ArithmeticParams& params,
                         const RuntimeShape& input1_shape, const T* input1_data,
                         const RuntimeShape& input2_shape, const T* input2_data,
                         const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/templated");
+  ruy::profiler::ScopeLabel label("BroadcastSub4DSlow/templated");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -919,7 +919,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const int32* input2_data,
                               const RuntimeShape& output_shape,
                               int32* output_data) {
-  ScopedProfilingLabelWrapper label("SubWithActivation");
+  ruy::profiler::ScopeLabel label("SubWithActivation");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
@@ -949,7 +949,7 @@ inline void Sub16(const ArithmeticParams& params,
                   const RuntimeShape& input1_shape, const int16_t* input1_data,
                   const RuntimeShape& input2_shape, const int16_t* input2_data,
                   const RuntimeShape& output_shape, int16_t* output_data) {
-  ScopedProfilingLabelWrapper label("Sub/Int16");
+  ruy::profiler::ScopeLabel label("Sub/Int16");
   const int input1_shift = params.input1_shift;
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
@@ -997,7 +997,7 @@ template <typename Scalar>
 void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
           const Scalar* const* input_data, const RuntimeShape& output_shape,
           Scalar* output_data) {
-  ScopedProfilingLabelWrapper label("Pack");
+  ruy::profiler::ScopeLabel label("Pack");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   int inputs_count = params.inputs_count;
@@ -1025,7 +1025,7 @@ template <typename Scalar>
 void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
             const Scalar* input_data, const RuntimeShape& output_shape,
             Scalar* const* output_datas) {
-  ScopedProfilingLabelWrapper label("Unpack");
+  ruy::profiler::ScopeLabel label("Unpack");
   const int dimensions = input_shape.DimensionsCount();
   const int outputs_count = params.num_split;
 
@@ -1059,7 +1059,7 @@ void PackWithScaling(const PackParams& params,
                      const RuntimeShape* const* input_shapes,
                      const uint8* const* input_data,
                      const RuntimeShape& output_shape, uint8* output_data) {
-  ScopedProfilingLabelWrapper label("PackWithScaling");
+  ruy::profiler::ScopeLabel label("PackWithScaling");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   const int32* input_zeropoint = params.input_zeropoint;
@@ -1109,7 +1109,7 @@ void DepthConcatenation(const ConcatenationParams& params,
                         const RuntimeShape* const* input_shapes,
                         const Scalar* const* input_data,
                         const RuntimeShape& output_shape, Scalar* output_data) {
-  ScopedProfilingLabelWrapper label("DepthConcatenation");
+  ruy::profiler::ScopeLabel label("DepthConcatenation");
   auto params_copy = params;
   params_copy.axis = 3;
   Concatenation(params_copy, input_shapes, input_data, output_shape,
@@ -1513,7 +1513,7 @@ template <typename Scalar>
 void Split(const SplitParams& params, const RuntimeShape& input_shape,
            const Scalar* input_data, const RuntimeShape* const* output_shapes,
            Scalar* const* output_data) {
-  ScopedProfilingLabelWrapper label("Split");
+  ruy::profiler::ScopeLabel label("Split");
   const int split_dimensions = input_shape.DimensionsCount();
   int axis = params.axis < 0 ? params.axis + split_dimensions : params.axis;
   int outputs_count = params.num_split;
@@ -1617,7 +1617,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
-  ScopedProfilingLabelWrapper label("LogSoftmax/8bit");
+  ruy::profiler::ScopeLabel label("LogSoftmax/8bit");
   const int32 input_multiplier = params.input_multiplier;
   const int32 input_left_shift = params.input_left_shift;
   const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
@@ -1771,7 +1771,7 @@ inline void Requantize(const input_type* input_data, int32_t size,
                        int32_t effective_scale_multiplier,
                        int32_t effective_scale_shift, int32_t input_zeropoint,
                        int32_t output_zeropoint, output_type* output_data) {
-  ScopedProfilingLabelWrapper label("Requantize");
+  ruy::profiler::ScopeLabel label("Requantize");
   const bool same_scale =
       (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
   if (same_scale) {
@@ -1808,7 +1808,7 @@ inline void Requantize(const input_type* input_data, int32_t size,
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
-  ScopedProfilingLabelWrapper label("FakeQuant");
+  ruy::profiler::ScopeLabel label("FakeQuant");
   float rmin = op_params.minmax.min;
   float rmax = op_params.minmax.max;
   int num_bits = op_params.num_bits;
@@ -1861,7 +1861,7 @@ inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& coords_shape, const CoordsT* coords_data,
                    const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Gather");
+  ruy::profiler::ScopeLabel label("Gather");
   int axis = op_params.axis;
   if (axis < 0) {
     axis += input_shape.DimensionsCount();
@@ -1899,7 +1899,7 @@ inline void GatherNd(const RuntimeShape& params_shape,
                      const RuntimeShape& indices_shape,
                      const IndicesT* indices_data,
                      const RuntimeShape& output_shape, ParamsT* output_data) {
-  ScopedProfilingLabelWrapper label("GatherNd");
+  ruy::profiler::ScopeLabel label("GatherNd");
 
   int n_slices = 1;
   int slice_size = 1;
@@ -1936,7 +1936,7 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
                       const RuntimeShape& updates_shape,
                       const UpdatesT* updates_data,
                       const RuntimeShape& output_shape, UpdatesT* output_data) {
-  ScopedProfilingLabelWrapper label("ScatterNd");
+  ruy::profiler::ScopeLabel label("ScatterNd");
 
   int n_slices = 1;
   int slice_size = 1;
@@ -1972,6 +1972,22 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
   }
 }
 
+inline void ComputeInterpolationValues(const float value, const float scale,
+                                       const bool half_pixel_centers,
+                                       int32 input_size, float* scaled_value,
+                                       int32* lower_bound, int32* upper_bound) {
+  if (half_pixel_centers) {
+    *scaled_value = (value + 0.5f) * scale - 0.5f;
+  } else {
+    *scaled_value = value * scale;
+  }
+  float scaled_value_floor = std::floor(*scaled_value);
+  *lower_bound =
+      std::max(static_cast<int32>(scaled_value_floor), static_cast<int32>(0));
+  *upper_bound =
+      std::min(static_cast<int32>(std::ceil(*scaled_value)), input_size - 1);
+}
+
 template <typename T>
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
@@ -1980,6 +1996,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const int32* output_size_data,
                            const RuntimeShape& unextended_output_shape,
                            T* output_data) {
+  // If half_pixel_centers is True, align_corners must be False.
+  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -2013,13 +2031,15 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
 
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      float input_y = y * height_scale;
-      int32 y0 = static_cast<int32>(std::floor(input_y));
-      int32 y1 = std::min(y0 + 1, input_height - 1);
+      float input_y;
+      int32 y0, y1;
+      ComputeInterpolationValues(y, height_scale, op_params.half_pixel_centers,
+                                 input_height, &input_y, &y0, &y1);
       for (int x = 0; x < output_width; ++x) {
-        float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(std::floor(input_x));
-        int32 x1 = std::min(x0 + 1, input_width - 1);
+        float input_x;
+        int32 x0, x1;
+        ComputeInterpolationValues(x, width_scale, op_params.half_pixel_centers,
+                                   input_width, &input_x, &x0, &x1);
         for (int c = 0; c < depth; ++c) {
           T interpolation =
               static_cast<T>(input_data[Offset(input_shape, b, y0, x0, c)] *
@@ -2044,7 +2064,7 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("SpaceToBatchND");
+  ruy::profiler::ScopeLabel label("SpaceToBatchND");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input1_shape =
@@ -2102,7 +2122,7 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* crops_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("BatchToSpaceND");
+  ruy::profiler::ScopeLabel label("BatchToSpaceND");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input1_shape =
@@ -2208,7 +2228,7 @@ inline void Slice(const tflite::SliceParams& op_params,
 template <typename T>
 inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
-  ScopedProfilingLabelWrapper label("Exp");
+  ruy::profiler::ScopeLabel label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
     output_data[idx] = std::exp(input_data[idx]);
   }
@@ -2561,6 +2581,57 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
 }
 
 template <typename D, typename T>
+void BroadcastSelect4DSlow(const RuntimeShape& input_condition_shape,
+                           const D* input_condition_data,
+                           const RuntimeShape& input_x_shape,
+                           const T* input_x_data,
+                           const RuntimeShape& input_y_shape,
+                           const T* input_y_data,
+                           const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
+
+  const RuntimeShape extended_output_shape =
+      RuntimeShape::ExtendedShape(4, output_shape);
+
+  NdArrayDesc<4> desc_condition;
+  NdArrayDesc<4> desc_x;
+  NdArrayDesc<4> desc_y;
+  NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
+                                      input_y_shape, &desc_condition, &desc_x,
+                                      &desc_y);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest
+  // stride, typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for
+  // the best cache behavior.
+  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
+    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
+      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
+        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
+          const int condition_index =
+              SubscriptToIndex(desc_condition, b, y, x, c);
+          const int x_index = SubscriptToIndex(desc_x, b, y, x, c);
+          const int y_index = SubscriptToIndex(desc_y, b, y, x, c);
+          output_data[Offset(extended_output_shape, b, y, x, c)] =
+              input_condition_data[condition_index] ? input_x_data[x_index]
+                                                    : input_y_data[y_index];
+        }
+      }
+    }
+  }
+}
+
+template <typename D, typename T>
 void SelectTrueCoords(const RuntimeShape& input_condition_shape,
                       const D* input_condition_data, T* output_data) {
   const size_t size = input_condition_shape.FlatSize();
@@ -2742,7 +2813,7 @@ template <typename Scalar>
 void Reverse(int axis, const RuntimeShape& input_shape,
              const Scalar* input_data, const RuntimeShape& output_shape,
              Scalar* output_data) {
-  ScopedProfilingLabelWrapper label("Reverse");
+  ruy::profiler::ScopeLabel label("Reverse");
 
   int outer_size = 1;
   for (int i = 0; i < axis; ++i) {
@@ -2770,7 +2841,7 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
                      const int batch_dim, const RuntimeShape& input_shape,
                      const Scalar* input_data, const RuntimeShape& output_shape,
                      Scalar* output_data) {
-  ScopedProfilingLabelWrapper label("ReverseSequence");
+  ruy::profiler::ScopeLabel label("ReverseSequence");
 
   int outer_size = 1;
   int outer_dim = std::min(batch_dim, seq_dim);
@@ -2847,7 +2918,7 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
 template <typename T>
 inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
                       const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("ReferenceHardSwish/Float");
+  ruy::profiler::ScopeLabel label("ReferenceHardSwish/Float");
   auto matching_size = MatchingFlatSize(input_shape, output_shape);
   const T* in_end = input_data + matching_size;
   for (; input_data < in_end; input_data++, output_data++) {
@@ -2881,7 +2952,7 @@ template <typename T>
 inline void HardSwish(const HardSwishParams& params,
                       const RuntimeShape& input_shape, const T* input_data,
                       const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("ReferenceHardSwish/Quantized");
+  ruy::profiler::ScopeLabel label("ReferenceHardSwish/Quantized");
 
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -2979,6 +3050,25 @@ inline void HardSwish(const HardSwishParams& params,
     output_value =
         std::max<int16_t>(output_value, std::numeric_limits<T>::min());
     output_data[i] = output_value;
+  }
+}
+
+template <typename T>
+inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
+                       const RuntimeShape& segment_ids_shape,
+                       const int32_t* segment_ids_data,
+                       const RuntimeShape& output_shape, T* output_data) {
+  const int segment_flat_size =
+      MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
+
+  memset(output_data, 0, sizeof(T) * output_shape.FlatSize());
+
+  for (int i = 0; i < input_shape.Dims(0); i++) {
+    int output_index = segment_ids_data[i];
+    for (int j = 0; j < segment_flat_size; ++j) {
+      output_data[output_index * segment_flat_size + j] +=
+          input_data[i * segment_flat_size + j];
+    }
   }
 }
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -45,6 +46,9 @@ class ProfilerSession {
 
   tensorflow::Status Status() LOCKS_EXCLUDED(mutex_);
 
+  tensorflow::Status CollectData(profiler::XSpace* space)
+      LOCKS_EXCLUDED(mutex_);
+
   tensorflow::Status CollectData(RunMetadata* run_metadata)
       LOCKS_EXCLUDED(mutex_);
 
@@ -65,7 +69,7 @@ class ProfilerSession {
   bool active_ GUARDED_BY(mutex_);
 
   tensorflow::Status status_ GUARDED_BY(mutex_);
-  const uint64 start_time_micros_;
+  const uint64 start_time_ns_;
   mutex mutex_;
 };
 
