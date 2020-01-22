@@ -84,10 +84,10 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
                                           filter_scale /
                                           static_cast<double>(output_scale);
     int32_t significand;
-    int shift;
-    QuantizeMultiplier(effective_output_scale, &significand, &shift);
+    int channel_shift;
+    QuantizeMultiplier(effective_output_scale, &significand, &channel_shift);
     per_channel_multiplier[i] = significand;
-    per_channel_shift[i] = shift;
+    per_channel_shift[i] = channel_shift;
   }
 
   // Populate scalar quantization parameters.
