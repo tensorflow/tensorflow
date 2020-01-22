@@ -541,7 +541,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
