@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "tf_cc_
 load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 
 package(
     default_visibility = [":internal"],
@@ -755,7 +756,7 @@ tf_cc_test(
     ],
     # TODO(b/141643254) Re-enable msan after fixing use-of-uninitialized-value
     # error.
-    tags = ["nomsan"],
+    tags = ["nomsan"] + tf_cuda_tests_tags(),
     deps = [
         ":common",
         ":compilation_passes",
