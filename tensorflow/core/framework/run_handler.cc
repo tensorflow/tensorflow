@@ -156,7 +156,8 @@ class ThreadWorkSource {
         non_blocking_work_queues_(non_blocking_work_sharding_factor_),
         blocking_inflight_(0),
         non_blocking_inflight_(0),
-        traceme_id_(0) {
+        traceme_id_(0),
+        version_(0) {
     queue_waiters_.next = &queue_waiters_;
     queue_waiters_.prev = &queue_waiters_;
     for (int i = 0; i < NonBlockingWorkShardingFactor(); ++i) {
@@ -295,10 +296,14 @@ class ThreadWorkSource {
   void SetTracemeId(int64 value) { traceme_id_ = value; }
   void SetRank(int64 value) { rank_ = value; }
 
-  void SetWaiter(Waiter* waiter, mutex* mutex) {
+  void SetWaiter(uint64 version, Waiter* waiter, mutex* mutex) {
     mutex_lock l(run_handler_waiter_mu_);
+    if (version_ > version) {
+      return;
+    }
     sub_thread_pool_waiter_ = waiter;
     sub_thread_pool_waiter_mu_ = mutex;
+    version_ = version;
   }
 
   int64 GetInflightTaskCount(bool is_blocking) {
@@ -353,6 +358,7 @@ class ThreadWorkSource {
   std::atomic<int64> rank_;
 
   mutex run_handler_waiter_mu_;
+  uint64 version_ GUARDED_BY(run_handler_waiter_mu_);
   mutex* sub_thread_pool_waiter_mu_ GUARDED_BY(run_handler_waiter_mu_);
   Waiter* sub_thread_pool_waiter_ GUARDED_BY(run_handler_waiter_mu_);
 };
@@ -923,19 +929,6 @@ class RunHandlerPool::Impl {
       for (int i = 0; i < num_active_requests; ++i) {
         (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
         (*thread_work_sources)[i]->SetRank(i);
-        int sub_thread_pool_id =
-            sub_thread_pool_end_request_percentage_.size() - 1;
-        for (int j = 0; j < sub_thread_pool_end_request_percentage_.size();
-             ++j) {
-          if (i < num_active_requests *
-                      sub_thread_pool_end_request_percentage_[j]) {
-            sub_thread_pool_id = j;
-            break;
-          }
-        }
-        (*thread_work_sources)[i]->SetWaiter(
-            &queue_waiters_[sub_thread_pool_id],
-            &waiters_mu_[sub_thread_pool_id]);
       }
       version = ++version_;
     }
@@ -944,61 +937,34 @@ class RunHandlerPool::Impl {
   }
 
   void ReleaseHandler(RunHandler::Impl* handler) LOCKS_EXCLUDED(mu_) {
-    std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
-        thread_work_sources;
-    uint64 version;
-    int num_active_requests;
-    {
-      mutex_lock l(mu_);
-      DCHECK_GT(sorted_active_handlers_.size(), 0);
+    mutex_lock l(mu_);
+    DCHECK_GT(sorted_active_handlers_.size(), 0);
 
-      CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);
-      CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);
+    CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);   // Crash OK.
+    CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);  // Crash OK.
 
-      uint64 now = tensorflow::EnvTime::NowMicros();
-      double elapsed = (now - handler->start_time_us()) / 1000.0;
-      time_hist_.Add(elapsed);
+    uint64 now = tensorflow::EnvTime::NowMicros();
+    double elapsed = (now - handler->start_time_us()) / 1000.0;
+    time_hist_.Add(elapsed);
 
-      // Erase from and update sorted_active_handlers_. Add it to the end of
-      // free_handlers_.
-      auto iter = std::find(sorted_active_handlers_.begin(),
-                            sorted_active_handlers_.end(), handler);
-      DCHECK(iter != sorted_active_handlers_.end())
-          << "Unexpected handler: " << handler
-          << " is being requested for release";
+    // Erase from and update sorted_active_handlers_. Add it to the end of
+    // free_handlers_.
+    auto iter = std::find(sorted_active_handlers_.begin(),
+                          sorted_active_handlers_.end(), handler);
+    DCHECK(iter != sorted_active_handlers_.end())
+        << "Unexpected handler: " << handler
+        << " is being requested for release";
 
-      // Remove this handler from this list and add it to the list of free
-      // handlers.
-      sorted_active_handlers_.erase(iter);
-      free_handlers_.push_back(handler);
-      DCHECK_LE(free_handlers_.size(), max_handlers_);
+    // Remove this handler from this list and add it to the list of free
+    // handlers.
+    sorted_active_handlers_.erase(iter);
+    free_handlers_.push_back(handler);
+    DCHECK_LE(free_handlers_.size(), max_handlers_);
+    LogInfo();
 
-      num_active_requests = sorted_active_handlers_.size();
-      thread_work_sources =
-          std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
-              new Eigen::MaxSizeVector<ThreadWorkSource*>(num_active_requests));
-      thread_work_sources->resize(num_active_requests);
-      for (int i = 0; i < num_active_requests; ++i) {
-        (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
-        (*thread_work_sources)[i]->SetRank(i);
-        int sub_thread_pool_id =
-            sub_thread_pool_end_request_percentage_.size() - 1;
-        for (int j = 0; j < sub_thread_pool_end_request_percentage_.size();
-             ++j) {
-          if (i < num_active_requests *
-                      sub_thread_pool_end_request_percentage_[j]) {
-            sub_thread_pool_id = j;
-            break;
-          }
-        }
-        (*thread_work_sources)[i]->SetWaiter(
-            &queue_waiters_[sub_thread_pool_id],
-            &waiters_mu_[sub_thread_pool_id]);
-      }
-      version = ++version_;
-      LogInfo();
-    }
-    RecomputePoolStats(num_active_requests, version, *thread_work_sources);
+    // We do not recompute pool stats during release. The side effect is that
+    // there may be empty thread work sources in the queue. However, any new
+    // requests will trigger recomputation.
   }
 
  private:
@@ -1037,6 +1003,20 @@ void RunHandlerPool::Impl::RecomputePoolStats(
     int num_active_requests, uint64 version,
     const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources) {
   if (num_active_requests == 0) return;
+
+  int sub_thread_pool_id = 0;
+  for (int i = 0; i < num_active_requests; ++i) {
+    while (
+        sub_thread_pool_id <
+            sub_thread_pool_end_request_percentage_.size() - 1 &&
+        i >= num_active_requests *
+                 sub_thread_pool_end_request_percentage_[sub_thread_pool_id]) {
+      sub_thread_pool_id++;
+    }
+    thread_work_sources[i]->SetWaiter(version,
+                                      &queue_waiters_[sub_thread_pool_id],
+                                      &waiters_mu_[sub_thread_pool_id]);
+  }
 
   int num_threads = run_handler_thread_pool()->NumThreads();
   int num_blocking_threads = run_handler_thread_pool()->NumBlockingThreads();
