@@ -615,17 +615,19 @@ class Model(network.Network, version_utils.VersionSelector):
             the batch size, or 1 if that cannot be determined. If x is a
             `tf.data` dataset, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
-            This argument is not supported with array inputs.
+            When passing an infinitely repeating dataset, you must specify the
+            `steps_per_epoch` argument. This argument is not supported with
+            array inputs.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
             at the end of every epoch. If 'validation_steps' is None, validation
             will run until the `validation_data` dataset is exhausted. In the
-            case of a infinite dataset, it will run into a infinite loop.
-            If 'validation_steps' is specified and only part of the dataset
-            will be consumed, the evaluation will start from the beginning of
-            the dataset at each epoch. This ensures that the same validation
-            samples are used every time.
+            case of an infinitely repeated dataset, it will run into an
+            infinite loop. If 'validation_steps' is specified and only part of
+            the dataset will be consumed, the evaluation will start from the
+            beginning of the dataset at each epoch. This ensures that the same
+            validation samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections_abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
