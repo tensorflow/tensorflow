@@ -18,11 +18,15 @@ value (typically a `tf.Tensor`) modified by a loop. See `tf.while_loop`.
 
 ### Indirect modifications and hidden side effects in TensorFlow control flow
 
-<!-- TODO(mdan) Refine this paragraph well - it's important -->
-Key Point: We recommend using a functional programming style and immutable
-Python collections.
+Key Point: We recommend using a functional programming style, immutable Python
+collections, TensorFlow ops and collections. Only TensorFlow objects should be
+used for side effects.
 
-#### AutoGraph analyzes code to detect modifications
+#### AutoGraph analyzes code to detect modifications to Python objects
+
+Note: Modifications to TensorFlow objects, such as `tf.Variable`, are tracked
+using a different mechanism (automatic control dependencies) which does not
+rely on code analysis.
 
 One of the most important functions of AutoGraph is to rewrite Python control
 flow statements into equivalent TensorFlow ops. This process requires "wiring"
@@ -70,7 +74,12 @@ code, in order to transform them into control flow variables. Static analysis
 is generally performed on single functions - Python's dynamic nature limits its
 effectiveness across functions.
 
-#### Modifications are not detected across functions
+#### Modifications of Python objects are not detected across functions
+
+Note: Modifications to TensorFlow objects, such as `tf.Variable`, are tracked
+using a different mechanism (automatic control dependencies). Modifications
+to `tf.Variable` objects are correctly handled even when called in other
+functions.
 
 Because static analysis is limited to single functions, modifications that are
 performed in other functions are not visible to AutoGraph:
@@ -86,7 +95,7 @@ while x > 0:
 
 This can be easily remedied using a functional programming style - writing
 functions that use argument for all their inputs and return values for all their
-outputs.
+outputs:
 
 ```
 def change(y):
@@ -97,7 +106,43 @@ while x > 0:
   y = change(y)  # Okay -- y can now be properly tracked!
 ```
 
-#### Modifications are not detected in methods
+As noted before, this limitation does not apply to most TensorFlow objects,
+although it is still a good idea to use functional programming style for
+better code readability:
+
+```
+def change(y_var):
+  y_var.assign_add(1)
+
+y = tf.Variable(1)
+while x > 0:
+  change(y)  # This is still okay -- TensorFlow side effects are robust.
+```
+
+Keep in mind however that certain types like `tf.TensorArray` don't support
+side effects and must have their result assigned, otherwise they may raise an
+error:
+
+```
+def change(ta):
+  ta.write(0, 1)  # Incorrect use of TensorArray - will raise an error
+```
+
+In other words, `tf.TensorArray` must be handled using functional programming
+style:
+
+```
+def change(ta):
+  ta = ta.write(0, 1)  # Modifications create a new TensorArray efficiently.
+  return ta
+
+ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
+while x > 0:
+  # TensorArray must be handled using functional programming style.
+  ta = change(ta)
+```
+
+#### Modifications of Python objects are not detected in methods
 
 A special case of hidden side effects are methods, which are commonly used
 to change the value of objects:
