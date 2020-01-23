@@ -34,8 +34,11 @@ class LeakyReLU(Layer):
   """Leaky version of a Rectified Linear Unit.
 
   It allows a small gradient when the unit is not active:
-  $$f(x) = alpha * x if x < 0$$
-  $$f(x) = x if x >= 0$$
+
+  ```
+    f(x) = alpha * x if x < 0
+    f(x) = x if x >= 0
+  ```
 
   Usage:
 
@@ -84,8 +87,12 @@ class PReLU(Layer):
   """Parametric Rectified Linear Unit.
 
   It follows:
-  `f(x) = alpha * x for x < 0`,
-  `f(x) = x for x >= 0`,
+
+  ```
+    f(x) = alpha * x for x < 0
+    f(x) = x for x >= 0
+  ```
+
   where `alpha` is a learned array with the same shape as x.
 
   Input shape:
@@ -174,8 +181,11 @@ class ELU(Layer):
   """Exponential Linear Unit.
 
   It follows:
-  `f(x) =  alpha * (exp(x) - 1.) for x < 0`,
-  `f(x) = x for x >= 0`.
+
+  ```
+    f(x) =  alpha * (exp(x) - 1.) for x < 0
+    f(x) = x for x >= 0
+  ```
 
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
@@ -212,8 +222,11 @@ class ThresholdedReLU(Layer):
   """Thresholded Rectified Linear Unit.
 
   It follows:
-  `f(x) = x for x > theta`,
-  `f(x) = 0 otherwise`.
+
+  ```
+    f(x) = x for x > theta
+    f(x) = 0 otherwise`
+  ```
 
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
@@ -287,9 +300,12 @@ class ReLU(Layer):
   With default values, it returns element-wise `max(x, 0)`.
 
   Otherwise, it follows:
-  $$f(x) = max_value if x >= max_value$$
-  $$f(x) = x if threshold <= x < max_value$$
-  $$f(x) = negative_slope * (x - threshold) otherwise$$
+
+  ```
+    f(x) = max_value if x >= max_value
+    f(x) = x if threshold <= x < max_value
+    f(x) = negative_slope * (x - threshold) otherwise
+  ```
 
   Usage:
 

@@ -25,6 +25,16 @@ cc_library(
 )
 
 cc_library(
+    name = "hardware_type_utils",
+    srcs = ["hardware_type_utils.cc"],
+    hdrs = ["hardware_type_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+    ],
+)
+
+cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
 )

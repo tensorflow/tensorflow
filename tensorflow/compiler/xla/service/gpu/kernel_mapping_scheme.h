@@ -149,19 +149,8 @@ class ReductionCodegenInfo {
                                 bool is_row_reduction)
       : mapping_scheme_(mapping_scheme), is_row_reduction_(is_row_reduction) {}
 
-  void SetCurrentOutputLinearIndexAddress(llvm::AllocaInst* a) {
-    current_output_linear_index_address_ = a;
-  }
-
   const KernelMappingScheme& GetKernelMappingScheme() const {
     return mapping_scheme_;
-  }
-
-  // Returns the address of the memory that stores the linear index of the
-  // current output. Since we are processing reduction to contiguous physical
-  // dimensions, this linear index is the linear index of the 1D output array.
-  llvm::AllocaInst* GetCurrentOutputLinearIndexAddress() const {
-    return current_output_linear_index_address_;
   }
 
   void SetCurrentOutputInboundAddress(llvm::AllocaInst* a) {
@@ -172,9 +161,13 @@ class ReductionCodegenInfo {
     return current_output_inbound_address_;
   }
 
+  // Gets writeable pointer to the address (or addresses) used to store
+  // reduction accumulators.
   AddressVector* GetMutablePartialResultAddresses() {
     return &partial_result_addresses_;
   }
+
+  // Returns the address (addresses) of the reduction accumulators.
   absl::Span<llvm::AllocaInst* const> GetPartialResultAddresses() const {
     return partial_result_addresses_;
   }
@@ -194,21 +187,10 @@ class ReductionCodegenInfo {
                             : KernelMappingScheme::DimY;
   }
 
-  int GetPartialResultIndex(int64 x_iter_num) const {
-    if (IsRowReduction()) {
-      return 0;
-    }
-    return x_iter_num;
-  }
-
  private:
   const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
-  // The address of the memory that stores the linear index of the current
-  // output, assuming that the output doesn't change the layout of the kept
-  // elements in the reduction input.
-  llvm::AllocaInst* current_output_linear_index_address_ = nullptr;
   llvm::AllocaInst* current_output_inbound_address_ = nullptr;
   bool is_row_reduction_;
 };

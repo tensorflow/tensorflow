@@ -96,7 +96,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
+#if defined(__ARM_FEATURE_DSP)
   const int32_t buf_size = arm_fully_connected_s8_get_buffer_size(accum_depth);
   int16_t* buf = nullptr;
   TF_LITE_ENSURE_OK(context, get_cmsis_scratch_buffer(context, &buf, buf_size));

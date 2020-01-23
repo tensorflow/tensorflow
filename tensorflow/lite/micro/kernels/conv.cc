@@ -37,8 +37,6 @@ constexpr int kMaxChannels = 256;
 
 // This file has 2 implementation of Conv.
 
-const int kTensorNotAllocated = -1;
-
 struct OpData {
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -267,8 +265,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
-                                 conv::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = conv::Prepare;
+  r.invoke = conv::Eval;
   return &r;
 }
 

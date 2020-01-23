@@ -1,3 +1,4 @@
+# lint as: python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,8 +45,10 @@ from tensorflow_docs.api_generator import parser
 
 import tensorboard
 import tensorflow_estimator
+from tensorflow.python.framework import ops
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
+
 
 # Use tensorflow's `tf_inspect`, which is aware of `tf_decorator`.
 parser.inspect = tf_inspect
@@ -88,13 +91,36 @@ tf.__doc__ = """
   ```
   """
 
-_raw_ops_doc = textwrap.dedent("""\n
-  Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops. See \
-  [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
-  for details. Unless you are library writer, you likely do not need to use these
-  ops directly.""")
 
-tf.raw_ops.__doc__ += _raw_ops_doc
+def generate_raw_ops_doc():
+  """Generates docs for `tf.raw_ops`."""
+
+  warning = textwrap.dedent("""\n
+    Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops.
+    See [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
+    for details. Unless you are library writer, you likely do not need to use
+    these ops directly.""")
+
+  table_header = textwrap.dedent("""
+
+      | Op Name | Has Gradient |
+      |---------|:------------:|""")
+
+  parts = [tf.raw_ops.__doc__, warning, table_header]
+
+  for op_name in sorted(dir(tf.raw_ops)):
+    try:
+      ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
+      has_gradient = "\N{HEAVY CHECK MARK}\N{VARIATION SELECTOR-16}"
+    except LookupError:
+      has_gradient = "\N{CROSS MARK}"
+
+    parts.append("| {} | {} |".format(op_name, has_gradient))
+
+  return "\n".join(parts)
+
+
+tf.raw_ops.__doc__ = generate_raw_ops_doc()
 
 
 # The doc generator isn't aware of tf_export.

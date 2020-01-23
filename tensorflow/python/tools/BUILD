@@ -2,6 +2,7 @@
 #   Tools for manipulating TensorFlow graphs.
 
 load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "target_llvm_triple")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -368,7 +369,8 @@ genrule(
         "--dir \"$$(dirname $(location //tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb))\" " +
         "--output_prefix $(@D)/compiled_model " +
         "--cpp_class CompiledModel " +
-        "--tag_set serve "
+        "--target_triple " + target_llvm_triple() +
+        " --tag_set serve "
     ),
     tools = [
         ":saved_model_cli",

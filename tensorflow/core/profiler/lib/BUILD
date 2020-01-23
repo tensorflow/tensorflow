@@ -75,8 +75,6 @@ cc_library(
         ":scoped_annotation",
         ":traceme",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/profiler/internal:annotation_stack",
         "@com_google_absl//absl/strings",
     ],
 )

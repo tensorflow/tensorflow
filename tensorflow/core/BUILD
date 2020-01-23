@@ -1383,7 +1383,7 @@ alias(
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
-    srcs = if_android([":mobilesrcs"]),
+    srcs = if_android([":mobile_srcs"]),
     copts = tf_copts(android_optimization_level_override = None),
     defines = ["SUPPORT_SELECTIVE_REGISTRATION"],
     linkopts = ["-lz"],

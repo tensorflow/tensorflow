@@ -154,7 +154,7 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
 
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
+#if defined(__ARM_FEATURE_DSP)
   RuntimeShape filter_shape = GetTensorShape(filter);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
@@ -250,7 +250,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.output_shift = -data->output_shift;
 
-#if defined(ARM_MATH_DSP)
+#if defined(__ARM_FEATURE_DSP)
   // optimizations utilize loop unrolling which requires the following power
   // of two kernel dimensions
   RuntimeShape filter_shape = GetTensorShape(filter);
