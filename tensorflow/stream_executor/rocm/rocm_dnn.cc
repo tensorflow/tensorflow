@@ -96,6 +96,75 @@ string ToString(miopenStatus_t status) {
   }
 }
 
+string ToString(miopenConvFwdAlgorithm_t algorithm) {
+  string s;
+  switch (algorithm) {
+    case miopenConvolutionFwdAlgoGEMM:
+      s = "GEMM";
+      break;
+    case miopenConvolutionFwdAlgoDirect:
+      s = "Direct";
+      break;
+    case miopenConvolutionFwdAlgoFFT:
+      s = "FFT";
+      break;
+    case miopenConvolutionFwdAlgoWinograd:
+      s = "Winograd";
+      break;
+    case miopenConvolutionFwdAlgoImplicitGEMM:
+      s = "Implicit GEMM";
+      break;
+    case miopenConvolutionFwdAlgoStaticCompiledGEMM:
+      s = "Static Compiled GEMM";
+      break;
+  }
+  return s;
+}
+
+string ToString(miopenConvBwdWeightsAlgorithm_t algorithm) {
+  string s;
+  switch (algorithm) {
+    case miopenConvolutionBwdWeightsAlgoGEMM:
+      s = "GEMM";
+      break;
+    case miopenConvolutionBwdWeightsAlgoDirect:
+      s = "Direct";
+      break;
+    case miopenConvolutionBwdWeightsAlgoWinograd:
+      s = "Winograd";
+      break;
+    case miopenConvolutionBwdWeightsAlgoImplicitGEMM:
+      s = "Implicit GEMM";
+      break;
+  }
+  return s;
+}
+
+string ToString(miopenConvBwdDataAlgorithm_t algorithm) {
+  string s;
+  switch (algorithm) {
+    case miopenConvolutionBwdDataAlgoGEMM:
+      s = "GEMM";
+      break;
+    case miopenConvolutionBwdDataAlgoDirect:
+      s = "Direct";
+      break;
+    case miopenConvolutionBwdDataAlgoFFT:
+      s = "FFT";
+      break;
+    case miopenConvolutionBwdDataAlgoWinograd:
+      s = "Winograd";
+      break;
+    case miopenTransposeBwdDataAlgoGEMM:
+      s = "Transpose GEMM";
+      break;
+    case miopenConvolutionBwdDataAlgoImplicitGEMM:
+      s = "Implicit GEMM";
+      break;
+  }
+  return s;
+}
+
 string ToString(miopenConvAlgorithm_t algorithm) {
   string s;
   switch (algorithm) {
@@ -120,6 +189,7 @@ string ToString(miopenConvAlgorithm_t algorithm) {
   }
   return s;
 }
+
 // RAII wrapper for all calls to MIOpen with a MIOpen handle argument.
 //
 // See MIOpenAccess::GetHandle() for details.
@@ -451,6 +521,31 @@ dnn::ProfileResult GetProfileResultFromConvSolution(
   return profile_result;
 }
 
+dnn::ProfileResult GetProfileResultFromConvAlgoPerf(
+    dnn::ConvolutionKind kind, miopenConvAlgoPerf_t algorithm) {
+  dnn::ProfileResult profile_result;
+  switch (kind) {
+    case dnn::ConvolutionKind::FORWARD:
+      profile_result.set_algorithm(
+          {static_cast<AlgorithmDesc::Index>(algorithm.fwd_algo), false});
+      break;
+    case dnn::ConvolutionKind::BACKWARD_DATA:
+      profile_result.set_algorithm(
+          {static_cast<AlgorithmDesc::Index>(algorithm.bwd_data_algo), false});
+      break;
+    case dnn::ConvolutionKind::BACKWARD_FILTER:
+      profile_result.set_algorithm(
+          {static_cast<AlgorithmDesc::Index>(algorithm.bwd_weights_algo),
+           false});
+      break;
+    default:
+      LOG(FATAL) << "Unexpected convolution kind " << static_cast<int>(kind);
+      break;
+  }
+  profile_result.set_elapsed_time_in_ms(algorithm.time);
+  profile_result.set_scratch_size(algorithm.memory);
+  return profile_result;
+}
 }  // namespace
 
 // Wraps a MIOpen handle and provides access to it through miopenHandle_t
@@ -508,6 +603,14 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   // (i.e. most efficient) algorithm will be returned
   tensorflow::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
                                  &return_best_algo_only_);
+
+  // by default, use Immediate Mode APIs for convolution
+  use_immediate_mode_ = true;
+  // swich to Find Mode if env var TF_ROCM_USE_FIND_MODE is set
+  bool use_find_mode = false;
+  tensorflow::ReadBoolFromEnvVar("TF_ROCM_USE_FIND_MODE", false,
+                                 &use_find_mode);
+  use_immediate_mode_ = !use_find_mode;
 }
 
 port::Status MIOpenSupport::Init() {
@@ -1627,11 +1730,6 @@ miopenDataType_t ToMIOpenDataType(
   }
 }
 
-miopenDataType_t ToMIOpenDataType(dnn::DataType data_type,
-                                  dnn::FilterLayout filter_layout) {
-  return ToMIOpenDataType(data_type);
-}
-
 miopenRNNInputMode_t ToMIOpenRnnInputMode(dnn::RnnInputMode input_mode) {
   switch (input_mode) {
     case dnn::RnnInputMode::kRnnLinearSkip:
@@ -1675,23 +1773,6 @@ template <typename Base>
 class MixinBase : public Base {};
 template <>
 class MixinBase<void> {};
-
-dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
-  switch (data_type) {
-    case dnn::DataType::kFloat:
-    case dnn::DataType::kDouble:
-      return data_type;
-    case dnn::DataType::kHalf:
-    case dnn::DataType::kBFloat16:
-      // FIXME: Check if MIOpen can switch dynamically change accumulator type
-      return dnn::DataType::kFloat;
-    case dnn::DataType::kInt8:
-    case dnn::DataType::kInt32:
-      return dnn::DataType::kInt32;
-    default:
-      LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
-  }
-}
 
 }  // namespace
 
@@ -2738,7 +2819,6 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     const dnn::AlgorithmConfig& algorithm_config,
     ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
     DeviceMemory<uint8>* scratch_memory) {
-
   absl::optional<dnn::AlgorithmDesc> input_algo_desc =
       algorithm_config.algorithm();
 
@@ -2844,6 +2924,11 @@ port::Status MIOpenSupport::DoConvolve(
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
 
+  // Alpha is the scaling factor for input.
+  float alpha = 1.0;
+  // Beta is the scaling factor for output.
+  float beta = 0.0;
+
   const bool is_profiling = output_profile_result != nullptr;
 
   std::unique_ptr<GpuTimer> timer;
@@ -2861,16 +2946,19 @@ port::Status MIOpenSupport::DoConvolve(
     }
   }
 
-  const uint64_t solution_id = algorithm_desc.algo_id();
-
   miopenStatus_t status = miopenStatusSuccess;
   switch (kind) {
     case dnn::ConvolutionKind::FORWARD: {
-      status = wrap::miopenConvolutionForwardImmediate(
-          miopen.handle(), filter.handle(), filter_data.opaque(),
-          input_nd.handle(), input_data.opaque(), conv.handle(),
-          output_nd.handle(), output_data.opaque(), scratch_memory.opaque(),
-          scratch_memory.size(), solution_id);
+      if (use_immediate_mode_) {
+        status = wrap::miopenConvolutionForwardImmediate(
+            miopen.handle(), filter.handle(), filter_data.opaque(),
+            input_nd.handle(), input_data.opaque(), conv.handle(),
+            output_nd.handle(), output_data.opaque(), scratch_memory.opaque(),
+            scratch_memory.size(),
+            static_cast<uint64_t>(algorithm_desc.algo_id()));
+      } else {
+ 	// PLACEHOLDER FOR FIND MODE IMPLEMENTATION
+      }
 
       break;
     }
@@ -2883,11 +2971,16 @@ port::Status MIOpenSupport::DoConvolve(
           stream, miopen.handle(), ToMIOpenDataType(element_type),
           &output_back_descriptor, output_data, &transform_scratch);
 
-      status = wrap::miopenConvolutionBackwardDataImmediate(
-          miopen.handle(), output_nd.handle(), output_data.opaque(),
-          filter.handle(), filter_data.opaque(), conv.handle(),
-          input_nd.handle(), input_data.opaque(), scratch_memory.opaque(),
-          scratch_memory.size(), solution_id);
+      if (use_immediate_mode_) {
+        status = wrap::miopenConvolutionBackwardDataImmediate(
+            miopen.handle(), output_nd.handle(), output_data.opaque(),
+            filter.handle(), filter_data.opaque(), conv.handle(),
+            input_nd.handle(), input_data.opaque(), scratch_memory.opaque(),
+            scratch_memory.size(),
+            static_cast<uint64_t>(algorithm_desc.algo_id()));
+      } else {
+	// PLACEHOLDER FOR FIND MODE IMPLEMENTATION
+      }
       break;
     }
     case dnn::ConvolutionKind::BACKWARD_FILTER: {
@@ -2899,11 +2992,16 @@ port::Status MIOpenSupport::DoConvolve(
           stream, miopen.handle(), ToMIOpenDataType(element_type),
           &output_back_descriptor, output_data, &transform_scratch);
 
-      status = wrap::miopenConvolutionBackwardWeightsImmediate(
-          miopen.handle(), output_nd.handle(), output_data.opaque(),
-          input_nd.handle(), input_data.opaque(), conv.handle(),
-          filter.handle(), filter_data.opaque(), scratch_memory.opaque(),
-          scratch_memory.size(), solution_id);
+      if (use_immediate_mode_) {
+        status = wrap::miopenConvolutionBackwardWeightsImmediate(
+            miopen.handle(), output_nd.handle(), output_data.opaque(),
+            input_nd.handle(), input_data.opaque(), conv.handle(),
+            filter.handle(), filter_data.opaque(), scratch_memory.opaque(),
+            scratch_memory.size(),
+            static_cast<uint64_t>(algorithm_desc.algo_id()));
+      } else {
+	// PLACEHOLDER FOR FIND MODE IMPLEMENTATION
+      }
       break;
     }
     default:
@@ -2950,11 +3048,35 @@ bool MIOpenSupport::GetConvolveAlgorithms(
 }
 
 bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
-    dnn::ConvolutionKind kind, Stream* stream, dnn::DataType element_type,
-    const dnn::BatchDescriptor& input_descriptor,
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
+    ScratchAllocator* scratch_allocator,
+    std::vector<dnn::ProfileResult>* out_algorithms) {
+  return use_immediate_mode_
+             ? GetMIOpenConvolveAlgorithmsImmediateMode(
+                   kind, element_type, stream, input_descriptor, input_data,
+                   filter_descriptor, filter_data, output_descriptor,
+                   output_data, convolution_descriptor, scratch_allocator,
+                   out_algorithms)
+             : GetMIOpenConvolveAlgorithmsFindMode(
+                   kind, element_type, stream, input_descriptor, input_data,
+                   filter_descriptor, filter_data, output_descriptor,
+                   output_data, convolution_descriptor, scratch_allocator,
+                   out_algorithms);
+}
+
+bool MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemoryBase output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    ScratchAllocator* scratch_allocator,
     std::vector<dnn::ProfileResult>* out_algorithms) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
@@ -3153,6 +3275,21 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
     }
   }
 
+  return true;
+}
+
+bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemoryBase output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    ScratchAllocator* scratch_allocator,
+    std::vector<dnn::ProfileResult>* out_algorithms) {
+
+  // PLACEHOLDER FOR FIND MODE IMPLEMENTATION
+  
   return true;
 }
 
