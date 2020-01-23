@@ -19,59 +19,42 @@ limitations under the License.
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/parse_text_proto.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
 
+namespace tensorflow {
 namespace {
-// Error collector that simply ignores errors reported.
-class NoOpErrorCollector : public tensorflow::protobuf::io::ErrorCollector {
- public:
-  void AddError(int line, int column, const std::string& message) override {}
-};
-
 inline llvm::StringRef StringViewToRef(absl::string_view view) {
   return {view.data(), view.size()};
 }
 }  // namespace
 
-namespace tensorflow {
-
 Status LoadProtoFromBuffer(absl::string_view input,
-                           tensorflow::protobuf::Message* proto) {
-  tensorflow::protobuf::TextFormat::Parser parser;
-  // Don't produce errors when attempting to parse text format as it would fail
-  // when the input is actually a binary file.
-  NoOpErrorCollector collector;
-  parser.RecordErrorsTo(&collector);
+                           protobuf::MessageLite* proto) {
   // Attempt to parse as text.
-  tensorflow::protobuf::io::ArrayInputStream input_stream(input.data(),
-                                                          input.size());
-  if (parser.Parse(&input_stream, proto)) {
-    return Status::OK();
-  }
+  if (ParseTextProto(input, "", proto).ok()) return Status::OK();
+
   // Else attempt to parse as binary.
-  proto->Clear();
-  tensorflow::protobuf::io::ArrayInputStream binary_stream(input.data(),
-                                                           input.size());
-  if (proto->ParseFromZeroCopyStream(&binary_stream)) {
-    return Status::OK();
-  }
+  protobuf::io::ArrayInputStream binary_stream(input.data(), input.size());
+  if (proto->ParseFromZeroCopyStream(&binary_stream)) return Status::OK();
+
   LOG(ERROR) << "Error parsing Protobuf";
   return errors::InvalidArgument("Could not parse input proto");
 }
 
 Status LoadProtoFromFile(absl::string_view input_filename,
-                         tensorflow::protobuf::Message* proto) {
-  auto file_or_err =
+                         protobuf::MessageLite* proto) {
+  const auto file_or_err =
       llvm::MemoryBuffer::getFileOrSTDIN(StringViewToRef(input_filename));
-  if (std::error_code error = file_or_err.getError())
+  if (std::error_code error = file_or_err.getError()) {
     return errors::InvalidArgument("Could not open input file");
+  }
 
-  auto& input_file = *file_or_err;
+  const auto& input_file = *file_or_err;
   absl::string_view content(input_file->getBufferStart(),
                             input_file->getBufferSize());
-
   return LoadProtoFromBuffer(content, proto);
 }
 
