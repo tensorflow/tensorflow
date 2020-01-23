@@ -335,8 +335,15 @@ class IrEmitterUnnested : public IrEmitter,
     // Lane id: `thread_id % kWarpSize`
     llvm::Value* lane_id;
   };
+
+  // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane id.
+  //
+  // Returns a struct containting these values.
   ThreadIdInfo EmitThreadIdInfo(int64 threads_per_block, llvm::Type* index_ty,
                                 int64 num_threads_x);
+
+  // Emit __syncthreads(), synchronization barrier for all threads in a block.
+  llvm::CallInst* EmitSyncThreads();
 
   // Emits current block id.
   llvm::Value* EmitBlockId();

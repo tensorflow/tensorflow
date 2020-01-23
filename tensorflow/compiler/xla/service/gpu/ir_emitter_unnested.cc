@@ -2440,12 +2440,12 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
          ++i) {
       int64 tile_size_for_dim = mapping_scheme.GetTileSizeFor(i);
       // Only last row or column may not have full size.
-      llvm::Value* is_last_row =
+      llvm::Value* is_last =
           b_.CreateICmpEQ(tile_index[i], constant(dims_in_blocks[i] - 1));
-      int64 partial_row_size =
+      int64 partial_row =
           dims_in_elems[i] - (dims_in_blocks[i] - 1) * tile_size_for_dim;
       output_tile_bounds[i] =
-          b_.CreateSelect(is_last_row, constant(partial_row_size),
+          b_.CreateSelect(is_last, constant(partial_row),
                           constant(tile_size_for_dim), "tile_bound");
     }
     IrArray::Index tile_origin =
@@ -2482,6 +2482,10 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
   }
 
   return GetElementIndexForTileOrigin(starting_tile, mapping_scheme, &b_);
+}
+
+llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
+  return EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
 }
 
 // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
@@ -2617,7 +2621,7 @@ void IrEmitterUnnested::EmitHlo021Tile(
 
           // Wait for all threads to reach this point using `__syncthreads` in
           // CUDA.
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
+          EmitSyncThreads();
         }
 
         EmitTile(mapping_scheme, index, loop_name, ksl, &b_, y, x, tile_height,
@@ -2629,7 +2633,7 @@ void IrEmitterUnnested::EmitHlo021Tile(
         // memory buffer for the current tile before we move on to process the
         // next tile and overwrite the shared memory buffers.
         if (block_contains_multi_tiles && !tiled_param_ids.empty()) {
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
+          EmitSyncThreads();
         }
       };
 
