@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -34,15 +34,15 @@ typedef TTypes<float>::Tensor::Index Index;
 // NUM_AXES: the number of axes to reduce
 // IN_DIMS: the number of dimensions of the input tensor
 #define DEFINE(T, REDUCER, IN_DIMS, NUM_AXES)                          \
-  template void ReduceFunctor<GPUDevice, REDUCER>::Reduce(             \
+  template void ReduceFunctor<GPUDevice, REDUCER<T> >::Reduce(         \
       OpKernelContext* ctx, TTypes<T, IN_DIMS - NUM_AXES>::Tensor out, \
       TTypes<T, IN_DIMS>::ConstTensor in,                              \
       const Eigen::array<Index, NUM_AXES>& reduction_axes,             \
-      const REDUCER& reducer);
+      const REDUCER<T>& reducer);
 
-#define DEFINE_IDENTITY(T, REDUCER)                              \
-  template void ReduceFunctor<GPUDevice, REDUCER>::FillIdentity( \
-      const GPUDevice& d, TTypes<T>::Vec out, const REDUCER& reducer);
+#define DEFINE_IDENTITY(T, REDUCER)                                  \
+  template void ReduceFunctor<GPUDevice, REDUCER<T> >::FillIdentity( \
+      const GPUDevice& d, TTypes<T>::Vec out, const REDUCER<T>& reducer);
 
 #define DEFINE_FOR_TYPE_AND_R(T, R) \
   DEFINE(T, R, 1, 1);               \
@@ -51,14 +51,14 @@ typedef TTypes<float>::Tensor::Index Index;
   DEFINE(T, R, 3, 2);               \
   DEFINE_IDENTITY(T, R)
 
-DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::SumReducer<complex64>);
-DEFINE_FOR_TYPE_AND_R(complex64, functor::MeanReducer<complex64>);
-DEFINE_FOR_TYPE_AND_R(complex64, functor::EuclideanNormReducer<complex64>);
-DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::ProdReducer<complex64>);
+DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::SumReducer);
+DEFINE_FOR_TYPE_AND_R(complex64, functor::MeanReducer);
+DEFINE_FOR_TYPE_AND_R(complex64, functor::EuclideanNormReducer);
+DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::ProdReducer);
 #undef DEFINE_FOR_TYPE_AND_R
 #undef DEFINE
 
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

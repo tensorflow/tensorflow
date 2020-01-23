@@ -22,7 +22,7 @@ limitations under the License.
 //   #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 //   #include "tensorflow/core/kernels/tile_ops_gpu_impl.h"
 //   DEFINE_TILE_OPS(NDIM)
-//   #endif  // GOOGLE_CUDA
+//   #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 //
 // where NDIM is an integer.
 //
