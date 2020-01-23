@@ -21,10 +21,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    Padding* value) {
   string str_value;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_name, &str_value));
+  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attr_name, &str_value));
   return GetPaddingFromString(str_value, value);
 }
 

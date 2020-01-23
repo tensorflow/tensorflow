@@ -31,14 +31,14 @@ constexpr int64 InferenceContext::kUnknownDim;
 
 // Same as above, but with PartialTensorShape instead of TensorShapeProto
 InferenceContext::InferenceContext(
-    int graph_def_version, const AttrSlice& attrs, const OpDef& op_def,
+    int graph_def_version, const NodeDef& node_def, const OpDef& op_def,
     const std::vector<PartialTensorShape>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<PartialTensorShape>& input_tensors_as_shapes,
     const std::vector<
         std::unique_ptr<std::vector<std::pair<PartialTensorShape, DataType>>>>&
         input_handle_shapes_and_types)
-    : graph_def_version_(graph_def_version), attrs_(attrs) {
+    : graph_def_version_(graph_def_version), node_def_(node_def) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
   input_tensors_as_shape_handles.reserve(input_tensors_as_shapes.size());
   for (const PartialTensorShape& p : input_tensors_as_shapes) {
@@ -83,13 +83,13 @@ InferenceContext::InferenceContext(
 }
 
 InferenceContext::InferenceContext(
-    int graph_def_version, const AttrSlice& attrs, const OpDef& op_def,
+    int graph_def_version, const NodeDef& node_def, const OpDef& op_def,
     const std::vector<ShapeHandle>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes,
     std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
         input_handle_shapes_and_types)
-    : graph_def_version_(graph_def_version), attrs_(attrs) {
+    : graph_def_version_(graph_def_version), node_def_(node_def) {
   PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
   if (!construction_status_.ok()) return;
   inputs_ = input_shapes;
@@ -109,7 +109,8 @@ Status InferenceContext::Run(
   }
 #ifndef NDEBUG
   for (int i = 0; i < num_outputs(); ++i) {
-    DCHECK(output(i).IsSet()) << i << " for " << attrs_.SummarizeNode();
+    DCHECK(output(i).IsSet())
+        << i << " for " << node_def_.name() << " of type " << node_def_.op();
   }
 #endif  // NDEBUG
   return s;
@@ -169,7 +170,7 @@ void InferenceContext::PreInputInit(
   input_tensors_as_shapes_ = input_tensors_as_shapes;
 
   construction_status_ =
-      NameRangesForNode(attrs_, op_def, &input_name_map_, &output_name_map_);
+      NameRangesForNode(node_def_, op_def, &input_name_map_, &output_name_map_);
   if (!construction_status_.ok()) return;
 
   int num_outputs = 0;
@@ -286,7 +287,8 @@ string InferenceContext::DebugString(DimensionHandle d) {
 }
 
 string InferenceContext::DebugString() const {
-  return strings::StrCat("InferenceContext for node: ", attrs_.SummarizeNode());
+  return strings::StrCat("InferenceContext for node: ",
+                         node_def_.DebugString());
 }
 
 string InferenceContext::DebugString(const ShapeAndType& shape_and_type) {
@@ -1115,8 +1117,8 @@ Status InferenceContext::AttachContext(const Status& status) {
   }
 
   string error_context = strings::StrCat(
-      " for '", attrs_.SummarizeNode(),
-      "' with input shapes: ", absl::StrJoin(input_shapes, ", "));
+      " for '", node_def_.name(), "' (op: '", node_def_.op(),
+      "') with input shapes: ", absl::StrJoin(input_shapes, ", "));
   if (!input_from_tensors_str.empty()) {
     strings::StrAppend(&error_context, " and with computed input tensors: ",
                        absl::StrJoin(input_from_tensors_str, ", "));
