@@ -219,6 +219,7 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
     });
   });
   result.set_total_time_ps(last_op_offset_ps - first_op_offset_ps);
+  AddIdleOp(&result);
   return result;
 }
 

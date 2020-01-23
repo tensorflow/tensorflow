@@ -1491,33 +1491,6 @@ class FromFrozenGraphObjectDetection(LiteTest):
                      output_details[3]['name'])
     self.assertTrue(([1] == output_details[3]['shape']).all())
 
-  def testTFLiteGraphDefMissingShape(self):
-    # Tests invalid cases for the model that cannot be loaded in TensorFlow.
-    self._initObjectDetectionArgs()
-
-    # Missing `input_shapes`.
-    with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
-                                             self._input_arrays,
-                                             self._output_arrays)
-    self.assertEqual('input_shapes must be defined for this model.',
-                     str(error.exception))
-
-  def testTFLiteGraphDefInvalidShape(self):
-    # Tests invalid cases for the model that cannot be loaded in TensorFlow.
-    self._initObjectDetectionArgs()
-
-    # `input_shapes` does not contain the names in `input_arrays`.
-    with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter.from_frozen_graph(
-          self._graph_def_file,
-          self._input_arrays,
-          self._output_arrays,
-          input_shapes={'invalid-value': [1, 19]})
-    self.assertEqual(
-        'input_shapes must contain a value for each item in input_array.',
-        str(error.exception))
-
 
 class FromSavedModelTest(TestModels):
 

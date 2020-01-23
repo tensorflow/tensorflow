@@ -87,6 +87,20 @@ bool OperationDef::HasAllTensorsOfType(TensorStorageType storage_type) const {
   return true;
 }
 
+bool OperationDef::IsBatchSupported() const {
+  for (const auto& src : src_tensors) {
+    if (src.layout == Layout::BHWC || src.layout == Layout::BHWDC) {
+      return true;
+    }
+  }
+  for (const auto& dst : dst_tensors) {
+    if (dst.layout == Layout::BHWC || dst.layout == Layout::BHWDC) {
+      return true;
+    }
+  }
+  return false;
+}
+
 GPUOperation::GPUOperation(const OperationDef& definition)
     : definition_(definition) {}
 

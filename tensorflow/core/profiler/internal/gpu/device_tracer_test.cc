@@ -284,6 +284,14 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
+
+  // Check if the device events timestamps are set.
+  plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      EXPECT_GT(event.TimestampNs(), 0);
+      EXPECT_GT(event.DurationNs(), 0);
+    });
+  });
 }
 
 }  // namespace

@@ -40,9 +40,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 
   // Resolves the operands to the HLO instruction in the inlined (caller) graph,
   // and clones the HLO instruction into that graph with the new operands.
-  // If the instruction is a call, it is added to the work queue.
   Status DefaultAction(HloInstruction* hlo) override {
-    TF_RET_CHECK(hlo->opcode() != HloOpcode::kCall);
     std::vector<HloInstruction*> new_operands;
     for (HloInstruction* operand : hlo->operands()) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_operand, Resolve(operand));
@@ -146,7 +144,11 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
         VLOG(1) << "Visiting node: " << node.ToString();
         for (HloInstruction* instruction :
              node.computation()->MakeInstructionPostOrder()) {
-          if (instruction->opcode() == HloOpcode::kCall) {
+          if (instruction->opcode() == HloOpcode::kCall &&
+              (!single_call_site_ ||
+               call_graph->GetNode(instruction->to_apply())
+                       .caller_callsites()
+                       .size() == 1)) {
             TF_RETURN_IF_ERROR(Inline(instruction).status());
             did_mutate = true;
           }

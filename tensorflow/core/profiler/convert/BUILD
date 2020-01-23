@@ -27,6 +27,21 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "xplane_to_op_metrics_db_test",
+    size = "small",
+    srcs = ["xplane_to_op_metrics_db_test.cc"],
+    deps = [
+        ":xplane_to_op_metrics_db",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+    ],
+)
+
 cc_library(
     name = "run_metadata_to_trace_events",
     srcs = ["run_metadata_to_trace_events.cc"],
@@ -151,10 +166,31 @@ cc_library(
     hdrs = ["xplane_to_op_stats.h"],
     deps = [
         ":xplane_to_op_metrics_db",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+    ],
+)
+
+tf_cc_test(
+    name = "xplane_to_op_stats_test",
+    size = "small",
+    srcs = ["xplane_to_op_stats_test.cc"],
+    deps = [
+        ":xplane_to_op_stats",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
     ],
 )
 

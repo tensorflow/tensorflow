@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
@@ -193,6 +194,10 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = MaxUnpooling(
           node_id, inputs[0], inputs[1], outputs[0],
           absl::any_cast<MaxUnpooling2DAttributes>(node->operation.attributes));
+      break;
+    case OperationType::MEAN:
+      *tasks = Mean(node_id, inputs[0], outputs[0],
+                    absl::any_cast<MeanAttributes>(node->operation.attributes));
       break;
     case OperationType::MULTIPLY_SCALAR:
       *tasks = Multiply(

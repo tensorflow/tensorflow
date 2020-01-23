@@ -325,6 +325,7 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",

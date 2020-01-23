@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#endif  // GOOGLE_CUDA
-
 namespace stream_executor {
 
 #if TENSORFLOW_USE_ROCM || defined(PLATFORM_WINDOWS)

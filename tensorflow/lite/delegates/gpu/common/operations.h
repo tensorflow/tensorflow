@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ enum class OperationType {
   LOG,
   LSTM,
   MAX_UNPOOLING_2D,
+  MEAN,
   MUL,
   MULTIPLY_SCALAR,
   PAD,
@@ -164,6 +165,11 @@ struct MaxUnpooling3DAttributes {
   HWD strides = HWD(0, 0, 0);
   HWD kernel = HWD(0, 0, 0);
   Padding3D padding;
+};
+
+struct MeanAttributes {
+  // The vector of dimensions to calculate mean along.
+  std::set<Axis> dims;
 };
 
 struct ConcatAttributes {

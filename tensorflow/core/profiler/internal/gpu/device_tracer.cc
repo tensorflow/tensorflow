@@ -324,6 +324,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
           continue;
         auto* plane = is_host_event ? host_plane : device_plane;
         XLineBuilder line = plane->GetOrCreateLine(line_id);
+        if (!is_host_event) line.SetTimestampNs(start_gpu_ns);
         CreateXEvent(event, offset_ns, plane, &line);
       }
     }

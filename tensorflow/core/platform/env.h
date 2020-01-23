@@ -480,6 +480,12 @@ Status WriteTextProto(Env* env, const string& fname,
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
+template <typename T, typename std::enable_if<!std::is_base_of<
+                          protobuf::Message, T>::value>::type* = nullptr>
+Status ReadTextProto(Env* env, const string& fname, T* proto) {
+  return errors::Unimplemented("Can't parse text protos with protolite.");
+}
+
 Status ReadTextProto(Env* env, const string& fname,
                      ::tensorflow::protobuf::Message* proto);
 

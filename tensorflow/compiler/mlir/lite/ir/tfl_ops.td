@@ -360,7 +360,7 @@ an output element, this operation computes \\(y = |x|\\).
   let hasFolder = 1;
 }
 
-def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
+def TFL_AddOp : TFL_Op<"add", [ResultsBroadcastableShape, NoSideEffect, Commutative]> {
   let summary = "Addition operator";
 
   let description = [{
@@ -763,9 +763,9 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
   );
 }
 
-// Same type check of lhs and rhs is handled by the Broadcastable trait.
+// Same type check of lhs and rhs is handled by the ResultsBroadcastableShape trait.
 def TFL_LessEqualOp : TFL_Op<"less_equal", [
-    Broadcastable, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Less_equal operator";
 
   let description = [{
@@ -821,7 +821,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 }
 
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
-    Broadcastable, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Greater_equal operator";
 
   let description = [{
@@ -982,7 +982,7 @@ larger than 0.
 }
 
 def TFL_NotEqualOp : TFL_Op<"not_equal", [
-    Broadcastable, Commutative, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape, Commutative, NoSideEffect, NoQuantizableResult]> {
   let summary = "Not_equal operator";
 
   let description = [{
@@ -1009,7 +1009,7 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_DivOp : TFL_Op<"div", [Broadcastable, NoSideEffect]> {
+def TFL_DivOp : TFL_Op<"div", [ResultsBroadcastableShape, NoSideEffect]> {
   let summary = "Division operator";
 
   let description = [{
@@ -1068,7 +1068,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
   let results = (outs TensorOf<[F32, I8, TFL_Uint8]>:$output);
 }
 
-def TFL_EqualOp: TFL_Op<"equal", [Commutative, Broadcastable,
+def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
     NoQuantizableResult,
     PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {
   let summary = "Equal operator";
@@ -1212,7 +1212,7 @@ def TFL_FloorOp: TFL_Op<"floor", [NoSideEffect, SameOperandsAndResultType]> {
 }
 
 def TFL_FloorDivOp : TFL_Op<"floor_div", [
-    Broadcastable, NoSideEffect, BinaryOpSameElementTypeConstraint]> {
+    ResultsBroadcastableShape, NoSideEffect, BinaryOpSameElementTypeConstraint]> {
   let summary = "Floor div operator";
 
   let description = [{
@@ -1231,7 +1231,7 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_FloorModOp : TFL_Op<"floor_mod", [Broadcastable, NoSideEffect]> {
+def TFL_FloorModOp : TFL_Op<"floor_mod", [ResultsBroadcastableShape, NoSideEffect]> {
   let summary = "Division reminder";
 
   let description = [{
@@ -1248,7 +1248,7 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [Broadcastable, NoSideEffect]> {
 }
 
 def TFL_GreaterOp : TFL_Op<"greater", [
-    Broadcastable, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1330,7 +1330,7 @@ def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect, SameOperandsAndResultTy
 }
 
 def TFL_LessOp : TFL_Op<"less", [
-    Broadcastable, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Less operator";
 
   let description = [{
@@ -1555,7 +1555,7 @@ def TFL_MaxUnpooling2DOp :
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
-    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale,
+    ResultsBroadcastableShape, NoSideEffect, Commutative, SameOperandsAndResultsScale,
     TFL_OperandHasRankLessThan<0, 4>, TFL_OperandHasRankLessThan<1, 4>]> {
   let summary = "Max operator";
   let description = [{
@@ -1752,7 +1752,7 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
 }
 
 def TFL_MinimumOp : TFL_Op<"minimum", [
-    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale,
+    ResultsBroadcastableShape, NoSideEffect, Commutative, SameOperandsAndResultsScale,
     TFL_OperandHasRankLessThan<0, 4>, TFL_OperandHasRankLessThan<1, 4>]> {
   let summary = "Min operator";
   let description = [{
@@ -1773,7 +1773,7 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
   let hasOptions = 0;
 }
 
-def TFL_MulOp : TFL_Op<"mul", [Broadcastable, NoSideEffect, Commutative]> {
+def TFL_MulOp : TFL_Op<"mul", [ResultsBroadcastableShape, NoSideEffect, Commutative]> {
   let summary = "Multiplication operator";
 
   let description = [{
@@ -1948,7 +1948,7 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let hasOptions = 1;
 }
 
-def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect, NoQuantizableResult]> {
+def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Power operator";
 
   let description = [{
@@ -2317,7 +2317,7 @@ def TFL_SquareOp: TFL_Op<"square", [
   let hasFolder = 1;
 }
 
-def TFL_SubOp : TFL_Op<"sub", [Broadcastable, NoSideEffect]> {
+def TFL_SubOp : TFL_Op<"sub", [ResultsBroadcastableShape, NoSideEffect]> {
   let summary = "Subtraction operator";
 
   let description = [{
@@ -2345,7 +2345,7 @@ def TFL_SubOp : TFL_Op<"sub", [Broadcastable, NoSideEffect]> {
 // TODO(jpienaar): Expand the kernel implementation to support all types besides
 // I32 and F32.
 def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
-    Broadcastable, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Squared difference operator";
 
   let description = [{

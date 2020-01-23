@@ -1068,7 +1068,8 @@ cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
-    tags = ["tflite_nnapi"],
+    # TODO(b/143912164): Enable NNAPI test when fix nnapi.
+    # tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

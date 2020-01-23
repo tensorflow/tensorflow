@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -102,6 +102,8 @@ std::string ToString(enum OperationType op) {
       return "lstm";
     case OperationType::MAX_UNPOOLING_2D:
       return "max_unpooling";
+    case OperationType::MEAN:
+      return "mean";
     case OperationType::MUL:
       return "mul";
     case OperationType::MULTIPLY_SCALAR:
@@ -171,6 +173,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
+          {"mean", OperationType::MEAN},
           {"mul", OperationType::MUL},
           {"multiply_scalar", OperationType::MULTIPLY_SCALAR},
           {"pad", OperationType::PAD},

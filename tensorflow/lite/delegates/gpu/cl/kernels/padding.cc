@@ -37,7 +37,7 @@ std::string GetPaddingCode(
       WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
       op_def.dst_tensors[0]);
 
-  const std::string dst_batch = op_def.batch_support ? "B" : "";
+  const std::string dst_batch = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   const std::string channels[] = {".x", ".y", ".z", ".w"};
 
@@ -50,7 +50,7 @@ std::string GetPaddingCode(
   c += "    int4 dst_size,      \n";
   c += "    int4 prepended      \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -63,13 +63,13 @@ std::string GetPaddingCode(
   c += "  FLT4 result = (FLT4)(0.0);\n";
   c += "  int s_x = X - prepended.x;\n";
   c += "  int s_y = Y - prepended.y;\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int s_b = B - prepended.w;\n";
   }
-  const std::string src_batch = op_def.batch_support ? "s_b" : "";
+  const std::string src_batch = op_def.IsBatchSupported() ? "s_b" : "";
   c += "  bool inside_x = s_x >= 0 && s_x < src_size.x;\n";
   c += "  bool inside_y = s_y >= 0 && s_y < src_size.y;\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  inside_y &= (s_b >= 0 && s_b < src_size.w);\n";
   }
   c += "  if (inside_x && inside_y) {\n";
@@ -88,7 +88,8 @@ std::string GetPaddingCode(
     c += "    }\n";
   }
   c += "  }\n";
-  std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
+  std::string x_3dcoord =
+      op_def.IsBatchSupported() ? "X * dst_size.w + B" : "X";
   c += PostProcess(linked_operations, {"result", x_3dcoord, "Y", "Z"});
   c += "  " + dst_tensor.WriteWHSB("result", "X", "Y", "Z", dst_batch);
   c += "}\n";

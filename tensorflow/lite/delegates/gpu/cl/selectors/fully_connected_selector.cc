@@ -31,7 +31,7 @@ Status SelectFullyConnectedAdreno(const FullyConnectedAttributes& attr,
                                   const CreationContext& creation_context,
                                   const OperationDef& op_def, int batch_size,
                                   std::unique_ptr<GPUOperation>* ptr) {
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     ConvTexture conv;
     RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvTexture>(std::move(conv));
@@ -48,7 +48,7 @@ Status SelectFullyConnectedPowerVR(const FullyConnectedAttributes& attr,
                                    const CreationContext& creation_context,
                                    const OperationDef& op_def, int batch_size,
                                    std::unique_ptr<GPUOperation>* ptr) {
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     ConvPowerVR conv;
     RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
@@ -65,7 +65,7 @@ Status SelectFullyConnectedMali(const FullyConnectedAttributes& attr,
                                 const CreationContext& creation_context,
                                 const OperationDef& op_def, int batch_size,
                                 std::unique_ptr<GPUOperation>* ptr) {
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
       ConvBuffer1x1 conv;
       RETURN_IF_ERROR(
