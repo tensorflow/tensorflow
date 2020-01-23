@@ -707,8 +707,8 @@ std::string GenerateConv3D(
                     conv_params.AreWeightsBuffer());
   for (int i = 1; i < conv_params.src_depth_loop_size; ++i) {
     read_src();
-    GenerateConv(op_def.precision, block_size, i * block_size.w * 4,
-                 conv_params.AreWeightsBuffer());
+    c += GenerateConv(op_def.precision, block_size, i * block_size.w * 4,
+                      conv_params.AreWeightsBuffer());
     c += "    s += 1;\n";
   }
   if (conv_params.AreWeightsBuffer()) {
