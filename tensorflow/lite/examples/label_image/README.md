@@ -133,11 +133,10 @@ average time: 10.348 ms
 
 To run a model with the Hexagon Delegate, assuming we have
 followed the
-[Hexagon Delegate doc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
+[Hexagon Delegate Guide](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
 and installed Hexagon libraries in `/data/local/tmp`. Run it
 ```
-adb shell "export LD_LIBRARY_PATH=/data/local/tmp/; \
-/data/local/tmp/label_image \
+adb shell "/data/local/tmp/label_image \
 -m /data/local/tmp/mobilenet_v1_1.0_224_quant.tflite \
 -i /data/local/tmp/grace_hopper.bmp \
 -l /data/local/tmp/labels.txt -j 1"
