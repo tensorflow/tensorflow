@@ -54,7 +54,36 @@ def get_run_environment_table_args(run_environment):
     ]
     data.append(row)
 
-  return (table_description, data, [])
+  host_count = "unknown"
+  if run_environment.host_count >= 0:
+    host_count = str(run_environment.host_count)
+
+  task_count = "unknown"
+  if run_environment.task_count >= 0:
+    task_count = str(run_environment.task_count)
+
+  if run_environment.task_count > 0 and run_environment.host_count > 0:
+    tasks_per_host = run_environment.task_count / run_environment.host_count
+    task_count += " (num tasks per host = {})".format(tasks_per_host)
+
+  device_core_count = "unknown"
+  if run_environment.device_core_count >= 0:
+    device_core_count = str(run_environment.device_core_count)
+
+  if run_environment.replica_count > 0 and \
+      run_environment.num_cores_per_replica > 0:
+    device_core_count += " (Replica count = {}, num cores per replica = {})".\
+        format(run_environment.replica_count(),
+               run_environment.num_cores_per_replica())
+
+  custom_properties = {
+      "host_count": host_count,
+      "task_count": task_count,
+      "device_type": run_environment.device_type,
+      "device_core_count": device_core_count,
+  }
+
+  return (table_description, data, custom_properties)
 
 
 def generate_run_environment_table(run_environment):
