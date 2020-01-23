@@ -123,18 +123,26 @@ tf.raw_ops.__doc__ = generate_raw_ops_doc()
 # The doc generator isn't aware of tf_export.
 # So prefix the score tuples with -1 when this is the canonical name, +1
 # otherwise. The generator chooses the name with the lowest score.
-class TfExportAwareDocGeneratorVisitor(doc_generator_visitor.DocGeneratorVisitor
-                                      ):
-  """A `tf_export` aware doc_visitor."""
+class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
+  """A `tf_export`, `keras_export` and `estimator_export` aware doc_visitor."""
 
   def _score_name(self, name):
-    canonical = tf_export.get_canonical_name_for_symbol(self._index[name])
+    all_exports = [
+        tf_export.TENSORFLOW_API_NAME, tf_export.KERAS_API_NAME,
+        tf_export.ESTIMATOR_API_NAME
+    ]
+
+    for api_name in all_exports:
+      canonical = tf_export.get_canonical_name_for_symbol(
+          self._index[name], api_name=api_name)
+      if canonical is not None:
+        break
 
     canonical_score = 1
     if canonical is not None and name == "tf." + canonical:
       canonical_score = -1
 
-    scores = super(TfExportAwareDocGeneratorVisitor, self)._score_name(name)
+    scores = super()._score_name(name)
     return (canonical_score,) + scores
 
 
@@ -213,7 +221,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       search_hints=search_hints,
       code_url_prefix=code_url_prefixes,
       site_path=FLAGS.site_path,
-      visitor_cls=TfExportAwareDocGeneratorVisitor,
+      visitor_cls=TfExportAwareVisitor,
       private_map=_PRIVATE_MAP)
 
   doc_generator.build(output_dir)
