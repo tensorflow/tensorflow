@@ -5269,6 +5269,7 @@ tf_kernel_library(
     prefix = "serialize_sparse_op",
     deps = SPARSE_DEPS + [
         ":reshape_util",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:protos_all_cc",
     ],
 )
