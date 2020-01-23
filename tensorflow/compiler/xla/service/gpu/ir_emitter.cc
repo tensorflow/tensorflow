@@ -50,23 +50,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-namespace {
-
-static llvm::Value* MayAddrSpaceCastArg(llvm::Value* arg,
-                                        llvm::IRBuilder<>& builder) {
+// Convenient function to cast the provided llvm::Value* using IRBuilder
+// to default address space. This is useful in particular for generating
+// IR for AMDGPU target, as its kernel variables are in address space 5
+// instead of the default address space.
+static llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   llvm::Type* arg_type = arg->getType();
-  CHECK_EQ(true, arg_type->isPointerTy());
+  CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
     llvm::Type* generic_arg_type =
         arg_type->getPointerElementType()->getPointerTo(0);
     llvm::Value* addrspacecast_arg =
-        builder.CreateAddrSpaceCast(arg, generic_arg_type);
+        b.CreateAddrSpaceCast(arg, generic_arg_type);
     return addrspacecast_arg;
   }
   return arg;
 }
-
-}  // namespace
 
 namespace xla {
 
@@ -182,19 +181,19 @@ Status IrEmitter::EmitCallToNestedComputation(
     emitted_function = ir_emitter_nested.GetEmittedFunction();
   }
 
-  // For AMDGPU target, may need to addrspacecast alloca variables from
-  // addrspace 5 to addrspace 0
+  // Operands are in default address space for non-AMDGPU target.
+  // However for AMDGPU target, addrspacecast alloca variables from
+  // addrspace 5 to addrspace 0 is needed.
   std::vector<llvm::Value*> arguments;
-  for (auto& arg : operands) {
-    llvm::Value* casted_arg = MayAddrSpaceCastArg(arg, b_);
-    arguments.push_back(casted_arg);
-  }
+  absl::c_transform(
+      operands, std::back_inserter(arguments),
+      [this](llvm::Value* arg) { return AddrCastToDefault(arg, b_); });
 
-  llvm::Value* casted_output = MayAddrSpaceCastArg(output, b_);
+  llvm::Value* casted_output = AddrCastToDefault(output, b_);
   arguments.push_back(casted_output);
 
-  // temp buffer base is always in addrspace 0 so it's not required to
-  // do addrspacecast
+  // It is not required to do address space cast because TempBufferBase
+  // is always in addrspace 0.
   arguments.push_back(bindings_.GetTempBufferBase());
   Call(emitted_function, arguments);
 
