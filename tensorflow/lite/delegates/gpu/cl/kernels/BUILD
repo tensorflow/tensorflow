@@ -137,6 +137,31 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_3d",
+    srcs = ["conv_3d.cc"],
+    hdrs = ["conv_3d.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl:util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "conv_buffer",
     srcs = ["conv_buffer.cc"],
     hdrs = ["conv_buffer.h"],
