@@ -110,8 +110,9 @@ RUN mkdir /bazel && \
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
+RUN ${PIP} install jupyter matplotlib
 # https://github.com/ipython/ipykernel/issues/422
-RUN ${PIP} install jupyter ipykernel==5.1.1 nbconvert==4.4.0 matplotlib
+RUN test "${USE_PYTHON_3_NOT_2}" == "1" && ${PIP} install ipykernel==5.1.1 nbformat==4.4.0 || true
 RUN ${PIP} install jupyter_http_over_ws
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
