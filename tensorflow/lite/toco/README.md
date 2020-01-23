@@ -8,8 +8,8 @@ the usage documentation.
 
 Usage information is given in these documents:
 
-*   [Command-line glossary](../g3doc/convert/cmdline_reference.md)
-*   [Command-line examples](../g3doc/convert/cmdline_examples.md)
+*   [Command-line glossary](../g3doc/r1/convert/cmdline_reference.md)
+*   [Command-line examples](../g3doc/r1/convert/cmdline_examples.md)
 *   [Python API examples](../g3doc/convert/python_api.md)
 
 ## Where the converter fits in the TensorFlow landscape
