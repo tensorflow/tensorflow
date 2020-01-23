@@ -868,7 +868,8 @@ PyLocalExecutable::ExecuteOnLocalDevices(
   if (num_local_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
-    const auto [replica, partition] = local_logical_devices_[0];
+    const int replica = local_logical_devices_[0].first;
+    const int partition = local_logical_devices_[0].second;
     results[0] =
         ExecuteHelper(argument_handles[0], replica, partition, RunId());
   } else {
@@ -929,7 +930,8 @@ PyLocalExecutable::ExecuteOnLocalDevices(
   std::vector<std::unique_ptr<PyLocalBuffer>> wrapped_results(
       num_local_devices);
   for (int i = 0; i < num_local_devices; ++i) {
-    auto [replica, partition] = local_logical_devices_[i];
+    const int replica = local_logical_devices_[i].first;
+    const int partition = local_logical_devices_[i].second;
     auto& statusor = results[i];
     if (!statusor.ok()) {
       return AppendStatus(
