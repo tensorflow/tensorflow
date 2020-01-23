@@ -479,7 +479,9 @@ llvm_target_list = [
             ("-gen-disassembler", "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc"),
             ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
             ("-gen-searchable-tables", "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc"),
-            ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+        ],
+        "tbl_deps": [
+            ":amdgpu_isel_target_gen",
         ],
     },
     {
@@ -569,6 +571,21 @@ llvm_target_list = [
     },
 ]
 
+gentbl(
+    name = "amdgpu_isel_target_gen",
+    tbl_outs = [
+        ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenGICombiner.inc"),
+    ],
+    tblgen = ":llvm-tblgen",
+    td_file = "lib/Target/AMDGPU/AMDGPUGISel.td",
+    td_srcs = [
+        ":common_target_td_sources",
+    ] + glob([
+        "lib/Target/AMDGPU/*.td",
+    ]),
+)
+
 [
     gentbl(
         name = target["lower_name"] + "_target_gen",
@@ -584,6 +601,7 @@ llvm_target_list = [
             "include/llvm/Target/*.td",
             "include/llvm/Target/GlobalISel/*.td",
         ]),
+        deps = target.get("tbl_deps", []),
     )
     for target in llvm_target_list
 ]
@@ -4001,6 +4019,27 @@ cc_library(
 )
 
 cc_library(
+    name = "ve_asm_printer",
+    srcs = glob([
+        "lib/Target/VE/InstPrinter/*.c",
+        "lib/Target/VE/InstPrinter/*.cpp",
+        "lib/Target/VE/InstPrinter/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/VE/InstPrinter/*.h",
+        "include/llvm/Target/VE/InstPrinter/*.def",
+        "include/llvm/Target/VE/InstPrinter/*.inc",
+        "lib/Target/VE/InstPrinter/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/VE"],
+    deps = [
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "ve_code_gen",
     srcs = glob([
         "lib/Target/VE/*.c",
@@ -4024,6 +4063,7 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
+        ":ve_asm_printer",
         ":ve_desc",
         ":ve_info",
     ],
@@ -4047,6 +4087,7 @@ cc_library(
         ":config",
         ":mc",
         ":support",
+        ":ve_asm_printer",
         ":ve_info",
     ],
 )
