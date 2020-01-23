@@ -1433,16 +1433,17 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         }
       }
 #elif TENSORFLOW_USE_ROCM
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                            context);
       std::vector<ProfileResult> algorithms;
       CHECK(stream->parent()->GetMIOpenConvolveAlgorithms(
-          se::dnn::ConvolutionKind::BACKWARD_DATA, stream,
-          se::dnn::ToDataType<T>::value, input_desc, filter_desc, conv_desc,
-          output_desc, &algorithms));
+          se::dnn::ConvolutionKind::BACKWARD_DATA,
+          se::dnn::ToDataType<T>::value, stream, input_desc, in_backprop_ptr,
+          filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+          &scratch_allocator, &algorithms));
       std::vector<tensorflow::AutotuneResult> results;
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
-        DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
-                                              context);
         ProfileResult profile_result;
         bool miopen_launch_status =
             stream
@@ -1880,17 +1881,18 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         }
       }
 #elif TENSORFLOW_USE_ROCM
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                            context);
       std::vector<ProfileResult> algorithms;
       CHECK(stream->parent()->GetMIOpenConvolveAlgorithms(
-          se::dnn::ConvolutionKind::BACKWARD_FILTER, stream,
-          se::dnn::ToDataType<T>::value, input_desc, filter_desc, conv_desc,
-          output_desc, &algorithms));
+          se::dnn::ConvolutionKind::BACKWARD_FILTER,
+          se::dnn::ToDataType<T>::value, stream, input_desc, input_ptr,
+          filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
+          conv_desc, &scratch_allocator, &algorithms));
 
       std::vector<tensorflow::AutotuneResult> results;
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
-        DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
-                                              context);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
