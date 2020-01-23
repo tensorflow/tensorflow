@@ -164,20 +164,18 @@ class ReductionCodegenInfo {
     return partial_result_addresses_;
   }
 
+  // Mutable pointer to the address of the input element to perform the
+  // reduction with.
   AddressVector* GetMutableReductionInputAddresses() {
     return &reduction_input_addresses_;
   }
+
+  // Returns the address of the input element to perform the reduction with.
   absl::Span<llvm::AllocaInst* const> GetReductionInputAddresses() const {
     return reduction_input_addresses_;
   }
 
   bool IsRowReduction() const { return is_row_reduction_; }
-
-  // Return the dimension that is being reduced between DimX and DimY.
-  int GetReducedDimensionEnum() const {
-    return IsRowReduction() ? KernelMappingScheme::DimX
-                            : KernelMappingScheme::DimY;
-  }
 
  private:
   const KernelMappingScheme mapping_scheme_;

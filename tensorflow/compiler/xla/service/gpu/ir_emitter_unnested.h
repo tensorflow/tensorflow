@@ -267,11 +267,6 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloInstruction* const> reduce_instructions,
       llvm::Type* index_type);
 
-  void EmitPrologueForOneReduction(HloInstruction* unnested_hlo,
-                                   HloInstruction* reduce_inst, int reduce_idx,
-                                   ReductionCodegenInfo* kernel_info,
-                                   GpuElementalIrEmitter* elemental_emitter);
-
   // Wraps up the code generation for a tile block of a reduction kernel: write
   // the calculated output into the output tensor.
   void EmitEpilogueForReduction(

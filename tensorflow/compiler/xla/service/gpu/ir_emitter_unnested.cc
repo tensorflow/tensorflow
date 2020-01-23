@@ -2068,47 +2068,6 @@ static int GetNumberOfPartialResults(
   return num_partial_results;
 }
 
-void IrEmitterUnnested::EmitPrologueForOneReduction(
-    HloInstruction* unnested_hlo, HloInstruction* reduce_inst, int reduce_idx,
-    ReductionCodegenInfo* reduction_info,
-    GpuElementalIrEmitter* elemental_emitter) {
-  AddressVector* reduction_input_addresses =
-      reduction_info->GetMutableReductionInputAddresses();
-  llvm::Type* element_type = llvm_ir::PrimitiveTypeToIrType(
-      reduce_inst->shape().element_type(), ir_emitter_context_->llvm_module());
-  llvm::AllocaInst* reduction_input_address = Alloca(element_type);
-  reduction_input_addresses->push_back(reduction_input_address);
-
-  int num_partial_results = GetNumberOfPartialResults(*reduction_info);
-  AddressVector* partial_result_addresses =
-      reduction_info->GetMutablePartialResultAddresses();
-  llvm::AllocaInst* partial_result_address =
-      Alloca(element_type, /*ArraySize=*/b_.getInt32(num_partial_results),
-             "partial_reduction_result." + llvm::Twine(reduce_idx));
-  partial_result_addresses->push_back(partial_result_address);
-
-  // Initialize the partial result with the initial value of the reduction.
-  llvm::Value* init_ir_value;
-  const HloInstruction* init_value = reduce_inst->operand(1);
-  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(unnested_hlo),
-                                 elemental_emitter);
-
-    TF_CHECK_OK(init_value->Accept(&fused_emitter));
-    init_ir_value =
-        fused_emitter.GetGenerator(init_value)(IrArray::Index(b_.getInt32Ty()))
-            .ValueOrDie();
-  } else {
-    init_ir_value =
-        GetIrArray(*init_value, *unnested_hlo)
-            .EmitReadArrayElement(IrArray::Index(b_.getInt32Ty()), &b_);
-  }
-
-  for (int i = 0; i < num_partial_results; ++i) {
-    Store(init_ir_value, InBoundsGEP(partial_result_address, {b_.getInt32(i)}));
-  }
-}
-
 void IrEmitterUnnested::EmitPrologueForReduction(
     HloInstruction* unnested_hlo, ReductionCodegenInfo* reduction_info,
     absl::Span<HloInstruction* const> reduce_instructions,
@@ -2126,8 +2085,45 @@ void IrEmitterUnnested::EmitPrologueForReduction(
     } else {
       CHECK(first_reduce->dimensions() == reduce_inst->dimensions());
     }
-    EmitPrologueForOneReduction(unnested_hlo, reduce_inst, i, reduction_info,
-                                &elemental_emitter);
+
+    AddressVector* reduction_input_addresses =
+        reduction_info->GetMutableReductionInputAddresses();
+    llvm::Type* element_type =
+        llvm_ir::PrimitiveTypeToIrType(reduce_inst->shape().element_type(),
+                                       ir_emitter_context_->llvm_module());
+    llvm::AllocaInst* reduction_input_address = Alloca(element_type);
+    reduction_input_addresses->push_back(reduction_input_address);
+
+    int num_partial_results = GetNumberOfPartialResults(*reduction_info);
+    AddressVector* partial_result_addresses =
+        reduction_info->GetMutablePartialResultAddresses();
+    llvm::AllocaInst* partial_result_address =
+        Alloca(element_type, /*ArraySize=*/b_.getInt32(num_partial_results),
+               "partial_reduction_result." + llvm::Twine(i));
+    partial_result_addresses->push_back(partial_result_address);
+
+    // Initialize the partial result with the initial value of the reduction.
+    llvm::Value* init_ir_value;
+    const HloInstruction* init_value = reduce_inst->operand(1);
+    if (unnested_hlo->opcode() == HloOpcode::kFusion) {
+      FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(unnested_hlo),
+                                   &elemental_emitter);
+
+      TF_CHECK_OK(init_value->Accept(&fused_emitter));
+      init_ir_value =
+          fused_emitter
+              .GetGenerator(init_value)(IrArray::Index(b_.getInt32Ty()))
+              .ValueOrDie();
+    } else {
+      init_ir_value =
+          GetIrArray(*init_value, *unnested_hlo)
+              .EmitReadArrayElement(IrArray::Index(b_.getInt32Ty()), &b_);
+    }
+
+    for (int i = 0; i < num_partial_results; ++i) {
+      Store(init_ir_value,
+            InBoundsGEP(partial_result_address, {b_.getInt32(i)}));
+    }
   }
 }
 
