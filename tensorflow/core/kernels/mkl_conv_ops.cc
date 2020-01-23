@@ -1222,7 +1222,7 @@ class MklConvOp : public OpKernel {
         *cached_filter_md_ptensor_.AccessTensor(context);
 
 // Check if the memory descriptor of the cached weights is same as
-// filter_md. If so, we can used the cached weights; otherwise
+// filter_md. If so, we can use the cached weights; otherwise
 // return nullptr.
 #ifdef ENABLE_MKLDNN_V1
     if (cached_filter_md.scalar<int64>().size() &&
