@@ -22,12 +22,16 @@ import sys
 
 import six
 
-from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import loader_impl
+from tensroflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import keras_export
+
+network = LazyLoader(
+    'network', globals(),
+    'tensroflow.python.keras.engine.network')
 
 # pylint: disable=g-import-not-at-top
 if sys.version_info >= (3, 4):
