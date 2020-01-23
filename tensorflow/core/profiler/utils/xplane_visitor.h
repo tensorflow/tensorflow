@@ -21,11 +21,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -40,7 +40,7 @@ class XStatVisitor {
 
   absl::string_view Name() const { return metadata_->name(); }
 
-  StatType Type() const { return type_; }
+  absl::optional<int64> Type() const { return type_; }
 
   absl::string_view Description() const { return metadata_->description(); }
 
@@ -61,7 +61,7 @@ class XStatVisitor {
  private:
   const XStat* stat_;
   const XStatMetadata* metadata_;
-  const StatType type_;
+  absl::optional<int64> type_;
 };
 
 template <class T>
@@ -79,7 +79,7 @@ class XStatsOwner {
   }
 
   // Shortcut to get a specfic stat type, nullptr if it is absent.
-  const XStat* GetStats(StatType stat_type) const;
+  const XStat* GetStats(int64 stat_type) const;
 
  private:
   const T* stats_owner_;
@@ -93,6 +93,8 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   int64 Id() const { return event_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }
+
+  absl::optional<int64> Type() const { return type_; }
 
   absl::string_view DisplayName() const {
     return !metadata_->display_name().empty() ? metadata_->display_name()
@@ -134,6 +136,7 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   const XLine* line_;
   const XEvent* event_;
   const XEventMetadata* metadata_;
+  absl::optional<int64> type_;
 };
 
 class XLineVisitor {
@@ -172,9 +175,15 @@ class XLineVisitor {
   const XLine* line_;
 };
 
+using TypeGetter = std::function<absl::optional<int64>(absl::string_view)>;
+using TypeGetterList = std::vector<TypeGetter>;
+
 class XPlaneVisitor : public XStatsOwner<XPlane> {
  public:
-  explicit XPlaneVisitor(const XPlane* plane);
+  explicit XPlaneVisitor(
+      const XPlane* plane,
+      const TypeGetterList& event_type_getter_list = TypeGetterList(),
+      const TypeGetterList& stat_type_getter_list = TypeGetterList());
 
   int64 Id() const { return plane_->id(); }
 
@@ -191,20 +200,30 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
 
   // TODO(jiesun): use single map look up for both StatMetadata and StatType.
   const XStatMetadata* GetStatMetadata(int64 stat_metadata_id) const;
-  StatType GetStatType(int64 stat_metadata_id) const;
-  absl::optional<int64> GetStatMetadataId(StatType stat_type) const;
+  absl::optional<int64> GetStatType(int64 stat_metadata_id) const;
+  absl::optional<int64> GetStatMetadataId(int64 stat_type) const;
   const XEventMetadata* GetEventMetadata(int64 event_metadata_id) const;
+  absl::optional<int64> GetEventType(int64 event_metadata_id) const;
 
  private:
+  void BuildEventTypeMap(const XPlane* plane,
+                         const TypeGetter& event_type_getter);
+  void BuildStatTypeMap(const XPlane* plane,
+                        const TypeGetter& stat_type_getter);
+
   const XPlane* plane_;
 
-  absl::flat_hash_map<int64, std::pair<const XStatMetadata*, StatType>>
-      stat_metadata_id_map_;  // Map with key of stat metadata id.
-  absl::flat_hash_map<StatType, const XStatMetadata*> stat_type_map_;
+  absl::flat_hash_map<int64 /*metadata_id*/, int64 /*StatType*/>
+      stat_metadata_id_map_;
+  absl::flat_hash_map<int64 /*StatType*/, const XStatMetadata*> stat_type_map_;
+  absl::flat_hash_map<int64 /*metadata_id*/, int64 /*EventType*/>
+      event_metadata_id_map_;
+  absl::flat_hash_map<int64 /*EventType*/, const XEventMetadata*>
+      event_type_map_;
 };
 
 template <class T>
-const XStat* XStatsOwner<T>::GetStats(StatType stat_type) const {
+const XStat* XStatsOwner<T>::GetStats(int64 stat_type) const {
   absl::optional<int64> stat_metadata_id =
       metadata_->GetStatMetadataId(stat_type);
   if (!stat_metadata_id) return nullptr;  // type does not exist in the XPlane.

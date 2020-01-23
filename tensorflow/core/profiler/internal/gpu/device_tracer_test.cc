@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -277,7 +277,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
   EXPECT_NE(device_plane, nullptr);  // Check if device plane is serialized.
   // Check if device capacity is serialized.
-  XPlaneVisitor plane(device_plane);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
   EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);

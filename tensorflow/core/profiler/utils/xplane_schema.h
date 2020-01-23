@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -133,6 +134,8 @@ inline bool IsHostEventType(HostEventType event_type,
   return GetHostEventTypeStrMap()[event_type] == event_name;
 }
 
+absl::optional<int64> FindHostEventType(absl::string_view event_name);
+
 absl::Span<const absl::string_view> GetStatTypeStrMap();
 
 inline absl::string_view GetStatTypeStr(StatType stat_type) {
@@ -143,7 +146,7 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
 
-StatType GetStatType(absl::string_view stat_name);
+absl::optional<int64> FindStatType(absl::string_view stat_name);
 
 }  // namespace profiler
 }  // namespace tensorflow

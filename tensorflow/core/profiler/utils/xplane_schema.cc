@@ -43,7 +43,7 @@ static const absl::string_view kHostEventTypeMetadataMap[] = {
     "MemoryAllocation",
     "MemoryDeallocation",
     // Performance counter related.
-    "kRemotePerf",
+    "RemotePerfCounter",
     // tf data captured function events.
     "InstantiatedCapturedFunction::Run",
     "InstantiatedCapturedFunction::RunWithBorrowedArgs",
@@ -135,8 +135,50 @@ absl::Span<const absl::string_view> GetStatTypeStrMap() {
   return absl::MakeConstSpan(kStatTypeStrMap, kNumStatTypes);
 }
 
+const absl::flat_hash_map<absl::string_view, HostEventType>&
+GetHostEventTypeMap() {
+  static auto* host_event_type_map =
+      new absl::flat_hash_map<absl::string_view, HostEventType>({
+          {"UnknownHostEventType", kUnknownHostEventType},
+          {"TraceContext", kTraceContext},
+          {"SessionRun", kSessionRun},
+          {"FunctionRun", kFunctionRun},
+          {"RunGraph", kRunGraph},
+          {"EagerKernelExecute", kEagerKernelExecute},
+          {"ExecutorState::Process", kExecutorStateProcess},
+          {"ExecutorDoneCallback", kExecutorDoneCallback},
+          {"MemoryAllocation", kMemoryAllocation},
+          {"MemoryDeallocation", kMemoryDeallocation},
+          // Performance counter related.
+          {"RemotePerfCounter", kRemotePerf},
+          // tf data captured function events.
+          {"InstantiatedCapturedFunction::Run", kTfDataCapturedFunctionRun},
+          {"InstantiatedCapturedFunction::RunWithBorrowedArgs",
+           kTfDataCapturedFunctionRunWithBorrowedArgs},
+          {"InstantiatedCapturedFunction::RunInstantiated",
+           kTfDataCapturedFunctionRunInstantiated},
+          {"InstantiatedCapturedFunction::RunAsync",
+           kTfDataCapturedFunctionRunAsync},
+          // Functional ops.
+          {"CallOp", kCallOp},
+          {"ParallelForOp", kParallelForOp},
+          {"ForeverOp", kForeverOp},
+          {"NumericalGradientOp-EvalRight", kNumericalGradientOpEvalRight},
+          {"NumericalGradientOp-EvalLeft", kNumericalGradientOpEvalLeft},
+          {"SymbolicGradientOp", kSymbolicGradientOp},
+          {"RemoteCallOp", kRemoteCallOp},
+          {"IfOp", kIfOp},
+          {"CaseOp", kCaseOp},
+          {"WhileOp-EvalCond", kWhileOpEvalCond},
+          {"WhileOp-StartBody", kWhileOpStartBody},
+          {"ForOp", kForOp},
+          {"PartitionedCallOp", kPartitionedCallOp},
+      });
+  return *host_event_type_map;
+}
+
 const absl::flat_hash_map<absl::string_view, StatType>& GetStatTypeMap() {
-  static absl::flat_hash_map<absl::string_view, StatType>* stats_type_map =
+  static auto* stats_type_map =
       new absl::flat_hash_map<absl::string_view, StatType>({
           {"UnknownStatType", kUnknownStatType},
           // TraceMe arguments.
@@ -193,8 +235,18 @@ const absl::flat_hash_map<absl::string_view, StatType>& GetStatTypeMap() {
   return *stats_type_map;
 }
 
-StatType GetStatType(absl::string_view stat_name) {
-  return gtl::FindWithDefault(GetStatTypeMap(), stat_name, kUnknownStatType);
+absl::optional<int64> FindHostEventType(absl::string_view event_name) {
+  if (auto event_type = gtl::FindOrNull(GetHostEventTypeMap(), event_name)) {
+    return *event_type;
+  }
+  return absl::nullopt;
+}
+
+absl::optional<int64> FindStatType(absl::string_view stat_name) {
+  if (auto stat_type = gtl::FindOrNull(GetStatTypeMap(), stat_name)) {
+    return *stat_type;
+  }
+  return absl::nullopt;
 }
 
 }  // namespace profiler
