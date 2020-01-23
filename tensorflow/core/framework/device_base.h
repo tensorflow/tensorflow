@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -234,6 +235,7 @@ class DeviceBase {
 
   // Unimplemented by default
   virtual const DeviceAttributes& attributes() const;
+  virtual int NumaNode() const { return attributes().locality().numa_node(); }
   virtual const string& name() const;
 
   // Materializes the given TensorProto into 'tensor' stored in Device

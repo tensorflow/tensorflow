@@ -220,8 +220,6 @@ class OpKernel {
   // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
   Status MakeShape(const Tensor& shape, TensorShape* out) const;
 
-  static int DeviceNumaNode(const DeviceBase* device);
-
   // Returns `true` if and only if this kernel uses deferred execution.
   bool is_deferred() const { return is_deferred_; }
 
