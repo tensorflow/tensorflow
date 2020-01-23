@@ -282,6 +282,12 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloComputation* const> reducers,
       absl::Span<llvm::AllocaInst* const> partial_result_addresses);
 
+  // Emits shuffle-down reduction for the `partial_result_address` using the
+  // reduction computation `reducer` over types `element_type`.
+  void EmitFullWarpShuffleDownLoopForReduce(
+      HloComputation* reducer, llvm::Type* element_type,
+      llvm::Value* partial_result_address);
+
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
   // Thunk object. The kernel implementation will be unrolled if unroll_factor

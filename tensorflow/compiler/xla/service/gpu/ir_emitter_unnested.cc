@@ -2130,29 +2130,36 @@ void IrEmitterUnnested::EmitPrologueForReduction(
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
     absl::Span<HloComputation* const> reducers,
     absl::Span<llvm::AllocaInst* const> partial_result_addresses) {
+  CHECK_EQ(reducers.size(), partial_result_addresses.size());
+  for (int i = 0; i != reducers.size(); i++) {
+    EmitFullWarpShuffleDownLoopForReduce(
+        reducers[i], partial_result_addresses[i]->getType()->getElementType(),
+        partial_result_addresses[i]);
+  }
+}
+
+void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
+    HloComputation* reducer, llvm::Type* element_type,
+    llvm::Value* partial_result_address) {
   for (int distance = 16; distance >= 1; distance /= 2) {
-    for (int i = 0; i != reducers.size(); ++i) {
-      llvm::Type* element_type =
-          partial_result_addresses[i]->getType()->getElementType();
-      int bit_width = llvm_ir::GetSizeInBits(element_type);
-      llvm::Value* result_from_other_lane = Alloca(
-          element_type, nullptr, "result_from_other_lane" + llvm::Twine(i));
-      // Bitcast cannot be applied to aggregate types (even packed ones), so
-      // we bitcast addresses of load/store to intN* of the same bit-width.
-      llvm::Type* shuffled_value_type =
-          element_type->isStructTy() ? b_.getIntNTy(bit_width) : element_type;
-      auto convert_pointer_for_shuffle = [&](llvm::Value* ptr) {
-        return BitCast(ptr, shuffled_value_type->getPointerTo());
-      };
-      llvm::Value* partial_result =
-          Load(convert_pointer_for_shuffle(partial_result_addresses[i]),
-               "partial_reduction_result");
-      Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_),
-            convert_pointer_for_shuffle(result_from_other_lane));
-      TF_CHECK_OK(EmitCallToNestedComputation(
-          *reducers[i], {partial_result_addresses[i], result_from_other_lane},
-          partial_result_addresses[i]));
-    }
+    int bit_width = llvm_ir::GetSizeInBits(element_type);
+    llvm::Value* result_from_other_lane =
+        Alloca(element_type, nullptr, "result_from_other_lane");
+    // Bitcast cannot be applied to aggregate types (even packed ones), so
+    // we bitcast addresses of load/store to intN* of the same bit-width.
+    llvm::Type* shuffled_value_type =
+        element_type->isStructTy() ? b_.getIntNTy(bit_width) : element_type;
+    auto convert_pointer_for_shuffle = [&](llvm::Value* ptr) {
+      return BitCast(ptr, shuffled_value_type->getPointerTo());
+    };
+    llvm::Value* partial_result =
+        Load(convert_pointer_for_shuffle(partial_result_address),
+             "partial_reduction_result");
+    Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_),
+          convert_pointer_for_shuffle(result_from_other_lane));
+    TF_CHECK_OK(EmitCallToNestedComputation(
+        *reducer, {partial_result_address, result_from_other_lane},
+        partial_result_address));
   }
 }
 
