@@ -1625,6 +1625,10 @@ bool NNAPIDelegateKernel::Validate(
       Expect(!builtin->align_corners,
              NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support align_corners == true.", &val_ctx);
+      // TODO(b/147696142): Update when NNAPI delegate can support TF2 behavior.
+      Expect(!builtin->half_pixel_centers,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support half_pixel_centers == true.", &val_ctx);
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(input.type == kTfLiteFloat32,
                NNAPIValidationFailureType::kUnsupportedInputType,

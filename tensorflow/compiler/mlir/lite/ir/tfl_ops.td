@@ -2682,7 +2682,9 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
     // TODO(ycling): Support quantized types.
     TensorOf<[F32, I32, QI8, QUI8]>:$input,
     TensorOf<[I32]>:$size,
-    BoolAttr:$align_corners);
+    BoolAttr:$align_corners,
+    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+  );
 
   let results = (outs
     TensorOf<[F32, QI8, QUI8]>:$output
