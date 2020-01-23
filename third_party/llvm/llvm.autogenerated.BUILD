@@ -571,6 +571,17 @@ llvm_target_list = [
     },
 ]
 
+filegroup(
+    name = "common_target_td_sources",
+    srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+        "include/llvm/TableGen/*.td",
+        "include/llvm/Target/*.td",
+        "include/llvm/Target/GlobalISel/*.td",
+    ]),
+)
+
 gentbl(
     name = "amdgpu_isel_target_gen",
     tbl_outs = [
