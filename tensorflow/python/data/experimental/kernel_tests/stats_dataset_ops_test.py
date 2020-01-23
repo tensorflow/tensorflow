@@ -380,8 +380,6 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testMapAndBatchAutoTuneBufferUtilization(self):
-    self.skipTest("b/147897892: This test is flaky because thread utilization "
-                  "is recorded asynchronously")
 
     def dataset_fn():
       return dataset_ops.Dataset.range(100).apply(
