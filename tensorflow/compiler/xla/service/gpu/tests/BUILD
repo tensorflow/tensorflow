@@ -58,6 +58,7 @@ tf_cc_test(
     srcs = [
         "gemm_rewrite_test.cc",
     ],
+    # TODO(b/148106593): Re-enable this test in OSS.
     tags = ["no_oss"] + tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
