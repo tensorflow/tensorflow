@@ -96,6 +96,15 @@ TEST_P(ExpandDimsOpTest, NegativeAxis) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1}));
 }
 
+TEST_F(ExpandDimsOpTest, StrTensor) {
+  std::initializer_list<std::string> values = {"abc", "de", "fghi"};
+
+  ExpandDimsOpModel<std::string> m(0, {3}, values, TestType::DYNAMIC);
+  m.Invoke();
+  EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
+}
+
 INSTANTIATE_TEST_SUITE_P(ExpandDimsOpTest, ExpandDimsOpTest,
                          ::testing::Values(TestType::DYNAMIC, TestType::CONST));
 }  // namespace

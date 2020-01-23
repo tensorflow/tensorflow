@@ -631,6 +631,13 @@ class SingleOpModel {
   std::function<void(Interpreter*)> apply_delegate_fn_;
 };
 
+// Populate string tensors.
+template <>
+inline void SingleOpModel::PopulateTensor<string>(
+    int index, const std::initializer_list<string>& data) {
+  PopulateStringTensor(index, data);
+}
+
 // Base class for single op unit tests.
 // The tests are parameterized to test multiple kernels for a single op.
 // The parameters are strings like "optimized" and "reference" to have better
