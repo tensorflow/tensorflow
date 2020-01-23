@@ -23,6 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_complex.h"
+#endif
+
 namespace tensorflow {
 namespace functor {
 
@@ -155,11 +159,41 @@ struct Identity {
 FIX_MEAN_IDENTITY(Eigen::half)
 FIX_MEAN_IDENTITY(float)
 FIX_MEAN_IDENTITY(double)
+#if TENSORFLOW_USE_ROCM
+template <>
+struct Identity<functor::MeanReducer<hipFloatComplex> > {
+  static hipFloatComplex identity(const functor::MeanReducer<hipFloatComplex>&) { 
+    return hipFloatComplex(Eigen::NumTraits<float>::quiet_NaN(), Eigen::NumTraits<float>::quiet_NaN());
+  }
+};
+template <>
+struct Identity<functor::MeanReducer<hipDoubleComplex> > {
+  static hipDoubleComplex identity(const functor::MeanReducer<hipDoubleComplex>&) { 
+    return hipDoubleComplex(Eigen::NumTraits<double>::quiet_NaN(), Eigen::NumTraits<double>::quiet_NaN());
+  }
+};
+#else
+FIX_MEAN_IDENTITY(complex64)
+FIX_MEAN_IDENTITY(complex128)
+#endif
 #undef FIX_MEAN_IDENTITY
 
 template <typename Device, typename OUT_T, typename Reducer>
 void FillIdentityEigenImpl(const Device& d, OUT_T out, const Reducer& reducer) {
   out.device(d) = out.constant(Identity<Reducer>::identity(reducer));
+}
+
+//on ROCm with complex input, reducer produces hipFloatComplex/hipDoubleComplex
+//and this function bitcasts them to std::complex.
+//In all other cases, it is identical to FillIdentityEigenImpl.
+template <typename T, typename Device, typename OUT_T, typename Reducer>
+void FillIdentityEigenImplWithCast(const Device& d, OUT_T out, const Reducer& reducer) {
+  auto id = Identity<Reducer>::identity(reducer);
+  T cast_id;
+  static_assert(sizeof(id)==sizeof(cast_id), 
+      "Error: FillIdentityEigenImplWithCast with incompatible types?");
+  memcpy(&cast_id, &id, sizeof(cast_id)); // to avoid strict-aliasing warnings
+  out.device(d) = out.constant(cast_id);
 }
 
 template <typename Device, typename Reducer>

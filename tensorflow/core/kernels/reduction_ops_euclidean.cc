@@ -51,10 +51,8 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
                           ReductionOp<GPUDevice, type, int64,                \
                                       functor::EuclideanNormReducer<type>>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-#if GOOGLE_CUDA
 TF_CALL_complex64(REGISTER_GPU_KERNELS);
 TF_CALL_complex128(REGISTER_GPU_KERNELS);
-#endif
 #undef REGISTER_GPU_KERNELS
 
 #endif

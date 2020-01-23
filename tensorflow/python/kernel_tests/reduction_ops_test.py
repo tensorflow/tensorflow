@@ -218,15 +218,15 @@ class SumReductionTest(BaseReductionTest):
     # only on GPU, since it has the more accurate implementation
     if not test.is_gpu_available():
       return
+    for n in (200,500,5000,68000):
+      arr = np.ones([n], dtype=np.float16)
 
-    arr = np.ones([68000], dtype=np.float16)
-
-    with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-      tf_arr = variables.Variable(arr)
-      variables.global_variables_initializer().run()
-      tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
-      tf_out_mean = self.evaluate(tf_mean)
-    self.assertAllClose(tf_out_mean, 1.)
+      with self.session(graph=ops.Graph(), use_gpu=True) as sess:
+        tf_arr = variables.Variable(arr)
+        variables.global_variables_initializer().run()
+        tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
+        tf_out_mean = self.evaluate(tf_mean)
+      self.assertAllClose(tf_out_mean, 1.)
 
   @test_util.run_deprecated_v1
   def testFloat32(self):

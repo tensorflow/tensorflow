@@ -773,11 +773,8 @@ namespace functor {
 DECLARE_GPU_SPECS(Eigen::half);
 DECLARE_GPU_SPECS(double);
 DECLARE_GPU_SPECS(float);
-// TODO(rocm): Enable once complex types are supported.
-#if GOOGLE_CUDA
 DECLARE_GPU_SPECS(complex64);
 DECLARE_GPU_SPECS(complex128);
-#endif
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPECS
 }  // namespace functor

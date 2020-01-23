@@ -28,10 +28,7 @@ TF_CALL_complex64(REGISTER_CPU);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU(TYPE) REGISTER_EINSUM(GPU, TYPE)
-// TODO(rocm): Enable once complex types are supported.
-#if GOOGLE_CUDA
 TF_CALL_complex64(REGISTER_GPU);
-#endif
 #undef REGISTER_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
