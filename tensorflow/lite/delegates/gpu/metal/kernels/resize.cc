@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/upsample.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 
 #include <map>
 #include <memory>
@@ -31,14 +31,8 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> Upsample(
-    int id, ValueId input_id, ValueId output_id,
-    const Upsample2DAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-
-  desc->shader_source = R"(
+std::string GetResizeBilinearCode() {
+  return R"(
     #include <metal_stdlib>
     using namespace metal;
     $0
@@ -70,6 +64,46 @@ std::vector<ComputeTaskDescriptorPtr> Upsample(
       output_buffer[linear_index] = value;
     }
   )";
+}
+
+std::string GetResizeNearestCode() {
+  return R"(
+    #include <metal_stdlib>
+    using namespace metal;
+    $0
+    kernel void ComputeFunction(
+                                $1
+                                uint3 gid[[thread_position_in_grid]]) {
+      if (int(gid.x) >= size.z || int(gid.y) >= size.w) {
+        return;
+      }
+      const int2 coord = int2(float2(gid.xy) * scale);
+      const int src_index = (gid.z * size.y + coord.y) * size.x + coord.x;
+      FLT4 value = src_buffer[src_index];
+      const int linear_index = (gid.z * size.w + gid.y) * size.z + gid.x;
+      $2
+      output_buffer[linear_index] = value;
+    }
+  )";
+}
+
+std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
+                                             ValueId output_id,
+                                             const Resize2DAttributes& attr) {
+  auto desc = std::make_shared<ComputeTaskDescriptor>();
+  desc->id = id;
+  desc->is_linkable = false;
+  switch (attr.type) {
+    case SamplingType::BILINEAR:
+      desc->shader_source = GetResizeBilinearCode();
+      break;
+    case SamplingType::NEAREST:
+      desc->shader_source = GetResizeNearestCode();
+      break;
+    default:
+      // Unknown sampling type
+      return {};
+  }
 
   desc->input_buffers = {
       {input_id, "device FLT4* const src_buffer"},

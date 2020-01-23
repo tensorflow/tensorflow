@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/upsample.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/resize.h"
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
 
-std::string GetUpsampleCode(
+std::string GetResizeCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor(
@@ -84,7 +85,7 @@ std::string GetUpsampleCode(
   return c;
 }
 
-std::string GetUpsample3DCode(
+std::string GetResize3DCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor(
@@ -161,13 +162,13 @@ std::string GetUpsample3DCode(
 
 }  // namespace
 
-Upsample::Upsample(Upsample&& operation)
+Resize::Resize(Resize&& operation)
     : GPUOperation(std::move(operation)),
       attr_(operation.attr_),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
-Upsample& Upsample::operator=(Upsample&& operation) {
+Resize& Resize::operator=(Resize&& operation) {
   if (this != &operation) {
     attr_ = operation.attr_;
     kernel_ = std::move(operation.kernel_);
@@ -177,14 +178,17 @@ Upsample& Upsample::operator=(Upsample&& operation) {
   return *this;
 }
 
-Status Upsample::Compile(const CreationContext& creation_context) {
-  const auto code = GetUpsampleCode(definition_, linked_operations_);
+Status Resize::Compile(const CreationContext& creation_context) {
+  if (attr_.type != SamplingType::BILINEAR) {
+    return InternalError("Only bilinear sampling is currently supported");
+  }
+  const auto code = GetResizeCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status Upsample::BindArguments() {
+Status Resize::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -200,35 +204,35 @@ Status Upsample::BindArguments() {
   return OkStatus();
 }
 
-int3 Upsample::GetGridSize() const {
+int3 Resize::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Upsample::AddToQueue(CLCommandQueue* queue) {
+Status Resize::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-Status Upsample::Tune(const TuningParameters& params) {
+Status Resize::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Upsample CreateUpsample(const OperationDef& definition,
-                        const Upsample2DAttributes& attr) {
-  return Upsample(definition, attr);
+Resize CreateResize(const OperationDef& definition,
+                    const Resize2DAttributes& attr) {
+  return Resize(definition, attr);
 }
 
-Upsample3D::Upsample3D(Upsample3D&& operation)
+Resize3D::Resize3D(Resize3D&& operation)
     : GPUOperation(std::move(operation)),
       attr_(operation.attr_),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
-Upsample3D& Upsample3D::operator=(Upsample3D&& operation) {
+Resize3D& Resize3D::operator=(Resize3D&& operation) {
   if (this != &operation) {
     attr_ = operation.attr_;
     kernel_ = std::move(operation.kernel_);
@@ -238,14 +242,14 @@ Upsample3D& Upsample3D::operator=(Upsample3D&& operation) {
   return *this;
 }
 
-Status Upsample3D::Compile(const CreationContext& creation_context) {
-  const auto code = GetUpsample3DCode(definition_, linked_operations_);
+Status Resize3D::Compile(const CreationContext& creation_context) {
+  const auto code = GetResize3DCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status Upsample3D::BindArguments() {
+Status Resize3D::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -265,26 +269,26 @@ Status Upsample3D::BindArguments() {
   return OkStatus();
 }
 
-int3 Upsample3D::GetGridSize() const {
+int3 Resize3D::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices() * dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Upsample3D::AddToQueue(CLCommandQueue* queue) {
+Status Resize3D::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-Status Upsample3D::Tune(const TuningParameters& params) {
+Status Resize3D::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Upsample3D CreateUpsample3D(const OperationDef& definition,
-                            const Upsample3DAttributes& attr) {
-  return Upsample3D(definition, attr);
+Resize3D CreateResize3D(const OperationDef& definition,
+                        const Resize3DAttributes& attr) {
+  return Resize3D(definition, attr);
 }
 
 }  // namespace cl

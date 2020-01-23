@@ -1222,9 +1222,9 @@ cc_library(
 )
 
 cc_library(
-    name = "upsample",
-    srcs = ["upsample.cc"],
-    hdrs = ["upsample.h"],
+    name = "resize",
+    srcs = ["resize.cc"],
+    hdrs = ["resize.h"],
     deps = [
         ":gpu_operation",
         ":util",
@@ -1237,8 +1237,8 @@ cc_library(
 )
 
 cc_test(
-    name = "upsample_test",
-    srcs = ["upsample_test.cc"],
+    name = "resize_test",
+    srcs = ["resize_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
         "linux",
@@ -1246,7 +1246,7 @@ cc_test(
     ],
     deps = [
         ":cl_test",
-        ":upsample",
+        ":resize",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -1317,10 +1317,10 @@ test_suite(
         "relu_test",
         "reshape_test",
         "reshapex4_test",
+        "resize_test",
         "softmax1x1_test",
         "softmax_test",
         "strided_slice_test",
         "transpose_test",
-        "upsample_test",
     ],
 )

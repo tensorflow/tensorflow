@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_UPSAMPLE_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_UPSAMPLE_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_KERNELS_RESIZE_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_GL_KERNELS_RESIZE_H_
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include <memory>
+
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
 
 namespace tflite {
 namespace gpu {
-namespace metal {
+namespace gl {
 
-std::vector<ComputeTaskDescriptorPtr> Upsample(
-    int id, ValueId input_id, ValueId output_id,
-    const Upsample2DAttributes& attr);
+std::unique_ptr<NodeShader> NewResizeNodeShader();
 
-}  // namespace metal
+}  // namespace gl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_UPSAMPLE_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_KERNELS_RESIZE_H_
