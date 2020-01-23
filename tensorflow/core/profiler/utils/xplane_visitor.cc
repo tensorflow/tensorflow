@@ -25,14 +25,31 @@ XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
       metadata_(plane->GetStatMetadata(stat->metadata_id())),
       type_(plane->GetStatType(stat->metadata_id())) {}
 
+std::string XStatVisitor::ToString() const {
+  switch (stat_->value_case()) {
+    case XStat::kInt64Value:
+      return absl::StrCat(stat_->int64_value());
+    case XStat::kUint64Value:
+      return absl::StrCat(stat_->uint64_value());
+    case XStat::kDoubleValue:
+      return absl::StrCat(stat_->double_value());
+    case XStat::kStrValue:
+      return stat_->str_value();
+    case XStat::VALUE_NOT_SET:
+      return "";
+  }
+}
+
 XEventVisitor::XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                              const XEvent* event)
-    : plane_(plane),
+    : XStatsOwner<XEvent>(plane, event),
+      plane_(plane),
       line_(line),
       event_(event),
       metadata_(plane->GetEventMetadata(event_->metadata_id())) {}
 
-XPlaneVisitor::XPlaneVisitor(const XPlane* plane) : plane_(plane) {
+XPlaneVisitor::XPlaneVisitor(const XPlane* plane)
+    : XStatsOwner<XPlane>(this, plane), plane_(plane) {
   for (const auto& stat_metadata : plane->stat_metadata()) {
     StatType type =
         tensorflow::profiler::GetStatType(stat_metadata.second.name());

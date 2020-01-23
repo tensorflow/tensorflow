@@ -785,6 +785,13 @@ class Context(object):
     """List of the names of devices available to execute operations."""
     return self._devices
 
+  def host_address_space(self):
+    self.ensure_initialized()
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tfe.TFE_HostAddressSpace(self._context_handle, buffer_)
+      address_space = pywrap_tfe.TF_GetBuffer(buffer_).decode("utf-8")
+    return address_space
+
   # TODO(fishx): remove this property.
   @property
   def execution_mode(self):

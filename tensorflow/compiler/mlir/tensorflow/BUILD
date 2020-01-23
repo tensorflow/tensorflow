@@ -245,6 +245,7 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/optimize_global_tensors.cc",
+        "transforms/promote_resources_to_args.cc",
         "transforms/raise_control_flow.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
@@ -837,6 +838,7 @@ cc_library(
     srcs = ["utils/compile_mlir_util.cc"],
     hdrs = ["utils/compile_mlir_util.h"],
     deps = [
+        ":bridge_logger",
         ":convert_type",
         ":dump_mlir_util",
         ":error_util",

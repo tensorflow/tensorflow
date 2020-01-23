@@ -602,6 +602,6 @@ TEST(MathOpsTest, SobolSample) {
   INFER_ERROR("must be rank 0", op, "?;[1];?");
   INFER_ERROR("must be rank 0", op, "?;?;[1]");
 
-  INFER_OK(op, "[];[];[]", "[?]");
+  INFER_OK(op, "[];[];[]", "[?,?]");
 }
 }  // end namespace tensorflow

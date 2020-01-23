@@ -721,8 +721,8 @@ def _get_opt_einsum_contract_path(equation, shaped_inputs_tuple, optimize):
 
 
 # Cache the possibly expensive opt_einsum.contract_path call using lru_cache
-# from the Python3 standard library.
-if six.PY3:
+# from the Python3+ standard library.
+if not six.PY2:
   _get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
       _get_opt_einsum_contract_path)
 

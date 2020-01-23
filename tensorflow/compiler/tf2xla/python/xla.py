@@ -199,6 +199,9 @@ shift_left = _broadcasting_binary_op(bitwise_ops.left_shift)
 shift_right_logical = _broadcasting_binary_op(_shift_right_logical_helper)
 shift_right_arithmetic = _broadcasting_binary_op(_shift_right_arithmetic_helper)
 
+igamma = _broadcasting_binary_op(math_ops.igamma)
+igammac = _broadcasting_binary_op(math_ops.igammac)
+
 
 def _binary_op(fn):
   """Wrapper that restricts `fn` to have the correct signature."""
@@ -439,4 +442,3 @@ def scatter(operand, scatter_indices, updates, update_computation,
       dimension_numbers=dimension_numbers.SerializeToString(),
       indices_are_sorted=indices_are_sorted,
       name=name)
-

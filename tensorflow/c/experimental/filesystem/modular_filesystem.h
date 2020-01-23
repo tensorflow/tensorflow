@@ -32,7 +32,7 @@ namespace tensorflow {
 // TODO(b/143949615): After all filesystems are converted, this file will be
 // moved to core/platform, and this class can become a singleton and replace the
 // need for `Env::Default()`. At that time, we might decide to remove the need
-// for `Env::Default()` altoghether, but that's a different project, not in
+// for `Env::Default()` altogether, but that's a different project, not in
 // scope for now. I'm just mentioning this here as that transition will mean
 // removal of the registration part from `Env` and adding it here instead: we
 // will need tables to hold for each scheme the function tables that implement
@@ -155,6 +155,9 @@ class ModularReadOnlyMemoryRegion final : public ReadOnlyMemoryRegion {
   const TF_ReadOnlyMemoryRegionOps* ops_;  // not owned
   TF_DISALLOW_COPY_AND_ASSIGN(ModularReadOnlyMemoryRegion);
 };
+
+// Registers a filesystem plugin so that core TensorFlow can use it.
+Status RegisterFilesystemPlugin(const std::string& dso_path);
 
 }  // namespace tensorflow
 

@@ -220,9 +220,7 @@ struct PackImpl<Path::kStandardCpp, FixedKernelLayout, Scalar, PackedScalar,
 
 #if RUY_PLATFORM(NEON)
 RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
-#if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
-#endif
 #elif RUY_PLATFORM(X86)
 RUY_INHERIT_PACK(Path::kStandardCpp, Path::kSse42)
 RUY_INHERIT_PACK(Path::kSse42, Path::kAvx2)

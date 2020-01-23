@@ -69,8 +69,15 @@ namespace TFL {
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
+class PrepareTFPass : public FunctionPass<PrepareTFPass> {
+ public:
+  explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
+  explicit PrepareTFPass(bool unfold_batch_matmul)
+      : unfold_batch_matmul_(unfold_batch_matmul) {}
   void runOnFunction() override;
+
+ private:
+  bool unfold_batch_matmul_;
 };
 
 // TODO(fengliuai): move this rule to PreparePatterns.td
@@ -508,17 +515,21 @@ void PrepareTFPass::runOnFunction() {
   // will be applied.
   patterns.clear();
   TFL::populateWithGenerated(ctx, &patterns);
-  patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
+  if (unfold_batch_matmul_) {
+    patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+                    ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
+  }
+  patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
+                  ConvertTFStridedSlice>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass() {
-  return std::make_unique<PrepareTFPass>();
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass(
+    bool unfold_batch_matmul) {
+  return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
 }
 
 static PassRegistration<PrepareTFPass> pass(

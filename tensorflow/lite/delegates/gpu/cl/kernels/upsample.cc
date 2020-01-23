@@ -46,7 +46,7 @@ std::string GetUpsampleCode(
   c += ") {\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -62,7 +62,7 @@ std::string GetUpsampleCode(
   c += "  st.xy = (int2)(f_coords.x, f_coords.y);\n";
   c += "  st.zw = min(st.xy + (int2)(1, 1), border);\n";
   c += "  float2 t = f_coords - (float2)(st.x, st.y);\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  st.x = st.x * src_size.w + B;\n";
     c += "  st.z = st.z * src_size.w + B;\n";
     c += "  X = X * dst_size.w + B;\n";
@@ -103,7 +103,7 @@ std::string GetUpsample3DCode(
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,         \n";
   c += "    int4 dst_size,         \n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "    int batch_size,      \n";
   }
   c += "    int4 border,           \n";
@@ -113,7 +113,7 @@ std::string GetUpsample3DCode(
   c += "  int linear_id_z = get_global_id(2);\n";
   c += "  int S = linear_id_z % dst_size.w;\n";
   c += "  int Z = linear_id_z / dst_size.w;\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / batch_size;\n";
     c += "  int B = linear_id % batch_size;\n";
@@ -128,7 +128,7 @@ std::string GetUpsample3DCode(
   c += "  int4 start = (int4)(f_coords.x, f_coords.y, f_coords.z, 0);\n";
   c += "  int4 end = min(start + (int4)(1, 1, 1, 0), border);\n";
   c += "  float4 t = f_coords - (float4)(start.x, start.y, start.z, 0.0f);\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  start.x = start.x * batch_size + B;\n";
     c += "  end.x = end.x * batch_size + B;\n";
     c += "  X = X * batch_size + B;\n";
@@ -252,7 +252,7 @@ Status Upsample3D::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDS()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDS()));
-  if (definition_.batch_support) {
+  if (definition_.IsBatchSupported()) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Batch()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(int4(

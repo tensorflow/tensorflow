@@ -28,6 +28,13 @@ class RngExpander : public OpExpanderPass {
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
   StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* rng) override;
+
+ private:
+  // Cache RNG computations based on the distribution, output shape and shapes
+  // of the first and second operand.
+  absl::flat_hash_map<std::tuple<RandomDistribution, Shape, Shape, Shape>,
+                      HloComputation*>
+      expanded_rng_instructions_;
 };
 
 }  // namespace xla

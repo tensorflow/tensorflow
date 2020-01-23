@@ -456,7 +456,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name) {
                             ",peak_bytes_in_use=", stats.peak_bytes_in_use,
                             "#");
       },
-      /*level=*/2);
+      /*level=*/3);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,

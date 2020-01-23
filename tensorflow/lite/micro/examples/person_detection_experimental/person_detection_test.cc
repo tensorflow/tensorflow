@@ -52,26 +52,23 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // An easier approach is to just use the AllOpsResolver, but this will
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
-  tflite::MicroMutableOpResolver micro_mutable_op_resolver;
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-      tflite::ops::micro::Register_DEPTHWISE_CONV_2D(), 1, 3);
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                                       tflite::ops::micro::Register_CONV_2D(),
-                                       1, 3);
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_AVERAGE_POOL_2D,
-      tflite::ops::micro::Register_AVERAGE_POOL_2D(), 1, 2);
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
-                                       tflite::ops::micro::Register_RESHAPE());
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                                       tflite::ops::micro::Register_SOFTMAX(),
-                                       1, 2);
+  tflite::MicroOpResolver<11> micro_op_resolver;
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+                               tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
+                               1, 3);
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
+                               tflite::ops::micro::Register_CONV_2D(), 1, 3);
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
+                               tflite::ops::micro::Register_AVERAGE_POOL_2D(),
+                               1, 2);
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
+                               tflite::ops::micro::Register_RESHAPE());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
+                               tflite::ops::micro::Register_SOFTMAX(), 1, 2);
 
   // Build an interpreter to run the model with.
-  tflite::MicroInterpreter interpreter(model, micro_mutable_op_resolver,
-                                       tensor_arena, tensor_arena_size,
-                                       error_reporter);
+  tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
+                                       tensor_arena_size, error_reporter);
   interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.

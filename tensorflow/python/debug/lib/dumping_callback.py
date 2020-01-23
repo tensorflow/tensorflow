@@ -102,6 +102,11 @@ class _DumpingCallback(object):
     self._stack_frame_to_id_lock = threading.Lock()
     self._context_lock = threading.Lock()
     self._symbolic_tensor_counter_lock = threading.Lock()
+    # A dict mapping Placeholder tensors to their instrumenting debug tensors.
+    # Used only under V1 graph mode, where we can't rely on auto control
+    # dependency to execute the debug tensors and hence need to attach the debug
+    # tensors as control dependencies of the ops that consume the Placeholder.
+    self._placeholder_to_debug_tensor = dict()
     self._writer = None
 
   def function_callback(self, function):
@@ -211,10 +216,10 @@ class _DumpingCallback(object):
         if source_utils.is_extension_uncompiled_python_source(file_path):
           try:
             lines, _ = source_utils.load_source(file_path)
-          except IOError:
-            # Accept the fact that some source files are not readable. Here we
-            # use best effort to send the source-file contents.
-            pass
+          except IOError as e:
+            logging.warn(
+                "Failed to read source code from path: %s. Reason: %s",
+                file_path, e)
         writer = self.get_writer()
         writer.WriteSourceFile(debug_event_pb2.SourceFile(
             file_path=file_path, host_name=self._hostname, lines=lines))
@@ -256,6 +261,40 @@ class _DumpingCallback(object):
         host_name=self._hostname, stack_frame_ids=stack_frame_ids)
     return code_location
 
+  def _process_v1_graph_mode_tensor(self,
+                                    op_type,
+                                    tensor,
+                                    debug_tensor,
+                                    tensor_debug_mode):
+    """For V1 graph mode, determine what tensor to output from callback.
+
+    Args:
+      op_type: Type of the op that outputs the original symbolic tensor.
+      tensor: The original output symbolic tensor.
+      debug_tensor: The debugger-instrumented tensor.
+      tensor_debug_mode: Debug mode used, a tfdbg TensorDebugMode enum.
+
+    Returns:
+      A symbolic tensor to be returned by the dumping op_callback.
+    """
+    # Placeholders need special treatment under V1 graph mode. The
+    # callback can't simply override the Placeholder tensor to a debug tensor,
+    # as that would cause the Placeholder op to lack a value.
+    if op_type in ("Placeholder", "PlaceholderWithDefault"):
+      self._placeholder_to_debug_tensor[tensor] = debug_tensor
+      return tensor
+    else:
+      # TODO(cais): Evaluate performance optimization options. For the
+      # `NO_TENSOR` debug mode, an alternative is to add `debug_tensor` as a
+      # control dependency of `tensor.op` without an additional identity op.
+      if tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
+        return debug_tensor
+      else:
+        identity = array_ops.identity(tensor)
+        identity.op._add_control_input(  # pylint: disable=protected-access
+            debug_tensor.op)
+        return identity
+
   def _instrument_symbolic_tensors(self,
                                    tensors,
                                    op_type,
@@ -287,8 +326,6 @@ class _DumpingCallback(object):
       automatic control dependencies (see `auto_control_deps.py`) instead of
       tensor overriding.
     """
-    # TODO(b/144441464, b/144440920, b/144440922): Make use of it.
-
     tensor_debug_mode = self._tensor_debug_mode
     debug_urls = ["file://%s" % self._dump_root]
     is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
@@ -297,16 +334,16 @@ class _DumpingCallback(object):
       for output_slot, tensor in enumerate(tensors):
         if (not self._should_dump_tensor(op_type, tensor.dtype) or
             not tensor.dtype.is_numpy_compatible):
-          # Instrumenting DT_VARIANT and DT_RESOURCE type tensors under
-          # V1 graph mode is known to have issues. TODO(cais): Investigate.
           if is_v1_graph_mode:
             instrumented_tensors.append(tensor)
           continue
         if is_v1_graph_mode and not tensor.dtype.is_numpy_compatible:
+          # Avoid instrumenting Placeholder under is_v1_graph_mode. Doing that
+          # would cause runtime complaint about Placeholders not being fed.
           instrumented_tensors.append(tensor)
           continue
-        # Except in V1 graph mode + control flow, debug_identity_v2 trigger auto
-        # control dependency because it's a stateful op.
+        # Except in V1 graph mode + control flow, debug_identity_v2 triggers
+        # auto control dependency because it's a stateful op.
         debug_tensor = gen_debug_ops.debug_identity_v2(
             # Use an empty (shape=[0]) float32 tensor for the NO_TENSOR mode
             # as a low-overhead placeholder, since no actual tensor value is
@@ -318,13 +355,8 @@ class _DumpingCallback(object):
             tensor_debug_mode=self._tensor_debug_mode,
             debug_urls=debug_urls)
         if is_v1_graph_mode:
-          # TODO(cais): Evaluate performance optimization options. For the
-          # `NO_TENSOR` debug mode, an alternative is to add `debug_tensor` as a
-          # control dependency of `tensor.op` without an additional identity op.
-          identity = array_ops.identity(tensor)
-          identity.op._add_control_input(  # pylint: disable=protected-access
-              debug_tensor.op)
-          instrumented_tensors.append(identity)
+          instrumented_tensors.append(self._process_v1_graph_mode_tensor(
+              op_type, tensor, debug_tensor, tensor_debug_mode))
       return instrumented_tensors
     elif tensor_debug_mode in (debug_event_pb2.TensorDebugMode.CURT_HEALTH,
                                debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
@@ -355,10 +387,8 @@ class _DumpingCallback(object):
             tensor_debug_mode=self._tensor_debug_mode,
             debug_urls=debug_urls)
         if is_v1_graph_mode:
-          identity = array_ops.identity(tensor)
-          identity.op._add_control_input(  # pylint: disable=protected-access
-              debug_tensor.op)
-          instrumented_tensors.append(identity)
+          instrumented_tensors.append(self._process_v1_graph_mode_tensor(
+              op_type, tensor, debug_tensor, tensor_debug_mode))
       return instrumented_tensors
     elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
       for output_slot, tensor in enumerate(tensors):
@@ -377,7 +407,8 @@ class _DumpingCallback(object):
             tensor_debug_mode=self._tensor_debug_mode,
             debug_urls=debug_urls)
         if is_v1_graph_mode:
-          instrumented_tensors.append(debug_tensor)
+          instrumented_tensors.append(self._process_v1_graph_mode_tensor(
+              op_type, tensor, debug_tensor, tensor_debug_mode))
       return instrumented_tensors
     else:
       raise NotImplementedError(
@@ -487,9 +518,21 @@ class _DumpingCallback(object):
 
     writer = self.get_writer()
     if graph:
+      is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
       context_id = self._get_context_id(graph)  # Innermost context ID.
-      assert op_name is not None
       output_tensor_ids = self._get_symbolic_tensor_ids(len(outputs))
+      if op_type in ("Placeholder", "PlaceholderWithDefault"):
+        # In some cases, the op name of a Placeholder op in a graph
+        # can be duplicate (e.g., with the name "resource").
+        # When this happens, we give the op an debugger-generated name
+        # in order to prevent problems and check failures down the pipe.
+        op_name = "%s_%d" % (op_name, self._symbolic_tensor_counter)
+      if is_v1_graph_mode:
+        for input_tensor in inputs:
+          # TODO(cais):
+          if input_tensor in self._placeholder_to_debug_tensor and outputs:
+            outputs[0].op._add_control_input(  # pylint: disable=protected-access
+                self._placeholder_to_debug_tensor[input_tensor].op)
       graph_op_creation = debug_event_pb2.GraphOpCreation(
           op_type=op_type,
           op_name=op_name,

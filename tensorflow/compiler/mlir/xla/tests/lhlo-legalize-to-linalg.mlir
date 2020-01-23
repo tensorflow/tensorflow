@@ -15,6 +15,20 @@ func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @element_wise_with_dynamic_shape
+func @element_wise_with_dynamic_shape(%lhs: memref<?x?xf32>, %rhs: memref<?x?xf32>,
+          %result: memref<?x?xf32>) {
+  "xla_lhlo.add"(%lhs, %rhs, %result)
+      : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = addf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @element_wise_scalar
 func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
           %result: memref<f32>) {
@@ -85,6 +99,19 @@ func @exp(%input: memref<2x2xf32>,
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[RESULT:.*]] = exp %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @copy
+func @copy(%input: memref<2x4x8xf32>,
+           %result: memref<2x4x8xf32>) {
+  "xla_lhlo.copy"(%input, %result)
+      : (memref<2x4x8xf32>, memref<2x4x8xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   linalg.yield %[[OPERAND_IN]] : f32
 
 // -----
 

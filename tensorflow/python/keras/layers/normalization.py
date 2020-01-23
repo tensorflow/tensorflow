@@ -196,13 +196,13 @@ class BatchNormalizationBase(Layer):
                **kwargs):
     super(BatchNormalizationBase, self).__init__(
         name=name, **kwargs)
-    if isinstance(axis, list):
+    if isinstance(axis, (list, tuple)):
       self.axis = axis[:]
     elif isinstance(axis, int):
       self.axis = axis
     else:
-      raise TypeError('axis must be int or list, type given: %s'
-                      % type(axis))
+      raise TypeError('Expected an int or a list/tuple of ints for the '
+                      'argument \'axis\', but received: %r' % axis)
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -967,8 +967,8 @@ class LayerNormalization(Layer):
     elif isinstance(axis, int):
       self.axis = axis
     else:
-      raise ValueError('Expected an int or a list/tuple of ints for the '
-                       'argument \'axis\', but received instead: %s' % axis)
+      raise TypeError('Expected an int or a list/tuple of ints for the '
+                      'argument \'axis\', but received: %r' % axis)
 
     self.epsilon = epsilon
     self.center = center

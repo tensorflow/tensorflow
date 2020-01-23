@@ -361,13 +361,15 @@ EagerContext::~EagerContext() {
   }
 #endif  // !IS_MOBILE_PLATFORM
 
-  rendezvous_->Unref();
+  if (rendezvous_) {
+    rendezvous_->Unref();
+  }
   if (resource_deallocator_ != nullptr) {
     resource_deallocator_();
   }
 }
 
-bool EagerContext::FindFunctionByName(const string& name) {
+bool EagerContext::FindFunctionByName(const string& name) const {
   return func_lib_def_.Find(name) != nullptr;
 }
 

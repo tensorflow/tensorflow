@@ -284,6 +284,7 @@ cuda_py_test(
     name = "ctc_loss_op_test",
     size = "medium",
     srcs = ["ctc_loss_op_test.py"],
+    xla_enable_strict_auto_jit = False,  # b/148153828
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ctc_ops",
@@ -1212,7 +1213,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "@six_archive//:six",
     ],
 )

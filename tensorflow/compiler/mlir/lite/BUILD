@@ -191,7 +191,6 @@ cc_library(
     ],
     hdrs = [
         "ir/tfl_ops.h",
-        "ir/tfl_traits.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_traits.h",
@@ -326,6 +325,7 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
@@ -683,12 +683,16 @@ cc_library(
     ],
 )
 
-exports_files(
-    ["transforms/passes.h"],
+cc_library(
+    name = "empty_passes",
+    hdrs = ["transforms/passes.h"],
     visibility = [
         "//configs/devtools/hawkeye/tflite:__subpackages__",
         "//learning/brain/models/app_benchmarks:__subpackages__",
         "//tensorflow/compiler/mlir/lite:friends",
         "//tensorflow/lite/experimental/mlir:__subpackages__",
+    ],
+    deps = [
+        "@llvm-project//llvm:support",
     ],
 )

@@ -49,6 +49,7 @@ namespace TF {
 namespace {
 
 constexpr int64_t kUnknownResourceId = -1;
+constexpr char kResourceArgUniqueIdAttr[] = "tf.resource_arg_unique_id";
 
 // Returns if a VarHandleOp is anonymous, which means it always creates a new
 // variable.
@@ -119,19 +120,37 @@ ResourceAliasAnalysis::ResourceAliasAnalysis(Operation* op) {
 
 void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
   // This function populates resource_value_to_ids_.
-  //
-  // TODO(yuanzx): Pass variable aliasing information to functions so we can
-  // properly resolve aliasing arguments.
-  //
-  // Before having that, we assume function arguments do not alias each other.
+
+  // If the "tf.resource_arg_unique_id" argument attributes are present for
+  // resource-type arguments, respect them when choosing IDs; otherwise, they
+  // must not alias.
   int64_t next_unique_id = 0;
+  const bool has_arg_unique_id_attrs =
+      llvm::any_of(func_op.getArguments(), [&](const BlockArgument& arg) {
+        return func_op.getArgAttr(arg.getArgNumber(), kResourceArgUniqueIdAttr);
+      });
+  // Maps the kResourceArgUniqueIdAttr attribute value to the internal integer
+  // ID used by this pass.
+  llvm::SmallDenseMap<int64_t, int64_t> attr_id_to_internal_id;
   for (auto arg : func_op.getArguments()) {
     if (!mlir::getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>())
       continue;
-    resource_value_to_ids_[arg].insert(next_unique_id++);
+    if (has_arg_unique_id_attrs) {
+      auto id_attr = func_op.getArgAttrOfType<IntegerAttr>(
+          arg.getArgNumber(), kResourceArgUniqueIdAttr);
+      assert(id_attr &&
+             "tf.resource_arg_unique_id attribute should exist on either none "
+             "or all arguments.");
+      auto emplace_res = attr_id_to_internal_id.try_emplace(id_attr.getInt(),
+                                                            next_unique_id++);
+      resource_value_to_ids_[arg].insert(emplace_res.first->getSecond());
+    } else {
+      resource_value_to_ids_[arg].insert(next_unique_id++);
+    }
   }
   llvm::StringMap<int64_t> var_handle_name_id_map;
-  auto forward_input_to_output = [&](Value operand, Value result) {
+  auto forward_input_to_output = [&](const Value& operand,
+                                     const Value& result) {
     if (!mlir::getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>())
       return;
     auto& result_ids = resource_value_to_ids_[result];
@@ -413,7 +432,7 @@ void SideEffectAnalysis::AnalyzeRegion(
 
   // Returns whether an access to `resource` can skip control edges from
   // previous accesses to unknown resources, due to that earlier accesses to
-  // `resource` already indirectly tracked previous accesses to uknown
+  // `resource` already indirectly tracked previous accesses to unknown
   // resources. `read_only` specifies the type of access of the current op being
   // considered.
   auto unknown_access_indirectly_tracked_by_resource = [&](int64_t resource,

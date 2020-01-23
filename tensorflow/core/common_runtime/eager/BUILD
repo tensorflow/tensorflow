@@ -97,6 +97,8 @@ tf_cuda_library(
         ":kernel_and_device",
         ":tensor_handle",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -216,8 +218,8 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/profiler/lib:annotated_traceme",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/core/profiler/lib:scoped_annotation",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 

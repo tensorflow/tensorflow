@@ -3,13 +3,14 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
+load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
@@ -426,6 +427,30 @@ tf_python_pybind_extension(
     ],
 )
 
+# Necessary for the pywrap inclusion below.
+tf_pybind_cc_library_wrapper(
+    name = "tfcompile_headers_lib",
+    deps = [
+        "//tensorflow/compiler/aot:tfcompile_lib",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tfcompile",
+    srcs = ["tfcompile_wrapper.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_tfcompile",
+    deps = [
+        ":tfcompile_headers_lib",
+        "@pybind11",
+        "//third_party/python_runtime:headers",
+        ":pybind11_lib",
+        ":pybind11_status",
+        # The headers here cannot be brought in via cc_header_only_library
+        "//tensorflow/compiler/aot:llvm_targets",
+    ],
+)
+
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
@@ -565,7 +590,7 @@ tf_python_pybind_extension(
     srcs = [
         "training/quantize_training_wrapper.cc",
     ],
-    hdrs = ["//tensorflow/core:quantize_training_hdrs"],
+    hdrs = ["//tensorflow/core/graph:quantize_training_hdrs"],
     module_name = "_pywrap_quantize_training",
     deps = [
         ":pybind11_lib",
@@ -822,6 +847,8 @@ cc_library(
     srcs = ["lib/core/py_seq_tensor.cc"],
     hdrs = ["lib/core/py_seq_tensor.h"],
     deps = [
+        ":ndarray_tensor",
+        ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":py_util",
         ":safe_ptr",
@@ -1109,10 +1136,12 @@ py_library(
         ":tensor_util",
         ":type_spec",
         ":util",
-        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
+        "//tensorflow/python/eager:context",
+    ] + if_xla_available([
+        ":_pywrap_tfcompile",
+    ]),
 )
 
 py_library(
@@ -2771,6 +2800,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":sparse_ops",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
     ],
 )
 
@@ -4230,6 +4260,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "script_ops_test",
+    srcs = ["ops/script_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":dtypes",
+        ":framework_ops",
+        ":framework_test_lib",
+        ":script_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "standard_ops",
     srcs = ["ops/standard_ops.py"],
@@ -5553,6 +5597,8 @@ tf_py_wrap_cc(
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
+    ]) + if_xla_available([
+        "//tensorflow/compiler/aot:tfcompile_lib",
     ]),
 )
 
@@ -5678,7 +5724,7 @@ cc_import(
     name = "pywrap_tensorflow_import_lib",
     interface_library = select({
         "//tensorflow:windows": ":pywrap_tensorflow_import_lib_file",
-        "//conditions:default": "not_exsiting_on_unix.lib",  # Just a placeholder for Unix platforms
+        "//conditions:default": "not_existing_on_unix.lib",  # Just a placeholder for Unix platforms
     }),
     system_provided = 1,
 )
@@ -6786,7 +6832,7 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -7155,6 +7201,22 @@ cuda_py_test(
         ":training",
         ":variables",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "graph_building_benchmark",
+    size = "medium",
+    srcs = ["framework/graph_building_benchmark.py"],
+    main = "framework/graph_building_benchmark.py",
+    python_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":math_ops",
+        ":platform_benchmark",
+        "//tensorflow/python/eager:context",
     ],
 )
 

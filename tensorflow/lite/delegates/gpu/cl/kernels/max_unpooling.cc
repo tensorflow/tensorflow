@@ -57,7 +57,7 @@ std::string GetMaxUnoolingKernelCode(
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X0 = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -82,7 +82,7 @@ std::string GetMaxUnoolingKernelCode(
     c += "  int4 ind = convert_int4(" + src_ind.Read("src_adr", address_mode) +
          ");\n";
   }
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int t_x = X0 - (src_x0 * stride.x - padding.x);\n";
   } else {
     c += "  int t_x = X - (src_x * stride.x - padding.x);\n";
@@ -129,7 +129,7 @@ std::string GetMaxUnooling3DKernelCode(
   c += dst.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,      \n";
   c += "    int4 dst_size,      \n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "    int batch_size,          \n";
   }
   c += "    int4 kernel_size,   \n";
@@ -142,7 +142,7 @@ std::string GetMaxUnooling3DKernelCode(
   c += "  int S = linear_id_z % dst_size.w;\n";
   c += "  int Z = linear_id_z / dst_size.w;\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X0 = linear_id / batch_size;\n";
     c += "  int B = linear_id % batch_size;\n";
@@ -170,7 +170,7 @@ std::string GetMaxUnooling3DKernelCode(
     c += "  int4 ind = convert_int4(" + src_ind.Read("src_adr", address_mode) +
          ");\n";
   }
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int t_x = X0 - (src_x0 * stride.x - padding.x);\n";
   } else {
     c += "  int t_x = X - (src_x * stride.x - padding.x);\n";
@@ -307,7 +307,7 @@ Status MaxUnpooling3D::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDS()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDS()));
-  if (definition_.batch_support) {
+  if (definition_.IsBatchSupported()) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Batch()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(

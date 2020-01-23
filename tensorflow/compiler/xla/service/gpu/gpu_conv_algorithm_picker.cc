@@ -343,13 +343,18 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const Shape& result_shape = instr->shape().tuple_shapes(0);
   int64 rng_state = 0;
 
-  const auto initialize_buffer = [&stream, &rng_state](
+  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+  const int32 conv_autotune_level =
+      hlo_module_config.debug_options().xla_gpu_autotune_level();
+  const bool init_conv_data = conv_autotune_level > 1;
+  const bool check_conv = conv_autotune_level > 3;
+  const auto initialize_buffer = [init_conv_data, &stream, &rng_state](
                                      DeviceMemoryBase buffer,
                                      const Shape& buffer_shape) {
-    InitializeBuffer(stream, buffer_shape.element_type(), &rng_state, buffer);
+    if (init_conv_data) {
+      InitializeBuffer(stream, buffer_shape.element_type(), &rng_state, buffer);
+    }
   };
-
-  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
   se::RedzoneAllocator input_output_allocator(
@@ -443,6 +448,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     result.set_scratch_bytes(scratch_bytes_used);
     *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
+    if (!check_conv) {
+      continue;
+    }
 
     // Check for writes to redzones.
     TF_ASSIGN_OR_RETURN(bool input_output_allocator_redzone_clear,
@@ -780,7 +789,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnComputation(
 StatusOr<bool> GpuConvAlgorithmPicker::Run(HloModule* module) {
   XLA_SCOPED_LOGGING_TIMER("GpuConvAlgorithmPicker");
 
-  if (module->config().debug_options().xla_gpu_disable_autotune()) {
+  if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
     VLOG(2) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "
                "returning early.";
     return false;

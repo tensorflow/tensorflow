@@ -37,8 +37,6 @@ constexpr int kMaxChannels = 256;
 
 // This file has 2 implementation of Conv.
 
-const int kTensorNotAllocated = -1;
-
 struct OpData {
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -232,6 +230,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
     // Conv is quantized along dimension 0:
     // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
     TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
                       affine_quantization->scale->size);
     TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
@@ -266,8 +265,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
-                                 conv::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = conv::Prepare;
+  r.invoke = conv::Eval;
   return &r;
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
@@ -29,12 +30,11 @@ limitations under the License.
 
 using tensorflow::string;
 
-void TFE_OpReset(TFE_Context* ctx, const char* op_or_function_name,
-                 const char* raw_device_name, TF_Status* status,
-                 TFE_Op* op_to_reset) {
+void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
+                 const char* raw_device_name, TF_Status* status) {
   if (op_to_reset) {
-    NewOrResetOp(ctx, op_or_function_name, raw_device_name, status,
-                 op_to_reset);
+    status->status = op_to_reset->operation.Reset(
+        op_or_function_name, raw_device_name, false, nullptr);
   } else {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "op_to_reset should not be nullptr");
@@ -618,4 +618,17 @@ void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
 
 TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
   return new TFE_Executor(&ctx->context->Executor());
+}
+
+void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
+  auto address_space = tensorflow::DeviceNameUtils::AddressSpace(
+      ctx->context->HostCPU()->parsed_name());
+  auto str = tensorflow::DeviceNameUtils::ParsedNameToString(address_space);
+  void* data = tensorflow::port::Malloc(str.length());
+  str.copy(static_cast<char*>(data), str.length(), 0);
+  buf->data = data;
+  buf->length = str.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
 }

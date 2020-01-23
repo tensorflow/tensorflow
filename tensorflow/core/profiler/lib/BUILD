@@ -68,6 +68,18 @@ cc_library(
 )
 
 cc_library(
+    name = "annotated_traceme",
+    hdrs = ["annotated_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":scoped_annotation",
+        ":traceme",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
@@ -89,6 +101,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "annotated_traceme.h",
         "profiler_session.cc",
         "profiler_session.h",
         "scoped_annotation.h",

@@ -123,11 +123,6 @@ build:monolithic --define framework_shared_object=false
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
 
-# As part of Tensorflow's build refactoring, https://github.com/tensorflow/community/pull/179,
-# we plan on migrating TF to use bazel's cc_shared_library. This requires always setting
-# the flag "--experimental_cc_shared_library" on all builds: https://github.com/bazelbuild/rules_cc/blob/7e650b11fe6d49f70f2ca7a1c4cb8bcc4a1fe239/examples/experimental_cc_shared_library.bzl#L3-L5
-build --experimental_cc_shared_library
-
 # Flags for open source build, always set to be true.
 build --define open_source_build=true
 test --define open_source_build=true
@@ -284,7 +279,6 @@ build:windows --host_linkopt=/OPT:REF
 build:windows --linkopt=/OPT:ICF
 build:windows --host_linkopt=/OPT:ICF
 build:windows --experimental_strict_action_env=true
-build:windows --incompatible_windows_native_test_wrapper
 
 # Verbose failure logs when something goes wrong
 build:windows --verbose_failures

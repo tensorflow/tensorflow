@@ -284,6 +284,10 @@ def IsBuiltWithROCm():
   return _pywrap_util_port.IsBuiltWithROCm()
 
 
+def IsBuiltWithXLA():
+  return _pywrap_util_port.IsBuiltWithXLA()
+
+
 def IsBuiltWithNvcc():
   return _pywrap_util_port.IsBuiltWithNvcc()
 
@@ -1642,9 +1646,9 @@ def disable_cudnn_autotune(func):
       original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
       os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
       original_xla_flags = os.environ.get("XLA_FLAGS")
-      new_xla_flags = "--xla_gpu_disable_autotune"
+      new_xla_flags = "--xla_gpu_autotune_level=0"
       if original_xla_flags:
-        new_xla_flags += " " + original_xla_flags
+        new_xla_flags = original_xla_flags + " " + new_xla_flags
       os.environ["XLA_FLAGS"] = new_xla_flags
 
       result = f(self, *args, **kwargs)
@@ -2920,8 +2924,8 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
-  # Fix Python 3 compatibility issues
-  if six.PY3:
+  # Fix Python 3+ compatibility issues
+  if not six.PY2:
     # pylint: disable=invalid-name
 
     # Silence a deprecation warning

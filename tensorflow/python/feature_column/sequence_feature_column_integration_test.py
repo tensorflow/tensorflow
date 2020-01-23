@@ -29,7 +29,10 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.feature_column import dense_features
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -107,6 +110,42 @@ class SequenceFeatureColumnIntegrationTest(test.TestCase):
 
       output_r = sess.run(output)
       self.assertAllEqual(output_r.shape, [20, 10])
+
+  @test_util.run_deprecated_v1
+  def test_shared_sequence_non_sequence_into_input_layer(self):
+    non_seq = fc.categorical_column_with_identity('non_seq',
+                                                  num_buckets=10)
+    seq = sfc.sequence_categorical_column_with_identity('seq',
+                                                        num_buckets=10)
+    shared_non_seq, shared_seq = fc.shared_embedding_columns_v2(
+        [non_seq, seq],
+        dimension=4,
+        combiner='sum',
+        initializer=init_ops_v2.Ones(),
+        shared_embedding_collection_name='shared')
+
+    seq = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [0, 1], [1, 0]],
+        values=[0, 1, 2],
+        dense_shape=[2, 2])
+    non_seq = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [0, 1], [1, 0]],
+        values=[0, 1, 2],
+        dense_shape=[2, 2])
+    features = {'seq': seq, 'non_seq': non_seq}
+
+    # Tile the context features across the sequence features
+    seq_input, seq_length = sfc.SequenceFeatures([shared_seq])(features)
+    non_seq_input = dense_features.DenseFeatures([shared_non_seq])(features)
+
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      output_seq, output_seq_length, output_non_seq = sess.run(
+          [seq_input, seq_length, non_seq_input])
+      self.assertAllEqual(output_seq, [[[1, 1, 1, 1], [1, 1, 1, 1]],
+                                       [[1, 1, 1, 1], [0, 0, 0, 0]]])
+      self.assertAllEqual(output_seq_length, [2, 1])
+      self.assertAllEqual(output_non_seq, [[2, 2, 2, 2], [1, 1, 1, 1]])
 
 
 class SequenceExampleParsingTest(test.TestCase):

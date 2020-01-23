@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
@@ -373,7 +373,7 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:quantization_util",
@@ -1068,7 +1068,8 @@ cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
-    tags = ["tflite_nnapi"],
+    # TODO(b/143912164): Enable NNAPI test when fix nnapi.
+    # tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

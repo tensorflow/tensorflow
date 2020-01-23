@@ -69,6 +69,8 @@ struct Context final {
     return prepacked_cache_.get();
   }
 
+  void ClearPrepackedCache() { prepacked_cache_ = nullptr; }
+
   void EnsureNPerThreadStates(int thread_count) {
     while (per_thread_states.size() < static_cast<std::size_t>(thread_count)) {
       per_thread_states.emplace_back(new PerThreadState);

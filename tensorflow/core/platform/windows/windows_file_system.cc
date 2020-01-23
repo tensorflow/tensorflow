@@ -174,6 +174,22 @@ class WindowsWritableFile : public WritableFile {
     return Status::OK();
   }
 
+  Status Tell(int64* position) override {
+    Status result = Flush();
+    if (!result.ok()) {
+      return result;
+    }
+
+    *position = SetFilePointer(hfile_, 0, NULL, FILE_CURRENT);
+
+    if (*position == INVALID_SET_FILE_POINTER) {
+      return IOErrorFromWindowsError(
+          "Tell(SetFilePointer) failed for: " + filename_, ::GetLastError());
+    }
+
+    return Status::OK();
+  }
+
   Status Close() override {
     assert(INVALID_HANDLE_VALUE != hfile_);
 

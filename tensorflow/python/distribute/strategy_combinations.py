@@ -27,6 +27,7 @@ from tensorflow.python.distribute import one_device_strategy as one_device_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_keras_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
@@ -36,6 +37,7 @@ from tensorflow.python.keras.optimizer_v2 import ftrl as ftrl_keras_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_keras_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras_v2
+from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import adagrad
@@ -45,10 +47,27 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
 
 
+FLAGS = flags.FLAGS
+
+_did_connect_to_cluster = False
+
+
 # pylint: disable=missing-docstring
 def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
   def _create_tpu_strategy():
-    resolver = tpu_cluster_resolver.TPUClusterResolver("")
+    global _did_connect_to_cluster
+
+    # These flags will be defined by tpu_test_wrapper.py.
+    resolver = tpu_cluster_resolver.TPUClusterResolver(
+        tpu=hasattr(FLAGS, "tpu") and FLAGS.tpu or "",
+        zone=hasattr(FLAGS, "zone") and FLAGS.zone or None,
+        project=hasattr(FLAGS, "project") and FLAGS.project or None,
+    )
+    # Only connect once per process, rather than per test method.
+    if hasattr(FLAGS, "tpu") and FLAGS.tpu and not _did_connect_to_cluster:
+      remote.connect_to_cluster(resolver)
+      _did_connect_to_cluster = True
+
     topology = tpu_strategy_util.initialize_tpu_system(resolver)
     device_assignment = None
     if use_single_core:
@@ -98,6 +117,11 @@ tpu_strategy_one_step_one_core = combinations.NamedDistribution(
     "TPUOneStepOneCore",
     _get_tpu_strategy_creator(steps_per_run=1, use_single_core=True),
     required_tpu=True)
+cloud_tpu_strategy = combinations.NamedDistribution(
+    "CloudTPU",
+    _get_tpu_strategy_creator(steps_per_run=2),
+    required_tpu=True,
+    use_cloud_tpu=True)
 mirrored_strategy_with_one_cpu = combinations.NamedDistribution(
     "Mirrored1CPU", lambda: mirrored_lib.MirroredStrategy(["/cpu:0"]))
 mirrored_strategy_with_one_gpu = combinations.NamedDistribution(
@@ -232,7 +256,8 @@ strategies_minus_tpu = [
 
 tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
-    tpu_strategy_one_step
+    tpu_strategy_one_step,
+    cloud_tpu_strategy,
 ]
 
 all_strategies = strategies_minus_tpu + tpu_strategies

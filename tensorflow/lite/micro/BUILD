@@ -5,6 +5,7 @@ load(
 load(
     "//tensorflow/lite/micro:build_def.bzl",
     "cc_library",
+    "micro_copts",
 )
 
 package(
@@ -18,6 +19,7 @@ cc_library(
         "compatibility.h",
     ],
     build_for_embedded = True,
+    copts = micro_copts(),
 )
 
 cc_library(
@@ -29,7 +31,6 @@ cc_library(
         "micro_allocator.cc",
         "micro_error_reporter.cc",
         "micro_interpreter.cc",
-        "micro_mutable_op_resolver.cc",
         "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
         "test_helpers.cc",
@@ -73,6 +74,7 @@ cc_library(
         "micro_utils.h",
     ],
     build_for_embedded = True,
+    copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
@@ -107,6 +109,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        ":micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

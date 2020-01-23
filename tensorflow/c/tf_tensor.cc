@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 
+#include <memory>
+
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -381,7 +383,7 @@ Status TensorInterface::ToTensor(Tensor* dst) const {
     if (!dst->scalar<tensorflow::ResourceHandle>()().ParseFromString(
             string(static_cast<const char*>(Data()), ByteSize()))) {
       return InvalidArgument(
-          "Malformed TF_RESOUCE tensor: unable to parse resource handle");
+          "Malformed TF_RESOURCE tensor: unable to parse resource handle");
     }
     return Status::OK();
   }

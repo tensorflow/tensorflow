@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 #define TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 
+#include <memory>
+
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"

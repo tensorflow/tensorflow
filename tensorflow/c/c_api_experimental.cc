@@ -550,7 +550,7 @@ TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(TFE_Op* op,
                                                     TF_Status* status) {
   TFE_ExecuteOpNotification* n = new TFE_ExecuteOpNotification;
 
-  n->thread.reset(op->operation.EagerContext()->TFEnv()->StartThread(
+  n->thread.reset(op->operation.EagerContext().TFEnv()->StartThread(
       tensorflow::ThreadOptions(), "ExecuteOpThread",
       [op, retvals, num_retvals, n]() {
         TFE_Execute(op, retvals, num_retvals, n->status.get());

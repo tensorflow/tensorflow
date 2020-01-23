@@ -191,7 +191,8 @@ struct ReductionDimensions {
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
 
-// Get tiling per thread for the given reduction in dimensions [D, H, W].
+// Get tiling per thread for the given reduction in dimensions [D, H, W] per
+// thread.
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions);
 
