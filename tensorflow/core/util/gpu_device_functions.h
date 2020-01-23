@@ -51,6 +51,8 @@ using gpuDoubleComplex = cuDoubleComplex;
 #define gpuEventCreate cudaEventCreate
 #define gpuEventCreateWithFlags cudaEventCreateWithFlags
 #define gpuEventDisableTiming cudaEventDisableTiming
+#define gpuDeviceSynchronize cudaDeviceSynchronize
+#define gpuFree cudaFree
 typedef cudaStream_t gpuStream_t;
 typedef cudaEvent_t gpuEvent_t;
 #elif TENSORFLOW_USE_ROCM
@@ -64,6 +66,8 @@ using gpuDoubleComplex = hipDoubleComplex;
 #define gpuEventCreate hipEventCreate
 #define gpuEventCreateWithFlags hipEventCreateWithFlags
 #define gpuEventDisableTiming hipEventDisableTiming 
+#define gpuDeviceSynchronize hipDeviceSynchronize
+#define gpuFree hipFree
 typedef hipStream_t gpuStream_t;
 typedef hipEvent_t gpuEvent_t;
 typedef int cudaError;
