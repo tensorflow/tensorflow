@@ -58,9 +58,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     auto loc = lhlo_op.getLoc();
     auto argType =
         lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
-    if (!argType || !argType.hasStaticShape()) {
-      emitError(loc,
-                "lhlo to linalg conversion expects statically shaped args");
+    if (!argType || !argType.hasRank()) {
+      emitError(loc, "lhlo to linalg conversion expects ranked args");
       return ConversionPattern::matchFailure();
     }
     if (!argType || !argType.getElementType().isIntOrFloat()) {
@@ -88,7 +87,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     }
 
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, args,
+        loc, ArrayRef<Type>{}, args,
         rewriter.getI64IntegerAttr(bodyArgTypes.size()),     // args_in
         rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
         rewriter.getArrayAttr(indexingMaps),
@@ -107,9 +106,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     }
 
     rewriter.setInsertionPointToEnd(block);
-    Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(lhlo_op), bodyResultTypes, bodyArgs, rewriter);
-    rewriter.create<linalg::YieldOp>(loc, op->getResults());
+    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(lhlo_op), bodyResultTypes, bodyArgs, &rewriter);
+    rewriter.create<linalg::YieldOp>(loc, opResult);
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
   }
@@ -134,10 +133,10 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     // Create two loads from the input.
     auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
     auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
-    Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
+    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
-        llvm::ArrayRef<Value>{lhs, rhs}, rewriter);
-    rewriter.create<StoreOp>(loc, op->getResult(0), lhlo_op.out());
+        llvm::ArrayRef<Value>{lhs, rhs}, &rewriter);
+    rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
   }
@@ -174,7 +173,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
         AffineMapAttr::get(rewriter->getMultiDimIdentityMap(nloops))};
     auto loc = broadcastOp.getLoc();
     auto linalgOp = rewriter->create<linalg::GenericOp>(
-        loc, broadcastOp.output(),
+        loc, ArrayRef<Type>{}, broadcastOp.output(),
         rewriter->getI64IntegerAttr(0),  // args_in
         rewriter->getI64IntegerAttr(1),  // args_out
         rewriter->getArrayAttr(indexingMaps),
@@ -225,7 +224,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
 
     auto loc = broadcastOp.getLoc();
     auto linalgOp = rewriter->create<linalg::GenericOp>(
-        loc, args,
+        loc, ArrayRef<Type>{}, args,
         rewriter->getI64IntegerAttr(bodyArgTypes.size()),  // args_in
         rewriter->getI64IntegerAttr(1),                    // args_out
         rewriter->getArrayAttr(indexingMaps),
@@ -267,7 +266,7 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
 
     auto loc = iotaOp.getLoc();
     auto linalgOp = rewriter.create<linalg::IndexedGenericOp>(
-        loc, args,
+        loc, ArrayRef<Type>{}, args,
         rewriter.getI64IntegerAttr(0),  // args_in
         rewriter.getI64IntegerAttr(1),  // args_out
         rewriter.getArrayAttr(indexingMaps),
@@ -323,6 +322,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::AddOp>,
                    PointwiseToLinalgConverter<xla_lhlo::AndOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CompareOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::CopyOp>,
                    PointwiseToLinalgConverter<xla_lhlo::DivOp>,
                    PointwiseToLinalgConverter<xla_lhlo::ExpOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MaxOp>,

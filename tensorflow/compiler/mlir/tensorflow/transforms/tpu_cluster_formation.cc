@@ -59,6 +59,7 @@ constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kNameAttr[] = "name";
 constexpr char kNumReplicasAttr[] = "num_replicas";
+constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
 constexpr char kBadTPUReplicateAttrMsg[] =
     "requires '_tpu_replicate' string attribute";
@@ -316,17 +317,23 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
           unique_replicated_input_ops.getArrayRef(), &replicated_input_ops)))
     return failure();
 
+  // Indices of the replicate op's arguments that are mirrored variables.
+  llvm::SmallVector<int64_t, 8> mirrored_variable_indices;
+
   // Check if number of operands of each used TPUReplicatedInput op matches
   // `num_replicas`. Collect all their operands and associated type for creating
   // the replicate op.
   llvm::SmallVector<std::pair<Operation::operand_range, Type>, 8>
       replicated_inputs;
-  for (Operation* input : replicated_input_ops) {
+  for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
+    auto input = pos_and_input.value();
     if (input->getNumOperands() != num_replicas)
       return input->emitOpError() << "requires " << num_replicas << " operands";
 
     replicated_inputs.push_back(
         {input->getOperands(), *input->result_type_begin()});
+    if (llvm::cast<TF::TPUReplicatedInputOp>(input).is_mirrored_variable())
+      mirrored_variable_indices.push_back(pos_and_input.index());
   }
 
   // Create replicate op.
@@ -334,6 +341,9 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
   auto replicate_op = builder.create<tf_device::ReplicateOp>(
       launch_op.getLoc(), num_replicas, llvm::ArrayRef<llvm::StringRef>(),
       replicated_inputs, launch_op.getResultTypes());
+  if (!mirrored_variable_indices.empty())
+    replicate_op.setAttr(kMirroredVariableIndicesAttr,
+                         builder.getI64ArrayAttr(mirrored_variable_indices));
 
   // Replace replicated cluster results with replicate op results.
   for (auto result_and_idx : llvm::enumerate(launch_op.getResults())) {

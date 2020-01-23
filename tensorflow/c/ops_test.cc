@@ -133,7 +133,7 @@ TEST(OpsTest, TestShapeInference_VectorizeFunction) {
 
 TEST(OpsTest, AttributeAccessors) {
   TF_OpDefinitionBuilder* builder =
-      TF_NewOpDefinitionBuilder("AttributeAccesorsOp");
+      TF_NewOpDefinitionBuilder("AttributeAccessorsOp");
   TF_OpDefinitionBuilderAddAttr(builder, "foo1: int >= 2");
   TF_OpDefinitionBuilderAddAttr(builder, "foo2: string=\"my string\"");
   TF_OpDefinitionBuilderSetIsCommutative(builder, true);
@@ -151,7 +151,7 @@ TEST(OpsTest, AttributeAccessors) {
   op_list.ParseFromArray(op_list_buffer->data, op_list_buffer->length);
   bool found = false;
   for (const auto& op : op_list.op()) {
-    if (op.name() == "AttributeAccesorsOp") {
+    if (op.name() == "AttributeAccessorsOp") {
       ASSERT_TRUE(op.is_commutative());
       ASSERT_TRUE(op.is_aggregate());
       ASSERT_TRUE(op.allows_uninitialized_input());

@@ -49,4 +49,5 @@ bazel test --config=opt \
   --test_arg=--tpu="${TPU_NAME}" \
   --test_arg=--zone="${TPU_ZONE}" \
   --test_arg=--test_dir_base="gs://kokoro-tpu-testing/tempdir/" \
+  --local_test_jobs=1 \
   -- //tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...

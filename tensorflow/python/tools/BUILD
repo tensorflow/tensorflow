@@ -1,8 +1,8 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
+load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "target_llvm_triple")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -325,7 +325,10 @@ py_library(
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
-    ],
+        "//tensorflow/python:tf_optimizer",
+    ] + if_xla_available(
+        ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
+    ),
 )
 
 py_test(
@@ -339,9 +342,68 @@ py_test(
     tags = [
         "manual",
         "no-internal-py3",
+        "nosan",
     ],
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+genrule(
+    name = "aot_compiled_x_plus_y_gen",
+    srcs = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+        "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb",
+    ],
+    outs = [
+        "compiled_model.h",
+        "compiled_model.o",
+        "compiled_model_metadata.o",
+        "compiled_model_makefile.inc",
+    ],
+    cmd = (
+        "$(location :saved_model_cli) aot_compile_cpu " +
+        "--dir \"$$(dirname $(location //tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb))\" " +
+        "--output_prefix $(@D)/compiled_model " +
+        "--cpp_class CompiledModel " +
+        "--target_triple " + target_llvm_triple() +
+        " --tag_set serve "
+    ),
+    tools = [
+        ":saved_model_cli",
+    ],
+)
+
+cc_library(
+    name = "aot_compiled_x_plus_y",
+    srcs = if_xla_available([
+        ":compiled_model.o",
+        ":compiled_model_metadata.o",
+    ]),
+    hdrs = if_xla_available([
+        ":compiled_model.h",
+    ]),
+    tags = ["no_rocm"],
+    deps = if_xla_available([
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/core/platform:types",
+    ]),
+)
+
+tf_cc_test(
+    name = "binary_using_aot_compiled_x_plus_y_test",
+    srcs = if_xla_available([
+        "binary_using_aot_compiled_x_plus_y_test.cc",
+    ]),
+    tags = ["no_rocm"],
+    deps = [
+        "//tensorflow/core:test_main",
+    ] + if_xla_available([
+        ":aot_compiled_x_plus_y",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:logging",
+    ]),
 )

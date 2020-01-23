@@ -224,8 +224,9 @@ class IrEmitterUnnested : public IrEmitter,
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
   //
-  // Returns lane_id as an LLVM value.
-  llvm::Value* EmitTilingKernel(
+  // Returns index of the output as calculated from the block only, offset due
+  // to thread id still should be applied to get the final offset.
+  llvm_ir::IrArray::Index EmitTilingKernel(
       const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
@@ -277,7 +278,8 @@ class IrEmitterUnnested : public IrEmitter,
       HloInstruction* unnested_hlo, const ReductionCodegenInfo& reduction_info,
       absl::Span<const HloInstruction* const> reduce_instructions,
       absl::Span<const ShapeIndex> reduction_output_shape_indices,
-      absl::Span<HloComputation* const> reducers, llvm::Value* lane_id);
+      absl::Span<HloComputation* const> reducers,
+      const llvm_ir::IrArray::Index& starting_tile);
 
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
@@ -313,6 +315,35 @@ class IrEmitterUnnested : public IrEmitter,
   // 'branch_computation' corresponding to the predicate/branch_index of the
   // given conditional instruction.
   std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
+
+  // Emits current thread id with the given type.
+  //
+  // Sets the return value range to [0, threads_per_block).
+  llvm::Value* EmitThreadId(int64 threads_per_block, llvm::Type* index_ty);
+
+  struct ThreadIdInfo {
+    // Raw thread id.
+    llvm::Value* thread_id;
+
+    // X-coordinate calculated from thread id: `thread_id % num_threads_x`
+    llvm::Value* thread_id_x;
+
+    // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
+    llvm::Value* thread_id_y;
+
+    // Lane id: `thread_id % kWarpSize`
+    llvm::Value* lane_id;
+  };
+  ThreadIdInfo EmitThreadIdInfo(int64 threads_per_block, llvm::Type* index_ty,
+                                int64 num_threads_x);
+
+  // Emits current block id.
+  llvm::Value* EmitBlockId();
+
+  // Prints a given format string with the given arguments, prefixed with thread
+  // id and block id, and postfixed with a newline.
+  llvm::Value* EmitPrintfWithThreadId(absl::string_view fmt,
+                                      absl::Span<llvm::Value* const> arguments);
 
   Status Postprocess(HloInstruction* hlo) override;
 

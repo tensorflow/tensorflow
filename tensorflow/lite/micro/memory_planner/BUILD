@@ -47,6 +47,7 @@ cc_library(
         ":memory_planner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/micro:micro_compatibility",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -69,6 +70,7 @@ cc_library(
         ":memory_planner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/micro:micro_compatibility",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

@@ -330,6 +330,10 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
 }
 
 EagerContext::~EagerContext() {
+  // TODO(iga): Add a separate API method to shutdown EagerContext so that we
+  // don't send RPCs and block in destructor.
+  WaitForAndCloseRemoteContexts();
+
   ClearCachesAndThreadExecutors();
   for (auto& entry : registered_functions_) {
     while (!entry.second->Unref()) {
@@ -357,13 +361,15 @@ EagerContext::~EagerContext() {
   }
 #endif  // !IS_MOBILE_PLATFORM
 
-  rendezvous_->Unref();
+  if (rendezvous_) {
+    rendezvous_->Unref();
+  }
   if (resource_deallocator_ != nullptr) {
     resource_deallocator_();
   }
 }
 
-bool EagerContext::FindFunctionByName(const string& name) {
+bool EagerContext::FindFunctionByName(const string& name) const {
   return func_lib_def_.Find(name) != nullptr;
 }
 
@@ -387,6 +393,14 @@ std::vector<const FunctionDef*> EagerContext::ListRegisteredFunctions() {
 }
 
 void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
+
+void EagerContext::ListDevices(
+    std::vector<tensorflow::DeviceAttributes>* devices) {
+  local_device_mgr()->ListDeviceAttributes(devices);
+  if (remote_device_mgr()) {
+    remote_device_mgr()->ListDeviceAttributes(devices);
+  }
+}
 
 void EagerContext::StartStep() {
   mutex_lock ml(metadata_mu_);

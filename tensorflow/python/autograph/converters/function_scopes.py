@@ -81,7 +81,7 @@ class FunctionBodyTransformer(converter.Base):
         template,
         options=self._function_scope_options().to_ast(),
         function_context=function_context_name,
-        function_context_name=gast.Str(function_context_name),
+        function_context_name=gast.Constant(function_context_name, kind=None),
         body=node.body)
 
     self.state[_Function].exit()
@@ -102,7 +102,7 @@ class FunctionBodyTransformer(converter.Base):
     if node.body:
       first_statement = node.body[0]
       if (isinstance(first_statement, gast.Expr) and
-          isinstance(first_statement.value, gast.Str)):
+          isinstance(first_statement.value, gast.Constant)):
         docstring_node = first_statement
         node.body = node.body[1:]
 
@@ -113,8 +113,8 @@ class FunctionBodyTransformer(converter.Base):
     """
     wrapped_body = templates.replace(
         template,
-        function_name=gast.Str(node.name),
-        context_name=gast.Str(function_context_name),
+        function_name=gast.Constant(node.name, kind=None),
+        context_name=gast.Constant(function_context_name, kind=None),
         options=self._function_scope_options().to_ast(),
         function_context=function_context_name,
         body=node.body)

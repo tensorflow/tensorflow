@@ -17,7 +17,7 @@ def flatbuffer_library_public(
         include_paths = [],
         flatc_args = DEFAULT_FLATC_ARGS,
         reflection_name = "",
-        reflection_visiblity = None,
+        reflection_visibility = None,
         output_to_bindir = False):
     """Generates code files for reading/writing the given flatbuffers in the requested language using the public compiler.
 
@@ -101,7 +101,7 @@ def flatbuffer_library_public(
         #     entries = [
         #         native.FilesetEntry(files = reflection_outs),
         #     ],
-        #     visibility = reflection_visiblity,
+        #     visibility = reflection_visibility,
         # )
 
 def flatbuffer_cc_library(
@@ -191,7 +191,7 @@ def flatbuffer_cc_library(
         include_paths = include_paths,
         flatc_args = flatc_args,
         reflection_name = reflection_name,
-        reflection_visiblity = visibility,
+        reflection_visibility = visibility,
     )
     native.cc_library(
         name = name,

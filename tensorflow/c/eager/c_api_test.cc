@@ -1362,10 +1362,11 @@ TEST(CAPI, TestTFE_OpAttrsInferenceDisabledWhenNotCallingOpAddInputList) {
   TFE_TensorHandle* inputs[] = {input1, input2};
   TFE_OpAddInput(concatOp, dim, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  CHECK(concatOp->inference_ctx);
+  CHECK(concatOp->operation.OpDef());
   TFE_OpAddInput(concatOp, inputs[0], status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  EXPECT_FALSE(concatOp->inference_ctx) << "Inference context is still present";
+  EXPECT_FALSE(concatOp->operation.OpDef())
+      << "Inference context is still present";
   TFE_OpAddInput(concatOp, inputs[1], status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 

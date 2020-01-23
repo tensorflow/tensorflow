@@ -30,6 +30,7 @@ extern llvm::cl::opt<std::string> input_arrays;
 extern llvm::cl::opt<std::string> input_dtypes;
 extern llvm::cl::opt<std::string> input_shapes;
 extern llvm::cl::opt<std::string> output_arrays;
+extern llvm::cl::opt<std::string> control_output_arrays;
 extern llvm::cl::opt<std::string> inference_type;
 extern llvm::cl::opt<std::string> min_values;
 extern llvm::cl::opt<std::string> max_values;

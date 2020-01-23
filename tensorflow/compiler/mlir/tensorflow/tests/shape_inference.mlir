@@ -149,6 +149,19 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %1, %arg1, %arg2 : tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource<tensor<*xf32>>>
   }
 
+  func @partitioned_call(%arg0: tensor<i32>) -> tensor<*xi32> {
+    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @partitioned_call_func} : (tensor<i32>) -> (tensor<*xi32>)
+    return %0 : tensor<*xi32>
+  }
+
+  // CHECK-LABEL: func @partitioned_call_func
+  // CHECK-SAME: (%arg0: tensor<i32>) -> tensor<i32>
+  func @partitioned_call_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+    // CHECK: return
+    // CHECK-SAME: tensor<i32>
+    return %arg0 : tensor<*xi32>
+  }
+
   // CHECK-LABEL: func @invalid_function_reused_by_control_flows
   func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
 	  // expected-warning @+1 {{unable to refine shape}}

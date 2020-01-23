@@ -584,11 +584,20 @@ Status DirectSession::RunInternal(
     }
   }
 
+  const int64 call_timeout = run_options.timeout_in_ms() > 0
+                                 ? run_options.timeout_in_ms()
+                                 : operation_timeout_in_ms_;
+
   std::unique_ptr<RunHandler> handler;
   if (ShouldUseRunHandlerPool(run_options) &&
       run_options.experimental().use_run_handler_pool()) {
     VLOG(1) << "Using RunHandler to scheduler inter-op closures.";
-    handler = GetOrCreateRunHandlerPool(options_)->Get(step_id);
+    handler = GetOrCreateRunHandlerPool(options_)->Get(step_id, call_timeout);
+    if (!handler) {
+      return errors::DeadlineExceeded(
+          "Could not obtain RunHandler for request after waiting for ",
+          call_timeout, "ms.");
+    }
   }
   auto* handler_ptr = handler.get();
 
@@ -607,9 +616,6 @@ Status DirectSession::RunInternal(
   }
 
   // Start parallel Executors.
-  const int64 call_timeout = run_options.timeout_in_ms() > 0
-                                 ? run_options.timeout_in_ms()
-                                 : operation_timeout_in_ms_;
   const bool can_execute_synchronously = pool == nullptr && call_timeout == 0;
 
   Executor::Args args;

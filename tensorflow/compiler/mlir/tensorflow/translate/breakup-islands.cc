@@ -20,13 +20,16 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 // This pass is used in preparation for Graph export.
 // The GraphDef exporter expects each op to be in its own island.
@@ -111,8 +114,31 @@ void BreakUpIslands::runOnOperation() {
   }
 }
 
+// Populates an empty IslandOp and with a NoOp or Identity/IdentityN depending
+// on if there are any data results.
+void PopulateEmptyIsland(tf_executor::IslandOp island) {
+  OpBuilder builder(&island.GetBody(), island.GetBody().begin());
+  tf_executor::YieldOp yield = island.GetYield();
+  if (yield.getNumOperands() == 0) {
+    builder.create<TF::NoOp>(island.getLoc(), llvm::ArrayRef<mlir::Type>{},
+                             llvm::ArrayRef<mlir::Value>{},
+                             llvm::ArrayRef<mlir::NamedAttribute>{});
+  } else if (yield.getNumOperands() == 1) {
+    Value operand = yield.getOperand(0);
+    auto identity = builder.create<TF::IdentityOp>(island.getLoc(),
+                                                   operand.getType(), operand);
+    yield.setOperand(0, identity.output());
+  } else {
+    auto types = llvm::to_vector<4>(yield.getOperandTypes());
+    auto identity_n = builder.create<TF::IdentityNOp>(island.getLoc(), types,
+                                                      yield.getOperands());
+    for (auto it : llvm::enumerate(identity_n.getResults()))
+      yield.setOperand(it.index(), it.value());
+  }
+}
+
 // Helper that creates an island. If `sub_op` is not nullptr, it will be moved
-// to the island.
+// to the island. Otherwise a NoOp will be added to the island.
 tf_executor::IslandOp CreateIsland(ArrayRef<Type> result_types,
                                    ArrayRef<Value> control_inputs,
                                    const tf_executor::ControlType& control_type,
@@ -123,15 +149,16 @@ tf_executor::IslandOp CreateIsland(ArrayRef<Type> result_types,
       loc, result_types, control_type, control_inputs);
   island.body().push_back(new Block);
   Block* block = &island.body().back();
-  if (sub_op) {
-    sub_op->replaceAllUsesWith(island.outputs());
-    sub_op->moveBefore(block, block->begin());
-  }
   OpBuilder island_builder(original_island);
   island_builder.setInsertionPointToEnd(block);
   if (sub_op) {
+    sub_op->replaceAllUsesWith(island.outputs());
+    sub_op->moveBefore(block, block->begin());
     island_builder.create<tf_executor::YieldOp>(loc, sub_op->getResults());
   } else {
+    island_builder.create<TF::NoOp>(
+        island.getLoc(), llvm::ArrayRef<mlir::Type>{},
+        llvm::ArrayRef<mlir::Value>{}, llvm::ArrayRef<mlir::NamedAttribute>{});
     island_builder.create<tf_executor::YieldOp>(loc, ArrayRef<Value>{});
   }
   return island;
@@ -181,9 +208,15 @@ void BreakUpIslands::BreakUpIsland(
     llvm::DenseMap<Operation*, llvm::SmallVector<Value, 4>>*
         new_control_edges) {
   auto island_body = op.GetBody().without_terminator();
+  // Populate islands that are empty (only yield).
+  if (island_body.empty()) {
+    PopulateEmptyIsland(op);
+    return;
+  }
+
   // Skip islands that are already only a single op.
-  // Skip islands that are empty (only yield).
-  if (island_body.empty() || has_single_element(island_body)) return;
+  if (has_single_element(island_body)) return;
+
   auto control_type = tf_executor::ControlType::get(&getContext());
   auto island_control_inputs = llvm::to_vector<4>(op.controlInputs());
   // Add control dependencies for yields of values defined by other islands to

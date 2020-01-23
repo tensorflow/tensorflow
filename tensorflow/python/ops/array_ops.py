@@ -1879,11 +1879,11 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 
 @tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
-  """Splits a tensor into sub tensors.
+  """Splits a tensor `value` into a list of sub tensors.
 
-  If `num_or_size_splits` is an integer, then `value` is split along dimension
-  `axis` into `num_split` smaller tensors. This requires that `num_split` evenly
-  divides `value.shape[axis]`.
+  If `num_or_size_splits` is an integer, then `value` is split along the
+  dimension `axis` into `num_split` smaller tensors. This requires that
+  `value.shape[axis]` is divisible by `num_split`.
 
   If `num_or_size_splits` is a 1-D Tensor (or list), we call it `size_splits`
   and `value` is split into `len(size_splits)` elements. The shape of the `i`-th
@@ -1892,15 +1892,14 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   For example:
 
-  Split `x` into 3 tensors along dimension 1
-
   >>> x = tf.Variable(tf.random.uniform([5, 30], -1, 1))
+
+  Split `x` into 3 tensors along dimension 1
   >>> s0, s1, s2 = tf.split(x, num_or_size_splits=3, axis=1)
   >>> tf.shape(s0).numpy()
   array([ 5, 10], dtype=int32)
 
   Split `x` into 3 tensors with sizes [4, 15, 11] along dimension 1
-
   >>> split0, split1, split2 = tf.split(x, [4, 15, 11], 1)
   >>> tf.shape(split0).numpy()
   array([5, 4], dtype=int32)
@@ -1923,8 +1922,8 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
     name: A name for the operation (optional).
 
   Returns:
-    if `num_or_size_splits` is a scalar returns `num_or_size_splits` `Tensor`
-    objects; if `num_or_size_splits` is a 1-D Tensor returns
+    if `num_or_size_splits` is a scalar returns a list of `num_or_size_splits`
+    `Tensor` objects; if `num_or_size_splits` is a 1-D Tensor returns
     `num_or_size_splits.get_shape[0]` `Tensor` objects resulting from splitting
     `value`.
 
@@ -2432,16 +2431,16 @@ def matrix_diag_part(
                      [5, 6, 7, 8]]])
 
   # A main diagonal from each batch.
-  tf.matrix_diag_part(input) ==> [[1, 6, 7],  # Output shape: (2, 3)
+  tf.linalg.diag_part(input) ==> [[1, 6, 7],  # Output shape: (2, 3)
                                   [5, 2, 7]]
 
   # A superdiagonal from each batch.
-  tf.matrix_diag_part(input, k = 1)
+  tf.linalg.diag_part(input, k = 1)
     ==> [[2, 7, 6],  # Output shape: (2, 3)
          [4, 3, 8]]
 
   # A band from each batch.
-  tf.matrix_diag_part(input, k = (-1, 2))
+  tf.linalg.diag_part(input, k = (-1, 2))
     ==> [[[3, 8, 0],  # Output shape: (2, 4, 3)
           [2, 7, 6],
           [1, 6, 7],
@@ -2452,7 +2451,7 @@ def matrix_diag_part(
           [0, 1, 6]]]
 
   # RIGHT_LEFT alignment.
-  tf.matrix_diag_part(input, k = (-1, 2), align="RIGHT_LEFT")
+  tf.linalg.diag_part(input, k = (-1, 2), align="RIGHT_LEFT")
     ==> [[[0, 3, 8],  # Output shape: (2, 4, 3)
           [2, 7, 6],
           [1, 6, 7],
@@ -2463,14 +2462,14 @@ def matrix_diag_part(
           [1, 6, 0]]]
 
   # max_diag_len can be shorter than the main diagonal.
-  tf.matrix_diag_part(input, k = (-2, -1))
+  tf.linalg.diag_part(input, k = (-2, -1))
     ==> [[[5, 8],
           [0, 9]],
          [[1, 6],
           [0, 5]]]
 
   # padding_value = 9
-  tf.matrix_diag_part(input, k = (1, 3), padding_value = 9)
+  tf.linalg.diag_part(input, k = (1, 3), padding_value = 9)
     ==> [[[4, 9, 9],  # Output shape: (2, 3, 3)
           [3, 8, 9],
           [2, 7, 6]],
@@ -2720,21 +2719,27 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   same type and shape as `tensor` with all elements set to zero. Optionally,
   you can use `dtype` to specify a new type for the returned tensor.
 
-  For example:
+  Examples:
 
-  ```python
-  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.zeros_like(tensor)  # [[0, 0, 0], [0, 0, 0]]
-  ```
+    >>> tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+    >>> tf.zeros_like(tensor)
+    <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+    array([[0, 0, 0],
+           [0, 0, 0]], dtype=int32)>
+
+    >>> tf.zeros_like(tensor, dtype=tf.float32)
+    <tf.Tensor: shape=(2, 3), dtype=float32, numpy=
+    array([[0., 0., 0.],
+           [0., 0., 0.]], dtype=float32)>
 
   Args:
     tensor: A `Tensor`.
     dtype: A type for the returned `Tensor`. Must be `float16`, `float32`,
       `float64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
-      `complex64`, `complex128`, `bool` or `string`.
+      `complex64`, `complex128`, `bool` or `string`. (optional)
     name: A name for the operation (optional).
-    optimize: if true, attempt to statically determine the shape of 'tensor' and
-      encode it as a constant.
+    optimize: if `True`, attempt to statically determine the shape of `tensor`
+      and encode it as a constant. (optional, defaults to `True`)
 
   Returns:
     A `Tensor` with all elements set to zero.
@@ -2750,31 +2755,33 @@ def zeros_like_v2(
     name=None):
   """Creates a tensor with all elements set to zero.
 
-  Given a single tensor (`tensor`), this operation returns a tensor of the
-  same type and shape as `tensor` with all elements set to zero. Optionally,
-  you can use `dtype` to specify a new type for the returned tensor.
+  Given a single tensor or array-like object (`input`), this operation returns
+  a tensor of the same type and shape as `input` with all elements set to zero.
+  Optionally, you can use `dtype` to specify a new type for the returned tensor.
 
-  For example:
+  Examples:
 
-  ```python
-  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.zeros_like(tensor)  # [[0, 0, 0], [0, 0, 0]] with dtype=int32
+    >>> tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+    >>> tf.zeros_like(tensor)
+    <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+    array([[0, 0, 0],
+           [0, 0, 0]], dtype=int32)>
 
-  If dtype of input `tensor` is `float32`, then the output is also of `float32`
-  tensor = tf.constant([[1.0, 2.0, 3.0], [4, 5, 6]])
-  tf.zeros_like(tensor)  # [[0., 0., 0.], [0., 0., 0.]] with dtype=floa32
+    >>> tf.zeros_like(tensor, dtype=tf.float32)
+    <tf.Tensor: shape=(2, 3), dtype=float32, numpy=
+    array([[0., 0., 0.],
+           [0., 0., 0.]], dtype=float32)>
 
-  If you want to specify desired dtype of output `tensor`, then specify it in
-  the op tensor = tf.constant([[1.0, 2.0, 3.0], [4, 5, 6]])
-  tf.zeros_like(tensor,dtype=tf.int32)  # [[0, 0, 0], [0, 0, 0]] with
-  dtype=int32
-  ```
+    >>> tf.zeros_like([[1, 2, 3], [4, 5, 6]])
+    <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+    array([[0, 0, 0],
+           [0, 0, 0]], dtype=int32)>
 
   Args:
-    input: A `Tensor`.
+    input: A `Tensor` or array-like object.
     dtype: A type for the returned `Tensor`. Must be `float16`, `float32`,
       `float64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
-      `complex64`, `complex128`, `bool` or `string`.
+      `complex64`, `complex128`, `bool` or `string` (optional).
     name: A name for the operation (optional).
 
   Returns:
@@ -4975,7 +4982,8 @@ def dequantize(  # pylint: disable=missing-docstring
     mode="MIN_COMBINED",
     name=None,
     axis=None,
-    narrow_range=False):
+    narrow_range=False,
+    dtype=dtypes.float32):
   if axis is None:
     axis = -1
   elif axis < 0:
@@ -4985,10 +4993,17 @@ def dequantize(  # pylint: disable=missing-docstring
 
   if axis >= 0 or narrow_range:
     return gen_array_ops.dequantize(
-        input, min_range, max_range, mode=mode, name=name,
-        narrow_range=narrow_range, axis=axis)
+        input,
+        min_range,
+        max_range,
+        mode=mode,
+        name=name,
+        narrow_range=narrow_range,
+        axis=axis,
+        dtype=dtype)
   return gen_array_ops.dequantize(
-      input, min_range, max_range, mode=mode, name=name)
+      input, min_range, max_range, mode=mode, name=name, dtype=dtype)
+
 
 dequantize.__doc__ = gen_array_ops.dequantize.__doc__
 

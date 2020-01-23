@@ -46,14 +46,48 @@ class NnApiHandler {
   template <int Value>
   void GetDeviceCountReturns() {
     nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-      *numDevices = 2;
+      *numDevices = 1;
       return Value;
+    };
+  }
+
+  template <int DeviceCount>
+  void GetDeviceCountReturnsCount() {
+    nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
+      *numDevices = DeviceCount;
+      return ANEURALNETWORKS_NO_ERROR;
     };
   }
 
   void StubGetDeviceCountWith(int(stub)(uint32_t*)) {
     nnapi_->ANeuralNetworks_getDeviceCount = stub;
   }
+
+  template <int Value>
+  void GetDeviceReturns() {
+    nnapi_->ANeuralNetworks_getDevice =
+        [](uint32_t devIndex, ANeuralNetworksDevice** device) -> int {
+      *device =
+          reinterpret_cast<ANeuralNetworksDevice*>(NnApiHandler::kNnapiDevice);
+      return Value;
+    };
+  }
+
+  template <int Value>
+  void GetDeviceNameReturns() {
+    nnapi_->ANeuralNetworksDevice_getName =
+        [](const ANeuralNetworksDevice* device, const char** name) -> int {
+      *name = NnApiHandler::nnapi_device_name_;
+      return Value;
+    };
+  }
+
+  void GetDeviceNameReturnsName(const std::string& name);
+
+  // Configure all the functions related to device browsing to support
+  // a device with the given name and the cpu fallback nnapi-reference.
+  // The extra device will return support the specified feature level
+  void SetNnapiSupportedDevice(const std::string& name, int feature_level = 29);
 
   template <int Value>
   void ModelCreateReturns() {
@@ -127,6 +161,17 @@ class NnApiHandler {
   }
 
   template <int Value>
+  void CompilationCreateForDevicesReturns() {
+    nnapi_->ANeuralNetworksCompilation_createForDevices =
+        [](ANeuralNetworksModel* model,
+           const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+           ANeuralNetworksCompilation** compilation) {
+          *compilation = reinterpret_cast<ANeuralNetworksCompilation*>(3);
+          return Value;
+        };
+  }
+
+  template <int Value>
   void CompilationFinishReturns() {
     nnapi_->ANeuralNetworksCompilation_finish =
         [](ANeuralNetworksCompilation* compilation) { return Value; };
@@ -165,10 +210,22 @@ class NnApiHandler {
         [](ANeuralNetworksExecution* execution) { return Value; };
   }
 
+  void SetAndroidSdkVersion(int version);
+
  protected:
   explicit NnApiHandler(NnApi* nnapi) : nnapi_(nnapi) { DCHECK(nnapi); }
 
   NnApi* nnapi_;
+
+  static const char kNnapiReferenceDeviceName[];
+  static const int kNnapiReferenceDevice;
+  static const int kNnapiDevice;
+
+  static void SetDeviceName(const std::string& name);
+
+ private:
+  static char* nnapi_device_name_;
+  static int nnapi_device_feature_level_;
 };
 
 // Returns a pointer to an unaltered instance of NNAPI. Is intended

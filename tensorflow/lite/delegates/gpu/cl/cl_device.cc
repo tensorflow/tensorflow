@@ -278,11 +278,13 @@ DeviceInfo::DeviceInfo(cl_device_id id)
     supports_fp16 = true;
   }
 
-  if (vendor == Vendor::QUALCOMM &&
-      IsGPUVersionInRange(adreno_info.gpu_version, 400, 500)) {
+  if ((vendor == Vendor::QUALCOMM &&
+       IsGPUVersionInRange(adreno_info.gpu_version, 400, 500)) ||
+      vendor == Vendor::NVIDIA) {
     // in local tests Adreno 430 can write in image 3d, at least on small sizes,
     // but it doesn't have cl_khr_3d_image_writes in list of available
     // extensions
+    // The same for NVidia
     supports_image3d_writes = true;
   }
   compute_units_count = GetDeviceInfo<cl_uint>(id, CL_DEVICE_MAX_COMPUTE_UNITS);
@@ -309,7 +311,13 @@ bool DeviceInfo::SupportsImageBuffer() const {
   return cl_version >= OpenCLVersion::CL_1_2;
 }
 
-bool DeviceInfo::SupportsImage3D() const { return supports_image3d_writes; }
+bool DeviceInfo::SupportsImage3D() const {
+  if (vendor == Vendor::MALI) {
+    // On Mali T880 read_imageh doesn't compile with image3d_t
+    return false;
+  }
+  return supports_image3d_writes;
+}
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
     : id_(id), platform_id_(platform_id), info_(id) {}
@@ -431,6 +439,11 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
 
   *result = CLDevice(devices[0], platforms[0]);
   return OkStatus();
+}
+
+bool FindPlatform(cl_device_id device, cl_platform_id* platform) {
+  return clGetDeviceInfo(device, CL_DEVICE_PLATFORM, sizeof(cl_platform_id),
+                         platform, nullptr) == CL_SUCCESS;
 }
 
 }  // namespace cl

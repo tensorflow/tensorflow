@@ -1,3 +1,4 @@
+# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,8 +29,6 @@ import os
 from absl import logging
 import numpy as np
 
-import six
-
 # Note this module does *not* depend on any Python protocol buffers. The XLA
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
@@ -44,8 +43,7 @@ from tensorflow.compiler.xla.python.xla_extension import ops
 # pylint: disable=invalid-name
 
 
-@six.add_metaclass(abc.ABCMeta)
-class Backend(object):
+class Backend(object, metaclass=abc.ABCMeta):
   """Abstract base class for XLA backends."""
 
   def __init__(self, platform):
@@ -85,20 +83,21 @@ class Backend(object):
     """Compiles a computation. Returns an executable."""
 
   @abc.abstractmethod
-  def get_default_device_assignment(self, num_replicas):
+  def get_default_device_assignment(self, num_replicas, num_partitions):
     """Returns the default device assignment that `compile` would use.
 
     If `compile_options.device_assignment` isn't set, `compile` will pick a
-    deterministic device assignment based on the number of replicas, possibly
-    optimizing for device locality. This method returns that assignment, which
-    is useful for e.g. manually replicating a value before passing it to a
-    compiled executable.
+    deterministic device assignment based on the number of replicas and
+    partitions, possibly optimizing for device locality. This method returns
+    that assignment, which is useful for e.g. manually replicating a value
+    before passing it to a compiled executable.
 
     Args:
       num_replicas: the number of replicas needed.
+      num_partitions: the number of partitions needed.
 
     Returns:
-      A list of Devices of length `num_replicas` indexed by replica ID.
+      A list of list of Devices of size `(num_replicas, num_partitions)`.
     """
 
 
@@ -141,6 +140,7 @@ class LocalBackend(Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
+    options.num_partitions = compile_options.num_partitions
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
@@ -153,14 +153,13 @@ class LocalBackend(Backend):
                                         options, self.client,
                                         compile_options.device_assignment)
 
-  def get_default_device_assignment(self, num_replicas):
-    return self.client.GetDefaultDeviceAssignment(num_replicas)
-
-  def serialize(self, executable):
-    return self.client.SerializeExecutable(executable)
-
-  def deserialize(self, serialized_executable):
-    return self.client.DeserializeExecutable(serialized_executable, self.client)
+  def get_default_device_assignment(self, num_replicas, num_partitions=None):
+    if num_partitions is not None:
+      return self.client.GetDefaultDeviceAssignment(num_replicas,
+                                                    num_partitions)
+    else:
+      # TODO(skye): delete this case after all callers can handle 2D output
+      return self.client.GetDefaultDeviceAssignment(num_replicas)
 
 
 xla_platform_names = {
@@ -520,6 +519,7 @@ class CompileOptions(object):
     self.dump_hlo_as_proto = None
     self.hlo_profile = None
     self.num_replicas = 1
+    self.num_partitions = 1
     self.argument_layouts = None
     self.result_layout = None
     self.device_assignment = None

@@ -24,8 +24,8 @@ limitations under the License.
 
 // Import the relevant interpreter and model files.
 #if TFLITE_EXPERIMENTAL_RUNTIME
-#include "tensorflow/lite/experimental/tf_runtime/interpreter.h"
-#include "tensorflow/lite/experimental/tf_runtime/model.h"
+#include "tensorflow/lite/experimental/tf_runtime/lib/model.h"
+#include "tensorflow/lite/experimental/tf_runtime/public/interpreter.h"
 #else
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
@@ -38,11 +38,12 @@ namespace tflite_api_dispatcher {
 using Interpreter = tflrt::TfLiteInterpreterAPI;
 using InterpreterBuilder = tflrt::TfLiteInterpreterBuilderAPI;
 using TfLiteModel = tflrt::BEFModel;
+using TfLiteVerifier = tflrt::TfLiteVerifier;
 #else
 using tflite::Interpreter;
 using tflite::InterpreterBuilder;
-
-typedef tflite::FlatBufferModel TfLiteModel;
+using TfLiteModel = tflite::FlatBufferModel;
+using TfLiteVerifier = tflite::TfLiteVerifier;
 #endif
 
 }  // namespace tflite_api_dispatcher

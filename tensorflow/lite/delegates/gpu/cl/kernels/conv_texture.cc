@@ -35,12 +35,12 @@ std::string GenerateConvCode(
     bool adreno4xx_optimization, bool stride_correction, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool is_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER ||
@@ -251,7 +251,7 @@ std::string GenerateConvCode(
       for (int y = 0; y < block_size.y; ++y) {
         const std::string id = std::to_string(y * block_size.x + x);
         c += "    FLT4 src" + id + " = " +
-             src_tensor.Read3D(s_x[x], s_y[y], "s", mode) + ";\n";
+             src_tensor.ReadWHS(s_x[x], s_y[y], "s", mode) + ";\n";
       }
     }
   }
@@ -295,7 +295,7 @@ std::string GenerateConvCode(
         c += "        FLT4 res = TO_FLT4(r" + id + ") + bias_val;\n";
         const LinkingContext context{"res", "xc", "yc", "Z"};
         c += PostProcess(linked_operations, context);
-        c += "        " + dst_tensor.Write3D("res", "xc", "yc", "Z") + "\n";
+        c += "        " + dst_tensor.WriteWHS("res", "xc", "yc", "Z") + "\n";
         c += "      }\n";
         c += "    }\n";
       }
@@ -384,7 +384,8 @@ Status ConvTexture::Compile(const CreationContext& creation_context) {
       creation_context.device->IsAdreno4xx() &&
       storage_type == TensorStorageType::TEXTURE_ARRAY &&
       definition_.precision == CalculationsPrecision::F16;
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const std::string code = GenerateConvCode(
       definition_, block_size_, is1x1, adreno4xx_optimization,
       stride_correction, *creation_context.device, linked_operations_);
@@ -407,8 +408,8 @@ Status ConvTexture::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   if (!(kernel_size_.x == 1 && kernel_size_.y == 1)) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
     RETURN_IF_ERROR(kernel_.SetBytesAuto(
@@ -424,7 +425,7 @@ int3 ConvTexture::GetGridSize() const {
   const int grid_x =
       IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), block_size_.x);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), block_size_.y);
-  const int grid_z = IntegralDivideRoundUp(dst_[0]->Depth(), block_size_.z);
+  const int grid_z = IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.z);
   return int3(grid_x, grid_y, grid_z);
 }
 

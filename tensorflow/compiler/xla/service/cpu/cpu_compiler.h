@@ -54,6 +54,7 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   CpuAotCompilationOptions(string triple, string cpu_name, string features,
                            string entry_point_name,
                            RelocationModel relocation_model);
+
   ~CpuAotCompilationOptions() override;
 
   se::Platform::Id PlatformId() const override;

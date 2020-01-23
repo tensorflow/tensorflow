@@ -99,7 +99,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -189,7 +189,7 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
@@ -216,7 +216,7 @@ tf_xla_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/optimizer_v2",
     ],
 )
@@ -254,7 +254,7 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],

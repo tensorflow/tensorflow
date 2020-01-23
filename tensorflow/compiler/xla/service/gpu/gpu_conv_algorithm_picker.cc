@@ -117,6 +117,29 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
   return algorithms;
 }
 
+StatusOr<std::vector<se::dnn::ProfileResult>> GetAlgorithms(
+    const HloCustomCallInstruction* conv,
+    absl::Span<se::DeviceMemoryBase> operand_buffers,
+    se::DeviceMemoryBase result_buffer, se::StreamExecutor* stream_exec,
+    se::Stream* stream) {
+  std::vector<se::dnn::ProfileResult> algorithms;
+
+  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
+                      GetDnnConvolutionKind(conv));
+
+  TF_ASSIGN_OR_RETURN(se::dnn::DataType dtype, GetDnnDataType(conv));
+
+  TF_ASSIGN_OR_RETURN(GpuConvParams params,
+                      GetGpuConvParams(conv, operand_buffers, result_buffer));
+
+  bool succ = stream_exec->GetMIOpenConvolveAlgorithms(
+      kind, stream, dtype, params.input_descriptor, params.filter_descriptor,
+      params.conv_desc, params.output_descriptor, &algorithms);
+  DCHECK(succ);
+
+  return algorithms;
+}
+
 string AlgorithmToString(const AlgorithmDesc& algo) {
   if (algo.tensor_ops_enabled()) {
     return absl::StrCat(algo.algo_id(), "+TC");
@@ -320,13 +343,18 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const Shape& result_shape = instr->shape().tuple_shapes(0);
   int64 rng_state = 0;
 
-  const auto initialize_buffer = [&stream, &rng_state](
+  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+  const int32 conv_autotune_level =
+      hlo_module_config.debug_options().xla_gpu_autotune_level();
+  const bool init_conv_data = conv_autotune_level > 1;
+  const bool check_conv = conv_autotune_level > 3;
+  const auto initialize_buffer = [init_conv_data, &stream, &rng_state](
                                      DeviceMemoryBase buffer,
                                      const Shape& buffer_shape) {
-    InitializeBuffer(stream, buffer_shape.element_type(), &rng_state, buffer);
+    if (init_conv_data) {
+      InitializeBuffer(stream, buffer_shape.element_type(), &rng_state, buffer);
+    }
   };
-
-  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
   se::RedzoneAllocator input_output_allocator(
@@ -420,6 +448,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     result.set_scratch_bytes(scratch_bytes_used);
     *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
+    if (!check_conv) {
+      continue;
+    }
 
     // Check for writes to redzones.
     TF_ASSIGN_OR_RETURN(bool input_output_allocator_redzone_clear,
@@ -611,33 +643,72 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
           ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
   initialize_buffer(result_buffer);
 
-  ScratchAllocator scratch_allocator(device_ordinal, allocator);
-  se::dnn::ProfileResult profile_result;
-  VLOG(3) << "Auto-tuning for " << instr->ToString();
-  RunConvOptions options;
-  options.profile_result = &profile_result;
+  TF_ASSIGN_OR_RETURN(std::vector<se::dnn::ProfileResult> algorithms,
+                      GetAlgorithms(instr, absl::MakeSpan(operand_buffers),
+                                    result_buffer, stream_exec_, stream));
 
-  // ROCm: Set the overriding algorithm to empty to remind cudnn_conv_runner
-  // that the AlgorithmConfig in running convolution needs to be empty
-  options.algo_override = se::dnn::AlgorithmDesc();
+  std::vector<AutotuneResult> profile_results;
 
-  bool launch_ok =
-      RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                 &scratch_allocator, stream, options)
-          .ok();
-
-  AutotuneResult best_result;
-  if (launch_ok && profile_result.is_valid()) {
-    best_result.mutable_conv()->set_algorithm(
-        profile_result.algorithm().algo_id());
-    best_result.mutable_conv()->set_tensor_ops_enabled(
+  if (algorithms.size() == 1) {
+    auto profile_result = algorithms[0];
+    profile_results.emplace_back();
+    auto& result = profile_results.back();
+    result.mutable_conv()->set_algorithm(profile_result.algorithm().algo_id());
+    result.mutable_conv()->set_tensor_ops_enabled(
         profile_result.algorithm().tensor_ops_enabled());
-    int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
-    best_result.set_scratch_bytes(scratch_bytes_used);
-    *best_result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
-        absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
-    return best_result;
+    result.set_scratch_bytes(profile_result.scratch_size());
+    *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+        absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+  } else {
+    for (const auto& miopen_alg : algorithms) {
+      const auto& alg = miopen_alg.algorithm();
+      XLA_SCOPED_LOGGING_TIMER_LEVEL(
+          absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
+                       AlgorithmToString(alg)),
+          2);
+
+      ScratchAllocator scratch_allocator(device_ordinal, allocator);
+      se::dnn::ProfileResult profile_result;
+      VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
+              << instr->ToString();
+
+      // Use assignment instead of brace-list to make GCC 4.9 happy.
+      RunConvOptions options;
+      options.profile_result = &profile_result;
+      options.algo_override = alg;
+      Status launch_status =
+          RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
+                     &scratch_allocator, stream, options);
+
+      if (!launch_status.ok()) {
+        continue;
+      }
+
+      if (!profile_result.is_valid()) {
+        continue;
+      }
+
+      profile_results.emplace_back();
+      AutotuneResult& result = profile_results.back();
+      result.mutable_conv()->set_algorithm(alg.algo_id());
+      result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
+
+      int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
+      result.set_scratch_bytes(scratch_bytes_used);
+      *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+          absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+    }
+  }
+  const auto& best_result = absl::c_min_element(
+      profile_results,
+      [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+        return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
+               tensorflow::proto_utils::FromDurationProto(rhs.run_time());
+      });
+
+  if (best_result != profile_results.end()) {
+    return *best_result;
   }
 
   return InternalError(
@@ -718,7 +789,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnComputation(
 StatusOr<bool> GpuConvAlgorithmPicker::Run(HloModule* module) {
   XLA_SCOPED_LOGGING_TIMER("GpuConvAlgorithmPicker");
 
-  if (module->config().debug_options().xla_gpu_disable_autotune()) {
+  if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
     VLOG(2) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "
                "returning early.";
     return false;

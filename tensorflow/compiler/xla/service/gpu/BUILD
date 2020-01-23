@@ -115,7 +115,11 @@ cc_library(
 tf_cc_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
-    tags = ["requires-gpu-sm35"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "requires-gpu-sm35",
+    ],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test_helpers",
@@ -447,6 +451,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_debug_info_manager_test",
     srcs = ["gpu_debug_info_manager_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_constants",
         ":gpu_debug_info_manager",
@@ -593,6 +598,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:core",
     ],
@@ -997,6 +1003,7 @@ cc_library(
 tf_cc_test(
     name = "cudnn_pad_for_convolutions_test",
     srcs = ["cudnn_pad_for_convolutions_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":cudnn_pad_for_convolutions",
         ":ir_emission_utils",
@@ -1202,6 +1209,7 @@ cc_library(
         ":reduction_layout_normalizer",
         ":stream_executor_util",
         ":target_constants",
+        ":tree_reduction_rewriter",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -1344,6 +1352,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gemm_rewriter",
         ":gpu_layout_assignment",
@@ -1518,6 +1527,8 @@ tf_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
     tags = [
+        "gpu",
+        "no_oss",
         "noasan",
         "nomsan",
         "requires-gpu-sm70",
@@ -1705,5 +1716,38 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "tree_reduction_rewriter",
+    srcs = ["tree_reduction_rewriter.cc"],
+    hdrs = ["tree_reduction_rewriter.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_evaluator",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:shape_inference",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )

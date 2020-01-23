@@ -208,7 +208,8 @@ Tensor* PersistentTensor::AccessTensor(OpKernelContext* context) {
 OpKernelConstruction::OpKernelConstruction(
     DeviceType device_type, DeviceBase* device, Allocator* allocator,
     const NodeDef* node_def, const OpDef* op_def, FunctionLibraryRuntime* flib,
-    const DataTypeSlice& input_types, const MemoryTypeSlice& input_memory_types,
+    ResourceMgr* resource_mgr, const DataTypeSlice& input_types,
+    const MemoryTypeSlice& input_memory_types,
     const DataTypeSlice& output_types,
     const MemoryTypeSlice& output_memory_types, int graph_def_version,
     Status* status)
@@ -218,6 +219,7 @@ OpKernelConstruction::OpKernelConstruction(
       def_(node_def),
       op_def_(op_def),
       flib_(flib),
+      resource_mgr_(resource_mgr),
       input_types_(input_types),
       input_memory_types_(input_memory_types),
       output_types_(output_types),
@@ -245,6 +247,31 @@ Status OpKernelConstruction::allocate_temp(DataType type,
   AllocationAttributes attr;
   attr.allocation_will_be_logged = true;
   Tensor new_temp(allocator_, type, shape, attr);
+
+  if (!new_temp.IsInitialized()) {
+    return errors::ResourceExhausted(
+        "OOM when allocating temporary tensor with shape", shape.DebugString());
+  }
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation(
+        def_->name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
+  }
+  *out_temp = new_temp;
+  return Status::OK();
+}
+
+Status OpKernelConstruction::allocate_temp(DataType type,
+                                           const TensorShape& shape,
+                                           Tensor* out_temp,
+                                           AllocatorAttributes allocator_attr) {
+  if (allocator_attr.scope_id != 0) {
+    return errors::InvalidArgument(
+        "ScopedAllocator cannot be used via OpKernelConstruction.");
+  }
+  Allocator* a = device_->GetAllocator(allocator_attr);
+  AllocationAttributes attr;
+  attr.allocation_will_be_logged = true;
+  Tensor new_temp(a, type, shape, attr);
 
   if (!new_temp.IsInitialized()) {
     return errors::ResourceExhausted(
@@ -1185,7 +1212,11 @@ void LoadDynamicKernels() {
 }
 
 void* GlobalKernelRegistry() {
-  static KernelRegistry* global_kernel_registry = new KernelRegistry;
+  static KernelRegistry* global_kernel_registry = []() {
+    KernelRegistry* registry = new KernelRegistry;
+    OpRegistry::Global()->RegisterValidator(ValidateKernelRegistrations);
+    return registry;
+  }();
   return global_kernel_registry;
 }
 
@@ -1510,6 +1541,15 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
                       const NodeDef& node_def, int graph_def_version,
                       OpKernel** kernel) {
+  return CreateOpKernel(std::move(device_type), device, allocator, flib,
+                        /* resource_mgr= */ nullptr, node_def,
+                        graph_def_version, kernel);
+}
+
+Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
+                      Allocator* allocator, FunctionLibraryRuntime* flib,
+                      ResourceMgr* resource_mgr, const NodeDef& node_def,
+                      int graph_def_version, OpKernel** kernel) {
   VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
 
   // Look up the Op registered for this op name.
@@ -1562,9 +1602,10 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                                         &output_memory_types));
 
   // Everything needed for OpKernel construction.
-  OpKernelConstruction context(
-      device_type, device, allocator, &node_def, op_def, flib, inputs,
-      input_memory_types, outputs, output_memory_types, graph_def_version, &s);
+  OpKernelConstruction context(std::move(device_type), device, allocator,
+                               &node_def, op_def, flib, resource_mgr, inputs,
+                               input_memory_types, outputs, output_memory_types,
+                               graph_def_version, &s);
   *kernel = registration->factory->Create(&context);
   if (!s.ok()) {
     delete *kernel;

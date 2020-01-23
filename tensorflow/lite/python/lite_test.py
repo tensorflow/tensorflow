@@ -158,6 +158,25 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
+  def testForgottenCallToAllocateTensors(self):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_index = interpreter.get_input_details()[0]['index']
+    dummy_tensor = np.ones(shape=[1, 16, 16, 3], dtype=np.float32)
+    with self.assertRaises(ValueError):
+      interpreter.set_tensor(input_index, dummy_tensor)
+
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir
@@ -512,6 +531,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       # Convert model and ensure model is not None.
       converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                     [out_tensor])
+      converter.experimental_new_converter = enable_mlir
       graphviz_dir = self.get_temp_dir()
       converter.dump_graphviz_dir = graphviz_dir
       converter.dump_graphviz_video = True
@@ -552,6 +572,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
+    converter.experimental_new_converter = False
     log_dir = self.get_temp_dir()
     converter.conversion_summary_dir = log_dir
     tflite_model = converter.convert()
@@ -1469,33 +1490,6 @@ class FromFrozenGraphObjectDetection(LiteTest):
     self.assertEqual('TFLite_Detection_PostProcess:3',
                      output_details[3]['name'])
     self.assertTrue(([1] == output_details[3]['shape']).all())
-
-  def testTFLiteGraphDefMissingShape(self):
-    # Tests invalid cases for the model that cannot be loaded in TensorFlow.
-    self._initObjectDetectionArgs()
-
-    # Missing `input_shapes`.
-    with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
-                                             self._input_arrays,
-                                             self._output_arrays)
-    self.assertEqual('input_shapes must be defined for this model.',
-                     str(error.exception))
-
-  def testTFLiteGraphDefInvalidShape(self):
-    # Tests invalid cases for the model that cannot be loaded in TensorFlow.
-    self._initObjectDetectionArgs()
-
-    # `input_shapes` does not contain the names in `input_arrays`.
-    with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter.from_frozen_graph(
-          self._graph_def_file,
-          self._input_arrays,
-          self._output_arrays,
-          input_shapes={'invalid-value': [1, 19]})
-    self.assertEqual(
-        'input_shapes must contain a value for each item in input_array.',
-        str(error.exception))
 
 
 class FromSavedModelTest(TestModels):

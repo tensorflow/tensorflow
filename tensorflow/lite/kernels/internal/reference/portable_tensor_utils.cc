@@ -39,26 +39,6 @@ const int32_t kInt16Max = std::numeric_limits<int16_t>::max();
 const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
 }  // namespace
 
-template <typename T>
-bool PortableIsZeroVectorImpl(const T* vector, int v_size, T zero_value) {
-  for (int i = 0; i < v_size; ++i) {
-    if (*vector++ != zero_value) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool PortableIsZeroVector(const float* vector, int v_size) {
-  static const float zero = 0.0f;
-  return PortableIsZeroVectorImpl(vector, v_size, zero);
-}
-
-bool PortableIsZeroVector(const int8_t* vector, int v_size) {
-  static const int8_t zero = 0;
-  return PortableIsZeroVectorImpl(vector, v_size, zero);
-}
-
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor) {

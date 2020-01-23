@@ -225,18 +225,20 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace pooling
 
 TfLiteRegistration* Register_AVERAGE_POOL_2D() {
-  static TfLiteRegistration r = {
-      pooling::Init,
-      pooling::Free,
-      pooling::Prepare,
-      pooling::AverageEval,
-  };
+  static TfLiteRegistration r = {};
+  r.init = pooling::Init;
+  r.free = pooling::Free;
+  r.prepare = pooling::Prepare;
+  r.invoke = pooling::AverageEval;
   return &r;
 }
 
 TfLiteRegistration* Register_MAX_POOL_2D() {
-  static TfLiteRegistration r = {pooling::Init, pooling::Free, pooling::Prepare,
-                                 pooling::MaxEval};
+  static TfLiteRegistration r = {};
+  r.init = pooling::Init;
+  r.free = pooling::Free;
+  r.prepare = pooling::Prepare;
+  r.invoke = pooling::MaxEval;
   return &r;
 }
 

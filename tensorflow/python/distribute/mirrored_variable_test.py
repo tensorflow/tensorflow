@@ -216,7 +216,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
     iterator = distribution.make_input_fn_iterator(
         lambda _: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
-    self.evaluate(iterator.initialize())
+    self.evaluate(iterator.initializer)
     features = iterator.get_next()
 
     with distribution.scope():

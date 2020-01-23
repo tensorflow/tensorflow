@@ -1255,6 +1255,20 @@ void InvertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// InvertPermutationOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that the input is 1D.
+static LogicalResult Verify(InvertPermutationOp op) {
+  auto x_type = op.x().getType().cast<TensorType>();
+  if (!x_type.hasRank()) return success();
+  if (x_type.getShape().size() != 1)
+    return op.emitOpError() << "requires input x to be 1-dimensional";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // LeakyReluOp
 //===----------------------------------------------------------------------===//
 
@@ -1594,65 +1608,69 @@ void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/128020684): Verify the rank of the output and change to use
-// m_Constant.
+// TODO(b/128020684): Verify the output type.
 static LogicalResult Verify(ReshapeOp op) {
-  auto shapeType = op.shape().getType().cast<TensorType>();
-  if (!shapeType.hasRank()) return success();
-  if (shapeType.getRank() != 1)
+  auto shape_type = op.shape().getType().cast<TensorType>();
+  if (!shape_type.hasRank()) return success();
+  if (shape_type.getRank() != 1)
     return op.emitOpError("shape must be 1D tensor");
-  auto rankByShape = shapeType.getShape()[0];
-  auto typeOfTensor = op.tensor().getType().cast<TensorType>();
+  auto rank_by_shape = shape_type.getShape()[0];
+  auto type_of_tensor = op.tensor().getType().cast<TensorType>();
   // No compile time verification for unknown sized shape.
-  if (rankByShape == -1 || !typeOfTensor.hasStaticShape()) return success();
+  if (rank_by_shape == -1 || !type_of_tensor.hasStaticShape()) return success();
+  int64_t num_by_tensor = type_of_tensor.getNumElements();
+
+  auto out_ty = op.getType().cast<RankedTensorType>();
+  if (out_ty && out_ty.hasStaticShape()) {
+    int64_t num_output_elements = out_ty.getNumElements();
+    if (num_by_tensor != num_output_elements)
+      return op.emitOpError()
+             << "number of output elements (" << num_output_elements
+             << ") does not match expected number of elements ("
+             << num_by_tensor << ")";
+  }
+
   // Check values if constant shape. No compiling time verification for
   // non-constant shape.
-  auto *shapeOp = op.shape().getDefiningOp();
-  if (!shapeOp) return success();
-  Attribute shapeCst;
-  if (auto shapeStdOp = dyn_cast<ConstantOp>(shapeOp)) {
-    shapeCst = shapeStdOp.getValue();
-  } else if (auto shapeTFOp = dyn_cast<ConstOp>(shapeOp)) {
-    shapeCst = shapeTFOp.value();
-  } else {
-    return success();
-  }
-  auto shapeCstAttr = shapeCst.dyn_cast<ElementsAttr>();
-  if (!shapeCstAttr) return op.emitOpError("shape must be a valid tensor");
+  auto *shape_op = op.shape().getDefiningOp();
+  if (!shape_op) return success();
+  Attribute shape_cst;
+  if (!matchPattern(shape_op, m_Constant(&shape_cst))) return success();
+  auto shape_cst_attr = shape_cst.dyn_cast<ElementsAttr>();
+  if (!shape_cst_attr) return op.emitOpError("shape must be a valid tensor");
 
-  if (auto opaqueAttr = shapeCstAttr.dyn_cast<OpaqueElementsAttr>()) {
-    opaqueAttr.decode(shapeCstAttr);
+  if (auto opaque_attr = shape_cst_attr.dyn_cast<OpaqueElementsAttr>()) {
+    opaque_attr.decode(shape_cst_attr);
   }
 
   // We know the shape is a 1-D Tensor, then let us get the number of
   // elements it implies.
-  unsigned numByShape = 1;
-  unsigned unknownDimCount = 0;
-  for (int i = 0, e = rankByShape; i != e; ++i) {
-    auto num = shapeCstAttr.getValue<IntegerAttr>(i).getInt();
+  unsigned num_by_shape = 1;
+  unsigned unknown_dim_count = 0;
+  for (int i = 0, e = rank_by_shape; i != e; ++i) {
+    auto num = shape_cst_attr.getValue<IntegerAttr>(i).getInt();
     // The dimension size value can be -1, and that the real size needs to
     // be computed so that the total size remains constant. At most one
     // component of shape can be -1.
     if (num == -1) {
-      if (++unknownDimCount > 1) {
+      if (++unknown_dim_count > 1) {
         return op.emitOpError("more than one component of shape are -1");
       }
     } else {
-      numByShape *= num;
+      num_by_shape *= num;
     }
   }
-  auto numByTensor = typeOfTensor.getNumElements();
   // If there is one component of shape is -1, the dimension should be
   // computed so that the total size remains constant.
-  if (unknownDimCount == 1) {
-    if (numByTensor % numByShape != 0)
+  if (unknown_dim_count == 1) {
+    if (num_by_tensor % num_by_shape != 0)
       return op.emitOpError(
           "one component of shape is -1 but couldn't infer the dimension");
     return success();
   }
   // If the elements by the tensor and implies by the shape don't match,
   // fail this static check.
-  if (numByTensor != numByShape) {
+  if (num_by_tensor != num_by_shape) {
     return op.emitOpError(
         "mismatch in tensor elements and shape implied elements");
   }
@@ -2607,16 +2625,16 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(VariableShapeOp op) {
-  auto resource_operand_type = op.input()
-                                   .getType()
-                                   .cast<TensorType>()
-                                   .getElementType()
-                                   .cast<TF::ResourceType>();
-  auto subtypes = resource_operand_type.getSubtypes();
+  auto input_type = op.input().getType().cast<TensorType>();
+  if (input_type.hasStaticShape() && input_type.getNumElements() != 1)
+    return op.emitOpError("requires input to have one resource");
+
+  auto resource_type = input_type.getElementType().cast<TF::ResourceType>();
+  auto subtypes = resource_type.getSubtypes();
   switch (subtypes.size()) {
     case 1:
       return VerifyShapeOperandAndResult(
-          op, resource_operand_type.getSubtypes().front(), op.getType());
+          op, resource_type.getSubtypes().front(), op.getType());
     case 0:
       return VerifyShapeOperandAndResult(op, Type(), op.getType());
     default:

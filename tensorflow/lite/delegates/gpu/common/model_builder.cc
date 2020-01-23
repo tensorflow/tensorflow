@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
@@ -1499,9 +1500,20 @@ class PReLUOperationParser : public TFLiteOperationParser {
 
 class PadOperationParser : public TFLiteOperationParser {
  public:
+  explicit PadOperationParser(bool mirror_pad) : mirror_pad_(mirror_pad) {}
+
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
+    if (mirror_pad_) {
+      auto* tf_options = reinterpret_cast<const TfLiteMirrorPaddingParams*>(
+          tflite_node->builtin_data);
+      if (tf_options->mode !=
+          TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect) {
+        return InvalidArgumentError(
+            "Only Reflective padding is supported for Mirror Pad operation.");
+      }
+    }
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
     RETURN_IF_ERROR(
         CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
@@ -1518,7 +1530,12 @@ class PadOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     PadAttributes attr;
-    attr.type = PaddingContentType::ZEROS;
+    if (mirror_pad_) {
+      attr.type = PaddingContentType::REFLECT;
+    } else /*zero pad*/ {
+      attr.type = PaddingContentType::ZEROS;
+    }
+
     Tensor<HW, DataType::INT32> paddings;
     RETURN_IF_ERROR(reader->ReadTensor(1, &paddings));
 
@@ -1533,6 +1550,9 @@ class PadOperationParser : public TFLiteOperationParser {
     node->operation.attributes = attr;
     return OkStatus();
   }
+
+ private:
+  bool mirror_pad_ = false;
 };
 
 class Pooling2DOperationParser : public TFLiteOperationParser {
@@ -2365,6 +2385,51 @@ class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
  private:
 };
 
+class MeanOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    return CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+                              /*outputs=*/1);
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    auto* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::MEAN);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    MeanAttributes attr;
+    Tensor<Linear, DataType::INT32> channel;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &channel));
+    for (int i = 0; i < channel.data.size(); i++) {
+      std::string unsupported;
+      switch (channel.data[i]) {
+        case 1:
+          attr.dims.insert(Axis::HEIGHT);
+          break;
+        case 2:
+          attr.dims.insert(Axis::WIDTH);
+          break;
+        case 0:
+          unsupported = unsupported.empty() ? "batch" : unsupported;
+          ABSL_FALLTHROUGH_INTENDED;
+        case 3:
+          unsupported = unsupported.empty() ? "channels" : unsupported;
+          ABSL_FALLTHROUGH_INTENDED;
+        default:
+          return UnimplementedError(
+              absl::StrCat("Unsupported mean dimension: ", unsupported));
+      }
+    }
+    node->operation.attributes = attr;
+    return OkStatus();
+  }
+};
+
 class UnsupportedOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -2413,10 +2478,14 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<LSTMOperationParser>();
     case kTfLiteBuiltinMaxPool2d:
       return absl::make_unique<Pooling2DOperationParser>(PoolingType::MAX);
+    case kTfLiteBuiltinMean:
+      return absl::make_unique<MeanOperationParser>();
+    case kTfLiteBuiltinMirrorPad:
+      return absl::make_unique<PadOperationParser>(/*mirror_pad=*/true);
     case kTfLiteBuiltinMul:
       return absl::make_unique<MulOperationParser>();
     case kTfLiteBuiltinPad:
-      return absl::make_unique<PadOperationParser>();
+      return absl::make_unique<PadOperationParser>(/*mirror_pad=*/false);
     case kTfLiteBuiltinPow:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::POW);
     case kTfLiteBuiltinRelu:
@@ -2746,6 +2815,20 @@ Status BuildModel(TfLiteContext* context,
       return InternalError(absl::StrCat(GetOpNameByRegistration(registration),
                                         ": ", status.error_message()));
     }
+  }
+  return OkStatus();
+}
+
+Status BuildFinalModel(TfLiteContext* context,
+                       const TfLiteDelegateParams* delegate_params,
+                       GraphFloat32* graph) {
+  RETURN_IF_ERROR(BuildModel(context, delegate_params, graph));
+
+  // Apply general transformations on the graph.
+  NullTransformationReporter reporter;
+  ModelTransformer transformer(graph, &reporter);
+  if (!ApplyGeneralTransformations(&transformer)) {
+    return InternalError("Graph general transformations failed");
   }
   return OkStatus();
 }

@@ -58,9 +58,10 @@ struct ShapeInfo {
   mlir::Type element_type;
 };
 
-ShapeInfo GetShapeInfo(const Shape& shape, int64 n_dim, int64 c_dim,
-                       absl::Span<const int64> spatial_dims,
-                       mlir::Builder builder) {
+ShapeInfo GetShapeInfo(
+    const Shape& shape, int64 n_dim, int64 c_dim,
+    absl::Span<const tensorflow::protobuf_int64> spatial_dims,
+    mlir::Builder builder) {
   ShapeInfo shape_info;
 
   std::vector<int64> physical_to_logical(
@@ -256,7 +257,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
     SetBoundForSimpleLoop(loop, length.ceilDiv(size), builder);
   }
 
-  for (mlir::IROperand& use :
+  for (auto& use :
        llvm::make_early_inc_range(loop.getInductionVar().getUses())) {
     mlir::Operation* owner = use.getOwner();
     BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
@@ -329,8 +330,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     for (auto ancestor : ancestors) {
       indvars.push_back(ancestor.getInductionVar());
     }
-    for (mlir::IROperand& use :
-         llvm::make_early_inc_range(alloc.getResult().getUses())) {
+    for (auto& use : llvm::make_early_inc_range(alloc.getResult().getUses())) {
       mlir::Operation* owner = use.getOwner();
       BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
       affine_map.operands.insert(affine_map.operands.begin(), indvars.begin(),

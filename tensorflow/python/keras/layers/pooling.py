@@ -370,6 +370,24 @@ class MaxPooling2D(Pooling2D):
             [[10.],
              [11.],
              [12.]]]], dtype=float32)>
+             
+  Usage Example:
+  
+  >>> input_image = tf.constant([[[[1.], [1.], [2.], [4.]],
+  ...                            [[2.], [2.], [3.], [2.]],
+  ...                            [[4.], [1.], [1.], [1.]],
+  ...                            [[2.], [2.], [1.], [4.]]]]) 
+  >>> output = tf.constant([[[[1], [0]],
+  ...                       [[0], [1]]]]) 
+  >>> model = tf.keras.models.Sequential()
+  >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2), 
+  ...    input_shape=(4,4,1)))
+  >>> model.compile('adam', 'mean_squared_error')
+  >>> model.predict(input_image, steps=1)
+  array([[[[2.],
+           [4.]],
+          [[4.],
+           [4.]]]], dtype=float32)
 
   For example, for stride=(1,1) and padding="same":
 
@@ -719,6 +737,14 @@ class GlobalPooling1D(Layer):
 class GlobalAveragePooling1D(GlobalPooling1D):
   """Global average pooling operation for temporal data.
 
+  Examples:
+
+  >>> input_shape = (2, 3, 4)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalAveragePooling1D()(x)
+  >>> print(y.shape)
+  (2, 4)
+
   Arguments:
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
@@ -827,6 +853,14 @@ class GlobalPooling2D(Layer):
 class GlobalAveragePooling2D(GlobalPooling2D):
   """Global average pooling operation for spatial data.
 
+  Examples:
+
+  >>> input_shape = (2, 4, 5, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalAveragePooling2D()(x)
+  >>> print(y.shape)
+  (2, 3)
+
   Arguments:
       data_format: A string,
         one of `channels_last` (default) or `channels_first`.
@@ -859,6 +893,14 @@ class GlobalAveragePooling2D(GlobalPooling2D):
 @keras_export('keras.layers.GlobalMaxPool2D', 'keras.layers.GlobalMaxPooling2D')
 class GlobalMaxPooling2D(GlobalPooling2D):
   """Global max pooling operation for spatial data.
+
+  Examples:
+
+  >>> input_shape = (2, 4, 5, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.GlobalMaxPool2D()(x)
+  >>> print(y.shape)
+  (2, 3)
 
   Arguments:
     data_format: A string,

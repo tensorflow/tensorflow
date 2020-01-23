@@ -57,9 +57,11 @@ class Calibrator {
  public:
   Calibrator(const std::unordered_map<const TfLiteNode*, OperatorInfo>&
                  node_ptr_opinfo_map,
-             std::unique_ptr<LoggingOpResolver> logging_op_resolver)
+             std::unique_ptr<LoggingOpResolver> logging_op_resolver,
+             ErrorReporter* error_reporter)
       : node_ptr_opinfo_map_(node_ptr_opinfo_map),
-        logging_op_resolver_(std::move(logging_op_resolver)) {
+        logging_op_resolver_(std::move(logging_op_resolver)),
+        error_reporter_(error_reporter) {
     logger_ = absl::make_unique<Logger>();
   }
 
@@ -68,6 +70,9 @@ class Calibrator {
 
   // Gets the instance of logger associated with the current context.
   Logger* GetLogger() const { return logger_.get(); }
+
+  // Gets the error reporter.
+  ErrorReporter* GetErrorReporter() const { return error_reporter_; }
 
   // Gets the operator information about the given TfLiteNode.
   const OperatorInfo& GetOpInfo(const TfLiteNode* node) const {
@@ -79,6 +84,7 @@ class Calibrator {
   std::unique_ptr<LoggingOpResolver> logging_op_resolver_;
   const std::unordered_map<int, OperatorInfo> index_opinfo_;
   std::unique_ptr<Logger> logger_;
+  ErrorReporter* error_reporter_;
 };
 
 KernelEvalFuncPtr Calibrator::GetKernelInvoke(const TfLiteNode* node) const {
@@ -146,8 +152,8 @@ class GlobalCalibratorRegistry {
           "Failed to create calibrator, context already registered.");
       return kTfLiteError;
     }
-    std::unique_ptr<Calibrator> calibrator = absl::make_unique<Calibrator>(
-        node_to_opinfo, std::move(logging_op_resolver));
+    auto calibrator = absl::make_unique<Calibrator>(
+        node_to_opinfo, std::move(logging_op_resolver), reporter);
     calibrator_registry_[context] = std::move(calibrator);
     *calibrator_ptr = calibrator_registry_.at(context).get();
     return kTfLiteOk;
@@ -189,18 +195,20 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   auto kernel_invoke = calibrator->GetKernelInvoke(node);
   auto logger = calibrator->GetLogger();
   auto op_info = calibrator->GetOpInfo(node);
+  auto error_reporter = calibrator->GetErrorReporter();
 
   for (int i : op_info.loggable_inputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(
-        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
+    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
+        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
   }
   auto kernel_invoke_intermediate = GetLoggingEvalFunc(context, node);
   TfLiteStatus status;
   if (kernel_invoke_intermediate == nullptr) {
     status = kernel_invoke(context, node);
   } else {
-    status = kernel_invoke_intermediate(context, node, calibrator->GetLogger());
+    status = kernel_invoke_intermediate(context, node, calibrator->GetLogger(),
+                                        error_reporter);
   }
 
   // TODO(shashishekhar): An intermediate tensor in graph will get logged twice
@@ -212,14 +220,14 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   // cell.
   for (int i : op_info.loggable_inputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(
-        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
+    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
+        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
   }
 
   for (int i : op_info.loggable_outputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(
-        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
+    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
+        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
   }
 
   return status;

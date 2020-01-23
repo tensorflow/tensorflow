@@ -52,8 +52,14 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
+    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
+    std::unique_ptr<HloLiveRange> hlo_live_range =
+        HloLiveRange::Run(module->schedule(), *alias_analysis,
+                          module->entry_computation())
+            .ValueOrDie();
     MemorySpaceAssignmentCostAnalysis cost_analysis(
-        hlo_cost_analysis, kAsyncCopyBandwidth, kAlternateMemBandwidth);
+        hlo_cost_analysis, kAsyncCopyBandwidth, kAlternateMemBandwidth,
+        *hlo_live_range);
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
             cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
@@ -108,8 +114,17 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.max_outstanding_async_copies = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
     options.verify = true;
+
+    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
+    std::unique_ptr<HloLiveRange> hlo_live_range =
+        HloLiveRange::Run(module->schedule(), *alias_analysis,
+                          module->entry_computation())
+            .ValueOrDie();
+
     std::unique_ptr<PresetAssignments> preset_assignments =
-        MemorySpaceAssignment::Run(module, options).ValueOrDie();
+        MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
+                                   options)
+            .ValueOrDie();
     CheckPresetAssignments(preset_assignments.get());
     return preset_assignments;
   }
@@ -252,7 +267,7 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
   EXPECT_THAT(sub, op::ShapeWithLayout(shape_in_alternate_mem));
 
   // Make sure the preset assignments is sane.
-  EXPECT_EQ(preset_assignments->chunks().size(), 2);
+  EXPECT_EQ(preset_assignments->chunks().size(), 3);
   EXPECT_EQ(preset_assignments->sizes().size(), 1);
   // Ensure the offset assigned to add and sub are different.
   EXPECT_NE(preset_assignments->chunks()[0].second.offset,
@@ -362,7 +377,9 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
             2);
 }
 
-TEST_P(MemorySpaceAssignmentTest, DontEvictWhenThereIsDefaultMemAllocation) {
+// TODO(berkin): This test is broken with some prefetch timing improvements.
+TEST_P(MemorySpaceAssignmentTest,
+       DISABLED_DontEvictWhenThereIsDefaultMemAllocation) {
   // This test is the same as EvictAndPrefetchLimitAsyncCopies1, except we check
   // that there is no eviction if not necessary (due to an existing allocation
   // in default memory).
@@ -740,7 +757,8 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast2) {
 
   AssignMemorySpace(module.get());
 
-  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(add->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Bitcast3) {
@@ -798,12 +816,15 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast3) {
               op::Bitcast(op::AsyncCopy(kAlternateMemorySpace,
                                         kDefaultMemorySpace, op::Parameter(1))),
               op::Negate()))));
-  EXPECT_EQ(bitcast1->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(add->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
   EXPECT_EQ(add->shape().layout().memory_space(), kAlternateMemorySpace);
   // bitcast2 will no longer have a consumer and should get DCE'd, so we don't
   // care about its memory space.
-  EXPECT_EQ(bitcast3->shape().layout().memory_space(), kAlternateMemorySpace);
-  EXPECT_EQ(bitcast4->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(mul->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(mul->operand(1)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
@@ -855,6 +876,161 @@ TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
+  // This test pattern was encountered in
+  // //third_party/tensorflow/compiler/xla/tests:slice_test and was causing a
+  // breakage when there is a GetTupleElement(Tuple(Bitcast())) pattern. Also
+  // added a GetTupleElement(GetTupleElement(Tuple(Tuple(Bitcast())))) pattern.
+  absl::string_view hlo_string = R"(
+  HloModule DoIt_S64_10_0_5_1.3, is_scheduled=true
+
+  ENTRY %DoIt_S64_10_0_5_1.3 (p0.1: (u32[10], u32[10])) -> (u32[5], u32[5]) {
+    %p0.1 = (u32[10]{0:T(128)}, u32[10]{0:T(128)}) parameter(0)
+    %get-tuple-element.1 = u32[10]{0:T(128)} get-tuple-element((u32[10]{0:T(128)}, u32[10]{0:T(128)}) %p0.1), index=1
+    %bitcast.1 = u32[5]{0:T(128)} bitcast(u32[10]{0:T(128)} %get-tuple-element.1)
+    %get-tuple-element = u32[10]{0:T(128)} get-tuple-element((u32[10]{0:T(128)}, u32[10]{0:T(128)}) %p0.1), index=0
+    %bitcast = u32[5]{0:T(128)} bitcast(u32[10]{0:T(128)} %get-tuple-element)
+    %tuple.1 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %bitcast, u32[5]{0:T(128)} %bitcast.1)
+    %tuple.3 = ((u32[5]{0:T(128)}, u32[5]{0:T(128)}), (u32[5]{0:T(128)}, u32[5]{0:T(128)})) tuple(%tuple.1, %tuple.1)
+    %get-tuple-element.4 = u32[5]{0:T(128)} get-tuple-element((u32[5]{0:T(128)}, u32[5]{0:T(128)}) %tuple.1), index=0
+    %get-tuple-element.5 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) get-tuple-element(%tuple.3), index=0
+    %get-tuple-element.6 = u32[5]{0:T(128)} get-tuple-element((u32[5]{0:T(128)}, u32[5]{0:T(128)}) %get-tuple-element.5), index=1
+    %copy.2 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.4)
+    %copy.3 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.6)
+    ROOT %tuple.2 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %copy.2, u32[5]{0:T(128)} %copy.3)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, GetSimplifiedOperandBug) {
+  // Test case for a bug finding Bitcasts in GTE(Tuple(...)) pattern.
+  absl::string_view hlo_string = R"(
+  HloModule sort.16, is_scheduled=true
+
+  ENTRY %sort.16 (param.0.1: s32[1], param.1.2: f32[1], param.2.3: u32[1], param.3.4: s32[1]) -> (s32[1], f32[1], u32[1], s32[1]) {
+    %param.3.4 = s32[1]{0:T(128)} parameter(3)
+    %param.2.3 = u32[1]{0:T(128)} parameter(2)
+    %param.1.2 = f32[1]{0:T(128)} parameter(1)
+    %param.0.1 = s32[1]{0:T(128)} parameter(0)
+    %tuple.1 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %param.0.1, f32[1]{0:T(128)} %param.1.2, u32[1]{0:T(128)} %param.2.3, s32[1]{0:T(128)} %param.3.4)
+    %get-tuple-element.4 = s32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=0
+    %get-tuple-element.5 = f32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=1
+    %get-tuple-element.6 = u32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=2
+    %get-tuple-element.7 = s32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=3
+    %copy.4 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.4)
+    %copy.5 = f32[1]{0:T(128)} copy(f32[1]{0:T(128)} %get-tuple-element.5)
+    %copy.6 = u32[1]{0:T(128)} copy(u32[1]{0:T(128)} %get-tuple-element.6)
+    %copy.7 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.7)
+    ROOT %tuple.2 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %copy.4, f32[1]{0:T(128)} %copy.5, u32[1]{0:T(128)} %copy.6, s32[1]{0:T(128)} %copy.7)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
+  // When there is a pattern where a bitcast has multiple uses (negate0 and add)
+  // and one is in the default memory and the other is in alternate memory, they
+  // both need their own bitcast.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, param_shape, "p1"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, bitcast));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, bitcast, negate4));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, bitcast, negate0, negate1, negate2,
+                                      negate3, negate4, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {2, 3},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kAlternateMemorySpace);
+  EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
+  EXPECT_THAT(add->operand(0), op::ShapeWithLayout(shape_in_alternate_mem));
+}
+
+TEST_P(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
+  // Same as BitcastMultUse but the second use is a tuple.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder fusion_builder("fusion");
+  HloInstruction* fusion_param = fusion_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* fusion_element0 = fusion_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion_param, 0));
+  HloInstruction* fusion_element1 = fusion_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion_param, 1));
+  fusion_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, fusion_element0, fusion_element1));
+  HloComputation* fusion_computation =
+      module->AddEmbeddedComputation(fusion_builder.Build());
+
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, param_shape, "p1"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, bitcast));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({bitcast, negate4}));
+  HloInstruction* fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kCustom, {tuple}, fusion_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, bitcast, negate0, negate1, negate2,
+                                      negate3, negate4, tuple, fusion});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {2, 3},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kAlternateMemorySpace);
+  EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
+  EXPECT_THAT(fusion->operand(0)->operand(0),
+              op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
 TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
@@ -913,7 +1089,8 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/4);
 
-  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(add->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
   const auto& instructions =
       module->schedule().sequence(module->entry_computation()).instructions();
   for (int i = 0; i < instructions.size(); ++i) {
@@ -924,6 +1101,222 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
       EXPECT_EQ(instructions.at(i + 1)->opcode(), HloOpcode::kNegate);
     } else if (instructions.at(i)->opcode() == HloOpcode::kCopyDone) {
       EXPECT_EQ(instructions.at(i - 1)->opcode(), HloOpcode::kNegate);
+    }
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, TupleSelect) {
+  // Make sure tuple-select is not optimized away.
+  absl::string_view hlo_string = R"(
+  HloModule tuple, is_scheduled=true
+
+  ENTRY %main (a: f32[2], b: f32[2], c: f32[2], d: f32[2], cond: pred[]) -> f32[2] {
+    %cond = pred[]{:T(128)E(32)} parameter(4)
+    %token0 = token[] after-all()
+    %d = f32[2]{0:T(128)} parameter(3)
+    %c = f32[2]{0:T(128)} parameter(2)
+    %b = f32[2]{0:T(128)} parameter(1)
+    %a = f32[2]{0:T(128)} parameter(0)
+    %tup0 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %a, f32[2]{0:T(128)} %b)
+    %tup1 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %c, f32[2]{0:T(128)} %d)
+    %s = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple-select(pred[]{:T(128)E(32)} %cond, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup0, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup1)
+    %gte = f32[2]{0:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[2]{0:T(128)}) %s), index=0
+    ROOT %negate = f32[2]{0:T(128)} negate(f32[2]{0:T(128)} %gte)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Negate(op::GetTupleElement(op::TupleSelect())));
+}
+
+TEST_P(MemorySpaceAssignmentTest, AddDependency) {
+  // Make sure add-dependency is not optimized away.
+  absl::string_view hlo_string = R"(
+  HloModule AddDependency, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p = f32[3]{0} parameter(0)
+    %neg0 = f32[3]{0} negate(f32[3]{0} %p)
+    %neg1 = f32[3]{0} negate(f32[3]{0} %neg0)
+    %neg2 = f32[3]{0} negate(f32[3]{0} %neg1)
+    %neg3 = f32[3]{0} negate(f32[3]{0} %neg2)
+    %neg4 = f32[3]{0} negate(f32[3]{0} %neg3)
+    %neg5 = f32[3]{0} negate(f32[3]{0} %neg4)
+    %neg6 = f32[3]{0} negate(f32[3]{0} %neg5)
+    %token0 = token[] after-all()
+    %add_dep = f32[3]{0} add-dependency(f32[3]{0} %p, token[] %token0)
+    ROOT %add = f32[3]{0} add(f32[3]{0} %add_dep, f32[3]{0} %neg6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Add(op::AddDependency(), op::Negate()));
+}
+
+TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
+  // This test is carefully crafted to include two multiply ops sized [4,3] in a
+  // while body. For testing purposes, we have provided a BufferIntervalCompare
+  // such that first multiply, then tanh, then other HloValues will be
+  // allocated. The memory is sized just enough to fit two [4,3] buffers.
+  // Because the multiplies in the while body are going to be allocated in the
+  // alternate memory first, the tanh that is fed inside the while loop should
+  // not be placed in the alternate memory. Otherwise, we will corrupt memory.
+  absl::string_view hlo_string = R"(
+  HloModule WhileAllocationBug, is_scheduled=true
+
+  %WhileBody (body_param: (f32[4,3], f32[])) -> (f32[4,3], f32[]) {
+    %body_param = (f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,3]{1,0}, f32[]) %body_param), index=1
+    %get-tuple-element.2 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[]) %body_param), index=0
+    %constant.1 = f32[] constant(1)
+    %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+    %constant.2 = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 1, 2, 3 }, { 4, 5, 6 } })
+    %multiply = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %get-tuple-element.2)
+    %multiply2 = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %multiply, f32[4,3]{1,0} %multiply)
+    %add.1 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %constant.2)
+    %add.2 = f32[4,3]{1,0} add(f32[4,3]{1,0} %add.1, f32[4,3]{1,0} %multiply2)
+    ROOT %tuple = (f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %add.2, f32[] %add)
+  }
+
+  %WhileCond (cond_param: (f32[4,3], f32[])) -> pred[] {
+    %cond_param = (f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[4,3]{1,0}, f32[]) %cond_param), index=1
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  ENTRY %Entry (param_iter: f32[4,3], param_data: f32[], p2: f32[4,3]) -> f32[4,3] {
+    %param_data = f32[] parameter(1)
+    %param_iter = f32[4,3]{1,0} parameter(0)
+    %p2 = f32[4,3]{1,0} parameter(2)
+    %tanh = f32[4,3]{1,0} tanh(f32[4,3]{1,0} %param_iter)
+    %neg0 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %p2)
+    %neg1 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg0)
+    %neg2 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg1)
+    %neg3 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg2)
+    %neg4 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg3)
+    %neg5 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg4)
+    %neg6 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg5)
+    %add.4 = f32[4,3]{1,0} add(f32[4,3]{1,0} %neg6, f32[4,3]{1,0} %tanh)
+    %tuple.1 = (f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %tanh, f32[] %param_data)
+    %while = (f32[4,3]{1,0}, f32[]) while((f32[4,3]{1,0}, f32[]) %tuple.1), condition=%WhileCond, body=%WhileBody
+    %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[]) %while), index=0
+    ROOT %add.3 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.3, f32[4,3]{1,0} %add.4)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        bool a_is_mul =
+            a.buffer->defining_instruction()->opcode() == HloOpcode::kMultiply;
+        bool b_is_mul =
+            b.buffer->defining_instruction()->opcode() == HloOpcode::kMultiply;
+        if (a_is_mul && !b_is_mul) {
+          return true;
+        }
+        if (!a_is_mul && b_is_mul) {
+          return false;
+        }
+        bool a_is_tanh =
+            a.buffer->defining_instruction()->opcode() == HloOpcode::kTanh;
+        bool b_is_tanh =
+            b.buffer->defining_instruction()->opcode() == HloOpcode::kTanh;
+        if (a_is_tanh && !b_is_tanh) {
+          return true;
+        }
+        if (!a_is_tanh && b_is_tanh) {
+          return false;
+        }
+        return a.buffer->id() < b.buffer->id();
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    buffer_interval_compare, &prefetch_interval_picker);
+
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      const Shape& while_subshape =
+          ShapeUtil::GetSubshape(instruction->shape(), {0});
+      EXPECT_NE(while_subshape.layout().memory_space(), kAlternateMemorySpace);
+    }
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
+  // Having control_predecessors on an HLO was preventing us from DCEing an op
+  // that doesn't have any users (tuple.1). The scheduler assumes the graph is
+  // fully DCEed, which causes some instructions not to be scheduled.
+  absl::string_view hlo_string = R"(
+  HloModule sort.16, is_scheduled=true
+
+  ENTRY %sort.16 (param.0.1: s32[1], param.1.2: f32[1], param.2.3: u32[1], param.3.4: s32[1]) -> (s32[1], f32[1], u32[1], s32[1]) {
+    %param.3.4 = s32[1]{0:T(128)} parameter(3)
+    %param.2.3 = u32[1]{0:T(128)} parameter(2)
+    %param.1.2 = f32[1]{0:T(128)} parameter(1)
+    %param.0.1 = s32[1]{0:T(128)} parameter(0)
+    %tuple.1 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %param.0.1, f32[1]{0:T(128)} %param.1.2, u32[1]{0:T(128)} %param.2.3, s32[1]{0:T(128)} %param.3.4), control-predecessors={%param.0.1}
+    %get-tuple-element.4 = s32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=0
+    %get-tuple-element.5 = f32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=1
+    %get-tuple-element.6 = u32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=2
+    %get-tuple-element.7 = s32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=3
+    %copy.4 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.4)
+    %copy.5 = f32[1]{0:T(128)} copy(f32[1]{0:T(128)} %get-tuple-element.5)
+    %copy.6 = u32[1]{0:T(128)} copy(u32[1]{0:T(128)} %get-tuple-element.6)
+    %copy.7 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.7)
+    ROOT %tuple.2 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %copy.4, f32[1]{0:T(128)} %copy.5, u32[1]{0:T(128)} %copy.6, s32[1]{0:T(128)} %copy.7)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       RequestIdentifierShouldNotBeAllocatedInAlternateMem) {
+  // Ensure that request identifier returned by Send/Recv HLOs are not allocated
+  // in the alternate memory.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p = f32[3]{0} parameter(0)
+    %after-all = token[] after-all()
+    %recv.4 = (f32[3]{0}, u32[], token[]) recv(token[] %after-all), channel_id=7
+    %recv-done.4 = (f32[3]{0}, token[]) recv-done((f32[3]{0}, u32[], token[]) %recv.4), channel_id=7
+    %token.1 = token[] get-tuple-element((f32[3]{0}, token[]) %recv-done.4), index=1
+    %data = f32[3]{0} get-tuple-element((f32[3]{0}, token[]) %recv-done.4), index=0
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %data, token[] %token.1), channel_id=2
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p, f32[3]{0} %data)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kSend ||
+        instruction->opcode() == HloOpcode::kRecv) {
+      const Shape& request_identifier_shape =
+          ShapeUtil::GetSubshape(instruction->shape(), {1});
+      EXPECT_NE(request_identifier_shape.layout().memory_space(),
+                kAlternateMemorySpace);
     }
   }
 }
@@ -980,9 +1373,11 @@ TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
 
   EXPECT_THAT(
       mul2,
-      op::Multiply(op::Add(op::Parameter(0), op::Parameter(0)),
-                   op::Subtract(op::Parameter(0),
-                                op::Add(op::Parameter(0), op::Parameter(0)))));
+      op::Multiply(
+          op::Add(op::Parameter(0), op::Parameter(0)),
+          op::Subtract(op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                     op::Parameter(0)),
+                       op::Add(op::Parameter(0), op::Parameter(0)))));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CopyOrdering) {

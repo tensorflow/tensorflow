@@ -98,7 +98,7 @@ inline void GetAllTensorShapes(const TfLiteContext& context,
 // Get shape pointers from a list of shapes.
 inline void GetShapesPointers(const RuntimeShape* shapes, size_t num,
                               const RuntimeShape* pointers[]) {
-  for (int i = 0; i < num; ++i) {
+  for (size_t i = 0; i < num; ++i) {
     pointers[i] = &shapes[i];
   }
 }
@@ -214,9 +214,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace concatenation
 
 TfLiteRegistration* Register_CONCATENATION() {
-  static TfLiteRegistration r = {/* init */ nullptr,
-                                 /* free */ nullptr, concatenation::Prepare,
-                                 concatenation::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = concatenation::Prepare;
+  r.invoke = concatenation::Eval;
   return &r;
 }
 

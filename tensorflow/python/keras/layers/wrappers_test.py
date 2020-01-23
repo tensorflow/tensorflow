@@ -168,6 +168,17 @@ class TimeDistributedTest(keras_parameterized.TestCase):
       model.compile(optimizer='rmsprop', loss='mse')
       self.assertEqual(len(model.losses), 2)
 
+  def test_TimeDistributed_learning_phase(self):
+    with self.cached_session():
+      # test layers that need learning_phase to be set
+      np.random.seed(1234)
+      x = keras.layers.Input(shape=(3, 2))
+      y = keras.layers.TimeDistributed(keras.layers.Dropout(.999))(
+          x, training=True)
+      model = keras.models.Model(x, y)
+      y = model.predict(np.random.random((10, 3, 2)))
+      self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
+
   def test_TimeDistributed_batchnorm(self):
     with self.cached_session():
       # test that wrapped BN updates still work.
@@ -1160,6 +1171,27 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         y_merged = ragged_tensor.convert_to_tensor_or_ragged_tensor(y_merged)
         self.assertAllClose(y_merged.flat_values, y_expected.flat_values)
     # pylint: enable=g-long-lambda
+
+
+class ExampleWrapper(keras.layers.Wrapper):
+  """Simple Wrapper subclass."""
+
+  def call(self, inputs, *args, **kwargs):
+    return self.layer(inputs, *args, **kwargs)
+
+
+class WrapperTest(keras_parameterized.TestCase):
+
+  def test_wrapper_from_config_no_mutation(self):
+    wrapper = ExampleWrapper(keras.layers.Dense(1))
+    config = wrapper.get_config()
+    config_copy = config.copy()
+    self.assertEqual(config, config_copy)
+
+    wrapper_from_config = ExampleWrapper.from_config(config)
+    new_config = wrapper.get_config()
+    self.assertEqual(new_config, config_copy)
+    self.assertEqual(config, config_copy)
 
 
 def _to_list(ls):

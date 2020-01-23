@@ -29,9 +29,21 @@ from tensorflow.python.training.experimental import loss_scale as loss_scale_mod
 from tensorflow.python.util import nest
 
 
-def _convert_to_per_replica(distribution, value):
-  """Converts a tensor or a DistributedVariable to a PerReplica value."""
-  return distribution.experimental_run_v2(array_ops.identity, args=(value,))
+def _convert_to_per_replicas(distribution, values):
+  """Converts tensors and DistributedVariables to PerReplica values.
+
+  Args:
+    distribution: The distribution strategy in effect.
+    values: A list of tensors, variables, DistributedValues, or anything else
+      that can be converted to a PerReplcia value
+
+  Returns:
+    `values`, but each element has been converted to a PerReplica value.
+  """
+  return distribution.experimental_run_v2(
+      lambda values: [array_ops.identity(v) for v in values],
+      args=(values,)
+  )
 
 
 # TODO(reedwm): Expose this after testing it on several models.
@@ -237,8 +249,7 @@ def _compute_gradients_until_finite(
     # types subclass 'DistributedValues', while_loop will still throw an error.
     # So we convert 'initial_grads' to be PerReplica values.
     # TODO(b/146084534): Once the bug is fixed, remove this special case.
-    initial_grads = [_convert_to_per_replica(distribution, g)
-                     for g in initial_grads]
+    initial_grads = _convert_to_per_replicas(distribution, initial_grads)
   initial_ready_to_update = False
   initial_is_first_iteration = True
 
@@ -259,7 +270,8 @@ def _compute_gradients_until_finite(
   def body(grads, ready_to_update, is_first_iteration):
     """The body of the while loop."""
     del grads, ready_to_update, is_first_iteration
-    def replica_fn(gradient_tape, target, flattened_sources, output_gradients):
+    def replica_fn(gradient_tape, target, flattened_sources, output_gradients,
+                   initial_grads):
       """Scales the loss, computes the gradients, and unscales the gradients."""
       loss_scale_val = loss_scale()
       with gradient_tape:  # re-enter gradient tape so it sees the loss scaling
@@ -274,6 +286,12 @@ def _compute_gradients_until_finite(
       grads = []  # The unscaled gradients
       for g, initial_grad in zip(scaled_grads, initial_grads):
         if g is not None:
+          # We call ensure_shape as shape information can be lost for certain
+          # ops, such as tf.transpose, if the op is called in a tf.function and
+          # has inputs created outside the tf.function.
+          # TODO(b/132092188): Remove ensure_shape call after this has been
+          # fixed.
+          g = array_ops.ensure_shape(g, initial_grad.shape)
           grads.append(g * math_ops.cast(inv_loss_scale, g.dtype))
         else:
           # We cannot return None from a tf.while_loop, so we pass a dummy
@@ -286,7 +304,7 @@ def _compute_gradients_until_finite(
     # Switch to a replica-context to compute gradients once per replica.
     grads = distribution.experimental_run_v2(
         replica_fn, args=(loss_scale_gradient_tapes, target, flattened_sources,
-                          output_gradients))
+                          output_gradients, initial_grads))
     # Check for non-finite gradients possibly resulting from scaling.
     _, ready_to_update = loss_scale.update(grads)
     is_first_iteration = False
@@ -294,7 +312,8 @@ def _compute_gradients_until_finite(
 
   grads, _, _ = control_flow_ops.while_loop(
       cond, body, [initial_grads, initial_ready_to_update,
-                   initial_is_first_iteration])
+                   initial_is_first_iteration],
+      )
   grads = [None if is_none else g for g, is_none in zip(grads, is_nones)]
   grads = nest.pack_sequence_as(sources, grads)
   return grads

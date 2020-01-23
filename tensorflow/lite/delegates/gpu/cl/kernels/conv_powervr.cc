@@ -113,7 +113,7 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
 
 Status ConvPowerVR::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
-      definition_.batch_support && stride_padding_.x != 1;
+      definition_.IsBatchSupported() && stride_padding_.x != 1;
   const std::string code = GenerateConvPowerVR1x1(
       definition_, stride_correction, conv_params_, linked_operations_);
   std::vector<CompilerOptions> options;
@@ -141,8 +141,8 @@ Status ConvPowerVR::BindArguments() {
         int4(kernel_dilation_.x, kernel_dilation_.y,
              kernel_dilation_.z * src_[0]->Batch(), kernel_dilation_.w)));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 
@@ -152,7 +152,7 @@ int3 ConvPowerVR::GetGridSize() const {
   const int grid_y =
       IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
-      IntegralDivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
+      IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
   int3 wg;
   wg.x = IntegralDivideRoundUp(grid_x, conv_params_.work_group_size.x);
   wg.y = IntegralDivideRoundUp(grid_y, conv_params_.work_group_size.y);
@@ -193,12 +193,12 @@ std::string GenerateConvPowerVR1x1(
     const ConvPowerVR::ConvParams& conv_params,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   const bool is1x1 = conv_params.x_kernel_is_1 && conv_params.y_kernel_is_1;
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
@@ -402,10 +402,10 @@ std::string GenerateConvPowerVR1x1(
               is1x1 ? "Y + " + std::to_string(y) : "yck" + std::to_string(y);
           if (op_def.precision == CalculationsPrecision::F32_F16) {
             c += "    src" + id + " = " +
-                 src_tensor.ReadAsFloat3D(xc, yc, "s", mode) + ";\n";
+                 src_tensor.ReadAsFloatWHS(xc, yc, "s", mode) + ";\n";
           } else {
-            c += "    src" + id + " = " + src_tensor.Read3D(xc, yc, "s", mode) +
-                 ";\n";
+            c += "    src" + id + " = " +
+                 src_tensor.ReadWHS(xc, yc, "s", mode) + ";\n";
           }
         }
       }
@@ -509,7 +509,7 @@ std::string GenerateConvPowerVR1x1(
              std::to_string(z) + "]);\n";
         const LinkingContext context{"res", xs, ys, zs};
         c += PostProcess(linked_operations, context);
-        c += "    " + dst_tensor.Write3D("res", xs, ys, zs) + "\n";
+        c += "    " + dst_tensor.WriteWHS("res", xs, ys, zs) + "\n";
         c += "  }\n";
       }
     }

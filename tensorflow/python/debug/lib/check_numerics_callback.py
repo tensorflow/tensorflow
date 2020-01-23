@@ -225,6 +225,11 @@ class CheckNumericsCallback(object):
   def __init__(self, stack_height_limit, path_length_limit):
     self._stack_height_limit = stack_height_limit
     self._path_length_limit = path_length_limit
+    # A dict mapping Placeholder tensors to their instrumenting debug tensors.
+    # Used only under V1 graph mode, where we can't rely on auto control
+    # dependency to execute the debug tensors and hence need to attach the debug
+    # tensors as control dependencies of the ops that consume the Placeholder.
+    self._placeholder_to_debug_tensor = dict()
 
   def callback(self,
                op_type,
@@ -243,6 +248,11 @@ class CheckNumericsCallback(object):
     if graph:
       # Under graph mode. Insert check_numerics op.
       instrumented_outputs = []
+      if is_v1_graph_mode:
+        for input_tensor in inputs:
+          if input_tensor in self._placeholder_to_debug_tensor and outputs:
+            outputs[0].op._add_control_input(  # pylint: disable=protected-access
+                self._placeholder_to_debug_tensor[input_tensor].op)
       for slot, output in enumerate(outputs):
         if (output.dtype.is_floating and
             (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
@@ -262,8 +272,8 @@ class CheckNumericsCallback(object):
                   graph=graph,
                   traceback=output.op.traceback))
           _CHECK_NUMERICS_INPUT_LOOKUP[graph][checked_output.name] = output
-          instrumented_outputs.append(
-              checked_output if is_v1_graph_mode else output)
+          instrumented_outputs.append(self._get_output_tensor(
+              op_type_bytes, output, checked_output, is_v1_graph_mode))
         else:
           instrumented_outputs.append(output)
       return instrumented_outputs
@@ -282,6 +292,40 @@ class CheckNumericsCallback(object):
                   slot, len(outputs), op_type, output, inputs,
                   stack_height_limit=self._stack_height_limit,
                   path_length_limit=self._path_length_limit))
+
+  def _get_output_tensor(self,
+                         op_type,
+                         tensor,
+                         checked_tensor,
+                         is_v1_graph_mode):
+    """Determine what tensor to output from callback.
+
+    Args:
+      op_type: Type of the op that outputs the original symbolic tensor, as
+        `bytes`.
+      tensor: The original output symbolic tensor.
+      checked_tensor: The debugger-instrumented, numerics-checking tensor.
+      is_v1_graph_mode: Whether the debugged proggram is running under V1 graph
+        mode.
+
+    Returns:
+      A symbolic tensor to be returned by the dumping op_callback.
+    """
+    if is_v1_graph_mode:
+      # Placeholders need special treatment under V1 graph mode. The
+      # callback can't simply override the Placeholder tensor to the debug
+      # tensor, as that would cause the Placeholder op to lack a value.
+      # The debug tensor is remembered and will be attached as control
+      # inputs to ops that consumer the Placeholders later.
+      if op_type == b"Placeholder":
+        self._placeholder_to_debug_tensor[tensor] = checked_tensor
+        return tensor
+      else:
+        return checked_tensor
+    else:
+      # Under non-v1 graph mode, rely on auto control dependency to run the
+      # checked tensor.
+      return tensor
 
 
 @tf_export("debugging.enable_check_numerics")

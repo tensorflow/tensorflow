@@ -71,6 +71,9 @@ constexpr char kStatus[] = "status";
 constexpr char kCode[] = "code";
 constexpr char kMessage[] = "msg";
 
+// Period between reporting dataset statistics.
+constexpr int kStatsReportingPeriodMillis = 1000;
+
 class MapAndBatchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 batch_size,
@@ -218,7 +221,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       std::shared_ptr<BatchResult> result;
       {
         mutex_lock l(*mu_);
-        EnsureRunnerThreadStarted(ctx);
+        EnsureThreadsStarted(ctx);
         while (!cancelled_ && (batch_results_.empty() ||
                                batch_results_.front()->num_calls > 0)) {
           ++waiting_;
@@ -447,13 +450,18 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    void EnsureRunnerThreadStarted(IteratorContext* ctx)
+    void EnsureThreadsStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
         auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
         runner_thread_ = ctx->StartThread(
             kTFDataMapAndBatch,
             std::bind(&Iterator::RunnerThread, this, ctx_copy));
+        if (ctx->stats_aggregator()) {
+          stats_thread_ = ctx->StartThread(
+              "tf_data_map_and_batch_stats",
+              std::bind(&Iterator::StatsThread, this, ctx_copy));
+        }
       }
     }
 
@@ -466,6 +474,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       const size_t num_components = return_values->size();
+      result->output.reserve(num_components);
       for (size_t i = 0; i < num_components; ++i) {
         TensorShape component_shape({dataset()->batch_size_});
         component_shape.AppendShape(return_values->at(i).shape());
@@ -579,19 +588,38 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
             num_calls_++;
           }
         }
-        const auto& stats_aggregator = ctx->stats_aggregator();
-        if (stats_aggregator) {
-          mutex_lock l(*mu_);
-          stats_aggregator->AddScalar(
-              stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
-              static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value),
-              num_elements());
-        }
         for (const auto& call : new_calls) {
           CallFunction(ctx, call.first, call.second);
         }
         new_calls.clear();
+      }
+    }
+
+    void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
+      for (int64 step = 0;; ++step) {
+        int num_calls;
+        int num_parallel_calls;
+        {
+          mutex_lock l(*mu_);
+          if (step != 0 && !cancelled_) {
+            cond_var_->wait_for(
+                l, std::chrono::milliseconds(kStatsReportingPeriodMillis));
+          }
+          if (cancelled_) {
+            return;
+          }
+          num_calls = num_calls_;
+          num_parallel_calls = num_parallel_calls_->value;
+        }
+        if (num_parallel_calls == 0) {
+          // Avoid division by zero.
+          num_parallel_calls = 1;
+        }
+        ctx->stats_aggregator()->AddScalar(
+            stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
+            static_cast<float>(num_calls) /
+                static_cast<float>(num_parallel_calls),
+            step);
       }
     }
 
@@ -734,6 +762,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     std::deque<std::shared_ptr<BatchResult>> batch_results_ GUARDED_BY(*mu_);
     // Background thread used for coordinating input processing.
     std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
+    std::unique_ptr<Thread> stats_thread_ GUARDED_BY(*mu_);
     // Determines whether the transformation has been cancelled.
     bool cancelled_ GUARDED_BY(*mu_) = false;
     // Identifies the number of callers currently waiting for a batch result.

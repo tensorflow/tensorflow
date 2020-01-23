@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/SymbolTable.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
@@ -118,9 +119,9 @@ void AddCastBackForUnsupportedNonTFUses(Operation* op, Value result,
       cast_op =
           builder.create<TF::CastOp>(op->getLoc(), old_type, result,
                                      /*truncate=*/builder.getBoolAttr(false));
-    return cast_op;
+    return mlir::Value(cast_op);
   };
-  for (OpOperand& use : llvm::make_early_inc_range(result->getUses())) {
+  for (OpOperand& use : llvm::make_early_inc_range(result.getUses())) {
     if (use.getOwner()->getDialect() != tf_dialect &&
         !IsSupportedNonTFOp(use.getOwner()))
       use.set(get_cast_op());
@@ -407,22 +408,15 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
   return success();
 }
 
-template <typename OpTy>
-LogicalResult PropagateShapeToIfWhileOpFunctions(
-    OpTy op, llvm::ArrayRef<StringRef> func_names, int64_t graph_version,
+LogicalResult PropagateShapeToFunctions(
+    ModuleOp module, Operation::operand_type_range input_types,
+    llvm::ArrayRef<StringRef> func_names, int64_t graph_version,
     int64_t max_iteration) {
-  llvm::SmallVector<Type, 4> input_types;
-  input_types.reserve(std::distance(op.input().begin(), op.input().end()));
-  for (Value v : op.input()) {
-    input_types.push_back(v.getType());
-  }
-
-  ModuleOp module = op.template getParentOfType<ModuleOp>();
-
   bool success = true;
+  auto types = llvm::to_vector<4>(input_types);
   for (auto func_name : func_names) {
     FuncOp func = module.lookupSymbol<FuncOp>(func_name);
-    if (failed(RefineShapeForControlFlowFunc(func, input_types, graph_version,
+    if (failed(RefineShapeForControlFlowFunc(func, types, graph_version,
                                              max_iteration))) {
       success = false;
     }
@@ -433,14 +427,20 @@ LogicalResult PropagateShapeToIfWhileOpFunctions(
 LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
                                                   int64_t graph_version,
                                                   int64_t max_iteration) {
+  ModuleOp module = op->getParentOfType<ModuleOp>();
   if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-    return PropagateShapeToIfWhileOpFunctions<TF::IfOp>(
-        if_op, {if_op.then_branch(), if_op.else_branch()}, graph_version,
+    return PropagateShapeToFunctions(
+        module, llvm::drop_begin(if_op.getOperandTypes(), 1),
+        {if_op.then_branch(), if_op.else_branch()}, graph_version,
         max_iteration);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-    return PropagateShapeToIfWhileOpFunctions<TF::WhileOp>(
-        while_op, {while_op.cond(), while_op.body()}, graph_version,
-        max_iteration);
+    return PropagateShapeToFunctions(module, while_op.getOperandTypes(),
+                                     {while_op.cond(), while_op.body()},
+                                     graph_version, max_iteration);
+  } else if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
+    return PropagateShapeToFunctions(module, call_op.getOperandTypes(),
+                                     {call_op.f()}, graph_version,
+                                     max_iteration);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.

@@ -77,7 +77,7 @@ void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
       GetTensorShape(output), GetTensorData<float>(output));
 }
 
-void AverageEvalUint8(const TfLiteContext* context, const TfLiteNode* node,
+void AverageEvalUint8(TfLiteContext* context, const TfLiteNode* node,
                       const TfLitePoolParams* params, const OpData* data,
                       const TfLiteTensor* input, TfLiteTensor* output) {
   int32_t activation_min, activation_max;
@@ -107,7 +107,7 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
 
   TFLITE_DCHECK_LE(activation_min, activation_max);
 
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
+#if defined(__ARM_FEATURE_DSP)
   RuntimeShape input_shape = GetTensorShape(input);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
 
@@ -142,6 +142,9 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
                      scratch_buffer, GetTensorData<int8_t>(output)),
       ARM_MATH_SUCCESS);
 #else
+#pragma message( \
+    "CMSIS-NN optimization for depthwise_conv not available for this target. Using reference kernel.")
+
   PoolParams op_params;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;

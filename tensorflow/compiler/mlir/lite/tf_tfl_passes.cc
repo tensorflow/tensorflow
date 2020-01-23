@@ -43,6 +43,16 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager->addPass(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+
+  if (quant_specs.default_ranges.first.hasValue() ||
+      quant_specs.default_ranges.second.hasValue()) {
+    pass_manager->addPass(mlir::TFL::CreateDefaultQuantParamsPass(
+        quant_specs.default_ranges.first.getValueOr(0.0),
+        quant_specs.default_ranges.second.getValueOr(0.0)));
+    pass_manager->addPass(mlir::TFL::CreateQuantizePass());
+    pass_manager->addPass(
+        mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  }
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
@@ -115,7 +125,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   if (pass_config.emit_builtin_tflite_ops) {
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
-    pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
+    pass_manager->addPass(
+        mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());

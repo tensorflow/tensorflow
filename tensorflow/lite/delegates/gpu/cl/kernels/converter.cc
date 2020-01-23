@@ -132,7 +132,7 @@ class FromTensorConverter : public OpenClConverterImpl {
     src_descr.storage_type = src_tensor_type;
     src_descr.data_type = input_def.object_def.data_type;
     TensorCodeGenerator src_tensor(
-        "src", {"size.x", "size.y", "size.z", "size.w"}, src_descr);
+        "src", WHSBPoint{"size.x", "size.y", "size.z", "size.w"}, src_descr);
 
     std::string shader_src =
         R"(
@@ -148,7 +148,7 @@ __kernel void from_tensor()" +
   int d = get_global_id(2);
   if (x >= size.x || y >= size.y || d >= size.z) return;
   )" + ToCLDataType(input_def.object_def.data_type, 4) +
-        " input = " + src_tensor.Read3D("x", "y", "d") + ";\n" +
+        " input = " + src_tensor.ReadWHS("x", "y", "d") + ";\n" +
         params_kernel.second + "\n}";
     queue_ = environment->queue();
     dims_ = input_def.dimensions;
@@ -237,7 +237,7 @@ class ToTensorConverter : public OpenClConverterImpl {
     dst_descr.storage_type = dst_tensor_type;
     dst_descr.data_type = output_def.object_def.data_type;
     TensorCodeGenerator dst_tensor(
-        "dst", {"size.x", "size.y", "size.z", "size.w"}, dst_descr);
+        "dst", WHSBPoint{"size.x", "size.y", "size.z", "size.w"}, dst_descr);
     std::string shader_src =
         R"(
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
@@ -253,7 +253,7 @@ __kernel void to_tensor()" +
   if (x >= size.x || y >= size.y || d >= size.z) return;
   )" + ToCLDataType(output_def.object_def.data_type, 4) +
         " result;\n" + params_kernel.second + "\n  " +
-        dst_tensor.Write3D("result", "x", "y", "d") + ";\n}";
+        dst_tensor.WriteWHS("result", "x", "y", "d") + ";\n}";
     queue_ = environment->queue();
     dims_ = output_def.dimensions;
     return environment->program_cache()->GetOrCreateCLKernel(

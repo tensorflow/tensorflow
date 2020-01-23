@@ -50,6 +50,8 @@ class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
+Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
+Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -662,6 +664,12 @@ class Tensor {
   friend class ScopedAllocator;       // For access to buf_.
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
+      int64 index);  // For access to base<T>().
+  friend Status batch_util::CopySliceToElement(
+      const Tensor& parent, Tensor* element,
+      int64 index);  // For access to base<T>().
+  friend Status batch_util::MaybeMoveSliceToElement(
+      Tensor* parent, Tensor* element,
       int64 index);  // For access to base<T>().
 
   bool CanUseDMA() const;

@@ -23,7 +23,6 @@ cc_library(
     ],
     hdrs = [
         "quantize_model.h",
-        "//tensorflow/compiler/mlir/lite:transforms/passes.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",

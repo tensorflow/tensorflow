@@ -44,6 +44,7 @@ class LocalDeviceState {
                    bool asynchronous, bool allow_event_reuse);
   virtual ~LocalDeviceState();
 
+  se::StreamExecutor* executor() const { return executor_; }
   // StreamExecutor (local) device ordinal.
   int device_ordinal() const { return executor_->device_ordinal(); }
 
