@@ -109,7 +109,7 @@ programs. To dump the generated programs, use the environment variable
 `XLA_FLAGS`:
 
 ```
-$ XLA_FLAGS="--dump_hlo_as_text --xla_dump_to=/tmp/generated"
+$ XLA_FLAGS="--xla_dump_hlo_as_text --xla_dump_to=/tmp/generated"
 TF_XLA_FLAGS="--tf_xla_auto_jit=2" my/tensorflow/program
 ```
 
