@@ -372,6 +372,7 @@ genrule(
         "--target_triple " + target_llvm_triple() +
         " --tag_set serve "
     ),
+    tags = ["no_rocm"],
     tools = [
         ":saved_model_cli",
     ],
