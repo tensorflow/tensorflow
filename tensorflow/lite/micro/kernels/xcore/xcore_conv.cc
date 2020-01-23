@@ -159,15 +159,18 @@ namespace conv {
         auto* user_data = reinterpret_cast<SIDO_UserData*>(node->user_data);
         const nn_conv2d_sido_params_t *kernel_params = &user_data->kernel_params;
         unsigned block_count = kernel_params->block_count;
-        int32_t scales_offset = user_data->unpadded_shape[0]; // C_out
+        int32_t C_out = user_data->unpadded_shape[0];
+
+        // this call is only necessary util the shifts & scales are merged
+        //   by tflite2xcore
+        conv2d_boggle_shift_scale((int16_t*) shift_scale->data.i16, C_out, nullptr);
 
         conv2d_shallowin_deepout(
             output->data.int8, // Y
             kernel_params,
             input->data.int8, // X,
             weights->data.int8, // K
-            (int16_t*) &shift_scale->data.i16[0], // shifts
-            (int16_t*) &shift_scale->data.i16[scales_offset] // scales
+            (int16_t*) shift_scale->data.i16 // shifts & scales
         );
 
         return kTfLiteOk;
@@ -255,15 +258,18 @@ namespace conv {
         auto* user_data = reinterpret_cast<DIDO_UserData*>(node->user_data);
         const nn_conv2d_dido_params_t *kernel_params = &user_data->kernel_params;
         unsigned block_count = kernel_params->block_count;
-        int32_t scales_offset = weights->dims->data[0] * weights->dims->data[4]; // C_out
+        int32_t C_out = weights->dims->data[0] * weights->dims->data[4];
+
+        // this call is only necessary util the shifts & scales are merged
+        //   by tflite2xcore
+        conv2d_boggle_shift_scale((int16_t*) shift_scale->data.i16, C_out, nullptr);
 
         conv2d_deepin_deepout(
             output->data.int8, // Y
             kernel_params,
             input->data.int8, // X,
             weights->data.int8, // K
-            (int16_t*) &shift_scale->data.i16[0], // shifts
-            (int16_t*) &shift_scale->data.i16[scales_offset] // scales
+            (int16_t*) shift_scale->data.i16 // shifts & scales
         );
 
         return kTfLiteOk;
