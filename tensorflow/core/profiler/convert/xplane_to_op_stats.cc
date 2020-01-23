@@ -63,6 +63,14 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   return result;
 }
 
+void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
+  // Currently, we only support profiling one host and one program.
+  env->set_host_count(1);
+  env->set_task_count(1);
+  env->set_device_type(accelerator_count > 0 ? "GPU" : "CPU");
+  env->set_device_core_count(accelerator_count);
+}
+
 }  // namespace
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
@@ -75,8 +83,9 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
   // Device.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
-  for (const XPlane* device_trace :
-       FindPlanesWithPrefix(space, kGpuPlanePrefix)) {
+  const auto& gpu_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  SetRunEnvironment(gpu_planes.size(), op_stats.mutable_run_environment());
+  for (const XPlane* device_trace : gpu_planes) {
     if (!op_stats.has_perf_env()) {
       *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
     }
