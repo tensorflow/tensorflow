@@ -77,6 +77,7 @@ REQUIRED_PACKAGES = [
     # Latest scipy pip for py2 is scipy==1.2.2
     'scipy == 1.4.1;python_version>="3"',
     'scipy == 1.2.2;python_version<"3"',
+    'python-hostlist >= 1.20.0',
 ]
 
 if sys.byteorder == 'little':

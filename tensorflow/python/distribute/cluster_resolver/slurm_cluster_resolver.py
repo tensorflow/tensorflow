@@ -27,6 +27,44 @@ from tensorflow.python.distribute.cluster_resolver.cluster_resolver import forma
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.util.tf_export import tf_export
 
+from hostlist import expand_hostlist, parse_slurm_tasks_per_node
+
+
+def get_slurm_step_var(name):
+  """Get the SLURM step variable from the environment
+
+  Args:
+    name: Name of the step variable
+  Returns:
+    SLURM_STEP_<name> from os.environ
+  Raises:
+    RuntimeError if variable is not found
+  """
+  name = 'SLURM_STEP_' + name
+  try:
+    return os.environ[name]
+  except KeyError:
+    raise RuntimeError('%s not found in environment. Not running inside a SLURM step?' % name)
+
+def get_num_slurm_tasks():
+  return int(get_slurm_step_var('NUM_TASKS'))
+
+def _resolve_hostnames():
+  """Resolve host names of nodes allocated in current job step.
+
+  Returns:
+    A list of node names as strings.
+  """
+  hostlist = expand_hostlist(get_slurm_step_var('NODELIST'))
+  return hostlist
+
+def _resolve_tasks_per_node():
+  """Resolve the number of tasks per node as a list.
+
+  Returns:
+    A list of number of tasks in the same order as the hostlist
+  """
+  return parse_slurm_tasks_per_node(get_slurm_step_var('TASKS_PER_NODE'))
 
 @tf_export('distribute.cluster_resolver.SlurmClusterResolver')
 class SlurmClusterResolver(ClusterResolver):
@@ -40,21 +78,12 @@ class SlurmClusterResolver(ClusterResolver):
   use for distributed TensorFlow.
   """
 
-  def _resolve_hostnames(self):
-    """Resolve host names of nodes allocated in current jobs.
-
-    Returns:
-      A list of node names as strings.
-    """
-    hostlist = (subprocess.check_output(['scontrol', 'show', 'hostname']).
-                decode('utf-8').strip().split('\n'))
-    return hostlist
 
   def __init__(self,
-               jobs,
+               jobs=None,
                port_base=8888,
-               gpus_per_node=1,
-               gpus_per_task=1,
+               gpus_per_node=None,
+               gpus_per_task=None,
                tasks_per_node=None,
                auto_set_gpu=True,
                rpc_layer='grpc'):
@@ -69,16 +98,18 @@ class SlurmClusterResolver(ClusterResolver):
 
     Args:
       jobs: Dictionary with job names as key and number of tasks in the job as
-        value.
+        value. Defaults to as many 'worker's as there are (SLURM) tasks.
       port_base: The first port number to start with for processes on a node.
-      gpus_per_node: Number of GPUs available on each node.
-      gpus_per_task: Number of GPUs to be used for each task.
+      gpus_per_node: Number of GPUs available on each node. Defaults
+        to the number of GPUs reported by nvidia-smi
+      gpus_per_task: Number of GPUs to be used for each task. Defaults is to evenly
+        distribute the gpus_per_node to tasks_per_node.
       tasks_per_node: Number of tasks to run on each node, if not set defaults
         to Slurm's output environment variable SLURM_NTASKS_PER_NODE.
       auto_set_gpu: Set the visible CUDA devices automatically while resolving
         the cluster by setting CUDA_VISIBLE_DEVICES environment variable.
         Defaults to True.
-      rpc_layer: (Optional) The protocol TensorFlow uses to communicate between
+      rpc_layer: The protocol TensorFlow uses to communicate between
         nodes. Defaults to 'grpc'.
 
     Returns:
@@ -95,20 +126,33 @@ class SlurmClusterResolver(ClusterResolver):
       num_tasks = int(os.environ['OMPI_COMM_WORLD_SIZE'])
     else:
       self._rank = int(os.environ['SLURM_PROCID'])
-      num_tasks = int(os.environ['SLURM_NTASKS'])
+      num_tasks = get_num_slurm_tasks()
+
+    if jobs is None:
+      jobs = {'worker': num_tasks}
+    if gpus_per_node is None:
+      gpus_per_node = sum(l.startswith('GPU ') for l in
+                          subprocess.check_output(['nvidia-smi', '--list-gpus']).
+                          decode('utf-8').strip().split('\n'))
 
     self._jobs = collections.OrderedDict(sorted(jobs.items()))
     self._port_base = port_base
 
+    self._hostlist = _resolve_hostnames()
+
     # user specification overrides SLURM specification
     if tasks_per_node is not None:
-      self._tasks_per_node = tasks_per_node
-    elif tasks_per_node is None and 'SLURM_NTASKS_PER_NODE' in os.environ:
-      self._tasks_per_node = int(os.environ['SLURM_NTASKS_PER_NODE'])
+      self._tasks_per_node = [
+                tasks_per_node for _ in range(len(self._hostlist))
+            ] if isinstance(tasks_per_node, int) else tasks_per_node
+    elif tasks_per_node is None and 'SLURM_TASKS_PER_NODE' in os.environ:
+      self._tasks_per_node = _resolve_tasks_per_node()
     else:
       raise RuntimeError('Neither `tasks_per_node` or '
-                         'SLURM_NTASKS_PER_NODE is set.')
+                         'SLURM_TASKS_PER_NODE is set.')
 
+    if gpus_per_task is None:
+      gpus_per_task = gpus_per_node // max(self._tasks_per_node)
     self._gpus_per_node = gpus_per_node
     self._gpus_per_task = gpus_per_task
 
@@ -120,11 +164,12 @@ class SlurmClusterResolver(ClusterResolver):
     self._gpu_allocation = []
     self._cluster_allocation = {}
 
-    if self._tasks_per_node * self._gpus_per_task > self._gpus_per_node:
+    if max(self._tasks_per_node) * self._gpus_per_task > self._gpus_per_node:
       raise RuntimeError('Requested more GPUs per node then available.')
 
     if sum(self._jobs.values()) != num_tasks:
-      raise RuntimeError('Requested more tasks then assigned tasks.')
+      raise RuntimeError('Requested {} tasks but only {} were assigned.'.format(
+                sum(self._jobs.values()), num_tasks))
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest instance group info.
@@ -141,15 +186,14 @@ class SlurmClusterResolver(ClusterResolver):
       A ClusterSpec containing host information retrieved from Slurm's
         environment variables.
     """
-    hostlist = self._resolve_hostnames()
 
     task_list = []
     self._gpu_allocation = []
     self._cluster_allocation = {}
 
-    for host in hostlist:
+    for host, num_tasks in zip(self._hostlist, self._tasks_per_node):
       for port_offset, gpu_offset in zip(
-          range(self._tasks_per_node),
+          range(num_tasks),
           range(0, self._gpus_per_node, self._gpus_per_task)):
 
         host_addr = '%s:%d' % (host, self._port_base + port_offset)
@@ -223,4 +267,4 @@ class SlurmClusterResolver(ClusterResolver):
                        config_proto=None):
     # Unused, since this is set in __init__ manually.
     del task_type, task_id, config_proto
-    return {'GPU': self._gpus_per_node}
+    return {'GPU': self._gpus_per_task}
