@@ -352,6 +352,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
       return this->matchFailure();
     }
 
+    if (!new_qtype) return this->matchFailure();
     Type new_output_type = new_qtype.castFromExpressedType(
         QType::castToExpressedType(output_type));
     rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.input(),
@@ -359,6 +360,11 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     return this->matchSuccess();
   }
 };
+
+// Given a quantized type `input`, magnifying its scales by the factor stored in
+// `factor`. If `input` isn't a quantized type or the `factor` doesn't match the
+// dimension size of `input` or isn't floating-point, nullptr will be returned.
+TypeAttr RescaleQuantizedType(Type input, Attribute factor);
 
 // Converts the min/max/num_bits/narrow_range information to a
 // QuantizedType, and then returns the attribute containing the QuantizedType.
