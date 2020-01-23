@@ -41,17 +41,14 @@ import tensorflow as tf
 from tensorflow_docs.api_generator import doc_controls
 from tensorflow_docs.api_generator import doc_generator_visitor
 from tensorflow_docs.api_generator import generate_lib
-from tensorflow_docs.api_generator import parser
+
 
 import tensorboard
 import tensorflow_estimator
 from tensorflow.python.framework import ops
+
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
-
-
-# Use tensorflow's `tf_inspect`, which is aware of `tf_decorator`.
-parser.inspect = tf_inspect
 
 # `tf` has an `__all__` that doesn't list important things like `keras`.
 # The doc generator recognizes `__all__` as the list of public symbols.
