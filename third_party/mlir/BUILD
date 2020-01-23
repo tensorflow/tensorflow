@@ -616,6 +616,7 @@ cc_library(
     deps = [
         ":EDSC",
         ":GPUDialect",
+        ":GPUDialectRegistration",
         ":IR",
         ":LoopOps",
         ":Pass",
@@ -733,6 +734,23 @@ cc_library(
     alwayslink = 1,
 )
 
+gentbl(
+    name = "GPUToSPIRVIncGen",
+    strip_include_prefix = "lib/Conversion/GPUToSPIRV",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Conversion/GPUToSPIRV/GPUToSPIRV.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/GPUToSPIRV/GPUToSPIRV.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":SPIRVOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "GPUToSPIRVTransforms",
     srcs = [
@@ -743,9 +761,13 @@ cc_library(
         "include/mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRV.h",
         "include/mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRVPass.h",
     ],
-    includes = ["include"],
+    includes = [
+        "include",
+        "lib/Conversions/GPUToSPIRV",
+    ],
     deps = [
         ":GPUDialect",
+        ":GPUToSPIRVIncGen",
         ":IR",
         ":LoopOps",
         ":Pass",
