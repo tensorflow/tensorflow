@@ -644,6 +644,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -659,24 +660,28 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[4], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[5], [x3], #1\n"
         "st1 {v16.b}[6], [x3], #1\n"
         "st1 {v16.b}[7], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[8], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[9], [x3], #1\n"
         "st1 {v16.b}[10], [x3], #1\n"
         "st1 {v16.b}[11], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[12], [x3], #1\n"
         "add x4, x4, x11\n"
@@ -766,6 +771,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -781,24 +787,28 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[4], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[5], [x3], #1\n"
         "st1 {v16.b}[6], [x3], #1\n"
         "st1 {v16.b}[7], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[8], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[9], [x3], #1\n"
         "st1 {v16.b}[10], [x3], #1\n"
         "st1 {v16.b}[11], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[12], [x3], #1\n"
         "add x4, x4, x11\n"
@@ -889,6 +899,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrh w7, [x3, x5, lsl #1]\n"
@@ -904,24 +915,28 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[0], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v16.h}[1], [x3], #2\n"
         "st1 {v16.h}[2], [x3], #2\n"
         "st1 {v16.h}[3], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[4], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v16.h}[5], [x3], #2\n"
         "st1 {v16.h}[6], [x3], #2\n"
         "st1 {v16.h}[7], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.h}[0], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v17.h}[1], [x3], #2\n"
         "st1 {v17.h}[2], [x3], #2\n"
         "st1 {v17.h}[3], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.h}[4], [x3], #2\n"
         "add x4, x4, x11\n"
@@ -989,6 +1004,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -1004,24 +1020,28 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v16.s}[1], [x3], #4\n"
         "st1 {v16.s}[2], [x3], #4\n"
         "st1 {v16.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v17.s}[1], [x3], #4\n"
         "st1 {v17.s}[2], [x3], #4\n"
         "st1 {v17.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v18.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v18.s}[1], [x3], #4\n"
         "st1 {v18.s}[2], [x3], #4\n"
         "st1 {v18.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v19.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
@@ -1477,31 +1497,28 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
         // Compute how much of the 4x1 block of destination 8bit values that
         // we have computed, fit in the destination matrix. Typically, all of
         // it fits, but when the destination matrix shape is not a multiple
-        // of 4x4, there are some 4x4 blocks along the boundaries that do
+        // of 4x1, there are some 4x1 blocks along the boundaries that do
         // not fit entirely.
         "sub w1, %w[dst_rows], %w[row]\n"
-        "sub w2, %w[dst_cols], %w[col]\n"
         "mov w3, #4\n"
         "cmp w1, #4\n"
-        // Compute w1 = how many rows of the 4x4 block fit
+        // Compute w1 = how many rows of the 4x1 block fit
         "csel w1, w1, w3, le\n"
-        "cmp w2, #4\n"
-        // Compute w2 = how many cols of the 4x4 block fit
-        "csel w2, w2, w3, le\n"
 
-        // Test if w1==4, i.e. if all of the 4x4 block fits.
+        // Test if w1==4, i.e. if all of the 4x1 block fits.
         "cmp w1, w3\n"
 
         "mov x4, %[dst_ptr]\n"
-        // Yes, all of the 4x4 block fits, go to fast path.
+        // Yes, all of the 4x1 block fits, go to fast path.
         "beq 30f\n"
-        // Not all of the 4x4 block fits.
+        // Not all of the 4x1 block fits.
         // Store to dst_tmp_buf
         "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
         // Slow loop copying from dst_tmp_buf to dst.
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -1511,7 +1528,8 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
         "blt 51b\n"
         "b 31f\n"
         "30:\n"
-        // Yes, all of the 4x4 block fits.
+        // Yes, all of the 4x1 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "st1 {v16.b}[1], [x3], #1\n"
@@ -1583,6 +1601,7 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -1593,6 +1612,7 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "st1 {v16.b}[1], [x3], #1\n"
@@ -1659,6 +1679,7 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrh w7, [x3, x5, lsl #1]\n"
@@ -1670,6 +1691,7 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[0], [x3], #2\n"
         "st1 {v16.h}[1], [x3], #2\n"
@@ -1715,6 +1737,7 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -1725,6 +1748,7 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.s}[0], [x3], #4\n"
         "st1 {v16.s}[1], [x3], #4\n"
@@ -2383,6 +2407,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -2398,24 +2423,28 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[4], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[5], [x3], #1\n"
         "st1 {v16.b}[6], [x3], #1\n"
         "st1 {v16.b}[7], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[8], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[9], [x3], #1\n"
         "st1 {v16.b}[10], [x3], #1\n"
         "st1 {v16.b}[11], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[12], [x3], #1\n"
         "add x4, x4, x11\n"
@@ -2510,6 +2539,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -2525,24 +2555,28 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[4], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[5], [x3], #1\n"
         "st1 {v16.b}[6], [x3], #1\n"
         "st1 {v16.b}[7], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[8], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[9], [x3], #1\n"
         "st1 {v16.b}[10], [x3], #1\n"
         "st1 {v16.b}[11], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[12], [x3], #1\n"
         "add x4, x4, x11\n"
@@ -2641,6 +2675,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrh w7, [x3, x5, lsl #1]\n"
@@ -2656,24 +2691,28 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[0], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v16.h}[1], [x3], #2\n"
         "st1 {v16.h}[2], [x3], #2\n"
         "st1 {v16.h}[3], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[4], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v16.h}[5], [x3], #2\n"
         "st1 {v16.h}[6], [x3], #2\n"
         "st1 {v16.h}[7], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.h}[0], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v17.h}[1], [x3], #2\n"
         "st1 {v17.h}[2], [x3], #2\n"
         "st1 {v17.h}[3], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.h}[4], [x3], #2\n"
         "add x4, x4, x11\n"
@@ -2763,6 +2802,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -2778,24 +2818,28 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v16.s}[1], [x3], #4\n"
         "st1 {v16.s}[2], [x3], #4\n"
         "st1 {v16.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v17.s}[1], [x3], #4\n"
         "st1 {v17.s}[2], [x3], #4\n"
         "st1 {v17.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v18.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v18.s}[1], [x3], #4\n"
         "st1 {v18.s}[2], [x3], #4\n"
         "st1 {v18.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v19.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
@@ -3655,20 +3699,28 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -3689,6 +3741,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -3821,20 +3874,28 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -3855,6 +3916,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "150:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "151:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -3984,20 +4046,28 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 16bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -4018,6 +4088,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "250:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "251:\n"
         "ldrsh w7, [x3, x5, lsl #1]\n"
@@ -4063,89 +4134,89 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         // Yes, all of the 8x8 block fits, go to fast path.
         "beq 330f\n"
         // Not all of the 8x8 block fits.
-        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        // Write to dst_tmp_buf
         "mov x3, %[dst_tmp_buf]\n"
-        "mov x4, #16\n"
-
-        // Write our 32bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.4s}, [x3], x4\n"
+        "st1 {v16.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v16)
-        "st1 {v17.4s}, [x3], x4\n"
+        "st1 {v17.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v17)
-        "st1 {v18.4s}, [x3], x4\n"
+        "st1 {v18.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v18)
-        "st1 {v19.4s}, [x3], x4\n"
+        "st1 {v19.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v19)
-        "st1 {v20.4s}, [x3], x4\n"
+        "st1 {v20.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v20)
-        "st1 {v21.4s}, [x3], x4\n"
+        "st1 {v21.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v21)
-        "st1 {v22.4s}, [x3], x4\n"
+        "st1 {v22.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v22)
-        "st1 {v23.4s}, [x3], x4\n"
+        "st1 {v23.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v23)
-        "st1 {v24.4s}, [x3], x4\n"
+        "st1 {v24.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v24)
-        "st1 {v25.4s}, [x3], x4\n"
+        "st1 {v25.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v25)
-        "st1 {v26.4s}, [x3], x4\n"
+        "st1 {v26.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v26)
-        "st1 {v27.4s}, [x3], x4\n"
+        "st1 {v27.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v27)
-        "st1 {v28.4s}, [x3], x4\n"
+        "st1 {v28.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v28)
-        "st1 {v29.4s}, [x3], x4\n"
+        "st1 {v29.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v29)
-        "st1 {v30.4s}, [x3], x4\n"
+        "st1 {v30.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v30)
-        "st1 {v31.4s}, [x3], x4\n"
+        "st1 {v31.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v31)
 
         "b 331f\n"
 
         "330:\n"
         // Yes, all of the 8x8 block fits.
-        // Set (x3 address, x4 stride) to write directly to destination matrix.
         "mov x4, %[dst_ptr]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
-
-        // Write our 32bit values to the destination described by
-        // (x3 address, x4 stride).
         "st1 {v16.4s, v17.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v18.4s, v19.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v20.4s, v21.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v22.4s, v23.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v24.4s, v25.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v26.4s, v27.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v28.4s, v29.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v30.4s, v31.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v30)
@@ -4171,6 +4242,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "350:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "351:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -4614,9 +4686,9 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
         "mov x4, x11\n"
         "31:\n"
 
-        // Write our 8bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.8b}, [x3], x4\n"
+        // Write our 8bit values to the destination
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v16.8b}, [x3]\n"
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
 
@@ -4634,6 +4706,7 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -4708,9 +4781,9 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
         "mov x4, x11\n"
         "131:\n"
 
-        // Write our 8bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.8b}, [x3], x4\n"
+        // Write our 8bit values to the destination
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v16.8b}, [x3]\n"
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
 
@@ -4728,6 +4801,7 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "150:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "151:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -4793,9 +4867,9 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
         "mov x4, x11\n"
         "231:\n"
 
-        // Write our 16bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.8h}, [x3], x4\n"
+        // Write our 16bit values to the destination
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v16.8h}, [x3]\n"
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
 
@@ -4813,6 +4887,7 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "250:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "251:\n"
         "ldrsh w7, [x3, x5, lsl #1]\n"
@@ -4858,8 +4933,10 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
 
         // Write our 32bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.4s}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.4s}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
 
@@ -4873,6 +4950,7 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
 
         // Write our 32bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.4s, v17.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
@@ -4894,6 +4972,7 @@ void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "350:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "mov w5, #0\n"
         "351:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -5564,26 +5643,34 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
         // For the next block: perform the first few multiply-adds on the data
         // that we have already loaded.
         ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
         ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
         ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
         ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -5597,6 +5684,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -5729,26 +5817,34 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
         // For the next block: perform the first few multiply-adds on the data
         // that we have already loaded.
         ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
         ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
         ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
         ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -5762,6 +5858,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "150:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "151:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -5892,20 +5989,28 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -5926,6 +6031,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "250:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "251:\n"
         "ldrsh w7, [x3, x5, lsl #1]\n"
@@ -5984,91 +6090,76 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         // Yes, all of the 8x8 block fits, go to fast path.
         "beq 330f\n"
         // Not all of the 8x8 block fits.
-        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        // Write to dst_tmp_buf
         "mov x3, %[dst_tmp_buf]\n"
-        "mov x4, #16\n"
-
-        // Write our 32bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.4s}, [x3], x4\n"
+        "st1 {v16.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v16)
-        "st1 {v17.4s}, [x3], x4\n"
+        "st1 {v17.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v17)
-        "st1 {v18.4s}, [x3], x4\n"
+        "st1 {v18.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v18)
-        "st1 {v19.4s}, [x3], x4\n"
+        "st1 {v19.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v19)
-        "st1 {v20.4s}, [x3], x4\n"
+        "st1 {v20.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v20)
-        "st1 {v21.4s}, [x3], x4\n"
+        "st1 {v21.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v21)
-        "st1 {v22.4s}, [x3], x4\n"
+        "st1 {v22.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v22)
-        "st1 {v23.4s}, [x3], x4\n"
+        "st1 {v23.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v23)
-        "st1 {v24.4s}, [x3], x4\n"
+        "st1 {v24.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v24)
-        "st1 {v25.4s}, [x3], x4\n"
+        "st1 {v25.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v25)
-        "st1 {v26.4s}, [x3], x4\n"
+        "st1 {v26.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v26)
-        "st1 {v27.4s}, [x3], x4\n"
+        "st1 {v27.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v27)
-        "st1 {v28.4s}, [x3], x4\n"
+        "st1 {v28.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v28)
-        "st1 {v29.4s}, [x3], x4\n"
+        "st1 {v29.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v29)
-        "st1 {v30.4s}, [x3], x4\n"
+        "st1 {v30.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v30)
-        "st1 {v31.4s}, [x3], x4\n"
+        "st1 {v31.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v31)
 
         "b 331f\n"
 
         "330:\n"
         // Yes, all of the 8x8 block fits.
-        // Set (x3 address, x4 stride) to write directly to destination matrix.
         "mov x4, %[dst_ptr]\n"
-        "mov x3, x4\n"
-
-        // Write our 32bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.4s, v17.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v16.4s, v17.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v18.4s, v19.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v18.4s, v19.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v20.4s, v21.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v20.4s, v21.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v22.4s, v23.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v22.4s, v23.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v24.4s, v25.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v24.4s, v25.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v26.4s, v27.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v26.4s, v27.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v28.4s, v29.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v28.4s, v29.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v30.4s, v31.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v30.4s, v31.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -6092,6 +6183,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "350:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "351:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -6693,44 +6785,51 @@ void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
-        "add x3, x3, x4\n"
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -6744,6 +6843,7 @@ void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -7139,44 +7239,51 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
-        "add x3, x3, x4\n"
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -7190,6 +7297,7 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -7585,44 +7693,51 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
-        "add x3, x3, x4\n"
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -7636,6 +7751,7 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"

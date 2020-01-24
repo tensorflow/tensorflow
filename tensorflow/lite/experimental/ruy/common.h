@@ -33,6 +33,12 @@ limitations under the License.
 #define RUY_PREFETCH_LOAD(X)
 #endif
 
+#if RUY_OPT_ENABLED(RUY_OPT_PREFETCH_STORE)
+#define RUY_PREFETCH_STORE(X) X
+#else
+#define RUY_PREFETCH_STORE(X)
+#endif
+
 #define RUY_STR(s) RUY_STR_UNEXPANDED(s)
 #define RUY_STR_UNEXPANDED(s) #s
 

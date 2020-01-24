@@ -32,9 +32,12 @@ limitations under the License.
 #define RUY_OPT_MAX_STREAMING 0x100
 #define RUY_OPT_PACK_AHEAD 0x200
 #define RUY_OPT_PREFETCH_LOAD 0x400
+#define RUY_OPT_PREFETCH_STORE 0x800
 
 #if !defined(RUY_OPT_SET)
 #ifdef RUY_OPTIMIZE_FOR_MATMUL_BENCHMARK
+// Load prefetching is detrimental in matrix multiplication benchmarks.
+// Store prefetching is not.
 #define RUY_OPT_SET (~RUY_OPT_PREFETCH_LOAD)
 #else
 // Default to all optimizations.
