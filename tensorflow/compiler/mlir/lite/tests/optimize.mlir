@@ -690,6 +690,27 @@ func @fuse_relu_to_add(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>) -> tensor
   // CHECK: return %[[RES]]
 }
 
+// CHECK-LABEL: leaky_relu_fusion
+func @leaky_relu_fusion(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %alpha = constant dense<0.2> : tensor<f32>
+  %0 = "tfl.mul"(%arg0, %alpha) {fused_activation_function = "NONE"} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %1 = "tfl.maximum"(%0, %arg0) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %1 : tensor<2x3xf32>
+
+  // CHECK: %[[RESULT:[0-9].*]] = "tfl.leaky_relu"
+}
+
+// CHECK-LABEL: leaky_relu_not_fused
+// Should not fuse to LeakyRelu, since alpha > 1.
+func @leaky_relu_not_fused(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %alpha = constant dense<1.2> : tensor<f32>
+  %0 = "tfl.mul"(%arg0, %alpha) {fused_activation_function = "NONE"} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %1 = "tfl.maximum"(%0, %arg0) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %1 : tensor<2x3xf32>
+
+  // CHECK: %[[RESULT:[0-9].*]] = "tfl.maximum"
+}
+
 // CHECK-LABEL: NotfuseAddIntoConv2d_MultipleUsers
 func @NotfuseAddIntoConv2d_MultipleUsers(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>) -> (tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>) {
   %cst = constant dense<1.5> : tensor<16xf32>
