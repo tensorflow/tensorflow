@@ -181,12 +181,8 @@ target_link_libraries(tensorflow-lite PUBLIC
   stdc++ m z
 )
 
-include(CheckIncludeFile)
-CHECK_INCLUDE_FILE('GLES3/gl31.h' ENABLE_GLES_DELEGATE)
-find_package(OpenCL)
-
 #### OpenGLES delegate
-if(${ENABLE_GLES_DELEGATE})
+if(${TFLITE_DELEGATE_GL})
   add_custom_command(
     OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common_generated.h
     OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model_generated.h
@@ -204,7 +200,7 @@ if(${ENABLE_GLES_DELEGATE})
             ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
   )
   
-  add_library(gl_delegate
+  set(GL_DELEGATE_SOURCES
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl_delegate.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_program.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/request_gpu_info.cc
@@ -264,14 +260,19 @@ if(${ENABLE_GLES_DELEGATE})
     # headers
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
   )
-  target_link_libraries(gl_delegate
-    gpu_delegate
+  set(GL_DELEGATE_LIBS
+    EGL GLESv2
   )
+  set(GL_DELEGATE_DEFINES
+    "-DTFLITE_CONFIG_GPU_GL"
+  )
+  set(GL_DELEGATE_LIBS    EGL GLESv2)
+  set(GL_DELEGATE_DEFINES "-DTFLITE_CONFIG_GPU_GL")
 endif()
 
 #### OpenCL delegate
-if(OpenCL_FOUND)
-  add_library(cl_delegate
+if(${TFLITE_DELEGATE_CL})
+  set(CL_DELEGATE_SOURCES
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/lstm.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/sigmoid.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/max_unpooling.cc
@@ -340,13 +341,18 @@ if(OpenCL_FOUND)
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/selectors/convolution_selector.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/selectors/simple_selectors.cc
   )
-  target_link_libraries(cl_delegate
-    gpu_delegate
+  set(CL_DELEGATE_LIBS
+    CL
+  )
+  set(CL_DELEGATE_DEFINES
+    "-DTFLITE_CONFIG_GPU_CL -DTFLITE_CONFIG_GPU_NO_EGL"
   )
 endif()
 
-if((OpenCL_FOUND) OR (${ENABLE_GLES_DELEGATE}))
+if((${TFLITE_DELEGATE_GL}) OR (${TFLITE_DELEGATE_CL}))
   add_library(gpu_delegate
+    ${GL_DELEGATE_SOURCES}
+    ${CL_DELEGATE_SOURCES}
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/api.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/delegate.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/convert.cc
@@ -375,16 +381,14 @@ if((OpenCL_FOUND) OR (${ENABLE_GLES_DELEGATE}))
   )
   target_link_libraries(gpu_delegate
     tensorflow-lite
+    ${GL_DELEGATE_LIBS}
+    ${CL_DELEGATE_LIBS}
   )
   target_include_directories(gpu_delegate PUBLIC
     ${TENSORFLOW_LITE_DIR}/tools/make/downloads/fp16/include
   )
-  if(OpenCL_FOUND)
-    target_compile_options(gpu_delegate PUBLIC -DTFLITE_CONFIG_GPU_CL -DTFLITE_CONFIG_GPU_NO_EGL -framework OpenCL)
-  endif()
-  if(${ENABLE_GLES_DELEGATE})
-    target_compile_options(gpu_delegate PUBLIC -DTFLITE_CONFIG_GPU_GLES)
-  endif()
+  target_compile_options(gpu_delegate PUBLIC ${GL_DELEGATE_DEFINES} ${CL_DELEGATE_DEFINES})
+  set(GPU_DELEGATE_LIBS gpu_delegate)
 endif()
 
 ## global compile option
@@ -407,6 +411,6 @@ add_executable(tflite-benchmark
 )
 target_link_libraries(tflite-benchmark
   tensorflow-lite
-#  gl_delegate EGL GLESv2
+  ${GPU_DELEGATE_LIBS}
   absl::strings absl::container absl::hash absl::any absl::str_format absl::flat_hash_set
 )

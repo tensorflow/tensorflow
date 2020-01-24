@@ -212,7 +212,7 @@ uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject = absl::variant<absl::monostate
 #if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
-                                   , OpenGlBuffer, OpenGlTexture,
+                                   , OpenGlBuffer, OpenGlTexture
 #endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
                                    , CpuMemory
 #if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
