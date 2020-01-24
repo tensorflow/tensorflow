@@ -34,6 +34,9 @@ py_test(
     srcs = ["visualize_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+    ],
     deps = [
         ":visualize",
         "//tensorflow/python:client_testlib",
