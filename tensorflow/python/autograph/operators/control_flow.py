@@ -109,8 +109,8 @@ def _disallow_undefs_into_loop(*values):
   undefined = tuple(filter(special_values.is_undefined, values))
   if undefined:
     raise ValueError(
-        'TensorFlow requires that the following symbols must be defined'
-        ' before the loop: {}'.format(tuple(s.symbol_name for s in undefined)))
+        '{} must be defined before the loop.'.format(
+            ','.join(s.symbol_name for s in undefined)))
 
   for value in values:
     if special_values.is_undefined_return(value):
