@@ -30,12 +30,12 @@ limitations under the License.
 #define RUY_OPT_FRACTAL_U 0x40
 #define RUY_OPT_AVOID_ALIASING 0x80
 #define RUY_OPT_MAX_STREAMING 0x100
-#define RUY_OPT_PREFETCH 0x200
-#define RUY_OPT_PACK_AHEAD 0x400
+#define RUY_OPT_PACK_AHEAD 0x200
+#define RUY_OPT_PREFETCH_LOAD 0x400
 
 #if !defined(RUY_OPT_SET)
 #ifdef RUY_OPTIMIZE_FOR_MATMUL_BENCHMARK
-#define RUY_OPT_SET (~RUY_OPT_PREFETCH)
+#define RUY_OPT_SET (~RUY_OPT_PREFETCH_LOAD)
 #else
 // Default to all optimizations.
 #define RUY_OPT_SET (~0)

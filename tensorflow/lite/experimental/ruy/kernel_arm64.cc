@@ -6886,21 +6886,21 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
         RUY_MAKE_ZERO(v19)
         "ld1 {v3.4s}, [%[rhs_ptr]], #16\n"
         RUY_MAKE_ZERO(v20)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #64]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #64]\n")
         RUY_MAKE_ZERO(v21)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #64]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #64]\n")
         RUY_MAKE_ZERO(v22)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #128]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #128]\n")
         RUY_MAKE_ZERO(v23)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #128]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #128]\n")
         RUY_MAKE_ZERO(v24)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #192]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #192]\n")
         RUY_MAKE_ZERO(v25)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #192]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #192]\n")
         RUY_MAKE_ZERO(v26)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #256]\n")
         RUY_MAKE_ZERO(v27)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #256]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         RUY_MAKE_ZERO(v30)
@@ -6954,9 +6954,9 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
         "fmla v18.4s, v0.4s, v4.s[1]\n"
         "fmla v20.4s, v0.4s, v4.s[2]\n"
         "ins v1.d[1], x3\n"
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #256]\n")
         "mov v2.16b, v4.16b\n"
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #256]\n")
         "fmla v22.4s, v0.4s, v4.s[3]\n"
         "bne 2b\n"
 
@@ -7332,21 +7332,21 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
         RUY_MAKE_ZERO(v19)
         "ld1 {v3.4s}, [%[rhs_ptr]], #16\n"
         RUY_MAKE_ZERO(v20)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #64]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #64]\n")
         RUY_MAKE_ZERO(v21)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #64]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #64]\n")
         RUY_MAKE_ZERO(v22)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #128]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #128]\n")
         RUY_MAKE_ZERO(v23)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #128]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #128]\n")
         RUY_MAKE_ZERO(v24)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #192]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #192]\n")
         RUY_MAKE_ZERO(v25)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #192]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #192]\n")
         RUY_MAKE_ZERO(v26)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #256]\n")
         RUY_MAKE_ZERO(v27)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #256]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         RUY_MAKE_ZERO(v30)
@@ -7372,7 +7372,7 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
 
         "2:\n"
 
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #256]\n")
         "fmla v24.4s, v0.4s, v3.s[0]\n"
         "ldr x2, [%[lhs_ptr], #8]\n"
         "fmla v26.4s, v0.4s, v3.s[1]\n"
@@ -7396,7 +7396,7 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
         "fmla v21.4s, v1.4s, v2.s[2]\n"
         "ins v4.d[1], x4\n"
         "fmla v23.4s, v1.4s, v2.s[3]\n"
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #256]\n")
         "fmla v16.4s, v0.4s, v4.s[0]\n"
         "ldr d1, [%[lhs_ptr], #-16]\n"
         "fmla v18.4s, v0.4s, v4.s[1]\n"
