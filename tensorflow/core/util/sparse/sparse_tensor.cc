@@ -182,7 +182,7 @@ bool SparseTensor::IndicesValid32BitFastPath() const {
     prev_index = concatenated_index;
   }
 
-  return row_zeros_valid & row_in_range_valid & col_zeros_valid &
+  return row_zeros_valid & row_in_range_valid & col_zeros_valid &&
          col_in_range_valid & order_valid;
 }
 
