@@ -458,6 +458,11 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     void (*deallocator)(void* data, size_t len, void* arg),
     void* deallocator_arg, TF_Status* status);
 
+// Retrieves the address space (i.e. job, replia, task) of the local host and
+// saves it in the buffer.
+TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
+                                                TF_Buffer* buf);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

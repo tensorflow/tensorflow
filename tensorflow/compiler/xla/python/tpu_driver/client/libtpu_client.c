@@ -42,7 +42,7 @@ void* LoadAndInitializeDriver(const char* shared_lib,
 }
 
 int main(int argc, char** argv) {
-  char* api_path = "./libtpu.so";
+  char* api_path = "libtpu.so";
   if (argc == 2) {
     api_path = argv[1];
   }

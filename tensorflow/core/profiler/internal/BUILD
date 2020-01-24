@@ -393,6 +393,7 @@ cc_library(
         "//third_party/tf_runtime_google:__subpackages__",
     ],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:lib",
     ] + if_static([
         ":traceme_recorder_impl",
@@ -409,6 +410,7 @@ cc_library(
     visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = True,
 )

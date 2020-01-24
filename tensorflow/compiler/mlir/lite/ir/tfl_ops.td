@@ -2384,9 +2384,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
   let results = (outs TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$y);
 }
 
-def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
+def TFL_TileOp: TFL_Op<"tile", [NoSideEffect, SameOperandsAndResultsScale,
   PredOpTrait<"resultant element type needs to match first operand type",
-              TCresVTEtIsSameAsOp<0,0>>]> {
+              TFL_TCresVTEtIsSameAsOp<0,0>>]> {
   let summary = "Tile operator.";
   let description = [{
     Constructs a tensor by tiling a given tensor.
@@ -2399,10 +2399,11 @@ def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I1, I32, I64, TFL_Uint8]>:$input,
+    TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$multiples);
 
-  let results = (outs TensorOf<[F32, I1, I32, I64, TFL_Uint8]>:$output);
+  let results = (outs
+    TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8]>:$output);
 
   let hasOptions = 0;
 }

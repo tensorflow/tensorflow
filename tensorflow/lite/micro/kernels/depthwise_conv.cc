@@ -259,8 +259,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace depthwise_conv
 
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {depthwise_conv::Init, depthwise_conv::Free,
-                                 depthwise_conv::Prepare, depthwise_conv::Eval};
+  static TfLiteRegistration r = {};
+  r.init = depthwise_conv::Init;
+  r.free = depthwise_conv::Free;
+  r.prepare = depthwise_conv::Prepare;
+  r.invoke = depthwise_conv::Eval;
   return &r;
 }
 

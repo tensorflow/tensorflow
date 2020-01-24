@@ -109,6 +109,19 @@ TfLiteStatus TfliteInferenceStage::Init() {
     } else {
       LOG(WARNING) << "GPU not supported";
     }
+  } else if (params.delegate() == TfliteInferenceParams::HEXAGON) {
+    const std::string libhexagon_path("/data/local/tmp");
+    Interpreter::TfLiteDelegatePtr delegate =
+        evaluation::CreateHexagonDelegate(libhexagon_path, false);
+    if (!delegate) {
+      // Refer to the Tensorflow Lite Hexagon delegate documentation for more
+      // information about how to get the required libraries.
+      LOG(WARNING)
+          << "Could not create Hexagon delegate: platform may not support "
+             "delegate or required libraries are missing";
+    } else {
+      delegates_.push_back(std::move(delegate));
+    }
   }
   for (int i = 0; i < delegates_.size(); ++i) {
     if (interpreter_->ModifyGraphWithDelegate(delegates_[i].get()) !=

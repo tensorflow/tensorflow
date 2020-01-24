@@ -58,6 +58,7 @@ def save_model(model,
   """Saves a model as a TensorFlow SavedModel or HDF5 file.
 
   The saved model contains:
+
       - the model's configuration (topology)
       - the model's weights
       - the model's optimizer's state (if any)

@@ -221,7 +221,8 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
 }
 
 Status ConvConstants::Compile(const CreationContext& creation_context) {
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const auto code = GenerateConvolutionConstantCode(
       definition_, kernel_size_, src_channels_, dst_channels_,
       stride_correction, *creation_context.device, linked_operations_);

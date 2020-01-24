@@ -280,15 +280,14 @@ TfLiteStatus InitializeRuntimeTensor(
       (src_quantization->scale()->size() > 0) &&
       src_quantization->zero_point() &&
       (src_quantization->zero_point()->size() > 0)) {
+    // Always populate the TfLiteTensor.params field, even if there are
+    // per-channel quantization parameters.
     result->params.scale = src_quantization->scale()->Get(0);
-    // This magic handles issues with little-endianness.
-    for (unsigned int b = 0; b < sizeof(result->params.zero_point); ++b)
-      *(reinterpret_cast<char*>(&result->params.zero_point) + b) =
-          *(reinterpret_cast<const char*>(
-                src_quantization->zero_point()->Data()) +
-            b);
+    // Note that the zero_point field in the FlatBuffers schema is a 64-bit
+    // integer, but the zero_point field in the TfLiteQuantizationParams struct
+    // is a 32-bit integer.
     result->params.zero_point =
-        flatbuffers::EndianScalar(result->params.zero_point);
+        static_cast<int32_t>(src_quantization->zero_point()->Get(0));
 
     // Populate per-channel quantization params.
     int channels = src_quantization->scale()->size();

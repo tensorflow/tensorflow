@@ -93,19 +93,13 @@ bool IsTailOfShape(Type type1, Type type2) {
   return std::equal(i1, e1, i2);
 }
 
-bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
-                                bool is_depthwise) {
+bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
+                                      const ArrayRef<int64_t> elements_shape,
+                                      bool is_depthwise) {
   // Make sure the val tensor has shape where all dimensions are 1 except
   // last one.
   // Also, val tensor must be of rank 1 or 4 or 0 (scalar).
-  const auto elements = val.dyn_cast<DenseElementsAttr>();
-  const auto elements_shape = elements.getType().getShape();
-  const auto filter_elements = filter.dyn_cast<DenseElementsAttr>();
-  const auto filter_shape = filter_elements.getType().getShape();
-  const auto elements_rank = elements.getType().getRank();
-  if (!elements || !filter_elements) {
-    return false;
-  }
+  const auto elements_rank = elements_shape.size();
   for (int i = 0; i < static_cast<int>(elements_shape.size()) - 1; ++i) {
     if (elements_shape[i] != 1) return false;
   }
@@ -123,6 +117,30 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
                     : filter_shape[0] != elements_depth))
     return false;
   return true;
+}
+
+bool CanFuseConvOrDepthwiseConv(Value filter, Attribute val,
+                                bool is_depthwise) {
+  const auto elements = val.dyn_cast<DenseElementsAttr>();
+  if (!elements) {
+    return false;
+  }
+  const auto elements_shape = elements.getType().getShape();
+  const auto filter_shape = filter.getType().cast<ShapedType>().getShape();
+  return CanFuseConvOrDepthwiseConvShapes(filter_shape, elements_shape,
+                                          is_depthwise);
+}
+
+bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
+                                bool is_depthwise) {
+  if (const auto elements = val.dyn_cast<DenseElementsAttr>()) {
+    if (const auto filter_elements = filter.dyn_cast<DenseElementsAttr>()) {
+      return CanFuseConvOrDepthwiseConvShapes(
+          filter_elements.getType().getShape(), elements.getType().getShape(),
+          is_depthwise);
+    }
+  }
+  return false;
 }
 
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.

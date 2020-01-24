@@ -47,7 +47,7 @@ std::string GenerateConvolutionTransposedCode(
   bool manual_clamp =
       image_buffer || src_tensor_type == TensorStorageType::BUFFER;
 
-  const std::string batch_id = op_def.batch_support ? "B" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
   for (int z = 0; z < block_size.z; ++z) {
@@ -109,7 +109,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size              \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int dst_x = (linear_id / dst_size.w);\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -183,7 +183,7 @@ std::string GenerateConvolutionTransposedCode(
   }
   const std::string layer_offset =
       std::string("src_size.x * src_size.y") +
-      (op_def.batch_support ? " * src_size.w" : "");
+      (op_def.IsBatchSupported() ? " * src_size.w" : "");
   for (int y = 0; y < block_size.y; ++y) {
     const std::string yindex = std::to_string(y);
     for (int x = 0; x < block_size.x; ++x) {
@@ -279,7 +279,7 @@ std::string GenerateConvolutionTransposedCode(
         c += "      if (xc < dst_size.x && yc < dst_size.y) {\n";
         c += "        FLT4 res = TO_FLT4(r" + id + ") + bias_val;\n";
         std::string x_3dcoord =
-            op_def.batch_support ? "xc * dst_size.w + B" : "xc";
+            op_def.IsBatchSupported() ? "xc * dst_size.w + B" : "xc";
         const LinkingContext context{"res", x_3dcoord, "yc", "dst_z"};
         c += PostProcess(linked_operations, context);
         c += "        " +

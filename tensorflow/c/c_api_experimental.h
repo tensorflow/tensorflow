@@ -297,20 +297,6 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-// Runs operations necessary to initialize TPU devices associated with `job`
-// (e.g. "localhost" for local TPUs), returning a serialized TopologyProto (same
-// result as the "ConfigureDistributedTPU" operation) if TPUs were
-// available. Sets a NotFound status if no TPUs were found associated with
-// the job specified.
-//
-// TFE_InitializeTPUSystem should only be run once for a given TPU system;
-// running it multiple times will invalidate tensors/variables placed on the
-// affected TPUs.
-TF_CAPI_EXPORT extern void TFE_InitializeTPUSystem(TFE_Context* ctx,
-                                                   const char* job,
-                                                   TF_Buffer* tpu_topology,
-                                                   TF_Status* status);
-
 // Information about the shape of a Tensor and its type.
 struct TF_ShapeAndType {
   // Number of dimensions. -1 indicates unknown rank.
