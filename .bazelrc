@@ -219,8 +219,8 @@ build:v1 --define=tf_api_version=1
 build:v2 --define=tf_api_version=2
 build:v1 --action_env=TF2_BEHAVIOR=0
 build:v2 --action_env=TF2_BEHAVIOR=1
-build --config=v2
-test --config=v2
+build --config=v1
+test --config=v1
 
 # Enable XLA
 build:xla --action_env=TF_ENABLE_XLA=1
