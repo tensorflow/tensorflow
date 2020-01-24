@@ -29,13 +29,58 @@ namespace neg {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
+struct OpDataInt8 {
+  // sum of input and output zero points, accumulated on int16
+  // highest possible value: 127 + 127 = 254
+  // lowest possible value: -128 + - 128 = -256
+  // thus, accumulate on int16
+  int16_t zero_points_sum;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  // allocate a new object to carry information from Prepare() to
+  // Eval().
+  auto* op_data = new OpDataInt8;
+  return static_cast<void*>(op_data);
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete static_cast<OpDataInt8*>(buffer);
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  constexpr auto kI8Min =
+      static_cast<int16_t>(std::numeric_limits<int8_t>::min());
+  constexpr auto kI8Max =
+      static_cast<int16_t>(std::numeric_limits<int8_t>::max());
+
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   output->type = input->type;
+
+  if (input->type == kTfLiteInt8) {
+    auto op_data = static_cast<OpDataInt8*>(node->user_data);
+
+    // using EQ attempts to cast to int via the %d format specifier and gives
+    // incorrect value and since some hardware platforms do not support float
+    // formatting by default, I did a direct equality check instead
+    TF_LITE_ENSURE(context, input->params.scale == output->params.scale);
+
+    // within: [-128, 127]
+    TF_LITE_ENSURE(context, input->params.zero_point <= kI8Max);
+    TF_LITE_ENSURE(context, input->params.zero_point >= kI8Min);
+
+    // within: [-128, 127]
+    TF_LITE_ENSURE(context, output->params.zero_point <= kI8Max);
+    TF_LITE_ENSURE(context, output->params.zero_point >= kI8Min);
+
+    op_data->zero_points_sum = static_cast<int16_t>(input->params.zero_point) +
+                               static_cast<int16_t>(output->params.zero_point);
+  }
+
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
 }
@@ -59,16 +104,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorShape(output),
                             GetTensorData<float>(output));
       break;
-    case kTfLiteInt8:
-      // using EQ attempts to cast to int via the %d format specifier and gives
-      // incorrect value and since some hardware platforms do not support float
-      // formatting by default, I did a direct equality check instead
-      TF_LITE_ENSURE(context, input->params.scale == output->params.scale);
+    case kTfLiteInt8: {
+      auto op_data = static_cast<OpDataInt8*>(node->user_data);
       reference_integer_ops::Negate(
           GetTensorShape(input), GetTensorData<int8_t>(input),
-          input->params.zero_point, GetTensorShape(output),
-          GetTensorData<int8_t>(output), output->params.zero_point);
-      break;
+          GetTensorShape(output), GetTensorData<int8_t>(output),
+          op_data->zero_points_sum);
+    } break;
 
     default:
       context->ReportError(
@@ -83,7 +125,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace neg
 
 TfLiteRegistration* Register_NEG() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+  static TfLiteRegistration r = {/*init=*/neg::Init, /*free=*/neg::Free,
                                  neg::Prepare, neg::Eval};
   return &r;
 }
