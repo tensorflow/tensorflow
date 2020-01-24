@@ -35,6 +35,14 @@ flags.DEFINE_string('save_model_path', '', 'Path to save the model to.')
 FLAGS = flags.FLAGS
 
 
+def set_tf_options():
+  # Default TF1.x uses reference variables that are not supported by SavedModel
+  # v1 Importer. To use SavedModel V1 Importer, resource variables should be
+  # enabled.
+  tf.enable_resource_variables()
+  tf.compat.v1.disable_eager_execution()
+
+
 # This function needs to take a "create_module_fn", as opposed to just the
 # module itself, because the creation of the module has to be delayed until
 # after absl and tensorflow have run various initialization steps.
