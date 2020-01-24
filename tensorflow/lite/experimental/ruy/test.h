@@ -1660,7 +1660,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
 #if RUY_PLATFORM(ARM_32) || RUY_PLATFORM(ARM_64)
       // OpenBLAS multi-threading is disabled, so avoid mixing single-threaded
       // and multi-threaded benchmark results.
-      if (max_num_threads == 1) {
+      if (max_num_threads == 1 && !getenv("NO_OPENBLAS")) {
         external_paths.push_back(ExternalPath::kOpenBlas);
       }
 #endif
