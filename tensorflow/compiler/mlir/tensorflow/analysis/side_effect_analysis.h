@@ -22,10 +22,10 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Region.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Region.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 
 namespace mlir {
 namespace TF {
@@ -42,12 +42,12 @@ class ResourceAliasAnalysis {
   ResourceAliasAnalysis(ResourceAliasAnalysis&&) = default;
 
   // Returns if the analysis fails to resolve a resource-type value.
-  bool IsUnknownResource(const ValuePtr resource) const;
+  bool IsUnknownResource(const Value resource) const;
 
   // Returns the set unique IDs which `resource` could alias. Requires that
   // IsUnknownResource(resource) == true.
   const llvm::SmallSet<int64_t, 8>& GetResourceUniqueIds(
-      const ValuePtr resource) const;
+      const Value resource) const;
 
  private:
   ResourceAliasAnalysis() = default;
@@ -56,13 +56,13 @@ class ResourceAliasAnalysis {
   void AnalyzeFunction(FuncOp func_op);
 
   // Maps each resource-type value to a set of unique IDs that it could alias.
-  llvm::SmallDenseMap<ValuePtr, llvm::SmallSet<int64_t, 8>, 8>
+  llvm::SmallDenseMap<Value, llvm::SmallSet<int64_t, 8>, 8>
       resource_value_to_ids_;
 };
 
 // An analysis that runs on a function and infers the control predecessors and
 // successors for each op, based on side-effects on known and unknown resources.
-// Side-effecting ops on uknown resources are conservatively treated as
+// Side-effecting ops on unknown resources are conservatively treated as
 // interfering with all known resource op accesses. It distinguishes accesses
 // based on whether they are read-only, and read-only ops do not interfer with
 // each other.

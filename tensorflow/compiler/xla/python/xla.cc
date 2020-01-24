@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
+#include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -377,11 +378,31 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_devices", &PyLocalClient::local_devices)
       .def("host_id", &PyLocalClient::host_id)
       .def("GetDefaultDeviceAssignment",
+           [](PyLocalClient* client, int num_replicas, int num_partitions)
+               -> StatusOr<std::vector<std::vector<std::shared_ptr<Device>>>> {
+             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                                 client->GetDefaultDeviceAssignment(
+                                     num_replicas, num_partitions));
+             std::vector<std::vector<std::shared_ptr<Device>>> result;
+             result.resize(num_replicas);
+             for (int r = 0; r < num_replicas; ++r) {
+               result[r].resize(num_partitions);
+               for (int p = 0; p < num_partitions; ++p) {
+                 int device_id = device_assignment(r, p);
+                 auto iter = client->id_to_device().find(device_id);
+                 CHECK(iter != client->id_to_device().end()) << device_id;
+                 result[r][p] = iter->second;
+               }
+             }
+             return result;
+           })
+      // TODO(skye): delete after all callers can handle 2D output
+      .def("GetDefaultDeviceAssignment",
            [](PyLocalClient* client, int num_replicas)
                -> StatusOr<std::vector<std::shared_ptr<Device>>> {
-             TF_ASSIGN_OR_RETURN(
-                 DeviceAssignment device_assignment,
-                 client->GetDefaultDeviceAssignment(num_replicas));
+             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                                 client->GetDefaultDeviceAssignment(
+                                     num_replicas, /*num_partitions=*/1));
              std::vector<std::shared_ptr<Device>> result;
              for (int i = 0; i < num_replicas; ++i) {
                int device_id = device_assignment(i, 0);
@@ -441,14 +462,17 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return LiteralToPython(std::move(literal_shared));
            })
-      .def("SerializeExecutable",
-           [](PyLocalClient* client,
-              PyLocalExecutable* executable) -> StatusOr<py::bytes> {
-             TF_ASSIGN_OR_RETURN(std::string serialized,
-                                 client->SerializeExecutable(*executable));
-             return py::bytes(serialized);
+      .def("CreateChannelHandle",
+           [](PyLocalClient* client) {
+             return client->client()->CreateChannelHandle();
            })
-      .def("DeserializeExecutable", &PyLocalClient::DeserializeExecutable);
+      .def("CreateDeviceToHostChannelHandle",
+           [](PyLocalClient* client) {
+             return client->client()->CreateDeviceToHostChannelHandle();
+           })
+      .def("CreateHostToDeviceChannelHandle", [](PyLocalClient* client) {
+        return client->client()->CreateHostToDeviceChannelHandle();
+      });
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
       .def_static(
@@ -553,7 +577,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      // TODO: remove when all callers switch to ExecuteOnLocalDevices
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("ExecuteOnLocalDevices", &PyLocalExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<DebugOptions>(m, "DebugOptions")
@@ -588,6 +615,8 @@ PYBIND11_MODULE(xla_extension, m) {
           &ExecutableBuildOptions::set_result_layout)
       .def_property("num_replicas", &ExecutableBuildOptions::num_replicas,
                     &ExecutableBuildOptions::set_num_replicas)
+      .def_property("num_partitions", &ExecutableBuildOptions::num_partitions,
+                    &ExecutableBuildOptions::set_num_partitions)
       .def_property_readonly(
           "debug_options", &ExecutableBuildOptions::mutable_debug_options,
           py::return_value_policy::reference, py::keep_alive<1, 0>());
@@ -626,6 +655,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
       .def("SetSharding", &XlaBuilder::SetSharding)
       .def("ClearSharding", &XlaBuilder::ClearSharding);
+
+  m.def("BufferToDLPackManagedTensor", BufferToDLPackManagedTensor);
+  m.def("DLPackManagedTensorToBuffer", DLPackManagedTensorToBuffer);
 
   // ops submodule, containing free functions that add operators to an
   // XlaBuilder.
@@ -735,7 +767,6 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
           py::arg("exponent_bits"), py::arg("mantissa_bits"));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
-  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
   ops.def("ReplicaId", &ReplicaId);
   ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
                                            absl::Span<const int64>)>(&Reshape));
@@ -777,6 +808,10 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("TriangularSolve", &TriangularSolve);
   ops.def("Tuple", &Tuple);
   ops.def("While", &While);
+
+  ops.def("Igamma", &Igamma);
+  ops.def("Igammac", &Igammac);
+  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
 
 #define BINARY_OP(op)                                                 \
   ops.def(                                                            \
@@ -870,8 +905,16 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
-  // TODO(phawkins): improve bindings for these types.
-  py::class_<ChannelHandle>(m, "ChannelHandle");
+  py::enum_<ChannelHandle::ChannelType>(m, "ChannelHandle_ChannelType")
+      .value("CHANNEL_TYPE_INVALID", ChannelHandle::CHANNEL_TYPE_INVALID)
+      .value("DEVICE_TO_DEVICE", ChannelHandle::DEVICE_TO_DEVICE)
+      .value("DEVICE_TO_HOST", ChannelHandle::DEVICE_TO_HOST)
+      .value("HOST_TO_DEVICE", ChannelHandle::HOST_TO_DEVICE);
+
+  py::class_<ChannelHandle>(m, "ChannelHandle")
+      .def_property_readonly("type", &ChannelHandle::type)
+      .def_property_readonly("handle", &ChannelHandle::handle)
+      .def("__repr__", [](ChannelHandle* h) { return h->DebugString(); });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

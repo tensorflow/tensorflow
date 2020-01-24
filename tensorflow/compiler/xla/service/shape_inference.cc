@@ -408,7 +408,18 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   for (size_t i = 1; i < arg_shapes.size(); ++i) {
     new_dimensions[dimension] += arg_shapes[i]->dimensions(dimension);
   }
-  return ShapeUtil::MakeShape(element_type, new_dimensions);
+
+  Shape result = ShapeUtil::MakeShape(element_type, new_dimensions);
+
+  // Set dynamic dimensions if any input has dynamic dimension.
+  for (const Shape* shape : arg_shapes) {
+    for (int64 i = 0; i < shape->dimensions_size(); ++i) {
+      if (shape->is_dynamic_dimension(i)) {
+        result.set_dynamic_dimension(i, true);
+      }
+    }
+  }
+  return result;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
@@ -1720,9 +1731,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
-  if (batch_group_count > 1 && kernel_output_features != batch_group_count) {
+  if (kernel_output_features % batch_group_count != 0) {
     return InvalidArgument(
-        "Expected output feature dimension size (value %d) to be equal to "
+        "Expected output feature dimension size (value %d) to be a multiple of "
         "batch group count %d; got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
         kernel_output_features, batch_group_count, ShapeUtil::HumanString(lhs),
@@ -1759,7 +1770,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         dnums.DebugString());
   }
 
-  if (input_batch % batch_group_count > 0) {
+  if (input_batch % batch_group_count != 0) {
     return InvalidArgument(
         "Expected input batch dimension (value %d) to be divisible by "
         "batch_group_count (value %d); "
@@ -1793,6 +1804,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   std::vector<int64> dimensions(num_dims);
   dimensions[dnums.output_batch_dimension()] = input_batch / batch_group_count;
   dimensions[dnums.output_feature_dimension()] = kernel_output_features;
+
   for (int i = 0; i < num_spatial_dims; ++i) {
     dimensions[dnums.output_spatial_dimensions(i)] =
         window_output_shape.dimensions(i);
@@ -2724,7 +2736,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   std::copy(broadcast_sizes.begin(), broadcast_sizes.end(), dimensions.begin());
   std::copy(operand.dimensions().begin(), operand.dimensions().end(),
             dimensions.begin() + broadcast_sizes.size());
-  return ShapeUtil::MakeShape(operand.element_type(), dimensions);
+
+  Shape result = ShapeUtil::MakeShape(operand.element_type(), dimensions);
+  for (int64 i = 0; i < operand.dimensions_size(); ++i) {
+    result.set_dynamic_dimension(broadcast_sizes.size() + i,
+                                 operand.is_dynamic_dimension(i));
+  }
+  return result;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(

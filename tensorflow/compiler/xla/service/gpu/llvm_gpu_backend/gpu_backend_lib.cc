@@ -335,7 +335,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   // If ftz is enabled, set it as an attribute on every function in the module.
   if (hlo_module_config.debug_options().xla_gpu_ftz()) {
     for (llvm::Function& fn : *module) {
-      fn.addFnAttr("nvptx-f32ftz", "true");
+      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
     }
   }
 

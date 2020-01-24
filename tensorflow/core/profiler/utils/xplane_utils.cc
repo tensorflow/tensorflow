@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
+#include "absl/strings/match.h"
+
 namespace tensorflow {
 namespace profiler {
 
@@ -22,6 +24,24 @@ const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
     if (plane.name() == name) return &plane;
   }
   return nullptr;
+}
+
+std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
+                                                absl::string_view prefix) {
+  std::vector<const XPlane*> result;
+  for (const XPlane& plane : space.planes()) {
+    if (absl::StartsWith(plane.name(), prefix)) result.push_back(&plane);
+  }
+  return result;
+}
+
+XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    if (plane.name() == name) return &plane;
+  }
+  XPlane* plane = space->add_planes();
+  plane->set_name(std::string(name));
+  return plane;
 }
 
 }  // namespace profiler

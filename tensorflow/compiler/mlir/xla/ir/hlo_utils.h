@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_UTILS_H_
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 
 namespace mlir {
@@ -29,14 +29,14 @@ namespace xla {
 // Computes the broadcast dimensions attr for an elementwise binary operator
 // between two ranked tensors.
 mlir::DenseIntElementsAttr getBroadcastDimensionsAttr(mlir::Builder* b,
-                                                      mlir::ValuePtr x,
-                                                      mlir::ValuePtr y);
+                                                      mlir::Value x,
+                                                      mlir::Value y);
 
 /// Get a constant splat for the given value type.
 template <typename T>
-static ElementsAttr getSplat(Builder* b, ValuePtr val, T constant) {
-  auto valType = val->getType().cast<TensorType>();
-  auto valElementType = getElementTypeOrSelf(val->getType());
+static ElementsAttr getSplat(Builder* b, Value val, T constant) {
+  auto valType = val.getType().cast<TensorType>();
+  auto valElementType = getElementTypeOrSelf(val.getType());
 
   // Handle integer elements.
   Attribute elementAttr;

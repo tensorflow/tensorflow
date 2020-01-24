@@ -265,6 +265,7 @@ class S3WritableFile : public WritableFile {
       return errors::Unknown(putObjectOutcome.GetError().GetExceptionName(),
                              ": ", putObjectOutcome.GetError().GetMessage());
     }
+    sync_needed_ = false;
     return Status::OK();
   }
 

@@ -20,7 +20,7 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], stri
     if td_file not in td_srcs:
         srcs += [td_file]
 
-    td_includes_cmd = ["-I external/local_config_mlir/include -I external/org_tensorflow"]
+    td_includes_cmd = ["-I external/llvm-project/mlir/include -I external/org_tensorflow"]
     for td_include in td_includes:
         td_includes_cmd += ["-I%s" % td_include]
     local_inc = "-I $$(dirname $(location %s))" % td_file

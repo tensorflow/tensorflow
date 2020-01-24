@@ -142,7 +142,7 @@ class TRTEngineOp : public AsyncOpKernel {
   NameAttrList func_;
 
   // GraphDef representation of the segment.
-  GraphDef segment_graph_;
+  GraphDef segment_graph_def_;
 
   // Engine Precision mode.
   TrtPrecisionMode precision_mode_;
@@ -277,8 +277,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     FunctionLibraryRuntime* lib = context->function_library();
     OP_REQUIRES_OK(context,
                    ConstructFunctionHandle(lib, context->device()->name()));
-    OP_REQUIRES_OK(context,
-                   FunctionDefToGraphDef(func_handle_, lib, &segment_graph_));
+    OP_REQUIRES_OK(
+        context, FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_));
   }
   // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
   // backward compatibility reasons. Remove it once all known users switch to
@@ -617,7 +617,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
       }
     } else {
       const string msg =
-          StrCat("Ouput node ", output_name, " not found, at ", name());
+          StrCat("Output node ", output_name, " not found, at ", name());
       LOG(ERROR) << msg;
       ctx->SetStatus(errors::NotFound(msg));
       return !kRetry;
@@ -780,7 +780,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
-        segment_graph_, precision_mode_, batch_size, workspace_size_,
+        segment_graph_def_, precision_mode_, batch_size, workspace_size_,
         partial_shapes, &logger, allocator, calibrator_.get(), &engine,
         use_calibration_, use_implicit_batch_, &convert_successfully);
     if (!status.ok()) {
@@ -867,7 +867,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
     // TODO(aaroey): maybe setting the max batch size using the python
     // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        this->segment_graph_, TrtPrecisionMode::INT8,
+        this->segment_graph_def_, TrtPrecisionMode::INT8,
         cres->calibrator_->getBatchSize(), this->workspace_size_,
         partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_,

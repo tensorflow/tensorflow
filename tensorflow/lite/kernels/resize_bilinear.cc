@@ -73,6 +73,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }
+
+  // Ensure params are valid.
+  auto* params =
+      reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
+  if (params->half_pixel_centers && params->align_corners) {
+    context->ReportError(
+        context, "If half_pixel_centers is True, align_corners must be False.");
+    return kTfLiteError;
+  }
+
   return ResizeOutputTensor(context, input, size, output);
 }
 
@@ -94,6 +104,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 #define TF_LITE_RESIZE_BILINEAR(type, datatype)                              \
   tflite::ResizeBilinearParams op_params;                                    \
   op_params.align_corners = params->align_corners;                           \
+  op_params.half_pixel_centers = params->half_pixel_centers;                 \
   type::ResizeBilinear(op_params, GetTensorShape(input),                     \
                        GetTensorData<datatype>(input), GetTensorShape(size), \
                        GetTensorData<int32>(size), GetTensorShape(output),   \

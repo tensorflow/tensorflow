@@ -36,7 +36,8 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFPass();
 std::unique_ptr<OpPassBase<FuncOp>> CreateOptimizePass();
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass();
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass(
+    bool unfold_batch_matmul);
 
 // Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 // pass.
@@ -73,6 +74,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeOphintFuncOpPass();
 std::unique_ptr<OpPassBase<FuncOp>> CreateSplitMergedOperandsPass();
 
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeFunctionalOpsPass();
+
+// Creates an instance pass to add default quantization parameters.
+std::unique_ptr<OpPassBase<FuncOp>> CreateDefaultQuantParamsPass(
+    double default_min, double default_max);
 }  // namespace TFL
 
 }  // namespace mlir

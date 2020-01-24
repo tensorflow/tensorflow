@@ -68,14 +68,14 @@ TfLiteStatus FlatBufferIntVectorToArray(
                            op_name);
     return kTfLiteError;
   } else {
-    int num_dimensions = flat_vector->size();
+    size_t num_dimensions = flat_vector->size();
     if (num_dimensions > max_size_of_buffer / sizeof(int)) {
       error_reporter->Report(
           "Found too many dimensions in the input array of operation '%s'.\n",
           op_name);
       return kTfLiteError;
     } else {
-      for (int i = 0; i < num_dimensions; ++i) {
+      for (size_t i = 0; i < num_dimensions; ++i) {
         buffer[i] = flat_vector->Get(i);
       }
     }
@@ -476,6 +476,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* schema_params =
               op->builtin_options_as_ResizeBilinearOptions()) {
         params->align_corners = schema_params->align_corners();
+        params->half_pixel_centers = schema_params->half_pixel_centers();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -499,10 +500,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto params = safe_allocator.Allocate<TfLiteReshapeParams>();
       if (const auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
         auto* new_shape = schema_params->new_shape();
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
-            sizeof(params->shape), new_shape, params->shape, error_reporter,
-            "reshape"));
-        params->num_dimensions = new_shape->size();
+        // TODO(b/147203660): We need to figure out when dynamic reshape
+        // (new_shape is a tensor) happens, why the option is not a nullptr.
+        // But nonethless, we should only copy when new_shape is not a nullptr.
+        if (new_shape) {
+          TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+              sizeof(params->shape), new_shape, params->shape, error_reporter,
+              "reshape"));
+          params->num_dimensions = new_shape->size();
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -821,6 +827,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_DENSIFY:
+    case BuiltinOperator_SEGMENT_SUM:
       break;
   }
   return kTfLiteOk;

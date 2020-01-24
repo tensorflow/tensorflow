@@ -22,28 +22,34 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "mlir/Transforms/FoldUtils.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 #define DEBUG_TYPE "tf-shape-inference"
 
@@ -68,29 +74,101 @@ Optional<llvm::SmallVector<mlir::Type, 4>> InferShapeForFunctionReturnType(
   // Manually fold tf.Cast that precedes the return instruction and only differs
   // in shape refinement level.
   for (OpOperand& arg_op : return_op.getOperation()->getOpOperands()) {
-    Operation* arg_defining_op = arg_op.get()->getDefiningOp();
+    Operation* arg_defining_op = arg_op.get().getDefiningOp();
     if (auto cast_op = dyn_cast_or_null<CastOp>(arg_defining_op)) {
       // Shape inference should not change the element type.
       if (cast_op.SrcT() != cast_op.DstT()) continue;
       // We only refine the result shape if the result a dynamic shape, the
       // input has static shape, and the two shapes are compatible.
-      auto has_static_shape = [](const ValuePtr value) {
-        auto shaped_type = value->getType().dyn_cast<ShapedType>();
+      auto has_static_shape = [](const Value value) {
+        auto shaped_type = value.getType().dyn_cast<ShapedType>();
         return shaped_type && shaped_type.hasStaticShape();
       };
-      ValuePtr input = cast_op.x();
-      ValuePtr result = cast_op.y();
+      Value input = cast_op.x();
+      Value result = cast_op.y();
       if (!has_static_shape(input) || has_static_shape(result) ||
-          failed(verifyCompatibleShape(input->getType(), result->getType())))
+          failed(verifyCompatibleShape(input.getType(), result.getType())))
         continue;
 
       arg_op.set(cast_op.x());
-      if (cast_op.y()->use_empty()) cast_op.erase();
+      if (cast_op.y().use_empty()) cast_op.erase();
     }
   }
 
   return llvm::to_vector<4>(return_op.getOperandTypes());
 }
+
+// Returns if the shape inference pass supports an op outside the TF dialect.
+bool IsSupportedNonTFOp(Operation* op) {
+  return isa<tf_executor::YieldOp>(op) || isa<tf_executor::IslandOp>(op) ||
+         isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
+         isa<ReturnOp>(op) || isa<tf_device::ReturnOp>(op);
+}
+
+// Inserts tf.Cast operation when changing the type of a result if the user is
+// not a TF operation, as we can't guarantee that the new type will be OK.
+void AddCastBackForUnsupportedNonTFUses(Operation* op, Value result,
+                                        Dialect* tf_dialect, Type old_type) {
+  OpBuilder builder(op);
+  builder.setInsertionPointAfter(op);
+  // A tf.Cast operation is lazily created on the first uses that isn't a TF
+  // operation.
+  TF::CastOp cast_op;
+  auto get_cast_op = [&]() {
+    if (!cast_op)
+      cast_op =
+          builder.create<TF::CastOp>(op->getLoc(), old_type, result,
+                                     /*truncate=*/builder.getBoolAttr(false));
+    return mlir::Value(cast_op);
+  };
+  for (OpOperand& use : llvm::make_early_inc_range(result.getUses())) {
+    if (use.getOwner()->getDialect() != tf_dialect &&
+        !IsSupportedNonTFOp(use.getOwner()))
+      use.set(get_cast_op());
+  }
+}
+
+// Extracts a PartialTensorShape from the MLIR type.
+Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
+  if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
+    // Convert the MLIR shape indices (int64_t) to TensorFlow indices
+    // (int64).
+    ArrayRef<int64_t> shape = ranked_type.getShape();
+    SmallVector<int64, 8> tf_shape(shape.begin(), shape.end());
+    return tensorflow::PartialTensorShape({tf_shape.data(), tf_shape.size()});
+  }
+  return None;
+}
+
+// Passes the operand shapes/types to the op's results.
+bool InferShapeForPassThroughOps(OperandRange pass_through_operands,
+                                 Operation* op, Dialect* tf_dialect) {
+  bool changed = false;
+  for (auto entry : llvm::zip(pass_through_operands, op->getResults())) {
+    Type operand_type = std::get<0>(entry).getType();
+    Value result = std::get<1>(entry);
+    if (result.getType() == operand_type) continue;
+    AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect,
+                                       result.getType());
+    result.setType(operand_type);
+    changed = true;
+  }
+  return changed;
+}
+
+// Infers shape for necessary ops that are not in the TF dialect.
+bool InferShapeForNonTFDialectOperation(Operation* op, Dialect* tf_dialect) {
+  if (auto graph_op = dyn_cast<tf_executor::GraphOp>(op)) {
+    return InferShapeForPassThroughOps(graph_op.GetFetch().fetches(), op,
+                                       tf_dialect);
+  }
+  if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
+    return InferShapeForPassThroughOps(island_op.GetYield().fetches(), op,
+                                       tf_dialect);
+  }
+  return false;
+}
+
 }  // namespace
 
 bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
@@ -98,9 +176,13 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   assert(tf_dialect == op->getDialect());
 
   // If no result for this op needs shape inference, we have a fast-path return.
+  // But if the type is a resource, we do not skip it because we might not have
+  // the handle shapes.
   if (llvm::all_of(op->getResultTypes(), [](Type type) {
         auto shape_type = type.dyn_cast<ShapedType>();
-        return !shape_type || shape_type.hasStaticShape();
+        return !shape_type ||
+               (shape_type.hasStaticShape() &&
+                !shape_type.getElementType().isa<TF::ResourceType>());
       })) {
     LLVM_DEBUG(llvm::dbgs() << "Skipping inference for statically shaped op '"
                             << op->getName() << "'.\n";);
@@ -111,7 +193,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   // This is necessary to avoid reprocessing the tf.Cast that are inserted at
   // the end of this function.
   if (isa<CastOp>(op) &&
-      llvm::all_of(op->getResult(0)->getUsers(), [&](Operation* user) {
+      llvm::all_of(op->getResult(0).getUsers(), [&](Operation* user) {
         return user->getDialect() != tf_dialect;
       })) {
     LLVM_DEBUG(llvm::dbgs() << "Skipping inference for tf.Cast with no TF "
@@ -160,8 +242,11 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   std::vector<tensorflow::PartialTensorShape> input_shapes(
       op->getNumOperands());
   std::vector<tensorflow::Tensor> tensors(op->getNumOperands());
+  std::vector<std::unique_ptr<std::vector<
+      std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>>
+      handle_shapes_and_types(op->getNumOperands());
   for (auto it : llvm::enumerate(op->getOperands())) {
-    ValuePtr operand = it.value();
+    Value operand = it.value();
     size_t index = it.index();
 
     // If the operand is constant, then convert it to Tensor.
@@ -178,13 +263,32 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
       }
     }
 
-    Type operand_type = operand->getType();
-    if (auto ranked_type = operand_type.dyn_cast<RankedTensorType>()) {
-      // Convert the MLIR shape indices (int64_t) to TensorFlow indices (int64).
-      ArrayRef<int64_t> shape = ranked_type.getShape();
-      SmallVector<int64, 8> tf_shape(shape.begin(), shape.end());
-      input_shapes[index] =
-          tensorflow::PartialTensorShape({tf_shape.data(), tf_shape.size()});
+    Type operand_type = operand.getType();
+    if (auto shape = GetShapeFromMlirType(operand_type)) {
+      input_shapes[index] = *shape;
+    }
+    // Collect the handle shapes and types for a resource.
+    if (auto resource_type = operand_type.cast<TensorType>()
+                                 .getElementType()
+                                 .dyn_cast<TF::ResourceType>()) {
+      if (resource_type.getSubtypes().empty()) continue;
+      auto shapes_and_types = absl::make_unique<std::vector<
+          std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>();
+      for (auto subtype : resource_type.getSubtypes()) {
+        auto shape = GetShapeFromMlirType(subtype);
+        // handle_shapes_and_types requires all shapes to be known. So if any
+        // subtype is unknown, clear the vector.
+        if (!shape) {
+          shapes_and_types = nullptr;
+          break;
+        }
+        tensorflow::DataType dtype;
+        auto status =
+            tensorflow::ConvertToDataType(subtype.getElementType(), &dtype);
+        assert(status.ok() && "Unknown element type");
+        shapes_and_types->emplace_back(*shape, dtype);
+      }
+      handle_shapes_and_types[index] = std::move(shapes_and_types);
     }
   }
 
@@ -193,8 +297,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   // function operates on.
   tensorflow::shape_inference::InferenceContext c(
       graph_version, *node_def, op_reg_data->op_def, input_shapes,
-      input_tensors, /*input_tensors_as_shapes=*/{},
-      /*input_handle_shapes_and_types=*/{});
+      input_tensors, /*input_tensors_as_shapes=*/{}, handle_shapes_and_types);
   auto status = c.Run(op_reg_data->shape_inference_fn);
   if (!status.ok()) {
     LLVM_DEBUG(llvm::dbgs() << "Shape inference error for '" << *op
@@ -206,47 +309,52 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
          "inference context matches the MLIR number of results.");
 
   // Update the shape for each of the operation result if the InferenceContext
-  // has more precise shapes recorded. A builder is used to insert tf.Cast
-  // operation when changing the type of a result is the user is not a TF
-  // operation, as we can't guarantee that the new type will be OK.
+  // has more precise shapes recorded.
   bool changed = false;
-  OpBuilder builder(op);
-  builder.setInsertionPointAfter(op);
   for (int output : llvm::seq<int>(0, c.num_outputs())) {
     // Skip already statically shaped results.
-    ValuePtr result = op->getResult(output);
-    auto shaped_type = result->getType().dyn_cast<ShapedType>();
+    Value result = op->getResult(output);
+    auto shaped_type = result.getType().dyn_cast<ShapedType>();
     if (!shaped_type || shaped_type.hasStaticShape()) continue;
 
     tensorflow::shape_inference::ShapeHandle shape_handle = c.output(output);
     LLVM_DEBUG(llvm::dbgs() << "Inferred output " << output << " : "
                             << c.DebugString(shape_handle) << "\n");
-    if (!c.RankKnown(shape_handle)) continue;
-
-    // Convert the shape from TensorFlow (int64) to MLIR (int64_t).
-    SmallVector<int64_t, 8> shape;
-    for (int dim : llvm::seq<int>(0, c.Rank(shape_handle)))
-      shape.push_back(c.Value(c.Dim(shape_handle, dim)));
-    auto new_type = RankedTensorType::get(shape, shaped_type.getElementType());
-
-    // A tf.Cast operation is lazily created on the first uses that isn't a TF
-    // operation.
-    TF::CastOp cast_op;
-    auto get_cast_op = [&]() {
-      if (!cast_op)
-        cast_op =
-            builder.create<TF::CastOp>(op->getLoc(), result->getType(), result,
-                                       /*truncate=*/builder.getBoolAttr(false));
-      return cast_op;
+    auto get_tensor_type =
+        [&c](const tensorflow::shape_inference::ShapeHandle& sh,
+             Type element_type) -> TensorType {
+      if (!c.RankKnown(sh)) return UnrankedTensorType::get(element_type);
+      // Convert the shape from TensorFlow (int64) to MLIR (int64_t).
+      SmallVector<int64_t, 8> shape;
+      for (int dim : llvm::seq<int>(0, c.Rank(sh)))
+        shape.push_back(c.Value(c.Dim(sh, dim)));
+      return RankedTensorType::get(shape, element_type);
     };
-    for (OpOperand& use : llvm::make_early_inc_range(result->getUses())) {
-      if (use.getOwner()->getDialect() != tf_dialect) use.set(get_cast_op());
+    auto new_element_type = shaped_type.getElementType();
+    // Populate the handle shapes for a resource.
+    if (auto resource_type = new_element_type.dyn_cast<TF::ResourceType>()) {
+      auto handle_shapes_types = c.output_handle_shapes_and_types(output);
+      if (handle_shapes_types) {
+        llvm::SmallVector<mlir::TensorType, 1> subtypes;
+        OpBuilder b(op);
+        for (const auto& shape_n_type : *handle_shapes_types) {
+          Type element_type;
+          auto status =
+              tensorflow::ConvertDataType(shape_n_type.dtype, b, &element_type);
+          assert(status.ok() && "Unknown element type");
+          subtypes.push_back(get_tensor_type(shape_n_type.shape, element_type));
+        }
+        new_element_type = TF::ResourceType::get(subtypes, op->getContext());
+      }
     }
-
-    if (result->getType() == new_type) continue;
-
+    auto new_type = get_tensor_type(shape_handle, new_element_type);
+    if (result.getType() == new_type) continue;
+    // Inserts a cast back to the original type if any user is not in the TF
+    // dialect.
+    AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect,
+                                       result.getType());
     // Finally we inferred the shape and replace the type for this result.
-    result->setType(new_type);
+    result.setType(new_type);
     changed = true;
   }
   if (changed)
@@ -284,7 +392,7 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
                                  func.getContext()));
 
   for (auto arg_and_idx : llvm::enumerate(func.getArguments())) {
-    arg_and_idx.value()->setType(input_types[arg_and_idx.index()]);
+    arg_and_idx.value().setType(input_types[arg_and_idx.index()]);
   }
 
   auto res =
@@ -300,22 +408,15 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
   return success();
 }
 
-template <typename OpTy>
-LogicalResult PropagateShapeToIfWhileOpFunctions(
-    OpTy op, llvm::ArrayRef<StringRef> func_names, int64_t graph_version,
+LogicalResult PropagateShapeToFunctions(
+    ModuleOp module, Operation::operand_type_range input_types,
+    llvm::ArrayRef<StringRef> func_names, int64_t graph_version,
     int64_t max_iteration) {
-  llvm::SmallVector<Type, 4> input_types;
-  input_types.reserve(std::distance(op.input().begin(), op.input().end()));
-  for (ValuePtr v : op.input()) {
-    input_types.push_back(v->getType());
-  }
-
-  ModuleOp module = op.template getParentOfType<ModuleOp>();
-
   bool success = true;
+  auto types = llvm::to_vector<4>(input_types);
   for (auto func_name : func_names) {
     FuncOp func = module.lookupSymbol<FuncOp>(func_name);
-    if (failed(RefineShapeForControlFlowFunc(func, input_types, graph_version,
+    if (failed(RefineShapeForControlFlowFunc(func, types, graph_version,
                                              max_iteration))) {
       success = false;
     }
@@ -326,14 +427,20 @@ LogicalResult PropagateShapeToIfWhileOpFunctions(
 LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
                                                   int64_t graph_version,
                                                   int64_t max_iteration) {
+  ModuleOp module = op->getParentOfType<ModuleOp>();
   if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-    return PropagateShapeToIfWhileOpFunctions<TF::IfOp>(
-        if_op, {if_op.then_branch(), if_op.else_branch()}, graph_version,
+    return PropagateShapeToFunctions(
+        module, llvm::drop_begin(if_op.getOperandTypes(), 1),
+        {if_op.then_branch(), if_op.else_branch()}, graph_version,
         max_iteration);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-    return PropagateShapeToIfWhileOpFunctions<TF::WhileOp>(
-        while_op, {while_op.cond(), while_op.body()}, graph_version,
-        max_iteration);
+    return PropagateShapeToFunctions(module, while_op.getOperandTypes(),
+                                     {while_op.cond(), while_op.body()},
+                                     graph_version, max_iteration);
+  } else if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
+    return PropagateShapeToFunctions(module, call_op.getOperandTypes(),
+                                     {call_op.f()}, graph_version,
+                                     max_iteration);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.
@@ -359,7 +466,10 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
     LLVM_DEBUG(llvm::dbgs()
                << "Shape inference, iteration " << iteration << "\n");
     region->walk([&](Operation* op) {
-      if (op->getDialect() != tf_dialect) return;
+      if (op->getDialect() != tf_dialect) {
+        changed |= InferShapeForNonTFDialectOperation(op, tf_dialect);
+        return;
+      }
 
       // Before attempting inference, just try to fold the operation.
       if (succeeded(folder.tryToFold(op))) return;
@@ -414,7 +524,7 @@ LogicalResult InferShapeForFunction(FuncOp func,
     auto new_arg_type = mlir::RankedTensorType::get(shape, element_type);
     if (new_arg_type != func_type.getInput(i)) {
       // If the new type is more detailed, trigger shape inference.
-      func.getArgument(i)->setType(new_arg_type);
+      func.getArgument(i).setType(new_arg_type);
       needs_refinement = true;
     }
     new_arg_types.push_back(new_arg_type);

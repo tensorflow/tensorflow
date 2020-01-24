@@ -18,20 +18,30 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
-
 namespace reference_ops {
 
 template <typename T>
 inline void Densify(const TfLiteSparsity* sparsity,
                     const RuntimeShape& input_shape, const T* input_data,
                     const RuntimeShape& output_shape, T* output_data) {
-  const int flat_size = output_shape.FlatSize();
-  memset(output_data, 0, sizeof(T) * flat_size);
+  const int dims_count = output_shape.DimensionsCount();
+  std::vector<int> vector_shape(dims_count);
+  for (int i = 0; i < dims_count; i++) {
+    vector_shape[i] = output_shape.Dims(i);
+  }
+
+  tflite::optimize::sparsity::FormatConverter<T> converter(vector_shape,
+                                                           *sparsity);
+  converter.SparseToDense(input_data);
+  const std::vector<T> out = converter.GetData();
+  for (int i = 0; i < out.size(); i++) {
+    output_data[i] = out[i];
+  }
 }
 
 }  // namespace reference_ops
-
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_DENSIFY_H_

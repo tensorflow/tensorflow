@@ -29,10 +29,12 @@ std::string GetReshapeBatchedCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor(
-      "src_data", {"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
+      "src_data",
+      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
       op_def.src_tensors[0]);
   TensorCodeGenerator dst_tensor(
-      "dst_data", {"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      "dst_data",
+      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
       op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
@@ -59,10 +61,10 @@ std::string GetReshapeBatchedCode(
   c += "  int src_y = dst_bhwc4 % src_size.y;\n";
   c += "  int src_b = dst_bhwc4 / src_size.y;\n";
   c += "  FLT4 result =" +
-       src_tensor.Read4D("src_x", "src_y", "src_z", "src_b") + ";\n";
+       src_tensor.ReadWHSB("src_x", "src_y", "src_z", "src_b") + ";\n";
   const LinkingContext context{"result", "X * dst_size.w + B", "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", "B");
+  c += "  " + dst_tensor.WriteWHSB("result", "X", "Y", "Z", "B");
   c += "}\n";
   return c;
 }
@@ -70,12 +72,12 @@ std::string GetReshapeBatchedCode(
 std::string GetReshapeCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -94,10 +96,11 @@ std::string GetReshapeCode(
   c += "  dst_hwc4 = dst_hwc4 / src_size.z;\n";
   c += "  int src_x = dst_hwc4 % src_size.x;\n";
   c += "  int src_y = dst_hwc4 / src_size.x;\n";
-  c += "  FLT4 result =" + src_tensor.Read3D("src_x", "src_y", "src_z") + ";\n";
+  c +=
+      "  FLT4 result =" + src_tensor.ReadWHS("src_x", "src_y", "src_z") + ";\n";
   const LinkingContext context{"result", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
+  c += "  " + dst_tensor.WriteWHS("result", "X", "Y", "Z");
   c += "}\n";
   return c;
 }
@@ -118,7 +121,7 @@ Reshapex4& Reshapex4::operator=(Reshapex4&& operation) {
 }
 
 Status Reshapex4::Compile(const CreationContext& creation_context) {
-  const auto code = definition_.batch_support
+  const auto code = definition_.IsBatchSupported()
                         ? GetReshapeBatchedCode(definition_, linked_operations_)
                         : GetReshapeCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -131,8 +134,8 @@ Status Reshapex4::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
 
   return OkStatus();
 }
@@ -140,7 +143,7 @@ Status Reshapex4::BindArguments() {
 int3 Reshapex4::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

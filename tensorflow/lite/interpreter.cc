@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -128,15 +129,15 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
-  return primary_subgraph().SetInputs(inputs);
+  return primary_subgraph().SetInputs(std::move(inputs));
 }
 
 TfLiteStatus Interpreter::SetOutputs(std::vector<int> outputs) {
-  return primary_subgraph().SetOutputs(outputs);
+  return primary_subgraph().SetOutputs(std::move(outputs));
 }
 
 TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
-  return primary_subgraph().SetVariables(variables);
+  return primary_subgraph().SetVariables(std::move(variables));
 }
 
 TfLiteStatus Interpreter::AllocateTensors() {

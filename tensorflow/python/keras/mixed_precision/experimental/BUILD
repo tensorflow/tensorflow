@@ -31,6 +31,7 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":get_layer_policy",
         ":loss_scale_optimizer",
         ":policy",
     ],
@@ -89,6 +90,27 @@ cuda_py_test(
 )
 
 py_library(
+    name = "get_layer_policy",
+    srcs = ["get_layer_policy.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/keras:base_layer",
+    ],
+)
+
+py_test(
+    name = "get_layer_policy_test",
+    srcs = ["get_layer_policy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":get_layer_policy",
+        ":policy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/layers",
+    ],
+)
+
+py_library(
     name = "autocast_variable",
     srcs = [
         "autocast_variable.py",
@@ -126,7 +148,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:loss_scale",
-        "//tensorflow/python/keras:generic_utils",
+        "//tensorflow/python/keras/utils:generic_utils",
     ],
 )
 
@@ -152,6 +174,22 @@ cuda_py_test(
         ":test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+    ],
+)
+
+cuda_py_test(
+    name = "loss_scale_benchmark",
+    size = "medium",
+    srcs = ["loss_scale_benchmark.py"],
+    deps = [
+        ":loss_scale_optimizer",
+        ":test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:loss_scaling_gradient_tape",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",

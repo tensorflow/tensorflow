@@ -174,7 +174,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
       # instantiate optimizer
       training_config = f.attrs.get('training_config')
       if training_config is None:
-        logging.warning('No training configuration found in save file: '
+        logging.warning('No training configuration found in the save file, so '
                         'the model was *not* compiled. Compile it manually.')
         return model
       training_config = json.loads(training_config.decode('utf-8'))

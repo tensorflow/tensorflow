@@ -30,7 +30,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -44,6 +43,7 @@ from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -223,7 +223,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    if compat.forward_compatible(2019, 11, 25) or external_state_policy:
+    if external_state_policy:
       policy = None
       if external_state_policy:
         policy = external_state_policy.value
@@ -231,7 +231,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
           self._variant_tensor,
           external_state_policy=policy,
           strip_device_assignment=strip_device_assignment)
-    if compat.forward_compatible(2019, 11, 16) or strip_device_assignment:
+    if strip_device_assignment:
       return gen_dataset_ops.dataset_to_graph(
           self._variant_tensor,
           allow_stateful=allow_stateful,
@@ -254,8 +254,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
           "Can only export Datasets which were created executing eagerly. "
           "Please file a feature request if this is important to you.")
     with context.eager_mode(), ops.device("CPU"):
+      # pylint: disable=protected-access
       graph_def = graph_pb2.GraphDef().FromString(
-          self._as_serialized_graph().numpy())  # pylint: disable=protected-access
+          self._as_serialized_graph(external_state_policy=distribute_options
+                                    .ExternalStatePolicy.FAIL).numpy())
     output_node_name = None
     for node in graph_def.node:
       if node.op == "_Retval":
@@ -1372,7 +1374,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   def padded_batch(self,
                    batch_size,
-                   padded_shapes,
+                   padded_shapes=None,
                    padding_values=None,
                    drop_remainder=False):
     """Combines consecutive elements of this dataset into padded batches.
@@ -1390,7 +1392,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
     different shapes, and this transformation will pad each component to the
-    respective shape in `padding_shapes`. The `padding_shapes` argument
+    respective shape in `padded_shapes`. The `padded_shapes` argument
     determines the resulting shape for each dimension of each component in an
     output element:
 
@@ -1400,35 +1402,33 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     component will be padded out to the maximum length of all elements in that
     dimension.
 
-    >>> elements = [[1, 2],
-    ...             [3, 4, 5],
-    ...             [6, 7],
-    ...             [8]]
-    >>> A = tf.data.Dataset.from_generator(lambda: iter(elements), tf.int32)
+    >>> A = (tf.data.Dataset
+    ...      .range(1, 5, output_type=tf.int32)
+    ...      .map(lambda x: tf.fill([x], x)))
     >>> # Pad to the smallest per-batch size that fits all elements.
-    >>> B = A.padded_batch(2, padded_shapes=[None])
+    >>> B = A.padded_batch(2)
     >>> for element in B.as_numpy_iterator():
     ...   print(element)
-    [[1 2 0]
-     [3 4 5]]
-    [[6 7]
-     [8 0]]
+    [[1 0]
+     [2 2]]
+    [[3 3 3 0]
+     [4 4 4 4]]
     >>> # Pad to a fixed size.
-    >>> C = A.padded_batch(2, padded_shapes=3)
+    >>> C = A.padded_batch(2, padded_shapes=5)
     >>> for element in C.as_numpy_iterator():
     ...   print(element)
-    [[1 2 0]
-     [3 4 5]]
-    [[6 7 0]
-     [8 0 0]]
+    [[1 0 0 0 0]
+     [2 2 0 0 0]]
+    [[3 3 3 0 0]
+     [4 4 4 4 0]]
     >>> # Pad with a custom value.
-    >>> D = A.padded_batch(2, padded_shapes=3, padding_values=-1)
+    >>> D = A.padded_batch(2, padded_shapes=5, padding_values=-1)
     >>> for element in D.as_numpy_iterator():
     ...   print(element)
-    [[ 1  2 -1]
-     [ 3  4  5]]
-    [[ 6  7 -1]
-     [ 8 -1 -1]]
+    [[ 1 -1 -1 -1 -1]
+     [ 2  2 -1 -1 -1]]
+    [[ 3  3  3 -1 -1]
+     [ 4  4  4  4 -1]]
     >>> # Components of nested elements can be padded independently.
     >>> elements = [([1, 2, 3], [10]),
     ...             ([4, 5], [11, 12])]
@@ -1449,12 +1449,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
-      padded_shapes: A nested structure of `tf.TensorShape` or `tf.int64` vector
-        tensor-like objects representing the shape to which the respective
-        component of each input element should be padded prior to batching. Any
-        unknown dimensions (e.g. `tf.compat.v1.Dimension(None)` in a
-        `tf.TensorShape` or `-1` in a tensor-like object) will be padded to the
-        maximum size of that dimension in each batch.
+      padded_shapes: (Optional.) A nested structure of `tf.TensorShape` or
+        `tf.int64` vector tensor-like objects representing the shape to which
+        the respective component of each input element should be padded prior
+        to batching. Any unknown dimensions (e.g. `tf.compat.v1.Dimension(None)`
+        in a `tf.TensorShape` or `-1` in a tensor-like object) will be padded to
+        the maximum size of that dimension in each batch. If unset all
+        dimensions of all components are padded to the maximum size in the
+        batch. `padded_shapes` must be set if any component has an unknown rank.
       padding_values: (Optional.) A nested structure of scalar-shaped
         `tf.Tensor`, representing the padding values to use for the respective
         components. None represents that the nested structure should be padded
@@ -1467,7 +1469,19 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Returns:
       Dataset: A `Dataset`.
+
+    Raises:
+      ValueError: If a component has an unknown rank, and  the `padded_shapes`
+        argument is not set.
     """
+    if padded_shapes is None:
+      padded_shapes = get_legacy_output_shapes(self)
+      # A `tf.TensorShape` only is only falsey if its *rank* is unknown:
+      # bool(tf.TensorShape(None)) is False
+      if not all(nest.flatten(padded_shapes)):
+        raise ValueError("You must set the `padded_shapes` argument to "
+                         "`Dataset.padded_batch` if any component of its input"
+                         "has an unknown rank")
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values,
                               drop_remainder)
 
@@ -1645,16 +1659,16 @@ name=None))
     ...     lambda x: Dataset.from_tensors(x).repeat(6),
     ...     cycle_length=2, block_length=4)
     >>> list(dataset.as_numpy_iterator())
-    [1, 1, 1, 1, \
-2, 2, 2, 2, \
-1, 1, \
-2, 2, \
-3, 3, 3, 3, \
-4, 4, 4, 4, \
-3, 3, \
-4, 4, \
-5, 5, 5, 5, \
-5, 5]
+    [1, 1, 1, 1,
+     2, 2, 2, 2,
+     1, 1,
+     2, 2,
+     3, 3, 3, 3,
+     4, 4, 4, 4,
+     3, 3,
+     4, 4,
+     5, 5, 5, 5,
+     5, 5]
 
     NOTE: The order of elements yielded by this transformation is
     deterministic, as long as `map_func` is a pure function. If
@@ -2282,7 +2296,7 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.padded_batch)
   def padded_batch(self,
                    batch_size,
-                   padded_shapes,
+                   padded_shapes=None,
                    padding_values=None,
                    drop_remainder=False):
     return DatasetV1Adapter(super(DatasetV1, self).padded_batch(
@@ -4303,3 +4317,63 @@ class _UnbatchDataset(UnaryDataset):
   @property
   def element_spec(self):
     return self._structure
+
+
+def _collect_resource_inputs(op):
+  """Collects resource inputs for the given ops (and its variant inputs)."""
+
+  def _process(op_queue, seen_ops):
+    """Processes the next element of the op queue."""
+
+    result = []
+    op = op_queue.pop()
+    if op in seen_ops:
+      return result
+    seen_ops.add(op)
+    for t in op.inputs:
+      if t.dtype == dtypes.variant:
+        # Conservatively assume that any variant inputs are datasets.
+        op_queue.append(t.op)
+      elif t.dtype == dtypes.resource:
+        result.append(t)
+    return result
+
+  op_queue = [op]
+  seen_ops = set()
+  resource_inputs = []
+  while op_queue:
+    resource_inputs.extend(_process(op_queue, seen_ops))
+
+  return resource_inputs
+
+
+@auto_control_deps.register_acd_resource_resolver
+def _resource_resolver(op, resource_inputs):
+  """Updates resource inputs for tf.data ops with indirect dependencies."""
+
+  updated = False
+  if op.type in [
+      "DatasetToSingleElement", "DatasetToTFRecord", "ReduceDataset"
+  ]:
+    indirect_resource_inputs = _collect_resource_inputs(op)
+    for inp in indirect_resource_inputs:
+      if inp not in resource_inputs:
+        updated = True
+        resource_inputs.add(inp)
+
+  if op.type in [
+      "IteratorGetNext", "IteratorGetNextSync", "IteratorGetNextAsOptional"
+  ]:
+    iterator_resource = op.inputs[0]
+    make_iterator_ops = [
+        op for op in iterator_resource.consumers() if op.type == "MakeIterator"
+    ]
+
+    if len(make_iterator_ops) == 1:
+      indirect_resource_inputs = _collect_resource_inputs(make_iterator_ops[0])
+      for inp in indirect_resource_inputs:
+        if inp not in resource_inputs:
+          updated = True
+          resource_inputs.add(inp)
+
+  return updated

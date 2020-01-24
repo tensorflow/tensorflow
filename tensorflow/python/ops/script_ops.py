@@ -449,6 +449,11 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func, inp=inp, Tout=Tout, eager=True, name=name)
+
   return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
 
 
@@ -509,7 +514,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
   if context.executing_eagerly():
-    result = func(*[x.numpy() for x in inp])
+    result = func(*[np.array(x) for x in inp])
     result = nest.flatten(result)
 
     result = [x if x is None else ops.convert_to_tensor(x) for x in result]
@@ -517,6 +522,16 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
       # Mimic the automatic unwrapping in graph-mode py_func
       result, = result
     return result
+
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func,
+          inp=inp,
+          Tout=Tout,
+          stateful=stateful,
+          eager=False,
+          name=name)
 
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)

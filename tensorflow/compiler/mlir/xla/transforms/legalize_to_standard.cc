@@ -16,10 +16,10 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -47,8 +47,8 @@ struct CompareIConvert : public RewritePattern {
 
     auto lhs = compare_op.lhs();
     auto rhs = compare_op.rhs();
-    auto lhs_type = lhs->getType().cast<TensorType>();
-    auto rhs_type = rhs->getType().cast<TensorType>();
+    auto lhs_type = lhs.getType().cast<TensorType>();
+    auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
     if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
@@ -86,8 +86,8 @@ struct CompareFConvert : public RewritePattern {
 
     auto lhs = compare_op.lhs();
     auto rhs = compare_op.rhs();
-    auto lhs_type = lhs->getType().cast<TensorType>();
-    auto rhs_type = rhs->getType().cast<TensorType>();
+    auto lhs_type = lhs.getType().cast<TensorType>();
+    auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
     if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();

@@ -164,23 +164,6 @@ class SaveTest(test.TestCase):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
     save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
-  def test_captured_symbolic_tensor_exception(self):
-    root = module.Module()
-    symbolic_tensor = []
-
-    @def_function.function
-    def captured_intermediate(x):
-      symbolic_tensor.append(math_ops.add(x, x, name="a_tensor"))
-      return symbolic_tensor[-1] * 2
-
-    captured_intermediate(constant_op.constant(1.))
-
-    root.f = def_function.function(lambda: symbolic_tensor[-1],
-                                   input_signature=[])
-    with self.assertRaisesRegexp(ValueError, "a_tensor"):
-      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
-                signatures=root.f)
-
   def test_unsaveable_func_graph(self):
     root = module.Module()
 
@@ -552,6 +535,24 @@ class SavingOptionsTest(test.TestCase):
     debug_info_file_name = os.path.join(save_dir, "debug",
                                         "saved_model_debug_info.pb")
     self.assertFalse(os.path.exists(debug_info_file_name))
+
+  def test_function_aliases(self):
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.f(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    function_cache = list(root.f._stateful_fn._function_cache.all_values())
+    function_aliases = loader_impl.parse_saved_model(
+        save_dir).meta_graphs[0].meta_info_def.function_aliases
+    self.assertLen(function_cache, 1)
+    self.assertEqual(function_cache[0].name.decode("utf-8"),
+                     list(function_aliases.keys())[0])
 
 
 class AssetTests(test.TestCase):

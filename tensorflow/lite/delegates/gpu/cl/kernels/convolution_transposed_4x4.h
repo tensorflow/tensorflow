@@ -38,6 +38,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
  public:
   ConvolutionTransposed4x4() = default;
   Status AddToQueue(CLCommandQueue* queue) override;
+  Status Tune(const TuningParameters& params) override;
   Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -46,8 +47,15 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   ConvolutionTransposed4x4(const ConvolutionTransposed4x4&) = delete;
   ConvolutionTransposed4x4& operator=(const ConvolutionTransposed4x4&) = delete;
 
+  enum class WeightsUploadType {
+    LOCAL_MEM_ASYNC,
+    LOCAL_MEM_BY_THREADS,
+    GLOBAL_MEM,
+  };
+
  private:
-  explicit ConvolutionTransposed4x4(const OperationDef& definition);
+  ConvolutionTransposed4x4(const OperationDef& definition,
+                           const CLDevice& device);
   friend Status CreateConvolutionTransposed4x4(
       const CreationContext& creation_context, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr,
@@ -64,6 +72,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   int3 GetGridSize() const;
 
   Buffer weights_;
+  WeightsUploadType weights_upload_type_;
   LinearStorage biases_;
 
   CLKernel kernel_;

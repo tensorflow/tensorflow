@@ -21,7 +21,7 @@ from __future__ import print_function
 import os
 
 import numpy as np
-from six import PY3
+from six import PY2
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
@@ -209,10 +209,10 @@ def evaluate_frozen_graph(filename, input_arrays, output_arrays):
     graph_def.ParseFromString(file_content)
   except (_text_format.ParseError, DecodeError):
     if not isinstance(file_content, str):
-      if PY3:
-        file_content = file_content.decode("utf-8")
-      else:
+      if PY2:
         file_content = file_content.encode("utf-8")
+      else:
+        file_content = file_content.decode("utf-8")
     _text_format.Merge(file_content, graph_def)
 
   graph = ops.Graph()

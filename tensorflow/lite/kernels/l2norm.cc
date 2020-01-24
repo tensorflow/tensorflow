@@ -74,13 +74,27 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
+  // TODO(b/143912164): instead of hardcode the epsilon here, we should read it
+  // from tensorflow, i.e., adding a params.
+  // We don't compute epsilon for quantized kernel:
+  //
+  // epsilon_float = (epsilon_quant - zp) * scale
+  // so
+  // espsilon_quant = epsilon_float / scale + zp
+  // We know epsilon_float is just a very small number to avoid division by
+  // zero error, and scale is > 1, so the integer value of epsilon for quant
+  // is just dominated by the zero point.
+  // Also, GetInvSqrtQuantizedMultiplierExp handles the scenario where the sum
+  // of input value squared is zero case well.
+  // So we don't even need to do handle the epsilon for quantized kernel case.
+  const float epsilon = 1e-6f;
   if (output->type == kTfLiteFloat32) {
 #define TF_LITE_L2NORM(type)                                                 \
   tflite::L2NormalizationParams op_params;                                   \
   op_params.input_zero_point = 0;                                            \
   type::L2Normalization(op_params, GetTensorShape(input),                    \
                         GetTensorData<float>(input), GetTensorShape(output), \
-                        GetTensorData<float>(output))
+                        GetTensorData<float>(output), epsilon)
 
     if (kernel_type == kReference) {
       TF_LITE_L2NORM(reference_ops);

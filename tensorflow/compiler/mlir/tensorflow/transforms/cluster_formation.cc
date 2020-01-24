@@ -20,13 +20,13 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -68,11 +68,11 @@ StringRef GetDevice(Operation* op) {
 // re-ordered but forming clusters of non-continuous ops is effectively
 // re-ordering them..
 bool CanMergeIntoCluster(const Cluster& c, Operation* to_merge) {
-  return llvm::all_of(to_merge->getOperands(), [&](ValuePtr operand) {
+  return llvm::all_of(to_merge->getOperands(), [&](Value operand) {
     // Block arguments.
-    if (operand->isa<BlockArgument>()) return true;
+    if (operand.isa<BlockArgument>()) return true;
 
-    Operation* defining_op = operand->getDefiningOp();
+    Operation* defining_op = operand.getDefiningOp();
 
     // Operand produced by other islands.
     if (defining_op->getBlock() != c.ops.front()->getBlock()) return true;
@@ -95,12 +95,12 @@ bool CanMergeIntoCluster(const Cluster& c, Operation* to_merge) {
   });
 }
 
-void ReplaceLiveOutExternalUses(llvm::ArrayRef<ValuePtr> live_outs,
+void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value> live_outs,
                                 tf_device::LaunchOp launch_op) {
   Region* launch_op_region = &launch_op.body();
   for (const auto& p : llvm::zip(live_outs, launch_op.getResults())) {
-    ValuePtr from = std::get<0>(p);
-    for (auto& use : from->getUses()) {
+    Value from = std::get<0>(p);
+    for (auto& use : from.getUses()) {
       if (launch_op_region->isAncestor(use.getOwner()->getParentRegion()))
         continue;
       use.set(std::get<1>(p));
@@ -109,14 +109,14 @@ void ReplaceLiveOutExternalUses(llvm::ArrayRef<ValuePtr> live_outs,
 }
 
 // Get all escaped live-out values of a region.
-void GetLiveOuts(Region* region, llvm::SmallVectorImpl<ValuePtr>* live_outs) {
+void GetLiveOuts(Region* region, llvm::SmallVectorImpl<Value>* live_outs) {
   live_outs->clear();
 
   for (Operation& op : region->front()) {
-    for (ValuePtr v : op.getResults()) {
+    for (Value v : op.getResults()) {
       // A value is live-out if any of its users are not inside value producer's
       // region.
-      bool is_live_out = llvm::any_of(v->getUsers(), [&](Operation* user) {
+      bool is_live_out = llvm::any_of(v.getUsers(), [&](Operation* user) {
         return !region->isAncestor(user->getParentRegion());
       });
 
@@ -145,7 +145,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
 
   // Get all escaped live-out values of region, they are used later to determine
   // return values and types of launch op.
-  llvm::SmallVector<ValuePtr, 4> live_outs;
+  llvm::SmallVector<Value, 4> live_outs;
   GetLiveOuts(&region, &live_outs);
 
   // Build a `tf_device.return` op at end of region, with all live-out values
@@ -157,8 +157,8 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
 
   llvm::SmallVector<Type, 4> live_out_types;
   live_out_types.reserve(live_outs.size());
-  for (ValuePtr v : live_outs) {
-    live_out_types.emplace_back(v->getType());
+  for (Value v : live_outs) {
+    live_out_types.emplace_back(v.getType());
   }
 
   tf_device::LaunchOp launch_op = builder->create<tf_device::LaunchOp>(

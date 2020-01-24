@@ -334,6 +334,9 @@ struct SelectV2OptionsT;
 struct DensifyOptions;
 struct DensifyOptionsT;
 
+struct SegmentSumOptions;
+struct SegmentSumOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -645,11 +648,12 @@ enum BuiltinOperator {
   BuiltinOperator_SCATTER_ND = 122,
   BuiltinOperator_SELECT_V2 = 123,
   BuiltinOperator_DENSIFY = 124,
+  BuiltinOperator_SEGMENT_SUM = 125,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_DENSIFY
+  BuiltinOperator_MAX = BuiltinOperator_SEGMENT_SUM
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[125] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[126] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -775,7 +779,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[125] {
     BuiltinOperator_NON_MAX_SUPPRESSION_V5,
     BuiltinOperator_SCATTER_ND,
     BuiltinOperator_SELECT_V2,
-    BuiltinOperator_DENSIFY
+    BuiltinOperator_DENSIFY,
+    BuiltinOperator_SEGMENT_SUM
   };
   return values;
 }
@@ -907,13 +912,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "SCATTER_ND",
     "SELECT_V2",
     "DENSIFY",
+    "SEGMENT_SUM",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (e < BuiltinOperator_ADD || e > BuiltinOperator_DENSIFY) return "";
+  if (e < BuiltinOperator_ADD || e > BuiltinOperator_SEGMENT_SUM) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1019,11 +1025,12 @@ enum BuiltinOptions {
   BuiltinOptions_ScatterNdOptions = 97,
   BuiltinOptions_SelectV2Options = 98,
   BuiltinOptions_DensifyOptions = 99,
+  BuiltinOptions_SegmentSumOptions = 100,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_DensifyOptions
+  BuiltinOptions_MAX = BuiltinOptions_SegmentSumOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[100] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[101] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1124,7 +1131,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[100] {
     BuiltinOptions_NonMaxSuppressionV5Options,
     BuiltinOptions_ScatterNdOptions,
     BuiltinOptions_SelectV2Options,
-    BuiltinOptions_DensifyOptions
+    BuiltinOptions_DensifyOptions,
+    BuiltinOptions_SegmentSumOptions
   };
   return values;
 }
@@ -1231,13 +1239,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "ScatterNdOptions",
     "SelectV2Options",
     "DensifyOptions",
+    "SegmentSumOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (e < BuiltinOptions_NONE || e > BuiltinOptions_DensifyOptions) return "";
+  if (e < BuiltinOptions_NONE || e > BuiltinOptions_SegmentSumOptions) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1640,6 +1649,10 @@ template<> struct BuiltinOptionsTraits<SelectV2Options> {
 
 template<> struct BuiltinOptionsTraits<DensifyOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_DensifyOptions;
+};
+
+template<> struct BuiltinOptionsTraits<SegmentSumOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SegmentSumOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2465,6 +2478,14 @@ struct BuiltinOptionsUnion {
   const DensifyOptionsT *AsDensifyOptions() const {
     return type == BuiltinOptions_DensifyOptions ?
       reinterpret_cast<const DensifyOptionsT *>(value) : nullptr;
+  }
+  SegmentSumOptionsT *AsSegmentSumOptions() {
+    return type == BuiltinOptions_SegmentSumOptions ?
+      reinterpret_cast<SegmentSumOptionsT *>(value) : nullptr;
+  }
+  const SegmentSumOptionsT *AsSegmentSumOptions() const {
+    return type == BuiltinOptions_SegmentSumOptions ?
+      reinterpret_cast<const SegmentSumOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4792,22 +4813,29 @@ flatbuffers::Offset<BidirectionalSequenceLSTMOptions> CreateBidirectionalSequenc
 struct ResizeBilinearOptionsT : public flatbuffers::NativeTable {
   typedef ResizeBilinearOptions TableType;
   bool align_corners;
+  bool half_pixel_centers;
   ResizeBilinearOptionsT()
-      : align_corners(false) {
+      : align_corners(false),
+        half_pixel_centers(false) {
   }
 };
 
 struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ResizeBilinearOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_ALIGN_CORNERS = 8
+    VT_ALIGN_CORNERS = 8,
+    VT_HALF_PIXEL_CENTERS = 10
   };
   bool align_corners() const {
     return GetField<uint8_t>(VT_ALIGN_CORNERS, 0) != 0;
   }
+  bool half_pixel_centers() const {
+    return GetField<uint8_t>(VT_HALF_PIXEL_CENTERS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
+           VerifyField<uint8_t>(verifier, VT_HALF_PIXEL_CENTERS) &&
            verifier.EndTable();
   }
   ResizeBilinearOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4820,6 +4848,9 @@ struct ResizeBilinearOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_align_corners(bool align_corners) {
     fbb_.AddElement<uint8_t>(ResizeBilinearOptions::VT_ALIGN_CORNERS, static_cast<uint8_t>(align_corners), 0);
+  }
+  void add_half_pixel_centers(bool half_pixel_centers) {
+    fbb_.AddElement<uint8_t>(ResizeBilinearOptions::VT_HALF_PIXEL_CENTERS, static_cast<uint8_t>(half_pixel_centers), 0);
   }
   explicit ResizeBilinearOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -4835,8 +4866,10 @@ struct ResizeBilinearOptionsBuilder {
 
 inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    bool align_corners = false) {
+    bool align_corners = false,
+    bool half_pixel_centers = false) {
   ResizeBilinearOptionsBuilder builder_(_fbb);
+  builder_.add_half_pixel_centers(half_pixel_centers);
   builder_.add_align_corners(align_corners);
   return builder_.Finish();
 }
@@ -8659,6 +8692,46 @@ inline flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(
 
 flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(flatbuffers::FlatBufferBuilder &_fbb, const DensifyOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SegmentSumOptionsT : public flatbuffers::NativeTable {
+  typedef SegmentSumOptions TableType;
+  SegmentSumOptionsT() {
+  }
+};
+
+struct SegmentSumOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SegmentSumOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  SegmentSumOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SegmentSumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SegmentSumOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SegmentSumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SegmentSumOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit SegmentSumOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SegmentSumOptionsBuilder &operator=(const SegmentSumOptionsBuilder &);
+  flatbuffers::Offset<SegmentSumOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SegmentSumOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SegmentSumOptions> CreateSegmentSumOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  SegmentSumOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SegmentSumOptions> CreateSegmentSumOptions(flatbuffers::FlatBufferBuilder &_fbb, const SegmentSumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -9092,6 +9165,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const DensifyOptions *builtin_options_as_DensifyOptions() const {
     return builtin_options_type() == BuiltinOptions_DensifyOptions ? static_cast<const DensifyOptions *>(builtin_options()) : nullptr;
   }
+  const SegmentSumOptions *builtin_options_as_SegmentSumOptions() const {
+    return builtin_options_type() == BuiltinOptions_SegmentSumOptions ? static_cast<const SegmentSumOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -9522,6 +9598,10 @@ template<> inline const SelectV2Options *Operator::builtin_options_as<SelectV2Op
 
 template<> inline const DensifyOptions *Operator::builtin_options_as<DensifyOptions>() const {
   return builtin_options_as_DensifyOptions();
+}
+
+template<> inline const SegmentSumOptions *Operator::builtin_options_as<SegmentSumOptions>() const {
+  return builtin_options_as_SegmentSumOptions();
 }
 
 struct OperatorBuilder {
@@ -10841,6 +10921,7 @@ inline void ResizeBilinearOptions::UnPackTo(ResizeBilinearOptionsT *_o, const fl
   (void)_o;
   (void)_resolver;
   { auto _e = align_corners(); _o->align_corners = _e; };
+  { auto _e = half_pixel_centers(); _o->half_pixel_centers = _e; };
 }
 
 inline flatbuffers::Offset<ResizeBilinearOptions> ResizeBilinearOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -10852,9 +10933,11 @@ inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(fl
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ResizeBilinearOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _align_corners = _o->align_corners;
+  auto _half_pixel_centers = _o->half_pixel_centers;
   return tflite::CreateResizeBilinearOptions(
       _fbb,
-      _align_corners);
+      _align_corners,
+      _half_pixel_centers);
 }
 
 inline ResizeNearestNeighborOptionsT *ResizeNearestNeighborOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -12818,6 +12901,29 @@ inline flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(flatbuffers::Fla
       _fbb);
 }
 
+inline SegmentSumOptionsT *SegmentSumOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SegmentSumOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SegmentSumOptions::UnPackTo(SegmentSumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<SegmentSumOptions> SegmentSumOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SegmentSumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSegmentSumOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SegmentSumOptions> CreateSegmentSumOptions(flatbuffers::FlatBufferBuilder &_fbb, const SegmentSumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SegmentSumOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateSegmentSumOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -13507,6 +13613,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const DensifyOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_SegmentSumOptions: {
+      auto ptr = reinterpret_cast<const SegmentSumOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -13921,6 +14031,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const DensifyOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SegmentSumOptions: {
+      auto ptr = reinterpret_cast<const SegmentSumOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -14323,6 +14437,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const DensifyOptionsT *>(value);
       return CreateDensifyOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_SegmentSumOptions: {
+      auto ptr = reinterpret_cast<const SegmentSumOptionsT *>(value);
+      return CreateSegmentSumOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -14723,6 +14841,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_DensifyOptions: {
       value = new DensifyOptionsT(*reinterpret_cast<DensifyOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SegmentSumOptions: {
+      value = new SegmentSumOptionsT(*reinterpret_cast<SegmentSumOptionsT *>(u.value));
       break;
     }
     default:
@@ -15224,6 +15346,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_DensifyOptions: {
       auto ptr = reinterpret_cast<DensifyOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SegmentSumOptions: {
+      auto ptr = reinterpret_cast<SegmentSumOptionsT *>(value);
       delete ptr;
       break;
     }

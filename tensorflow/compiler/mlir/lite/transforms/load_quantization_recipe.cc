@@ -19,11 +19,11 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -50,13 +50,13 @@ struct LoadQuantizationRecipe : public FunctionPass<LoadQuantizationRecipe> {
 
   // Create LSTM gates with different weights for input, recurrent and
   // cell state, and also the layer normalization parameters.
-  Operation* CreateGate(Location loc, ValuePtr in, ValuePtr in_w, ValuePtr rec,
-                        ValuePtr rec_w,
-                        llvm::Optional<std::pair<ValuePtr, ValuePtr>> cell,
-                        ValuePtr ln_w, ValuePtr ln_bias, OpBuilder* builder);
+  Operation* CreateGate(Location loc, Value in, Value in_w, Value rec,
+                        Value rec_w,
+                        llvm::Optional<std::pair<Value, Value>> cell,
+                        Value ln_w, Value ln_bias, OpBuilder* builder);
 
-  Operation* CreateLayerNorm(Location loc, ValuePtr in, ValuePtr ln_w,
-                             ValuePtr ln_bias, OpBuilder* builder);
+  Operation* CreateLayerNorm(Location loc, Value in, Value ln_w, Value ln_bias,
+                             OpBuilder* builder);
 
   // Add the internal implementation of the LSTM to its regions.
   void LoadForLSTMOp(LSTMOp lstm, OpBuilder* builder);
@@ -71,7 +71,7 @@ struct LoadQuantizationRecipe : public FunctionPass<LoadQuantizationRecipe> {
 
 void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
   Type expressed_type =
-      lstm.input()->getType().cast<ShapedType>().getElementType();
+      lstm.input().getType().cast<ShapedType>().getElementType();
   Type int8_storage_type = builder->getIntegerType(8);
   Type int16_storage_type = builder->getIntegerType(16);
   auto flag = quant::QuantizationFlags::FlagValue::Signed;
@@ -88,13 +88,12 @@ void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
   auto any_int16 = quant::AnyQuantizedType::get(
       flag, int16_storage_type, expressed_type, int16_min, int16_max);
 
-  int8 = any_int8.castFromExpressedType(lstm.input()->getType());
-  int16 = any_int16.castFromExpressedType(lstm.input()->getType());
+  int8 = any_int8.castFromExpressedType(lstm.input().getType());
+  int16 = any_int16.castFromExpressedType(lstm.input().getType());
 }
 
-Operation* LoadQuantizationRecipe::CreateLayerNorm(Location loc, ValuePtr in,
-                                                   ValuePtr ln_w,
-                                                   ValuePtr ln_bias,
+Operation* LoadQuantizationRecipe::CreateLayerNorm(Location loc, Value in,
+                                                   Value ln_w, Value ln_bias,
                                                    OpBuilder* builder) {
   // Note that l2_normalization and add ops here are not the execution kernel
   // implementation for layer_normalization and we just want to use them to
@@ -106,9 +105,9 @@ Operation* LoadQuantizationRecipe::CreateLayerNorm(Location loc, ValuePtr in,
 }
 
 Operation* LoadQuantizationRecipe::CreateGate(
-    Location loc, ValuePtr in, ValuePtr in_w, ValuePtr rec, ValuePtr rec_w,
-    llvm::Optional<std::pair<ValuePtr, ValuePtr>> cell, ValuePtr ln_w,
-    ValuePtr ln_bias, OpBuilder* builder) {
+    Location loc, Value in, Value in_w, Value rec, Value rec_w,
+    llvm::Optional<std::pair<Value, Value>> cell, Value ln_w, Value ln_bias,
+    OpBuilder* builder) {
   auto s1 = builder->create<FullyConnectedOp>(loc, int16, in, in_w, none_cst,
                                               none_af, fc_format, keep_dims);
   auto s2 = builder->create<FullyConnectedOp>(loc, int16, rec, rec_w, none_cst,
@@ -120,13 +119,13 @@ Operation* LoadQuantizationRecipe::CreateGate(
                                      cell.getValue().second, none_af);
     s4 = builder->create<AddNOp>(
         loc, int16,
-        llvm::ArrayRef<ValuePtr>(
+        llvm::ArrayRef<Value>(
             {*s1.output().begin(), *s2.output().begin(), s3.output()}));
 
   } else {
     s4 = builder->create<AddNOp>(
         loc, int16,
-        llvm::ArrayRef<ValuePtr>({*s1.output().begin(), *s2.output().begin()}));
+        llvm::ArrayRef<Value>({*s1.output().begin(), *s2.output().begin()}));
   }
 
   auto s5 = CreateLayerNorm(loc, s4.sum(), ln_w, ln_bias, builder);
@@ -151,14 +150,14 @@ void LoadQuantizationRecipe::LoadForLSTMOp(LSTMOp lstm, OpBuilder* builder) {
   auto input_gate = CreateGate(
       loc, lstm.input(), lstm.input_to_input_weights(),
       lstm.input_activation_state(), lstm.recurrent_to_input_weights(),
-      llvm::Optional<std::pair<ValuePtr, ValuePtr>>(
+      llvm::Optional<std::pair<Value, Value>>(
           {lstm.input_cell_state(), lstm.cell_to_input_weights()}),
       lstm.input_layer_norm_coefficients(), lstm.input_gate_bias(), builder);
 
   auto forget_gate = CreateGate(
       loc, lstm.input(), lstm.input_to_forget_weights(),
       lstm.input_activation_state(), lstm.recurrent_to_forget_weights(),
-      llvm::Optional<std::pair<ValuePtr, ValuePtr>>(
+      llvm::Optional<std::pair<Value, Value>>(
           {lstm.input_cell_state(), lstm.cell_to_forget_weights()}),
       lstm.forget_layer_norm_coefficients(), lstm.forget_gate_bias(), builder);
 
@@ -178,7 +177,7 @@ void LoadQuantizationRecipe::LoadForLSTMOp(LSTMOp lstm, OpBuilder* builder) {
   auto output_gate = CreateGate(
       loc, lstm.input(), lstm.input_to_output_weights(),
       lstm.input_activation_state(), lstm.recurrent_to_output_weights(),
-      llvm::Optional<std::pair<ValuePtr, ValuePtr>>(
+      llvm::Optional<std::pair<Value, Value>>(
           {new_cell, lstm.cell_to_output_weights()}),
       lstm.output_layer_norm_coefficients(), lstm.output_gate_bias(), builder);
 

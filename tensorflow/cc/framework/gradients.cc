@@ -96,7 +96,7 @@ class SymbolicGradientBuilder {
   // Used to identify nodes at which to stop backprop.
   std::unordered_set<int> GetStopBackpropNodes(
       const std::vector<bool>& reachable_nodes,
-      const std::unordered_set<int>& output_nodes);
+      const std::unordered_set<int>& output_nodes) const;
 
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
@@ -190,7 +190,7 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
 
 std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
     const std::vector<bool>& reachable_nodes,
-    const std::unordered_set<int>& output_nodes) {
+    const std::unordered_set<int>& output_nodes) const {
   // Output nodes that get transitively consumed by other `outputs_` are stored
   // in `internal_outputs`.
   std::unordered_set<int> internal_outputs;
@@ -346,8 +346,8 @@ Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
         "Unable to find backprop list for node.id ", src.node()->name());
   }
   const auto& grads = iter->second;
-  // Filter any backproped 'NoGradient' Outputs from 'grads' (if needed).
-  // Return any valid backproped gradients that remain after filtering,
+  // Filter any backpropped 'NoGradient' Outputs from 'grads' (if needed).
+  // Return any valid backpropped gradients that remain after filtering,
   // or 'NoGradient' otherwise.
   std::vector<Output> grads_to_keep;
   for (const Output& o : grads) {
@@ -519,7 +519,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     // Backprop along the in edges.
     // TODO(andydavis) Find cleaner way to map each grad output returned by
     // gradient function to the src node/output to which it should be
-    // backproped. Maybe grad functions can return a vector of Output pairs to
+    // backpropped. Maybe grad functions can return a vector of Output pairs to
     // make this association explicit.
     size_t dx_index = 0;
     for (const Edge* e : n->in_edges()) {

@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import dumping_callback
 from tensorflow.python.debug.lib import dumping_callback_test_lib
 from tensorflow.python.distribute import combinations
@@ -37,40 +38,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import gradient_descent
-
-
-def filter_by_device_name(items, device_names, target_device_name):
-  """Filter a list of items by device name.
-
-  Args:
-    items: A list of items to be filtered according to their corresponding
-      device names.
-    device_names: A list of the device names. Must have the same legnth
-      as `items`.
-    target_device_name: A `str` representing the desired device name.
-
-  Returns:
-    Filtered items from `items`.
-  """
-  assert len(items) == len(device_names)
-  assert all(device_names), "device_names are not all non-empty strings"
-  # Note: we use `endswith` instead of `==` for device-name filtering because
-  # in some cases, the device names from kernel/op execution can have slightly
-  # different values than the device names from
-  # `distribution.extended.worker_devices`.
-  return [items[i] for i, device_name in enumerate(device_names)
-          if device_name.endswith(target_device_name)]
-
-
-def filter_by_device_name_and_op_type(
-    items, device_names, op_types, target_device_name, target_op_type):
-  assert len(items) == len(device_names)
-  assert len(items) == len(op_types)
-  assert all(device_names), "device_names are not all non-empty strings"
-  assert all(op_types), "op_types are not all non-empty strings"
-  return [items[i] for i, device_name in enumerate(device_names)
-          if device_name.endswith(target_device_name)
-          and op_types[i] == target_op_type]
 
 
 class MiniModel(keras.Model):
@@ -176,56 +143,57 @@ class DistributedDumpingCallbackTest(
       writer.FlushNonExecutionFiles()
       writer.FlushExecutionFiles()
 
-    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
-    (context_ids, _,
-     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
-    (op_names, device_names, _,
-     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
-    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
-
     device_name_0 = distribution.extended.worker_devices[0]
     logging.info("device_name_0 = %s", device_name_0)
     if num_devices > 1:
       device_name_1 = distribution.extended.worker_devices[1]
       logging.info("device_name_1 = %s", device_name_1)
 
-    device_0_executed_op_types = filter_by_device_name(
-        executed_op_types, device_names, device_name_0)
-    if num_devices > 1:
-      device_1_executed_op_types = filter_by_device_name(
-          executed_op_types, device_names, device_name_1)
-    # Verify graph-execution traces are available for both devices.
-    # We don't assert MatMul occurs exactly once because the gradient of MatMul
-    # involves MatMul.
-    self.assertIn("MatMul", device_0_executed_op_types)
-    self.assertEqual(device_0_executed_op_types.count("BiasAdd"), 1)
-    if num_devices > 1:
-      self.assertIn("MatMul", device_1_executed_op_types)
-      self.assertEqual(device_1_executed_op_types.count("BiasAdd"), 1)
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      traces = reader.graph_execution_traces()
 
-    if tensor_debug_mode == "NO_TENSOR":
-      for value_list in tensor_values:
-        for tensor_value in value_list:
-          self.assertEqual(tensor_value.dtype, np.float32)
-          self.assertEqual(tensor_value.shape, [])
-    elif tensor_debug_mode == "FULL_TENSOR":
-      device_0_matmul_values = filter_by_device_name_and_op_type(
-          tensor_values, device_names, executed_op_types, device_name_0,
-          "MatMul")
-      device_0_bias_add_values = filter_by_device_name_and_op_type(
-          tensor_values, device_names, executed_op_types, device_name_0,
-          "BiasAdd")
-      self.assertAllClose(device_0_matmul_values[0], [[10.0]])
-      self.assertAllClose(device_0_bias_add_values[0], [[11.0]])
+      # Verify graph-execution traces are available for both devices.
+      # We don't assert MatMul occurs exactly once because the gradient of
+      # MatMul involves MatMul.
+      device_0_executed_op_types = [
+          trace.op_type for trace in traces
+          if trace.device_name.endswith(device_name_0)]
       if num_devices > 1:
-        device_1_matmul_values = filter_by_device_name_and_op_type(
-            tensor_values, device_names, executed_op_types, device_name_1,
-            "MatMul")
-        device_1_bias_add_values = filter_by_device_name_and_op_type(
-            tensor_values, device_names, executed_op_types, device_name_1,
-            "BiasAdd")
-        self.assertAllClose(device_1_matmul_values[0], [[10.0]])
-        self.assertAllClose(device_1_bias_add_values[0], [[11.0]])
+        device_1_executed_op_types = [
+            trace.op_type for trace in traces
+            if trace.device_name.endswith(device_name_1)]
+      self.assertIn("MatMul", device_0_executed_op_types)
+      self.assertEqual(device_0_executed_op_types.count("BiasAdd"), 1)
+      if num_devices > 1:
+        self.assertIn("MatMul", device_1_executed_op_types)
+        self.assertEqual(device_1_executed_op_types.count("BiasAdd"), 1)
+
+      if tensor_debug_mode == "NO_TENSOR":
+        for trace in traces:
+          self.assertIsNone(trace.debug_tensor_value)
+      elif tensor_debug_mode == "FULL_TENSOR":
+        device_0_matmul_values = [
+            reader.graph_execution_trace_to_tensor_value(trace)
+            for trace in traces if trace.op_type == "MatMul" and
+            trace.device_name.endswith(device_name_0)]
+        device_0_bias_add_values = [
+            reader.graph_execution_trace_to_tensor_value(trace)
+            for trace in traces if trace.op_type == "BiasAdd" and
+            trace.device_name.endswith(device_name_0)]
+        self.assertAllClose(device_0_matmul_values[0], [[10.0]])
+        self.assertAllClose(device_0_bias_add_values[0], [[11.0]])
+        if num_devices > 1:
+          device_1_matmul_values = [
+              reader.graph_execution_trace_to_tensor_value(trace)
+              for trace in traces if trace.op_type == "MatMul" and
+              trace.device_name.endswith(device_name_1)]
+          device_1_bias_add_values = [
+              reader.graph_execution_trace_to_tensor_value(trace)
+              for trace in traces if trace.op_type == "BiasAdd" and
+              trace.device_name.endswith(device_name_1)]
+          self.assertAllClose(device_1_matmul_values[0], [[10.0]])
+          self.assertAllClose(device_1_bias_add_values[0], [[11.0]])
 
   @combinations.generate(
       combinations.combine(
@@ -259,78 +227,81 @@ class DistributedDumpingCallbackTest(
       writer.FlushNonExecutionFiles()
       writer.FlushExecutionFiles()
 
-    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
-    (context_ids, _,
-     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
-    (op_names, device_names, _,
-     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      executions = reader.executions()
+      fit_executions = [
+          execution.op_type
+          for execution in executions
+          if "_distributed_function" in execution.op_type
+      ]
+      self.assertLen(fit_executions, epochs)
 
-    # Eager execution of tf.function should be recorded.
-    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
-    fit_functions = [op_type for op_type in executed_op_types
-                     if "_distributed_function" in op_type]
-    self.assertLen(fit_functions, epochs)
-
-    num_devices = len(distribution.extended.worker_devices)
-
-    device_name_0 = distribution.extended.worker_devices[0]
-    logging.info("device_name_0 = %s", device_name_0)
-    if num_devices > 1:
-      device_name_1 = distribution.extended.worker_devices[1]
-      logging.info("device_name_1 = %s", device_name_1)
-
-    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
-    device_0_executed_op_types = filter_by_device_name(
-        executed_op_types, device_names, device_name_0)
-    if num_devices > 1:
-      device_1_executed_op_types = filter_by_device_name(
-          executed_op_types, device_names, device_name_1)
-
-    self.assertIn("MatMul", device_0_executed_op_types)
-    self.assertIn("BiasAdd", device_0_executed_op_types)
-    self.assertIn("Relu", device_0_executed_op_types)
-    self.assertIn("ReluGrad", device_0_executed_op_types)
-    if num_devices > 1:
-      # If there are two devices involved, assert the ops inside tf.functions
-      # are executed and recorded for the equal numbers of times by the
-      # dumping op-callback.
-      self.assertEqual(device_0_executed_op_types.count("MatMul"),
-                       device_1_executed_op_types.count("MatMul"))
-      self.assertEqual(device_0_executed_op_types.count("BiasAdd"),
-                       device_1_executed_op_types.count("BiasAdd"))
-      self.assertEqual(device_0_executed_op_types.count("Relu"),
-                       device_1_executed_op_types.count("Relu"))
-      self.assertEqual(device_0_executed_op_types.count("ReluGrad"),
-                       device_1_executed_op_types.count("ReluGrad"))
-
-    if tensor_debug_mode == "NO_TENSOR":
-      for value_list in tensor_values:
-        for tensor_value in value_list:
-          self.assertEqual(tensor_value.dtype, np.float32)
-          self.assertEqual(tensor_value.shape, [])
-    elif tensor_debug_mode == "FULL_TENSOR":
-      gpu_0_relu_values = filter_by_device_name_and_op_type(
-          tensor_values, device_names, executed_op_types, device_name_0, "Relu")
-      self.assertTrue(gpu_0_relu_values)
-      gpu_0_relu_grad_values = filter_by_device_name_and_op_type(
-          tensor_values, device_names, executed_op_types, device_name_0,
-          "ReluGrad")
-      self.assertTrue(gpu_0_relu_grad_values)
+      traces = reader.graph_execution_traces()
+      num_devices = len(distribution.extended.worker_devices)
+      device_name_0 = distribution.extended.worker_devices[0]
       if num_devices > 1:
-        gpu_1_relu_values = filter_by_device_name_and_op_type(
-            tensor_values, device_names, executed_op_types, device_name_1,
-            "Relu")
-        self.assertTrue(gpu_1_relu_values)
-        for i in range(len(gpu_0_relu_values)):
-          self.assertEqual(gpu_0_relu_values[i].shape,
-                           gpu_1_relu_values[i].shape)
-        gpu_1_relu_grad_values = filter_by_device_name_and_op_type(
-            tensor_values, device_names, executed_op_types, device_name_1,
-            "ReluGrad")
-        self.assertTrue(gpu_1_relu_grad_values)
-        for i in range(len(gpu_0_relu_grad_values)):
-          self.assertEqual(
-              gpu_0_relu_grad_values[i].shape, gpu_1_relu_grad_values[i].shape)
+        device_name_1 = distribution.extended.worker_devices[1]
+      device_0_executed_op_types = [
+          trace.op_type for trace in traces
+          if trace.device_name.endswith(device_name_0)]
+      if num_devices > 1:
+        device_1_executed_op_types = [
+            trace.op_type for trace in traces
+            if trace.device_name.endswith(device_name_1)]
+
+      self.assertIn("MatMul", device_0_executed_op_types)
+      self.assertIn("BiasAdd", device_0_executed_op_types)
+      self.assertIn("Relu", device_0_executed_op_types)
+      self.assertIn("ReluGrad", device_0_executed_op_types)
+      if num_devices > 1:
+        # If there are two devices involved, assert the ops inside tf.functions
+        # are executed and recorded for the equal numbers of times by the
+        # dumping op-callback.
+        self.assertEqual(
+            device_0_executed_op_types.count("MatMul"),
+            device_1_executed_op_types.count("MatMul"))
+        self.assertEqual(
+            device_0_executed_op_types.count("BiasAdd"),
+            device_1_executed_op_types.count("BiasAdd"))
+        self.assertEqual(
+            device_0_executed_op_types.count("Relu"),
+            device_1_executed_op_types.count("Relu"))
+        self.assertEqual(
+            device_0_executed_op_types.count("ReluGrad"),
+            device_1_executed_op_types.count("ReluGrad"))
+
+      if tensor_debug_mode == "NO_TENSOR":
+        for trace in traces:
+          self.assertIsNone(trace.debug_tensor_value)
+      elif tensor_debug_mode == "FULL_TENSOR":
+        gpu_0_relu_values = [
+            reader.graph_execution_trace_to_tensor_value(trace)
+            for trace in traces if trace.op_type == "Relu" and
+            trace.device_name.endswith(device_name_0)]
+        self.assertTrue(gpu_0_relu_values)
+        gpu_0_relu_grad_values = [
+            reader.graph_execution_trace_to_tensor_value(trace)
+            for trace in traces if trace.op_type == "ReluGrad" and
+            trace.device_name.endswith(device_name_0)]
+        self.assertTrue(gpu_0_relu_grad_values)
+        if num_devices > 1:
+          gpu_1_relu_values = [
+              reader.graph_execution_trace_to_tensor_value(trace)
+              for trace in traces if trace.op_type == "Relu" and
+              trace.device_name.endswith(device_name_1)]
+          self.assertTrue(gpu_1_relu_values)
+          for i in range(len(gpu_0_relu_values)):
+            self.assertEqual(gpu_0_relu_values[i].shape,
+                             gpu_1_relu_values[i].shape)
+          gpu_1_relu_grad_values = [
+              reader.graph_execution_trace_to_tensor_value(trace)
+              for trace in traces if trace.op_type == "ReluGrad" and
+              trace.device_name.endswith(device_name_1)]
+          self.assertTrue(gpu_1_relu_grad_values)
+          for i in range(len(gpu_0_relu_grad_values)):
+            self.assertEqual(gpu_0_relu_grad_values[i].shape,
+                             gpu_1_relu_grad_values[i].shape)
 
 
 if __name__ == "__main__":

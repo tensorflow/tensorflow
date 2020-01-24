@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 
+#include <vector>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
@@ -23,6 +25,13 @@ namespace profiler {
 
 // Returns the plane with the given name or nullptr if not found.
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
+
+// Returns all the planes with a given prefix.
+std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
+                                                absl::string_view prefix);
+
+// Returns the plane with the given name, create it if necessary.
+XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name);
 
 }  // namespace profiler
 }  // namespace tensorflow

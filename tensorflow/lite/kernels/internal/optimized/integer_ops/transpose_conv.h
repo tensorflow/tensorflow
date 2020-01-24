@@ -28,7 +28,7 @@ inline void TransposeConvV2(
     const int8_t* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
     int8_t* output_data, const RuntimeShape& col2im_shape, int32_t* col2im_data,
     int32_t* scratch_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConvV2/int8");
+  ruy::profiler::ScopeLabel label("TransposeConvV2/int8");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
   const int batch_size = input_shape.Dims(0);

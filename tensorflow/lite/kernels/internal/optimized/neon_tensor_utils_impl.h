@@ -107,16 +107,6 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
-// Cwise product of two vectors.
-void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                                  int v_size, float* result);
-
-// Cwise product and accumulate of two vectors. Since it's a MAC operation, the
-// assumption here is that result array is initialized to valid values.
-void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
-                                            const float* vector2, int v_size,
-                                            float* result);
-
 // Dot product of two vectors.
 float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
                                  int v_size);

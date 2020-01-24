@@ -35,9 +35,11 @@ def random_batch(batch_size, data_format):
   shape = (batch_size,) + shape
 
   num_classes = 1000
-  images = tf.random_uniform(shape)
-  labels = tf.random_uniform(
-      [batch_size], minval=0, maxval=num_classes, dtype=tf.int32)
+  images = tf.random.uniform(shape)
+  labels = tf.random.uniform([batch_size],
+                             minval=0,
+                             maxval=num_classes,
+                             dtype=tf.int32)
   one_hot = tf.one_hot(labels, num_classes)
 
   return images, one_hot

@@ -17,14 +17,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/AffineMap.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/literal.h"
 
 namespace xla {
 namespace {
 
+using mlir::AffineMap;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
 using mlir::ShapedType;
@@ -39,7 +41,57 @@ template <typename CppType>
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
 }
 
+llvm::SmallVector<AffineMap, 2> GetPermutationIfAvailable(
+    const Shape& shape, mlir::Builder builder) {
+  if (!shape.has_layout() || shape.layout().minor_to_major().empty()) {
+    return {};
+  }
+  llvm::SmallVector<unsigned, 2> permutation;
+  for (auto dim : llvm::reverse(shape.layout().minor_to_major())) {
+    permutation.push_back(dim);
+  }
+  return {AffineMap::getPermutationMap(permutation, builder.getContext())};
+}
+
 }  // namespace
+
+StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
+    const Shape& shape, mlir::Builder builder) {
+  using mlir::MemRefType;
+  auto dimensions = shape.dimensions();
+  llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
+
+  switch (shape.element_type()) {
+    case PrimitiveType::PRED: {
+      return MemRefType::get(array, builder.getI1Type(),
+                             GetPermutationIfAvailable(shape, builder));
+      case PrimitiveType::F16:
+        return MemRefType::get(array, builder.getF16Type(),
+                               GetPermutationIfAvailable(shape, builder));
+      case PrimitiveType::F32:
+        return MemRefType::get(array, builder.getF32Type(),
+                               GetPermutationIfAvailable(shape, builder));
+      case PrimitiveType::F64:
+        return MemRefType::get(array, builder.getF64Type(),
+                               GetPermutationIfAvailable(shape, builder));
+      case PrimitiveType::S8:
+        return MemRefType::get(array, builder.getIntegerType(8),
+                               GetPermutationIfAvailable(shape, builder));
+      case PrimitiveType::S16:
+        return MemRefType::get(array, builder.getIntegerType(16),
+                               GetPermutationIfAvailable(shape, builder));
+      case PrimitiveType::S32:
+        return MemRefType::get(array, builder.getIntegerType(32),
+                               GetPermutationIfAvailable(shape, builder));
+      case PrimitiveType::S64:
+        return MemRefType::get(array, builder.getIntegerType(64),
+                               GetPermutationIfAvailable(shape, builder));
+      default:
+        return tensorflow::errors::Internal(absl::StrCat(
+            "Unsupported type: ", PrimitiveType_Name(shape.element_type())));
+    }
+  }
+}
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const Literal& literal, Builder builder) {

@@ -398,7 +398,10 @@ class Network(base_layer.Layer):
   @property
   def _layer_checkpoint_dependencies(self):
     """Dictionary of layer dependencies to be included in the checkpoint."""
-    if not self._is_graph_network and base_layer_utils.is_subclassed(self):
+    # Use getattr becuase this function can be called from __setattr__, at which
+    # point the _is_graph_network attribute has not been created.
+    if (not getattr(self, '_is_graph_network', False) and
+        base_layer_utils.is_subclassed(self)):
       return {}  # Only add layer dependencies for graph networks
 
     weight_layer_index = 0
@@ -961,18 +964,7 @@ class Network(base_layer.Layer):
         config, custom_objects)
     model = cls(inputs=input_tensors, outputs=output_tensors,
                 name=config.get('name'))
-
-    # Layers not connected to outputs, such as those added in `add_loss`.
-    ancillary_layers = [
-        layer for layer in created_layers.values() if layer not in model.layers
-    ]
-    if ancillary_layers:
-      relevant_nodes = nest.flatten([
-          layer.inbound_nodes[1:]
-          if _should_skip_first_node(layer) else layer.inbound_nodes
-          for layer in created_layers.values()
-      ])
-      model._insert_layers(ancillary_layers, relevant_nodes)
+    connect_ancillary_layers(model, created_layers)
     return model
 
   def save(self,
@@ -1000,6 +992,11 @@ class Network(base_layer.Layer):
     Models built with the Sequential and Functional API can be saved to both the
     HDF5 and SavedModel formats. Subclassed models can only be saved with the
     SavedModel format.
+
+    Note that the model weights may have different scoped names after being
+    loaded. Scoped names include the model/layer names, such as
+    "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+     access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
         filepath: String, path to SavedModel or H5 file to save the model.
@@ -1504,7 +1501,8 @@ class Network(base_layer.Layer):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [symbolic_loss])
     # Losses must be keyed on inputs no matter what in order to be supported in
     # DistributionStrategy.
-    add_loss_layer = base_layer.AddLoss(unconditional=False)
+    add_loss_layer = base_layer.AddLoss(
+        unconditional=False, dtype=symbolic_loss.dtype)
     add_loss_layer(symbolic_loss)
     new_nodes.extend(add_loss_layer.inbound_nodes)
     new_layers.append(add_loss_layer)
@@ -1512,7 +1510,8 @@ class Network(base_layer.Layer):
 
   def _graph_network_add_metric(self, value, aggregation, name):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [value])
-    add_metric_layer = base_layer.AddMetric(aggregation, name)
+    add_metric_layer = base_layer.AddMetric(
+        aggregation, name, dtype=value.dtype)
     add_metric_layer(value)
     new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
@@ -1727,7 +1726,7 @@ def _map_subgraph_network(inputs, outputs):
     A tuple of List{Node] and List[Layer].
   """
   base_layer_utils.create_keras_history(outputs)
-  # Keep only nodes and layers in the topology betweeen inputs and outputs.
+  # Keep only nodes and layers in the topology between inputs and outputs.
   _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
   return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers
 
@@ -1786,6 +1785,22 @@ def _deserialize_keras_tensors(kwargs, layer_map):
 
   kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
   return nest.map_structure(_deserialize_keras_tensor, kwargs)
+
+
+def connect_ancillary_layers(model, created_layers):
+  """Adds layers that are not connected to the outputs to the model."""
+  # Layers not connected to outputs, such as those added in `add_loss`.
+  ancillary_layers = [
+      layer for layer in created_layers.values() if layer not in model.layers
+  ]
+  if ancillary_layers:
+    relevant_nodes = nest.flatten([
+        layer.inbound_nodes[1:]
+        if _should_skip_first_node(layer) else layer.inbound_nodes
+        for layer in created_layers.values()
+    ])
+    model._insert_layers(ancillary_layers, relevant_nodes)
+  return model
 
 
 def reconstruct_from_config(config, custom_objects=None, created_layers=None):

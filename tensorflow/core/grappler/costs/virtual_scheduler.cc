@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -27,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -37,7 +37,6 @@ namespace grappler {
 
 namespace {
 
-using ::absl::StrCat;
 using ::tensorflow::strings::HumanReadableNumBytes;
 
 constexpr char kAttrInputSrc[] = "input_source_";
@@ -606,15 +605,15 @@ string VirtualScheduler::DeviceName(const NodeDef* node) const {
 string VirtualScheduler::SanitizedDeviceName(const NodeDef* node) const {
   // Replace the ":" characters that may be present in the device name with "_".
   // This makes it possible to then use the resulting string in a node name.
-  return str_util::StringReplace(placer_->get_canonical_device_name(*node), ":",
-                                 "_", true);
+  return absl::StrReplaceAll(placer_->get_canonical_device_name(*node),
+                             {{":", "_"}});
 }
 
 string VirtualScheduler::ChannelDeviceName(const NodeDef* from,
                                            const NodeDef* to) const {
   CHECK(!initialized_) << "ChannelDeviceName is called after Init().";
-  return StrCat(kChannelDevice, "_from_", SanitizedDeviceName(from), "_to_",
-                SanitizedDeviceName(to));
+  return absl::StrCat(kChannelDevice, "_from_", SanitizedDeviceName(from),
+                      "_to_", SanitizedDeviceName(to));
 }
 
 std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
@@ -636,9 +635,9 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   auto input_node_port_num = NodePosition(input_name);
   string src_name;
   if (input_node_port_num >= 0) {
-    src_name = StrCat(from->name(), "_", input_node_port_num);
+    src_name = absl::StrCat(from->name(), "_", input_node_port_num);
   } else {
-    src_name = StrCat(from->name(), "_minus1");
+    src_name = absl::StrCat(from->name(), "_minus1");
   }
 
   // _Send op.
@@ -826,8 +825,10 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
                                    ? 1
                                    : node->attr().at(kExecutionCount).i();
 
-  Costs total_node_costs =
-      MultiplyCosts(node_costs, node_state.execution_count);
+  node_state.node_costs = node_costs;
+  // TotalNodeCosts() Should be called after node_costs and execution_count.
+  Costs total_node_costs = node_state.TotalNodeCosts();
+
   graph_costs_ = CombineCosts(graph_costs_, total_node_costs);
   const string& op_name = node->op();
 
@@ -965,11 +966,10 @@ Costs VirtualScheduler::Summary() const {
         op_cost_pair.second.intermediate_memory_time.count();
     const bool is_op_cost_accurate = !op_cost_pair.second.inaccurate;
     if (cost) {  // Skip printing out zero-cost ops.
-      VLOG(1) << strings::Printf(
-          " + %30s : %c %10lld / %10lld / %10lld / %10lld", op.c_str(),
-          (is_op_cost_accurate ? ' ' : '~'), static_cast<int64>(cost),
-          static_cast<int64>(compute_cost), static_cast<int64>(memory_cost),
-          static_cast<int64>(intermediate_memory_cost));
+      VLOG(1) << absl::StrFormat(" + %30s : %c %10d / %10d / %10d / %10d", op,
+                                 (is_op_cost_accurate ? ' ' : '~'), cost,
+                                 compute_cost, memory_cost,
+                                 intermediate_memory_cost);
     }
   }
 
@@ -1070,13 +1070,10 @@ Costs VirtualScheduler::Summary() const {
                                : 0.0;
       if (cost || mem_usage_percent > 1.0) {
         // Print out only non-zero cost ops or ops with > 1% memory usage.
-        VLOG(1) << strings::Printf(
-                       " + %30s : %c %10lld / %10lld / %10lld / %10lld",
-                       op.c_str(), (is_op_cost_accurate ? ' ' : '~'),
-                       static_cast<int64>(cost),
-                       static_cast<int64>(compute_cost),
-                       static_cast<int64>(memory_cost),
-                       static_cast<int64>(intermediate_memory_cost))
+        VLOG(1) << absl::StrFormat(
+                       " + %30s : %c %10d / %10d / %10d / %10d", op.c_str(),
+                       (is_op_cost_accurate ? ' ' : '~'), cost, compute_cost,
+                       memory_cost, intermediate_memory_cost)
                 << " (" << HumanReadableNumBytes(op_mem_usage) << " ["
                 << mem_usage_percent << "%] "
                 << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");

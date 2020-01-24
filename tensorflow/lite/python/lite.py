@@ -24,7 +24,7 @@ import warnings
 
 from absl import logging
 import six
-from six import PY3
+from six import PY2
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
@@ -178,10 +178,21 @@ class TFLiteConverterBase(object):
     # in the `GraphDef` to the converter.
     self._debug_info = None
 
-  def _grappler_config(self):
+  def _grappler_config(self, optimizers=None):
+    """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
+
+    Args:
+      optimizers: List of strings that represents the list of optimizers.
+
+    Returns:
+      tf.ConfigProto.
+    """
+    if not optimizers:
+      optimizers = []
+    optimizers.append("constfold")
+
     is_only_flex_enabled = (
         set([OpsSet.SELECT_TF_OPS]) == set(self.target_spec.supported_ops))
-    optimizers = ["constfold"]
     if is_only_flex_enabled:
       # The layout optimizer turns NHCW to NCHW. This provides performance
       # optimizations when Flex mode is enabled. However, this is not compatible
@@ -727,10 +738,10 @@ class TFLiteConverter(TFLiteConverterBase):
             print("Ignore 'tcmalloc: large alloc' warnings.")
 
             if not isinstance(file_content, str):
-              if PY3:
-                file_content = six.ensure_text(file_content, "utf-8")
-              else:
+              if PY2:
                 file_content = six.ensure_binary(file_content, "utf-8")
+              else:
+                file_content = six.ensure_text(file_content, "utf-8")
             graph_def = _graph_pb2.GraphDef()
             _text_format.Merge(file_content, graph_def)
           except (_text_format.ParseError, DecodeError):
@@ -1005,11 +1016,13 @@ class TFLiteConverter(TFLiteConverterBase):
         (self.inference_type == constants.INT8 and
          (post_training_optimize or weight_only_quantize))):
       try:
+        # Run function inlining optimization to ensure any models generated
+        # through the from_frozen_graph path have been inlined.
         optimized_graph = _run_graph_optimizations(
             self._graph_def,
             self._input_tensors,
             self._output_tensors,
-            config=self._grappler_config())
+            config=self._grappler_config(["function"]))
       except Exception:
         optimized_graph = self._graph_def
 

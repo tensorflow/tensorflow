@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
@@ -47,16 +47,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/kernels:op_macros",
     ],
-)
-
-cc_library(
-    name = "scoped_profiling_label_wrapper",
-    hdrs = ["scoped_profiling_label_wrapper.h"],
-    copts = tflite_copts(),
-    deps = select({
-        "//tensorflow/lite:gemmlowp_profiling": ["@gemmlowp//:profiler"],
-        "//conditions:default": [],
-    }),
 )
 
 cc_library(
@@ -256,7 +246,7 @@ cc_library(
         ":transpose_utils",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -308,6 +298,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -362,7 +353,7 @@ cc_library(
     name = "quantization_util",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
-    copts = tflite_copts(),
+    copts = tflite_copts() + micro_copts(),
     deps = [
         ":compatibility",
         ":round",
@@ -475,11 +466,12 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
-        ":scoped_profiling_label_wrapper",
         "@gemmlowp//:fixedpoint",
         "//third_party/eigen3",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -533,7 +525,6 @@ cc_library(
         ":compatibility",
         ":quantization_util",
         ":round",
-        ":scoped_profiling_label_wrapper",
         ":strided_slice_logic",
         ":legacy_types",
         ":tensor",
@@ -542,6 +533,8 @@ cc_library(
         "@gemmlowp",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -654,7 +647,7 @@ cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
-    copts = tflite_copts(),
+    copts = tflite_copts() + micro_copts(),
     deps = [
         ":tensor_utils",
         "//tensorflow/lite/c:common",

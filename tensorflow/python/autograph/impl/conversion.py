@@ -599,7 +599,9 @@ def convert_class_to_ast(c, program_ctx):
     renames[qual_names.QN(base.__name__)] = qual_names.QN(alias)
 
   # Generate the definition of the converted class.
-  bases = [gast.Name(n, gast.Load(), None) for n in base_names]
+  bases = [
+      gast.Name(n, ctx=gast.Load(), annotation=None, type_comment=None)
+      for n in base_names]
   class_def = gast.ClassDef(
       class_name,
       bases=bases,
@@ -706,7 +708,11 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
 
   if isinstance(node, gast.Lambda):
     node = gast.Assign(
-        targets=[gast.Name(new_name, gast.Store(), None)], value=node)
+        targets=[
+            gast.Name(
+                new_name, ctx=gast.Store(), annotation=None, type_comment=None)
+        ],
+        value=node)
   elif do_rename:
     node.name = new_name
   else:

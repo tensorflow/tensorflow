@@ -34,6 +34,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_llvm_enable_invariant_load_metadata(true);
   opts.set_xla_llvm_disable_expensive_passes(false);
   opts.set_xla_backend_optimization_level(3);
+  opts.set_xla_gpu_autotune_level(4);
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
@@ -59,6 +60,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
+  opts.set_xla_gpu_deterministic_reductions(false);
   return opts;
 }
 
@@ -398,10 +400,12 @@ static void AllocateFlags() {
           "Crashes the program on extra verification failures, e.g. cuDNN "
           "cross checking failures"),
       tensorflow::Flag(
-          "xla_gpu_disable_autotune",
-          bool_setter_for(&DebugOptions::set_xla_gpu_disable_autotune),
-          flag_values->xla_gpu_disable_autotune(),
-          "Disable GEMM and Convolution auto-tuning."),
+          "xla_gpu_autotune_level",
+          int32_setter_for(&DebugOptions::set_xla_gpu_autotune_level),
+          flag_values->xla_gpu_autotune_level(),
+          "Set GEMM and Convolution auto-tuning level."
+          "0 = off; 1 = on; 2 = on+init; 3 = on+init+reinit; 4 = "
+          "on+init+reinit+check."),
       tensorflow::Flag(
           "xla_force_host_platform_device_count",
           int32_setter_for(
@@ -512,6 +516,12 @@ static void AllocateFlags() {
                        flag_values->xla_gpu_algorithm_blacklist_path(),
                        "An AlgorithmBlacklist text proto file as a blacklist "
                        "of convolutions to avoid to use."),
+
+      tensorflow::Flag(
+          "xla_gpu_deterministic_reductions",
+          bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_reductions),
+          flag_values->xla_gpu_deterministic_reductions(),
+          "Always run deterministic reductions on GPU"),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

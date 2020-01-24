@@ -21,15 +21,15 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/QuantizeUtils.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/QuantizeUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 
 namespace mlir {
@@ -64,6 +64,37 @@ static Type GetQuantizedType(Builder builder, Type input_type,
   }
   if (!quantizedEleType) return {};
   return converter.convert(quantizedEleType);
+}
+
+// TODO(fengliuai): promote this utility method to mlir QuantOps.
+TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
+  auto factor_values = factor.dyn_cast_or_null<DenseFPElementsAttr>();
+  if (!factor_values) return {};
+  auto ele_type = quant::QuantizedType::getQuantizedElementType(input);
+  if (!ele_type) return {};
+  if (auto qtype = ele_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+    ArrayRef<double> scales = qtype.getScales();
+    // Broadcasting hasn't been implemented yet.
+    if (scales.size() != factor_values.getNumElements()) return {};
+    SmallVector<double, 4> new_scales;
+    new_scales.reserve(scales.size());
+    auto scales_iter = scales.begin();
+    for (auto f : factor_values) {
+      new_scales.push_back(*(scales_iter++) *
+                           std::fabs(FloatAttr::getValueAsDouble(f)));
+    }
+    // We are assuming symmetric quantization.
+    auto new_ele_type = quant::UniformQuantizedPerAxisType::get(
+        qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
+        new_scales, qtype.getZeroPoints(), qtype.getQuantizedDimension(),
+        qtype.getStorageTypeMin(), qtype.getStorageTypeMax());
+    if (auto new_type = new_ele_type.castFromExpressedType(
+            quant::QuantizedType::castToExpressedType(input))) {
+      return TypeAttr::get(new_type);
+    }
+  }
+  // Currently, we only support per-axis quantized type.
+  return {};
 }
 
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
@@ -367,7 +398,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type) {
 static bool PreferResultScale(Operation* op) {
   int float_operands = 0;
   for (auto operand : op->getOperands()) {
-    if (auto operand_type = operand->getType().dyn_cast<ShapedType>()) {
+    if (auto operand_type = operand.getType().dyn_cast<ShapedType>()) {
       if (operand_type.getElementType().isa<FloatType>()) {
         if (float_operands++ > 1) return true;
       }
@@ -400,22 +431,22 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     quant::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
-    if (auto def = stats_op.arg()->getDefiningOp()) {
+    if (auto def = stats_op.arg().getDefiningOp()) {
       if (IsStatsRedundant(def, op_quant_spec_getter)) {
         redundant_stats_ops.insert(stats_op);
       }
     }
 
-    for (auto user : stats_op.getResult()->getUsers()) {
+    for (auto user : stats_op.getResult().getUsers()) {
       // We don't propagate this parameter down if it has multiple operands.
       // We want to use the result parameter scales instead.
 
       if (user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
           !PreferResultScale(user)) {
-        for (ValuePtr res : user->getResults()) {
-          if (res->hasOneUse()) {
+        for (Value res : user->getResults()) {
+          if (res.hasOneUse()) {
             if (auto next_stats = llvm::dyn_cast<quant::StatisticsOp>(
-                    *res->getUsers().begin())) {
+                    *res.getUsers().begin())) {
               // quantization parameters can be propagated to next_stats
               redundant_stats_ops.insert(next_stats);
               // add next_stats to the work list so propagation can
@@ -440,12 +471,12 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     quant::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
-    if (auto def = stats_op.arg()->getDefiningOp()) {
+    if (auto def = stats_op.arg().getDefiningOp()) {
       if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
           PreferResultScale(def)) {
         for (auto input : def->getOperands()) {
           if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
-                  input->getDefiningOp())) {
+                  input.getDefiningOp())) {
             redundant_stats_ops.insert(next_stats);
             all_stats_ops.push_back(next_stats);
           }
@@ -458,7 +489,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
   for (auto it : redundant_stats_ops) {
     if (!llvm::isa<quant::StatisticsOp>(it)) return true;
     auto stats_op = llvm::cast<quant::StatisticsOp>(it);
-    stats_op.getResult()->replaceAllUsesWith(stats_op.arg());
+    stats_op.getResult().replaceAllUsesWith(stats_op.arg());
     stats_op.erase();
   }
 

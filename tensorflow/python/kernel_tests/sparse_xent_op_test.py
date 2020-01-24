@@ -86,7 +86,7 @@ class SparseXentTest(test.TestCase):
                 [1., 2., 3., 4.]]
     labels = [4, 3, 0, -1]
 
-    if test.is_built_with_cuda() and test.is_gpu_available():
+    if test.is_built_with_gpu_support() and test.is_gpu_available():
       with self.session(use_gpu=True) as sess:
         loss, backprop = (
             gen_nn_ops.sparse_softmax_cross_entropy_with_logits(

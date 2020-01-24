@@ -30,13 +30,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineExpr.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Transforms/LoopUtils.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/AffineExpr.h"  // TF:llvm-project
+#include "mlir/IR/AffineMap.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Transforms/LoopUtils.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -58,9 +58,10 @@ struct ShapeInfo {
   mlir::Type element_type;
 };
 
-ShapeInfo GetShapeInfo(const Shape& shape, int64 n_dim, int64 c_dim,
-                       absl::Span<const int64> spatial_dims,
-                       mlir::Builder builder) {
+ShapeInfo GetShapeInfo(
+    const Shape& shape, int64 n_dim, int64 c_dim,
+    absl::Span<const tensorflow::protobuf_int64> spatial_dims,
+    mlir::Builder builder) {
   ShapeInfo shape_info;
 
   std::vector<int64> physical_to_logical(
@@ -117,18 +118,18 @@ bool IsSimpleLoop(mlir::AffineForOp loop) {
 
 struct BoundAffineMap {
   mlir::AffineMap affine_map;
-  std::vector<mlir::ValuePtr> operands;
+  std::vector<mlir::Value> operands;
 };
 
 BoundAffineMap GetBoundAffineMapFrom(mlir::Operation* op) {
   if (auto load = mlir::dyn_cast<mlir::AffineLoadOp>(op)) {
     return {load.getAffineMap(),
-            std::vector<mlir::ValuePtr>(load.getMapOperands().begin(),
-                                        load.getMapOperands().end())};
+            std::vector<mlir::Value>(load.getMapOperands().begin(),
+                                     load.getMapOperands().end())};
   } else if (auto store = mlir::dyn_cast<mlir::AffineStoreOp>(op)) {
     return {store.getAffineMap(),
-            std::vector<mlir::ValuePtr>(store.getMapOperands().begin(),
-                                        store.getMapOperands().end())};
+            std::vector<mlir::Value>(store.getMapOperands().begin(),
+                                     store.getMapOperands().end())};
   } else {
     CHECK(false);
   }
@@ -150,7 +151,7 @@ mlir::Operation* CloneWithNewAffineMap(mlir::Operation* op,
   }
 }
 
-void SetMemRef(mlir::Operation* op, mlir::ValuePtr memref) {
+void SetMemRef(mlir::Operation* op, mlir::Value memref) {
   if (auto load = mlir::dyn_cast<mlir::AffineLoadOp>(op)) {
     load.setMemRef(memref);
   } else if (auto store = mlir::dyn_cast<mlir::AffineStoreOp>(op)) {
@@ -256,8 +257,8 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
     SetBoundForSimpleLoop(loop, length.ceilDiv(size), builder);
   }
 
-  for (mlir::IROperand& use :
-       llvm::make_early_inc_range(loop.getInductionVar()->getUses())) {
+  for (auto& use :
+       llvm::make_early_inc_range(loop.getInductionVar().getUses())) {
     mlir::Operation* owner = use.getOwner();
     BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
     unsigned new_dim = affine_map.operands.size();
@@ -325,12 +326,11 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     auto new_alloc =
         builder.create<mlir::AllocOp>(builder.getUnknownLoc(), new_type);
 
-    std::vector<mlir::ValuePtr> indvars;
+    std::vector<mlir::Value> indvars;
     for (auto ancestor : ancestors) {
       indvars.push_back(ancestor.getInductionVar());
     }
-    for (mlir::IROperand& use :
-         llvm::make_early_inc_range(alloc.getResult()->getUses())) {
+    for (auto& use : llvm::make_early_inc_range(alloc.getResult().getUses())) {
       mlir::Operation* owner = use.getOwner();
       BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
       affine_map.operands.insert(affine_map.operands.begin(), indvars.begin(),
@@ -418,7 +418,7 @@ struct InitialMlirConvAnchors {
 //     output[...] = output_acc[]
 //   }
 StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
-    mlir::ValuePtr input, mlir::ValuePtr filter, mlir::ValuePtr output,
+    mlir::Value input, mlir::Value filter, mlir::Value output,
     const ShapeInfo& input_shape_info, const ShapeInfo& filter_shape_info,
     const ShapeInfo& output_shape_info, const Window& window,
     mlir::OpBuilder builder) {
@@ -440,7 +440,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
       location,
       builder.create<mlir::ConstantOp>(
           location, mlir::FloatAttr::get(builder.getF32Type(), 0)),
-      output_acc, llvm::ArrayRef<mlir::ValuePtr>());
+      output_acc, llvm::ArrayRef<mlir::Value>());
 
   std::vector<mlir::AffineForOp> reduction_loops;
   reduction_loops = CreateNestedSimpleLoops(
@@ -450,11 +450,11 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
   mlir::AffineForOp loop_o = cartesian_product_loops[1];
   mlir::AffineForOp loop_c = reduction_loops[0];
 
-  std::vector<mlir::ValuePtr> output_spatial_indvars;
+  std::vector<mlir::Value> output_spatial_indvars;
   for (auto loop : absl::MakeSpan(cartesian_product_loops).subspan(2)) {
     output_spatial_indvars.push_back(loop.getInductionVar());
   }
-  std::vector<mlir::ValuePtr> filter_spatial_indvars;
+  std::vector<mlir::Value> filter_spatial_indvars;
   for (auto loop : absl::MakeSpan(reduction_loops).subspan(1)) {
     filter_spatial_indvars.push_back(loop.getInductionVar());
   }
@@ -463,7 +463,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
 
   builder = reduction_loops.back().getBodyBuilder();
 
-  mlir::ValuePtr loaded_input = [&] {
+  mlir::Value loaded_input = [&] {
     std::vector<mlir::AffineExpr> input_indices;
     input_indices.push_back(builder.getAffineDimExpr(0));
     input_indices.push_back(builder.getAffineDimExpr(1));
@@ -479,7 +479,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
           builder.getAffineDimExpr(2 + num_spatial_dims + i) -
           window_dim.padding_low());
     }
-    std::vector<mlir::ValuePtr> input_vars;
+    std::vector<mlir::Value> input_vars;
     input_vars.push_back(loop_n.getInductionVar());
     input_vars.push_back(loop_c.getInductionVar());
     input_vars.insert(input_vars.end(), output_spatial_indvars.begin(),
@@ -499,8 +499,8 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
         builder.getF32Type());
   }();
 
-  mlir::ValuePtr loaded_filter = [&] {
-    std::vector<mlir::ValuePtr> filter_vars;
+  mlir::Value loaded_filter = [&] {
+    std::vector<mlir::Value> filter_vars;
     filter_vars.push_back(loop_o.getInductionVar());
     filter_vars.push_back(loop_c.getInductionVar());
     filter_vars.insert(filter_vars.end(), filter_spatial_indvars.begin(),
@@ -519,11 +519,11 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
           location,
           builder.createOrFold<mlir::AffineLoadOp>(location, output_acc),
           builder.create<mlir::MulFOp>(location, loaded_input, loaded_filter)),
-      output_acc, llvm::ArrayRef<mlir::ValuePtr>());
+      output_acc, llvm::ArrayRef<mlir::Value>());
 
   builder.setInsertionPointAfter(reduction_loops[0]);
   {
-    std::vector<mlir::ValuePtr> output_vars;
+    std::vector<mlir::Value> output_vars;
     output_vars.push_back(loop_n.getInductionVar());
     output_vars.push_back(loop_o.getInductionVar());
     output_vars.insert(output_vars.end(), output_spatial_indvars.begin(),
@@ -735,9 +735,9 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
   builder.create<mlir::ReturnOp>(builder.getUnknownLoc());
   builder.setInsertionPointToStart(entry_block);
 
-  mlir::ValuePtr input = entry_block->getArgument(1);
-  mlir::ValuePtr filter = entry_block->getArgument(2);
-  mlir::ValuePtr output = entry_block->getArgument(0);
+  mlir::Value input = entry_block->getArgument(1);
+  mlir::Value filter = entry_block->getArgument(2);
+  mlir::Value output = entry_block->getArgument(0);
 
   TF_RETURN_IF_ERROR(ConvIsImplemented(conv));
 

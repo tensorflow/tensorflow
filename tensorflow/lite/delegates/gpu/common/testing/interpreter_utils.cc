@@ -47,8 +47,12 @@ Status InterpreterInvokeWithOpResolver(const ::tflite::Model* model,
     return InternalError("Unable to allocate TfLite tensors");
   }
   for (int i = 0; i < inputs.size(); ++i) {
+    DCHECK_EQ(interpreter->tensor(interpreter->inputs()[i])->type,
+              kTfLiteFloat32);
     float* tflite_data =
         interpreter->typed_tensor<float>(interpreter->inputs()[i]);
+    DCHECK_EQ(inputs[i].data.size() * sizeof(float),
+              interpreter->tensor(interpreter->inputs()[i])->bytes);
     std::memcpy(tflite_data, inputs[i].data.data(),
                 inputs[i].data.size() * sizeof(float));
   }

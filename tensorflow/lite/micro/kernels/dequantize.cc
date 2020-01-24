@@ -46,7 +46,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   tflite::DequantizationParams op_params;
   op_params.zero_point = input->params.zero_point;
-  op_params.scale = input->params.scale;
+  op_params.scale = static_cast<double>(input->params.scale);
   switch (input->type) {
     case kTfLiteUInt8:
       reference_ops::Dequantize(
@@ -70,8 +70,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace dequantize
 
 TfLiteRegistration* Register_DEQUANTIZE() {
-  static TfLiteRegistration r = {nullptr, nullptr, dequantize::Prepare,
-                                 dequantize::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = dequantize::Prepare;
+  r.invoke = dequantize::Eval;
   return &r;
 }
 

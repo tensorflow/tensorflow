@@ -27,12 +27,19 @@ namespace ruy {
 bool DetectCpuSse42();
 bool DetectCpuAvx2();
 bool DetectCpuAvx512();
+// TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+// Optimization is not finished. In particular the dimensions of the kernel
+// blocks can be changed as desired.
+//
+// TODO(b/146646451): Introduce and activate.
+inline bool DetectCpuAvxVnni() { return false; }
 
 #else  // RUY_PLATFORM(X86_ENHANCEMENTS)
 
 inline bool DetectCpuSse42() { return false; }
 inline bool DetectCpuAvx2() { return false; }
 inline bool DetectCpuAvx512() { return false; }
+inline bool DetectCpuAvxVnni() { return false; }
 
 #endif  // !RUY_PLATFORM(X86_ENHANCEMENTS)
 #endif  // RUY_PLATFORM(X86)

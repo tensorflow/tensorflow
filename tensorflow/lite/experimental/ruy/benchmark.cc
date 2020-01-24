@@ -66,6 +66,10 @@ void Benchmark() {
   const bool symm_rhs = std::is_floating_point<RhsScalar>::value ||
                         GetBoolEnvVarOrFalse("SYMM_RHS");
   const bool benchmark_cubic = GetBoolEnvVarOrFalse("RUY_BENCHMARK_CUBIC");
+  const int explicit_rows = GetIntEnvVarOrZero("ROWS");
+  const int explicit_cols = GetIntEnvVarOrZero("COLS");
+  const int explicit_depth = GetIntEnvVarOrZero("DEPTH");
+
   std::vector<BenchmarkShape> shapes;
 
   // Often 8 is used for this multiplier, but to check teeny sizes one can
@@ -73,11 +77,6 @@ void Benchmark() {
   static constexpr int cubic_size_multiplier = 8;
 
   if (benchmark_cubic) {
-#ifdef _WIN32
-    _putenv_s("QUICK_BENCHMARK", "1");
-#else
-    setenv("QUICK_BENCHMARK", "1", 0);
-#endif
     std::vector<int> sizes;
     for (int i = 2 * cubic_size_multiplier; i <= (512 * cubic_size_multiplier);
          i *= 2) {
@@ -88,18 +87,20 @@ void Benchmark() {
     }
     for (int i : sizes) {
       BenchmarkShape shape;
-      shape.rows = i;
-      shape.cols = i;
-      shape.depth = i;
+      // Even in cubic mode, one may still override an individual dimension
+      // to allow testing a batch of rectangular sizes.
+      shape.rows = explicit_rows ? explicit_rows : i;
+      shape.cols = explicit_cols ? explicit_cols : i;
+      shape.depth = explicit_depth ? explicit_depth : i;
       shape.symm_lhs = symm_lhs;
       shape.symm_rhs = symm_rhs;
       shapes.push_back(shape);
     }
   } else {
     BenchmarkShape shape;
-    shape.rows = GetIntEnvVarOrZero("ROWS");
-    shape.cols = GetIntEnvVarOrZero("COLS");
-    shape.depth = GetIntEnvVarOrZero("DEPTH");
+    shape.rows = explicit_rows;
+    shape.cols = explicit_cols;
+    shape.depth = explicit_depth;
     if (!shape.rows || !shape.depth || !shape.cols) {
       fprintf(stderr,
               "Please specify positive sizes with these env vars: ROWS, DEPTH, "

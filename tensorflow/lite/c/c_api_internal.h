@@ -15,10 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_INTERNAL_H_
 #define TENSORFLOW_LITE_C_C_API_INTERNAL_H_
 
-#include "tensorflow/lite/c/common.h"
+#include <stdarg.h>
+
+#include <memory>
+#include <vector>
+
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on directly by any C API clients.

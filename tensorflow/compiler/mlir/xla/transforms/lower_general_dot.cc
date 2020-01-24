@@ -17,15 +17,15 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -41,16 +41,15 @@ using mlir::PatternMatchResult;
 using mlir::PatternRewriter;
 using mlir::RankedTensorType;
 using mlir::Value;
-using mlir::ValuePtr;
 
 namespace {
 
-ValuePtr TransposeReshape(ValuePtr arg, mlir::Location loc,
-                          llvm::ArrayRef<int64_t> left_dims,
-                          llvm::ArrayRef<int64_t> right_dims,
-                          llvm::ArrayRef<int64_t> arg_shape,
-                          PatternRewriter *rewriter) {
-  auto element_type = mlir::getElementTypeOrSelf(arg->getType());
+Value TransposeReshape(Value arg, mlir::Location loc,
+                       llvm::ArrayRef<int64_t> left_dims,
+                       llvm::ArrayRef<int64_t> right_dims,
+                       llvm::ArrayRef<int64_t> arg_shape,
+                       PatternRewriter *rewriter) {
+  auto element_type = mlir::getElementTypeOrSelf(arg.getType());
 
   int64_t left_size = 1;
   for (auto dim : left_dims) {
@@ -92,10 +91,10 @@ ValuePtr TransposeReshape(ValuePtr arg, mlir::Location loc,
                                                     transpose_result);
 }
 
-ValuePtr ProcessDotArg(ValuePtr arg, mlir::Location loc,
-                       ElementsAttr contract_dims_attr, bool outer_dims_first,
-                       PatternRewriter *rewriter) {
-  auto shape = arg->getType().cast<mlir::ShapedType>().getShape();
+Value ProcessDotArg(Value arg, mlir::Location loc,
+                    ElementsAttr contract_dims_attr, bool outer_dims_first,
+                    PatternRewriter *rewriter) {
+  auto shape = arg.getType().cast<mlir::ShapedType>().getShape();
 
   llvm::SmallVector<bool, 5> is_outer_dim;
   is_outer_dim.resize(shape.size(), true);
@@ -155,8 +154,8 @@ struct GeneralDotConvert
                              /*outer_dims_first=*/false, &rewriter);
 
     // Dot resulting shape.
-    auto lhs_shape = lhs->getType().cast<mlir::ShapedType>().getShape();
-    auto rhs_shape = rhs->getType().cast<mlir::ShapedType>().getShape();
+    auto lhs_shape = lhs.getType().cast<mlir::ShapedType>().getShape();
+    auto rhs_shape = rhs.getType().cast<mlir::ShapedType>().getShape();
     auto new_dot_type =
         RankedTensorType::get({lhs_shape[0], rhs_shape[1]}, dot_element_type);
 

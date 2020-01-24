@@ -417,7 +417,6 @@ cc_library(
         ":array3d",
         ":array4d",
         ":shape_util",
-        ":sparse_index_array",
         ":status_macros",
         ":types",
         ":util",
@@ -463,7 +462,6 @@ cc_library(
         ":array4d",
         ":literal",
         ":shape_util",
-        ":sparse_index_array",
         ":status_macros",
         ":types",
         ":util",
@@ -841,29 +839,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "sparse_index_array",
-    srcs = ["sparse_index_array.cc"],
-    hdrs = ["sparse_index_array.h"],
-    deps = [
-        ":array2d",
-        ":shape_util",
-        ":xla_data_proto_cc",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "sparse_index_array_test",
-    srcs = ["sparse_index_array_test.cc"],
-    deps = [
-        ":sparse_index_array",
-        ":test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
     name = "parse_flags_from_env",
     srcs = ["parse_flags_from_env.cc"],
     hdrs = ["parse_flags_from_env.h"],
@@ -956,6 +931,7 @@ tf_cc_test(
     deps = [
         ":refcounting_hash_map",
         ":test",
+        ":types",
         "//tensorflow/core:test_main",
     ],
 )

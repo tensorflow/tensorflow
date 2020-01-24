@@ -1003,7 +1003,8 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
 
     std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
         workspace_allocator;
-    DeviceMemory<uint8>* reserve_space_data = nullptr;
+    DeviceMemory<uint8>* reserve_space_data_ptr = nullptr;
+    DeviceMemory<uint8> reserve_space_data;
 #if CUDNN_VERSION >= 7402
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
@@ -1013,9 +1014,9 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
       // the cudnn kernel outputs inverse variance in forward and reuse it in
       // backward
       if (reserve_space.dims() != 0) {
-        auto reserve_space_uint8 = functor::CastDeviceMemory<uint8, U>(
+        reserve_space_data = functor::CastDeviceMemory<uint8, U>(
             const_cast<Tensor*>(&reserve_space));
-        reserve_space_data = &reserve_space_uint8;
+        reserve_space_data_ptr = &reserve_space_data;
       }
     }
 #endif  // CUDNN_VERSION >= 7402
@@ -1026,7 +1027,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
                 y_backprop_ptr, x_ptr, scale_ptr, mean_ptr, inv_variance_ptr,
                 x_desc, scale_offset_desc, static_cast<double>(epsilon),
                 &x_backprop_ptr, &scale_backprop_ptr, &offset_backprop_ptr,
-                reserve_space_data, workspace_allocator.get())
+                reserve_space_data_ptr, workspace_allocator.get())
             .ok();
 
     if (!cudnn_launch_status) {

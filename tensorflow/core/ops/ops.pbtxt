@@ -5202,6 +5202,86 @@ op {
   }
 }
 op {
+  name: "BoostedTreesCalculateBestFeatureSplitV2"
+  input_arg {
+    name: "node_id_range"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "stats_summaries_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "split_types"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "candidate_feature_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "l1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tree_complexity"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_node_weight"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "node_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "feature_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "feature_dimensions"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "thresholds"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "left_node_contribs"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "right_node_contribs"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "split_with_default_directions"
+    type: DT_STRING
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "BoostedTreesCalculateBestGainsPerFeature"
   input_arg {
     name: "node_id_range"
@@ -5890,6 +5970,7 @@ op {
   input_arg {
     name: "feature_ids"
     type: DT_INT32
+    number_attr: "num_groups"
   }
   input_arg {
     name: "dimension_ids"
@@ -5949,6 +6030,15 @@ op {
     default_value {
       i: 1
     }
+  }
+  attr {
+    name: "num_groups"
+    type: "int"
+    default_value {
+      i: 1
+    }
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }
@@ -6419,6 +6509,54 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
       }
+    }
+  }
+}
+op {
+  name: "CTCLossV2"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "labels_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "labels_values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sequence_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "loss"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "preprocess_collapse_repeated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "ctc_merge_repeated"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "ignore_longer_outputs_than_inputs"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -11600,7 +11738,7 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_FLOAT
+    type_attr: "dtype"
   }
   attr {
     name: "T"
@@ -11641,6 +11779,19 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+      }
     }
   }
 }
@@ -14534,18 +14685,21 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
         type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
         type: DT_INT64
-        type: DT_BFLOAT16
+        type: DT_UINT8
         type: DT_UINT16
-        type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_BOOL
       }
     }
   }
@@ -51682,6 +51836,34 @@ op {
 }
 op {
   name: "Xdivy"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "Xlog1py"
   input_arg {
     name: "x"
     type_attr: "T"

@@ -87,6 +87,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -241,6 +242,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/minimum.bin",
         "//tensorflow/lite/tools/optimize:testdata/mixed.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
+        "//tensorflow/lite/tools/optimize:testdata/pack.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_no_bias.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",

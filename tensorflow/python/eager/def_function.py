@@ -460,6 +460,7 @@ class Function(object):
         attributes=attributes,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options,
+        experimental_compile=self._experimental_compile,
         experimental_relax_shapes=self._experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
@@ -795,7 +796,7 @@ class Function(object):
     """Returns all concrete functions for serialization.
 
     Returns:
-      A list of instances of `Function`.
+      A list of instances of `ConcreteFunction`.
     """
     if self.input_signature is not None:
       self.get_concrete_function()
@@ -1116,7 +1117,7 @@ def function(func=None,
   the graphs traced. The input signature specifies the shape and type of each
   Tensor argument to the function using a `tf.TensorSpec` object. More general
   shapes can be used. This is useful to avoid creating multiple graphs when
-  Tensors have dynamic shapes. It also restricts the dhape and datatype of
+  Tensors have dynamic shapes. It also restricts the shape and datatype of
   Tensors that can be used:
 
   >>> @tf.function(
@@ -1206,7 +1207,8 @@ def function(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         inner_function,
-        Function(
+        decorator_name="tf.function",
+        decorator_func=Function(
             inner_function,
             name,
             input_signature=input_signature,

@@ -45,13 +45,13 @@ function run_build () {
   export ACTION_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   export PYTHON_BIN_PATH="/usr/bin/python3"
   export TF2_BEHAVIOR=1
-  tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial""$(maybe_skip_v1)"
+  tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit""$(maybe_skip_v1)"
 
   # Get the default test targets for bazel.
   source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
-  # //tensorflow/core:platform_setround_test is not supported. See b/64264700
+  # //tensorflow/core/platform:setround_test is not supported. See b/64264700
   # TODO(klimek): Re-enable tensorrt tests (with different runtime image) once
   # we can build them.
   # TODO(klimek): Stop using action_env for things that are only needed during
@@ -86,6 +86,7 @@ function run_build () {
     --copt="-w" \
     --copt=-mavx \
     --linkopt=-lrt \
+    --linkopt=-lm \
     --distinct_host_configuration=false \
     --remote_default_platform_properties="properties:{name:\"build\" value:\"${CACHE_SILO_VAL}\"}" \
     --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \

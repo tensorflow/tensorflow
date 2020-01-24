@@ -18,17 +18,17 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
@@ -99,8 +99,8 @@ LogicalResult LowerConditionalOp(mlir::xla_hlo::ConditionalOp conditional_op) {
                                 mapper, &builder)))
     return failure();
 
-  tail_block->addArguments(conditional_op.getResult()->getType());
-  conditional_op.getResult()->replaceAllUsesWith(tail_block->getArgument(0));
+  tail_block->addArguments(conditional_op.getResult().getType());
+  conditional_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
 
   op_inst->erase();
   return success();
@@ -171,8 +171,8 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
     auto cond_value = builder.create<mlir::ExtractElementOp>(loc, return_value);
 
     // Get the body block arguments.
-    llvm::SmallVector<ValuePtr, 4> successor_args(cond_block->args_begin(),
-                                                  cond_block->args_end());
+    llvm::SmallVector<Value, 4> successor_args(cond_block->args_begin(),
+                                               cond_block->args_end());
     builder.create<mlir::CondBranchOp>(loc, cond_value, body_block,
                                        successor_args, tail_block,
                                        successor_args);
@@ -201,7 +201,7 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
 
   // Erase the original while loop.
   tail_block->addArgument(while_op.getType());
-  while_op.getResult()->replaceAllUsesWith(tail_block->getArgument(0));
+  while_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
   op_inst->erase();
 
   return success();
