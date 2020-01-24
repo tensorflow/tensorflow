@@ -821,8 +821,7 @@ def _embedding_column(categorical_column,
                       ckpt_to_load_from=None,
                       tensor_name_in_ckpt=None,
                       max_norm=None,
-                      trainable=True,
-                      use_safe_embedding_lookup=True):
+                      trainable=True):
   """`_DenseColumn` that converts from sparse, categorical input.
 
   Use this when your inputs are sparse, but you want to convert them to a dense
@@ -883,13 +882,6 @@ def _embedding_column(categorical_column,
       not `None`.
     max_norm: If not `None`, embedding values are l2-normalized to this value.
     trainable: Whether or not the embedding is trainable. Default is True.
-    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
-      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
-      there are no empty rows and all weights and ids are positive at the
-      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
-      input tensors. Defaults to true, consider turning off if the above checks
-      are not needed. Note that having empty rows will not trigger any error
-      though the output result might be 0 or omitted.
 
   Returns:
     `_DenseColumn` that converts from sparse input.
@@ -934,8 +926,7 @@ def _embedding_column(categorical_column,
       ckpt_to_load_from=ckpt_to_load_from,
       tensor_name_in_ckpt=tensor_name_in_ckpt,
       max_norm=max_norm,
-      trainable=trainable,
-      use_safe_embedding_lookup=use_safe_embedding_lookup)
+      trainable=trainable)
 
 
 def _numeric_column(key,
@@ -2453,8 +2444,7 @@ class _EmbeddingColumn(
     collections.namedtuple(
         '_EmbeddingColumn',
         ('categorical_column', 'dimension', 'combiner', 'layer_creator',
-         'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable',
-         'use_safe_embedding_lookup'))):
+         'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable'))):
   """See `embedding_column`."""
 
   @property
@@ -2499,17 +2489,11 @@ class _EmbeddingColumn(
           self.tensor_name_in_ckpt: to_restore
       })
 
-    sparse_id_rank = tensor_shape.dimension_value(
-        sparse_ids.dense_shape.get_shape()[0])
-    embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
-    if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
-        sparse_id_rank <= 2):
-      embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse
     # Return embedding lookup result.
-    return embedding_lookup_sparse(
-        embedding_weights,
-        sparse_ids,
-        sparse_weights,
+    return embedding_ops.safe_embedding_lookup_sparse(
+        embedding_weights=embedding_weights,
+        sparse_ids=sparse_ids,
+        sparse_weights=sparse_weights,
         combiner=self.combiner,
         name='%s_weights' % self.name,
         max_norm=self.max_norm)
@@ -2567,8 +2551,7 @@ class _SharedEmbeddingColumn(
         '_SharedEmbeddingColumn',
         ('categorical_column', 'dimension', 'combiner', 'initializer',
          'shared_embedding_collection_name', 'ckpt_to_load_from',
-         'tensor_name_in_ckpt', 'max_norm', 'trainable',
-         'use_safe_embedding_lookup'))):
+         'tensor_name_in_ckpt', 'max_norm', 'trainable'))):
   """See `embedding_column`."""
 
   @property
@@ -2649,17 +2632,11 @@ class _SharedEmbeddingColumn(
             self.tensor_name_in_ckpt: to_restore
         })
 
-      sparse_id_rank = tensor_shape.dimension_value(
-          sparse_ids.dense_shape.get_shape()[0])
-      embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
-      if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
-          sparse_id_rank <= 2):
-        embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse
       # Return embedding lookup result.
-      return embedding_lookup_sparse(
-          embedding_weights,
-          sparse_ids,
-          sparse_weights,
+      return embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights=embedding_weights,
+          sparse_ids=sparse_ids,
+          sparse_weights=sparse_weights,
           combiner=self.combiner,
           name='%s_weights' % self.name,
           max_norm=self.max_norm)

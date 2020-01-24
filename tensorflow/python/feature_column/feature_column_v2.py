@@ -850,8 +850,7 @@ def embedding_column(categorical_column,
                      ckpt_to_load_from=None,
                      tensor_name_in_ckpt=None,
                      max_norm=None,
-                     trainable=True,
-                     use_safe_embedding_lookup=True):
+                     trainable=True):
   """`DenseColumn` that converts from sparse, categorical input.
 
   Use this when your inputs are sparse, but you want to convert them to a dense
@@ -912,13 +911,6 @@ def embedding_column(categorical_column,
       `None`.
     max_norm: If not `None`, embedding values are l2-normalized to this value.
     trainable: Whether or not the embedding is trainable. Default is True.
-    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
-      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
-      there are no empty rows and all weights and ids are positive at the
-      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
-      input tensors. Defaults to true, consider turning off if the above checks
-      are not needed. Note that having empty rows will not trigger any error
-      though the output result might be 0 or omitted.
 
   Returns:
     `DenseColumn` that converts from sparse input.
@@ -952,8 +944,7 @@ def embedding_column(categorical_column,
       ckpt_to_load_from=ckpt_to_load_from,
       tensor_name_in_ckpt=tensor_name_in_ckpt,
       max_norm=max_norm,
-      trainable=trainable,
-      use_safe_embedding_lookup=use_safe_embedding_lookup)
+      trainable=trainable)
 
 
 @tf_export(v1=['feature_column.shared_embedding_columns'])
@@ -965,8 +956,7 @@ def shared_embedding_columns(categorical_columns,
                              ckpt_to_load_from=None,
                              tensor_name_in_ckpt=None,
                              max_norm=None,
-                             trainable=True,
-                             use_safe_embedding_lookup=True):
+                             trainable=True):
   """List of dense columns that convert from sparse, categorical input.
 
   This is similar to `embedding_column`, except that it produces a list of
@@ -1049,13 +1039,6 @@ def shared_embedding_columns(categorical_columns,
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value, before combining.
     trainable: Whether or not the embedding is trainable. Default is True.
-    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
-      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
-      there are no empty rows and all weights and ids are positive at the
-      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
-      input tensors. Defaults to true, consider turning off if the above checks
-      are not needed. Note that having empty rows will not trigger any error
-      though the output result might be 0 or omitted.
 
   Returns:
     A list of dense columns that converts from sparse input. The order of
@@ -1134,8 +1117,7 @@ def shared_embedding_columns(categorical_columns,
             ckpt_to_load_from=ckpt_to_load_from,
             tensor_name_in_ckpt=tensor_name_in_ckpt,
             max_norm=max_norm,
-            trainable=trainable,
-            use_safe_embedding_lookup=use_safe_embedding_lookup))
+            trainable=trainable))
 
   return result
 
@@ -1149,8 +1131,7 @@ def shared_embedding_columns_v2(categorical_columns,
                                 ckpt_to_load_from=None,
                                 tensor_name_in_ckpt=None,
                                 max_norm=None,
-                                trainable=True,
-                                use_safe_embedding_lookup=True):
+                                trainable=True):
   """List of dense columns that convert from sparse, categorical input.
 
   This is similar to `embedding_column`, except that it produces a list of
@@ -1232,13 +1213,6 @@ def shared_embedding_columns_v2(categorical_columns,
     max_norm: If not `None`, each embedding is clipped if its l2-norm is
       larger than this value, before combining.
     trainable: Whether or not the embedding is trainable. Default is True.
-    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
-      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
-      there are no empty rows and all weights and ids are positive at the
-      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
-      input tensors. Defaults to true, consider turning off if the above checks
-      are not needed. Note that having empty rows will not trigger any error
-      though the output result might be 0 or omitted.
 
   Returns:
     A list of dense columns that converts from sparse input. The order of
@@ -1303,8 +1277,7 @@ def shared_embedding_columns_v2(categorical_columns,
 
   column_creator = SharedEmbeddingColumnCreator(
       dimension, initializer, ckpt_to_load_from, tensor_name_in_ckpt,
-      num_buckets, trainable, shared_embedding_collection_name,
-      use_safe_embedding_lookup)
+      num_buckets, trainable, shared_embedding_collection_name)
 
   result = []
   for column in categorical_columns:
@@ -3109,8 +3082,7 @@ class EmbeddingColumn(
     collections.namedtuple(
         'EmbeddingColumn',
         ('categorical_column', 'dimension', 'combiner', 'initializer',
-         'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable',
-         'use_safe_embedding_lookup'))):
+         'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable'))):
   """See `embedding_column`."""
 
   @property
@@ -3184,17 +3156,11 @@ class EmbeddingColumn(
           self.tensor_name_in_ckpt: to_restore
       })
 
-    sparse_id_rank = tensor_shape.dimension_value(
-        sparse_ids.dense_shape.get_shape()[0])
-    embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
-    if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
-        sparse_id_rank <= 2):
-      embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse
     # Return embedding lookup result.
-    return embedding_lookup_sparse(
-        embedding_weights,
-        sparse_ids,
-        sparse_weights,
+    return embedding_ops.safe_embedding_lookup_sparse(
+        embedding_weights=embedding_weights,
+        sparse_ids=sparse_ids,
+        sparse_weights=sparse_weights,
         combiner=self.combiner,
         name='%s_weights' % self.name,
         max_norm=self.max_norm)
@@ -3360,8 +3326,7 @@ class SharedEmbeddingColumnCreator(tracking.AutoTrackable):
                tensor_name_in_ckpt,
                num_buckets,
                trainable,
-               name='shared_embedding_column_creator',
-               use_safe_embedding_lookup=True):
+               name='shared_embedding_column_creator'):
     self._dimension = dimension
     self._initializer = initializer
     self._ckpt_to_load_from = ckpt_to_load_from
@@ -3369,13 +3334,11 @@ class SharedEmbeddingColumnCreator(tracking.AutoTrackable):
     self._num_buckets = num_buckets
     self._trainable = trainable
     self._name = name
-    self._use_safe_embedding_lookup = use_safe_embedding_lookup
     # Map from graph keys to embedding_weight variables.
     self._embedding_weights = {}
 
   def __call__(self, categorical_column, combiner, max_norm):
-    return SharedEmbeddingColumn(categorical_column, self, combiner, max_norm,
-                                 self._use_safe_embedding_lookup)
+    return SharedEmbeddingColumn(categorical_column, self, combiner, max_norm)
 
   @property
   def embedding_weights(self):
@@ -3411,7 +3374,7 @@ class SharedEmbeddingColumn(
     collections.namedtuple(
         'SharedEmbeddingColumn',
         ('categorical_column', 'shared_embedding_column_creator', 'combiner',
-         'max_norm', 'use_safe_embedding_lookup'))):
+         'max_norm'))):
   """See `embedding_column`."""
 
   @property
@@ -3463,17 +3426,11 @@ class SharedEmbeddingColumn(
 
       embedding_weights = self.shared_embedding_column_creator.embedding_weights
 
-      sparse_id_rank = tensor_shape.dimension_value(
-          sparse_ids.dense_shape.get_shape()[0])
-      embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
-      if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
-          sparse_id_rank <= 2):
-        embedding_lookup_sparse = (embedding_ops.embedding_lookup_sparse)
       # Return embedding lookup result.
-      return embedding_lookup_sparse(
-          embedding_weights,
-          sparse_ids,
-          sparse_weights,
+      return embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights=embedding_weights,
+          sparse_ids=sparse_ids,
+          sparse_weights=sparse_weights,
           combiner=self.combiner,
           name='%s_weights' % self.name,
           max_norm=self.max_norm)
