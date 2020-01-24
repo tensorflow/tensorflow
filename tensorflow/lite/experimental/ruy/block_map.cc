@@ -224,6 +224,8 @@ int GetCacheLocalityScore(int block_size_log2, int rows, int cols, int depth,
   } else if (nonlocality_log2 == 1) {
     return 32;
   } else if (nonlocality_log2 == 2) {
+    return 16;
+  } else if (nonlocality_log2 == 3) {
     return 0;
   } else {
     return -64;

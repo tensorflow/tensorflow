@@ -26,6 +26,7 @@ namespace ruy {
 namespace {
 
 #if RUY_PLATFORM(NEON_64)
+// Unless otherwise specified, these tests have been tuned on ARM Cortex-A55.
 void MakeBlockMapTuningTest(int rows, int cols, int depth, int kernel_rows,
                             int kernel_cols, int lhs_scalar_size,
                             int rhs_scalar_size, int tentative_thread_count,
@@ -119,6 +120,10 @@ TEST(BlockMapTest, MakeBlockMapTuningTest32bit) {
   MakeBlockMapTuningTest(256, 256, 256, 8, 8, 4, 4,
                          /* tentative_thread_count */ 4, Path::kNeonDotprod,
                          /* expected_num_blocks_base_log2 */ 3,
+                         /* expected_rectangularness_log2 */ 0);
+  MakeBlockMapTuningTest(4096, 4096, 4096, 8, 8, 4, 4,
+                         /* tentative_thread_count */ 4, Path::kNeonDotprod,
+                         /* expected_num_blocks_base_log2 */ 7,
                          /* expected_rectangularness_log2 */ 0);
 }
 
