@@ -600,13 +600,11 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   tensorflow::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
                                  &return_best_algo_only_);
 
-  // by default, use Immediate Mode APIs for convolution
-  use_immediate_mode_ = true;
-  // swich to Find Mode if env var TF_ROCM_USE_FIND_MODE is set
-  bool use_find_mode = false;
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_USE_FIND_MODE", false,
-                                 &use_find_mode);
-  use_immediate_mode_ = !use_find_mode;
+  // by default, use Find Mode APIs for convolution
+  use_immediate_mode_ = false;
+  // swich to Find Mode if env var TF_ROCM_USE_IMMEDIATE_MODE is set
+  tensorflow::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
+                                 &use_immediate_mode_);
 }
 
 port::Status MIOpenSupport::Init() {
