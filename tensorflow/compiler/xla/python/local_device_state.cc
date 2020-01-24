@@ -30,7 +30,10 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
     : synchronous_deallocation_(synchronous_deallocation),
       event_pool_(allow_event_reuse),
       compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1),
-      executor_(executor) {
+      executor_(executor),
+      prng_seed_generator_(prng_seed_device_()),
+      prng_seed_distribution_(std::numeric_limits<int>::min(),
+                              std::numeric_limits<int>::max()) {
   compute_stream_ = absl::make_unique<se::Stream>(executor);
   host_to_device_stream_ = absl::make_unique<se::Stream>(executor);
   callback_stream_ = absl::make_unique<se::Stream>(executor);
@@ -109,6 +112,15 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
   next_device_to_device_stream_ =
       (next_device_to_device_stream_ + 1) % device_to_device_streams_.size();
   return device_to_device_streams_.at(i).get();
+}
+
+int LocalDeviceState::GetNewPrngSeed() {
+  absl::MutexLock lock(&mu_);
+  int x = 0;
+  do {
+    x = prng_seed_distribution_(prng_seed_generator_);
+  } while (x == 0);
+  return x;
 }
 
 }  // namespace xla

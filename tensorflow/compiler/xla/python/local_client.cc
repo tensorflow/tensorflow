@@ -756,12 +756,6 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   }
 
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
-  // The choice of where we wait is arbitrary; the reason for the wait is pacing
-  // to avoid problems such as memory fragmentation and running ahead too far,
-  // not for correctness. Placing it before the executable launch allows the
-  // inputs for the next executable to be fetched even if the launch is delayed.
-  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
-      device_state->compute_semaphore().ScopedAcquire(1));
 
   for (BufferDefinitionEvent* event : events) {
     event->WaitForEventOnStream(device_state->compute_stream());
@@ -775,6 +769,14 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   options.set_device_assignment(device_assignment_.get());
   options.set_run_id(run_id);
+  options.set_rng_seed(device_state->GetNewPrngSeed());
+
+  // The choice of where we wait is arbitrary; the reason for the wait is pacing
+  // to avoid problems such as memory fragmentation and running ahead too far,
+  // not for correctness. Placing it before the executable launch allows the
+  // inputs for the next executable to be fetched even if the launch is delayed.
+  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+      device_state->compute_semaphore().ScopedAcquire(1));
 
   StatusOr<ScopedShapedBuffer> result_buffer_or_status =
       executable_->RunAsync(argument_buffer_ptrs, options);

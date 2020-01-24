@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_DEVICE_STATE_H_
 
 #include <memory>
+#include <random>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -98,6 +99,9 @@ class LocalDeviceState {
 
   Semaphore& compute_semaphore() { return compute_semaphore_; }
 
+  // Returns a fresh, PRNG-generated random seed for an XLA computation.
+  int GetNewPrngSeed();
+
  private:
   Status SynchronizeAllActivity();
 
@@ -122,6 +126,10 @@ class LocalDeviceState {
   absl::Mutex mu_;
   int next_device_to_host_stream_ GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ GUARDED_BY(mu_) = 0;
+
+  std::random_device prng_seed_device_ GUARDED_BY(mu_);
+  std::mt19937 prng_seed_generator_ GUARDED_BY(mu_);
+  std::uniform_int_distribution<> prng_seed_distribution_ GUARDED_BY(mu_);
 
   // Callback stream is used for running short host-side callbacks after device
   // side events, without preventing the device-side stream from doing useful
