@@ -74,7 +74,7 @@ _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                         'keras api usage', 'method')
 
 
-@keras_export('keras.models.Model', 'keras.Model')
+@keras_export('keras.Model', 'keras.models.Model')
 class Model(network.Network, version_utils.VersionSelector):
   """`Model` groups layers into an object with training and inference features.
 

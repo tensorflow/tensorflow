@@ -190,7 +190,7 @@ class InputLayer(base_layer.Layer):
     return layer_serialization.InputLayerSavedModelSaver(self)
 
 
-@keras_export('keras.layers.Input', 'keras.Input')
+@keras_export('keras.Input', 'keras.layers.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,
