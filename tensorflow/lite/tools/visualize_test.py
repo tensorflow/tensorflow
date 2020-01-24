@@ -22,7 +22,7 @@ import os
 import re
 
 from flatbuffers.python import flatbuffers
-from tensorflow.lite.tools import schema_py_generated as schema_fb
+from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.tools import visualize
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test

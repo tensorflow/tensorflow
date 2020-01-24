@@ -29,7 +29,7 @@ import os
 import re
 import sys
 
-from tensorflow.lite.tools import schema_py_generated as schema_fb
+from tensorflow.lite.python import schema_py_generated as schema_fb
 
 # A CSS description for making the visualizer
 _CSS = """

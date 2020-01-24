@@ -1,7 +1,6 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 
 package(
     default_visibility = [
@@ -12,18 +11,13 @@ package(
 
 common_copts = ["-Wall"]
 
-flatbuffer_py_library(
-    name = "schema_py",
-    srcs = ["//tensorflow/lite/schema:schema.fbs"],
-)
-
 py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
-        ":schema_py",
+        "//tensorflow/lite/python:schema_py",
         "//tensorflow/python:platform",
     ],
 )
