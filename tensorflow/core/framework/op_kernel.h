@@ -223,6 +223,13 @@ class OpKernel {
   // Returns `true` if and only if this kernel uses deferred execution.
   bool is_deferred() const { return is_deferred_; }
 
+  // Returns a trace string for current computation, op name/type and input
+  // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
+  // should use the default implementation.
+  // Override this function to add OpKernel specific attributes that are
+  // necessary for cost analysis.
+  virtual string TraceString(OpKernelContext* ctx, bool verbose);
+
  private:
   const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;
