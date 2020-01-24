@@ -50,6 +50,16 @@ cc_library(
 # Public flatc compiler.
 cc_binary(
     name = "flatc",
+    linkopts = select({
+        ":freebsd": [
+            "-lm",
+        ],
+        ":windows": [],
+        "//conditions:default": [
+            "-lm",
+            "-ldl",
+        ],
+    }),
     deps = [
         "@flatbuffers//src:flatc",
     ],
