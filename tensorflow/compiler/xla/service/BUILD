@@ -2526,6 +2526,8 @@ cc_library(
 tf_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
+    # TODO(b/148275965) The test fails on macOS.
+    tags = ["nomac"],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",

@@ -1771,6 +1771,8 @@ xla_test(
     timeout = "long",
     srcs = ["prng_test.cc"],
     shard_count = 6,
+    # TODO(b/148276347) The test fails on macOS.
+    tags = ["nomac"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
