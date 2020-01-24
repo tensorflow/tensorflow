@@ -18,15 +18,15 @@ add_library(tensorflow-lite
   ${TENSORFLOW_LITE_DIR}/stderr_reporter.cc
   ${TENSORFLOW_LITE_DIR}/string_util.cc
   ${TENSORFLOW_LITE_DIR}/util.cc
-  ${TENSORFLOW_LITE_DIR}/c/c_api_internal.c
-  ${TENSORFLOW_LITE_DIR}/experimental/c/c_api_experimental.cc
-  ${TENSORFLOW_LITE_DIR}/experimental/c/c_api.cc
+  ${TENSORFLOW_LITE_DIR}/c/c_api_experimental.cc
+  ${TENSORFLOW_LITE_DIR}/c/c_api.cc
+  ${TENSORFLOW_LITE_DIR}/c/common.c
   ${TENSORFLOW_LITE_DIR}/core/subgraph.cc
   ${TENSORFLOW_LITE_DIR}/core/api/error_reporter.cc
   ${TENSORFLOW_LITE_DIR}/core/api/flatbuffer_conversions.cc
   ${TENSORFLOW_LITE_DIR}/core/api/op_resolver.cc
   ${TENSORFLOW_LITE_DIR}/core/api/tensor_utils.cc
-  ${TENSORFLOW_LITE_DIR}/experimental/resource_variable/resource_variable.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/resource/resource_variable.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/allocator.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/block_map.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/blocking_counter.cc
@@ -42,6 +42,7 @@ add_library(tensorflow-lite
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/pack_avx2.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/pack_avx512.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/pmu.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/prepacked_cache.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/thread_pool.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/trace.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/trmul.cc
@@ -64,6 +65,7 @@ add_library(tensorflow-lite
   ${TENSORFLOW_LITE_DIR}/kernels/conv.cc
   ${TENSORFLOW_LITE_DIR}/kernels/cpu_backend_context.cc
   ${TENSORFLOW_LITE_DIR}/kernels/cpu_backend_gemm_eigen.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/densify.cc
   ${TENSORFLOW_LITE_DIR}/kernels/depthwise_conv.cc
   ${TENSORFLOW_LITE_DIR}/kernels/depth_to_space.cc
   ${TENSORFLOW_LITE_DIR}/kernels/dequantize.cc
@@ -100,6 +102,7 @@ add_library(tensorflow-lite
   ${TENSORFLOW_LITE_DIR}/kernels/mul.cc
   ${TENSORFLOW_LITE_DIR}/kernels/neg.cc
   ${TENSORFLOW_LITE_DIR}/kernels/non_max_suppression.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/numeric_verify.cc
   ${TENSORFLOW_LITE_DIR}/kernels/one_hot.cc
   ${TENSORFLOW_LITE_DIR}/kernels/pack.cc
   ${TENSORFLOW_LITE_DIR}/kernels/pad.cc
@@ -119,6 +122,7 @@ add_library(tensorflow-lite
   ${TENSORFLOW_LITE_DIR}/kernels/reverse_sequence.cc
   ${TENSORFLOW_LITE_DIR}/kernels/rfft2d.cc
   ${TENSORFLOW_LITE_DIR}/kernels/round.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/scatter_nd.cc
   ${TENSORFLOW_LITE_DIR}/kernels/select.cc
   ${TENSORFLOW_LITE_DIR}/kernels/shape.cc
   ${TENSORFLOW_LITE_DIR}/kernels/skip_gram.cc
@@ -154,10 +158,12 @@ add_library(tensorflow-lite
   ${TENSORFLOW_LITE_DIR}/kernels/internal/reference/portable_tensor_utils.cc
   ${TENSORFLOW_LITE_DIR}/kernels/internal/kernel_utils.cc
   ${TENSORFLOW_LITE_DIR}/kernels/internal/quantization_util.cc
+  ${TENSORFLOW_LITE_DIR}/kernels/internal/transpose_utils.cc
   ${TENSORFLOW_LITE_DIR}/kernels/internal/optimized/neon_tensor_utils.cc
   ${TENSORFLOW_LITE_DIR}/kernels/internal/optimized/sse_tensor_utils.cc
   ${TENSORFLOW_LITE_DIR}/kernels/internal/reference/portable_tensor_utils.cc
   ${TENSORFLOW_LITE_DIR}/profiling/time.cc
+  ${TENSORFLOW_LITE_DIR}/profiling/memory_info.cc
   ${TENSORFLOW_LITE_DIR}/delegates/nnapi/nnapi_delegate_disabled.cc
   ${TENSORFLOW_LITE_DIR}/nnapi/nnapi_implementation_disabled.cc
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/farmhash/src/farmhash.cc
@@ -192,7 +198,7 @@ if(${TFLITE_DELEGATE_GL})
             ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
             ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
             ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/host/flatc
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/host/flatc
             --cpp --scoped-enums -o ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/
             ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
             ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
@@ -356,6 +362,7 @@ if((${TFLITE_DELEGATE_GL}) OR (${TFLITE_DELEGATE_CL}))
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/api.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/delegate.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/convert.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/custom_parsers.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/data_type.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/gpu_info.cc
     ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management.cc
