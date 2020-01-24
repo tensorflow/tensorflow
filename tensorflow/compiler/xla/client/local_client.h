@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LOCAL_CLIENT_H_
 
 #include <memory>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
@@ -110,12 +111,13 @@ class LocalClient : public Client {
   LocalClient(const LocalClient&) = delete;
   void operator=(const LocalClient&) = delete;
 
-  // Build and return a LocalExecutable object. The executable is compiled using
-  // the given XlaComputation, argument layouts and options.
+  // Build and return LocalExecutable objects (one per partition, as specified
+  // by the build options). The executable is compiled using the given
+  // XlaComputation, argument layouts and options.
   //
   // The given ExecutableBuildOptions overrides any values from XLA_FLAGS
   // environment variable.
-  StatusOr<std::unique_ptr<LocalExecutable>> Compile(
+  StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> Compile(
       const XlaComputation& computation,
       const absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& options);
