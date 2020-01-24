@@ -916,6 +916,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",  # No point linking the gen script in the pip package.
+        "no_rocm",
     ],
     deps = [
         ":gradient_input_output_exclusions",

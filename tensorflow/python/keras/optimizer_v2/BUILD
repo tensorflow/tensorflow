@@ -199,6 +199,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_windows",
+        "no_rocm",
     ],
     deps = [
         ":optimizer_v2",
