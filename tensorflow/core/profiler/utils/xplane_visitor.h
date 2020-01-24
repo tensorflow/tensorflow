@@ -34,6 +34,7 @@ class XPlaneVisitor;
 
 class XStatVisitor {
  public:
+  // REQUIRED: plane and stat cannot be nullptr.
   XStatVisitor(const XPlaneVisitor* plane, const XStat* stat);
 
   int64 Id() const { return stat_->metadata_id(); }
@@ -67,6 +68,7 @@ class XStatVisitor {
 template <class T>
 class XStatsOwner {
  public:
+  // REQUIRED: metadata and stats_owner cannot be nullptr.
   XStatsOwner(const XPlaneVisitor* metadata, const T* stats_owner)
       : stats_owner_(stats_owner), metadata_(metadata) {}
 
@@ -88,6 +90,7 @@ class XStatsOwner {
 
 class XEventVisitor : public XStatsOwner<XEvent> {
  public:
+  // REQUIRED: plane, line and event cannot be nullptr.
   XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                 const XEvent* event);
   int64 Id() const { return event_->metadata_id(); }
@@ -141,6 +144,7 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
 class XLineVisitor {
  public:
+  // REQUIRED: plane and line cannot be nullptr.
   XLineVisitor(const XPlaneVisitor* plane, const XLine* line)
       : plane_(plane), line_(line) {}
 
@@ -180,6 +184,7 @@ using TypeGetterList = std::vector<TypeGetter>;
 
 class XPlaneVisitor : public XStatsOwner<XPlane> {
  public:
+  // REQUIRED: plane cannot be nullptr.
   explicit XPlaneVisitor(
       const XPlane* plane,
       const TypeGetterList& event_type_getter_list = TypeGetterList(),
@@ -201,9 +206,15 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
   // TODO(jiesun): use single map look up for both StatMetadata and StatType.
   const XStatMetadata* GetStatMetadata(int64 stat_metadata_id) const;
   absl::optional<int64> GetStatType(int64 stat_metadata_id) const;
+  absl::optional<int64> GetStatType(const XStat& stat) const {
+    return GetStatType(stat.metadata_id());
+  }
   absl::optional<int64> GetStatMetadataId(int64 stat_type) const;
   const XEventMetadata* GetEventMetadata(int64 event_metadata_id) const;
   absl::optional<int64> GetEventType(int64 event_metadata_id) const;
+  absl::optional<int64> GetEventType(const XEvent& event) const {
+    return GetEventType(event.metadata_id());
+  }
 
  private:
   void BuildEventTypeMap(const XPlane* plane,
