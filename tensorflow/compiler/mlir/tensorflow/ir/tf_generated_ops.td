@@ -4383,6 +4383,28 @@ The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RandomStandardNormalOp : TF_Op<"RandomStandardNormal", []> {
+  let summary = "Outputs random values from a normal distribution.";
+
+  let description = [{
+The generated values will have mean 0 and standard deviation 1.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {
   let summary = "Outputs random values from a uniform distribution.";
 

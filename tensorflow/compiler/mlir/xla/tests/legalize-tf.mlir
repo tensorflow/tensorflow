@@ -2449,15 +2449,30 @@ func @argmax_dynamic_shape_input(%arg0: tensor<3x?xi32>) -> tensor<3xi32> {
   return %0 : tensor<3xi32>
 }
 
+//===----------------------------------------------------------------------===//
+// Random op legalizations.
+//===----------------------------------------------------------------------===//
+
 // CHECK-LABEL: func @rng_uniform
-func @rng_uniform(%arg0: tensor<3xi32>) -> tensor<12x12x64xf32> {
+func @rng_uniform(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
   // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK: %[[ONE:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK: %[[CONV:.*]] = "xla_hlo.convert"(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
-  // CHECK: %[[F32:.*]] = "xla_hlo.rng_uniform"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x12x64xf32>
-  %0 = "tf.RandomUniform"(%arg0) {T = "tfdtype$DT_INT32", dtype = "tfdtype$DT_FLOAT", seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<12x12x64xf32>
-  // CHECK: return %[[F32]] : tensor<12x12x64xf32>
-  return %0 : tensor<12x12x64xf32>
+  // CHECK: %[[F32:.*]] = "xla_hlo.rng_uniform"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x?x64xf32>
+  %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
+  // CHECK: return %[[F32]]
+  return %0 : tensor<12x?x64xf32>
+}
+
+// CHECK-LABEL: func @rng_std_normal
+func @rng_std_normal(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: %[[ONE:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: %[[CONV:.*]] = "xla_hlo.convert"(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
+  // CHECK: %[[F32:.*]] = "xla_hlo.rng_normal"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x?x64xf32>
+  %0 = "tf.RandomStandardNormal"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
+  // CHECK: return %[[F32]]
+  return %0 : tensor<12x?x64xf32>
 }
 
 //===----------------------------------------------------------------------===//
