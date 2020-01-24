@@ -21,41 +21,35 @@ limitations under the License.
 namespace tflite {
 namespace reference_integer_ops {
 
-// Quantized Negate with int8 input and output, input and output must have the
+// Quantized Negate with int8 input and output, input and output must have an
 // equal scale
+// [zero_point_sum] represents the sum of the input and output zero points
 inline void Negate(const RuntimeShape& input_shape, const int8_t* input_data,
-                   int32_t input_zero_point, const RuntimeShape& output_shape,
-                   int8_t* output_data, int32_t output_zero_point) {
-  // equation: out =  in_zp + out_zp - in
-  // where out, out_zp, in_zp ∈ [-128, 127] : int8
-  // highest possible value: 127 + 127 - (-128) = 382
-  // lowest possible value: (-128) + (-128) - (127)  = -383
-  // accumulate on int16
+                   const RuntimeShape& output_shape, int8_t* output_data,
+                   int16_t zero_point_sum) {
+  // where: output, output_zero_point, input_zero_point ∈ [-128, 127] : int8
+  // zero_point_sum = (input_zero_point + output_zero_point)
+  // equation: output = zero_point_sum - input
+  // highest possible value for zero_point_sum = 127 + 127 = 254
+  // lowest possible value for zero_point_sum = -128 + (-128) = -256
+  // lowest possible neg value = lowest zero_point_sum - 127 = -256 - 127 =
+  // -383
+  // highest possible neg value = highest zero_point_sum - (-128) = 254 + 128
+  // = 382
+  // thus, accumulate on int16 [-383, 382]
 
-  constexpr int16_t kI8Max =
-      static_cast<int16_t>(std::numeric_limits<int8_t>::max());
-  constexpr int16_t kI8Min =
+  constexpr auto kI8Min =
       static_cast<int16_t>(std::numeric_limits<int8_t>::min());
-
-  // within: [-128, 127]
-  TFLITE_DCHECK_GE(input_zero_point, static_cast<int32_t>(kI8Min));
-  TFLITE_DCHECK_LE(input_zero_point, static_cast<int32_t>(kI8Max));
-
-  // within: [-128, 127]
-  TFLITE_DCHECK_GE(output_zero_point, static_cast<int32_t>(kI8Min));
-  TFLITE_DCHECK_LE(output_zero_point, static_cast<int32_t>(kI8Max));
+  constexpr auto kI8Max =
+      static_cast<int16_t>(std::numeric_limits<int8_t>::max());
 
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
-  // already within int8 range, stored in int32
-  const auto prior = static_cast<int16_t>(input_zero_point + output_zero_point);
-
   for (int i = 0; i < flat_size; ++i) {
-    // all operations performed on int16
-    const int16_t neg_accum = prior - static_cast<int16_t>(input_data[i]);
-    auto clamped_accum = neg_accum > kI8Max ? kI8Max : neg_accum;
-    clamped_accum = clamped_accum < kI8Min ? kI8Min : clamped_accum;
-    output_data[i] = static_cast<int8_t>(clamped_accum);
+    // all operations accumulated on int16
+    const int16_t neg = zero_point_sum - static_cast<int16_t>(input_data[i]);
+    const auto clamped_neg = std::min(std::max(neg, kI8Min), kI8Max);
+    output_data[i] = static_cast<int8_t>(clamped_neg);
   }
 }
 
