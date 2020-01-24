@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LOCAL_SERVICE_H_
 
 #include <memory>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -42,12 +41,12 @@ class LocalService : public Service {
   static StatusOr<std::unique_ptr<LocalService>> NewService(
       const ServiceOptions& options);
 
-  // Builds Executables with the given XlaComputation, argument layouts and
+  // Builds an Executable with the given XlaComputation, argument layouts and
   // options. If result_layout is non-null, then the executable is compiled to
   // produce a result of the given layout.  If device_allocator is non-null,
   // then the compiler may use it to allocate temp space on the device.  The
   // compiler is responsible for freeing any memory it allocates this way.
-  StatusOr<std::vector<std::unique_ptr<Executable>>> CompileExecutables(
+  StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       const XlaComputation& computation,
       const absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& build_options);

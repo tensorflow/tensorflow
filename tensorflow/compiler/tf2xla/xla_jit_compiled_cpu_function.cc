@@ -117,10 +117,8 @@ XlaJitCompiledCpuFunction::Compile(
   // Compile the executable. The static_cast to the CpuExecutable subclass is
   // necessary since the raw function and buffer assignments are only available
   // there.
-  TF_ASSIGN_OR_RETURN(auto executables,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
                       client->Compile(computation, arg_shapes, build_options));
-  TF_RET_CHECK(executables.size() == 1);
-  std::unique_ptr<xla::LocalExecutable> executable = std::move(executables[0]);
   const xla::cpu::CpuExecutable* cpu_executable =
       static_cast<xla::cpu::CpuExecutable*>(executable->executable());
   XlaCompiledCpuFunction::RawFunction raw_function =

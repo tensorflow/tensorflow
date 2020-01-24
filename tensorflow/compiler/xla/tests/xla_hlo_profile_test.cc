@@ -158,11 +158,11 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   ExecutableBuildOptions build_options;
   build_options.mutable_debug_options()->set_xla_hlo_profile(true);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto local_executables,
+      std::unique_ptr<LocalExecutable> local_executable,
       client->Compile(computation, {&lhs_arg_shape, &rhs_arg_shape},
                       build_options));
 
-  Executable* executable = local_executables[0]->executable();
+  Executable* executable = local_executable->executable();
   HloExecutionProfile hlo_execution_profile(
       &executable->hlo_profile_printer_data(),
       &executable->hlo_profile_index_map());

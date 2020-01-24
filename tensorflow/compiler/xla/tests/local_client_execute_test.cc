@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -760,17 +759,17 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
 
   Shape argument_layout =
       ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables,
+  auto executable_status =
       local_client_->Compile(builder.Build().ValueOrDie(), {&argument_layout},
-                             ExecutableBuildOptions()));
-  EXPECT_EQ(1, executables.size());
+                             ExecutableBuildOptions());
+  ASSERT_IS_OK(executable_status);
+  std::unique_ptr<LocalExecutable> executable =
+      executable_status.ConsumeValueOrDie();
 
   auto x_array =
       LiteralToShapedBuffer(LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f}));
   ScopedShapedBuffer result =
-      executables[0]
-          ->Run({&x_array}, DefaultExecutableRunOptions())
+      executable->Run({&x_array}, DefaultExecutableRunOptions())
           .ConsumeValueOrDie();
   ASSERT_IS_OK(local_client_->mutable_backend()
                    ->BorrowStream(0)
@@ -779,31 +778,6 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
 
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
-}
-
-XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
-  if (local_client_->device_count() < 2) {
-    GTEST_SKIP_("requires two devices");
-  }
-
-  XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
-  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
-  auto z = ConstantR1<float>(&builder, {5.0f, 6.0f, 7.0f});
-  auto r = Add(x, y);
-  builder.SetSharding(sharding_builder::AssignDevice(1));
-  Add(r, z);
-  builder.ClearSharding();
-
-  Shape argument_layout =
-      ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0});
-  ExecutableBuildOptions build_options;
-  build_options.set_num_partitions(2);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables,
-      local_client_->Compile(builder.Build().ValueOrDie(), {&argument_layout},
-                             build_options));
-  EXPECT_EQ(2, executables.size());
 }
 
 XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
@@ -954,10 +928,11 @@ void BM_LocalClientOverhead(int num_iters) {
 
   const int kWarmups = 2;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables, client->Compile(computation, {&buffer.on_host_shape()},
-                                        ExecutableBuildOptions()));
-  std::unique_ptr<LocalExecutable> executable = std::move(executables[0]);
+  auto executable_status = client->Compile(
+      computation, {&buffer.on_host_shape()}, ExecutableBuildOptions());
+  ASSERT_IS_OK(executable_status);
+  std::unique_ptr<LocalExecutable> executable =
+      executable_status.ConsumeValueOrDie();
 
   ExecutableRunOptions run_options;
   run_options.set_allocator(&allocator).set_stream(stream.get());

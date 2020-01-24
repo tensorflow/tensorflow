@@ -62,11 +62,10 @@ void RealMain(absl::Span<char* const> args, bool compile) {
       ExecutableBuildOptions build_options;
       build_options.set_device_ordinal(0);
       build_options.set_result_layout(program_shape->result());
-      auto executables =
-          local_service->CompileExecutables(computation, layouts, build_options)
-              .ConsumeValueOrDie();
-      CHECK_EQ(executables.size(), 1);
-      const HloModule& module = executables[0]->module();
+      StatusOr<std::unique_ptr<Executable>> executable =
+          local_service->CompileExecutable(computation, layouts, build_options);
+
+      const HloModule& module = executable.ValueOrDie()->module();
 
       fprintf(stdout, "HLO compiled for %s backend:\n%s\n",
               local_service->backend().platform()->Name().c_str(),

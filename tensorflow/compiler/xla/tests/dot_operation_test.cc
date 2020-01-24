@@ -1672,10 +1672,11 @@ void DOT_ReorderContracting(int num_iters) {
       client->LiteralToShapedBuffer(input_literal, device_ordinal)
           .ConsumeValueOrDie();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables, client->Compile(computation, {&buffer0.on_host_shape()},
-                                        ExecutableBuildOptions()));
-  auto executable = std::move(executables[0]);
+  std::unique_ptr<LocalExecutable> executable =
+      client
+          ->Compile(computation, {&buffer0.on_host_shape()},
+                    ExecutableBuildOptions())
+          .ConsumeValueOrDie();
 
   se::Stream stream(executors[device_ordinal]);
   stream.Init();

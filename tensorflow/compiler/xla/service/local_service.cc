@@ -119,8 +119,7 @@ ExecutionOptions CreateExecutionOptions(
 
 }  // namespace
 
-StatusOr<std::vector<std::unique_ptr<Executable>>>
-LocalService::CompileExecutables(
+StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
@@ -179,29 +178,9 @@ LocalService::CompileExecutables(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));
 
-  // TODO(cjfj): Investigate why there are a couple of test failures when the
-  // single partition computations are built using `BuildExecutables`, fix it,
-  // and remove this special case (provided the performance if similar).
-  if (build_options.num_partitions() == 1) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Executable> executable,
-        BuildExecutable(proto, std::move(module_config), execute_backend_.get(),
-                        executor, build_options.device_allocator()));
-    std::vector<std::unique_ptr<Executable>> executables;
-    executables.push_back(std::move(executable));
-    return executables;
-  } else {
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-    module_configs.push_back(std::move(module_config));
-    // BuildExecutables uses the executors length to determine the number of
-    // cores per module, but otherwise only uses the first executor.
-    std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
-                                               executor);
-
-    return BuildExecutables({&proto}, std::move(module_configs),
-                            execute_backend_.get(), {executors},
-                            build_options.device_allocator());
-  }
+  return BuildExecutable(proto, std::move(module_config),
+                         execute_backend_.get(), executor,
+                         build_options.device_allocator());
 }
 
 StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {

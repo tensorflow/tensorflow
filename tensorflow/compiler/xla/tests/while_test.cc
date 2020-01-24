@@ -1314,10 +1314,9 @@ void BM_WhileLoop(int num_iters) {
   While(condition, body, init);
   auto computation = builder.Build().ConsumeValueOrDie();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables,
-      client->Compile(computation, {}, ExecutableBuildOptions()));
-  auto executable = std::move(executables[0]);
+  std::unique_ptr<LocalExecutable> executable =
+      client->Compile(computation, {}, ExecutableBuildOptions())
+          .ConsumeValueOrDie();
 
   // Run some warm-up executions.
   ExecutableRunOptions options;

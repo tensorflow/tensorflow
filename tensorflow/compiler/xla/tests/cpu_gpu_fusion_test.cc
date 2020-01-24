@@ -882,14 +882,13 @@ void BM_ParallelFusion(int num_iters) {
           .ConsumeValueOrDie();
 
   // Build executable.
-  auto executables =
+  std::unique_ptr<LocalExecutable> executable =
       client
           ->Compile(computation,
                     {&buffer0.on_host_shape(), &buffer1.on_host_shape(),
                      &buffer2.on_host_shape()},
                     ExecutableBuildOptions())
           .ConsumeValueOrDie();
-  auto executable = std::move(executables[0]);
 
   se::Stream stream(executors[device_ordinal]);
   stream.Init();

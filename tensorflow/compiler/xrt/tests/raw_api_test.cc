@@ -286,8 +286,8 @@ xla::ProgramShape XlaCompiledProgramShape(
     parameters_shapes.push_back(&input_program_shape.parameters(i));
   }
   auto local_executable =
-      std::move(client->Compile(computation, parameters_shapes, exec_options)
-                    .ValueOrDie()[0]);
+      client->Compile(computation, parameters_shapes, exec_options)
+          .ValueOrDie();
   return local_executable->executable()
       ->module()
       .entry_computation()

@@ -65,9 +65,8 @@ void TestWithDeviceCount(const int device_count) {
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation xla_computation, BuildComputation());
   TF_ASSERT_OK_AND_ASSIGN(
-      auto executables,
+      std::unique_ptr<LocalExecutable> executable,
       client->Compile(xla_computation, {}, xla::ExecutableBuildOptions{}));
-  std::unique_ptr<LocalExecutable> executable = std::move(executables[0]);
   std::vector<tensorflow::Thread*> threads;
   absl::Mutex results_mutex;
   std::vector<std::pair<int, StatusOr<ScopedShapedBuffer>>> results;

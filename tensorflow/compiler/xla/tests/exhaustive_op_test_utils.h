@@ -242,7 +242,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
         [&](const Literal* input_literal) { return &input_literal->shape(); });
 
     TF_ASSIGN_OR_RETURN(
-        auto executables,
+        auto executable,
         client_->Compile(computation, input_shapes, build_opts));
 
     std::vector<ScopedShapedBuffer> input_buffers;
@@ -264,7 +264,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     run_opts.set_intra_op_thread_pool(
         client_->backend().eigen_intra_op_thread_pool_device());
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                        executables[0]->Run(input_buffer_pointers, run_opts));
+                        executable->Run(input_buffer_pointers, run_opts));
 
     TF_ASSIGN_OR_RETURN(Literal result_literal,
                         client_->ShapedBufferToLiteral(result));
