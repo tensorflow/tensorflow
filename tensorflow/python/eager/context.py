@@ -1639,6 +1639,7 @@ def _reset_context():
     if _context is not None:
       _context = None
   _create_context()
+  pywrap_tfe.TFE_ClearScalarCache()
 
 
 def context():
