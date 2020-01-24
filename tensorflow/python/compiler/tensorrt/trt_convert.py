@@ -159,14 +159,28 @@ class TrtConversionParams(object):
       max_batch_size: max size for the input batch. This parameter is only
         effective when is_dynamic_op=False which is not supported in TF 2.0.
     """
-    self.rewriter_config_template = rewriter_config_template
-    self.max_workspace_size_bytes = max_workspace_size_bytes
-    self.precision_mode = precision_mode
-    self.minimum_segment_size = minimum_segment_size
-    self.is_dynamic_op = is_dynamic_op
-    self.maximum_cached_engines = maximum_cached_engines
-    self.use_calibration = use_calibration
-    self.max_batch_size = max_batch_size
+    super(TrtConversionParams, self).__setattr__(
+        "rewriter_config_template", rewriter_config_template)
+    super(TrtConversionParams, self).__setattr__(
+        "max_workspace_size_bytes", max_workspace_size_bytes)
+    super(TrtConversionParams, self).__setattr__(
+        "precision_mode", precision_mode)
+    super(TrtConversionParams, self).__setattr__(
+        "minimum_segment_size", minimum_segment_size)
+    super(TrtConversionParams, self).__setattr__(
+        "is_dynamic_op", is_dynamic_op)
+    super(TrtConversionParams, self).__setattr__(
+        "maximum_cached_engines", maximum_cached_engines)
+    super(TrtConversionParams, self).__setattr__(
+        "use_calibration", use_calibration)
+    super(TrtConversionParams, self).__setattr__(
+        "max_batch_size", max_batch_size)
+
+  def __setattr__(self, key, value):
+    """Override __setattr__ to make class immutable."""
+    raise AttributeError(
+        "{} is immutable and thus cannot change its attributes".format(
+            self.__class__))
 
   def _replace(self,
                rewriter_config_template=None,
@@ -184,10 +198,11 @@ class TrtConversionParams(object):
     set parameters:
       DEFAULT_TRT_CONVERSION_PARAMS._replace(...)
     """
-    trt_conversion_params = TrtConversionParams()
+    conv_params_dict = {}
     for k, v in vars().items():
-      if v and (k != "self"):
-        setattr(trt_conversion_params, k, v)
+      if (v != None) and (k not in ("self", "conv_params_dict")):
+        conv_params_dict[k] = v
+    trt_conversion_params = TrtConversionParams(**conv_params_dict)
     return trt_conversion_params
 
   def __repr__(self):
