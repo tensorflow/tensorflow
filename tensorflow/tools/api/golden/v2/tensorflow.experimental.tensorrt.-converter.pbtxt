@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"TrtConversionParams{\'rewriter_config_template\': None, \'max_workspace_size_bytes\': 1073741824, \'precision_mode\': \'FP32\', \'minimum_segment_size\': 3, \'is_dynamic_op\': True, \'maximum_cached_engines\': 1, \'use_calibration\': True, \'max_batch_size\': 1}\"], "
+    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "build"
