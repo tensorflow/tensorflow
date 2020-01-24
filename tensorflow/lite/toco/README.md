@@ -10,7 +10,7 @@ Usage information is given in these documents:
 
 *   [Command-line glossary](../g3doc/r1/convert/cmdline_reference.md)
 *   [Command-line examples](../g3doc/r1/convert/cmdline_examples.md)
-*   [Python API examples](../g3doc/convert/python_api.md)
+*   [Python API examples](../g3doc/r1/convert/python_api.md)
 
 ## Where the converter fits in the TensorFlow landscape
 
@@ -26,4 +26,4 @@ to client devices, generally mobile devices, where the TensorFlow Lite
 interpreter handles them on-device.  This flow is represented in the diagram
 below.
 
-![drawing](../g3doc/images/convert/workflow.svg)
+![drawing](../g3doc/r1/images/convert/workflow.svg)
