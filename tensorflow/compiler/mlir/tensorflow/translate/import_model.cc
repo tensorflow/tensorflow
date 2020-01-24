@@ -1099,7 +1099,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
     attributes.push_back(builder_.getNamedAttr(grad_string, gradient_attr));
   }
 
-  // Converts the graph to an MLIR function and adds it to the module.
+  // Converts the graph to a MLIR function and adds it to the module.
   // We populate the NodeSpec so that all the _Arg ops get their shape
   // added correctly.
   GraphImportConfig specs;
@@ -1747,9 +1747,9 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
 // Stateful helper class to import a TensorFlow model expressed in GraphDef into
 // an MLIR Module.
 //
-// The nodes defined in the graph are converted to a function called
-// 'func_name'. All library function definitions are converted to MLIR functions
-// in the module.
+// The nodes defined in the graph is converted to a function called "main". All
+// the library function definitions are converted to MLIR functions in the
+// module.
 class GraphDefImporter : public ImporterBase {
  public:
   // Main entry point: converts the given graph to an MLIR Module.
@@ -2827,7 +2827,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
 }
 
 // A helper class to import a TensorFlow model expressed in SavedModel V1 into
-// an MLIR Module in SavedModel dialect.
+// an MLIR Module.
 class SavedModelV1Importer {
  public:
   // Main entry point: converts all functions (specified by SignatureDefs) in
@@ -2845,38 +2845,36 @@ class SavedModelV1Importer {
       : bundle_(bundle),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(context))) {}
 
-  // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
+  // Convert the SavedModel to TF Executor Dialect. It creates a MLIR function
   // for each signature.
   StatusOr<mlir::OwningModuleRef> ConvertSignatures();
-  Status ConvertSignature(
-      const GraphDef& graphdef, const std::string& sig_def_key,
-      const std::map<std::string, TensorInfo>& inputs_sorted,
-      const std::map<std::string, TensorInfo>& outputs_sorted,
-      const std::string& method_name, const GraphDebugInfo& debug_info,
+  StatusOr<mlir::OwningModuleRef> ConvertSignature(
+      const GraphImportConfig& specs, llvm::StringRef func_name,
+      const GraphDef& sub_graph_def, const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def);
 
-  // Creates GlobalTensorOp for each variable and moves each VarHandle op to
-  // the enclosing function's arguments.
+  // Create GlobalTensorOp for each variable and move each VarHandle op to
+  // the enclosing function's arugments.
   Status LiftVariables();
-  // Moves the result of the VarHandleOp to the enclosing function's argument
-  // list and erases this VarHandleOp.
   void LiftVariable(mlir::TF::VarHandleOp op);
 
-  // Reads all variables from the SavedModel through session and creates
+  // Read all variables from the SavedModel through session, and create
   // GlobalTensorOp for these variables.
   Status ReadVariablesFromSession(
       const llvm::SmallVectorImpl<mlir::TF::VarHandleOp>& ops);
 
   GraphImportConfig::InputArrays ParseInputArrays(
-      const std::map<std::string, TensorInfo>& inputs);
+      const tensorflow::protobuf::Map<std::string, TensorInfo>& inputs);
 
   std::vector<std::string> ParseOutputArrays(
-      const std::map<std::string, TensorInfo>& outputs);
+      const tensorflow::protobuf::Map<std::string, TensorInfo>& outputs);
 
   const SavedModelBundle& bundle_;
   mlir::OwningModuleRef module_;
 };
 
+// Convert the SavedModel to TF Executor Dialect. It creates a MLIR function
+// for each signature.
 StatusOr<mlir::OwningModuleRef> SavedModelV1Importer::ConvertSignatures() {
   const auto& signatures = bundle_.GetSignatures();
   const auto& graphdef = bundle_.meta_graph_def.graph_def();
@@ -2889,46 +2887,47 @@ StatusOr<mlir::OwningModuleRef> SavedModelV1Importer::ConvertSignatures() {
   if (bundle_.debug_info != nullptr) debug_info = *bundle_.debug_info;
 
   for (const auto& key_and_signature_def : signatures) {
-    const std::string& sig_def_key = key_and_signature_def.first;
-    const SignatureDef& signature_def = key_and_signature_def.second;
+    const auto& func_name = key_and_signature_def.first;
+    const auto& signature_def = key_and_signature_def.second;
+    GraphImportConfig specs;
+    specs.inputs = ParseInputArrays(signature_def.inputs());
+    specs.outputs = ParseOutputArrays(signature_def.outputs());
 
-    // protobuf::Map doesn't provide stable iteration order so use std::map
-    std::map<std::string, TensorInfo> inputs_sorted(
-        signature_def.inputs().begin(), signature_def.inputs().end());
-    std::map<std::string, TensorInfo> outputs_sorted(
-        signature_def.outputs().begin(), signature_def.outputs().end());
-    std::string method_name = signature_def.method_name();
+    // Remove unused nodes and create a sub graphdef.
+    GraphDef sub_graph_def;
+    TF_RETURN_IF_ERROR(tensorflow::grappler::SetTransitiveFaninGraph(
+        graphdef, &sub_graph_def,
+        /* terminal_nodes = */ {specs.outputs.begin(), specs.outputs.end()}));
 
-    TF_RETURN_IF_ERROR(ConvertSignature(graphdef, sig_def_key, inputs_sorted,
-                                        outputs_sorted, method_name, debug_info,
-                                        flib_def));
+    auto status_or_sub_module =
+        ConvertSignature(specs, func_name, sub_graph_def, debug_info, flib_def);
+    if (!status_or_sub_module.ok()) {
+      LOG(ERROR) << "Failed to convert SignatureDef for " << func_name << ": "
+                 << status_or_sub_module.status();
+      continue;
+    }
+
+    auto& sub_module = status_or_sub_module.ValueOrDie();
+
+    // Move the converted functions to top level MLIR module.
+    auto* block = module_->getBody();
+    auto* sub_block = sub_module->getBody();
+    block->getOperations().splice(
+        mlir::Block::iterator(block->getTerminator()),
+        sub_block->getOperations(), sub_block->begin(),
+        mlir::Block::iterator(sub_block->getTerminator()));
   }
-  TF_RETURN_IF_ERROR(LiftVariables());
 
-  mlir::OpBuilder builder(module_->getBodyRegion());
-  module_->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
-  SortSavedModelModule(*module_);
+  TF_RETURN_IF_ERROR(LiftVariables());
 
   return std::move(module_);
 }
 
-Status SavedModelV1Importer::ConvertSignature(
-    const GraphDef& graphdef, const std::string& sig_def_key,
-    const std::map<std::string, TensorInfo>& inputs_sorted,
-    const std::map<std::string, TensorInfo>& outputs_sorted,
-    const std::string& method_name, const GraphDebugInfo& debug_info,
+StatusOr<mlir::OwningModuleRef> SavedModelV1Importer::ConvertSignature(
+    const GraphImportConfig& specs, llvm::StringRef func_name,
+    const GraphDef& sub_graph_def, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
-  GraphImportConfig specs;
-  specs.inputs = ParseInputArrays(inputs_sorted);
-  specs.outputs = ParseOutputArrays(outputs_sorted);
-
-  // Remove unused nodes and create sub-graphdef.
-  GraphDef sub_graph_def;
-  TF_RETURN_IF_ERROR(tensorflow::grappler::SetTransitiveFaninGraph(
-      graphdef, &sub_graph_def,
-      /*terminal_nodes=*/{specs.outputs.begin(), specs.outputs.end()}));
-
-  // Convert sub-graphdef to sub-graph.
+  // Convert this sub graphdef to sub graph
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
   options.add_default_attributes = true;
@@ -2937,48 +2936,13 @@ Status SavedModelV1Importer::ConvertSignature(
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(options, sub_graph_def, &sub_graph));
 
-  // Convert sub-graph to MLIR module.
-  TF_ASSIGN_OR_RETURN(
-      auto sub_module,
-      GraphDefImporter::Convert(module_->getContext(), sub_graph, debug_info,
-                                flib_def, specs, sig_def_key));
-  mlir::OpBuilder builder(sub_module->getBodyRegion());
-
-  // Find the FuncOp which corresponds to current SignatureDef.
-  mlir::SymbolTable symbol_table(*sub_module);
-  auto func_op = symbol_table.lookup<mlir::FuncOp>(sig_def_key);
-  TF_RET_CHECK(func_op)
-      << "Graphdef importer should have created a function named "
-      << sig_def_key << ".";
-
-  // Create unique exported name by combining SignatureDef key and method_name.
-  // Note that SignatureDef keys are unique while method names are not.
-  std::string unique_name_to_export =
-      absl::StrCat(sig_def_key, ".", method_name);
-  func_op.setAttr("tf_saved_model.exported_names",
-                  builder.getStrArrayAttr({unique_name_to_export}));
-
-  // Transfer input and output parameter names to index_path attributes.
-  for (auto input_and_idx : llvm::enumerate(inputs_sorted)) {
-    func_op.setArgAttr(input_and_idx.index(), "tf_saved_model.index_path",
-                       builder.getStrArrayAttr({input_and_idx.value().first}));
-  }
-  for (auto output_and_idx : llvm::enumerate(outputs_sorted)) {
-    func_op.setResultAttr(
-        output_and_idx.index(), "tf_saved_model.index_path",
-        builder.getStrArrayAttr({output_and_idx.value().first}));
-  }
-
-  // Move the converted functions to top level MLIR module.
-  auto* block = module_->getBody();
-  auto* sub_block = sub_module->getBody();
-  block->getOperations().splice(
-      mlir::Block::iterator(block->getTerminator()), sub_block->getOperations(),
-      sub_block->begin(), mlir::Block::iterator(sub_block->getTerminator()));
-
-  return Status::OK();
+  // Convert the sub graphdef to a MLIR function.
+  return GraphDefImporter::Convert(module_->getContext(), sub_graph, debug_info,
+                                   flib_def, specs, func_name);
 }
 
+// Create GlobalTensorOp for each variable and move each VarHandle op to
+// the enclosing function's arugments.
 Status SavedModelV1Importer::LiftVariables() {
   llvm::SmallVector<mlir::TF::VarHandleOp, 4> ops;
 
@@ -3004,6 +2968,8 @@ Status SavedModelV1Importer::LiftVariables() {
   return Status::OK();
 }
 
+// Move the result of the VarHandleOp to the enclosing function's arugment list
+// and erase this VarHandleOp.
 void SavedModelV1Importer::LiftVariable(mlir::TF::VarHandleOp op) {
   mlir::OpBuilder builder(&module_->getBodyRegion());
 
@@ -3034,11 +3000,14 @@ void SavedModelV1Importer::LiftVariable(mlir::TF::VarHandleOp op) {
   op.getOperation()->erase();
 }
 
+// Read all variables from the SavedModel through session, and create
+// GlobalTensorOp for these variables.
 Status SavedModelV1Importer::ReadVariablesFromSession(
     const llvm::SmallVectorImpl<mlir::TF::VarHandleOp>& ops) {
   mlir::OpBuilder builder(&module_->getBodyRegion());
 
   // Find all variables and their corresponding read ops.
+
   llvm::MapVector<llvm::StringRef, mlir::TF::VarHandleOp>
       variable_names_and_ops;
   for (auto op : ops) {
@@ -3046,6 +3015,7 @@ Status SavedModelV1Importer::ReadVariablesFromSession(
   }
 
   // Read all resource variables from the session.
+
   std::vector<std::string> variable_names;
   variable_names.reserve(variable_names_and_ops.size());
   for (const auto& name_and_location : variable_names_and_ops)
@@ -3098,7 +3068,7 @@ Status SavedModelV1Importer::ReadVariablesFromSession(
 }
 
 GraphImportConfig::InputArrays SavedModelV1Importer::ParseInputArrays(
-    const std::map<std::string, TensorInfo>& inputs) {
+    const tensorflow::protobuf::Map<std::string, TensorInfo>& inputs) {
   GraphImportConfig::InputArrays results;
   for (const auto& iter : inputs) {
     const auto& tensor_info = iter.second;
@@ -3120,7 +3090,7 @@ GraphImportConfig::InputArrays SavedModelV1Importer::ParseInputArrays(
 }
 
 std::vector<std::string> SavedModelV1Importer::ParseOutputArrays(
-    const std::map<std::string, TensorInfo>& outputs) {
+    const tensorflow::protobuf::Map<std::string, TensorInfo>& outputs) {
   std::vector<std::string> results;
   for (const auto& iter : outputs) {
     const auto& tensor_info = iter.second;
@@ -3168,7 +3138,7 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
                            const_cast<FunctionLibraryDefinition*>(&flib_def)));
   }
   return GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
-                                   /*func_name=*/"main");
+                                   /* func_name = */ "main");
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
