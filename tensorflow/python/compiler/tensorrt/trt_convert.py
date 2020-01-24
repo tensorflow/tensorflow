@@ -986,7 +986,7 @@ class TrtGraphConverterV2(object):
                input_saved_model_dir=None,
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
-               conversion_params=TrtConversionParams()):
+               conversion_params=None):
     """Initialize the converter.
 
     Args:
@@ -1001,6 +1001,8 @@ class TrtGraphConverterV2(object):
       ValueError: if the combination of the parameters is invalid.
     """
     assert context.executing_eagerly()
+    if conversion_params is None:
+      conversion_params = TrtConversionParams()
     _check_trt_version_compatibility()
     _check_conversion_params(conversion_params, is_v2=True)
 
