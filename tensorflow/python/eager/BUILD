@@ -741,27 +741,6 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
-    name = "def_function_test_cpu_only",
-    srcs = ["def_function_test_cpu_only.py"],
-    python_version = "PY3",
-    # --config=cuda implicitly links in XLA.
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_oss",  # No way to force no XLA linkage in OSS build from here.
-        "no_pip",
-        "nogpu",
-    ],
-    deps = [
-        ":def_function",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 cuda_py_test(
     name = "def_function_xla_jit_test",
     srcs = ["def_function_xla_jit_test.py"],

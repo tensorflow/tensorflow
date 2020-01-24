@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
@@ -339,7 +338,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_SetXlaConstantFoldingDisabled", &TF_SetXlaConstantFoldingDisabled);
   m.def("TF_GetXlaConstantFoldingDisabled", &TF_GetXlaConstantFoldingDisabled);
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
-  m.def("TF_IsXlaEnabled", [] { return tensorflow::IsXlaEnabled(); });
 
   // // TFE_Context Logic
   m.def(
