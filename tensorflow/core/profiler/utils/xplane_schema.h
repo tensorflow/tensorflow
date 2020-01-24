@@ -30,6 +30,11 @@ ABSL_CONST_INIT extern const absl::string_view kHostThreads;
 // Name prefix of XPlane that contains GPU events.
 ABSL_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 
+// Id of XPlane that contains TraceMe events.
+ABSL_CONST_INIT extern const int32 kHostPlaneId;
+// Ids prefix of XPlane that contains GPU events.
+ABSL_CONST_INIT extern const int32 kGpuPlaneBaseId;
+
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
   kFirstHostEventType = 0,

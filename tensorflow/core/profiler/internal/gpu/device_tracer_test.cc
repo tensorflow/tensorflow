@@ -271,11 +271,14 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   XSpace space;
   TF_ASSERT_OK(tracer->CollectData(&space));
   // At least one gpu plane and one host plane for launching events.
-  EXPECT_NE(FindPlaneWithName(space, kHostThreads), nullptr);
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  ASSERT_NE(host_plane, nullptr);
+  EXPECT_EQ(host_plane->id(), kHostPlaneId);
 
   const XPlane* device_plane =
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
-  EXPECT_NE(device_plane, nullptr);  // Check if device plane is serialized.
+  ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
+  EXPECT_EQ(device_plane->id(), kGpuPlaneBaseId);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
   EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);

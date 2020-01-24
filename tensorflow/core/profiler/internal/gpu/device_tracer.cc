@@ -183,9 +183,11 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
               << " callback api events and " << num_activity_events_
               << " activity events.";
     XPlaneBuilder host_plane(GetOrCreatePlane(space, kHostThreads));
+    host_plane.SetId(kHostPlaneId);
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
       std::string name = absl::StrCat(kGpuPlanePrefix, device_ordinal);
       XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
+      device_plane.SetId(kGpuPlaneBaseId + device_ordinal);
       per_device_collector_[device_ordinal].Flush(
           start_walltime_ns_, start_gpu_ns_, &device_plane, &host_plane);
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
