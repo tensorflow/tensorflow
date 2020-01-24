@@ -20,13 +20,12 @@ flatbuffer_py_library(
 py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
-    data = [
-        ":schema_py",
-        "//tensorflow/lite/schema:schema.fbs",
-        "//tensorflow/python:platform",
-    ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    deps = [
+        ":schema_py",
+        "//tensorflow/python:platform",
+    ],
 )
 
 py_test(
