@@ -4962,8 +4962,10 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":parse_tensor_op",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
