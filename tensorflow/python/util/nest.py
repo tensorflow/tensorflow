@@ -260,8 +260,9 @@ def flatten(structure, expand_composites=False):
   running.
 
   Args:
-    structure: an arbitrarily nested structure or a scalar object. Note, numpy
-      arrays are considered scalars.
+    structure: an arbitrarily nested structure which can be a scalar, or
+      tuple or dict or list of constructed scalars and/or other tuples/lists, or
+      a scalar object. Note, numpy arrays are considered scalars.
     expand_composites: If true, then composite tensors such as tf.SparseTensor
        and tf.RaggedTensor are expanded into their component tensors.
 
@@ -306,8 +307,14 @@ def assert_same_structure(nest1, nest2, check_types=True,
   ```
 
   Args:
-    nest1: an arbitrarily nested structure.
-    nest2: an arbitrarily nested structure.
+    nest1: an arbitrarily nested structure which can be a scalar, or
+      tuple or dict or list of constructed scalars and/or other 
+      tuples/lists, or a scalar object. Note, numpy arrays are considered
+      scalars.
+    nest2: an arbitrarily nested structure which can be a scalar, or
+      tuple or dict or list of constructed scalars and/or other 
+      tuples/lists, or a scalar object. Note, numpy arrays are considered
+      scalars.
     check_types: if `True` (default) types of sequences are checked as well,
         including the keys of dictionaries. If set to `False`, for example a
         list and a tuple of objects will look the same if they have the same
@@ -514,7 +521,7 @@ def map_structure(func, *structure, **kwargs):
 
   Args:
     func: A callable that accepts as many arguments as there are structures.
-    *structure: scalar, or tuple or list of constructed scalars and/or other
+    *structure: scalar, or tuple or dict or list of constructed scalars and/or other
       tuples/lists, or scalars.  Note: numpy arrays are considered as scalars.
     **kwargs: Valid keyword args are:
 
