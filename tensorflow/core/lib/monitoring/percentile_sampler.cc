@@ -31,10 +31,10 @@ void PercentileSamplerCell::Add(double sample) {
   mutex_lock l(mu_);
   samples_[next_position_] = {nstime, sample};
   ++next_position_;
-  if (next_position_ >= samples_.size()) {
+  if (TF_PREDICT_FALSE(next_position_ >= samples_.size())) {
     next_position_ = 0;
   }
-  if (num_samples_ < samples_.size()) {
+  if (TF_PREDICT_FALSE(num_samples_ < samples_.size())) {
     ++num_samples_;
   }
   ++total_samples_;
