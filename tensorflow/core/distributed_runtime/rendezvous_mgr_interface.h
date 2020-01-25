@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct WorkerSession;
+class WorkerSession;
 
 // RemoteRendezvous follow a 2-part initialization. First the objects are
 // constructed. Eventually, they will be initialized. Clients of the
@@ -40,6 +40,9 @@ class RemoteRendezvous : public Rendezvous {
  public:
   // Fully construct the RemoteRendezvous.
   virtual Status Initialize(WorkerSession* session) = 0;
+
+ protected:
+  bool is_cross_process() override { return true; }
 };
 
 // RendezvousMgr keeps track of a set of local rendezvous instances.

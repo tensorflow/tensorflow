@@ -23,43 +23,22 @@ Android NDK or configure NDK setting in
 Build it for desktop machines (tested on Ubuntu and OS X):
 
 ```
-bazel build --cxxopt=-std=c++11 //tensorflow/lite/examples/label_image:label_image
+bazel build -c opt --cxxopt=-std=c++11 //tensorflow/lite/examples/label_image:label_image
 ```
 
 Build it for Android ARMv8:
 
 ```
-bazel build --config monolithic --cxxopt=-std=c++11 \
-  --crosstool_top=//external:android/crosstool \
-  --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-  --cpu=arm64-v8a \
-  //tensorflow/lite/examples/label_image:label_image
-```
-
-or
-
-```
-bazel build --config android_arm64 --config monolithic --cxxopt=-std=c++11 \
+bazel build -c opt --cxxopt=-std=c++11 --config=android_arm64 \
   //tensorflow/lite/examples/label_image:label_image
 ```
 
 Build it for Android arm-v7a:
 
 ```
-bazel build --config monolithic --cxxopt=-std=c++11 \
-  --crosstool_top=//external:android/crosstool \
-  --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-  --cpu=armeabi-v7a \
+bazel build -c opt --cxxopt=-std=c++11 --config=android_arm \
   //tensorflow/lite/examples/label_image:label_image
 ```
-
-or
-
-```
-bazel build --config android_arm --config monolithic --cxxopt=-std=c++11 \
-  //tensorflow/lite/examples/label_image:label_image
-```
-
 
 ## Download sample model and image
 

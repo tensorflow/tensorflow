@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
@@ -64,7 +64,7 @@ struct DecodeConstant : public FunctionPass<DecodeConstant> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateDecodeConstantPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateDecodeConstantPass() {
   return std::make_unique<DecodeConstant>();
 }
 

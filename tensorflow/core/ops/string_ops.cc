@@ -261,8 +261,10 @@ REGISTER_OP("Substr")
       ShapeHandle pos_shape = c->input(1);
       ShapeHandle len_shape = c->input(2);
       ShapeHandle unused;
-      // Check that pos/len have same rank
-      TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
+      // If len rank is known, check that pos and len have the same rank
+      if (c->RankKnown(len_shape)) {
+        TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
+      }
       // Check that dimensions are equal
       for (int32 i = 0; i < c->Rank(pos_shape); ++i) {
         DimensionHandle pos_dim = c->Dim(pos_shape, i);

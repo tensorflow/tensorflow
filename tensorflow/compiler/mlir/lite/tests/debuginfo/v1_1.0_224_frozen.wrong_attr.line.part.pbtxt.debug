@@ -57,7 +57,7 @@ files: "fake/user/code/file_x.py"
 files: "fake/user/code/file_y.py"
 files: "fake/user/code/file_z.py"
 traces {
-  key: "MobilenetV1/Conv2d_0/BatchNorm/beta"
+  key: "MobilenetV1/Conv2d_0/BatchNorm/beta@"
   value {
     file_line_cols {
       file_index: 33
@@ -66,7 +66,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/BatchNorm/beta/read"
+  key: "MobilenetV1/Conv2d_0/BatchNorm/beta/read@"
   value {
     file_line_cols {
       file_index: 49
@@ -75,7 +75,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/BatchNorm/gamma"
+  key: "MobilenetV1/Conv2d_0/BatchNorm/gamma@"
   value {
     file_line_cols {
       file_index: 38
@@ -84,7 +84,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/BatchNorm/gamma/read"
+  key: "MobilenetV1/Conv2d_0/BatchNorm/gamma/read@"
   value {
     file_line_cols {
       file_index: 49
@@ -93,7 +93,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/BatchNorm/moving_mean"
+  key: "MobilenetV1/Conv2d_0/BatchNorm/moving_mean@"
   value {
     file_line_cols {
       file_index: 44
@@ -102,7 +102,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/BatchNorm/moving_mean/read"
+  key: "MobilenetV1/Conv2d_0/BatchNorm/moving_mean/read@"
   value {
     file_line_cols {
       file_index: 49
@@ -111,7 +111,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/BatchNorm/moving_variance"
+  key: "MobilenetV1/Conv2d_0/BatchNorm/moving_variance@"
   value {
     file_line_cols {
       file_index: 44
@@ -120,7 +120,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/BatchNorm/moving_variance/read"
+  key: "MobilenetV1/Conv2d_0/BatchNorm/moving_variance/read@"
   value {
     file_line_cols {
       file_index: 49
@@ -129,7 +129,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/weights"
+  key: "MobilenetV1/Conv2d_0/weights@"
   value {
     file_line_cols {
       file_index: 54
@@ -138,7 +138,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/Conv2d_0/weights/read"
+  key: "MobilenetV1/Conv2d_0/weights/read@"
   value {
     file_line_cols {
       file_index: 49
@@ -147,7 +147,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/MobilenetV1/Conv2d_0/BatchNorm/FusedBatchNorm"
+  key: "MobilenetV1/MobilenetV1/Conv2d_0/BatchNorm/FusedBatchNorm@"
   value {
     file_line_cols {
       file_index: 5
@@ -156,7 +156,7 @@ traces {
   }
 }
 traces {
-  key: "MobilenetV1/MobilenetV1/Conv2d_0/Conv2D"
+  key: "MobilenetV1/MobilenetV1/Conv2d_0/Conv2D@"
   value {
     file_line_cols {
       file_index: 2
@@ -165,7 +165,7 @@ traces {
   }
 }
 traces {
-  key: "input"
+  key: "input@"
   value {
     file_line_cols {
       file_index: 40

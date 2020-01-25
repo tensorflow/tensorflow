@@ -3,10 +3,25 @@ load(
     "if_linux_x86_64",
     "tf_copts",
 )
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
+        "//tensorflow/core:__pkg__",
+        # tensorflow/core/lib/gtl uses hash functions as part of their flatset/map representation
+        "//tensorflow/core/lib/gtl:__pkg__",
+        # tensorflow/core/lib/io/table_builder.cc uses crc functionality
+        "//tensorflow/core/lib/io:__pkg__",
+        # tensorflow/core/lib/strings/proto_serialization.cc hashes proto bytes
+        "//tensorflow/core/lib/strings:__pkg__",
+        # tensorflow/core/platform:tracing depends on hash
+        "//tensorflow/core/platform:__subpackages__",
+        # tensorflow/core/framework:tensor depends on hash
+        "//tensorflow/core/framework:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -32,14 +47,29 @@ cc_library(
 
 cc_library(
     name = "hash",
-    srcs = ["hash.cc"],
     hdrs = ["hash.h"],
     deps = [
-        "//tensorflow/core/lib/core:raw_coding",
-        "//tensorflow/core/lib/core:stringpiece",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:hash",
     ],
+)
+
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "hash.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "crc32c.cc",
+        "crc32c.h",
+        "crc32c_accelerate.cc",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
@@ -47,33 +77,6 @@ filegroup(
     srcs = [
         "crc32c.h",
         "hash.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_hash_all_srcs",
-    srcs = [
-        "crc32c.cc",
-        "crc32c_accelerate.cc",
-        "hash.cc",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_internal_impl_srcs",
-    srcs = [
-        "crc32c.cc",
-        "hash.cc",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_crc32_accelerate_srcs",
-    srcs = [
-        "crc32c_accelerate.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

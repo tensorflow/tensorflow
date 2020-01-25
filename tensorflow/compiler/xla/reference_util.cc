@@ -32,21 +32,6 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ std::unique_ptr<Array2D<Eigen::half>> ReferenceUtil::MatmulArray2D(
-    const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
-  return HloEvaluator::MatmulArray2D(lhs, rhs);
-}
-
-/* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MatmulArray2D(
-    const Array2D<float>& lhs, const Array2D<float>& rhs) {
-  return HloEvaluator::MatmulArray2D(lhs, rhs);
-}
-
-/* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::MatmulArray2D(
-    const Array2D<double>& lhs, const Array2D<double>& rhs) {
-  return HloEvaluator::MatmulArray2D(lhs, rhs);
-}
-
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::Array2DF32ToF64(
     const Array2D<float>& input) {
   auto result =

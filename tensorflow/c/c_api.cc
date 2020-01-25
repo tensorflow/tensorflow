@@ -458,7 +458,7 @@ static void TF_Run_Helper(
           EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
       continue;
     }
-    c_outputs[i] = TF_TensorFromTensor(src, status);
+    c_outputs[i] = TF_TensorFromTensor(src, &status->status);
     if (!status->status.ok()) return;
   }
 }
@@ -1142,6 +1142,16 @@ TF_Output TF_OperationInput(TF_Input oper_in) {
   return {ToOperation(edge->src()), edge->src_output()};
 }
 
+void TF_OperationAllInputs(TF_Operation* oper, TF_Output* inputs,
+                           int max_inputs) {
+  for (auto* edge : oper->node.in_edges()) {
+    if (edge->dst_input() >= 0 && edge->dst_input() < max_inputs) {
+      inputs[edge->dst_input()] = {ToOperation(edge->src()),
+                                   edge->src_output()};
+    }
+  }
+}
+
 int TF_OperationOutputNumConsumers(TF_Output oper_out) {
   int count = 0;
   for (const auto* edge : oper_out.oper->node.out_edges()) {
@@ -1483,7 +1493,7 @@ void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
   Tensor t;
   status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &t);
   if (!status->status.ok()) return;
-  *value = TF_TensorFromTensor(t, status);
+  *value = TF_TensorFromTensor(t, &status->status);
 }
 
 void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
@@ -1494,7 +1504,7 @@ void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
   if (!status->status.ok()) return;
   const auto len = std::min(max_values, static_cast<int>(ts.size()));
   for (int i = 0; i < len; ++i) {
-    values[i] = TF_TensorFromTensor(ts[i], status);
+    values[i] = TF_TensorFromTensor(ts[i], &status->status);
   }
 }
 
@@ -2388,7 +2398,7 @@ unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
       graph->graph.versions().producer(), &evaluated, &result_tensor);
   if (evaluated) {
     DCHECK(status->status.ok());
-    *result = TF_TensorFromTensor(result_tensor, status);
+    *result = TF_TensorFromTensor(result_tensor, &status->status);
     if (!status->status.ok()) evaluated = false;
   }
   return evaluated;

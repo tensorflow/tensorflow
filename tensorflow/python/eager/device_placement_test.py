@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -109,6 +111,33 @@ class ClusterPlacementTest(test.TestCase):
         c = a + b
         del c
       self.assertIn('unknown device', cm.exception.message)
+
+  def testUnknownDeviceInFunctionReturnUnknowDevice(self):
+
+    @def_function.function
+    def f():
+      with ops.device('GPU:42'):
+        return constant_op.constant(1) + constant_op.constant(2)
+
+    gpus = config.list_physical_devices('GPU')
+    if not gpus:
+      self.assertIn('CPU:0', f().device)
+    else:
+      self.assertIn('GPU:0', f().device)
+
+  def testUnknownDeviceInFunction(self):
+
+    @def_function.function
+    def f():
+      with ops.device('GPU:42'):
+        a = constant_op.constant(1) + constant_op.constant(2)
+      return a + constant_op.constant(2)
+
+    gpus = config.list_physical_devices('GPU')
+    if not gpus:
+      self.assertIn('CPU:0', f().device)
+    else:
+      self.assertIn('GPU:0', f().device)
 
 
 if __name__ == '__main__':

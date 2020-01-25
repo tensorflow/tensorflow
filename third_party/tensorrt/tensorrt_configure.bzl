@@ -26,8 +26,8 @@ _TF_TENSORRT_HEADERS_V6 = [
     "NvUtils.h",
     "NvInferPlugin.h",
     "NvInferVersion.h",
-    "NvInferRTSafe.h",
-    "NvInferRTExt.h",
+    "NvInferRuntime.h",
+    "NvInferRuntimeCommon.h",
     "NvInferPluginUtils.h",
 ]
 

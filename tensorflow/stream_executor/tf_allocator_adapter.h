@@ -40,7 +40,8 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
   ~TfAllocatorAdapter() override;
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
-                                              bool retry_on_failure) override;
+                                              bool retry_on_failure,
+                                              int64 memory_space) override;
 
   port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
 
@@ -53,7 +54,7 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
-  Stream *GetStream() const override { return stream_; }
+  port::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
  private:
   tensorflow::Allocator *wrapped_;
@@ -78,10 +79,11 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
   }
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
-                                              bool retry_on_failure) override {
+                                              bool retry_on_failure,
+                                              int64 memory_space) override {
     CHECK_LT(device_ordinal, per_device_allocators_.size());
-    return per_device_allocators_[device_ordinal].Allocate(device_ordinal, size,
-                                                           retry_on_failure);
+    return per_device_allocators_[device_ordinal].Allocate(
+        device_ordinal, size, retry_on_failure, memory_space);
   }
 
   port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
@@ -98,6 +100,10 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
   // requirements, this code may need to change.
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
+
+  port::StatusOr<Stream *> GetStream(int device_ordinal) override {
+    return per_device_allocators_[device_ordinal].GetStream(device_ordinal);
+  }
 
  private:
   std::vector<TfAllocatorAdapter> per_device_allocators_;

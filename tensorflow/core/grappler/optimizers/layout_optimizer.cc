@@ -2265,7 +2265,11 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   config.no_gemm = true;
   // TODO(yaozhang): Enable tuning with various TuningConfig choices with
   // the measurement-based estimator.
-  return Tune(item, graph_properties, config, output);
+  Status status = Tune(item, graph_properties, config, output);
+  if (!status.ok()) {
+    *output = item.graph;
+  }
+  return status;
 }
 
 void LayoutOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,

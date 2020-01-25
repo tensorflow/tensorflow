@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
@@ -717,7 +716,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
   VLOG(1) << "Merged bundles to:" << merged_prefix;
 
   // Cleanup: best effort based and ignores errors.
-  for (const string& prefix : prefixes) {
+  for (const tstring& prefix : prefixes) {
     env->DeleteFile(MetaFilename(prefix)).IgnoreError();
   }
   return status;
@@ -779,8 +778,14 @@ BundleReader::~BundleReader() {
       delete pair.second->file();
     }
   }
-  gtl::STLDeleteValues(&data_);
-  gtl::STLDeleteValues(&tensor_slices_);
+  for (auto& temp : data_) {
+    delete temp.second;
+  }
+  for (auto& temp : tensor_slices_) {
+    delete temp.second;
+  }
+  data_.clear();
+  tensor_slices_.clear();
 }
 
 Status BundleReader::GetBundleEntryProto(StringPiece key,

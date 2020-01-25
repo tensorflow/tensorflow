@@ -29,8 +29,8 @@ limitations under the License.
 namespace tensorflow {
 
 // static
-template <typename Scalar>
-void LinearAlgebraOp<Scalar>::ValidateSingleMatrix(
+template <class InputScalar, class OutputScalar>
+void LinearAlgebraOp<InputScalar, OutputScalar>::ValidateSingleMatrix(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes) {
   OP_REQUIRES(context, input_matrix_shapes.size() == 1,
               errors::InvalidArgument("Expected a single input matrix, got %d.",
@@ -40,8 +40,8 @@ void LinearAlgebraOp<Scalar>::ValidateSingleMatrix(
 }
 
 // static
-template <typename Scalar>
-void LinearAlgebraOp<Scalar>::ValidateSingleSquareMatrix(
+template <class InputScalar, class OutputScalar>
+void LinearAlgebraOp<InputScalar, OutputScalar>::ValidateSingleSquareMatrix(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes) {
   OP_REQUIRES(context, input_matrix_shapes.size() == 1,
               errors::InvalidArgument("Expected a single input matrix, got %d.",
@@ -51,8 +51,8 @@ void LinearAlgebraOp<Scalar>::ValidateSingleSquareMatrix(
 }
 
 // static
-template <typename Scalar>
-void LinearAlgebraOp<Scalar>::ValidateSolver(
+template <class InputScalar, class OutputScalar>
+void LinearAlgebraOp<InputScalar, OutputScalar>::ValidateSolver(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes) {
   OP_REQUIRES(context, input_matrix_shapes.size() == 2,
               errors::InvalidArgument("Expected two input matrices, got %d.",
@@ -68,8 +68,8 @@ void LinearAlgebraOp<Scalar>::ValidateSolver(
 }
 
 // static
-template <typename Scalar>
-void LinearAlgebraOp<Scalar>::ValidateSquareSolver(
+template <class InputScalar, class OutputScalar>
+void LinearAlgebraOp<InputScalar, OutputScalar>::ValidateSquareSolver(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes) {
   OP_REQUIRES(context, input_matrix_shapes.size() == 2,
               errors::InvalidArgument("Expected two input matrices, got %d.",
@@ -85,17 +85,20 @@ void LinearAlgebraOp<Scalar>::ValidateSquareSolver(
       errors::InvalidArgument("Input matrix and rhs are incompatible."));
 }
 
-template <typename Scalar>
-void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
+template <class InputScalar, class OutputScalar>
+void LinearAlgebraOp<InputScalar, OutputScalar>::Compute(
+    OpKernelContext* context) {
   TensorInputs inputs;
   TensorShapes input_matrix_shapes;
   TensorShape batch_shape;
   AnalyzeInputs(context, &inputs, &input_matrix_shapes, &batch_shape);
+  if (!context->status().ok()) return;
 
   TensorShapes output_matrix_shapes;
   TensorOutputs outputs;
   PrepareOutputs(context, input_matrix_shapes, batch_shape, &outputs,
                  &output_matrix_shapes);
+  if (!context->status().ok()) return;
 
   // Process the individual matrix problems in parallel using a threadpool.
   auto shard = [this, &inputs, &input_matrix_shapes, &outputs,
@@ -110,11 +113,10 @@ void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
         batch_shape.num_elements(), GetCostPerUnit(input_matrix_shapes), shard);
 }
 
-template <typename Scalar>
-void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
-                                            TensorInputs* inputs,
-                                            TensorShapes* input_matrix_shapes,
-                                            TensorShape* batch_shape) {
+template <class InputScalar, class OutputScalar>
+void LinearAlgebraOp<InputScalar, OutputScalar>::AnalyzeInputs(
+    OpKernelContext* context, TensorInputs* inputs,
+    TensorShapes* input_matrix_shapes, TensorShape* batch_shape) {
   int input_rank = -1;
   for (int i = 0; i < NumMatrixInputs(context); ++i) {
     const Tensor& in = context->input(i);
@@ -155,8 +157,8 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
   ValidateInputMatrixShapes(context, *input_matrix_shapes);
 }
 
-template <typename Scalar>
-void LinearAlgebraOp<Scalar>::PrepareOutputs(
+template <class InputScalar, class OutputScalar>
+void LinearAlgebraOp<InputScalar, OutputScalar>::PrepareOutputs(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes,
     const TensorShape& batch_shape, TensorOutputs* outputs,
     TensorShapes* output_matrix_shapes) {
@@ -214,22 +216,22 @@ void LinearAlgebraOp<Scalar>::PrepareOutputs(
   }
 }
 
-template <typename Scalar>
-void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
+template <class InputScalar, class OutputScalar>
+void LinearAlgebraOp<InputScalar, OutputScalar>::ComputeTensorSlice(
     OpKernelContext* context, int64 matrix_index, const TensorInputs& inputs,
     const TensorShapes& input_matrix_shapes, const TensorOutputs& outputs,
     const TensorShapes& output_matrix_shapes) {
-  ConstMatrixMaps matrix_inputs;
+  InputConstMatrixMaps matrix_inputs;
   for (size_t i = 0; i < inputs.size(); ++i) {
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.
     matrix_inputs.emplace_back(
-        inputs[i]->flat<Scalar>().data() +
+        inputs[i]->flat<InputScalar>().data() +
             matrix_index * input_matrix_shapes[i].num_elements(),
         input_matrix_shapes[i].dim_size(0), input_matrix_shapes[i].dim_size(1));
   }
 
-  MatrixMaps matrix_outputs;
+  OutputMatrixMaps matrix_outputs;
   for (size_t i = 0; i < output_matrix_shapes.size(); ++i) {
     // The output matrix shape may not be a matrix.
     int num_output_rows = output_matrix_shapes[i].dims() >= 1
@@ -239,7 +241,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
                               ? output_matrix_shapes[i].dim_size(1)
                               : 1;
     matrix_outputs.emplace_back(
-        outputs[i]->flat<Scalar>().data() +
+        outputs[i]->flat<OutputScalar>().data() +
             matrix_index * output_matrix_shapes[i].num_elements(),
         num_output_rows, num_output_cols);
   }
@@ -251,5 +253,7 @@ template class LinearAlgebraOp<float>;
 template class LinearAlgebraOp<double>;
 template class LinearAlgebraOp<complex64>;
 template class LinearAlgebraOp<complex128>;
+template class LinearAlgebraOp<float, complex64>;
+template class LinearAlgebraOp<double, complex128>;
 
 }  // namespace tensorflow

@@ -367,6 +367,17 @@ message ConfigProto {
   // The execution of an individual op (for some op types) can be
   // parallelized on a pool of intra_op_parallelism_threads.
   // 0 means the system picks an appropriate number.
+  //
+  // If you create an ordinary session, e.g., from Python or C++,
+  // then there is exactly one intra op thread pool per process.
+  // The first session created determines the number of threads in this pool.
+  // All subsequent sessions reuse/share this one global pool.
+  //
+  // There are notable exceptions to the default behavior describe above:
+  // 1. There is an environment variable  for overriding this thread pool,
+  //    named TF_OVERRIDE_GLOBAL_THREADPOOL.
+  // 2. When connecting to a server, such as a remote `tf.train.Server`
+  //    instance, then this option will be ignored altogether.
   int32 intra_op_parallelism_threads = 2;
 
   // Nodes that perform blocking operations are enqueued on a pool of
@@ -553,6 +564,20 @@ message ConfigProto {
     // to an "execute" operation. The kernel for these operations is responsible
     // to lower the encapsulated graph to a particular device.
     bool enable_mlir_bridge = 13;
+
+    // If true, the session will not store an additional copy of the graph for
+    // each subgraph.
+    //
+    // If this option is set to true when a session is created, the
+    // `RunOptions.output_partition_graphs` options must not be set.
+    bool disable_output_partition_graphs = 14;
+
+    // Minimum number of batches run through the XLA graph before XLA fusion
+    // autotuner is enabled. Default value of zero disables the autotuner.
+    //
+    // The XLA fusion autotuner can improve performance by executing a heuristic
+    // search on the compiler parameters.
+    int64 xla_fusion_autotuner_thresh = 15;
   };
 
   Experimental experimental = 16;

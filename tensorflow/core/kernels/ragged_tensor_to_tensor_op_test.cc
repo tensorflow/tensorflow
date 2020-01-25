@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -21,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -527,10 +529,14 @@ TEST_F(RaggedTensorToTensorOpUnknownShapeTest, ValueRowIDs) {
   INFER_OK(*op_, "?;[6,2];?;[];[6]", "[?,?,2]");
   INFER_OK(*op_, "?;[6,2];[2];[];[6]", "[?,?,2]");
   INFER_OK(*op_, "?;[6,2,7];[2,7];[];[6]", "[?,?,2,7]");
-  INFER_ERROR("default_value_shape and value_shape do not match", *op_,
-              "?;[6,2];[3];[];[6]");
-  INFER_ERROR("default_value_shape and value_shape do not match", *op_,
-              "?;[6,2,1,2];[2,2];[];[6]");
+  INFER_ERROR(
+      "default_value.shape=[3] and rt_input.flat_values.shape=[6,2] "
+      "are incompatible",
+      *op_, "?;[6,2];[3];[];[6]");
+  INFER_ERROR(
+      "default_value.shape=[2,2] and rt_input.flat_values.shape="
+      "[6,2,1,2] are incompatible",
+      *op_, "?;[6,2,1,2];[2,2];[];[6]");
   INFER_ERROR("must be a vector", *op_, "?;[6];[];[];[3,6]");
   INFER_ERROR("must be a scalar", *op_, "?;[6];[];[7];[3]");
 }

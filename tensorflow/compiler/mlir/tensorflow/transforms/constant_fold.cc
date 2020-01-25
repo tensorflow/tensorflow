@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace mlir {
 namespace TF {
@@ -37,7 +38,7 @@ LogicalResult ConstantFoldFallbackHook(
   // Note: Sharing the context is fine as ops are side-effect free.
   auto initialize = []() {
     TF_Status* status = TF_NewStatus();
-    // The TFE_Context is created without an accompanyning delete due to current
+    // The TFE_Context is created without an accompanying delete due to current
     // lifetime. This does not result in memory leaks reported (see totw/110).
     TFE_ContextOptions* opts = TFE_NewContextOptions();
     auto ctx = TFE_NewContext(opts, status);
@@ -59,6 +60,10 @@ LogicalResult ConstantFoldFallbackHook(
     inputs.push_back(input.cast<ElementsAttr>());
   }
 
+  // Avoid overlapping folds with the same context.
+  // TODO(jpienaar): Avoid using global context & mutex here.
+  static auto* mu = new tensorflow::mutex();
+  tensorflow::mutex_lock l(*mu);
   return tensorflow::EvaluateOperation(inst, inputs, ctx, &results);
 }
 

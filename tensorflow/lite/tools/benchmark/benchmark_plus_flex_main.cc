@@ -22,11 +22,7 @@ namespace benchmark {
 
 int Main(int argc, char** argv) {
   ::tflite::InitTensorFlow();
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  TFLITE_LOG(INFO) << "STARTING with custom ops!";
-#else
   TFLITE_LOG(INFO) << "STARTING!";
-#endif
   BenchmarkTfLiteModel benchmark;
   BenchmarkLoggingListener listener;
   benchmark.AddListener(&listener);

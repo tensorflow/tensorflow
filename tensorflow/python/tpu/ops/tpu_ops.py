@@ -210,8 +210,9 @@ def infeed_dequeue(dtype, shape, name=None):
   """
   if dtype not in _SUPPORTED_INFEED_DTYPES:
     raise TypeError(
-        "{} is not a supported TPU infeed type. Supported types are: "
-        "{}".format(dtype, list(_SUPPORTED_INFEED_DTYPES)))
+        "Operation '{}' has type {} which is not a supported TPU infeed type. "
+        "Supported types are: {}".format(name, dtype,
+                                         list(_SUPPORTED_INFEED_DTYPES)))
 
   return gen_tpu_ops.infeed_dequeue(dtype, shape, name=name)
 
@@ -294,9 +295,9 @@ def enqueue_tpu_embedding_integer_batch(batch,
       number of TPU cores in the task on which the node is placed.
     mode_override: A string input that overrides the mode specified in the
       TPUEmbeddingConfiguration. Supported values are {'unspecified',
-      'inference', 'training', 'backward_pass_only'}. When set to
-      'unspecified', the mode set in TPUEmbeddingConfiguration is used,
-      otherwise mode_override is used (optional).
+      'inference', 'train', 'backward_pass_only'}. When set to 'unspecified',
+      the mode set in TPUEmbeddingConfiguration is used, otherwise mode_override
+      is used (optional).
     name: A name for the operation (optional).
 
   Returns:
@@ -348,9 +349,9 @@ def enqueue_tpu_embedding_sparse_batch(sample_indices,
       is to use 'sum' for all tables (optional).
     mode_override: A string input that overrides the mode specified in the
       TPUEmbeddingConfiguration. Supported values are {'unspecified',
-      'inference', 'training', 'backward_pass_only'}. When set to
-      'unspecified', the mode set in TPUEmbeddingConfiguration is used,
-      otherwise mode_override is used (optional).
+      'inference', 'train', 'backward_pass_only'}. When set to 'unspecified',
+      the mode set in TPUEmbeddingConfiguration is used, otherwise mode_override
+      is used (optional).
     name: A name for the operation (optional).
 
   Returns:
@@ -419,9 +420,9 @@ def enqueue_tpu_embedding_sparse_tensor_batch(sample_indices,
       is to use 'sum' for all tables (optional).
     mode_override: A string input that overrides the mode specified in the
       TPUEmbeddingConfiguration. Supported values are {'unspecified',
-      'inference', 'training', 'backward_pass_only'}. When set to
-      'unspecified', the mode set in TPUEmbeddingConfiguration is used,
-      otherwise mode_override is used (optional).
+      'inference', 'train', 'backward_pass_only'}. When set to 'unspecified',
+      the mode set in TPUEmbeddingConfiguration is used, otherwise mode_override
+      is used (optional).
     name: A name for the operation (optional).
 
   Returns:

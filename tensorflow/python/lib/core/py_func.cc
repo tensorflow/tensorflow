@@ -17,6 +17,11 @@ limitations under the License.
 
 #include <Python.h>
 
+// clang-format: off
+// Must be inlcluded first.
+#include "tensorflow/python/lib/core/numpy.h"
+// clang-format: on
+
 #include <array>
 
 #include "numpy/arrayobject.h"
@@ -25,8 +30,11 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -88,7 +96,8 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
       TensorHandle* handle;
       TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
           t, ctx->CanonicalDevice(device), ctx, &handle));
-      arg = EagerTensorFromHandle(new TFE_TensorHandle(handle));
+      arg = EagerTensorFromHandle(new TFE_TensorHandle{
+          std::make_unique<tensorflow::TensorHandleInterface>(handle)});
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
@@ -137,7 +146,9 @@ bool IsSingleNone(PyObject* obj) {
 tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
                                                 const Device* expected_device,
                                                 const Tensor** output_tensor) {
-  auto handle = EagerTensor_Handle(eager_tensor)->handle;
+  auto handle = down_cast<tensorflow::TensorHandleInterface*>(
+                    EagerTensor_Handle(eager_tensor)->handle.get())
+                    ->Handle();
   Device* actual_device = handle->device();
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.

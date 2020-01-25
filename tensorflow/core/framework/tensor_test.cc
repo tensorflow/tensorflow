@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -412,7 +413,8 @@ TEST_F(TensorReshapeTest, Reshape) {
 
 #define TEST_RESHAPE(...)                                                  \
   {                                                                        \
-    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));        \
+    int _tmp[] = {__VA_ARGS__};                                            \
+    constexpr int N = (sizeof(_tmp) / sizeof(int));                        \
     TestReshape<TTypes<float, N>::Tensor, &Tensor::shaped<float, N>>(      \
         {__VA_ARGS__});                                                    \
     TestReshape<TTypes<float, N>::ConstTensor, &Tensor::shaped<float, N>>( \
@@ -441,7 +443,8 @@ TEST_F(TensorReshapeTest, Reshape) {
 TEST_F(TensorReshapeTest, BitcastReshapeDifferentSize) {
 #define TEST_BITCAST8_RESHAPE(...)                                    \
   {                                                                   \
-    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));   \
+    int _tmp[] = {__VA_ARGS__};                                       \
+    constexpr int N = (sizeof(_tmp) / sizeof(int));                   \
     TestReshape<TTypes<uint8, N>::Tensor,                             \
                 &Tensor::bit_casted_shaped<uint8, N>>({__VA_ARGS__}); \
   }
@@ -453,7 +456,8 @@ TEST_F(TensorReshapeTest, BitcastReshapeDifferentSize) {
 #undef TEST_BITCAST8_RESHAPE
 #define TEST_BITCAST16_RESHAPE(...)                                   \
   {                                                                   \
-    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));   \
+    int _tmp[] = {__VA_ARGS__};                                       \
+    constexpr int N = (sizeof(_tmp) / sizeof(int));                   \
     TestReshape<TTypes<int16, N>::Tensor,                             \
                 &Tensor::bit_casted_shaped<int16, N>>({__VA_ARGS__}); \
   }
@@ -1517,6 +1521,60 @@ void BM_CreateAndDestroyHostScalarOptimized(int iters) {
   }
 }
 BENCHMARK(BM_CreateAndDestroyHostScalarOptimized);
+
+static void BM_FromProto(int iters, int size) {
+  testing::StopTiming();
+  TensorShape shape({size});
+  Allocator* allocator = cpu_allocator();
+  Tensor a(allocator, DT_FLOAT, shape);
+  std::fill_n(a.flat<float>().data(), size, 42.0);
+  TensorProto p;
+  a.AsProtoField(&p);
+  testing::StartTiming();
+  while (--iters) {
+    Tensor b;
+    ASSERT_TRUE(b.FromProto(p));
+  }
+  testing::StopTiming();
+}
+BENCHMARK(BM_FromProto)->Range(1, 1 << 20);
+
+static void BM_FromProtoCompressed(int iters, int size) {
+  testing::StopTiming();
+  TensorShape shape({size});
+  Allocator* allocator = cpu_allocator();
+  Tensor a(allocator, DT_FLOAT, shape);
+  std::fill_n(a.flat<float>().data(), size, 42.0f);
+  TensorProto p;
+  a.AsProtoField(&p);
+  tensor::CompressTensorProtoInPlace(&p);
+  testing::StartTiming();
+  while (--iters) {
+    Tensor b;
+    ASSERT_TRUE(b.FromProto(p));
+  }
+  testing::StopTiming();
+}
+BENCHMARK(BM_FromProtoCompressed)->Range(1, 1 << 20);
+
+static void BM_FromProtoCompressedZero(int iters, int size) {
+  testing::StopTiming();
+  TensorShape shape({size});
+  Allocator* allocator = cpu_allocator();
+  Tensor a(allocator, DT_FLOAT, shape);
+  std::fill_n(a.flat<float>().data(), size, 0);
+  a.flat<float>()(0) = 1;
+  TensorProto p;
+  a.AsProtoField(&p);
+  tensor::CompressTensorProtoInPlace(&p);
+  testing::StartTiming();
+  while (--iters) {
+    Tensor b;
+    ASSERT_TRUE(b.FromProto(p));
+  }
+  testing::StopTiming();
+}
+BENCHMARK(BM_FromProtoCompressedZero)->Range(1, 1 << 20);
 
 }  // namespace
 }  // namespace tensorflow

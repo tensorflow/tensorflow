@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/window_util.h"
 
-// This macro is required to make MSVC defines math constants in math.h
-#define _USE_MATH_DEFINES
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// Some platforms don't have M_PI
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 void WindowFillConfigWithDefaults(struct WindowConfig* config) {
   config->size_ms = 25;

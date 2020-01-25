@@ -17,22 +17,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class FromTensorSlicesTest(test_base.DatasetTestBase):
+class FromTensorSlicesTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlices(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
     components = (
@@ -55,12 +56,14 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       results = self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesDataset(self):
     dss = [dataset_ops.Dataset.range(10) for _ in range(10)]
     ds = dataset_ops.Dataset.from_tensor_slices(dss)
     ds = ds.flat_map(lambda x: x)
     self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesDatasetInFunction(self):
     dss = [dataset_ops.Dataset.range(10) for _ in range(10)]
     ds = dataset_ops.Dataset.from_tensors(dss)
@@ -68,6 +71,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     ds = ds.flat_map(lambda x: x)
     self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesSparse(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
     components = (sparse_tensor.SparseTensorValue(
@@ -113,6 +117,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     ]
     self.assertDatasetProduces(dataset, expected_output=expected)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesMixed(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
     components = (np.tile(np.array([[1], [2], [3]]), 20),
@@ -168,6 +173,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesWithDict(self):
     components = {"foo": [1, 2, 3], "bar": [[4.0], [5.0], [6.0]]}
     dataset = dataset_ops.Dataset.from_tensor_slices(components)
@@ -187,6 +193,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesRagged(self):
     components = (
         ragged_factory_ops.constant_value([[[0]], [[1]], [[2]]]),
@@ -201,6 +208,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
                  ragged_factory_ops.constant_value([[5]]))]
     self.assertDatasetProduces(dataset, expected_output=expected)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesMixedRagged(self):
     components = (np.tile(np.array([[1], [2], [3]]),
                           20), np.tile(np.array([[12], [13], [14]]),
@@ -255,6 +263,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesWithUintDtypes(self):
     components = (
         np.tile(np.array([[0], [1]], dtype=np.uint8), 2),

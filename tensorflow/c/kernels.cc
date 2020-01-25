@@ -181,7 +181,8 @@ void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
     return;
   }
   const ::tensorflow::Tensor& cc_tensor(cc_ctx->input(i));
-  TF_Tensor* result = ::tensorflow::TF_TensorFromTensor(cc_tensor, status);
+  TF_Tensor* result =
+      ::tensorflow::TF_TensorFromTensor(cc_tensor, &status->status);
   if (TF_GetCode(status) == TF_OK) {
     *tensor = result;
   }
@@ -244,11 +245,18 @@ int64_t TF_StepId(TF_OpKernelContext* ctx) {
 
 TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              TF_DataType dtype, int64_t* dims, int num_dims,
-                             size_t len) {
+                             size_t len, TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   tensorflow::AllocatorAttributes attr = cc_ctx->output_alloc_attr(index);
   auto* allocator = cc_ctx->get_allocator(attr);
   void* data = tensorflow::allocate_tensor("TF_AllocateOutput", len, allocator);
-  return TF_NewTensor(dtype, dims, num_dims, data, len,
-                      tensorflow::deallocate_buffer, allocator);
+  TF_Tensor* result = TF_NewTensor(dtype, dims, num_dims, data, len,
+                                   tensorflow::deallocate_buffer, allocator);
+  TF_SetOutput(context, index, result, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_DeleteTensor(result);
+    return nullptr;
+  }
+  return result;
 }

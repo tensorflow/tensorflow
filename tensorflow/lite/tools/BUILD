@@ -14,13 +14,28 @@ common_copts = ["-Wall"]
 py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
-    data = [
-        "//tensorflow/lite/schema:schema.fbs",
-        "//tensorflow/python:platform",
-        "@flatbuffers//:flatc",
-    ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "visualize_test",
+    srcs = ["visualize_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+    ],
+    deps = [
+        ":visualize",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+    ],
 )
 
 tf_cc_binary(
@@ -54,6 +69,7 @@ cc_test(
         "//tensorflow/lite:testdata/empty_model.bin",
         "//tensorflow/lite:testdata/test_model.bin",
         "//tensorflow/lite:testdata/test_model_broken.bin",
+        "//tensorflow/lite:testdata/test_model_versioned_ops.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -73,7 +89,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -83,6 +99,9 @@ cc_test(
     name = "verifier_test",
     size = "small",
     srcs = ["verifier_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/sparse_tensor.bin",
+    ],
     tags = [
         "tflite_not_portable",
     ],
@@ -105,6 +124,7 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
+    deps = ["//tensorflow/lite:minimal_logging"],
 )
 
 cc_test(

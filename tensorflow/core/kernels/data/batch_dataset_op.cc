@@ -133,6 +133,13 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
+    string BuildTraceMeName() override {
+      return strings::StrCat(
+          prefix(), "#batch_size=", dataset()->batch_size_,
+          ",drop_remainder=", dataset()->drop_remainder_ ? "true" : "false",
+          ",parallel_copy=", dataset()->parallel_copy_ ? "true" : "false", "#");
+    }
+
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
@@ -179,6 +186,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
       const size_t num_tuple_components = batch_elements[0].size();
+      out_tensors->reserve(num_tuple_components);
       const int64 num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
            ++component_index) {

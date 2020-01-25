@@ -47,6 +47,7 @@ class Add : public NodeShader {
           inputs[0]->tensor.shape != inputs[1]->tensor.shape &&
           inputs[1]->tensor.shape.h == 1 && inputs[1]->tensor.shape.w == 1 &&
           inputs[0]->tensor.shape.c == inputs[1]->tensor.shape.c) {
+        // TODO(b/147771327): investigate why input_data_1[gid.z] worked before
         *generated_code = {
             /*parameters=*/{},
             /*objects=*/{},
@@ -54,8 +55,8 @@ class Add : public NodeShader {
             /*workload=*/uint3(),
             /*workgroup=*/uint3(),
             /*source_code=*/
-            "value_0 = $input_data_1[gid.z]$ + $input_data_0[gid.x, gid.y, "
-            "gid.z]$;",
+            "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ + "
+            "          $input_data_1[0, 0, gid.z]$;",
             /*input=*/IOStructure::ONLY_DEFINITIONS,
             /*output=*/IOStructure::AUTO,
         };

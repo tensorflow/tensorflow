@@ -88,6 +88,7 @@ class ScaffoldTest(test.TestCase):
       self.assertTrue(isinstance(scaffold.ready_op, ops.Tensor))
       self.assertTrue(isinstance(scaffold.ready_for_local_init_op, ops.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, ops.Operation))
+      self.assertEqual(None, scaffold.local_init_feed_dict)
       self.assertTrue(isinstance(scaffold.saver, saver_lib.Saver))
       with self.cached_session() as sess:
         self.assertItemsEqual([b'my_var', b'my_local_var'],
@@ -110,6 +111,7 @@ class ScaffoldTest(test.TestCase):
       self.assertTrue(isinstance(scaffold.ready_op, ops.Tensor))
       self.assertTrue(isinstance(scaffold.ready_for_local_init_op, ops.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, ops.Operation))
+      self.assertEqual(None, scaffold.local_init_feed_dict)
       self.assertTrue(isinstance(scaffold.saver, saver_lib.Saver))
 
   def test_caches_values(self):
@@ -145,6 +147,7 @@ class ScaffoldTest(test.TestCase):
           ready_op=5,
           ready_for_local_init_op=6,
           local_init_op=7,
+          local_init_feed_dict=8,
           saver=saver)
       scaffold.finalize()
       self.assertEqual(2, scaffold.init_op)
@@ -153,6 +156,7 @@ class ScaffoldTest(test.TestCase):
       self.assertEqual(5, scaffold.ready_op)
       self.assertEqual(6, scaffold.ready_for_local_init_op)
       self.assertEqual(7, scaffold.local_init_op)
+      self.assertEqual(8, scaffold.local_init_feed_dict)
       self.assertEqual(saver, scaffold.saver)
 
   def test_graph_is_finalized(self):
@@ -175,6 +179,7 @@ class ScaffoldTest(test.TestCase):
           ready_op=5,
           ready_for_local_init_op=6,
           local_init_op=7,
+          local_init_feed_dict=8,
           saver=saver,
           copy_from_scaffold=scaffold1)
 
@@ -185,6 +190,7 @@ class ScaffoldTest(test.TestCase):
       self.assertEqual(5, scaffold2.ready_op)
       self.assertEqual(6, scaffold2.ready_for_local_init_op)
       self.assertEqual(7, scaffold2.local_init_op)
+      self.assertEqual(8, scaffold2.local_init_feed_dict)
       self.assertEqual(saver, scaffold2.saver)
 
   def test_new_scaffold_from_existing_scaffold(self):
@@ -198,6 +204,7 @@ class ScaffoldTest(test.TestCase):
           ready_op=5,
           ready_for_local_init_op=6,
           local_init_op=7,
+          local_init_feed_dict=8,
           saver=saver)
 
       scaffold2 = monitored_session.Scaffold(
@@ -207,6 +214,7 @@ class ScaffoldTest(test.TestCase):
           ready_op=10,
           ready_for_local_init_op=12,
           local_init_op=14,
+          local_init_feed_dict=15,
           saver=saver,
           copy_from_scaffold=scaffold1)
 
@@ -217,6 +225,7 @@ class ScaffoldTest(test.TestCase):
       self.assertEqual(10, scaffold2.ready_op)
       self.assertEqual(12, scaffold2.ready_for_local_init_op)
       self.assertEqual(14, scaffold2.local_init_op)
+      self.assertEqual(15, scaffold2.local_init_feed_dict)
       self.assertEqual(saver, scaffold2.saver)
 
   def test_copy_from_scaffold_is_scaffold(self):
@@ -389,6 +398,36 @@ class MonitoredTrainingSessionTest(test.TestCase):
       with monitored_session.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as session:
         self.assertEqual(0, session.run(gstep))
+
+  def test_save_graph_def(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_graph_def')
+    with ops.Graph().as_default():
+      gstep = training_util.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True,
+          checkpoint_dir=logdir,
+          save_checkpoint_steps=1,
+          save_graph_def=True) as session:
+        self.assertIn('graph.pbtxt', os.listdir(logdir))
+        self.assertLen(glob.glob(os.path.join(logdir, '*.meta')), 1)
+        session.run(new_gstep)
+        self.assertLen(glob.glob(os.path.join(logdir, '*.meta')), 2)
+
+  def test_save_graph_def_false(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_graph_def')
+    with ops.Graph().as_default():
+      gstep = training_util.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True,
+          checkpoint_dir=logdir,
+          save_checkpoint_steps=1,
+          save_graph_def=False) as session:
+        self.assertNotIn('graph.pbtxt', os.listdir(logdir))
+        self.assertEmpty(glob.glob(os.path.join(logdir, '*.meta')))
+        session.run(new_gstep)
+        self.assertEmpty(glob.glob(os.path.join(logdir, '*.meta')))
 
 
 class MockExtended(object):

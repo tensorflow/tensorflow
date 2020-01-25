@@ -18,6 +18,7 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
@@ -49,7 +50,7 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   TFLITE_LOG(INFO) << "Average inference timings in us: "
                    << "Warmup: " << warmup_us.avg() << ", "
                    << "Init: " << init_us << ", "
-                   << "no stats: " << inference_us.avg();
+                   << "Inference: " << inference_us.avg();
 }
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
@@ -159,12 +160,20 @@ TfLiteStatus BenchmarkModel::Run() {
 
   LogParams();
 
+  const double model_size_mb = MayGetModelFileSize() / 1e6;
+  const auto start_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_start_us = profiling::time::NowMicros();
   TF_LITE_ENSURE_STATUS(Init());
+  const auto init_end_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_end_us = profiling::time::NowMicros();
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
+  const auto init_mem_usage = init_end_mem_usage - start_mem_usage;
+
+  if (model_size_mb > 0) {
+    TFLITE_LOG(INFO) << "The input model file size (MB): " << model_size_mb;
+  }
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
-                   << "ms";
+                   << "ms.";
 
   TF_LITE_ENSURE_STATUS(PrepareInputData());
 
@@ -182,8 +191,19 @@ TfLiteStatus BenchmarkModel::Run() {
   Stat<int64_t> inference_time_us =
       Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
           params_.Get<float>("max_secs"), REGULAR, &status);
-  listeners_.OnBenchmarkEnd(
-      {startup_latency_us, input_bytes, warmup_time_us, inference_time_us});
+  const auto overall_mem_usage =
+      profiling::memory::GetMemoryUsage() - start_mem_usage;
+  listeners_.OnBenchmarkEnd({model_size_mb, startup_latency_us, input_bytes,
+                             warmup_time_us, inference_time_us, init_mem_usage,
+                             overall_mem_usage});
+
+  TFLITE_LOG(INFO)
+      << "Note: as the benchmark tool itself affects memory footprint, the "
+         "following is only APPROXIMATE to the actual memory footprint of the "
+         "model at runtime. Take the information at your discretion.";
+  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
+                   << init_mem_usage.max_rss_kb / 1024.0
+                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
 
   return status;
 }

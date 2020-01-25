@@ -102,7 +102,7 @@ TEST_F(SessionMgrTest, CreateSessionClusterDefWorkerName) {
 
   EXPECT_TRUE(device->IsLocal());
   EXPECT_NE(nullptr, session) << "Session for " << session_handle << "was null";
-  EXPECT_EQ("/job:worker/replica:0/task:3", session->worker_name);
+  EXPECT_EQ("/job:worker/replica:0/task:3", session->worker_name());
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
 }
 
@@ -113,7 +113,7 @@ TEST_F(SessionMgrTest, CreateSessionDefaultWorkerName) {
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(session_handle, &session));
   EXPECT_NE(nullptr, session) << "Session for " << session_handle << "was null";
-  EXPECT_EQ("/job:mnist/replica:0/task:0", session->worker_name);
+  EXPECT_EQ("/job:mnist/replica:0/task:0", session->worker_name());
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
 }
 

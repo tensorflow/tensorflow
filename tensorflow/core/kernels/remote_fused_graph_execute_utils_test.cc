@@ -87,7 +87,6 @@ class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
 
   Status FuseByInOut() {
     // Feed output shapes and types
-    RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
     GraphDef graph_def_with_shapetype = graph_def_;
     TF_RETURN_IF_ERROR(RemoteFusedGraphExecuteUtils::BuildAndAddTensorShapes(
         input_tensors_, /*dry_run_inference*/ true, &graph_def_with_shapetype));

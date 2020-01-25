@@ -381,13 +381,15 @@ inline Status ReadGroupBytes(CodedInputStream* input, int field_number,
 #else   // USE_TSTRING
   StringOutputStream string_stream(data);
 #endif  // USE_TSTRING
-  CodedOutputStream out(&string_stream);
-  if (!WireFormatLite::SkipField(
-          input,
-          WireFormatLite::MakeTag(field_number,
-                                  WireFormatLite::WIRETYPE_START_GROUP),
-          &out)) {
-    return errors::DataLoss("Failed reading group");
+  {
+    CodedOutputStream out(&string_stream);
+    if (!WireFormatLite::SkipField(
+            input,
+            WireFormatLite::MakeTag(field_number,
+                                    WireFormatLite::WIRETYPE_START_GROUP),
+            &out)) {
+      return errors::DataLoss("Failed reading group");
+    }
   }
 #ifdef USE_TSTRING
   *data = buf;

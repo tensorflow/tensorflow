@@ -75,16 +75,16 @@ TEST(GraphToFunctionDefTest, Basics) {
   FunctionDef fdef_expected = FunctionDefHelper::Create(
       "test_fn",                             // function name
       {"a: float", "b: float", "c: float"},  // inputs
-      {"h_0: float"},                        // outputs
+      {"h: float"},                          // outputs
       {},                                    // attrs
       {
           // nodes in the function body
           {{"D"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
           {{"b_0"}, "Add", {"D:z:0", "c"}, {{"T", DT_FLOAT}}},
-          {{"h"}, "Neg", {"b_0:z:0"}, {{"T", DT_FLOAT}}},
-          {{"G"}, "AddN", {"b_0:z:0", "h:y:0"}, {{"N", 2}, {"T", DT_FLOAT}}},
+          {{"h_0"}, "Neg", {"b_0:z:0"}, {{"T", DT_FLOAT}}},
+          {{"G"}, "AddN", {"b_0:z:0", "h_0:y:0"}, {{"N", 2}, {"T", DT_FLOAT}}},
       },
-      {{"h_0", "G:sum:0"}});  // return values
+      {{"h", "G:sum:0"}});  // return values
 
   string diff;
   bool fdefs_equal =

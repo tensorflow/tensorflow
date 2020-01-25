@@ -23,10 +23,12 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 # Need array_grad to register gradient for Identity.
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2 as gradient_checker
 from tensorflow.python.ops import math_ops
 # Need sparse_grad to register gradient for SparseToDense.
@@ -62,6 +64,15 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                        sparse.values)
     constant = self.evaluate(dense)
     self.assertAllEqual(expected_constant, constant)
+
+  def testTransposePreservesShape(self):
+    with ops.Graph().as_default():
+      t = sparse_tensor.SparseTensor(indices=[[0, 0]],
+                                     values=[0.],
+                                     dense_shape=[3, 4])
+      self.assertTrue(t.shape.is_fully_defined)
+      transposed = sparse_ops.sparse_transpose(t)
+      self.assertAllEqual(transposed.shape, [4, 3])
 
   def testSparseExpandDims(self):
     for rank in range(1, 4):
@@ -132,6 +143,42 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected_dense = [[b'a', b'', b''], [b'', b'', b'b']]
     result_dense = self.evaluate(dense)
     self.assertAllEqual(expected_dense, result_dense)
+
+  def testDenseSparseTensorMatMul(self):
+
+    np.random.seed(42)
+    dense_numpy_array = np.random.rand(3, 3)
+    independent_dense_tf = constant_op.constant(
+        dense_numpy_array, dtype='float32')
+
+    sp = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[4., 8.], dense_shape=[3, 3])
+    dense_of_sparse = sparse_ops.sparse_to_dense(sp.indices, sp.shape,
+                                                 sp.values)
+
+    result = sparse_ops.sparse_tensor_dense_matmul(
+        independent_dense_tf, sp, adjoint_a=False, adjoint_b=False)
+    expected = math_ops.matmul(independent_dense_tf, dense_of_sparse)
+    self.assertAllEqual(expected, result)
+
+    result = sparse_ops.sparse_tensor_dense_matmul(
+        independent_dense_tf, sp, adjoint_a=False, adjoint_b=True)
+    expected = math_ops.matmul(independent_dense_tf,
+                               array_ops.transpose(dense_of_sparse))
+    self.assertAllEqual(expected, result)
+
+    result = sparse_ops.sparse_tensor_dense_matmul(
+        independent_dense_tf, sp, adjoint_a=True, adjoint_b=False)
+    expected = math_ops.matmul(
+        array_ops.transpose(independent_dense_tf), dense_of_sparse)
+    self.assertAllEqual(expected, result)
+
+    result = sparse_ops.sparse_tensor_dense_matmul(
+        independent_dense_tf, sp, adjoint_a=True, adjoint_b=True)
+    expected = math_ops.matmul(
+        array_ops.transpose(independent_dense_tf),
+        array_ops.transpose(dense_of_sparse))
+    self.assertAllEqual(expected, result)
 
 
 if __name__ == '__main__':

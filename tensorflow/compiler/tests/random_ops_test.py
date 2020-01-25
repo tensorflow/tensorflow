@@ -190,15 +190,21 @@ class RandomOpsTest(xla_test.XLATestCase):
         self._checkTruncatedNormalIsInRange(
             x, a=a, b=b, mu=mu, sigma=sigma, count=count, stat_test=stat_test)
 
-  def testParameterizedTruncatedNormalIsInRange(self):
+  def testParameterizedTruncatedNormalIsInRangeCenter(self):
     count = 10000000
     self._implParameterizedTruncatedNormalIsInRange(
         a=-10, b=20, mu=5, sigma=5, count=count, stat_test=True)
+
+  def testParameterizedTruncatedNormalIsInRangeLeft(self):
+    count = 10000000
     # the region is on the left side of the parent normal distribution
     self._implParameterizedTruncatedNormalIsInRange(
         a=-10, b=-4, mu=0, sigma=1, count=count, stat_test=False)
     self._implParameterizedTruncatedNormalIsInRange(
         a=-np.infty, b=-4, mu=0, sigma=1, count=count, stat_test=False)
+
+  def testParameterizedTruncatedNormalIsInRangeRight(self):
+    count = 10000000
     # the region is on the right side of the parent normal distribution
     self._implParameterizedTruncatedNormalIsInRange(
         a=4, b=10, mu=0, sigma=1, count=count, stat_test=False)

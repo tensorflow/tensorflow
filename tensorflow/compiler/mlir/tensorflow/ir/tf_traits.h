@@ -18,10 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TRAITS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TRAITS_H_
 
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -47,7 +47,7 @@ class OperandsSameAsResultsTypeOrRef
     LogicalResult shapeMatch = impl::verifySameOperandsAndResultShape(op);
     if (failed(shapeMatch)) return shapeMatch;
 
-    auto type = getElementTypeOrSelf(op->getResult(0)->getType());
+    auto type = getElementTypeOrSelf(op->getResult(0).getType());
 
     // Verify that the first result type is same as the rest of the results.
     // We skip the comparison against itself.

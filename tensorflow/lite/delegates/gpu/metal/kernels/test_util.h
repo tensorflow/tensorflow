@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_TEST_UTIL_H_
 
+#include <map>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -54,6 +59,14 @@ class SingleOpModel {
 
 Status CompareVectors(const std::vector<float>& reference,
                       const std::vector<float>& output, float max_error);
+
+/// Helper function that compiles previously configured graph (with added
+/// tasks), initializes graph with specified inputs, invokes and fills specified
+/// outputs
+Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& graph,
+                id<MTLDevice> device,
+                const std::map<ValueId, TensorFloat32>& inputs,
+                std::map<ValueId, TensorFloat32>* outputs);
 
 }  // namespace metal
 }  // namespace gpu

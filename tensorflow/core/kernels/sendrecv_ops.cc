@@ -110,6 +110,10 @@ void SendOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_DEFAULT), SendOp);
 
+// Public alias. Added for use in Lingvo.
+REGISTER_KERNEL_BUILDER(Name("Send").Device(DEVICE_CPU), SendOp);
+REGISTER_KERNEL_BUILDER(Name("Send").Device(DEVICE_DEFAULT), SendOp);
+
 REGISTER_KERNEL_BUILDER(
     Name("_HostSend").Device(DEVICE_DEFAULT).HostMemory("tensor"), SendOp);
 
@@ -190,6 +194,10 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_DEFAULT), RecvOp);
+
+// Public alias. Added for use in Lingvo.
+REGISTER_KERNEL_BUILDER(Name("Recv").Device(DEVICE_CPU), RecvOp);
+REGISTER_KERNEL_BUILDER(Name("Recv").Device(DEVICE_DEFAULT), RecvOp);
 
 REGISTER_KERNEL_BUILDER(
     Name("_HostRecv").Device(DEVICE_DEFAULT).HostMemory("tensor"), RecvOp);

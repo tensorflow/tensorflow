@@ -85,10 +85,15 @@ Status BestGreedy(const std::vector<TensorUsageRecord<size_t>>& usage_records,
 // Calculates the assignement of shared objects to given tensors, including
 // objects' sizes. Below there are specializations for different types, that
 // support more memory strategies.
+// If reallocation_graph is provided, assignment of shared objects support
+// parallel order of operation execution, but memory consumption in this case
+// can be larger. Currently only GREEDY_IN_ORDER strategy can use this
+// reallocation_graph.
 template <typename TensorSizeT>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<TensorSizeT>* assignment) {
+    MemoryStrategy strategy, ObjectsAssignment<TensorSizeT>* assignment,
+    const UsageGraph* reallocation_graph = nullptr) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
@@ -104,28 +109,33 @@ Status AssignObjectsToTensors(
 template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment);
+    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment,
+    const UsageGraph* reallocation_graph);
 
 template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<BHWC>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment);
+    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment,
+    const UsageGraph* reallocation_graph);
 
 template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<uint2>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment);
+    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment,
+    const UsageGraph* reallocation_graph);
 
 template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<uint3>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment);
+    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment,
+    const UsageGraph* reallocation_graph);
 
 // Calculates the assignement of tensors to offsets, considering those tensors
 // are going to be allocated in one continuous memory block.
 Status AssignOffsetsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    const MemoryStrategy& strategy, OffsetsAssignment* assignment);
+    const MemoryStrategy& strategy, OffsetsAssignment* assignment,
+    const UsageGraph* reallocation_graph = nullptr);
 
 }  // namespace gpu
 }  // namespace tflite

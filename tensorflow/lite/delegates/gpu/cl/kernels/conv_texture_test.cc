@@ -46,14 +46,14 @@ TEST_F(OpenCLOperationTest, ConvTextureSimpleWeights) {
   attr.bias.shape = Linear(1);
   attr.bias.data = {0.0f};
 
-  for (auto storage : env_.GetSupportedTextureStorages()) {
+  for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConvTexture operation;
       ASSERT_OK(CreateConvTexture(creation_context_, op_def, attr, &operation));
@@ -81,14 +81,14 @@ TEST_F(OpenCLOperationTest, ConvTexture) {
   attr.bias.shape = Linear(2);
   attr.bias.data = {0.5f, -0.5f};
 
-  for (auto storage : env_.GetSupportedTextureStorages()) {
+  for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConvTexture operation;
       ASSERT_OK(CreateConvTexture(creation_context_, op_def, attr, &operation));

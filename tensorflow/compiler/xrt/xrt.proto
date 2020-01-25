@@ -49,6 +49,33 @@ message XLAComputationConfig {
   DeviceAssignment device_assignment = 6;
   // The debugging options to be passed to the XLA compilation process.
   xla.DebugOptions debug_options = 7;
+
+  // Everything inside Experimental is subject to change and is not subject
+  // to API stability guarantees in
+  // https://www.tensorflow.org/guide/version_compat.
+  message Experimental {
+    message UpdateIndexPair {
+      int32 index = 1;
+      bool updated = 2;
+    }
+
+    // stateful_input_indices is only useful when using XRT-compiled
+    // programs together with standard TensorFlow TPU execution ops, so should
+    // be ignored by most clients.
+    //
+    // Optionally the client can pass information about which inputs
+    // to the computation are updates to "stateful" quantities. Each
+    // element of stateful_input_indices includes an index indicating
+    // which input argument it corresponds to, and a bool indicating
+    // whether the value is updated or not. If the XRT computation is
+    // going to be used with a TensorFlow TPU execution op then an
+    // input index must be present for each input that will correspond
+    // to a resource variable in the execution op, and may not be
+    // present for any other input.
+    repeated UpdateIndexPair stateful_input_indices = 1;
+  }
+
+  Experimental experimental = 8;
 }
 
 // Options and XLA computation for a compilation.

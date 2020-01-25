@@ -46,7 +46,7 @@ Status AddToTensor(OpKernelContext* ctx, Tensor* sum, const Tensor* current,
   return errors::InvalidArgument(
       "tensor_array::AddToTensor type not supported: ",
       DataTypeString(DataTypeToEnum<T>::value));
-};
+}
 
 #define TENSOR_ARRAY_WRITE_OR_ADD(Device, T)                         \
   template <>                                                        \
@@ -74,7 +74,7 @@ Status TensorSetZero(OpKernelContext* ctx, Tensor* value) {
   return errors::InvalidArgument(
       "tensor_array::TensorSetZero type not supported: ",
       DataTypeString(DataTypeToEnum<T>::value));
-};
+}
 
 #define TENSOR_ARRAY_SET_ZERO(Device, T) \
   template <>                            \
@@ -347,7 +347,8 @@ class TensorArray : public ResourceBase {
   Tensor* handle() { return &handle_; }
 
   ResourceHandle resource_handle(OpKernelContext* ctx) {
-    return MakePerStepResourceHandle<TensorArray>(ctx, key_);
+    return ctx->step_container()->MakeResourceHandle<TensorArray>(
+        key_, *ctx->device());
   }
 
  private:

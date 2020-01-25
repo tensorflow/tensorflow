@@ -192,14 +192,14 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
   std::vector<
-      std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>
+      std::unique_ptr<std::vector<std::pair<PartialTensorShape, DataType>>>>
       handle_data;
   handle_data.emplace_back(
-      new std::vector<std::pair<TensorShapeProto, DataType>>{
-          {TensorShapeProto(), DT_BOOL}});
-  shape_inference::InferenceContext c(TF_GRAPH_DEF_VERSION, &op.node_def,
-                                      op_reg_data->op_def, {TensorShapeProto()},
-                                      {}, {}, handle_data);
+      new std::vector<std::pair<PartialTensorShape, DataType>>(
+          {{PartialTensorShape(), DT_BOOL}}));
+  shape_inference::InferenceContext c(
+      TF_GRAPH_DEF_VERSION, op.node_def, op_reg_data->op_def,
+      {PartialTensorShape()}, {}, {}, handle_data);
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
@@ -385,10 +385,7 @@ TEST(ArrayOpsTest, Unique_ShapeFn) {
   ShapeInferenceTestOp op("Unique");
   INFER_OK(op, "?", "[?];in0");
   INFER_OK(op, "[5]", "[?];in0");
-  INFER_ERROR(
-      "Shape must be rank 1 but is rank 5 for '' (op: '') with input shapes: "
-      "[1,2,3,?,5].",
-      op, "[1,2,3,?,5]");
+  INFER_ERROR("Shape must be rank 1 but is rank 5", op, "[1,2,3,?,5]");
 }
 
 TEST(ArrayOpsTest, UniqueWithCounts_ShapeFn) {

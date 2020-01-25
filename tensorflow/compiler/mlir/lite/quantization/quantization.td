@@ -19,11 +19,7 @@ limitations under the License.
 #else
 #define TF_Quantization
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
 include "mlir/Dialect/QuantOps/QuantPredicates.td"
 
 
@@ -91,14 +87,22 @@ class FixedResultScale<QuantizedType qt> : NativeOpTrait<!strconcat(
 def SameOperandsAndResultsScale : NativeOpTrait<
   "quant::SameOperandsAndResultsScale">;
 
-// Specify this trait if the b-th input of the op is a bias input, which needs
-// a scale based on the scales of op1 and op2.
+// Specify this trait if the bias-th input of the op is a bias input, which
+// needs a scale based on the scales of op1 and op2.
 class AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
   !strconcat("quant::AccumulatorUniformScale<",
              StrJoinInt<[bias, op1, op2]>.result,
              ">::Impl")>;
 
-// Specify this trait if the op doesn't have quantizable ouput. We shouldn't
+// Specify the operand index of the coefficient operand for an affine op
+// and also the quantization dimension if per-axis quantization is support.
+// If the quantization dimension is -1, per-axis quantization isn't supported.
+class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
+  !strconcat("quant::AffineOpCoefficient<",
+             StrJoinInt<[dim, index]>.result,
+             ">::Impl")>;
+
+// Specify this trait if the op doesn't have quantizable output. We shouldn't
 // apply quantization on this op.
 def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
 

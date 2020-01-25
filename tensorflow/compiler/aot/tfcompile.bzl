@@ -37,8 +37,9 @@ def tf_library(
         tfcompile_tool = "//tensorflow/compiler/aot:tfcompile",
         include_standard_runtime_deps = True,
         enable_xla_hlo_profiling = False,
+        mlir_components = None,
         deps = None,
-        tags = None):
+        tags = []):
     """Runs tfcompile to compile a TensorFlow graph into executable code.
 
     Given an invocation of tf_library(name="foo", ...), generates the following
@@ -87,6 +88,8 @@ def tf_library(
       enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
         program, and emit metadata that lets us pretty-print the gathered
         profile counters.
+      mlir_components: When the value is "Bridge", use MLIR to translate
+        GraphDef to HLO.
       deps: a list of deps to include on the build rules for the generated
         library, added to the standard deps if standard_runtime_deps is True.
       tags: tags to apply to subsidiary build rules.
@@ -185,6 +188,12 @@ def tf_library(
         profiling_flag = "--xla_hlo_profile"
     else:
         profiling_flag = ""
+
+    if mlir_components:
+        mlir_flag = "--mlir_components=" + mlir_components
+    else:
+        mlir_flag = ""
+
     native.genrule(
         name = ("gen_" + name),
         srcs = [
@@ -207,7 +216,7 @@ def tf_library(
             " --out_header=$(@D)/" + header_file +
             " --out_metadata_object=$(@D)/" + metadata_object_file +
             " --out_function_object=$(@D)/" + function_object_file +
-            " " + flags + " " + profiling_flag
+            " " + flags + " " + profiling_flag + " " + mlir_flag
         ),
         tools = [tfcompile_tool],
         visibility = visibility,
@@ -273,9 +282,9 @@ def tf_library(
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
             # proto.
-            "//tensorflow/compiler/xla:xla_data_proto",
+            "//tensorflow/compiler/xla:xla_data_proto_cc",
         ] or []) + (enable_xla_hlo_profiling and [
-            "//tensorflow/compiler/xla/service:hlo_profile_printer_data",
+            "//tensorflow/compiler/xla/service:hlo_profile_printer_data_cc",
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
@@ -398,6 +407,7 @@ def target_llvm_triple():
         "//tensorflow:android_arm64": "aarch64-none-android",
         "//tensorflow:android_x86": "i686-none-android",
         "//tensorflow:ios": "arm64-none-ios",
+        "//tensorflow:ios_x86_64": "x86_64-apple-ios",
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
         "//tensorflow:macos": "x86_64-none-darwin",
         "//conditions:default": "x86_64-pc-linux",

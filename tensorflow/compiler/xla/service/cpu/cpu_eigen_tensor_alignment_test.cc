@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace cpu {
@@ -25,7 +25,7 @@ namespace {
 // Test that we don't call into Eigen with tensors too small to be aligned
 // reliably.
 
-class CpuEigenTensorAlignmentTest : public ::testing::Test {};
+using CpuEigenTensorAlignmentTest = HloTestBase;
 
 TEST_F(CpuEigenTensorAlignmentTest, EigenConvAlignment) {
   string hlo_string = R"(
@@ -38,8 +38,8 @@ ENTRY ConvOperation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* conv = module->entry_computation()->root_instruction();
 

@@ -84,7 +84,7 @@ enum class DotImplementationStrategy {
   // supported.
   kTiledLlvmIrGemv,
 
-  // The dot operation is lowered into LLVM IR that implemetns a tiled
+  // The dot operation is lowered into LLVM IR that implements a tiled
   // Matrix*Matrix operation.  No fusions are supported.  The two inputs
   // and the output have to be row major.
   kTiledLlvmIrGemm,
@@ -237,7 +237,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
 
   int64 size_bytes = m * n * ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   b_->CreateMemSet(target, b_->getInt8(0), /*Size=*/size_bytes,
-                   /*Align=*/1);
+                   /*Align=*/llvm::MaybeAlign(1));
 
   int64 max_target_vector_width =
       target_machine_features_.vector_register_num_elements(
@@ -525,6 +525,9 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
         accum, b_->CreateFAdd(real(accum), product_real), {0});
     updated_accum = b_->CreateInsertValue(
         updated_accum, b_->CreateFAdd(imag(accum), product_imag), {1});
+  } else if (ShapeUtil::ElementIsIntegral(lhs_shape)) {
+    llvm::Value* product = b_->CreateMul(lhs_element, rhs_element);
+    updated_accum = b_->CreateAdd(accum, product);
   } else {
     llvm::Value* product = b_->CreateFMul(lhs_element, rhs_element);
     updated_accum = b_->CreateFAdd(accum, product);
@@ -636,6 +639,12 @@ Status DotOpEmitter::EmitCallToRuntime() {
                            ? runtime::kMKLSingleThreadedMatMulF64SymbolName
                            : runtime::kEigenSingleThreadedMatMulF64SymbolName);
       float_type = b_->getDoubleTy();
+      break;
+    case S32:
+      fn_name = multi_threaded
+                    ? runtime::kEigenMatMulS32SymbolName
+                    : runtime::kEigenSingleThreadedMatMulS32SymbolName;
+      float_type = b_->getInt32Ty();
       break;
     default:
       return Unimplemented("Invalid type %s for dot operation",
@@ -803,6 +812,7 @@ bool AreGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
     case F64:
     case F32:
     case F16:
+    case S32:
       return IsRank2(lhs_shape) && IsRank2(rhs_shape) && IsRank2(output_shape);
     default:
       return false;
@@ -892,8 +902,8 @@ Status EmitNonBatchDotOperation(
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type ||
-               C128 == type);
+  TF_RET_CHECK(S32 == type || F16 == type || F32 == type || F64 == type ||
+               C64 == type || C128 == type);
   DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
                            target_array, lhs_array, rhs_array, addend_array,
                            executable_run_options_value, b, hlo_module_config,

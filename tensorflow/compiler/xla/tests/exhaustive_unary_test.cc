@@ -165,7 +165,7 @@ using ExhaustiveUnaryTest = ExhaustiveOpTestBase<T, 1>;
 // Test parameter is a tuple containing
 //   - primitive type under test,
 //   - (begin, end) range under test, as zero-extended int64s bitcast to the
-//     primtive type under test.
+//     primitive type under test.
 template <PrimitiveType T>
 class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
@@ -211,6 +211,9 @@ class Exhaustive32BitOrLessUnaryTest
 
 typedef Exhaustive32BitOrLessUnaryTest<F32> ExhaustiveF32UnaryTest;
 typedef Exhaustive32BitOrLessUnaryTest<F16> ExhaustiveF16UnaryTest;
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
+    ExhaustiveF16UnaryTest);  // TODO(b/139702016) go/are-your-tests-running
+
 typedef Exhaustive32BitOrLessUnaryTest<BF16> ExhaustiveBF16UnaryTest;
 
 #if defined(UNARY_TEST_TARGET_F32_OR_SMALLER)
@@ -530,7 +533,15 @@ UNARY_TEST_BF16(Tan, {
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, { Run(Erf, std::erf); })
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, { Run(Erfc, std::erfc); })
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(ErfInv, { Run(ErfInv, HostErfInv); })
+
+UNARY_TEST_F32(ErfInv, { Run(ErfInv, HostErfInv); })
+
+UNARY_TEST_F16(ErfInv, {
+  Run(ErfInv, HostErfInv, [](Eigen::half) { return ErrorSpec{0.002, 0.002}; });
+})
+
+UNARY_TEST_BF16(ErfInv, { Run(ErfInv, HostErfInv); })
+
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Digamma, {
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
   if (platform_ != "Host" && platform_ != "CUDA") {
@@ -636,6 +647,8 @@ class ExhaustiveF64UnaryTest : public ExhaustiveUnaryTest<F64>,
     CHECK_EQ(i, input_size);
   }
 };
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
+    ExhaustiveF64UnaryTest);  // TODO(b/139702016) go/are-your-tests-running
 
 #if defined(UNARY_TEST_TARGET_F64) && \
     !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
@@ -719,7 +732,7 @@ INSTANTIATE_TEST_SUITE_P(NormalValues, ExhaustiveF64UnaryTest,
 // Tests a total of 4000000000 inputs, with 16000000 inputs in each sub-test, to
 // keep the peak memory usage low.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnituedNormalValues, ExhaustiveF64UnaryTest,
+    LargeAndSmallMagnitudeNormalValues, ExhaustiveF64UnaryTest,
     ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<double>(
         4000000000ull, 16000000)));
 
@@ -787,7 +800,12 @@ class ExhaustiveComplexUnaryTestBase
 };
 
 typedef ExhaustiveComplexUnaryTestBase<C64> ExhaustiveC64UnaryTest;
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
+    ExhaustiveC64UnaryTest);  // TODO(b/139702016) go/are-your-tests-running
+
 typedef ExhaustiveComplexUnaryTestBase<C128> ExhaustiveC128UnaryTest;
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
+    ExhaustiveC128UnaryTest);  // TODO(b/139702016) go/are-your-tests-running
 
 #if defined(UNARY_TEST_TARGET_COMPLEX)
 #define UNARY_TEST_COMPLEX_64(test_name, ...)   \
@@ -865,7 +883,7 @@ INSTANTIATE_TEST_SUITE_P(
 // Tests a total of 40000 ^ 2 inputs, with 4000 ^ 2 inputs in each sub-test, to
 // keep the peak memory usage low.
 INSTANTIATE_TEST_SUITE_P(
-    F32LargeAndSmallMagnituedNormalValues, ExhaustiveC64UnaryTest,
+    F32LargeAndSmallMagnitudeNormalValues, ExhaustiveC64UnaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<float>(40000,
                                                                          4000)),
@@ -952,7 +970,7 @@ INSTANTIATE_TEST_SUITE_P(
 // Tests a total of 40000 ^ 2 inputs, with 2000 ^ 2 inputs in each sub-test, to
 // keep the peak memory usage low.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnituedNormalValues, ExhaustiveC128UnaryTest,
+    LargeAndSmallMagnitudeNormalValues, ExhaustiveC128UnaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000)),

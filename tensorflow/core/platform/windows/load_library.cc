@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/load_library.h"
 
 #include <Shlwapi.h>
+#undef StrCat  // Don't let StrCat be renamed to lstrcatA
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -24,7 +25,7 @@ limitations under the License.
 #undef LoadLibrary
 #undef ERROR
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
 
 #pragma comment(lib, "Shlwapi.lib")

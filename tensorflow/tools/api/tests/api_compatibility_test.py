@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +34,7 @@ import re
 import sys
 
 import six
+from six.moves import range
 import tensorflow as tf
 
 from google.protobuf import message
@@ -109,7 +111,8 @@ def _KeyToFilePath(key, api_version):
     match = matchobj.group(0)
     return '-%s' % (match.lower())
 
-  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash, key)
+  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash,
+                                six.ensure_str(key))
   api_folder = (
       _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
   return os.path.join(api_folder, '%s.pbtxt' % case_insensitive_key)
@@ -125,7 +128,7 @@ def _FileNameToKey(filename):
   base_filename = os.path.basename(filename)
   base_filename_without_ext = os.path.splitext(base_filename)[0]
   api_object_key = re.sub('((-[a-z]){1})', _ReplaceDashWithCaps,
-                          base_filename_without_ext)
+                          six.ensure_str(base_filename_without_ext))
   return api_object_key
 
 
@@ -149,8 +152,8 @@ def _FilterNonCoreGoldenFiles(golden_file_list):
   filtered_package_prefixes = ['tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
   for f in golden_file_list:
     if any(
-        f.rsplit('/')[-1].startswith(pre) for pre in filtered_package_prefixes
-    ):
+        six.ensure_str(f).rsplit('/')[-1].startswith(pre)
+        for pre in filtered_package_prefixes):
       continue
     filtered_file_list.append(f)
   return filtered_file_list
@@ -300,6 +303,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
       visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
+    visitor.private_map['tf.compat'] = ['v1', 'v2']
     traverse.traverse(tf.compat.v1, visitor)
 
   def testNoSubclassOfMessageV2(self):
@@ -363,7 +367,9 @@ class ApiCompatibilityTest(test.TestCase):
         api_version=api_version)
 
   def testAPIBackwardsCompatibility(self):
-    api_version = 2 if '_api.v2' in tf.bitwise.__name__ else 1
+    api_version = 1
+    if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
+      api_version = 2
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
@@ -383,11 +389,6 @@ class ApiCompatibilityTest(test.TestCase):
         additional_private_map={'tf.compat': ['v1', 'v2']},
         omit_golden_symbols_map=omit_golden_symbols_map)
 
-    # Also check that V1 API has contrib
-    self.assertTrue(
-        api_version == 2 or
-        'tensorflow.python.util.lazy_loader.LazyLoader'
-        in str(type(tf.contrib)))
     # Check that V2 API does not have contrib
     self.assertTrue(api_version == 1 or not hasattr(tf, 'contrib'))
 
@@ -398,7 +399,10 @@ class ApiCompatibilityTest(test.TestCase):
         _KeyToFilePath('*', api_version))
     self._checkBackwardsCompatibility(
         tf.compat.v1, golden_file_pattern, api_version,
-        additional_private_map={'tf': ['pywrap_tensorflow']},
+        additional_private_map={
+            'tf': ['pywrap_tensorflow'],
+            'tf.compat': ['v1', 'v2'],
+        },
         omit_golden_symbols_map={'tensorflow': ['pywrap_tensorflow']})
 
   def testAPIBackwardsCompatibilityV2(self):

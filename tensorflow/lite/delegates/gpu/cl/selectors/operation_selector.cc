@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/hard_swish.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/dw_convolution_selector.h"
@@ -33,17 +33,21 @@ namespace cl {
 
 Status GPUOperationFromNode(const CreationContext& creation_context,
                             const OperationDef& op_def, ModelHints hints,
-                            const GraphFloat32& graph, const Node& node,
-                            std::unique_ptr<GPUOperation>* gpu_op) {
-  auto inputs = graph.FindInputs(node.id);
-  auto outputs = graph.FindOutputs(node.id);
-
+                            const std::vector<Value<TensorRef<BHWC>>*>& inputs,
+                            const std::vector<Value<TensorRef<BHWC>>*>& outputs,
+                            const Node& node,
+                            GPUOperationsSubgraph* gpu_subgraph) {
+  gpu_subgraph->operations.push_back({});
+  std::unique_ptr<GPUOperation>* gpu_op =
+      &gpu_subgraph->operations[0].operation;
+  for (int i = 0; i < inputs.size(); ++i) {
+    gpu_subgraph->operations[0].input_ids.push_back(i);
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    gpu_subgraph->operations[0].output_ids.push_back(i);
+  }
   auto op_type = OperationTypeFromString(node.operation.type);
   switch (op_type) {
-    case OperationType::ABS: {
-      SelectAbs(op_def, gpu_op);
-      return OkStatus();
-    }
     case OperationType::ADD: {
       const auto attr =
           absl::any_cast<AddAttributes>(node.operation.attributes);
@@ -97,11 +101,13 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
-      return SelectFullyConnected(attr, creation_context, op_def, gpu_op);
+      return SelectFullyConnected(attr, creation_context, op_def,
+                                  inputs[0]->tensor.shape.b, gpu_op);
     }
-    case OperationType::HARD_SWISH:
-      *gpu_op = HardSwish::Create(op_def);
+    case OperationType::LSTM: {
+      SelectLSTM(op_def, gpu_op);
       return OkStatus();
+    }
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
@@ -139,10 +145,6 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       SelectReshape(src_channels, attr.new_shape.c, op_def, gpu_op);
       return OkStatus();
     }
-    case OperationType::SIGMOID: {
-      SelectSigmoid(op_def, gpu_op);
-      return OkStatus();
-    }
     case OperationType::SLICE: {
       auto attr = absl::any_cast<SliceAttributes>(node.operation.attributes);
       SelectStridedSlice(attr, op_def, gpu_op);
@@ -152,10 +154,39 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       SelectSoftmax(inputs[0]->tensor.shape, op_def, gpu_op);
       return OkStatus();
     }
-    case OperationType::UPSAMPLE_2D: {
+    case OperationType::TRANSPOSE: {
       auto attr =
-          absl::any_cast<Upsample2DAttributes>(node.operation.attributes);
-      return SelectUpsampling(attr, op_def, gpu_op);
+          absl::any_cast<TransposeAttributes>(node.operation.attributes);
+      SelectTranspose(attr, op_def, gpu_op);
+      return OkStatus();
+    }
+    case OperationType::RESIZE: {
+      auto attr = absl::any_cast<Resize2DAttributes>(node.operation.attributes);
+      return SelectResize(attr, op_def, gpu_op);
+    }
+    case OperationType::ABS:
+    case OperationType::COS:
+    case OperationType::HARD_SWISH:
+    case OperationType::LOG:
+    case OperationType::RSQRT:
+    case OperationType::SIGMOID:
+    case OperationType::SIN:
+    case OperationType::SQRT:
+    case OperationType::SQUARE:
+    case OperationType::TANH: {
+      ElementwiseOneInput operation =
+          CreateElementwiseOneInput(op_def, op_type);
+      *gpu_op = absl::make_unique<ElementwiseOneInput>(std::move(operation));
+      return OkStatus();
+    }
+    case OperationType::DIV:
+    case OperationType::POW:
+    case OperationType::SQUARED_DIFF:
+    case OperationType::SUB: {
+      ElementwiseTwoInput operation =
+          CreateElementwiseTwoInput(op_def, op_type);
+      *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+      return OkStatus();
     }
     default:
       return UnimplementedError(

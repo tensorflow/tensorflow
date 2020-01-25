@@ -102,35 +102,78 @@ class UnaryVariantOpRegistry {
   // Add a copy-to-GPU function to the registry.
   void RegisterDeviceCopyFn(const VariantDeviceCopyDirection direction,
                             const TypeIndex& type_index,
-                            const AsyncVariantDeviceCopyFn& device_copy_fn);
+                            const AsyncVariantDeviceCopyFn& device_copy_fn) {
+    AsyncVariantDeviceCopyFn* existing = GetDeviceCopyFn(direction, type_index);
+    CHECK_EQ(existing, nullptr)
+        << "UnaryVariantDeviceCopy for direction: " << direction
+        << " and type_index: " << port::MaybeAbiDemangle(type_index.name())
+        << " already registered";
+    device_copy_fns.insert(
+        std::pair<std::pair<VariantDeviceCopyDirection, TypeIndex>,
+                  AsyncVariantDeviceCopyFn>(
+            std::make_pair(direction, type_index), device_copy_fn));
+  }
 
   // Returns nullptr if no copy function was found for the given
   // TypeName and direction.
   AsyncVariantDeviceCopyFn* GetDeviceCopyFn(
-      const VariantDeviceCopyDirection direction, const TypeIndex& type_index);
+      const VariantDeviceCopyDirection direction, const TypeIndex& type_index) {
+    auto found = device_copy_fns.find(std::make_pair(direction, type_index));
+    if (found == device_copy_fns.end()) return nullptr;
+    return &found->second;
+  }
 
   // Add a unary op function to the registry.
   void RegisterUnaryOpFn(VariantUnaryOp op, const string& device,
                          const TypeIndex& type_index,
-                         const VariantUnaryOpFn& unary_op_fn);
+                         const VariantUnaryOpFn& unary_op_fn) {
+    VariantUnaryOpFn* existing = GetUnaryOpFn(op, device, type_index);
+    CHECK_EQ(existing, nullptr)
+        << "Unary VariantUnaryOpFn for type_index: "
+        << port::MaybeAbiDemangle(type_index.name())
+        << " already registered for device type: " << device;
+    unary_op_fns.insert(std::pair<FuncTuple<VariantUnaryOp>, VariantUnaryOpFn>(
+        {op, GetPersistentStringPiece(device), type_index}, unary_op_fn));
+  }
 
   // Returns nullptr if no unary op function was found for the given
   // op, device, and TypeName.
   VariantUnaryOpFn* GetUnaryOpFn(VariantUnaryOp op, StringPiece device,
-                                 const TypeIndex& type_index);
+                                 const TypeIndex& type_index) {
+    auto found = unary_op_fns.find({op, device, type_index});
+    if (found == unary_op_fns.end()) return nullptr;
+    return &found->second;
+  }
 
   // Add a binary op function to the registry.
   void RegisterBinaryOpFn(VariantBinaryOp op, const string& device,
                           const TypeIndex& type_index,
-                          const VariantBinaryOpFn& add_fn);
+                          const VariantBinaryOpFn& add_fn) {
+    VariantBinaryOpFn* existing = GetBinaryOpFn(op, device, type_index);
+    CHECK_EQ(existing, nullptr)
+        << "Unary VariantBinaryOpFn for type_index: "
+        << port::MaybeAbiDemangle(type_index.name())
+        << " already registered for device type: " << device;
+    binary_op_fns.insert(
+        std::pair<FuncTuple<VariantBinaryOp>, VariantBinaryOpFn>(
+            {op, GetPersistentStringPiece(device), type_index}, add_fn));
+  }
 
   // Returns nullptr if no binary op function was found for the given
   // op, device and TypeName.
   VariantBinaryOpFn* GetBinaryOpFn(VariantBinaryOp op, StringPiece device,
-                                   const TypeIndex& type_index);
+                                   const TypeIndex& type_index) {
+    auto found = binary_op_fns.find({op, device, type_index});
+    if (found == binary_op_fns.end()) return nullptr;
+    return &found->second;
+  }
 
   // Get a pointer to a global UnaryVariantOpRegistry object
-  static UnaryVariantOpRegistry* Global();
+  static UnaryVariantOpRegistry* Global() {
+    static UnaryVariantOpRegistry* global_unary_variant_op_registry =
+        new UnaryVariantOpRegistry;
+    return global_unary_variant_op_registry;
+  }
 
   // Get a pointer to a global persistent string storage object.
   // ISO/IEC C++ working draft N4296 clarifies that insertion into an

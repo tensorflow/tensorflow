@@ -300,16 +300,23 @@ std::string ToBufferType(DataType data_type) {
     case DataType::UINT16:
     case DataType::UINT32:
       return "uvec4";
+    case DataType::UINT64:
+      return "u64vec4_not_available_in_glsl";
     case DataType::INT8:
     case DataType::INT16:
     case DataType::INT32:
       return "ivec4";
+    case DataType::INT64:
+      return "i64vec4_not_available_in_glsl";
     case DataType::FLOAT16:
       return "uvec2";
     case DataType::FLOAT32:
       return "vec4";
-    default:
-      return "unknown";
+    case DataType::FLOAT64:
+      return "dvec4";
+    case DataType::UNKNOWN:
+      return "unknown_buffer_type";
+      // Do NOT add `default:'; we want build failure for new enum values.
   }
 }
 
@@ -331,7 +338,7 @@ struct TextureImageTypeGetter {
       case DataType::FLOAT32:
         return "image2D";
       default:
-        return "unknown";
+        return "unknown_image_2d";
     }
   }
 
@@ -347,7 +354,7 @@ struct TextureImageTypeGetter {
       case DataType::FLOAT32:
         return "image2DArray";
       default:
-        return "unknown";
+        return "unknown_image_2d_array";
     }
   }
 
@@ -418,7 +425,7 @@ std::string ToImageLayoutQualifier(DataType type) {
     case DataType::FLOAT32:
       return "rgba32f";
     default:
-      return "unknown";
+      return "unknown_image_layout";
   }
 }
 
@@ -433,7 +440,7 @@ std::string ToImagePrecision(DataType type) {
     case DataType::FLOAT32:
       return "highp";
     default:
-      return "unknown";
+      return "unknown_image_precision";
   }
 }
 
@@ -577,24 +584,16 @@ std::string ObjectAccessor::GetObjectDeclarations() const {
 }
 
 std::string ObjectAccessor::GetFunctionsDeclarations() const {
-  std::string modifier = "";
-  // Mali compiler does not want to compile a function without readonly
-  // modifier. See b/111601761 for the context.
-  if (is_mali_) {
-    modifier = "readonly ";
-  }
-  // If there is a single object SSBO with F16, then we need to output functions
+  // If there is a single object SSBO with F16, then we need to output macros
   // as well.
   for (const auto& o : name_to_object_) {
     if (o.second.data_type == DataType::FLOAT16 &&
         o.second.object_type == ObjectType::BUFFER) {
-      return absl::StrCat("vec4 Vec4FromHalf(in ", modifier,
-                          "uvec2 v) { return vec4(unpackHalf2x16(v.x), "
-                          "unpackHalf2x16(v.y)); }\n"
-                          "uvec2 Vec4ToHalf(in ",
-                          modifier,
-                          "vec4 v) { return uvec2(packHalf2x16(v.xy), "
-                          "packHalf2x16(v.zw)); }\n");
+      return absl::StrCat(
+          "#define Vec4FromHalf(v) vec4(unpackHalf2x16(v.x), "
+          "unpackHalf2x16(v.y))\n",
+          "#define Vec4ToHalf(v) uvec2(packHalf2x16(v.xy), "
+          "packHalf2x16(v.zw))");
     }
   }
   return "";

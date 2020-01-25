@@ -21,8 +21,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -41,6 +43,18 @@ class DepthToSpaceTest(test.TestCase):
       # test NHWC (default) on CPU
       x_tf = array_ops.depth_to_space(input_nhwc, block_size)
       self.assertAllEqual(x_tf.eval(), outputs)
+
+      # Run this test only if only CPU device is available
+      if all(x.device_type == "CPU" for x in device_lib.list_local_devices()):
+        input_nchw = test_util.NHWCToNCHW(input_nhwc)
+        output_nchw = array_ops.depth_to_space(
+            input_nchw, block_size, data_format="NCHW")
+        output_nhwc = test_util.NCHWToNHWC(output_nchw)
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "No OpKernel was registered to support Op 'DepthToSpace'"):
+          output_nhwc.eval()
+
     if test.is_gpu_available():
       with self.cached_session(use_gpu=True):
         # test NHWC (default) on GPU

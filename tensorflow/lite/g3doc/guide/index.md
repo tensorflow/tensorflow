@@ -28,13 +28,16 @@ improve:
 TensorFlow Lite works with a huge range of devices, from tiny microcontrollers
 to powerful mobile phones.
 
-Key Point: The TensorFlow Lite binary is smaller than 300KB when all supported
-operators are linked, and less than 200KB when using only the operators needed
-for supporting the common image classification models InceptionV3 and MobileNet.
+Key Point: The TensorFlow Lite binary is smaller than 1MB when all supported
+operators are linked (for 32-bit ARM builds), and less than 300KB when using
+only the operators needed for supporting the common image classification models
+InceptionV3 and MobileNet.
 
 ## Get started
 
-To begin working with TensorFlow Lite, visit [Get started](get_started.md).
+To begin working with TensorFlow Lite on mobile devices, visit
+[Get started](get_started.md). If you want to deploy TensorFlow Lite models to
+microcontrollers, visit [Microcontrollers](../microcontrollers).
 
 ## Key features
 
@@ -115,7 +118,6 @@ Want to keep learning about TensorFlow Lite? Here are some next steps:
     TensorFlow Lite.
 *   If you're a mobile developer, visit [Android quickstart](android.md) or
     [iOS quickstart](ios.md).
-*   Learn about
-    [TensorFlow Lite for Microcontrollers](../microcontrollers/overview.md).
+*   Learn about [TensorFlow Lite for Microcontrollers](../microcontrollers).
 *   Explore our [pre-trained models](../models).
 *   Try our [example apps](https://www.tensorflow.org/lite/examples).

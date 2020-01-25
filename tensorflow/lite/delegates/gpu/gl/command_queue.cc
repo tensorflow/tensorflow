@@ -39,6 +39,8 @@ class DefaultCommandQueue : public CommandQueue {
     // TODO(akulik): Maybe let the user choose which wait method to use.
     return GlActiveSyncWait();
   }
+
+  Status Flush() override { return OkStatus(); }
 };
 
 // On Adreno do flush periodically as this affects performance. Command queue
@@ -55,6 +57,20 @@ class AdrenoCommandQueue : public DefaultCommandQueue {
   Status Dispatch(const GlProgram& program, const uint3& workgroups) final {
     RETURN_IF_ERROR(DefaultCommandQueue::Dispatch(program, workgroups));
     if ((++program_counter_ % flush_every_n_) == 0) {
+      glFlush();
+    }
+    return OkStatus();
+  }
+
+  Status WaitForCompletion() override {
+    program_counter_ = 0;
+    return DefaultCommandQueue::WaitForCompletion();
+  }
+
+  Status Flush() final {
+    // Flush exactly once after the last dispatch.
+    if (program_counter_ != 0) {
+      program_counter_ = 0;
       glFlush();
     }
     return OkStatus();

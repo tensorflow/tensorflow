@@ -28,16 +28,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::FullyConnectedAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::FullyConnectedAttributes;
 using ::tflite::gpu::Linear;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::Tensor;
-using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::OHWI;
 using ::tflite::gpu::OperationType;
+using ::tflite::gpu::Tensor;
+using ::tflite::gpu::TensorRef;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface FullyConnectedTest : XCTestCase
 @end
@@ -72,13 +72,12 @@ using ::tflite::gpu::OperationType;
   output.ref = 2;
   output.shape = BHWC(1, 1, 1, 4);
 
-  SingleOpModel model({ToString(OperationType::FULLY_CONNECTED), attr}, {input},
-                      {output});
+  SingleOpModel model({ToString(OperationType::FULLY_CONNECTED), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({6, 13, 20, 27}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

@@ -200,10 +200,22 @@ static Graph* ParseExample(int batch_size, int num_keys, int feature_size) {
 
 template <typename Options>
 static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
+  bool scalar_input = (batch_size == 0);
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor& serialized = Options::Store::GetSerializedExample()[std::make_tuple(
-      batch_size, num_keys, feature_size)];
-  Tensor names(DT_STRING, TensorShape({batch_size}));
+  Tensor& serialized_batch =
+      Options::Store::GetSerializedExample()[std::make_tuple(
+          scalar_input ? 1 : batch_size, num_keys, feature_size)];
+  Tensor serialized_example(DT_STRING, TensorShape());
+  Tensor names(DT_STRING,
+               scalar_input ? TensorShape({}) : TensorShape({batch_size}));
+  Tensor* serialized;
+
+  if (scalar_input) {
+    serialized_example.scalar<tstring>()() = serialized_batch.vec<tstring>()(0);
+    serialized = &serialized_example;
+  } else {
+    serialized = &serialized_batch;
+  }
 
   std::vector<NodeBuilder::NodeOut> dense_defaults;
   std::vector<DataType> sparse_types;
@@ -211,7 +223,7 @@ static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
   std::vector<DataType> ragged_split_types;
   std::vector<PartialTensorShape> dense_shapes;
   Tensor keys_t(DT_STRING, {static_cast<int32>(num_keys)});
-  auto keys_flat = keys_t.flat<string>();
+  auto keys_flat = keys_t.flat<tstring>();
   Options opt;
   for (int i = 0; i < num_keys; ++i) {
     keys_flat(i) = strings::Printf("feature_%d", i);
@@ -246,7 +258,7 @@ static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
 
   Node* ret;
   TF_EXPECT_OK(NodeBuilder(g->NewName("n"), "ParseExampleV2")
-                   .Input(test::graph::Constant(g, serialized))
+                   .Input(test::graph::Constant(g, *serialized))
                    .Input(test::graph::Constant(g, names))
                    .Input(test::graph::Constant(g, sparse_keys))
                    .Input(test::graph::Constant(g, dense_keys))
@@ -364,26 +376,41 @@ BM_AllParseExample(VarLenDenseFloat);
 
 // B == batch_size, K == num_keys. F == feature_size.
 // K must be one of 10, 100, 1000
+// B=0 indicates that a scalar input should be used (instead of a vector).
 #define BM_ParseExampleV2(TYPE, B, K, F)                                 \
   static void BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F(int iters) {  \
-    int64 items_per_iter = static_cast<int64>(B) * K * F;                \
+    int64 items_per_iter = static_cast<int64>(std::max(B, 1)) * K * F;   \
     testing::UseRealTime();                                              \
     testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter); \
     test::Benchmark("cpu", ParseExampleV2<TYPE>(B, K, F)).Run(iters);    \
   }                                                                      \
   BENCHMARK(BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F);
 
-#define BM_AllParseExampleV2(Type)       \
-  BM_ParseExampleV2(Type, 1, 10, 1);     \
-  BM_ParseExampleV2(Type, 128, 10, 1);   \
-  BM_ParseExampleV2(Type, 512, 10, 1);   \
-  BM_ParseExampleV2(Type, 1, 100, 1);    \
-  BM_ParseExampleV2(Type, 128, 100, 1);  \
-  BM_ParseExampleV2(Type, 512, 100, 1);  \
-  BM_ParseExampleV2(Type, 1, 1000, 1);   \
-  BM_ParseExampleV2(Type, 128, 1000, 1); \
-  BM_ParseExampleV2(Type, 512, 1000, 1); \
-  BM_ParseExampleV2(Type, 1, 1, 1000000);
+#define BM_AllParseExampleV2(Type)        \
+  /* Vector Inputs */                     \
+  BM_ParseExampleV2(Type, 1, 10, 1);      \
+  BM_ParseExampleV2(Type, 128, 10, 1);    \
+  BM_ParseExampleV2(Type, 512, 10, 1);    \
+  BM_ParseExampleV2(Type, 1, 100, 1);     \
+  BM_ParseExampleV2(Type, 128, 100, 1);   \
+  BM_ParseExampleV2(Type, 512, 100, 1);   \
+  BM_ParseExampleV2(Type, 1, 1000, 1);    \
+  BM_ParseExampleV2(Type, 128, 1000, 1);  \
+  BM_ParseExampleV2(Type, 512, 1000, 1);  \
+  BM_ParseExampleV2(Type, 1, 1, 1000000); \
+  /* Scalar Inputs */                     \
+  BM_ParseExampleV2(Type, 0, 10, 1);      \
+  BM_ParseExampleV2(Type, 0, 100, 1);     \
+  BM_ParseExampleV2(Type, 0, 1000, 1);    \
+  BM_ParseExampleV2(Type, 0, 1, 10);      \
+  BM_ParseExampleV2(Type, 0, 1, 100);     \
+  BM_ParseExampleV2(Type, 0, 1, 1000);    \
+  BM_ParseExampleV2(Type, 0, 1, 10000);   \
+  BM_ParseExampleV2(Type, 0, 1, 100000);  \
+  BM_ParseExampleV2(Type, 0, 1, 1000000); \
+  BM_ParseExampleV2(Type, 0, 10, 100000); \
+  BM_ParseExampleV2(Type, 0, 100, 10000); \
+  BM_ParseExampleV2(Type, 0, 1000, 1000);
 
 BM_AllParseExampleV2(SparseString);
 BM_AllParseExampleV2(DenseString);

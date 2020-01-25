@@ -1,5 +1,6 @@
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -27,11 +28,17 @@ cc_library(
         "compile.h",
         "flags.h",
     ],
+    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]),
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/tf2xla",
-        "//tensorflow/compiler/tf2xla:tf2xla_proto",
+        "//tensorflow/compiler/tf2xla:mlir_tf2xla",
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
@@ -40,7 +47,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -52,10 +59,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
+        "@llvm-project//llvm:arm_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:target",
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
+    ] + if_llvm_aarch64_available([
+        "//third_party/llvm/llvm-project/llvm:aarch64_target",  # fixdeps: keep
+    ]),
 )
 
 tf_cc_test(
@@ -74,8 +84,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",  # fixdeps: keep
-        "@llvm//:x86_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:support",  # fixdeps: keep
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -86,12 +96,25 @@ tf_cc_binary(
 )
 
 cc_library(
+    name = "llvm_targets",
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        "@llvm-project//llvm:arm_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:target",
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
+    ] + if_llvm_aarch64_available([
+        "//third_party/llvm/llvm-project/llvm:aarch64_target",  # fixdeps: keep
+    ]),
+)
+
+cc_library(
     name = "tfcompile_main",
     srcs = ["tfcompile_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
         ":tfcompile_lib",
-        "//tensorflow/compiler/tf2xla:tf2xla_proto",
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:compiler",
@@ -199,17 +222,22 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
-        "@llvm//:target",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:target",
     ],
 )
 
 cc_library(
     name = "aot_only_var_handle_op",
     srcs = ["aot_only_var_handle_op.cc"],
+    hdrs = ["aot_only_var_handle_op.h"],
+    visibility = [
+        "//tensorflow/compiler/tf2xla:__pkg__",
+    ],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
     ],
     alwayslink = 1,
 )

@@ -27,3 +27,82 @@ op {
   }
   is_stateful: true
 }
+op {
+  name: "ConfigureDistributedTPU"
+  output_arg {
+    name: "topology"
+    type: DT_STRING
+  }
+  attr {
+    name: "embedding_config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "tpu_embedding_config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "is_global_init"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "enable_whole_mesh_compilations"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "ConfigureDistributedTPU"
+  output_arg {
+    name: "topology"
+    type: DT_STRING
+  }
+  attr {
+    name: "embedding_config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "tpu_embedding_config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "is_global_init"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "enable_whole_mesh_compilations"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "compilation_failure_closes_chips"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
+}

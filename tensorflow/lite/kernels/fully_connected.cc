@@ -16,26 +16,22 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 
 #include <algorithm>
-#include <cassert>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -127,7 +123,7 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -234,6 +230,29 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+template <KernelType kernel_type>
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  // Check for supported activation types.
+  auto* params =
+      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const bool is_quantized =
+      ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8));
+  const bool is_hybrid = is_quantized && (input->type == kTfLiteFloat32);
+  const bool is_pie = kernel_type == kLegacyPie;
+
+  // Pie and hybrid path supports all kinds of fused activations, otherwise only
+  // clipping activations are supported.
+  if (!is_pie && !is_hybrid) {
+    TF_LITE_ENSURE(context, params->activation == kTfLiteActNone ||
+                                params->activation == kTfLiteActRelu ||
+                                params->activation == kTfLiteActRelu1 ||
+                                params->activation == kTfLiteActRelu6);
+  }
+  return PrepareImpl(context, node);
+}
+
 TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
                      TfLiteFullyConnectedParams* params, OpData* data,
                      const TfLiteTensor* input, const TfLiteTensor* filter,
@@ -305,15 +324,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   // Quantize input from float to uint8 + quantization params (scaling factor).
   float unused_min, unused_max;
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
-  int8_t* quant_data;
-  int8_t* filter_data;
-  if (filter->type == kTfLiteUInt8) {
-    quant_data = reinterpret_cast<int8_t*>(input_quantized->data.uint8);
-    filter_data = reinterpret_cast<int8_t*>(filter->data.uint8);
-  } else {
-    quant_data = input_quantized->data.int8;
-    filter_data = filter->data.int8;
-  }
+  int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
+  const int8_t* filter_data = GetTensorData<int8_t>(filter);
 
   // Quantize each batch independently.
   for (int b = 0; b < batch_size; ++b) {
@@ -352,6 +364,8 @@ void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
+  op_params.lhs_cacheable = IsConstantTensor(filter);
+  op_params.rhs_cacheable = IsConstantTensor(input);
   if (kernel_type == kReference) {
     reference_integer_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
@@ -393,6 +407,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     op_params.output_shift = data->output_shift;
     op_params.quantized_activation_min = data->output_activation_min;
     op_params.quantized_activation_max = data->output_activation_max;
+    op_params.lhs_cacheable = IsConstantTensor(filter);
+    op_params.rhs_cacheable = IsConstantTensor(input);
     switch (output->type) {
       case kTfLiteUInt8:
         if (kernel_type == kReference) {
@@ -472,6 +488,8 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
+  op_params.lhs_cacheable = IsConstantTensor(filter);
+  op_params.rhs_cacheable = IsConstantTensor(input);
   if (kernel_type == kReference) {
     reference_ops::ShuffledFullyConnected(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
@@ -516,6 +534,8 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     FullyConnectedParams op_params;
     op_params.float_activation_min = output_activation_min;
     op_params.float_activation_max = output_activation_max;
+    op_params.lhs_cacheable = IsConstantTensor(filter);
+    op_params.rhs_cacheable = IsConstantTensor(input);
     optimized_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
         GetTensorShape(filter), GetTensorData<float>(filter),
@@ -584,14 +604,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_FULLY_CONNECTED_REF() {
   static TfLiteRegistration r = {
-      fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kReference>,
       fully_connected::Eval<fully_connected::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT() {
   static TfLiteRegistration r = {
-      fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kGenericOptimized>,
       fully_connected::Eval<fully_connected::kGenericOptimized>};
   return &r;
 }
@@ -599,7 +621,8 @@ TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT() {
 // Legacy path for PIE clients.
 TfLiteRegistration* Register_FULLY_CONNECTED_PIE() {
   static TfLiteRegistration r = {
-      fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kLegacyPie>,
       fully_connected::Eval<fully_connected::kLegacyPie>};
   return &r;
 }

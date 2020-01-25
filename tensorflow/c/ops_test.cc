@@ -133,7 +133,7 @@ TEST(OpsTest, TestShapeInference_VectorizeFunction) {
 
 TEST(OpsTest, AttributeAccessors) {
   TF_OpDefinitionBuilder* builder =
-      TF_NewOpDefinitionBuilder("AttributeAccesorsOp");
+      TF_NewOpDefinitionBuilder("AttributeAccessorsOp");
   TF_OpDefinitionBuilderAddAttr(builder, "foo1: int >= 2");
   TF_OpDefinitionBuilderAddAttr(builder, "foo2: string=\"my string\"");
   TF_OpDefinitionBuilderSetIsCommutative(builder, true);
@@ -151,7 +151,7 @@ TEST(OpsTest, AttributeAccessors) {
   op_list.ParseFromArray(op_list_buffer->data, op_list_buffer->length);
   bool found = false;
   for (const auto& op : op_list.op()) {
-    if (op.name() == "AttributeAccesorsOp") {
+    if (op.name() == "AttributeAccessorsOp") {
       ASSERT_TRUE(op.is_commutative());
       ASSERT_TRUE(op.is_aggregate());
       ASSERT_TRUE(op.allows_uninitialized_input());
@@ -196,7 +196,7 @@ PartialTensorShape Unknown() { return PartialTensorShape(); }
 
 TEST(OpsTest, ShapeInferenceWithRank) {
   NodeDef def;
-  shape_inference::InferenceContext c(0, &def, MakeOpDef(1, 0),
+  shape_inference::InferenceContext c(0, def, MakeOpDef(1, 0),
                                       {S({10, 20, 30})}, {}, {}, {});
 
   shape_inference::ShapeHandle in0 = c.input(0);
@@ -236,7 +236,7 @@ TEST(OpsTest, ShapeInferenceWithRank) {
 
 TEST(OpsTest, ShapeInferenceWithRank_UnknownRank) {
   NodeDef def;
-  shape_inference::InferenceContext c(0, &def, MakeOpDef(2, 2),
+  shape_inference::InferenceContext c(0, def, MakeOpDef(2, 2),
                                       {Unknown(), S({1, -1, 3})}, {}, {}, {});
 
   shape_inference::ShapeHandle in0 = c.input(0);
@@ -260,7 +260,7 @@ TEST(OpsTest, ShapeInferenceWithRank_UnknownRank) {
 
 TEST(OpsTest, ShapeInferenceConcatenateShapes) {
   NodeDef def;
-  shape_inference::InferenceContext c(0, &def, MakeOpDef(2, 0),
+  shape_inference::InferenceContext c(0, def, MakeOpDef(2, 0),
                                       {S({1, 2}), S({3, 4})}, {}, {}, {});
   ASSERT_EQ(2, TF_ShapeInferenceContextNumInputs(C_CTX(&c)));
   shape_inference::ShapeHandle a = c.input(0);
@@ -279,7 +279,7 @@ TEST(OpsTest, ShapeInferenceConcatenateShapes) {
 
 TEST(OpsTest, DimensionHandleValueKnown) {
   NodeDef def;
-  shape_inference::InferenceContext c(0, &def, MakeOpDef(2, 0),
+  shape_inference::InferenceContext c(0, def, MakeOpDef(2, 0),
                                       {S({1, 2}), S({3, 4})}, {}, {}, {});
   TF_ShapeHandle* handle =
       TF_ShapeInferenceContextVectorFromSize(C_CTX(&c), 43);
@@ -299,7 +299,7 @@ TEST(OpsTest, DimensionHandleValueKnown) {
 
 TEST(OpsTest, ShapeInferenceSubshape) {
   NodeDef def;
-  shape_inference::InferenceContext c(0, &def, MakeOpDef(1, 0),
+  shape_inference::InferenceContext c(0, def, MakeOpDef(1, 0),
                                       {S({10, 20, 30, 40, 50})}, {}, {}, {});
   ASSERT_EQ("[10,20,30,40,50]", c.DebugString(c.input(0)));
 

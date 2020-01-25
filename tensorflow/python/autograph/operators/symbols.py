@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Abstract representation of composite symbols that can used in staging code.
+"""Abstract representation of composite symbols that can be used in staging code.
 
 This provides a way to checkpoint the values of symbols that may be undefined
 entering staged control flow. This checkpointing is necessary to prevent some
@@ -79,8 +79,8 @@ class AttributeAccessSymbol(Symbol):
     if (is_undefined(parent_value) or
         getattr(parent_value, self.attr_name, None) is None):
       return Undefined(self.name)
-    else:
-      return parent_value.__getattribute__(self.attr_name)
+
+    return parent_value.__getattribute__(self.attr_name)
 
 
 class SubscriptSymbol(Symbol):
@@ -106,10 +106,10 @@ class SubscriptSymbol(Symbol):
     index_value = self.index_symbol.maybe_compute_value()
     if is_undefined(parent_value) or is_undefined(index_value):
       return Undefined(self.name)
-    else:
-      try:
-        return parent_value[index_value]
-      except (IndexError, KeyError, TypeError):
-        # Reify the lack of an object for the given index/key
-        # This allows us to define them later without regret
-        return Undefined(self.name)
+
+    try:
+      return parent_value[index_value]
+    except (IndexError, KeyError, TypeError):
+      # Reify the lack of an object for the given index/key
+      # This allows us to define them later without regret
+      return Undefined(self.name)

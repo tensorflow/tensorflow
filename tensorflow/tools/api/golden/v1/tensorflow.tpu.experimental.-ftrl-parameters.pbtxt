@@ -1,0 +1,10 @@
+path: "tensorflow.tpu.experimental.FtrlParameters"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding.FtrlParameters\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding._OptimizationParameters\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'learning_rate\', \'learning_rate_power\', \'initial_accumulator_value\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'use_gradient_accumulation\', \'clip_weight_min\', \'clip_weight_max\'], varargs=None, keywords=None, defaults=[\'-0.5\', \'0.1\', \'0.0\', \'0.0\', \'True\', \'None\', \'None\'], "
+  }
+}

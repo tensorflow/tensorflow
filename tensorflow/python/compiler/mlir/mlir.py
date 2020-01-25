@@ -23,16 +23,19 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('mlir.experimental.convert_graph_def')
-def convert_graph_def(graph_def):
+def convert_graph_def(graph_def, pass_pipeline='tf-standard-pipeline'):
   """Import a GraphDef and convert it to a textual MLIR module.
 
   Args:
     graph_def: An object of type graph_pb2.GraphDef or a textual proto
       representation of a valid GraphDef.
+    pass_pipeline: A textual description of an MLIR Pass Pipeline to run on the
+      module, see MLIR documentation for the
+      [textual pass pipeline syntax](https://github.com/tensorflow/mlir/blob/master/g3doc/WritingAPass.md#textual-pass-pipeline-specification).
 
   Returns:
     A textual representation of the MLIR module corresponding to the graphdef.
     Raises a RuntimeError on error.
 
   """
-  return import_graphdef.import_graphdef(graph_def)
+  return import_graphdef.import_graphdef(graph_def, pass_pipeline)

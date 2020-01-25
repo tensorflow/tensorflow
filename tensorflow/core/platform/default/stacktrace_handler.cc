@@ -126,12 +126,7 @@ void InstallStacktraceHandler() {
   }
 }
 
-// Todo(bmzhao): This #elif should ideally be just a #else. Due to
-// the globbing in tf_additional_lib_srcs, windows/stacktrace_handler.cc
-// is compiled and linked in addition to this implementation, leading to an
-// ODR violation. This elif is a temporary hack to prevent this. Once
-// we fully refactor platform/BUILD and core/BUILD, this should no longer exist.
-#elif !defined(PLATFORM_WINDOWS)
+#else
 void InstallStacktraceHandler() {}
 #endif  // defined(TF_GENERATE_STACKTRACE)
 

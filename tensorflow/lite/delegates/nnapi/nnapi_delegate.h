@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
@@ -63,6 +63,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // NOTE: when using compilation caching, it is not recommended to use the
     // same delegate instance for multiple models.
     const char* model_token = nullptr;
+
+    // Whether to disallow NNAPI CPU usage. Only effective on Android 10 and
+    // above. The NNAPI CPU typically performs less well than built-in TfLite
+    // kernels, but allowing CPU allows partial acceleration of models. If this
+    // is set to true, NNAPI is only used if the whole model is accelerated.
+    bool disallow_nnapi_cpu = false;
   };
 
   // Uses default options.
@@ -113,6 +119,13 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   static const std::vector<MemoryRegistration>& GetTensorMemoryMap(
       TfLiteDelegate* delegate);
 
+  // Returns the int value of the ResultCode returned by the latest
+  // failed call to NNAPI, if any. Zero only in case of NO failed calls since
+  // the construction of this instance of StatefulNnApiDelegate.
+  // The error code is reset when the delegate is re-initialized
+  // (i.e. when calling interpreter.ModifyGraphWithDelegate(delegate)).
+  int GetNnApiErrno() const;
+
  private:
   // Encapsulates all delegate data.
   struct Data {
@@ -124,8 +137,13 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     std::string cache_dir;
     // The unique token string for NNAPI model.
     std::string model_token;
+    // Whether to disallow NNAPI CPU.
+    bool disallow_nnapi_cpu;
     // Tensor to ANeuralNetworksMemory mapping.
     std::vector<MemoryRegistration> tensor_memory_map;
+    // Constains a non zero value if any NNAPI method call
+    // operation returned a non zero result code.
+    int nnapi_errno;
   };
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate

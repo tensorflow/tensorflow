@@ -323,6 +323,7 @@ def _create_local_python_repository(repository_ctx):
         "numpy_include",
     )
     _tpl(repository_ctx, "BUILD", {
+        "%{PYTHON_BIN_PATH}": python_bin,
         "%{PYTHON_INCLUDE_GENRULE}": python_include_rule,
         "%{PYTHON_IMPORT_LIB_GENRULE}": python_import_lib_genrule,
         "%{NUMPY_INCLUDE_GENRULE}": numpy_include_rule,

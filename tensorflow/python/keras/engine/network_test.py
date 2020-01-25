@@ -32,6 +32,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -119,61 +120,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 0)
-
-  @test_util.run_deprecated_v1
-  def test_get_losses(self):
-
-    class MyLayer(keras.layers.Layer):
-
-      def build(self, input_shape):
-        self.a = self.add_variable('a',
-                                   (1, 1),
-                                   'float32',
-                                   trainable=False)
-        self.b = self.add_variable('b',
-                                   (1, 1),
-                                   'float32',
-                                   trainable=False)
-        self.add_loss(math_ops.reduce_sum(self.a))
-        self.built = True
-
-      def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs),
-                      inputs=True)
-        return inputs + 1
-
-    x1 = input_layer_lib.Input(shape=(1,))
-    layer = MyLayer()
-    _ = layer(x1)
-
-    self.assertEqual(len(layer.losses), 2)
-    self.assertEqual(len(layer.get_losses_for(x1)), 1)
-    self.assertEqual(len(layer.get_losses_for(None)), 1)
-
-    x2 = input_layer_lib.Input(shape=(1,))
-    y2 = layer(x2)
-
-    self.assertEqual(len(layer.losses), 3)
-    self.assertEqual(len(layer.get_losses_for(x1)), 1)
-    self.assertEqual(len(layer.get_losses_for(x2)), 1)
-    self.assertEqual(len(layer.get_losses_for(None)), 1)
-
-    network = network_lib.Network(x2, y2)
-    self.assertEqual(len(network.losses), 3)
-    self.assertEqual(len(network.get_losses_for(x1)), 1)
-    self.assertEqual(len(network.get_losses_for(x2)), 1)
-    self.assertEqual(len(network.get_losses_for(None)), 1)
-
-    x3 = input_layer_lib.Input(shape=(1,))
-    _ = layer(x3)
-    self.assertEqual(len(network.losses), 4)
-
-    x4 = input_layer_lib.Input(shape=(1,))
-    _ = network(x4)
-    self.assertEqual(len(network.losses), 5)
-    self.assertEqual(len(network.get_losses_for(x2)), 1)
-    self.assertEqual(len(network.get_losses_for(x4)), 1)
-    self.assertEqual(len(network.get_losses_for(None)), 1)
 
   @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributes(self):
@@ -356,17 +302,17 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     x = keras.layers.Dropout(0.5)(x, training=True)
     model = keras.models.Model(inp, x)
     # Would be `dropout/cond/Merge` by default
-    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', model.output.op.name)
 
     # Test that argument is kept when applying the model
     inp2 = keras.layers.Input(shape=(2,))
     out2 = model(inp2)
-    self.assertTrue(out2.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', out2.op.name)
 
     # Test that argument is kept after loading a model
     config = model.get_config()
     model = keras.models.Model.from_config(config)
-    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', model.output.op.name)
 
   def test_node_construction(self):
     # test basics
@@ -479,7 +425,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
       # test get_source_inputs
-      self._assertAllIs(keras.engine.get_source_inputs(c), [a, b])
+      self._assertAllIs(layer_utils.get_source_inputs(c), [a, b])
 
       # serialization / deserialization
       json_config = model.to_json()
@@ -1572,6 +1518,31 @@ class NestedNetworkTest(test.TestCase):
 
     self.assertLen(model.get_updates_for(ph), 2)
     self.assertLen(model.get_updates_for(None), 0)
+
+  def test_dict_mapping_input(self):
+
+    class ReturnFirst(keras.layers.Layer):
+
+      def call(self, inputs):
+        b, _ = inputs
+        return b
+
+    # Checks that inputs are put in same order as the
+    # Model was constructed with.
+    b = keras.Input(shape=(10,), name='b')
+    a = keras.Input(shape=(10,), name='a')
+    outputs = ReturnFirst()([b, a])
+
+    b_val = array_ops.ones((10, 10))
+    a_val = array_ops.zeros((10, 10))
+
+    model = keras.Model([b, a], outputs)
+    res = model({'a': a_val, 'b': b_val})
+    self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
+
+    reversed_model = keras.Model([a, b], outputs)
+    res = reversed_model({'a': a_val, 'b': b_val})
+    self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
 
 
 @keras_parameterized.run_all_keras_modes

@@ -22,8 +22,10 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -45,7 +47,7 @@ class GlobalPoolingTest(test.TestCase):
   @tf_test_util.run_in_graph_and_eager_modes
   def test_globalpooling_1d_masking_support(self):
     model = keras.Sequential()
-    model.add(keras.layers.Masking(mask_value=0., input_shape=(3, 4)))
+    model.add(keras.layers.Masking(mask_value=0., input_shape=(None, 4)))
     model.add(keras.layers.GlobalAveragePooling1D())
     model.compile(loss='mae', optimizer='rmsprop')
 
@@ -53,6 +55,60 @@ class GlobalPoolingTest(test.TestCase):
     model_input[0, 1:, :] = 0
     output = model.predict(model_input)
     self.assertAllClose(output[0], model_input[0, 0, :])
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_globalpooling_1d_with_ragged(self):
+    ragged_data = ragged_factory_ops.constant([
+        [[1.0, 1.0], [2.0, 2.0], [3.0, 3.0]],
+        [[1.0, 1.0], [2.0, 2.0]]], ragged_rank=1)
+    dense_data = ragged_data.to_tensor()
+
+    inputs = keras.Input(shape=(None, 2), dtype='float32', ragged=True)
+    out = keras.layers.GlobalAveragePooling1D()(inputs)
+    model = keras.models.Model(inputs=inputs, outputs=out)
+    output_ragged = model.predict(ragged_data, steps=1)
+
+    inputs = keras.Input(shape=(None, 2), dtype='float32')
+    masking = keras.layers.Masking(mask_value=0., input_shape=(3, 2))(inputs)
+    out = keras.layers.GlobalAveragePooling1D()(masking)
+    model = keras.models.Model(inputs=inputs, outputs=out)
+    output_dense = model.predict(dense_data, steps=1)
+
+    self.assertAllEqual(output_ragged, output_dense)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_globalpooling_2d_with_ragged(self):
+    ragged_data = ragged_factory_ops.constant([
+        [[[1.0], [1.0]], [[2.0], [2.0]], [[3.0], [3.0]]],
+        [[[1.0], [1.0]], [[2.0], [2.0]]]], ragged_rank=1)
+    dense_data = ragged_data.to_tensor()
+
+    inputs = keras.Input(shape=(None, 2, 1), dtype='float32', ragged=True)
+    out = keras.layers.GlobalMaxPooling2D()(inputs)
+    model = keras.models.Model(inputs=inputs, outputs=out)
+    output_ragged = model.predict(ragged_data, steps=1)
+
+    inputs = keras.Input(shape=(None, 2, 1), dtype='float32')
+    out = keras.layers.GlobalMaxPooling2D()(inputs)
+    model = keras.models.Model(inputs=inputs, outputs=out)
+    output_dense = model.predict(dense_data, steps=1)
+
+    self.assertAllEqual(output_ragged, output_dense)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_globalpooling_3d_with_ragged(self):
+    ragged_data = ragged_factory_ops.constant([
+        [[[[1.0]], [[1.0]]], [[[2.0]], [[2.0]]], [[[3.0]], [[3.0]]]],
+        [[[[1.0]], [[1.0]]], [[[2.0]], [[2.0]]]]], ragged_rank=1)
+
+    inputs = keras.Input(shape=(None, 2, 1, 1), dtype='float32', ragged=True)
+    out = keras.layers.GlobalAveragePooling3D()(inputs)
+    model = keras.models.Model(inputs=inputs, outputs=out)
+    output_ragged = model.predict(ragged_data, steps=1)
+    # Because GlobalAveragePooling3D doesn't support masking, the results
+    # cannot be compared with its dense equivalent.
+    expected_output = constant_op.constant([[2.0], [1.5]])
+    self.assertAllEqual(output_ragged, expected_output)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_globalpooling_2d(self):

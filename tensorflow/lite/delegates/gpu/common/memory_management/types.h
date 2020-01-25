@@ -24,6 +24,7 @@ namespace tflite {
 namespace gpu {
 
 using TaskId = size_t;
+using UsageGraph = std::vector<std::vector<size_t>>;
 
 // Record, containing tensor size/shape and IDs of the first and the last task,
 // that use this tensor as input or output. For example: tensor #3 with size
@@ -59,6 +60,20 @@ struct OffsetsAssignment {
   std::vector<size_t> offsets;
   size_t total_size;
 };
+
+// This function takes the graph of tensor dependencies as an input and returns
+// reallocation graph as an output. Tensor dependencies graph is a directed
+// graph, with edge x->y existing if and only if tensor x is used for
+// calculating of tensor y. This graph can be generated with following
+// pseudocode: for op in operations do
+//   for input_tensor in op.input_tensors do
+//       for output_tensor in op.output_tensors do
+//         if both input_tensor and output_tensor are intermediate tensors then
+//           deps_graph[input_tensor].push_back(output_tensor)
+// Reallocation graph is an undirected graph, that has edge x<->y if and only if
+// tensors x and y can share memory in ANY order of operations parallel
+// execution.
+UsageGraph ReallocationGraph(const UsageGraph& deps_graph);
 
 }  // namespace gpu
 }  // namespace tflite

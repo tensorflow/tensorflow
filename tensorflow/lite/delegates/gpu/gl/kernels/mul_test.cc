@@ -42,8 +42,9 @@ TEST(MulTest, Scalar) {
   output.shape = BHWC(1, 2, 2, 1);
 
   MultiplyScalarAttributes attr;
-  attr.param = 2;
+  attr.param = 2.f;
 
+  // TODO(eignasheva): change to MULTIPLY_SCALAR
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_OK(model.Invoke(*NewMultiplyScalarNodeShader()));
@@ -68,6 +69,7 @@ TEST(MulTest, Linear) {
   tensor.data = {2, 3};
   attr.param = std::move(tensor);
 
+  // TODO(eignasheva): change to MULTIPLY_SCALAR
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_OK(model.Invoke(*NewMultiplyScalarNodeShader()));

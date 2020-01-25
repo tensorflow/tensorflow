@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
     "tf_protos_grappler",
@@ -136,7 +136,10 @@ tf_cuda_library(
     hdrs = ["utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_estimator",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:gpu_id",
@@ -230,6 +233,7 @@ cc_library(
     hdrs = ["virtual_scheduler.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_estimator",
         ":graph_properties",
         ":op_context",
         ":utils",
@@ -241,7 +245,8 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
-        "//tensorflow/core/grappler/costs:cost_estimator",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -289,6 +294,7 @@ cc_library(
     deps = [
         ":cost_estimator",
         ":op_context",
+        ":utils",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

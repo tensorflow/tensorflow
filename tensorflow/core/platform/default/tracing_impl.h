@@ -18,11 +18,6 @@ limitations under the License.
 
 // Stub implementations of tracing functionality.
 
-// IWYU pragma: private, include "third_party/tensorflow/core/platform/tracing.h"
-// IWYU pragma: friend third_party/tensorflow/core/platform/tracing.h
-
-#include "tensorflow/core/platform/tracing.h"
-
 // Definitions that do nothing for platforms that don't have underlying thread
 // tracing support.
 #define TRACELITERAL(a) \

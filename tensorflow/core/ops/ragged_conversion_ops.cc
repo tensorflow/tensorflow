@@ -113,9 +113,9 @@ REGISTER_OP("RaggedTensorToVariant")
     .Input("rt_nested_splits: RAGGED_RANK * Tsplits")
     .Input("rt_dense_values: Tvalues")
     .Output("encoded_ragged: variant")
-    .Attr("RAGGED_RANK: int >= 1")
+    .Attr("RAGGED_RANK: int >= 0")
     .Attr("Tvalues: type")
-    .Attr("Tsplits: {int32, int64}")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
     .Attr("batched_input: bool")
     .SetShapeFn(RaggedTensorToVariantShapeFn);
 
@@ -124,9 +124,9 @@ REGISTER_OP("RaggedTensorFromVariant")
     .Output("output_nested_splits: output_ragged_rank * Tsplits")
     .Output("output_dense_values: Tvalues")
     .Attr("input_ragged_rank: int >= -1")
-    .Attr("output_ragged_rank: int >= 1")
+    .Attr("output_ragged_rank: int >= 0")
     .Attr("Tvalues: type")
-    .Attr("Tsplits: {int32, int64}")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
     .SetShapeFn(RaggedTensorFromVariantShapeFn);
 
 REGISTER_OP("RaggedTensorToTensor")
@@ -193,6 +193,10 @@ Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
     c->set_output(0, c->Vector(num_rows));
   } else {
     c->set_output(0, c->Scalar());
+  }
+  if (batched && num_splits == 0) {
+    return errors::InvalidArgument(
+        "ragged_rank=0 is not currently supported when batched_input=true.");
   }
   return Status::OK();
 }

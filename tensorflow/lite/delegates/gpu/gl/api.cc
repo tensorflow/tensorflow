@@ -369,23 +369,6 @@ class CompiledModelImpl
   std::unordered_map<ValueId, size_t> object_sizes_;
   CompilerStats stats_;
 };
-
-// @return true if all tensors have same batch value.
-bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
-  const int32_t b = model.values()[0]->tensor.shape.b;
-  for (auto value : model.values()) {
-    if (value->tensor.shape.b != b) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
-  return (gpu_info.major_version == 3 && gpu_info.minor_version >= 1) ||
-         gpu_info.major_version > 3;
-}
-
 }  // namespace
 
 Status Compile(const CompilationOptions& options, const GraphFloat32& model,

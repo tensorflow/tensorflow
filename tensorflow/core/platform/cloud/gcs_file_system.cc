@@ -27,13 +27,7 @@ limitations under the License.
 #endif
 #include "absl/base/macros.h"
 #include "include/json/json.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
@@ -41,8 +35,13 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
 #ifdef _WIN32
@@ -1744,6 +1743,17 @@ void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
   mutex_lock l(block_cache_lock_);
   stats_ = stats;
   stats_->Configure(this, &throttle_, file_block_cache_.get());
+}
+
+void GcsFileSystem::SetCacheStats(FileBlockCacheStatsInterface* cache_stats) {
+  tf_shared_lock l(block_cache_lock_);
+  if (file_block_cache_ == nullptr) {
+    LOG(ERROR) << "Tried to set cache stats of non-initialized file block "
+                  "cache object. This may result in not exporting the intended "
+                  "monitoring data";
+    return;
+  }
+  file_block_cache_->SetStats(cache_stats);
 }
 
 void GcsFileSystem::SetAuthProvider(

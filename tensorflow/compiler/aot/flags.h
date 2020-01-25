@@ -25,6 +25,7 @@ namespace tensorflow {
 namespace tfcompile {
 
 // Flags for the tfcompile binary.  See *.cc file for descriptions.
+
 struct MainFlags {
   string graph;
   string config;
@@ -38,6 +39,7 @@ struct MainFlags {
   string out_metadata_object;
   string out_header;
   string out_session_module;
+  string mlir_components;
 
   // C++ codegen options
   bool gen_name_to_index = false;

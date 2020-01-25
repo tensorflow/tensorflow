@@ -30,10 +30,21 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export('keras.datasets.cifar10.load_data')
 def load_data():
-  """Loads CIFAR10 dataset.
+  """Loads [CIFAR10 dataset](https://www.cs.toronto.edu/~kriz/cifar.html).
+
+  This is a dataset of 50,000 32x32 color training images and 10,000 test
+  images, labeled over 10 categories. See more info at the
+  [CIFAR homepage](https://www.cs.toronto.edu/~kriz/cifar.html).
 
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+
+      x_train, x_test: uint8 arrays of RGB image data with shape
+        (num_samples, 3, 32, 32) if the `tf.keras.backend.image_data_format` is
+        'channels_first', or (num_samples, 32, 32, 3) if the data format
+        is 'channels_last'.
+      y_train, y_test: uint8 arrays of category labels (integers in range 0-9)
+        each with shape (num_samples, 1).
   """
   dirname = 'cifar-10-batches-py'
   origin = 'https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'

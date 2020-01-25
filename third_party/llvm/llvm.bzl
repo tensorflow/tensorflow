@@ -59,8 +59,8 @@ def gentbl(name, tblgen, td_file, td_srcs, tbl_outs, library = True, **kwargs):
             outs = [out],
             tools = [tblgen],
             message = "Generating code from table: %s" % td_file,
-            cmd = (("$(location %s) " + "-I external/llvm/include " +
-                    "-I external/llvm/tools/clang/include " +
+            cmd = (("$(location %s) " + "-I external/llvm-project/llvm/include " +
+                    "-I external/llvm-project/clang/include " +
                     "-I $$(dirname $(location %s)) " + "%s $(location %s) -o $@") % (
                 tblgen,
                 td_file,
@@ -291,6 +291,11 @@ win32_cmake_vars = {
 
     # LLVM features
     "LTDL_SHLIB_EXT": ".dll",
+
+    # ThreadPoolExecutor global destructor and thread handshaking do not work
+    # on this platform when used as a DLL.
+    # See: https://bugs.llvm.org/show_bug.cgi?id=44211
+    "LLVM_ENABLE_THREADS": 0,
 }
 
 # Select a set of CMake variables based on the platform.

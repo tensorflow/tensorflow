@@ -88,6 +88,16 @@ class TypesTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError):
       dtypes.as_dtype(np.dtype([("f1", np.uint), ("f2", np.int32)]))
 
+    class AnObject(object):
+      dtype = "f4"
+
+    self.assertIs(dtypes.float32, dtypes.as_dtype(AnObject))
+
+    class AnotherObject(object):
+      dtype = np.dtype(np.complex64)
+
+    self.assertIs(dtypes.complex64, dtypes.as_dtype(AnotherObject))
+
   def testRealDtype(self):
     for dtype in [
         dtypes.float32, dtypes.float64, dtypes.bool, dtypes.uint8, dtypes.int8,
@@ -281,6 +291,7 @@ class TypesTest(test_util.TensorFlowTestCase):
         self.assertEquals(dtype.max, float.fromhex("0x1.FEp127"))
 
   def testRepr(self):
+    self.skipTest("b/142725777")
     for enum, name in dtypes._TYPE_TO_STRING.items():
       if enum > 100:
         continue
@@ -318,4 +329,3 @@ class TypesTest(test_util.TensorFlowTestCase):
 
 if __name__ == "__main__":
   googletest.main()
-

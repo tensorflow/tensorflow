@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 import six
 
 from tensorflow.python.client import session
@@ -25,7 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.keras.saving import model_from_json
+from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
@@ -64,7 +65,7 @@ sequential = LazyLoader(
     date=None,
     instructions=('Please use `model.save(..., save_format="tf")` or '
                   '`tf.keras.models.save_model(..., save_format="tf")`.'))
-@keras_export('keras.experimental.export_saved_model')
+@keras_export(v1=['keras.experimental.export_saved_model'])
 def export_saved_model(model,
                        saved_model_path,
                        custom_objects=None,
@@ -374,7 +375,7 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
     date=None,
     instructions=('The experimental save and load functions have been  '
                   'deprecated. Please switch to `tf.keras.models.load_model`.'))
-@keras_export('keras.experimental.load_from_saved_model')
+@keras_export(v1=['keras.experimental.load_from_saved_model'])
 def load_from_saved_model(saved_model_path, custom_objects=None):
   """Loads a keras Model from a SavedModel created by `export_saved_model()`.
 
@@ -417,7 +418,8 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
       compat.as_bytes(constants.ASSETS_DIRECTORY),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
   model_json = file_io.read_file_to_string(model_json_filepath)
-  model = model_from_json(model_json, custom_objects=custom_objects)
+  model = model_config.model_from_json(
+      model_json, custom_objects=custom_objects)
 
   # restore model weights
   checkpoint_prefix = os.path.join(

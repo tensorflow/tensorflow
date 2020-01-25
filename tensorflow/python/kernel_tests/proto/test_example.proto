@@ -2,9 +2,9 @@
 
 syntax = "proto2";
 
-import "tensorflow/core/framework/types.proto";
-
 package tensorflow.contrib.proto;
+
+import "tensorflow/core/framework/types.proto";
 
 // A TestCase holds a proto and assertions about how it should decode.
 message TestCase {
@@ -16,14 +16,24 @@ message TestCase {
   repeated int32 sizes = 3;
   // Expected values for each field.
   repeated FieldSpec fields = 4;
-};
+}
 
 // FieldSpec describes the expected output for a single field.
 message FieldSpec {
   optional string name = 1;
   optional tensorflow.DataType dtype = 2;
   optional TestValue value = 3;
-};
+}
+
+enum Color {
+  RED = 0;
+  ORANGE = 1;
+  YELLOW = 2;
+  GREEN = 3;
+  BLUE = 4;
+  INDIGO = 5;
+  VIOLET = 6;
+}
 
 // NOTE: This definition must be kept in sync with PackedTestValue.
 message TestValue {
@@ -43,6 +53,7 @@ message TestValue {
   repeated sint32 sint32_value = 17;
   repeated sint64 sint64_value = 18;
   repeated PrimitiveValue message_value = 19;
+  repeated Color enum_value = 35;
 
   // Optional fields with explicitly-specified defaults.
   optional double double_value_with_default = 20 [default = 1.0];
@@ -61,6 +72,7 @@ message TestValue {
   optional sfixed64 sfixed64_value_with_default = 32 [default = 11];
   optional sint32 sint32_value_with_default = 33 [default = 12];
   optional sint64 sint64_value_with_default = 34 [default = 13];
+  optional Color enum_value_with_default = 36 [default = GREEN];
 
   extensions 100 to 199;
 }
@@ -88,6 +100,7 @@ message PackedTestValue {
   repeated sint32 sint32_value = 17 [packed = true];
   repeated sint64 sint64_value = 18 [packed = true];
   repeated PrimitiveValue message_value = 19;
+  repeated Color enum_value = 35;
 
   optional double double_value_with_default = 20 [default = 1.0];
   optional float float_value_with_default = 21 [default = 2.0];
@@ -105,6 +118,7 @@ message PackedTestValue {
   optional sfixed64 sfixed64_value_with_default = 32 [default = 11];
   optional sint32 sint32_value_with_default = 33 [default = 12];
   optional sint64 sint64_value_with_default = 34 [default = 13];
+  optional Color enum_value_with_default = 36 [default = GREEN];
 }
 
 message PrimitiveValue {
@@ -139,21 +153,6 @@ extend TestValue {
 }
 
 // The messages below are for yet-to-be created tests.
-
-message EnumValue {
-  enum Color {
-    RED = 0;
-    ORANGE = 1;
-    YELLOW = 2;
-    GREEN = 3;
-    BLUE = 4;
-    INDIGO = 5;
-    VIOLET = 6;
-  };
-  optional Color enum_value = 14;
-  repeated Color repeated_enum_value = 15;
-}
-
 
 message InnerMessageValue {
   optional float float_value = 2;

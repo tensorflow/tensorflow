@@ -231,7 +231,7 @@ class Server(object):
     """
     # Specifying port 0 means that the OS will choose a free port for the
     # server.
-    return Server({"local": ["localhost:0"]},
+    return Server({"localhost": ["localhost:0"]},
                   protocol="grpc",
                   config=config,
                   start=start)
@@ -325,7 +325,7 @@ class ClusterSpec(object):
   def __ne__(self, other):
     return self._cluster_spec != other
 
-  def __str__(self):
+  def __repr__(self):
     key_values = self.as_dict()
     string_items = [
         repr(k) + ": " + repr(key_values[k]) for k in sorted(key_values)

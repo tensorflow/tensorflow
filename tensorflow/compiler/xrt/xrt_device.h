@@ -43,18 +43,22 @@ class XRTGenericDeviceAccessor {
     ScopedRef& operator=(const ScopedRef&) = delete;
 
     // Returns the XLA device protected by this ScopedRef.
-    xla::LocalClient* client() { return client_; }
+    xla::LocalClient* client() const { return client_; }
     xla::Backend* backend() { return client_->mutable_backend(); }
-    int device_ordinal() { return 0; }
+    int device_ordinal() const { return ordinal_; }
 
    private:
     // XRTGenericDeviceAccessor::InitScopedRef is the only way to initialize
     // ScopedRef.
     friend class XRTGenericDeviceAccessor;
 
-    void Acquire(xla::LocalClient* client) { client_ = client; }
+    void Acquire(xla::LocalClient* client, int ordinal) {
+      client_ = client;
+      ordinal_ = ordinal;
+    }
 
     xla::LocalClient* client_ = nullptr;
+    int ordinal_ = 0;
   };
 
   static Status InitScopedRef(OpKernelContext* ctx, int device_ordinal,

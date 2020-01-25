@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 from absl import app
 from absl import flags
 
@@ -54,6 +56,10 @@ def train():
       metrics=["accuracy"])
 
   model.fit_generator(generator=dataset.batch(10), epochs=5)
+
+  # This is testing that a model using a SavedModel can be re-exported again,
+  # e.g. to catch issues such as b/142231881.
+  tf.saved_model.save(model, tempfile.mkdtemp())
 
 
 def main(argv):

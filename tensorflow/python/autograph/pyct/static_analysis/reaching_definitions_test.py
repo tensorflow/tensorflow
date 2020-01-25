@@ -358,16 +358,18 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
   def test_comprehension_leaking(self):
 
     def test_fn(a):
-      all(x for x in a)
-      return x  # pylint:disable=undefined-variable
+      _ = [x for x in a]
+      return x  # pylint:disable=undefined-loop-variable
 
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    listcomp_target = fn_body[0].value.args[0].generators[0].target
+    listcomp_target = fn_body[0].value.generators[0].target
     retval = fn_body[1].value
 
-    # Python2 leaks comprehension symbols. Python3 doesn't.
+    # Python2 leaks list comprehension symbols. Python3 doesn't.
+    # For details, see:
+    # https://stackoverflow.com/questions/4198906/list-comprehension-rebinds-names-even-after-scope-of-comprehension-is-this-righ
     if six.PY2:
       self.assertSameDef(retval, listcomp_target)
     else:

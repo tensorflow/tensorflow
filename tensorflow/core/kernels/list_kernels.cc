@@ -13,23 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <limits>
-
-#include "tensorflow/core/framework/allocator.h"
-
 #define EIGEN_USE_THREADS
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "tensorflow/core/kernels/list_kernels.h"
+
+#include <limits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/concat_lib.h"
-#include "tensorflow/core/kernels/list_kernels.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/util.h"
@@ -37,107 +38,6 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
-TensorList::~TensorList() {
-  if (tensors_) tensors_->Unref();
-}
-
-void TensorList::Encode(VariantTensorData* data) const {
-  data->set_type_name(TypeName());
-  std::vector<size_t> invalid_indices;
-  for (size_t i = 0; i < tensors().size(); i++) {
-    if (tensors().at(i).dtype() != DT_INVALID) {
-      *data->add_tensors() = tensors().at(i);
-    } else {
-      invalid_indices.push_back(i);
-    }
-  }
-  string metadata;
-  // TODO(b/118838800): Add a proto for storing the metadata.
-  // Metadata format:
-  // <num_invalid_tensors><invalid_indices><element_dtype><element_shape_proto>
-  core::PutVarint64(&metadata, static_cast<uint64>(invalid_indices.size()));
-  for (size_t i : invalid_indices) {
-    core::PutVarint64(&metadata, static_cast<uint64>(i));
-  }
-  core::PutVarint64(&metadata, static_cast<uint64>(element_dtype));
-  core::PutVarint64(&metadata, static_cast<uint64>(max_num_elements));
-  TensorShapeProto element_shape_proto;
-  element_shape.AsProto(&element_shape_proto);
-  element_shape_proto.AppendToString(&metadata);
-  data->set_metadata(metadata);
-}
-
-static Status TensorListDeviceCopy(
-    const TensorList& from, TensorList* to,
-    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
-  to->element_shape = from.element_shape;
-  to->element_dtype = from.element_dtype;
-  to->max_num_elements = from.max_num_elements;
-  to->tensors().reserve(from.tensors().size());
-  for (const Tensor& t : from.tensors()) {
-    to->tensors().emplace_back(t.dtype());
-    if (t.dtype() != DT_INVALID) {
-      TF_RETURN_IF_ERROR(copy(t, &to->tensors().back()));
-    }
-  }
-  return Status::OK();
-}
-
-#define REGISTER_LIST_COPY(DIRECTION)                                         \
-  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(TensorList, DIRECTION, \
-                                                       TensorListDeviceCopy)
-
-REGISTER_LIST_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
-REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
-REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
-
-REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
-
-bool TensorList::Decode(const VariantTensorData& data) {
-  // TODO(srbs): Change the signature to Decode(VariantTensorData data) so
-  // that we do not have to copy each tensor individually below. This would
-  // require changing VariantTensorData::tensors() as well.
-  string metadata;
-  data.get_metadata(&metadata);
-  uint64 scratch;
-  StringPiece iter(metadata);
-  std::vector<size_t> invalid_indices;
-  core::GetVarint64(&iter, &scratch);
-  size_t num_invalid_tensors = static_cast<size_t>(scratch);
-  invalid_indices.resize(num_invalid_tensors);
-  for (size_t i = 0; i < num_invalid_tensors; i++) {
-    core::GetVarint64(&iter, &scratch);
-    invalid_indices[i] = static_cast<size_t>(scratch);
-  }
-
-  size_t total_num_tensors = data.tensors().size() + num_invalid_tensors;
-  tensors().reserve(total_num_tensors);
-  std::vector<size_t>::iterator invalid_indices_it = invalid_indices.begin();
-  std::vector<Tensor>::const_iterator tensors_it = data.tensors().begin();
-  for (size_t i = 0; i < total_num_tensors; i++) {
-    if (invalid_indices_it != invalid_indices.end() &&
-        *invalid_indices_it == i) {
-      tensors().emplace_back(Tensor(DT_INVALID));
-      invalid_indices_it++;
-    } else if (tensors_it != data.tensors().end()) {
-      tensors().emplace_back(*tensors_it);
-      tensors_it++;
-    } else {
-      // VariantTensorData is corrupted.
-      return false;
-    }
-  }
-
-  core::GetVarint64(&iter, &scratch);
-  element_dtype = static_cast<DataType>(scratch);
-  core::GetVarint64(&iter, &scratch);
-  max_num_elements = static_cast<int>(scratch);
-  TensorShapeProto element_shape_proto;
-  element_shape_proto.ParseFromString(string(iter.data(), iter.size()));
-  element_shape = PartialTensorShape(element_shape_proto);
-  return true;
-}
 
 Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
   if (t.shape() == TensorShape({})) {
@@ -255,8 +155,6 @@ class EmptyTensorList : public OpKernel {
  private:
   DataType element_dtype_;
 };
-
-const char TensorList::kTypeName[] = "tensorflow::TensorList";
 
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorList").Device(DEVICE_CPU),
                         EmptyTensorList);
@@ -540,9 +438,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
                               .HostMemory("index"),               \
                           TensorListSetItem);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
-TF_CALL_complex64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
-TF_CALL_complex128(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_int32(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)

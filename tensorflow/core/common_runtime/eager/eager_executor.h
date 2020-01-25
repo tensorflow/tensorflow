@@ -27,9 +27,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -47,6 +48,10 @@ class EagerNode {
   EagerNode() {}
 
   virtual ~EagerNode() {}
+
+  // Prepares the node when adding it into EagerExecutor. If any errors happens,
+  // EagerExecutor will abort the node immediately.
+  virtual Status Prepare() { return Status::OK(); }
 
   // Runs the computation corresponding to this node and blocks till the
   // execution is done.
@@ -73,12 +78,8 @@ class AsyncEagerNode : public EagerNode {
 
   AsyncEagerNode* AsAsync() final { return this; }
 
-  // This is non-blocking. It returns the scheduling status.
-  // TODO(fishx): avoid calling this AsyncEagerNode::Run.
   Status Run() final {
-    std::shared_ptr<Status> status(new Status);
-    RunAsync([status](const Status& s) { status->Update(s); });
-    return *status;
+    return errors::Unimplemented("Don't call AsyncEagerNode::Run().");
   }
 };
 
@@ -96,8 +97,8 @@ class EagerExecutor {
 
   ~EagerExecutor();
 
-  // Puts this in a shutdown state. In this state, Add() will return an error
-  // and not add new EagerNodes. After putting this in the shutdown state,
+  // Puts this in a shutdown state. In this state, AddOrExecute() will return an
+  // error and not add new EagerNodes. After putting this in the shutdown state,
   // blocks until all pendings nodes have finished running.
   // Returns the status of executing pending nodes.
   // If async was not enabled, aborts and destroys all pending nodes.
@@ -105,10 +106,14 @@ class EagerExecutor {
 
   bool Async() const;
 
-  // Schedules `node` for execution. If an error occurs (e.g. EagerExecutor
-  // has already been shut down), the `node` is not added to this executor
-  // and its Abort() method is called.
-  Status Add(std::unique_ptr<EagerNode> node);
+  // Inline execute node if executor is in sync mode.
+  Status SyncExecute(EagerNode* node);
+
+  // - Async Mode: schedules `node` for execution.
+  // - Sync Mode: inline execute the 'node' directly.
+  // If an error occurs (e.g. EagerExecutor has already been shut down), the
+  // `node` is not added to this executor and its Abort() method is called.
+  Status AddOrExecute(std::unique_ptr<EagerNode> node);
 
   // Blocks till all currently pending ops are done.
   // In particular, if EnableAsync() has not beed called, it will not return
@@ -121,7 +126,14 @@ class EagerExecutor {
   void ClearError();
 
   // Returns Status based on any errors that occurred during async execution.
-  Status status() const;
+  Status status() const {
+    if (ok()) return Status::OK();
+
+    tf_shared_lock l(node_queue_mutex_);
+    return status_;
+  }
+
+  bool ok() const NO_THREAD_SAFETY_ANALYSIS { return ok_; }
 
  private:
   // Possible states for this executor.
@@ -139,16 +151,25 @@ class EagerExecutor {
     kShutDown,
   };
 
-  struct NodeItem {
+  enum class NodeState {
+    kPENDING,
+    kSCHEDULED,
+    kDONE,
+  };
+
+  struct NodeItem : core::RefCounted {
     // Unique id generated in EagerExecutor::Add(). If item1.id < item2.id, it
     // means item1.node is added before item2.node.
     uint64 id;
     std::unique_ptr<EagerNode> node;
+    NodeState state;
   };
 
   const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
-  void NodeDone(NodeItem* item, const Status& status);
+  void NodeDone(const core::RefCountPtr<NodeItem>& item, const Status& status,
+                bool from_queue);
+  void NotifyWaiters(uint64 id) EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set
@@ -156,18 +177,12 @@ class EagerExecutor {
   // `status_` is not ok.
   void Run();
 
+  Status RunItem(core::RefCountPtr<NodeItem> item, bool from_queue);
+  Status MoveToUnfinished(core::RefCountPtr<NodeItem> item, bool from_queue);
+
   // The impl of WaitForAllPendingNodes
   // `lock` is the lock that holds node_queue_mutex_.
   Status WaitForAllPendingNodesLocked(mutex_lock* lock)
-      EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
-
-  // If async has been enabled on this executor, just calls
-  // WaitForAllPendingNodes. Else sets the status_ to an error if it does not
-  // already contain one `lock` is the lock that holds node_queue_mutex_.
-  // Precondition: state_ != kActive.
-  void WaitForOrDestroyAllPendingNodes(
-      mutex_lock* lock,
-      std::vector<std::unique_ptr<NodeItem>>* nodes_to_destroy)
       EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   Status WaitImpl(bool wait_all, uint64 node_id);
@@ -180,16 +195,17 @@ class EagerExecutor {
   condition_variable nodes_pending_ GUARDED_BY(node_queue_mutex_);
 
   // Queue of pending NodeItems. Ordered by NodeItem::id.
-  std::queue<std::unique_ptr<NodeItem>> node_queue_
+  std::queue<core::RefCountPtr<NodeItem>> node_queue_
       GUARDED_BY(node_queue_mutex_);
 
-  // Owned the NodeItem in it. Ordered by NodeItem::id.
-  std::map<uint64, NodeItem*, std::less<uint64>> unfinished_nodes_
-      GUARDED_BY(node_queue_mutex_);
+  // Ordered by NodeItem::id.
+  std::map<uint64, core::RefCountPtr<NodeItem>, std::less<uint64>>
+      unfinished_nodes_ GUARDED_BY(node_queue_mutex_);
 
   // `status_` is set based on any errors raised during execution of a
   // EagerNode.  It remains set until ClearError is called.
   Status status_ GUARDED_BY(node_queue_mutex_);
+  std::atomic<bool> ok_ GUARDED_BY(node_queue_mutex_);
 
   // Map from id of a EagerNode to condition_variables (not owned by the map).
   // These condition_variables are notified and removed when that EagerNode is
@@ -210,6 +226,8 @@ class EagerExecutor {
   // until state_ is set to kShuttingDown. It is `nullptr` in sync mode.
   const std::unique_ptr<Thread> thread_;
 };
+
+inline bool EagerExecutor::Async() const { return thread_ != nullptr; }
 
 }  // namespace tensorflow
 

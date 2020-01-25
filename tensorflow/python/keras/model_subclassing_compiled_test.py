@@ -27,7 +27,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import model_subclassing_test_util as model_util
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 try:
@@ -44,8 +43,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     num_samples = 100
     input_dim = 50
 
-    model = model_util.SimpleTestModel(
-        num_classes=num_classes, use_dp=True, use_bn=True)
+    model = testing_utils.SmallSubclassMLP(
+        num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -64,7 +63,7 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     num_samples = 1000
     input_dim = 50
 
-    model = model_util.MultiIOTestModel(
+    model = model_util.get_multi_io_subclass_model(
         num_classes=num_classes, use_dp=True, use_bn=True)
     model.compile(
         loss='mse',
@@ -87,8 +86,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     input_dim = 50
 
     with self.cached_session():
-      model = model_util.SimpleTestModel(
-          num_classes=num_classes, use_dp=True, use_bn=True)
+      model = testing_utils.SmallSubclassMLP(
+          num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(
           loss='mse',
           optimizer='rmsprop',
@@ -111,7 +110,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     num_samples = 100
     input_dim = 50
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
 
     x1 = np.ones((num_samples, input_dim))
     x2 = np.ones((num_samples, input_dim))
@@ -211,7 +211,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -224,7 +225,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0,
               validation_data=([x1, x2], [y1, y2]))
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -246,7 +248,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -255,10 +258,12 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.evaluate([x1, x2], [y1, y2])
     model.test_on_batch([x1, x2], [y1, y2])
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.predict([x1, x2])
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.predict_on_batch([x1, x2])
 
   def test_saving(self):
@@ -271,7 +276,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -286,7 +292,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
       hdf5_format_name = os.path.join(self.get_temp_dir(), 'weights.h5')
       model.save_weights(hdf5_format_name)
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
 
     if h5py is not None:
       with self.assertRaises(ValueError):
@@ -446,29 +453,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     loss = model.train_on_batch(x, y)
     self.assertGreater(loss, 0.1)
-
-  def test_no_loss_in_compile(self):
-
-    class InternalLossModel(keras.Model):
-
-      def __init__(self):
-        super(InternalLossModel, self).__init__()
-        self.dense = keras.layers.Dense(1)
-
-      def call(self, inputs):
-        out = self.dense(inputs)
-        self.add_loss(math_ops.reduce_sum(out))
-        return out
-
-    model = InternalLossModel()
-    x = np.ones((10, 10))
-    model.predict(x)
-    model.compile(
-        optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    model.fit(x)
-    model.evaluate(x)
 
 
 if __name__ == '__main__':

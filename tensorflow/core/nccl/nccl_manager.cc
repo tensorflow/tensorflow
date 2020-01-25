@@ -21,8 +21,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -43,20 +44,20 @@ using se::rocm::ScopedActivateExecutorContext;
 int NcclManager::instance_count = 0;
 #endif
 
-#define NCCL_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    ncclResult_t nccl_status = (__VA_ARGS__);                   \
-    if (nccl_status != ncclSuccess) {                           \
-      return errors::Internal(ncclGetErrorString(nccl_status)); \
-    }                                                           \
+#define NCCL_RETURN_IF_ERROR(...)                                         \
+  do {                                                                    \
+    ncclResult_t nccl_status = (__VA_ARGS__);                             \
+    if (nccl_status != ncclSuccess) {                                     \
+      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status)); \
+    }                                                                     \
   } while (0)
 
-#define CUDA_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    cudaError_t cuda_status = (__VA_ARGS__);                    \
-    if (cuda_status != cudaSuccess) {                           \
-      return errors::Internal(cudaGetErrorString(cuda_status)); \
-    }                                                           \
+#define CUDA_RETURN_IF_ERROR(...)                                         \
+  do {                                                                    \
+    cudaError_t cuda_status = (__VA_ARGS__);                              \
+    if (cuda_status != cudaSuccess) {                                     \
+      return errors::Internal("CUDA: ", cudaGetErrorString(cuda_status)); \
+    }                                                                     \
   } while (0)
 
 // Contains data for a single stream used for nccl communication; this includes
@@ -250,14 +251,18 @@ string NcclManager::GenerateCommunicatorKey() {
 
 Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
                                     NcclManager::Communicator** communicator) {
-  // Sort by executor to make ordering of executors deterministic.
+  // Sort by device ID, executor, and global rank to make ordering of
+  // participants deterministic.
   std::sort(collective->participants.begin(), collective->participants.end(),
             [](const std::unique_ptr<Participant>& a,
                const std::unique_ptr<Participant>& b) {
-              if (a->executor == b->executor) {
-                return a->global_rank < b->global_rank;
+              if (a->gpu_device_id != b->gpu_device_id) {
+                return a->gpu_device_id < b->gpu_device_id;
               }
-              return a->executor < b->executor;
+              if (a->executor != b->executor) {
+                return a->executor < b->executor;
+              }
+              return a->global_rank < b->global_rank;
             });
 
   mutex_lock l(mu_);
@@ -697,6 +702,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         if (p->output) {
           recvbuff = const_cast<char*>(p->output->tensor_data().data());
           num_elements = p->output->NumElements();
+        } else {
+          // Operate in-place if no output (for the src node).
+          recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
           p->done_callback(errors::Internal(

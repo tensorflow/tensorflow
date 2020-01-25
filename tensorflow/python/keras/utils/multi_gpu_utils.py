@@ -20,7 +20,10 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.training import Model
+from tensorflow.python.keras.layers.core import Lambda
+from tensorflow.python.keras.layers.merge import concatenate
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -34,6 +37,8 @@ def _normalize_device_name(name):
 
 
 @keras_export('keras.utils.multi_gpu_model')
+@deprecation.deprecated(
+    '2020-04-01', 'Use `tf.distribute.MirroredStrategy` instead.')
 def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
   """Replicates a model on different GPUs.
 
@@ -149,10 +154,6 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
   Raises:
     ValueError: if the `gpus` argument does not match available devices.
   """
-  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.layers.core import Lambda
-  from tensorflow.python.keras.layers.merge import concatenate
-
   if isinstance(gpus, (list, tuple)):
     if len(gpus) <= 1:
       raise ValueError('For multi-gpu usage to be effective, '

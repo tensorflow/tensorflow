@@ -2,6 +2,6 @@ path: "tensorflow.mlir.experimental"
 tf_module {
   member_method {
     name: "convert_graph_def"
-    argspec: "args=[\'graph_def\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'graph_def\', \'pass_pipeline\'], varargs=None, keywords=None, defaults=[\'tf-standard-pipeline\'], "
   }
 }

@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/environment.h"
 
 #import <Metal/Metal.h>
-#import <UIKit/UIKit.h>
 
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -27,45 +27,70 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-float GetiOsSystemVersion() { return [[[UIDevice currentDevice] systemVersion] floatValue]; }
-
-int GetAppleSocVersion() {
-  std::vector<std::pair<MTLFeatureSet, int>> features = {
-#if defined(__IPHONE_8_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_8_0
-    {MTLFeatureSet_iOS_GPUFamily1_v1, 7},
-    {MTLFeatureSet_iOS_GPUFamily2_v1, 8},
-#endif
-#if defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0
-    {MTLFeatureSet_iOS_GPUFamily1_v2, 7},
-    {MTLFeatureSet_iOS_GPUFamily2_v2, 8},
-    {MTLFeatureSet_iOS_GPUFamily3_v1, 9},
-#endif
-#if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_10_0
-    {MTLFeatureSet_iOS_GPUFamily1_v3, 7},
-    {MTLFeatureSet_iOS_GPUFamily2_v3, 8},
-    {MTLFeatureSet_iOS_GPUFamily3_v2, 9},
-#endif
-#if defined(__IPHONE_11_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_11_0
-    {MTLFeatureSet_iOS_GPUFamily2_v4, 8},
-    {MTLFeatureSet_iOS_GPUFamily3_v3, 9},
-    {MTLFeatureSet_iOS_GPUFamily4_v1, 11},
-#endif
-#if defined(__IPHONE_12_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0
-    {MTLFeatureSet_iOS_GPUFamily1_v5, 7},
-    {MTLFeatureSet_iOS_GPUFamily2_v5, 8},
-    {MTLFeatureSet_iOS_GPUFamily3_v4, 9},
-    {MTLFeatureSet_iOS_GPUFamily4_v2, 11},
-    {MTLFeatureSet_iOS_GPUFamily5_v1, 12},
-#endif
-  };
-  id<MTLDevice> device = GetBestSupportedMetalDevice();
+GpuType GetGpuType() {
   int max_feature_set = 0;
+#if defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0
+  std::vector<std::pair<MTLFeatureSet, int>> features;
+  if (@available(iOS 8.0, *)) {
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily1_v1, 7);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily2_v1, 8);
+  }
+  if (@available(iOS 9.0, *)) {
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily1_v2, 7);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily2_v2, 8);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily3_v1, 9);
+  }
+  if (@available(iOS 10.0, *)) {
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily1_v3, 7);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily2_v3, 8);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily3_v2, 9);
+  }
+  if (@available(iOS 11.0, *)) {
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily2_v4, 8);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily3_v3, 9);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily4_v1, 11);
+  }
+  if (@available(iOS 12.0, *)) {
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily1_v5, 7);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily2_v5, 8);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily3_v4, 9);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily4_v2, 11);
+    features.emplace_back(MTLFeatureSet_iOS_GPUFamily5_v1, 12);
+  }
+  id<MTLDevice> device = GetBestSupportedMetalDevice();
   for (auto &type : features) {
     if ([device supportsFeatureSet:type.first]) {
       max_feature_set = std::max(max_feature_set, type.second);
     }
   }
-  return max_feature_set;
+#elif defined(__MAC_10_5) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_5
+  std::vector<std::pair<MTLFeatureSet, int>> features;
+  if (@available(macOS 10.15, *)) {
+    features.emplace_back(MTLFeatureSet_macOS_GPUFamily2_v1, 12);
+  }
+  id<MTLDevice> device = GetBestSupportedMetalDevice();
+  for (auto &type : features) {
+    if ([device supportsFeatureSet:type.first]) {
+      max_feature_set = std::max(max_feature_set, type.second);
+    }
+  }
+#endif
+  switch (max_feature_set) {
+    case 7:
+      return GpuType::kA7;
+    case 8:
+      return GpuType::kA8;
+    case 9:
+      return GpuType::kA9;
+    case 10:
+      return GpuType::kA10;
+    case 11:
+      return GpuType::kA11;
+    case 12:
+      return GpuType::kA12;
+    default:
+      return GpuType::kUnknown;
+  };
 }
 
 }  // namespace metal

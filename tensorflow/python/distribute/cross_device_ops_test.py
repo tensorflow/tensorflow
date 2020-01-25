@@ -66,7 +66,7 @@ def _make_per_replica(values, devices, regroup=False):
     with ops.device(d):
       placed_v = array_ops.identity(v)
     index.append(placed_v)
-  return value_lib.regroup(value_lib.ReplicaDeviceMap(devices), index)
+  return value_lib.regroup(index)
 
 
 # pylint: disable=g-doc-args,g-doc-return-or-yield
@@ -82,7 +82,6 @@ def _fake_mirrored(value, devices):
     with ops.device(d):
       values.append(array_ops.identity(value))
   return value_lib.regroup(
-      value_lib.ReplicaDeviceMap(devices),
       values,
       wrap_class=value_lib.Mirrored)
 
@@ -100,7 +99,6 @@ def _make_mirrored_indexed_slices(devices, values, indices, dense_shape):
   values = [_make_indexed_slices(values, indices, dense_shape, d)
             for d in devices]
   return value_lib.regroup(
-      value_lib.ReplicaDeviceMap(devices),
       values,
       wrap_class=value_lib.Mirrored)
 
@@ -127,8 +125,7 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
     else:
       if isinstance(left, value_lib.DistributedValues):
         self.assertEqual(set(left.devices), set(right.devices))
-        self._assert_values_equal([left.get(d) for d in sorted(left.devices)],
-                                  [right.get(d) for d in sorted(right.devices)])
+        self._assert_values_equal(left.values, right.values)
       else:
         self.assertEqual(
             device_util.resolve(left.device), device_util.resolve(right.device))
@@ -217,8 +214,7 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
     t0 = _make_indexed_slices([[1., 2.]], [1], dense_shape, devices[0])
     t1 = _make_indexed_slices([[3., 4.], [5., 6.]], [1, 3], dense_shape,
                               devices[1])
-    per_replica = value_lib.PerReplica(
-        value_lib.ReplicaDeviceMap(devices), (t0, t1))
+    per_replica = value_lib.PerReplica((t0, t1))
 
     if batch_reduce:
       result = cross_device_ops_instance.batch_reduce(
@@ -309,9 +305,10 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
         cross_device_ops_lib.ReductionToOneDevice)
 
     # Not use nccl if requested device is not visible to TensorFlow.
-    self.assertIsInstance(
-        cross_device_ops_lib.choose_the_best(["/gpu:100"]),
-        cross_device_ops_lib.ReductionToOneDevice)
+    # TODO(yuefengz): make `choose_the_best` work with device strings
+    # self.assertIsInstance(
+    #     cross_device_ops_lib.choose_the_best(["/gpu:100"]),
+    #     cross_device_ops_lib.ReductionToOneDevice)
 
     if context.num_gpus() < 1:
       return
@@ -338,7 +335,6 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
           cross_device_ops_lib.choose_the_best(devices),
           cross_device_ops_lib.ReductionToOneDevice)
 
-
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],
       required_gpus=1))
@@ -346,8 +342,7 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     devices = ["/cpu:0", "/gpu:0"]
     t0 = _make_indexed_slices([[1., 2.]], [1], [5, 2], devices[0])
     t1 = _make_indexed_slices([[3., 4.], [5., 6.]], [1, 3], [5, 2], devices[1])
-    per_replica = value_lib.PerReplica(
-        value_lib.ReplicaDeviceMap(devices), (t0, t1))
+    per_replica = value_lib.PerReplica((t0, t1))
     result = cross_device_ops_lib._simple_reduce(
         per_replica, devices[0], math_ops.add_n, reduce_util.ReduceOp.SUM)
 
@@ -647,8 +642,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       indexed_slices.append(
           _make_indexed_slices(values[idx], indices[idx], dense_shape, d))
     if as_per_replica:
-      per_replica = value_lib.PerReplica(
-          value_lib.ReplicaDeviceMap(devices), indexed_slices)
+      per_replica = value_lib.PerReplica(indexed_slices)
       return per_replica
     else:
       return indexed_slices
@@ -705,56 +699,45 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
+          required_gpus=[0, 1, 2],
           use_strategy_object=[True, False]))
-  def testReductionDistributed(self, num_gpus, use_strategy_object):
-    if context.num_gpus() < num_gpus:
-      return
+  def testReductionDistributed(self, required_gpus, use_strategy_object):
     self._run_between_graph_clients(
         self._test_reduction,
         self._cluster_spec,
-        num_gpus,
+        required_gpus,
         use_strategy_object=use_strategy_object)
 
   @combinations.generate(
       combinations.combine(
-          mode=["graph"],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
-          batch_reduce=[True]))
-  def testReduceIndexedSlicesDistributed(self, num_gpus, batch_reduce):
-    if context.num_gpus() < num_gpus:
-      return
+          mode=["graph"], required_gpus=[0, 1, 2], batch_reduce=[True]))
+  def testReduceIndexedSlicesDistributed(self, required_gpus, batch_reduce):
     self._run_between_graph_clients(self._test_reduce_indexed_slices,
-                                    self._cluster_spec, num_gpus, batch_reduce)
+                                    self._cluster_spec, required_gpus,
+                                    batch_reduce)
 
   # Collective ops doesn't support strategy with one device.
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[2],
           required_gpus=2,
           use_strategy_object=[True, False]))
-  def testReductionLocal(self, num_gpus, use_strategy_object):
-    if context.num_gpus() < num_gpus:
-      return
+  def testReductionLocal(self, required_gpus, use_strategy_object):
     self._test_reduction(
         None,
         None,
-        num_gpus,
+        required_gpus,
         use_strategy_object=use_strategy_object,
         local_mode=True)
 
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[2],
           required_gpus=2,
           batch_reduce=[True, False]))
-  def testReduceIndexedSlicesLocal(self, num_gpus, batch_reduce):
+  def testReduceIndexedSlicesLocal(self, required_gpus, batch_reduce):
     self._test_reduce_indexed_slices(
-        None, None, num_gpus, batch_reduce, local_mode=True)
+        None, None, required_gpus, batch_reduce, local_mode=True)
 
 
 if __name__ == "__main__":

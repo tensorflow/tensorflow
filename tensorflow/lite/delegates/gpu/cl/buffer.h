@@ -43,6 +43,9 @@ class Buffer {
 
   ~Buffer();
 
+  // for profiling and memory statistics
+  uint64_t GetMemorySizeInBytes() const { return size_; }
+
   cl_mem GetMemoryPtr() const { return buffer_; }
 
   // Writes data to a buffer. Data should point to a region that
@@ -58,7 +61,7 @@ class Buffer {
   void Release();
 
   cl_mem buffer_ = nullptr;
-  int size_;
+  size_t size_;
 };
 
 Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,

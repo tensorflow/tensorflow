@@ -4,12 +4,7 @@
 
 package(default_visibility = [
     "//tensorflow/java:__pkg__",
-    # TODO(ashankar): Temporary hack for the Java API and
-    # //third_party/tensorflow/contrib/android:android_tensorflow_inference_jni
-    # to co-exist in a single shared library. However, the hope is that
-    # //third_party/tensorflow/contrib/android:android_tensorflow_jni can be
-    # removed once the Java API provides feature parity with it.
-    "//tensorflow/contrib/android:__pkg__",
+    "//tensorflow/tools/android/inference_interface:__pkg__",
 ])
 
 licenses(["notice"])  # Apache 2.0

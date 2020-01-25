@@ -257,7 +257,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   # spectra.
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   def operator_and_matrix(
       self, shape_info, dtype, use_placeholder,
@@ -357,6 +357,11 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
         self.evaluate(operator.assert_non_singular())
 
   def test_assert_non_singular_does_not_fail_for_non_singular_operator(self):
+
+    if test.is_built_with_rocm():
+      # ROCm does not yet support BLAS operations with complex types.
+      self.skipTest("ROCm does not support BLAS operations for complex types")
+
     spectrum = math_ops.cast([-3j, 4 + 0j, 2j + 2], dtypes.complex64)
     operator = linalg.LinearOperatorCirculant(spectrum)
     with self.cached_session():
@@ -477,6 +482,10 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
   zero imaginary part.
   """
 
+  @staticmethod
+  def skip_these_tests():
+    return ["cond"]
+
   def operator_and_matrix(
       self, shape_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
@@ -536,7 +545,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   def operator_and_matrix(
       self, shape_info, dtype, use_placeholder,
@@ -656,6 +665,11 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       yield sess
 
   def test_real_spectrum_gives_self_adjoint_operator(self):
+
+    if test.is_built_with_rocm():
+      # ROCm does not yet support BLAS operations with complext types
+      self.skipTest("ROCm does not support BLAS operations for complex types")
+
     with self.cached_session():
       # This is a real and hermitian spectrum.
       spectrum = linear_operator_test_util.random_normal(
@@ -672,6 +686,11 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       self.assertAllClose(matrix, matrix_h)
 
   def test_defining_operator_using_real_convolution_kernel(self):
+
+    if test.is_built_with_rocm():
+      # ROCm does not yet support BLAS operations with complext types
+      self.skipTest("ROCm does not support BLAS operations for complex types")
+
     with self.cached_session():
       convolution_kernel = linear_operator_test_util.random_normal(
           shape=(2, 2, 3, 5), dtype=dtypes.float32)
@@ -690,6 +709,11 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       np.testing.assert_allclose(0, np.imag(matrix), atol=1e-5)
 
   def test_defining_spd_operator_by_taking_real_part(self):
+
+    if test.is_built_with_rocm():
+      # ROCm does not yet support BLAS operations with complext types
+      self.skipTest("ROCm does not support BLAS operations for complex types")
+
     with self.cached_session():  # Necessary for fft_kernel_label_map
       # S is real and positive.
       s = linear_operator_test_util.random_uniform(

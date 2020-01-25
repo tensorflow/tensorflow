@@ -184,29 +184,17 @@ def stripped_op_list_for_graph(graph_def):
 
   Returns:
     An `OpList` of ops used by the graph.
-
-  Raises:
-    ValueError: If an unregistered op is used.
   """
-  # This is the Python equivalent of StrippedOpListForGraph in C++.
-  # Unfortunately, since the Python op registry can differ from that in C++, we
-  # can't remove the duplication using swig (at least naively).
-  # TODO(irving): Support taking graphs directly.
-
+  # This is similar to StrippedOpListForGraph in C++, but unlike its
+  # C++ counterpart, this version does not require all ops to be registered.
+  # This is done to support Prelu fusion in tfjs.
   used_ops = ops_used_by_graph_def(graph_def)
-
-  # Verify that all used ops are registered.
-  registered_ops = op_def_registry.get_registered_ops()
-  # These internal ops used by functions are not registered, so we need to
-  # whitelist them.  # TODO(irving): Do something better here.
-  op_whitelist = ("_Arg", "_Retval", "_ListToArray", "_ArrayToList")
-  for op in used_ops:
-    if op not in registered_ops and op not in op_whitelist:
-      raise ValueError("Op %s is used by the graph, but is not registered" % op)
-
-  # Build the stripped op list in sorted order
-  return op_def_pb2.OpList(op=[registered_ops[op] for op in sorted(used_ops)
-                               if op in registered_ops])
+  op_defs = []
+  for op in sorted(used_ops):
+    op_def = op_def_registry.get(op)
+    if op_def is not None:
+      op_defs.append(op_def)
+  return op_def_pb2.OpList(op=op_defs)
 
 
 def _get_kind_name(item):
@@ -309,9 +297,10 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
   # but it seems unnecessarily complex given the name scope solution.
 
   # load the graph DAG in minimal form, without initializing a full Graph object
-  nodes = {node_def.name:
-           (set([_op_name(x) for x in node_def.input]), node_def.op)
-           for node_def in graph_def.node}
+  nodes = {
+      node_def.name: (set(_op_name(x) for x in node_def.input), node_def.op)
+      for node_def in graph_def.node
+  }
 
   retain_scope_save = None
   retain_scope_restore = None
@@ -325,12 +314,12 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
     retain_scope_restore = _get_scope(restore_op_name) + "/"
     retain_scope_save = _get_scope(save_op_name) + "/"
 
-  all_saver_node_names = set([name for name, (_, op) in nodes.items()
-                              if op in SAVE_AND_RESTORE_OPS])
+  all_saver_node_names = set(
+      name for name, (_, op) in nodes.items() if op in SAVE_AND_RESTORE_OPS)
 
-  all_saver_scopes = (set([_get_scope(x) for x in all_saver_node_names])
-                      - all_saver_node_names)
-  all_saver_scopes = set([x + "/" for x in all_saver_scopes])
+  all_saver_scopes = (
+      set(_get_scope(x) for x in all_saver_node_names) - all_saver_node_names)
+  all_saver_scopes = set(x + "/" for x in all_saver_scopes)
 
   extraneous_scopes = all_saver_scopes - set([retain_scope_save,
                                               retain_scope_restore])
@@ -482,14 +471,14 @@ def strip_graph_default_valued_attrs(meta_graph_def):
   for function_def in meta_graph_def.graph_def.library.function:
     op_name_to_function[function_def.signature.name] = function_def
 
-  # Get all registered ops.
-  registered_ops = op_def_registry.get_registered_ops()
-
   def _strip_node_default_valued_attrs(node_def):
     """Removes default valued attributes from a single node def."""
-    if node_def.op in op_name_to_function or node_def.op not in registered_ops:
+    if node_def.op in op_name_to_function:
       return
-    op_def = registered_ops[node_def.op]
+
+    op_def = op_def_registry.get(node_def.op)
+    if op_def is None:
+      return
 
     attrs_to_strip = set()
     for attr_name, attr_value in node_def.attr.items():
@@ -778,9 +767,10 @@ def import_scoped_meta_graph_with_return_elements(
             sorted([compat.as_str(v) for v in field.value]) !=
             sorted(input_map)):
           raise ValueError("Graph contains unbound inputs: %s. Must "
-                           "provide these inputs through input_map." %
-                           ",".join([compat.as_str(v) for v in field.value
-                                     if not input_map or v not in input_map]))
+                           "provide these inputs through input_map." % ",".join(
+                               compat.as_str(v)
+                               for v in field.value
+                               if not input_map or v not in input_map))
         break
 
   # Sets graph to default graph if it's not passed in.

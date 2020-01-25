@@ -406,7 +406,7 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     dim_nums.rhs_batch_dimensions.append(0)
 
     c = xla.dot_general(a, b, dim_nums)
-    self.assertEqual(c.shape, tensor_shape.TensorShape([1, 3, 3, 1]))
+    self.assertEqual(c.shape, tensor_shape.TensorShape([4, 1, 3, 3, 1]))
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +17,10 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import argparse
+
+import six
 
 
 def write_build_info(filename, is_config_cuda, is_config_rocm, key_value_list):
@@ -47,7 +51,7 @@ def write_build_info(filename, is_config_cuda, is_config_rocm, key_value_list):
   key_value_pair_stmts = []
   if key_value_list:
     for arg in key_value_list:
-      key, value = arg.split("=")
+      key, value = six.ensure_str(arg).split("=")
       if key == "is_cuda_build":
         raise ValueError("The key \"is_cuda_build\" cannot be passed as one of "
                          "the --key_value arguments.")

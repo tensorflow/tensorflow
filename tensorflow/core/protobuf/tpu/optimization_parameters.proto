@@ -202,12 +202,6 @@ message OnlineYogiParameters {
   // \beta_2 from Algorithm 2 in the paper.
   float beta2 = 3;
 
-  // Initial value of V variable in paper.
-  float initial_v = 4;
-
-  // Initial value of linear variable in FTRL.
-  float initial_linear = 5;
-
   // x -> copysign(1, x) (i.e., return 1 for an input of +0 rather than 0).
   message SignActivation {}
 
@@ -219,6 +213,45 @@ message OnlineYogiParameters {
   oneof activation {
     SignActivation sign = 6;
     TanhActivation tanh = 7;
+  }
+}
+
+// The online Yogi optimizer does not implement hyper-parameter update; use the
+// dynamic learning rate feature instead, setting the learning rate to:
+// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// Here, t is the current timestep.
+//
+// https://papers.nips.cc/paper/8186-adaptive-methods-for-nonconvex-optimization.pdf
+// plus some extensions based on FTRL.
+//
+// Note that the code by default implements the lazy version of proximal Yogi.
+message ProximalYogiParameters {
+  // The L1 regularization parameter.
+  float l1 = 1;
+
+  // The L2 regularization parameter.
+  float l2 = 2;
+
+  // The exponential decay rate for the 1st moment estimates.
+  float beta1 = 3;
+
+  // The exponential decay rate for the 2nd moment estimates.
+  float beta2 = 4;
+
+  // A constant trading off adaptivity and noise.
+  float epsilon = 5;
+
+  // x -> copysign(1, x) (i.e., return 1 for an input of +0 rather than 0).
+  message SignActivation {}
+
+  // x -> tanh(x * 10)
+  message TanhActivation {}
+
+  // Activation to use to replace sign function in v_t update in Algorithm 2 of
+  // paper.
+  oneof activation {
+    SignActivation sign = 8;
+    TanhActivation tanh = 9;
   }
 }
 
@@ -293,6 +326,7 @@ message OptimizationParameters {
     AdadeltaParameters adadelta = 12;
     ProximalAdagradParameters proximal_adagrad = 14;
     OnlineYogiParameters online_yogi = 20;
+    ProximalYogiParameters proximal_yogi = 21;
   }
 
   reserved 15;  // Old use_gradient_accumulation.

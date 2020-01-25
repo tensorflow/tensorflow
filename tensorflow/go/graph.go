@@ -124,16 +124,12 @@ func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error 
 
 	buf := C.TF_NewBuffer()
 	defer C.TF_DeleteBuffer(buf)
-	// Would have preferred to use C.CBytes, but that does not play well
-	// with "go vet" till https://github.com/golang/go/issues/17201 is
-	// resolved.
 	buf.length = C.size_t(len(def))
-	buf.data = C.malloc(buf.length)
+	buf.data = C.CBytes(def)
 	if buf.data == nil {
 		return fmt.Errorf("unable to allocate memory")
 	}
 	defer C.free(buf.data)
-	C.memcpy(buf.data, unsafe.Pointer(&def[0]), buf.length)
 
 	status := newStatus()
 

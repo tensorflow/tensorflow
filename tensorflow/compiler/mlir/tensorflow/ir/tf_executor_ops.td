@@ -16,14 +16,10 @@ limitations under the License.
 // This is the definition file for the TensorFlow Executor Dialect.
 //
 
-#ifdef TF_EXECUTOR_DIALECT
-#else
+#ifndef TF_EXECUTOR_DIALECT
 #define TF_EXECUTOR_DIALECT
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions
@@ -145,7 +141,7 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result",
+    "Builder *builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -206,6 +202,7 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     YieldOp GetYield();
+    bool WrapsSingleOp();
   }];
 
   let hasCanonicalizer = 1;
@@ -225,7 +222,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result",
+    "Builder *builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -452,19 +449,19 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Type result_type, "
+    "Builder *builder, OperationState &result, Type result_type, "
     "ArrayRef<NamedAttribute> attributes = {}",
     [{
       Type token_type = TokenType::get(builder->getContext());
       Type control_type = ControlType::get(builder->getContext());
-      result->types = { result_type, token_type, control_type };
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.types = { result_type, token_type, control_type };
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 
   let extraClassDeclaration = [{
     NextIterationSinkOp GetSink() {
-      return cast<NextIterationSinkOp>(*token()->user_begin());
+      return cast<NextIterationSinkOp>(*token().user_begin());
     }
   }];
 
@@ -518,15 +515,15 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *token, "
-    "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+    "Builder *builder, OperationState &result, Value token, "
+    "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
              "expects at least one operand");
-      result->operands.push_back(token);
-      result->operands.insert(result->operands.end(), operands.begin(),
+      result.operands.push_back(token);
+      result.operands.insert(result.operands.end(), operands.begin(),
                               operands.end());
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 }
@@ -597,16 +594,16 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
   let hasCanonicalizer = 1;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, "
-    "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+    "Builder *builder, OperationState &result, "
+    "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
              "expects at least one operand");
-      result->operands.insert(result->operands.end(), operands.begin(),
+      result.operands.insert(result.operands.end(), operands.begin(),
                               operands.end());
       Type control_type = ControlType::get(builder->getContext());
-      result->types = {control_type};
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.types = {control_type};
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 }

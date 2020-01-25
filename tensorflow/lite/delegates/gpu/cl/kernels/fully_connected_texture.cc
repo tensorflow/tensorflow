@@ -32,16 +32,17 @@ namespace {
 // otimized shaders
 
 std::string GetFullyConnectedKernelCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations,
     const int3& work_group_size) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", WHSPoint{"1", "1", "depthes.x"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", WHSPoint{"1", "1", "depthes.y"},
+                                 op_def.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define READ_IMAGE read_imagef\n";
       break;
@@ -57,9 +58,7 @@ std::string GetFullyConnectedKernelCode(
   c += "    __read_only image2d_t biases";
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size,             \n";
-  c += "    int4 dst_size,             \n";
-  c += "    int src_depth_x4          \n";
+  c += "    int4 depthes              \n";
   c += ") {\n";
   c += "  int gid = get_global_id(0);\n";
   c += "  int2 tid = (int2)(get_local_id(0), get_local_id(1));\n";
@@ -67,10 +66,9 @@ std::string GetFullyConnectedKernelCode(
   c += "  uint c = tid.y;\n";       // vector coord for every thread
   c += "  uint c2 = tid.y * 2;\n";  // it should be * 4, so as we have FLT4
   // but we keep half8 in float4 so, we have * 2 y_coord for texture
-  c += "  for (int i = 0; i < src_depth_x4; ++i, c += 4, c2 += 8) {\n";
-  c += "    FLT4 v = " +
-       src_tensor.Read3D("0", "0", "c", TextureAddressMode::DONT_CARE) + ";\n";
-  if (precision != CalculationsPrecision::F32) {
+  c += "  for (int i = 0; i < depthes.z; ++i, c += 4, c2 += 8) {\n";
+  c += "    FLT4 v = " + src_tensor.ReadWHS("0", "0", "c") + ";\n";
+  if (op_def.precision != CalculationsPrecision::F32) {
     c += "   half8 m0 = as_half8(read_imagef(filters, smp_none, (int2)(gid, "
          "c2+0)));\n";
     c += "   half8 m1 = as_half8(read_imagef(filters, smp_none, (int2)(gid, "
@@ -98,7 +96,7 @@ std::string GetFullyConnectedKernelCode(
        std::to_string(work_group_size.y) + "];\n";
   c += "  temp[tid.x][tid.y] = s;\n";
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  c += "  if (tid.y == 0 && gid < dst_size.w) {\n";
+  c += "  if (tid.y == 0 && gid < depthes.y) {\n";
   c += "    s += temp[tid.x][1];\n";
   c += "    s += temp[tid.x][2];\n";
   c += "    s += temp[tid.x][3];\n";
@@ -106,7 +104,7 @@ std::string GetFullyConnectedKernelCode(
        "0));\n";
   const LinkingContext context{"r0", "0", "0", "gid"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("r0", "0", "0", "gid") + "\n";
+  c += "  " + dst_tensor.WriteWHS("r0", "0", "0", "gid") + "\n";
   c += "  }\n";
   c += "}\n";
 
@@ -143,8 +141,7 @@ Status FullyConnectedTexture::Compile(const CreationContext& creation_context) {
     work_group_size_ = {wg_width, wg_height, 1};
     wg_width /= 2;
     const auto code = GetFullyConnectedKernelCode(
-        definition_.src_tensors[0], definition_.dst_tensors[0],
-        definition_.precision, linked_operations_, work_group_size_);
+        definition_, linked_operations_, work_group_size_);
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
         code, "main_function", *creation_context.context,
         *creation_context.device, &kernel_));
@@ -154,18 +151,17 @@ Status FullyConnectedTexture::Compile(const CreationContext& creation_context) {
 }
 
 Status FullyConnectedTexture::AddToQueue(CLCommandQueue* queue) {
-  const int src_depth_x4 = IntegralDivideRoundUp(src_[0]->Depth(), 4);
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_depth_x4));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
+  const int src_depth_x4 = IntegralDivideRoundUp(src_[0]->Slices(), 4);
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(
+      int4(src_[0]->Slices(), dst_[0]->Slices(), src_depth_x4, 1)));
 
-  return queue->DispatchImplicit(kernel_, {dst_[0]->Depth(), 1, 1},
+  return queue->DispatchImplicit(kernel_, {dst_[0]->Slices(), 1, 1},
                                  work_group_size_);
 }
 

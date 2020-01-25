@@ -154,7 +154,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   // Record that this collective has completed the portion of the implementation
   // that needs to be ordered wrt other collectives, to unblock any of its
   // dependent ops.
-  void Launched(const CollectiveParams& col_params) override;
+  void UnblockDependencies(const CollectiveParams& col_params) override;
 
  protected:
   const int64 step_id_;

@@ -175,8 +175,8 @@ class PassOn : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
 
 #define REGISTER_GPU_KERNELS(type)                                       \
   REGISTER_KERNEL_BUILDER(                                               \
@@ -268,7 +268,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
               "SymbolicGradientOp #parent_step_id=", ctx->step_id(),
               ",function_step_id=", opts.step_id, "#");
         },
-        /*level=*/2);
+        profiler::TraceMeLevel::kInfo);
     lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
@@ -322,8 +322,18 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                                               source_device, &target_device),
       done);
 
+  std::string func_name = func_.name();
   AttrValueMap attr_values = func_.attr();
+
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+
+  const auto* config = (ctx->function_library())
+                           ? ctx->function_library()->config_proto()
+                           : nullptr;
+  if (config) {
+    instantiate_opts.config_proto = *config;
+  }
+
   instantiate_opts.target = target_device;
 
   FunctionTarget function_target = {target_device, lib};
@@ -335,21 +345,20 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     if (cached_entry != handle_cache_.end()) {
       handle = cached_entry->second;
     } else {
-      VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
+      VLOG(1) << "Instantiating " << func_name << " on " << target_device;
       profiler::TraceMe activity(
           [&] {
-            return strings::StrCat("RemoteCall: Instantiate: ", func_.name(),
+            return strings::StrCat("RemoteCall: Instantiate: ", func_name,
                                    " on ", target_device);
           },
           profiler::TraceMeLevel::kInfo);
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          lib->Instantiate(func_.name(), AttrSlice(&attr_values),
-                           instantiate_opts, &handle),
-          done);
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           lib->Instantiate(func_name, AttrSlice(&attr_values),
+                                            instantiate_opts, &handle),
+                           done);
       auto insert_result = handle_cache_.insert({function_target, handle});
       CHECK(insert_result.second) << "Insert unsuccessful.";
-      VLOG(1) << "Instantiated " << func_.name() << " on " << target_device
+      VLOG(1) << "Instantiated " << func_name << " on " << target_device
               << ", resulting in handle: " << handle << " flr: " << lib;
     }
   }
@@ -384,33 +393,37 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     opts.rets_alloc_attrs.push_back(ret_alloc_attrs);
   }
   auto* rets = new std::vector<Tensor>;
-  auto* activity = new profiler::TraceMe(
-      [&] {
-        return strings::StrCat("RemoteCall: Run: ", func_.name(), " on ",
-                               target_device);
-      },
-      profiler::TraceMeLevel::kInfo);
-  VLOG(1) << "Running " << func_.name() << " on " << target_device
+  VLOG(1) << "Running " << func_name << " on " << target_device
           << " with handle: " << handle;
   profiler::TraceMe trace_me(
       [&] {
-        return absl::StrCat("RemoteCallOp #parent_step_id=", ctx->step_id(),
-                            ",function_step_id=", opts.step_id, "#");
+        return absl::StrCat("RemoteCallOp#func_name=", func_name,
+                            ",parent_step_id=", ctx->step_id(),
+                            ",function_step_id=", opts.step_id,
+                            ",device=", target_device, "#");
       },
-      /*level=*/2);
-  lib->Run(opts, handle, args, rets,
-           [rets, activity, done, ctx](const Status& status) {
-             if (!status.ok()) {
-               ctx->SetStatus(status);
-             } else {
-               for (size_t i = 0; i < rets->size(); ++i) {
-                 ctx->set_output(i, (*rets)[i]);
-               }
-             }
-             delete rets;
-             delete activity;
-             done();
-           });
+      profiler::TraceMeLevel::kInfo);
+  lib->Run(
+      opts, handle, args, rets,
+      [rets, done, func_name, ctx, opts, target_device](const Status& status) {
+        profiler::TraceMe activity(
+            [&] {
+              return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
+                                  ",parent_step_id=", ctx->step_id(),
+                                  ",function_step_id=", opts.step_id,
+                                  ",device=", target_device, "#");
+            },
+            profiler::TraceMeLevel::kInfo);
+        if (!status.ok()) {
+          ctx->SetStatus(status);
+        } else {
+          for (size_t i = 0; i < rets->size(); ++i) {
+            ctx->set_output(i, (*rets)[i]);
+          }
+        }
+        delete rets;
+        done();
+      });
 }
 
 REGISTER_KERNEL_BUILDER(
