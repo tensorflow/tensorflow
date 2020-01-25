@@ -205,6 +205,7 @@ cc_test(
     srcs = ["block_map_test.cc"],
     deps = [
         ":block_map",
+        ":cpu_cache_size",
         ":path",
         "@com_google_googletest//:gtest",
     ],
@@ -281,6 +282,17 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_cache_size",
+    hdrs = ["cpu_cache_size.h"],
+    copts = ruy_copts_base(),
+    visibility = ruy_visibility(),
+    deps = [
+        ":path",
+        ":platform",
+    ],
+)
+
+cc_library(
     name = "trace",
     srcs = [
         "trace.cc",
@@ -310,7 +322,10 @@ cc_library(
     hdrs = ["spec.h"],
     copts = ruy_copts_base(),
     visibility = ruy_visibility(),
-    deps = [":matrix"],
+    deps = [
+        ":cpu_cache_size",
+        ":matrix",
+    ],
 )
 
 cc_library(
@@ -954,6 +969,7 @@ ruy_benchmark_opt_sets(
         "3ff",
         "7ff",
         "fff",
+        "1fff",
     ],
     deps = [
         "//tensorflow/lite/experimental/ruy:test_lib",
