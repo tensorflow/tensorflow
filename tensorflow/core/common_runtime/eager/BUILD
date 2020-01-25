@@ -442,7 +442,7 @@ tf_cc_test(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "attr_builder.h",
         "context.h",
