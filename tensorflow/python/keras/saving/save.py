@@ -31,7 +31,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 network = LazyLoader(
     'network', globals(),
-    'tensroflow.python.keras.engine.network')
+    'tensorflow.python.keras.engine.network')
 
 # pylint: disable=g-import-not-at-top
 if sys.version_info >= (3, 4):
