@@ -142,19 +142,20 @@ def _try_load_par_source(source_file_path):
     If successful, lines of the source file as a `list` of `str`s.
     Else, `None`.
   """
-  path_items = [item for item in source_file_path.split(os.path.sep) if item]
-  prefix_path = os.path.sep
-  for i, path_item in enumerate(path_items):
-    prefix_path = os.path.join(prefix_path, path_item)
-    if (prefix_path.endswith(".par") and os.path.isfile(prefix_path)
-        and i < len(path_items) - 1):
-      suffix_path = os.path.sep.join(path_items[i + 1:])
+  prefix_path = source_file_path
+  while True:
+    prefix_path, basename = os.path.split(prefix_path)
+    if not basename:
+      break
+    suffix_path = os.path.normpath(
+        os.path.relpath(source_file_path, start=prefix_path))
+    if prefix_path.endswith(".par") and os.path.isfile(prefix_path):
       with zipfile.ZipFile(prefix_path) as z:
-        if suffix_path not in z.namelist():
-          return None
-        with z.open(suffix_path) as zf:
-          source_text = zf.read().decode("utf-8")
-          return source_text.split("\n")
+        norm_names = [os.path.normpath(name) for name in z.namelist()]
+        if suffix_path in norm_names:
+          with z.open(z.namelist()[norm_names.index(suffix_path)]) as zf:
+            source_text = zf.read().decode("utf-8")
+            return source_text.split("\n")
 
 
 def annotate_source(dump,
