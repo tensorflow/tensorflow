@@ -243,8 +243,11 @@ def is_nested(seq):
 def flatten(structure, expand_composites=False):
   """Returns a flat list from a given nested structure.
 
-  If nest is not a sequence, tuple (or a namedtuple), dict, or an attrs class,
-  then returns a single-element list:
+  If nest is not a structure (which can be a scalar, or
+      tuple or dict or list of constructed scalars and/or other tuples/lists,
+      or a scalar object. Note, numpy arrays are considered scalars.), tuple 
+      (or a namedtuple), dict, or an attrs class, then returns a single-element 
+      list:
     [nest].
 
   In the case of dict instances, the sequence consists of the values, sorted by
