@@ -3095,6 +3095,7 @@ tf_cc_tests(
     srcs = [
         "eigen_activations_test.cc",
         "eigen_attention_test.cc",
+        "eigen_backward_cuboid_convolutions_test.cc",
         "eigen_backward_spatial_convolutions_test.cc",
         "eigen_pooling_test.cc",
         "eigen_spatial_convolutions_test.cc",
