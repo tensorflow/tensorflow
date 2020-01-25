@@ -353,8 +353,7 @@ void MutableGraphView::AddAndDedupFanouts(NodeDef* node) {
         CanDedupControlWithRegularInput(*this, input_node_name);
     bool can_dedup_control =
         is_control_input && (can_dedup_control_with_regular_input ||
-                             (!can_dedup_control_with_regular_input &&
-                              controlling_fanins.contains(input_node_name)));
+                              controlling_fanins.contains(input_node_name));
     if (!gtl::InsertIfNotPresent(&fanins, input_node_name) &&
         can_dedup_control) {
       node->mutable_input()->SwapElements(pos, last_pos);
