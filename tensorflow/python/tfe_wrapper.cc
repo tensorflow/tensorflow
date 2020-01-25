@@ -16,11 +16,11 @@ limitations under the License.
 #include <memory>
 
 #include "Python.h"
-#include "include/pybind11/chrono.h"
-#include "include/pybind11/complex.h"
-#include "include/pybind11/functional.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/chrono.h"
+#include "pybind11/complex.h"
+#include "pybind11/functional.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"

@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/python/framework/python_op_gen.h"
 
 namespace py = pybind11;
