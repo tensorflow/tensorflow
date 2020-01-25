@@ -269,7 +269,8 @@ class CollectiveAllReduceStrategyTestBase(
           1., dtype='float16', trainable=False)
       with d.scope():
         model = keras.Sequential([
-            mp_test_util.AddLayer(assert_type=dtypes.float16, input_shape=(1,)),
+            mp_test_util.MultiplyLayer(assert_type=dtypes.float16,
+                                       input_shape=(1,)),
         ])
         loss_scale = loss_scale_module.DynamicLossScale(2 ** 10,
                                                         increment_period=1)
