@@ -20,9 +20,11 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/fixed_array.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/abi.h"
@@ -134,6 +136,19 @@ absl::optional<int> GetDeviceAttribute(CUdevice device,
   if (err != CUDA_SUCCESS) return absl::nullopt;
   return ret_val;
 }
+
+std::string GetDeviceXLineName(
+    int64 stream_id, absl::flat_hash_set<CuptiTracerEventType>& event_types) {
+  std::string line_name = absl::StrCat("Stream #", stream_id);
+  event_types.erase(CuptiTracerEventType::Unsupported);
+  if (event_types.empty()) return line_name;
+  std::vector<const char*> type_names;
+  for (const auto event_type : event_types) {
+    type_names.emplace_back(GetTraceEventTypeName(event_type));
+  }
+  return absl::StrCat(line_name, "(", absl::StrJoin(type_names, ","), ")");
+}
+
 }  // namespace
 
 // CuptiTraceCollectorImpl store the CuptiTracerEvents from CuptiTracer and
@@ -316,6 +331,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
       absl::MutexLock lock(&mutex);
 
+      // Tracking event types per line.
+      absl::flat_hash_map<int64, absl::flat_hash_set<CuptiTracerEventType>>
+          events_types_per_line;
       const uint64 offset_ns = start_walltime_ns - start_gpu_ns;
       for (auto& event : events) {
         bool is_host_event = IsHostEvent(event);
@@ -328,7 +346,12 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         XLineBuilder line = plane->GetOrCreateLine(line_id);
         if (!is_host_event) line.SetTimestampNs(start_gpu_ns);
         CreateXEvent(event, offset_ns, plane, &line);
+        events_types_per_line[line_id].emplace(event.type);
       }
+      device_plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
+        line.SetName(
+            GetDeviceXLineName(line.Id(), events_types_per_line[line.Id()]));
+      });
     }
 
     void GetDeviceCapabilities(int32 device_ordinal,
