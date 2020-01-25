@@ -58,7 +58,7 @@ def gradients(ys,
 
   `gradients()` adds ops to the graph to output the derivatives of `ys` with
   respect to `xs`.  It returns a list of `Tensor` of length `len(xs)` where
-  each tensor is the `sum(dy/dx)` for y in `ys`.
+  each tensor is the `sum(dy/dx)` for y in `ys` and for x in `xs`.
 
   `grad_ys` is a list of tensors of the same length as `ys` that holds
   the initial gradients for each y in `ys`.  When `grad_ys` is None,
@@ -138,7 +138,8 @@ def gradients(ys,
       `none`.
 
   Returns:
-    A list of `sum(dy/dx)` for each x in `xs`.
+    A list of `Tensor` of length `len(xs)` where each tensor is the `sum(dy/dx)`
+    for y in `ys` and for x in `xs`.
 
   Raises:
     LookupError: if one of the operations between `x` and `y` does not
