@@ -15,6 +15,7 @@ cc_library(
     name = "flatbuffers",
     hdrs = ["//:public_headers"],
     linkstatic = 1,
+    linkopts = ["-lm","-lpthread"],
     strip_include_prefix = "/include",
     deps = ["//src:flatbuffers"],
 )
