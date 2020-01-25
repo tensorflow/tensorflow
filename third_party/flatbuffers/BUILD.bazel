@@ -50,6 +50,10 @@ cc_library(
 # Public flatc compiler.
 cc_binary(
     name = "flatc",
+    linkopts = [
+        "-lm",
+        "-ldl",
+    ],
     deps = [
         "@flatbuffers//src:flatc",
     ],
