@@ -532,6 +532,20 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_sparse_softmax_cross_entropy_with_logits(self):
+    logits = random_ops.random_uniform([3, 2, 4])
+    labels = random_ops.random_uniform(shape=[3, 2], maxval=4, dtype=dtypes.int32)
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      labels_i = array_ops.gather(labels, i)
+      loss = nn.softmax_cross_entropy_with_logits(
+        labels=labels_i, logits=logits_i)
+      total_loss = math_ops.reduce_sum(loss)
+      return loss
+
+    self._test_loop_fn(loop_fn, 3)
+
 
 class RandomTest(PForTestCase):
 
