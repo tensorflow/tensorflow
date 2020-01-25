@@ -4,7 +4,7 @@
 
 load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_avxvnni", "ruy_copts_base", "ruy_copts_skylake", "ruy_copts_sse42", "ruy_visibility")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
-load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
+load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -945,34 +945,5 @@ ruy_test(
     deps = [
         "//tensorflow/lite/experimental/ruy:test_lib",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ruy_benchmark_opt_sets(
-    name = "benchmark_opt_set",
-    srcs = ["benchmark.cc"],
-    copts = ruy_copts_base(),
-    lhs_rhs_accum_dst = [
-        ("f32", "f32", "f32", "f32"),
-        ("u8", "u8", "i32", "u8"),
-    ],
-    opt_sets = [
-        "1",
-        "3",
-        "7",
-        "f",
-        "1f",
-        "3f",
-        "7f",
-        "ff",
-        "1ff",
-        "3ff",
-        "7ff",
-        "fff",
-        "1fff",
-    ],
-    deps = [
-        "//tensorflow/lite/experimental/ruy:test_lib",
-        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
