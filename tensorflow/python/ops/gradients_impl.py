@@ -116,6 +116,19 @@ def gradients(ys,
   sess.run(g2)  # [array([[0., 0.]], dtype=float32)]
   ```
 
+  Let us take one practical example which comes during the back propogation phase.
+  This function is used to evaluate the derivatives of the cost function with
+  respect to Weights `Ws` and Biases `bs`. Below sample implementation provides
+  the exaplantion of what it is actually used for :
+
+  ```python
+  Ws = tf.constant(0.)
+  bs = 2 * Ws
+  cost = Ws + bs  # This is just an example. So, please ignore the formulas used.
+  g = tf.gradients(cost, [Ws, bs])
+  dCost_dW, dCost_db = g
+  ```
+
 
   Args:
     ys: A `Tensor` or list of tensors to be differentiated.
