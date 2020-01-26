@@ -2019,21 +2019,6 @@ class FactoryKeyCreator {
   }
 };
 
-static inline MEMORY_FORMAT get_desired_format(int channel, bool is_2d = true) {
-  MEMORY_FORMAT fmt_desired = MEMORY_FORMAT::any;
-
-  if (port::TestCPUFeature(port::CPUFeature::AVX512F)) {
-    fmt_desired = is_2d ? MEMORY_FORMAT::nChw16c : MEMORY_FORMAT::nCdhw16c;
-  } else if (port::TestCPUFeature(port::CPUFeature::AVX2) &&
-             (channel % 8) == 0) {
-    fmt_desired = is_2d ? MEMORY_FORMAT::nChw8c
-                        : MEMORY_FORMAT::ncdhw;  // No AVX2 support for 3D yet.
-  } else {
-    fmt_desired = is_2d ? MEMORY_FORMAT::nchw : MEMORY_FORMAT::ncdhw;
-  }
-  return fmt_desired;
-}
-
 class MklReorderPrimitive : public MklPrimitive {
  public:
   explicit MklReorderPrimitive(const memory* from, const memory* to) {

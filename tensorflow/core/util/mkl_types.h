@@ -20,7 +20,8 @@ limitations under the License.
 namespace tensorflow {
 
 #ifdef ENABLE_MKLDNN_V1
-typedef uint16_t mkldnn_bfloat16_t;
+// TODO(mdfaijul): Temporarily commenting out redefining mkldnn type.
+// typedef uint16_t mkldnn_bfloat16_t;
 #define ADD_MD add_md
 #define ALGORITHM mkldnn::algorithm
 #define ALGORITHM_UNDEF ALGORITHM::undef
