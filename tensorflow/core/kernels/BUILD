@@ -6657,6 +6657,7 @@ filegroup(
         "cwise_op_floor.cc",
         "cwise_op_floor_div.cc",
         "cwise_op_floor_mod.cc",
+        "cwise_op_fma.cc",
         "cwise_op_greater.cc",
         "cwise_op_greater_equal.cc",
         "cwise_op_invert.cc",

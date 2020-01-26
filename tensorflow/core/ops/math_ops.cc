@@ -515,6 +515,133 @@ REGISTER_OP("TruncateDiv")
 REGISTER_OP("RealDiv").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+inline bool broadcast_merge(InferenceContext* c, DimensionHandle a,
+                            DimensionHandle b, DimensionHandle& out) {
+  if (!c->ValueKnown(a) && !c->ValueKnown(b)) {
+    out = a;
+    return true;
+  }
+  if (!c->ValueKnown(a)) {
+    auto v = c->Value(b);
+    if (v == 1)
+      out = a;
+    else
+      out = b;
+    return true;
+  }
+  if (!c->ValueKnown(b)) {
+    auto v = c->Value(a);
+    if (v == 1)
+      out = b;
+    else
+      out = a;
+    return true;
+  }
+  auto va = c->Value(a);
+  auto vb = c->Value(b);
+  if (va == vb || vb == 1) {
+    out = a;
+    return true;
+  } else if (va == 1) {
+    out = b;
+    return true;
+  }
+  return false;
+}
+
+Status BroadcastFMAOpOutputShapeImpl(InferenceContext* c, int n) {
+  ShapeHandle out;
+  out = c->input(0);
+  if (n == 3)
+    VLOG(1) << "BroadcastFMAOpOutputShape " << c->DebugString(c->input(0))
+            << " " << c->DebugString(c->input(1)) << " "
+            << c->DebugString(c->input(2));
+  else
+    VLOG(1) << "BroadcastFMAOpOutputShape " << c->DebugString(c->input(0))
+            << " " << c->DebugString(c->input(1)) << " "
+            << c->DebugString(c->input(2)) << " "
+            << c->DebugString(c->input(3));
+  // naively calling Merge results in [?,8]+[1,8]+[1,8]->[1,8] instead of [?,8]
+  // TODO: is there a standard call to do this job?
+
+  //    for(int i=1; i<n; i++)
+  //      TF_RETURN_IF_ERROR(c->Merge(out, c->input(i), &out));
+
+  for (int i = 1; i < n; i++) {
+    ShapeHandle s = c->input(i);
+    if (!c->RankKnown(out) || !c->RankKnown(s))
+      return errors::InvalidArgument("FMa requires known ranks");
+    int32 rank_out = c->Rank(out);
+    int32 rank_s = c->Rank(s);
+    int32 new_rank = rank_out > rank_s ? rank_out : rank_s;
+    std::vector<DimensionHandle> new_dims(new_rank);
+    for (int i = new_rank - 1; i >= 0; i--) {
+      int ii = new_rank - 1 - i;
+      DimensionHandle d1 =
+          ii < rank_out ? c->Dim(out, rank_out - 1 - ii) : c->MakeDim(1);
+      DimensionHandle d2 =
+          ii < rank_s ? c->Dim(s, rank_s - 1 - ii) : c->MakeDim(1);
+      bool ok = broadcast_merge(c, d1, d2, new_dims[i]);
+      if (!ok) return errors::InvalidArgument("FMA incompatible shapes");
+    }
+    out = c->MakeShape(new_dims);
+  }
+
+  c->set_output(0, out);
+  VLOG(1) << c->DebugString(out);
+  return Status::OK();
+}
+
+Status BroadcastFMAOpOutputShape(InferenceContext* c) {
+  return BroadcastFMAOpOutputShapeImpl(c, 3);
+}
+
+Status BroadcastFMA2OpOutputShape(InferenceContext* c) {
+  return BroadcastFMAOpOutputShapeImpl(c, 4);
+}
+
+REGISTER_OP("_FusedMulAdd")
+    .Input("x1: T")
+    .Input("y1: T")
+    .Input("x2: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(BroadcastFMAOpOutputShape);
+
+REGISTER_OP("_FusedMulAdd2")
+    .Input("x1: T")
+    .Input("y1: T")
+    .Input("x2: T")
+    .Input("y2: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(BroadcastFMA2OpOutputShape);
+
+REGISTER_OP("_FusedMulSub")
+    .Input("x1: T")
+    .Input("y1: T")
+    .Input("x2: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(BroadcastFMAOpOutputShape);
+
+REGISTER_OP("_FusedMulSubRev")
+    .Input("x1: T")
+    .Input("y1: T")
+    .Input("x2: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(BroadcastFMAOpOutputShape);
+
+REGISTER_OP("_FusedMulSub2")
+    .Input("x1: T")
+    .Input("y1: T")
+    .Input("x2: T")
+    .Input("y2: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(BroadcastFMA2OpOutputShape);
+
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()

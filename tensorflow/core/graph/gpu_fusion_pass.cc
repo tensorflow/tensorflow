@@ -65,6 +65,13 @@ bool ReadBoolFromEnvVar(const char* env_var_name) {
 }
 
 // graph pass grouping for this fusion pass
+//
+// We want tf.function(x1*y1+x2*y2) to be fused into FMA (at least in
+// cwise_ops_test.py), and that seems to require POST_PARTITIONING
+//
+const OptimizationPassRegistry::Grouping kROCmFMAPassGrouping =
+    OptimizationPassRegistry::POST_PARTITIONING;
+
 const OptimizationPassRegistry::Grouping kROCmFusionPassGrouping =
     ReadBoolFromEnvVar("TF_ROCM_FUSION_PASS_POST_PARTITIONING")
         ? OptimizationPassRegistry::POST_PARTITIONING
@@ -97,6 +104,7 @@ std::ostream& operator<<(std::ostream& out, const Node* n) {
       << ", num_input_edges : " << n->in_edges().size()
       << ", num_outputs : " << n->num_outputs()
       << ", num_output_edges : " << n->out_edges().size()
+      << ", attributes : " << n->attrs().DebugString()
       // << ", requested_device : " << n->requested_device()
       // << ", assigned_device : "
       // << (n->has_assigned_device_name() ? n->assigned_device_name() : "None")
@@ -201,8 +209,15 @@ inline bool isOpBatchNormGrad(const Node* n) {
 // is this node an instance of the "Add" op?
 inline bool isOpAdd(const Node* n) { return (n->type_string() == "Add"); }
 
+inline bool isOpAddX(const Node* n) {
+  return (n->type_string() == "Add") || (n->type_string() == "AddV2");
+}
+
 // is this node an instance of the "AddN" op?
 inline bool isOpAddN(const Node* n) { return (n->type_string() == "AddN"); }
+
+// is this node an instance of the "Sub" op?
+inline bool isOpSub(const Node* n) { return (n->type_string() == "Sub"); }
 
 // is this node an instance of the "Relu" op?
 inline bool isOpRelu(const Node* n) { return (n->type_string() == "Relu"); }
@@ -241,18 +256,33 @@ inline string getActivationOpType(const Node* n) {
 
 class ROCmFusionOpBase;
 
-class ROCmFusionPass : public GraphOptimizationPass {
+class ROCmFusionPassBase : public GraphOptimizationPass {
  public:
   // optimization pass entry point,
   // application code will call this routine to run the pass
-  Status Run(const GraphOptimizationPassOptions& options) override;
-
-  // helper function that does all the work for this pass
-  bool RunPass(Graph* g);
+  virtual Status Run(const GraphOptimizationPassOptions& options, int grouping);
+  virtual void InitializeFusions(
+      std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions, Graph* g) = 0;
 
  private:
+  // helper function that does all the work for this pass
+  bool RunPass(Graph* g);
+};
+
+class ROCmFusionPass : public ROCmFusionPassBase {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
   void InitializeFusions(
-      std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions, Graph* g);
+      std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions,
+      Graph* g) override;
+};
+
+class ROCmFMAPass : public ROCmFusionPassBase {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+  void InitializeFusions(
+      std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions,
+      Graph* g) override;
 };
 
 // Register the ROCmFusionPass with the registry.
@@ -261,6 +291,10 @@ class ROCmFusionPass : public GraphOptimizationPass {
 REGISTER_OPTIMIZATION(kROCmFusionPassGrouping,  // grouping
                       1,                        // phase number
                       ROCmFusionPass);
+
+REGISTER_OPTIMIZATION(kROCmFMAPassGrouping,  // grouping
+                      4,                     // phase number
+                      ROCmFMAPass);
 
 //----------------------------------------------------------------------
 
@@ -332,12 +366,27 @@ class ROCmFusionOpBase {
       }
     }
 
+    void add_controls(const Node* node) {
+      for (const Edge* e : node->in_edges())
+        if (e->IsControlEdge() && !isConsumed(e->src()))
+          control_inputs.push_back(e->src());
+      for (const Edge* e : node->out_edges())
+        if (e->IsControlEdge() && !isConsumed(e->dst()))
+          control_outputs.push_back(e->dst());
+    }
+
     // conveniece function to add an attribute
     template <typename T>
     void add_attribute(string name, T value) {
       AttrValue attr_value;
       SetAttrValue(value, &attr_value);
       attributes[name] = attr_value;
+    }
+
+    bool isConsumed(const Node* p) const {
+      for (const auto x : nodes)
+        if (p == x) return true;
+      return false;
     }
   };
 
@@ -369,7 +418,6 @@ class ROCmFusionOpConvolutionBiasBatchNormActivation : public ROCmFusionOpBase {
  protected:
   bool IsFusionEligible(const Node* n, FusionOpData* d) override;
 };
-
 //----------------------------------------------------------------------
 
 // Convolution-Bias-Activation Fusion
@@ -427,48 +475,65 @@ class ROCmFusionOpAddNReluGrad : public ROCmFusionOpBase {
 
 //----------------------------------------------------------------------
 
+class ROCmFusionOpFMA : public ROCmFusionOpBase {
+ public:
+  ROCmFusionOpFMA(Graph* g) : ROCmFusionOpBase(g) {}
+
+ protected:
+  bool IsFusionEligible(const Node* n, FusionOpData* d) override;
+};
+
+//----------------------------------------------------------------------
+
 Status ROCmFusionPass::Run(const GraphOptimizationPassOptions& options) {
   // enable the fusion pass if the env var TF_ROCM_FUSION_ENABLE is set
   if (ReadBoolFromEnvVar("TF_ROCM_FUSION_ENABLE")) {
-    
-    VLOG(0) << "ROCm Fusion is enabled.";
-    
-    // Check if the graph is present, should be either in
-    // - options.graph (for all but POST_PARTITIONING grouping)
-    // - options.partition_graphs (for POST_PARTITIONING_grouping)
-    if (options.graph == nullptr && options.partition_graphs == nullptr) {
-      return Status::OK();
-    }
-
-    if (kROCmFusionPassGrouping ==
-        OptimizationPassRegistry::POST_PARTITIONING) {
-      for (auto& pg : *options.partition_graphs) {
-        if (isGpuDevice(pg.first)) {
-          VLOG(kVlogLevel) << "Running ROCmFusionPass on GPU partition : "
-                           << pg.first;
-          // run the pass
-          RunPass(pg.second.get());
-
-        } else {
-          VLOG(kVlogLevel) << "Skipping ROCmFusionPass on non-GPU partition : "
-                           << pg.first;
-        }
-      }
-    } else {
-      VLOG(kVlogLevel) << "Running ROCmFusionPass on entire graph ";
-
-      // run the pass
-      RunPass(options.graph->get());
-    }
-
+    return ROCmFusionPassBase::Run(options, kROCmFusionPassGrouping);
   } else {
     VLOG(kVlogLevel) << "ROCmFusionPass was not enabled!";
   }
-
   return Status::OK();
 }
 
-bool ROCmFusionPass::RunPass(Graph* graph) {
+Status ROCmFMAPass::Run(const GraphOptimizationPassOptions& options) {
+  if (ReadBoolFromEnvVar("TF_ROCM_FMA_DISABLE")) return Status::OK();
+  return ROCmFusionPassBase::Run(options, kROCmFMAPassGrouping);
+}
+
+Status ROCmFusionPassBase::Run(const GraphOptimizationPassOptions& options,
+                               int grouping) {
+  VLOG(0) << "ROCm Fusion is enabled.";
+
+  // Check if the graph is present, should be either in
+  // - options.graph (for all but POST_PARTITIONING grouping)
+  // - options.partition_graphs (for POST_PARTITIONING_grouping)
+  if (options.graph == nullptr && options.partition_graphs == nullptr) {
+    return Status::OK();
+  }
+
+  if (grouping == OptimizationPassRegistry::POST_PARTITIONING) {
+    for (auto& pg : *options.partition_graphs) {
+      if (isGpuDevice(pg.first)) {
+        VLOG(kVlogLevel) << "Running ROCmFusionPass on GPU partition : "
+                         << pg.first;
+        // run the pass
+        RunPass(pg.second.get());
+
+      } else {
+        VLOG(kVlogLevel) << "Skipping ROCmFusionPass on non-GPU partition : "
+                         << pg.first;
+      }
+    }
+  } else {
+    VLOG(kVlogLevel) << "Running ROCmFusionPass on entire graph ";
+
+    // run the pass
+    RunPass(options.graph->get());
+  }
+  return Status::OK();
+}
+
+bool ROCmFusionPassBase::RunPass(Graph* graph) {
   if (ReadBoolFromEnvVar("TF_ROCM_FUSION_DUMP_GRAPH_BEFORE")) {
     DumpGraph(kVlogLevel, "Before running ROCmFusionPass", &*graph);
   }
@@ -527,6 +592,11 @@ void ROCmFusionPass::InitializeFusions(
   if (!ReadBoolFromEnvVar("TF_ROCM_FUSION_DISABLE_ADDNRELUGRAD")) {
     fusions.emplace_back(new ROCmFusionOpAddNReluGrad(g));
   }
+}
+
+void ROCmFMAPass::InitializeFusions(
+    std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions, Graph* g) {
+  fusions.emplace_back(new ROCmFusionOpFMA(g));
 }
 
 //----------------------------------------------------------------------
@@ -1493,6 +1563,136 @@ bool ROCmFusionOpAddRelu::IsFusionEligible(const Node* relu, FusionOpData* d) {
   }
 
   return is_eligible;
+}
+
+bool ROCmFusionOpFMA::IsFusionEligible(const Node* node, FusionOpData* d) {
+  bool add = isOpAddX(node);
+  bool sub = isOpSub(node);
+  if (!add && !sub) return false;
+
+  if (node->in_edges().size() != 2) return false;
+  // todo: can we reject if node output is 7+ dim?
+
+  DataType dtype;
+  TF_CHECK_OK(GetNodeAttr(node->def(), kAttr_T, &dtype));
+  if (!(dtype == DT_HALF || dtype == DT_FLOAT || dtype == DT_DOUBLE))
+    return false;
+
+  Node *b, *c;
+  TF_CHECK_OK(node->input_node(0, &b));
+  TF_CHECK_OK(node->input_node(1, &c));
+
+  if (!areAssignedToSameGpu({node, b, c})) return false;
+  VLOG(kVlogLevel) << node;
+  VLOG(kVlogLevel) << "Trying to fuse " << node->type_string() << " "
+                   << node->in_edges().size() << b->type_string() << " "
+                   << b->in_edges().size() << " " << b->out_edges().size()
+                   << " " << c->type_string() << " " << c->in_edges().size()
+                   << " " << c->out_edges().size();
+  bool can_absorb_b = (b->type_string() == "Mul" && b->in_edges().size() == 2 &&
+                       b->out_edges().size() == 1);
+  bool can_absorb_c = (c->type_string() == "Mul" && c->in_edges().size() == 2 &&
+                       c->out_edges().size() == 1);
+
+  if (can_absorb_b && can_absorb_c) {
+    d->op_type = add ? "_FusedMulAdd2" : "_FusedMulSub2";
+    d->op_name = strings::StrCat(b->name(), c->name());
+    d->fusion_type = d->op_type;
+    d->nodes.push_back(node);
+    d->nodes.push_back(b);
+    d->nodes.push_back(c);
+    d->add_attribute(kAttr_T, dtype);
+
+    std::vector<const Edge*> b_input_edges;
+    TF_CHECK_OK(b->input_edges(&b_input_edges));
+
+    std::vector<const Edge*> c_input_edges;
+    TF_CHECK_OK(c->input_edges(&c_input_edges));
+
+    d->add_data_input(0, b_input_edges[0]->src(),
+                      b_input_edges[0]->src_output());
+    d->add_data_input(1, b_input_edges[1]->src(),
+                      b_input_edges[1]->src_output());
+    d->add_data_input(2, c_input_edges[0]->src(),
+                      c_input_edges[0]->src_output());
+    d->add_data_input(3, c_input_edges[1]->src(),
+                      c_input_edges[1]->src_output());
+
+    d->add_controls(b);
+    d->add_controls(c);
+    d->add_controls(node);
+
+    for (const Edge* e : node->out_edges()) {
+      if (!e->IsControlEdge()) {
+        CHECK_EQ(e->src_output(), 0);
+        d->add_data_output(0, e->dst(), e->dst_input());
+      }
+    }
+    return true;
+  } else if (can_absorb_b) {
+    d->op_type = add ? "_FusedMulAdd" : "_FusedMulSub";
+    d->op_name = strings::StrCat(b->name(), c->name());
+    d->fusion_type = d->op_type;
+    d->nodes.push_back(node);
+    d->nodes.push_back(b);
+    d->add_attribute(kAttr_T, dtype);
+
+    std::vector<const Edge*> b_input_edges;
+    TF_CHECK_OK(b->input_edges(&b_input_edges));
+
+    std::vector<const Edge*> node_input_edges;
+    TF_CHECK_OK(node->input_edges(&node_input_edges));
+
+    d->add_data_input(0, b_input_edges[0]->src(),
+                      b_input_edges[0]->src_output());
+    d->add_data_input(1, b_input_edges[1]->src(),
+                      b_input_edges[1]->src_output());
+    d->add_data_input(2, node_input_edges[1]->src(),
+                      node_input_edges[1]->src_output());
+
+    d->add_controls(b);
+    d->add_controls(node);
+
+    for (const Edge* e : node->out_edges()) {
+      if (!e->IsControlEdge()) {
+        CHECK_EQ(e->src_output(), 0);
+        d->add_data_output(0, e->dst(), e->dst_input());
+      }
+    }
+    return true;
+  } else if (can_absorb_c) {
+    d->op_type = add ? "_FusedMulAdd" : "_FusedMulSubRev";
+    d->op_name = strings::StrCat(b->name(), c->name());
+    d->fusion_type = d->op_type;
+    d->nodes.push_back(node);
+    d->nodes.push_back(c);
+    d->add_attribute(kAttr_T, dtype);
+
+    std::vector<const Edge*> c_input_edges;
+    TF_CHECK_OK(c->input_edges(&c_input_edges));
+
+    std::vector<const Edge*> node_input_edges;
+    TF_CHECK_OK(node->input_edges(&node_input_edges));
+
+    d->add_data_input(0, c_input_edges[0]->src(),
+                      c_input_edges[0]->src_output());
+    d->add_data_input(1, c_input_edges[1]->src(),
+                      c_input_edges[1]->src_output());
+    d->add_data_input(2, node_input_edges[0]->src(),
+                      node_input_edges[0]->src_output());
+
+    d->add_controls(c);
+    d->add_controls(node);
+
+    for (const Edge* e : node->out_edges()) {
+      if (!e->IsControlEdge()) {
+        CHECK_EQ(e->src_output(), 0);
+        d->add_data_output(0, e->dst(), e->dst_input());
+      }
+    }
+    return true;
+  }
+  return false;
 }
 
 //----------------------------------------------------------------------
