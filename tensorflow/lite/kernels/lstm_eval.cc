@@ -933,7 +933,8 @@ inline void LstmStepInteger(
     const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
     const int32_t* cell_bias_ptr, const int32_t* output_bias_ptr,
     int16_t quantized_cell_clip, int8_t quantized_proj_clip, int32_t cell_scale,
-    const int32_t* inv_large_value,
+    int32_t input_variance_guard, int32_t forget_variance_guard,
+    int32_t cell_variance_guard, int32_t output_variance_guard,
     const int32_t* input_to_forget_effective_bias,
     const int32_t* recurrent_to_forget_effective_bias,
     const int32_t* input_to_cell_effective_bias,
@@ -995,10 +996,10 @@ inline void LstmStepInteger(
   }
 
   if (use_layer_norm_lstm) {
-    tensor_utils::ApplyLayerNorm(scratch_1_ptr, layer_norm_forget_weight_ptr,
-                                 forget_bias_ptr, layer_norm_forget_scale_a,
-                                 layer_norm_forget_scale_b, inv_large_value[1],
-                                 n_batch, n_cell, scratch_1_ptr);
+    tensor_utils::ApplyLayerNorm(
+        scratch_1_ptr, layer_norm_forget_weight_ptr, forget_bias_ptr,
+        layer_norm_forget_scale_a, layer_norm_forget_scale_b,
+        forget_variance_guard, n_batch, n_cell, scratch_1_ptr);
   }
 
   tensor_utils::ApplySigmoid(scratch_1_ptr, n_batch, n_cell, scratch_1_ptr);
@@ -1018,7 +1019,7 @@ inline void LstmStepInteger(
   if (use_layer_norm_lstm) {
     tensor_utils::ApplyLayerNorm(scratch_2_ptr, layer_norm_cell_weight_ptr,
                                  cell_bias_ptr, layer_norm_cell_scale_a,
-                                 layer_norm_cell_scale_b, inv_large_value[2],
+                                 layer_norm_cell_scale_b, cell_variance_guard,
                                  n_batch, n_cell, scratch_2_ptr);
   }
 
@@ -1046,10 +1047,10 @@ inline void LstmStepInteger(
     }
 
     if (use_layer_norm_lstm) {
-      tensor_utils::ApplyLayerNorm(scratch_0_ptr, layer_norm_input_weight_ptr,
-                                   input_bias_ptr, layer_norm_input_scale_a,
-                                   layer_norm_input_scale_b, inv_large_value[0],
-                                   n_batch, n_cell, scratch_0_ptr);
+      tensor_utils::ApplyLayerNorm(
+          scratch_0_ptr, layer_norm_input_weight_ptr, input_bias_ptr,
+          layer_norm_input_scale_a, layer_norm_input_scale_b,
+          input_variance_guard, n_batch, n_cell, scratch_0_ptr);
     }
     tensor_utils::ApplySigmoid(scratch_0_ptr, n_batch, n_cell, scratch_0_ptr);
   }
@@ -1087,10 +1088,10 @@ inline void LstmStepInteger(
   }
 
   if (use_layer_norm_lstm) {
-    tensor_utils::ApplyLayerNorm(scratch_3_ptr, layer_norm_output_weight_ptr,
-                                 output_bias_ptr, layer_norm_output_scale_a,
-                                 layer_norm_output_scale_b, inv_large_value[3],
-                                 n_batch, n_cell, scratch_3_ptr);
+    tensor_utils::ApplyLayerNorm(
+        scratch_3_ptr, layer_norm_output_weight_ptr, output_bias_ptr,
+        layer_norm_output_scale_a, layer_norm_output_scale_b,
+        output_variance_guard, n_batch, n_cell, scratch_3_ptr);
   }
 
   tensor_utils::ApplySigmoid(scratch_3_ptr, n_batch, n_cell, scratch_3_ptr);
@@ -1644,7 +1645,10 @@ TfLiteStatus EvalInteger(
         GetTensorData<int32_t>(output_gate_bias),
         integer_lstm_param->quantized_cell_clip,
         integer_lstm_param->quantized_proj_clip, integer_lstm_param->cell_scale,
-        integer_lstm_param->inv_large_value.data(),
+        integer_lstm_param->input_variance_guard,
+        integer_lstm_param->forget_variance_guard,
+        integer_lstm_param->cell_variance_guard,
+        integer_lstm_param->output_variance_guard,
         integer_lstm_param->input_to_forget_effective_bias.get(),
         integer_lstm_param->recurrent_to_forget_effective_bias.get(),
         integer_lstm_param->input_to_cell_effective_bias.get(),

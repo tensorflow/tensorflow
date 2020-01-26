@@ -516,12 +516,10 @@ PyTpuExecutable::PyTpuExecutable(
         continue;
       }
       // TODO(b/147895917): support replica + partition natively.
-      bool insert_success =
-          executables_
-              .insert({replica, client_->driver()->LoadProgram(
-                                    device_id, compiled_program.get(), {})})
-              .second;
-      CHECK(insert_success) << "Inserting duplicate replica:" << replica;
+      CHECK(executables_.find(replica) == executables_.end())
+          << "Inserting duplicate replica:" << replica;
+      executables_[replica] =
+          client_->driver()->LoadProgram(device_id, compiled_program.get(), {});
       local_logical_devices_.emplace_back(replica, partition);
       local_devices_.push_back(device);
     }
@@ -572,7 +570,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
   CHECK(device_assignment_.Serialize(&device_assignment).ok());
   std::shared_ptr<tpu_driver::Event> on_execute_finished =
       client_->driver()->ExecuteProgram(
-          executables_[replica].get(), inputs,
+          executables_.find(replica)->second.get(), inputs,
           {output_buffer->DeviceBuffer()->handle.get()}, device_assignment,
           {ready_to_execute});
 
@@ -685,7 +683,8 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     // long time and we want all cores to be scheduled in parallel.
     thread_pool->Schedule([this, i, argument_handles, &results, &results_lock,
                            &execute_semaphore]() {
-      const auto [replica, partition] = local_logical_devices_[i];
+      const int replica = local_logical_devices_[i].first;
+      const int partition = local_logical_devices_[i].second;
       RunId run_id;
       auto result = ExecuteHelper(argument_handles, argument_handles[i],
                                   replica, partition, run_id);

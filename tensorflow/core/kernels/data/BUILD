@@ -121,6 +121,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+        "//tensorflow/core/kernels/data:serialization_utils",
     ],
 )
 
@@ -906,10 +907,9 @@ tf_cc_test(
     srcs = ["tensor_dataset_op_test.cc"],
     deps = [
         ":dataset_test_base",
+        ":dataset_utils",
         ":tensor_dataset_op",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 

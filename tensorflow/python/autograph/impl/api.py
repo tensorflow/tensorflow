@@ -559,20 +559,23 @@ def converted_call(f,
     if is_autograph_strict_conversion_mode():
       raise
 
+    warning_template = (
+        'AutoGraph could not transform %s and will run it as-is.\n'
+        '%s'
+        'Cause: %s\n'
+        'To silence this warning, decorate the function with'
+        ' @tf.autograph.experimental.do_not_convert')
     if isinstance(e, errors.UnsupportedLanguageElementError):
       # Repeating the check made upon function entry because the state might
       # have updated in the meantime.
       if not conversion.is_in_whitelist_cache(f, options):
-        logging.warn(
-            'AutoGraph could not transform %s and will run it as-is.\n'
-            'Cause: %s', target_entity, e)
+        logging.warn(warning_template, target_entity, '', e)
     else:
-      logging.warn(
-          'AutoGraph could not transform %s and will run it as-is.\n'
+      file_bug_message = (
           'Please report this to the TensorFlow team. When filing the bug, set'
           ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
-          ' attach the full output.\n'
-          'Cause: %s', target_entity, e)
+          ' attach the full output.\n')
+      logging.warn(warning_template, target_entity, file_bug_message, e)
 
     return _call_unconverted(f, args, kwargs, options)
 

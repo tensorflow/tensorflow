@@ -183,17 +183,6 @@ py_library(
 )
 
 py_library(
-    name = "topology",
-    srcs = [
-        "topology.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/core/protobuf/tpu:topology_proto_py",
-    ],
-)
-
-py_library(
     name = "tpu_lib",
     srcs = [
         "__init__.py",
@@ -203,6 +192,7 @@ py_library(
         "tensor_tracer.py",
         "tensor_tracer_flags.py",
         "tensor_tracer_report.py",
+        "topology.py",
         "tpu.py",
         "tpu_feed.py",
         "tpu_function.py",
@@ -216,7 +206,6 @@ py_library(
     deps = [
         ":datasets",
         ":functional",
-        ":topology",
         ":tpu_py",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
@@ -224,6 +213,7 @@ py_library(
         "//tensorflow/core/protobuf/tpu:compilation_result_proto_py",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",

@@ -1675,6 +1675,27 @@ TEST(RawApiTest, TestDeviceMemorySwap) {
   }
 }
 
+TEST(RawApiTest, TestMetricsFetch) {
+  xrt::XRTMetricsCollect metrics;
+  metrics.add_metrics_regex("/tensorflow/xrt/.*");
+
+  Scope root = Scope::NewRootScope().WithDevice("/device:CPU:0");
+  auto metrics_value = ops::Const(root, metrics.SerializeAsString());
+  Output result = ops::XRTMetricsCollect(root, metrics_value);
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({result}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  xrt::MetricsReport report;
+  EXPECT_TRUE(report.ParseFromString(outputs[0].scalar<tstring>()()));
+  for (auto& metric : report.metrics()) {
+    EXPECT_EQ(metric.name().compare(0, 16, "/tensorflow/xrt/"), 0);
+  }
+}
+
 }  // namespace
 
 }  // namespace tensorflow

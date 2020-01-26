@@ -258,12 +258,12 @@ void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params) {
           /* Load q0 */
           "vld1.8 {d0, d1}, [%[src_ptr0]]\n"
           "add %[src_ptr0], %[src_ptr0], %[src_inc0]\n"
-          RUY_PREFETCH("pld [%[src_ptr0]]\n")
+          RUY_PREFETCH_LOAD("pld [%[src_ptr0]]\n")
 
           /* Load q1 */
           "vld1.8 {d2, d3}, [%[src_ptr1]]\n"
           "add %[src_ptr1], %[src_ptr1], %[src_inc1]\n"
-          RUY_PREFETCH("pld [%[src_ptr1]]\n")
+          RUY_PREFETCH_LOAD("pld [%[src_ptr1]]\n")
 
           "veor.8 q4, q0, q11\n"
           "veor.8 q5, q1, q11\n"
@@ -283,11 +283,11 @@ void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params) {
           // Now do the same for src_ptr2 and src_ptr3.
           "vld1.8 {d0, d1}, [%[src_ptr2]]\n"
           "add %[src_ptr2], %[src_ptr2], %[src_inc2]\n"
-          RUY_PREFETCH("pld [%[src_ptr2]]\n")
+          RUY_PREFETCH_LOAD("pld [%[src_ptr2]]\n")
 
           "vld1.8 {d2, d3}, [%[src_ptr3]]\n"
           "add %[src_ptr3], %[src_ptr3], %[src_inc3]\n"
-          RUY_PREFETCH("pld [%[src_ptr3]]\n")
+          RUY_PREFETCH_LOAD("pld [%[src_ptr3]]\n")
 
           "veor.8 q4, q0, q11\n"
           "veor.8 q5, q1, q11\n"
@@ -627,18 +627,18 @@ void Pack8bitNeonInOrder(const void* src_ptr0, const void* src_ptr1,
           "ld1 {v2.8b}, [%[src_ptr2]], %[src_inc2]\n"
           "ldr x13, [%[src_ptr3], #8]\n"
           "ld1 {v3.8b}, [%[src_ptr3]], %[src_inc3]\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #192]\n")
           "add w1, w1, #16\n"
           "cmp w1, w2\n"
 
@@ -671,15 +671,15 @@ void Pack8bitNeonInOrder(const void* src_ptr0, const void* src_ptr1,
           "saddlp v19.8h, v7.16b\n"
           "str q7, [%[packed_ptr], #48]\n"
           "sadalp v28.4s, v16.8h\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #240]\n")
           "cmp w1, w2\n"
           "sadalp v29.4s, v17.8h\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #240]\n")
           "add %[packed_ptr], %[packed_ptr], #64\n"
           "sadalp v30.4s, v18.8h\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #240]\n")
           "sadalp v31.4s, v19.8h\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #240]\n")
 
           "bne 1b\n"
 
@@ -820,18 +820,18 @@ void Pack8bitNeonDotprodInOrder(const void* src_ptr0, const void* src_ptr1,
           "ld1 {v2.8b}, [%[src_ptr2]], %[src_inc2]\n"
           "ldr x13, [%[src_ptr3], #8]\n"
           "ld1 {v3.8b}, [%[src_ptr3]], %[src_inc3]\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #192]\n")
           "add w1, w1, #16\n"
           "cmp w1, w2\n"
 
@@ -858,13 +858,13 @@ void Pack8bitNeonDotprodInOrder(const void* src_ptr0, const void* src_ptr1,
           "ld1 {v3.8b}, [%[src_ptr3]], %[src_inc3]\n"
 
           "trn1 v16.4s, v4.4s, v5.4s\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #240]\n")
           "trn2 v17.4s, v4.4s, v5.4s\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #240]\n")
           "trn1 v18.4s, v6.4s, v7.4s\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #240]\n")
           "trn2 v19.4s, v6.4s, v7.4s\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #240]\n")
 
           "trn1 v20.2d, v16.2d, v18.2d\n"
           "trn2 v22.2d, v16.2d, v18.2d\n"
@@ -1798,18 +1798,18 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
           "ld1 {v1.4s}, [%[src_ptr1]], %[src_inc1]\n"
           "ld1 {v2.4s}, [%[src_ptr2]], %[src_inc2]\n"
           "ld1 {v3.4s}, [%[src_ptr3]], %[src_inc3]\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #64]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #128]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #192]\n")
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #64]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #128]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #192]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #192]\n")
           "add w1, w1, #4\n"
           "cmp w1, w2\n"
 
@@ -1820,16 +1820,16 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
 
           "ldr x10, [%[src_ptr0], #8]\n"
           "trn1 v16.4s, v0.4s, v1.4s\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr0], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr0], #240]\n")
           "ldr x11, [%[src_ptr1], #8]\n"
           "trn2 v17.4s, v0.4s, v1.4s\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr1], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr1], #240]\n")
           "ldr x12, [%[src_ptr2], #8]\n"
           "trn1 v18.4s, v2.4s, v3.4s\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr2], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr2], #240]\n")
           "ldr x13, [%[src_ptr3], #8]\n"
           "trn2 v19.4s, v2.4s, v3.4s\n"
-          RUY_PREFETCH("prfm pldl1strm, [%[src_ptr3], #240]\n")
+          RUY_PREFETCH_LOAD("prfm pldl1strm, [%[src_ptr3], #240]\n")
 
           "ld1 {v0.2s}, [%[src_ptr0]], %[src_inc0]\n"
           "trn1 v20.2d, v16.2d, v18.2d\n"

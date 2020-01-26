@@ -1,3 +1,4 @@
+# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,11 +24,11 @@ import itertools
 import threading
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
-
 
 bfloat16 = xla_client.bfloat16
 
@@ -1420,24 +1421,24 @@ class SingleOpTest(ComputationTest):
     # FFT
     c = self._NewComputation()
     c.Fft(c.Constant(a), xla_client.FftType.FFT, shape[-3:])
-    self._ExecuteAndCompareClose(c, expected=np.fft.fftn(a, axes=(1, 2, 3)),
-                                 rtol=1e-4)
+    self._ExecuteAndCompareClose(
+        c, expected=np.fft.fftn(a, axes=(1, 2, 3)), rtol=1e-4)
     # IFFT
     c = self._NewComputation()
     c.Fft(c.Constant(a), xla_client.FftType.IFFT, shape[-3:])
-    self._ExecuteAndCompareClose(c, expected=np.fft.ifftn(a, axes=(1, 2, 3)),
-                                 rtol=1e-4)
+    self._ExecuteAndCompareClose(
+        c, expected=np.fft.ifftn(a, axes=(1, 2, 3)), rtol=1e-4)
     # RFFT
     b = rng.randn(*shape).astype(np.float32)
     c = self._NewComputation()
     c.Fft(c.Constant(b), xla_client.FftType.RFFT, shape[-3:])
-    self._ExecuteAndCompareClose(c, expected=np.fft.rfftn(b, axes=(1, 2, 3)),
-                                 rtol=1e-4)
+    self._ExecuteAndCompareClose(
+        c, expected=np.fft.rfftn(b, axes=(1, 2, 3)), rtol=1e-4)
     # IRFFT
     c = self._NewComputation()
     c.Fft(c.Constant(a), xla_client.FftType.IRFFT, [3, 4, 8])
-    self._ExecuteAndCompareClose(c, expected=np.fft.irfftn(a, axes=(1, 2, 3)),
-                                 rtol=1e-4)
+    self._ExecuteAndCompareClose(
+        c, expected=np.fft.irfftn(a, axes=(1, 2, 3)), rtol=1e-4)
 
   def testNextAfter(self):
     c = self._NewComputation()
@@ -1454,8 +1455,8 @@ class SingleOpTest(ComputationTest):
     b = np.array([0.55688389, 0.59794214, 0.42661022, 1.59748339, 0.95047677])
     c = self._NewComputation()
     c.RegularizedIncompleteBeta(c.Constant(a), c.Constant(b), c.Constant(x))
-    expected = np.array([0.98923271, 0.48575411, 0.57952568, 0.12579775,
-                         0.96989155])
+    expected = np.array(
+        [0.98923271, 0.48575411, 0.57952568, 0.12579775, 0.96989155])
     self._ExecuteAndCompareClose(c, expected=expected, rtol=1e-4)
 
 
@@ -1974,7 +1975,7 @@ class ErrorTest(ComputationTest):
     def TestFun():
       return c.Build().Compile(compile_options=options)
 
-    self.assertRaisesRegexp(
+    self.assertRaisesRegex(
         RuntimeError, r".*Invalid argument shape.*"
         r"expected s32\[\], got f32\[\].*", TestFun)
 
@@ -1988,7 +1989,7 @@ class ErrorTest(ComputationTest):
       return xla_client.execute_with_python_values(c.Build().Compile(),
                                                    [self.f32_scalar_2])
 
-    self.assertRaisesRegexp(
+    self.assertRaisesRegex(
         RuntimeError, r"Invalid argument: Argument does not match.*"
         r"want s32\[\], got f32\[\].*", TestFun)
 
@@ -2029,6 +2030,48 @@ class SetShardingTest(ComputationTest):
     compiled_c = c.Build(result).Compile()
     ans = xla_client.execute_with_python_values(compiled_c, [arg])
     np.testing.assert_allclose(ans, 4.14)
+
+
+dlpack_dtypes = [
+    np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32,
+    np.uint64, np.float16, np.float32, np.float64, bfloat16
+]
+
+
+class DLPackTest(parameterized.TestCase):
+
+  # pylint: disable=g-complex-comprehension
+  @parameterized.named_parameters({
+      "testcase_name":
+          "_{}[{}]".format(dtype.__name__, ",".join(map(str, shape))),
+      "dtype":
+          dtype,
+      "shape":
+          shape
+  } for dtype in dlpack_dtypes for shape in [(), (1,), (2, 3), (4, 1, 2)])
+  def testRoundTrip(self, dtype, shape):
+    x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
+    backend = xla_client.get_local_backend()
+    buffer = xla_client.Buffer.from_pyval(x, backend=backend)
+    dlt = xla_client._xla.BufferToDLPackManagedTensor(buffer)
+    del buffer  # Free "buffer" to make sure dlt retains ownership.
+    self.assertEqual(type(dlt).__name__, "PyCapsule")
+    y = xla_client._xla.DLPackManagedTensorToBuffer(dlt, backend.client)
+    np.testing.assert_array_equal(x, y.to_py())
+
+  def testTensorsCanBeConsumedOnceOnly(self):
+    x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+    backend = xla_client.get_local_backend()
+    buffer = xla_client.Buffer.from_pyval(x, backend=backend)
+    dlt = xla_client._xla.BufferToDLPackManagedTensor(buffer)
+
+    def ConsumeDLPackTensor():
+      _ = xla_client._xla.DLPackManagedTensorToBuffer(dlt, backend.client)
+
+    ConsumeDLPackTensor()
+    self.assertRaisesRegex(RuntimeError,
+                           ".*a DLPack tensor may be consumed at most once.*",
+                           ConsumeDLPackTensor)
 
 
 if __name__ == "__main__":

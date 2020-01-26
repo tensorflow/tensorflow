@@ -117,6 +117,7 @@ class MicroInterpreter {
   TfLiteContext context_ = {};
   MicroAllocator allocator_;
   bool tensors_allocated_;
+  bool tensors_prepared_;
 
   TfLiteStatus initialization_status_;
   const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;

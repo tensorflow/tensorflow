@@ -83,20 +83,21 @@ class Backend(object, metaclass=abc.ABCMeta):
     """Compiles a computation. Returns an executable."""
 
   @abc.abstractmethod
-  def get_default_device_assignment(self, num_replicas):
+  def get_default_device_assignment(self, num_replicas, num_partitions):
     """Returns the default device assignment that `compile` would use.
 
     If `compile_options.device_assignment` isn't set, `compile` will pick a
-    deterministic device assignment based on the number of replicas, possibly
-    optimizing for device locality. This method returns that assignment, which
-    is useful for e.g. manually replicating a value before passing it to a
-    compiled executable.
+    deterministic device assignment based on the number of replicas and
+    partitions, possibly optimizing for device locality. This method returns
+    that assignment, which is useful for e.g. manually replicating a value
+    before passing it to a compiled executable.
 
     Args:
       num_replicas: the number of replicas needed.
+      num_partitions: the number of partitions needed.
 
     Returns:
-      A list of Devices of length `num_replicas` indexed by replica ID.
+      A list of list of Devices of size `(num_replicas, num_partitions)`.
     """
 
 
@@ -152,14 +153,13 @@ class LocalBackend(Backend):
                                         options, self.client,
                                         compile_options.device_assignment)
 
-  def get_default_device_assignment(self, num_replicas):
-    return self.client.GetDefaultDeviceAssignment(num_replicas)
-
-  def serialize(self, executable):
-    return self.client.SerializeExecutable(executable)
-
-  def deserialize(self, serialized_executable):
-    return self.client.DeserializeExecutable(serialized_executable, self.client)
+  def get_default_device_assignment(self, num_replicas, num_partitions=None):
+    if num_partitions is not None:
+      return self.client.GetDefaultDeviceAssignment(num_replicas,
+                                                    num_partitions)
+    else:
+      # TODO(skye): delete this case after all callers can handle 2D output
+      return self.client.GetDefaultDeviceAssignment(num_replicas)
 
 
 xla_platform_names = {
@@ -1694,6 +1694,8 @@ _BINARY_OPS = [
     'ShiftRightArithmetic',
     'ShiftRightLogical',
     'Atan2',
+    'Igamma',
+    'Igammac',
     'Complex',
     'NextAfter',
 ]

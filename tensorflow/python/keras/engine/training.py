@@ -74,7 +74,7 @@ _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                         'keras api usage', 'method')
 
 
-@keras_export('keras.models.Model', 'keras.Model')
+@keras_export('keras.Model', 'keras.models.Model')
 class Model(network.Network, version_utils.VersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
@@ -137,6 +137,13 @@ class Model(network.Network, version_utils.VersionSelector):
 
   model = MyModel()
   ```
+
+  Once the model is created, you can config the model with losses and metrics
+  with `model.compile()`, train the model with `model.fit()`, or use the model
+  to do prediction with `model.predict()`.
+
+  Checkout [guide](https://www.tensorflow.org/guide/keras/overview) for
+  additional details.
   """
 
   def __init__(self, *args, **kwargs):
@@ -608,17 +615,19 @@ class Model(network.Network, version_utils.VersionSelector):
             the batch size, or 1 if that cannot be determined. If x is a
             `tf.data` dataset, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
-            This argument is not supported with array inputs.
+            When passing an infinitely repeating dataset, you must specify the
+            `steps_per_epoch` argument. This argument is not supported with
+            array inputs.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
             at the end of every epoch. If 'validation_steps' is None, validation
             will run until the `validation_data` dataset is exhausted. In the
-            case of a infinite dataset, it will run into a infinite loop.
-            If 'validation_steps' is specified and only part of the dataset
-            will be consumed, the evaluation will start from the beginning of
-            the dataset at each epoch. This ensures that the same validation
-            samples are used every time.
+            case of an infinitely repeated dataset, it will run into an
+            infinite loop. If 'validation_steps' is specified and only part of
+            the dataset will be consumed, the evaluation will start from the
+            beginning of the dataset at each epoch. This ensures that the same
+            validation samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections_abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a

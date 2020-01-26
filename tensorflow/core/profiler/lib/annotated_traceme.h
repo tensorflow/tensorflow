@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -32,11 +31,10 @@ class AnnotatedTraceMe {
   template <typename NameGeneratorT>
   explicit AnnotatedTraceMe(NameGeneratorT name_generator, int level = 1) {
     DCHECK_GE(level, 1);
-#if !defined(IS_MOBILE_PLATFORM)
-    bool annotation_enabled = AnnotationStack::IsEnabled();
-    bool traceme_enabled = TraceMeRecorder::Active(level);
+    bool annotation_enabled = ScopedAnnotation::IsEnabled();
+    bool traceme_enabled = TraceMe::Active(level);
     if (TF_PREDICT_FALSE(annotation_enabled || traceme_enabled)) {
-      std::string label = name_generator();
+      string label = name_generator();
       if (annotation_enabled) {
         scoped_annotation_.emplace(absl::string_view(label));
       }
@@ -44,7 +42,6 @@ class AnnotatedTraceMe {
         trace_me_.emplace(std::move(label), level);
       }
     }
-#endif
   }
 
  private:

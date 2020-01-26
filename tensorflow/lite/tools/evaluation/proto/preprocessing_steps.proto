@@ -56,9 +56,9 @@ message CroppingParams {
     float cropping_fraction = 1 [default = 0.875];
     // The target size after cropping.
     ImageSize target_size = 2;
-    // Crops to a square image.
-    bool square_cropping = 3;
   }
+  // Crops to a square image.
+  optional bool square_cropping = 3;
 }
 
 // Defines parameters for bilinear central-resizing.

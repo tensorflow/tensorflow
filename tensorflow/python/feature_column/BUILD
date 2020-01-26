@@ -86,7 +86,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers_base",
+        "//tensorflow/python/keras/layers:layers_base",
         "//tensorflow/python/keras/utils:generic_utils",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -251,7 +251,7 @@ py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
     ],
 )
 

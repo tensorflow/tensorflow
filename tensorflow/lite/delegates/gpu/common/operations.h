@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ enum class OperationType {
   LOG,
   LSTM,
   MAX_UNPOOLING_2D,
+  MEAN,
   MUL,
   MULTIPLY_SCALAR,
   PAD,
@@ -71,7 +72,6 @@ enum class OperationType {
   SUB,
   TANH,
   TRANSPOSE,
-  UPSAMPLE_2D,
 };
 
 std::string ToString(enum OperationType op);
@@ -164,6 +164,11 @@ struct MaxUnpooling3DAttributes {
   HWD strides = HWD(0, 0, 0);
   HWD kernel = HWD(0, 0, 0);
   Padding3D padding;
+};
+
+struct MeanAttributes {
+  // The vector of dimensions to calculate mean along.
+  std::set<Axis> dims;
 };
 
 struct ConcatAttributes {
@@ -354,25 +359,27 @@ struct MultiplyScalarAttributes {
       param;
 };
 
-enum class UpsamplingType {
-  NEAREST = 0,
-  BILINEAR = 1,
+enum class SamplingType {
+  UNKNOWN = 0,
+  NEAREST = 1,
+  BILINEAR = 2,
 };
 
-struct Upsample2DAttributes {
+struct Resize2DAttributes {
   HW new_shape;
 
-  UpsamplingType type = UpsamplingType::NEAREST;
+  SamplingType type = SamplingType::UNKNOWN;
 
   // If true, the centers of the 4 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
 };
 
-struct Upsample3DAttributes {
+// TODO(b/147771327): rename to Resize3D
+struct Resize3DAttributes {
   HWD new_shape;
 
-  UpsamplingType type = UpsamplingType::NEAREST;
+  SamplingType type = SamplingType::NEAREST;
 
   // If true, the centers of the 8 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
@@ -380,19 +387,18 @@ struct Upsample3DAttributes {
 };
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
-                           const Upsample2DAttributes& attr);
+                           const Resize2DAttributes& attr);
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
-                           const Upsample3DAttributes& attr);
+                           const Resize3DAttributes& attr);
 
-// @return shape of a tensor after upscale operation is applied to the given
+// @return shape of a tensor after scale operation is applied to the given
 // input.
-BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr);
+BHWC CalculateOutputShape(const BHWC& input, const Resize2DAttributes& attr);
 
-// @return shape of a tensor after upscale operation is applied to the given
+// @return shape of a tensor after scale operation is applied to the given
 // input.
-BHWDC CalculateOutputShape(const BHWDC& input,
-                           const Upsample3DAttributes& attr);
+BHWDC CalculateOutputShape(const BHWDC& input, const Resize3DAttributes& attr);
 
 enum class PaddingContentType {
   ZEROS = 0,

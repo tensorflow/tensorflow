@@ -43,7 +43,7 @@ namespace {
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
   ErrorSpec error_spec_{0.0001, 0.0001};
-  ErrorSpec strict_error_spec_{0x1p-48, 0x1p-48};
+  ErrorSpec strict_error_spec_{3.6e-15, 3.6e-15};
 };
 
 class ArrayElementwiseOpTestParamCount

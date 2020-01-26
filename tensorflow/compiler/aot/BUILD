@@ -1,11 +1,5 @@
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available")
 
 package(
@@ -74,36 +68,6 @@ cc_library(
     ]),
 )
 
-# Necessary for the pywrap inclusion below.
-tf_pybind_cc_library_wrapper(
-    name = "tfcompile_headers_lib",
-    deps = [
-        ":tfcompile_lib",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_tfcompile",
-    srcs = ["tfcompile_wrapper.cc"],
-    features = ["-layering_check"],
-    module_name = "_pywrap_tfcompile",
-    visibility = ["//tensorflow/python:__pkg__"],
-    deps = [
-        ":tfcompile_headers_lib",
-        "@pybind11",
-        "//third_party/python_runtime:headers",
-        "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
-        # These headers cannot be brought in via cc_header_only_library
-        "@llvm-project//llvm:arm_code_gen",  # fixdeps: keep
-        "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
-        "@llvm-project//llvm:target",
-        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
-    ] + if_llvm_aarch64_available([
-        "//third_party/llvm/llvm-project/llvm:aarch64_target",  # fixdeps: keep
-    ]),
-)
-
 tf_cc_test(
     name = "codegen_test",
     srcs = ["codegen_test.cc"],
@@ -129,6 +93,19 @@ tf_cc_binary(
     name = "tfcompile",
     visibility = ["//visibility:public"],
     deps = [":tfcompile_main"],
+)
+
+cc_library(
+    name = "llvm_targets",
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        "@llvm-project//llvm:arm_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:target",
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
+    ] + if_llvm_aarch64_available([
+        "//third_party/llvm/llvm-project/llvm:aarch64_target",  # fixdeps: keep
+    ]),
 )
 
 cc_library(

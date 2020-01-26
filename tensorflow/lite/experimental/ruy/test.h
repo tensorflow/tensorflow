@@ -548,7 +548,17 @@ struct TestSet final {
   bool benchmark_prepack_rhs = false;
 };
 
+inline PmuEvents& GlobalPmuEvents() {
+  static PmuEvents pmu;
+  return pmu;
+}
+
 inline Context& GlobalContext() {
+  // Ensure that GlobalPmuEvents is constructed before we create any context.
+  // This ensures that pmu counters are opened before we create any worker
+  // thread, which is necessary to count events from worker threads.
+  GlobalPmuEvents();
+
   static Context context;
   return context;
 }
@@ -1660,7 +1670,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
 #if RUY_PLATFORM(ARM_32) || RUY_PLATFORM(ARM_64)
       // OpenBLAS multi-threading is disabled, so avoid mixing single-threaded
       // and multi-threaded benchmark results.
-      if (max_num_threads == 1) {
+      if (max_num_threads == 1 && !getenv("NO_OPENBLAS")) {
         external_paths.push_back(ExternalPath::kOpenBlas);
       }
 #endif
@@ -1867,7 +1877,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
   float backend_stall_rate = std::numeric_limits<float>::infinity();
 
   for (int repeat = 0; repeat < repeats; repeat++) {
-    PmuEvents pmu_events;
+    auto& pmu_events = GlobalPmuEvents();
     if (record_pmu) {
       pmu_events.StartRecording();
     }

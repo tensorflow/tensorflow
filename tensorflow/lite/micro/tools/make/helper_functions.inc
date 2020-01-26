@@ -398,3 +398,9 @@ $(word 3, $(subst !, ,$(1))):
 	tensorflow/lite/micro/tools/make/download_and_extract.sh $(subst !, ,$(1))
 THIRD_PARTY_TARGETS += $(word 3, $(subst !, ,$(1)))
 endef
+
+# Recursively find all files of given pattern
+# Arguments are:
+# 1 - Starting path
+# 2 - File pattern, e.g: *.h
+recursive_find = $(wildcard $(1)$(2)) $(foreach dir,$(wildcard $(1)*),$(call recursive_find,$(dir)/,$(2)))

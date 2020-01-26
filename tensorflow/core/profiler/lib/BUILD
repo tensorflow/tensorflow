@@ -45,7 +45,7 @@ tf_cuda_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "profiler_session.h",
     ],
@@ -75,8 +75,6 @@ cc_library(
         ":scoped_annotation",
         ":traceme",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/profiler/internal:annotation_stack",
         "@com_google_absl//absl/strings",
     ],
 )

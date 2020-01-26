@@ -53,16 +53,7 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 
   CpuAotCompilationOptions(string triple, string cpu_name, string features,
                            string entry_point_name,
-                           RelocationModel relocation_model,
-                           string tensorflow_header_root);
-
-  CpuAotCompilationOptions(string triple, string cpu_name, string features,
-                           string entry_point_name,
-                           RelocationModel relocation_model)
-      : CpuAotCompilationOptions(
-            std::move(triple), std::move(cpu_name), std::move(features),
-            std::move(entry_point_name), relocation_model,
-            /*tensorflow_header_root=*/"third_party/tensorflow") {}
+                           RelocationModel relocation_model);
 
   ~CpuAotCompilationOptions() override;
 
@@ -76,10 +67,6 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const string& features() const { return features_; }
   // The name to be used for the compiled code's entry point.
   const string& entry_point_name() const { return entry_point_name_; }
-  // The prefix for tensorflow headers, e.g. "third_party/tensorflow".
-  const string& tensorflow_header_root() const {
-    return tensorflow_header_root_;
-  }
   // The relocation model used for compilation.
   RelocationModel relocation_model() const { return relocation_model_; }
 
@@ -89,7 +76,6 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const string features_;
   const string entry_point_name_;
   const RelocationModel relocation_model_;
-  const string tensorflow_header_root_;
 };
 
 class CpuAotCompilationResult : public AotCompilationResult {

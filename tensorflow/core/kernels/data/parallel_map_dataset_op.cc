@@ -51,6 +51,9 @@ namespace data {
 /* static */ constexpr const char* const
     ParallelMapDatasetOp::kPreserveCardinality;
 
+// Period between reporting dataset statistics.
+constexpr int kStatsReportingPeriodMillis = 1000;
+
 class ParallelMapDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
@@ -308,7 +311,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
     std::shared_ptr<InvocationResult> result;
     {
       mutex_lock l(*mu_);
-      EnsureRunnerThreadStarted(ctx);
+      EnsureThreadsStarted(ctx);
       while (ShouldWait(&result)) {
         RecordStop(ctx);
         cond_var_->wait(l);
@@ -432,13 +435,18 @@ class ParallelMapIterator : public DatasetBaseIterator {
     }
   }
 
-  void EnsureRunnerThreadStarted(IteratorContext* ctx)
+  void EnsureThreadsStarted(IteratorContext* ctx)
       EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
     if (!runner_thread_) {
       auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
       runner_thread_ = ctx->StartThread(
           "tf_data_parallel_map",
           std::bind(&ParallelMapIterator::RunnerThread, this, ctx_copy));
+      if (ctx->stats_aggregator()) {
+        stats_thread_ = ctx->StartThread(
+            "tf_data_parallel_map_stats",
+            std::bind(&ParallelMapIterator::StatsThread, this, ctx_copy));
+      }
     }
   }
 
@@ -447,14 +455,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
       LOCKS_EXCLUDED(*mu_) {
     mutex_lock l(*mu_);
     num_calls_--;
-    const auto& stats_aggregator = ctx->stats_aggregator();
-    if (stats_aggregator) {
-      stats_aggregator->AddScalar(
-          stats_utils::ThreadUtilizationScalarName(key_prefix_),
-          static_cast<float>(num_calls_) /
-              static_cast<float>(num_parallel_calls_->value),
-          num_elements());
-    }
     RecordBufferEnqueue(ctx.get(), result->return_values);
     result->notification.Notify();
     cond_var_->notify_all();
@@ -543,14 +543,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
           new_calls.push_back(invocation_results_.back());
           num_calls_++;
         }
-        const auto& stats_aggregator = ctx->stats_aggregator();
-        if (stats_aggregator) {
-          stats_aggregator->AddScalar(
-              stats_utils::ThreadUtilizationScalarName(key_prefix_),
-              static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value),
-              num_elements());
-        }
         cond_var_->notify_all();
       }
       for (const auto& call : new_calls) {
@@ -585,6 +577,34 @@ class ParallelMapIterator : public DatasetBaseIterator {
       return false;
     }
     return true;
+  }
+
+  void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
+    for (int64 step = 0;; ++step) {
+      int num_calls;
+      int num_parallel_calls;
+      {
+        mutex_lock l(*mu_);
+        if (step != 0 && !cancelled_) {
+          cond_var_->wait_for(
+              l, std::chrono::milliseconds(kStatsReportingPeriodMillis));
+        }
+        if (cancelled_) {
+          return;
+        }
+        num_calls = num_calls_;
+        num_parallel_calls = num_parallel_calls_->value;
+      }
+      if (num_parallel_calls == 0) {
+        // Avoid division by zero.
+        num_parallel_calls = 1;
+      }
+      ctx->stats_aggregator()->AddScalar(
+          stats_utils::ThreadUtilizationScalarName(key_prefix_),
+          static_cast<float>(num_calls) /
+              static_cast<float>(num_parallel_calls),
+          step);
+    }
   }
 
   Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
@@ -651,6 +671,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
       GUARDED_BY(*mu_);
 
   std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
+  std::unique_ptr<Thread> stats_thread_ GUARDED_BY(*mu_);
   bool cancelled_ GUARDED_BY(*mu_) = false;
 
   // Method for deregistering the cancellation callback.

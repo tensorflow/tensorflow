@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,11 +31,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshapex4.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/upsample.h"
 
 namespace tflite {
 namespace gpu {
@@ -90,14 +90,13 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
   *ptr = absl::make_unique<Add>(std::move(operation));
 }
 
-Status SelectUpsampling(const Upsample2DAttributes& attr,
-                        const OperationDef& op_def,
-                        std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.type != UpsamplingType::BILINEAR) {
-    return UnimplementedError("Upsample2D supports only bilinear type.");
+Status SelectResize(const Resize2DAttributes& attr, const OperationDef& op_def,
+                    std::unique_ptr<GPUOperation>* ptr) {
+  if (attr.type != SamplingType::BILINEAR) {
+    return UnimplementedError("Resize2D supports only bilinear sampling.");
   }
-  Upsample operation = CreateUpsample(op_def, attr);
-  *ptr = absl::make_unique<Upsample>(std::move(operation));
+  Resize operation = CreateResize(op_def, attr);
+  *ptr = absl::make_unique<Resize>(std::move(operation));
   return OkStatus();
 }
 

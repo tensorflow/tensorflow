@@ -699,56 +699,45 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
+          required_gpus=[0, 1, 2],
           use_strategy_object=[True, False]))
-  def testReductionDistributed(self, num_gpus, use_strategy_object):
-    if context.num_gpus() < num_gpus:
-      return
+  def testReductionDistributed(self, required_gpus, use_strategy_object):
     self._run_between_graph_clients(
         self._test_reduction,
         self._cluster_spec,
-        num_gpus,
+        required_gpus,
         use_strategy_object=use_strategy_object)
 
   @combinations.generate(
       combinations.combine(
-          mode=["graph"],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
-          batch_reduce=[True]))
-  def testReduceIndexedSlicesDistributed(self, num_gpus, batch_reduce):
-    if context.num_gpus() < num_gpus:
-      return
+          mode=["graph"], required_gpus=[0, 1, 2], batch_reduce=[True]))
+  def testReduceIndexedSlicesDistributed(self, required_gpus, batch_reduce):
     self._run_between_graph_clients(self._test_reduce_indexed_slices,
-                                    self._cluster_spec, num_gpus, batch_reduce)
+                                    self._cluster_spec, required_gpus,
+                                    batch_reduce)
 
   # Collective ops doesn't support strategy with one device.
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[2],
           required_gpus=2,
           use_strategy_object=[True, False]))
-  def testReductionLocal(self, num_gpus, use_strategy_object):
-    if context.num_gpus() < num_gpus:
-      return
+  def testReductionLocal(self, required_gpus, use_strategy_object):
     self._test_reduction(
         None,
         None,
-        num_gpus,
+        required_gpus,
         use_strategy_object=use_strategy_object,
         local_mode=True)
 
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[2],
           required_gpus=2,
           batch_reduce=[True, False]))
-  def testReduceIndexedSlicesLocal(self, num_gpus, batch_reduce):
+  def testReduceIndexedSlicesLocal(self, required_gpus, batch_reduce):
     self._test_reduce_indexed_slices(
-        None, None, num_gpus, batch_reduce, local_mode=True)
+        None, None, required_gpus, batch_reduce, local_mode=True)
 
 
 if __name__ == "__main__":

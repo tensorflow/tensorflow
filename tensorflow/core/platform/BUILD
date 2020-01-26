@@ -716,8 +716,13 @@ cc_library(
 
 cc_library(
     name = "tstring",
-    hdrs = ["tstring.h"],
+    hdrs = [
+        "ctstring.h",
+        "ctstring_internal.h",
+        "tstring.h",
+    ],
     deps = [
+        ":cord",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -856,7 +861,6 @@ tf_cc_tests(
         "strcat_test.cc",
         "stringpiece_test.cc",
         "stringprintf_test.cc",
-        "subprocess_test.cc",
         "vmodule_benchmark_test.cc",
     ],
     create_named_test_suite = True,
@@ -878,6 +882,43 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib_archive//:zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "subprocess_test",
+    size = "small",
+    srcs = ["subprocess_test.cc"],
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":subprocess",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "ctstring_test",
+    size = "small",
+    srcs = ["ctstring_test.cc"],
+    deps = [
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "tstring_test",
+    size = "small",
+    srcs = ["tstring_test.cc"],
+    deps = [
+        ":cord",
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1063,6 +1104,8 @@ filegroup(
     srcs = [
         "byte_order.h",
         "cord.h",
+        "ctstring.h",
+        "ctstring_internal.h",
         "env_time.h",
         "logging.h",
         "macros.h",
@@ -1087,6 +1130,7 @@ filegroup(
         "dynamic_annotations.h",
         "env.h",
         "error.h",
+        "errors.h",
         "file_statistics.h",
         "file_system.h",
         "file_system_helper.h",
@@ -1125,6 +1169,8 @@ filegroup(
 filegroup(
     name = "lib_proto_parsing_hdrs",
     srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
         "init_main.h",
         "logging.h",
         "macros.h",
@@ -1159,6 +1205,8 @@ filegroup(
     srcs = [
         "byte_order.h",
         "cpu_info.h",
+        "ctstring.h",
+        "ctstring_internal.h",
         "dynamic_annotations.h",
         "macros.h",
         "mutex.h",
@@ -1221,6 +1269,8 @@ filegroup(
 filegroup(
     name = "tflite_portable_logging_hdrs",
     srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
         "logging.h",
         "macros.h",
         "platform.h",
@@ -1233,6 +1283,8 @@ filegroup(
 filegroup(
     name = "jpeg_internal_hdrs",
     srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
         "dynamic_annotations.h",
         "logging.h",
         "macros.h",
@@ -1248,6 +1300,8 @@ filegroup(
 filegroup(
     name = "gif_internal_hdrs",
     srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
         "dynamic_annotations.h",
         "logging.h",
         "macros.h",
@@ -1273,6 +1327,8 @@ filegroup(
         "cord.h",
         "cpu_info.cc",
         "cpu_info.h",
+        "ctstring.h",
+        "ctstring_internal.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",

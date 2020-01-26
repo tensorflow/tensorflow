@@ -89,7 +89,7 @@ tf_cuda_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
@@ -127,7 +127,6 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
-        "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:remote_device",

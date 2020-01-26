@@ -328,7 +328,7 @@ class WhileStatementTest(ControlFlowTestBase):
       # The tested function would require `tc` to become part of the while loop
       # state, but TensorFlow doesn't support classes at the moment.
       with self.assertRaisesRegexp(
-          ValueError, 'must be defined before the loop:.*tc.*'):
+          ValueError, 'tc.*must be defined before the loop'):
         result.test_fn(constant_op.constant(5))
 
   def test_dispatches_by_cond_only(self):

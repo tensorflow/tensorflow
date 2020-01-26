@@ -620,7 +620,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
   @tf_test_util.run_in_graph_and_eager_modes
   def testIncorrectAxisType(self):
     with self.assertRaisesRegexp(
-        ValueError, r'Expected an int or a list/tuple of ints'):
+        TypeError, r'Expected an int or a list/tuple of ints'):
       _ = normalization.LayerNormalization(axis={'axis': -1})
 
   @tf_test_util.run_in_graph_and_eager_modes

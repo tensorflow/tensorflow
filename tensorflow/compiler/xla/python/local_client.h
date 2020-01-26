@@ -39,8 +39,6 @@ limitations under the License.
 
 namespace xla {
 
-class PyLocalExecutable;
-
 class Device {
  public:
   explicit Device(int id, std::unique_ptr<LocalDeviceState> local_device_state,
@@ -141,8 +139,10 @@ class PyLocalClient {
 
   int device_count() const { return devices_.size(); }
   int local_device_count() const { return local_devices_.size(); }
-  const std::vector<std::shared_ptr<Device>>& devices() { return devices_; }
-  const std::vector<std::shared_ptr<Device>>& local_devices() {
+  const std::vector<std::shared_ptr<Device>>& devices() const {
+    return devices_;
+  }
+  const std::vector<std::shared_ptr<Device>>& local_devices() const {
     return local_devices_;
   }
   const std::map<int, std::shared_ptr<Device>>& id_to_device() const {
@@ -169,19 +169,6 @@ class PyLocalClient {
   // source d2d stream, but some platforms use the destination d2d stream. This
   // function specifies which one the platform expects.
   virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
-
-  // Returns a platform-specific serialization of `executable`. This is meant
-  // for transferring executables and not for storage, and the serialization is
-  // not guaranteed to be stable over time.
-  virtual StatusOr<std::string> SerializeExecutable(
-      const PyLocalExecutable& executable) const;
-
-  // Deserializes a serialized executable as produced by
-  // SerializeExecutable(). `serialized` must have been produced by client of
-  // the same platform. `this_shared` should point to this PyLocalClient.
-  virtual StatusOr<std::unique_ptr<PyLocalExecutable>> DeserializeExecutable(
-      const std::string& serialized,
-      std::shared_ptr<PyLocalClient> this_shared) const;
 
  protected:
   std::string platform_name_;
@@ -224,7 +211,7 @@ class PyLocalBuffer {
       const std::vector<PyLocalBuffer*> buffers,
       std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device);
 
-  PyLocalBuffer(Shape on_host_shape,
+  PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
                 std::shared_ptr<SharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client,
                 std::shared_ptr<Device> device);
@@ -235,6 +222,7 @@ class PyLocalBuffer {
   PyLocalBuffer& operator=(PyLocalBuffer&&) = delete;
 
   const Shape& on_host_shape() const { return on_host_shape_; }
+  const Shape& on_device_shape() const { return on_device_shape_; }
   std::shared_ptr<Device> device() const { return device_; }
   const std::string& platform_name() const { return client_->platform_name(); }
   std::shared_ptr<PyLocalClient> client() const { return client_; }
@@ -276,6 +264,7 @@ class PyLocalBuffer {
  private:
   const std::shared_ptr<PyLocalClient> client_;
   const Shape on_host_shape_;
+  const Shape on_device_shape_;
   const std::shared_ptr<Device> device_;
   mutable absl::Mutex mu_;
   std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
@@ -349,7 +338,6 @@ class PyLocalExecutable {
 
   void Delete() { executable_ = nullptr; }
 
-  LocalExecutable* executable() const { return executable_.get(); }
   const string& name() const;
 
  private:

@@ -73,9 +73,11 @@ class ImagePreprocessingConfigBuilder {
   }
 
   // Adds a cropping step with cropping fraction.
-  void AddCroppingStep(float cropping_fraction) {
+  void AddCroppingStep(float cropping_fraction,
+                       bool use_square_cropping = false) {
     ImagePreprocessingStepParams params;
     params.mutable_cropping_params()->set_cropping_fraction(cropping_fraction);
+    params.mutable_cropping_params()->set_square_cropping(use_square_cropping);
     config_.mutable_specification()
         ->mutable_image_preprocessing_params()
         ->mutable_steps()
@@ -83,20 +85,12 @@ class ImagePreprocessingConfigBuilder {
   }
 
   // Adds a cropping step with target size.
-  void AddCroppingStep(uint32_t width, uint32_t height) {
+  void AddCroppingStep(uint32_t width, uint32_t height,
+                       bool use_square_cropping = false) {
     ImagePreprocessingStepParams params;
     params.mutable_cropping_params()->mutable_target_size()->set_height(height);
     params.mutable_cropping_params()->mutable_target_size()->set_width(width);
-    config_.mutable_specification()
-        ->mutable_image_preprocessing_params()
-        ->mutable_steps()
-        ->Add(std::move(params));
-  }
-
-  // Adds a square cropping step.
-  void AddSquareCroppingStep() {
-    ImagePreprocessingStepParams params;
-    params.mutable_cropping_params()->set_square_cropping(true);
+    params.mutable_cropping_params()->set_square_cropping(use_square_cropping);
     config_.mutable_specification()
         ->mutable_image_preprocessing_params()
         ->mutable_steps()

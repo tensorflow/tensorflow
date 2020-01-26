@@ -119,13 +119,12 @@ using BufferInfo = cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     string triple, string cpu_name, string features, string entry_point_name,
-    RelocationModel relocation_model, string tensorflow_header_root)
+    RelocationModel relocation_model)
     : triple_(std::move(triple)),
       cpu_name_(std::move(cpu_name)),
       features_(std::move(features)),
       entry_point_name_(std::move(entry_point_name)),
-      relocation_model_(relocation_model),
-      tensorflow_header_root_(std::move(tensorflow_header_root)) {}
+      relocation_model_(relocation_model) {}
 
 CpuAotCompilationOptions::~CpuAotCompilationOptions() = default;
 
@@ -255,9 +254,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
 
-  // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
-  // pass.
-  pipeline.AddPass<CallInliner>();
+  // Inline computations with a single call site.
+  pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
   // After canonicalization, there may be more batch dots that can be

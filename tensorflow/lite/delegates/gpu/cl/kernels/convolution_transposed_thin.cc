@@ -41,7 +41,7 @@ std::string GenerateConvolutionTransposedCode(
       WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
       op_def.dst_tensors[0]);
 
-  const std::string batch_id = op_def.batch_support ? "B" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   const std::string channel_x = dst_channels == 1 ? "" : ".x";
   const std::vector<std::string> postfix = {channel_x, ".y", ".z", ".w"};
@@ -71,7 +71,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "    int4 dst_size,             \n";
   c += "    FLT4 bias_value            \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -128,8 +128,9 @@ std::string GenerateConvolutionTransposedCode(
         c += "    result" + channel[d] + " += r[" + std::to_string(y) + "][" +
              std::to_string(x) + "]" + postfix[d] + ";\n";
       }
-      const std::string x_3dcoord =
-          op_def.batch_support ? "(" + x_coord + ") * dst_size.w + B" : x_coord;
+      const std::string x_3dcoord = op_def.IsBatchSupported()
+                                        ? "(" + x_coord + ") * dst_size.w + B"
+                                        : x_coord;
       const LinkingContext context{"result", x_3dcoord, y_coord, "0"};
       c += PostProcess(linked_operations, context);
       c += "    " +
