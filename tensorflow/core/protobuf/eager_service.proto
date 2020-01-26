@@ -248,7 +248,7 @@ service EagerService {
 
   // Contexts are always created with a deadline and no RPCs within a deadline
   // will trigger a context garbage collection. KeepAlive calls can be used to
-  // delay this. It can also be used to validate the existance of a context ID
+  // delay this. It can also be used to validate the existence of a context ID
   // on remote eager worker. If the context is on remote worker, return the same
   // ID and the current context view ID. This is useful for checking if the
   // remote worker (potentially with the same task name and hostname / port) is

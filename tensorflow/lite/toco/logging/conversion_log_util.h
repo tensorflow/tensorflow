@@ -32,7 +32,7 @@ std::vector<string> GetOperatorNames(const Model& model);
 // Counts the number of different types of operators in the model:
 // Built-in ops, custom ops and select ops.
 // Each map is mapping from the name of the operator (such as 'Conv') to its
-// total number of occurences in the model.
+// total number of occurrences in the model.
 void CountOperatorsByType(const Model& model,
                           std::map<string, int>* built_in_ops,
                           std::map<string, int>* custom_ops,

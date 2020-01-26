@@ -307,7 +307,7 @@ class _CategoricalEncodingCombiner(Combiner):
           # Any newly created token counts in 'base_accumulator''s
           # per_doc_count_dict will have a last_doc_id of -1. This is always
           # less than the next doc id (which are strictly positive), so any
-          # future occurences are guaranteed to be counted.
+          # future occurrences are guaranteed to be counted.
           base_accumulator.per_doc_count_dict[token]["count"] += value["count"]
 
     return base_accumulator

@@ -405,7 +405,7 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   // the latest occurrence of a ReaderDataset (e.g. CSVDataset, TFRecordDataset,
   // etc...). We then add a shard after that dataset to shard the outputs of
   // that dataset, in effect giving a piece to each worker. Finally, we remove
-  // occurences from randomness from before that point in the graph (e.g. things
+  // occurrences from randomness from before that point in the graph (e.g. things
   // like ShuffleDataset) to ensure that `shard` returns a sensible result.
   switch (policy) {
     case AutoShardPolicy::OFF:
