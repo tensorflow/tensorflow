@@ -19,9 +19,9 @@ This module can perform operations on nested structures. A nested structure is a
 Python sequence, tuple (including `namedtuple`), or dict that can contain
 further sequences, tuples, and dicts.
 
-Structures are scalar, or tuple or dict or list of constructed scalars and/or
-other tuples/lists, or a scalar object. Note, numpy arrays are considered 
-scalars.
+Structures are atom, or tuple or dict or list of constructed atoms and/or
+other tuples/lists, or an atom object. Note, numpy arrays are considered 
+atoms.
 
 attr.s decorated classes (http://www.attrs.org) are also supported, in the
 same way as `namedtuple`.
@@ -264,7 +264,8 @@ def flatten(structure, expand_composites=False):
   running.
 
   Args:
-    structure: an arbitrarily nested structure.
+    structure: an arbitrarily nested structure. Note, numpy arrays are considered
+      atoms and are not flattened.
     expand_composites: If true, then composite tensors such as tf.SparseTensor
        and tf.RaggedTensor are expanded into their component tensors.
 
