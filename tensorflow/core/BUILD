@@ -1392,6 +1392,7 @@ cc_library(
         "notap",
     ],
     visibility = ["//visibility:public"],
+    deps = tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
 
@@ -1408,6 +1409,7 @@ cc_library(
         "notap",
     ],
     visibility = ["//visibility:public"],
+    deps = tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
 
