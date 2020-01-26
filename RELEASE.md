@@ -1,9 +1,5 @@
 # Release 1.15.2
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
-
-# Release 1.15.1
-
 ## Bug Fixes and Other Changes
 * Fixes a security vulnerability where converting a Python string to a `tf.float16` value produces a segmentation fault ([CVE-2020-5215](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-5215))
 * Updates `curl` to `7.66.0` to handle [CVE-2019-5482](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-5482) and [CVE-2019-5481](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-5481)
