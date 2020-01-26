@@ -19,6 +19,10 @@ This module can perform operations on nested structures. A nested structure is a
 Python sequence, tuple (including `namedtuple`), or dict that can contain
 further sequences, tuples, and dicts.
 
+Structures are scalar, or tuple or dict or list of constructed scalars and/or
+other tuples/lists, or a scalar object. Note, numpy arrays are considered 
+scalars.
+
 attr.s decorated classes (http://www.attrs.org) are also supported, in the
 same way as `namedtuple`.
 
@@ -243,11 +247,8 @@ def is_nested(seq):
 def flatten(structure, expand_composites=False):
   """Returns a flat list from a given nested structure.
 
-  If nest is not a structure (which can be a scalar, or
-      tuple or dict or list of constructed scalars and/or other tuples/lists,
-      or a scalar object. Note, numpy arrays are considered scalars.), tuple 
-      (or a namedtuple), dict, or an attrs class, then returns a single-element 
-      list:
+  If nest is not a structure , tuple (or a namedtuple), dict, or an attrs class,
+  then returns a single-element list:
     [nest].
 
   In the case of dict instances, the sequence consists of the values, sorted by
@@ -263,9 +264,7 @@ def flatten(structure, expand_composites=False):
   running.
 
   Args:
-    structure: an arbitrarily nested structure which can be a scalar, or
-      tuple or dict or list of constructed scalars and/or other tuples/lists, or
-      a scalar object. Note, numpy arrays are considered scalars.
+    structure: an arbitrarily nested structure.
     expand_composites: If true, then composite tensors such as tf.SparseTensor
        and tf.RaggedTensor are expanded into their component tensors.
 
@@ -310,14 +309,8 @@ def assert_same_structure(nest1, nest2, check_types=True,
   ```
 
   Args:
-    nest1: an arbitrarily nested structure which can be a scalar, or
-      tuple or dict or list of constructed scalars and/or other 
-      tuples/lists, or a scalar object. Note, numpy arrays are considered
-      scalars.
-    nest2: an arbitrarily nested structure which can be a scalar, or
-      tuple or dict or list of constructed scalars and/or other 
-      tuples/lists, or a scalar object. Note, numpy arrays are considered
-      scalars.
+    nest1: an arbitrarily nested structure.
+    nest2: an arbitrarily nested structure.
     check_types: if `True` (default) types of sequences are checked as well,
         including the keys of dictionaries. If set to `False`, for example a
         list and a tuple of objects will look the same if they have the same
