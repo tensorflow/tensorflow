@@ -4539,7 +4539,6 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   dtype=float32)
 
   """
-  target.shape.assert_is_compatible_with(output.shape)
   if from_logits:
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
