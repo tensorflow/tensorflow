@@ -1,4 +1,4 @@
-# Release 1.15.1
+# Release 1.15.2
 
 ## Bug Fixes and Other Changes
 * Fixes a security vulnerability where converting a Python string to a `tf.float16` value produces a segmentation fault ([CVE-2020-5215](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-5215))
