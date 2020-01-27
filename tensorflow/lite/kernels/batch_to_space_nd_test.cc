@@ -132,6 +132,11 @@ TEST(BatchToSpaceNDOpTest, BatchOneConstTest) {
 }
 
 TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8EmptyOutput) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    // NNAPI doesn't currently support non-zero crop values.
+    return;
+  }
+
   BatchToSpaceNDOpConstModel m({4, 2, 2, 1}, {2, 2}, {0, 0, 2, 2},
                                TensorType_INT8);
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
@@ -173,6 +178,11 @@ TEST(BatchToSpaceNDOpTest, InvalidCropsDynamicTest) {
 }
 
 TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    // NNAPI doesn't currently support non-zero crop values.
+    return;
+  }
+
   BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1}, TensorType_INT8);
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
