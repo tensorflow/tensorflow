@@ -26,6 +26,18 @@ if platform.system() != "Windows":
   raise RuntimeError(
       "This module is expected to be loaded only on Windows platform.")
 
+
+class TrtPrecisionMode(object):
+  FP32 = "FP32"
+  FP16 = "FP16"
+  INT8 = "INT8"
+
+
+# Use a large enough number as the default max_workspace_size for TRT engines,
+# so it can produce reasonable performance results with the default.
+DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
+
+
 @tf_export("experimental.tensorrt.ConversionParams", v1=[])
 class TrtConversionParams(object):
   """ A class to encapsulate parameters that are used for TF-TRT conversion."""
