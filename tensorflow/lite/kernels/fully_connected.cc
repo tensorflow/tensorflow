@@ -116,7 +116,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
   auto* op_data = new OpData();
-  context->AddTensors(context, /*tensors_to_add=*/2,
+  context->AddTensors(context, /*tensors_to_add=*/3,
                       &op_data->scratch_tensor_index);
   return op_data;
 }
@@ -183,10 +183,12 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   // If we have to perform on-the-fly quantization (with quantized weights and
   // float inputs) first we need to quantize the inputs. Allocate a temporary
   // buffer to store the intermediate quantized values.
+  // Additionally, we allocate a temporary buffer to store the accumulated
+  // quantized values prior to multiplication by the scaling factor.
   if (input->type == kTfLiteFloat32 &&
       (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8)) {
     TfLiteIntArrayFree(node->temporaries);
-    node->temporaries = TfLiteIntArrayCreate(2);
+    node->temporaries = TfLiteIntArrayCreate(3);
     node->temporaries->data[0] = data->scratch_tensor_index;
 
     TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/0);
@@ -201,12 +203,27 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/1);
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
+
     int scaling_dims[1] = {batch_size};
     if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
       TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
       scaling_factors_size->data[0] = batch_size;
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
+    }
+
+    node->temporaries->data[2] = data->scratch_tensor_index + 2;
+    TfLiteTensor* accum_scratch = GetTemporary(context, node, /*index=*/2);
+    accum_scratch->type = kTfLiteInt32;
+    accum_scratch->allocation_type = kTfLiteArenaRw;
+    int accum_scratch_dims[2] = {num_units, batch_size};
+    if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2,
+                                   accum_scratch_dims)) {
+      TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
+      accum_size->data[0] = num_units;
+      accum_size->data[1] = batch_size;
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, accum_scratch, accum_size));
     }
   }
 
@@ -341,11 +358,19 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   }
 
   // Compute output += weight * quantized_input
+#ifdef TFLITE_WITH_RUY_GEMV
+  TfLiteTensor* accum_scratch = GetTemporary(context, node, /*index=*/2);
+  int32_t* scratch = GetTensorData<int32_t>(accum_scratch);
+  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+      filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
+      batch_size, scratch, GetTensorData<float>(output),
+      /*result_stride=*/1, CpuBackendContext::GetFromContext(context));
+#else
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
       batch_size, GetTensorData<float>(output),
       /*result_stride=*/1);
-
+#endif
   // Apply activation function to floats.
   tensor_utils::ApplyActivationToVector(
       GetTensorData<float>(output), batch_size * num_units, params->activation,
