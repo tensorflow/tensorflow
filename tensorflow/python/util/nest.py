@@ -16,12 +16,16 @@
 """## Functions for working with arbitrarily nested sequences of elements.
 
 This module can perform operations on nested structures. A nested structure is a
-Python sequence, tuple (including `namedtuple`), or dict that can contain
-further sequences, tuples, and dicts.
+Python collection that can contain further collections as well as other objects
+called atoms. Note that numpy arrays are considered atoms.
 
-Structures are atom, or tuple or dict or list of constructed atoms and/or
-other tuples/lists, or an atom object. Note, numpy arrays are considered 
-atoms.
+nest recognizes the following types of collections:
+  1.tuple
+  2.namedtuple
+  3.dict
+  4.orderedDict
+  5.MutableMapping
+  6.attr.s
 
 attr.s decorated classes (http://www.attrs.org) are also supported, in the
 same way as `namedtuple`.
