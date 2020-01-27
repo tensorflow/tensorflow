@@ -1121,9 +1121,12 @@ def _optimize_graph(meta_graph_def, signature_def):
 def _replace_input_placeholders_with_default_values(graph_def, signature_def):
   """Replace graphdef's `tf.placeholder` input ops with all-zero constants."""
   name_to_node_map = dict((n.name, n) for n in graph_def.node)
-  temp_graph = ops_lib.Graph()
+  processed_nodes = set([])
   for name, input_ in signature_def.inputs.items():
     tensor_name, _ = _parse_tensor_name(input_.name)
+    if tensor_name in processed_nodes:
+      continue
+    processed_nodes.add(tensor_name)
     if tensor_name not in name_to_node_map:
       raise RuntimeError(
           'Unable to find input signature tensor \'{}\' in optimized GraphDef. '
@@ -1142,9 +1145,17 @@ def _replace_input_placeholders_with_default_values(graph_def, signature_def):
           'Expected fully defined input shape for signature_def \'{}\', '
           'tensor name: \'{}\'; but shape is: {}.'
           .format(name, tensor_name, shape))
+    temp_graph = ops_lib.Graph()
     with temp_graph.as_default():
-      const = array_ops.zeros(shape, dtype=input_.dtype, name=tensor_name)
+      const = array_ops.zeros(
+          shape, dtype=input_.dtype, name=tensor_name)
     node.CopyFrom(const.op.node_def)
+    # Sometimes zeros() also creates additional nodes
+    for op in temp_graph.get_operations():
+      if op.name == const.op.name:  # We just inserted this one.
+        continue
+      graph_def.node.append(op.node_def)
+      name_to_node_map[op.node_def.name] = op.node_def
 
 
 def add_show_subparser(subparsers):
