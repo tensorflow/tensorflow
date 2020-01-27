@@ -648,14 +648,20 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
       if (may_steal_blocking_work) {
         // Each thread will first look for tasks from requests that belongs to
         // its sub thread pool.
-        t = FindTask(
+        int search_range_start =
             active_requests *
-                sub_thread_pool_start_request_percentage_[sub_thread_pool_id],
+            sub_thread_pool_start_request_percentage_[sub_thread_pool_id];
+        int search_range_end =
             active_requests *
-                sub_thread_pool_end_request_percentage_[sub_thread_pool_id],
-            thread_id, sub_thread_pool_id, kMaxBlockingInflight,
-            /*may_steal_blocking_work=*/true, *thread_work_sources,
-            &task_from_blocking_queue, &tws);
+            sub_thread_pool_end_request_percentage_[sub_thread_pool_id];
+        search_range_end =
+            std::min(active_requests,
+                     std::max(search_range_end, search_range_start + 1));
+
+        t = FindTask(search_range_start, search_range_end, thread_id,
+                     sub_thread_pool_id, kMaxBlockingInflight,
+                     /*may_steal_blocking_work=*/true, *thread_work_sources,
+                     &task_from_blocking_queue, &tws);
         if (!t.f) {
           // Search from all requests if the thread cannot find tasks from
           // requests that belong to its own sub thread pool.
