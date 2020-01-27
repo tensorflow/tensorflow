@@ -297,10 +297,20 @@ class ThreadWorkSource {
   void SetRank(int64 value) { rank_ = value; }
 
   void SetWaiter(uint64 version, Waiter* waiter, mutex* mutex) {
-    mutex_lock l(run_handler_waiter_mu_);
-    if (version_ > version) {
-      return;
+    {
+      tf_shared_lock lock(run_handler_waiter_mu_);
+      // Most of the request won't change sub pool for recomputation.
+      // Optimization for avoiding holding exclusive lock to reduce contention.
+      if (sub_thread_pool_waiter_ == waiter) {
+        return;
+      }
+      // If the current version is a newer version, no need to update.
+      if (version_ > version) {
+        return;
+      }
     }
+
+    mutex_lock l(run_handler_waiter_mu_);
     sub_thread_pool_waiter_ = waiter;
     sub_thread_pool_waiter_mu_ = mutex;
     version_ = version;
