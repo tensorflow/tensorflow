@@ -8,6 +8,17 @@ exports_files(["LICENSE.txt"])
 
 licenses(["notice"])
 
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+)
+
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 # Public flatc library to compile flatbuffer files at runtime.
