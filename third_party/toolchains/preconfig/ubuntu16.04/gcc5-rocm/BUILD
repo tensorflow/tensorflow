@@ -85,6 +85,7 @@ cc_toolchain_config(
         "/opt/rocm/llvm/lib/clang/8.0/include",
         "/opt/rocm/llvm/lib/clang/9.0.0/include",
         "/opt/rocm/llvm/lib/clang/10.0.0/include",
+        "/opt/rocm/llvm/lib/clang/11.0.0/include",
         "/opt/rocm/rocrand/include",
         "/opt/rocm/hiprand/include",
         "/opt/rocm/rocfft/include",
