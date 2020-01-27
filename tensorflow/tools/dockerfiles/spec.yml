@@ -63,7 +63,7 @@ slice_sets:
     py:
         - add_to_name: ""
           args:
-              - USE_PYTHON_3_NOT_2=
+              - USE_PYTHON_3_NOT_2=1
         - add_to_name: "-py3"
           args:
               - USE_PYTHON_3_NOT_2=1
