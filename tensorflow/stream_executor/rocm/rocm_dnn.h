@@ -33,6 +33,8 @@ class GpuExecutor;
 class MIOpenRnnDescriptor;
 class MIOpenRnnSequenceTensorDescriptor;
 class MIOpenRnnStateTensorDescriptor;
+class MIOpenCTCLossDescriptor;
+
 // Opaque and unique identifier for the MIOpen plugin.
 extern const PluginId kMIOpenPlugin;
 
@@ -636,6 +638,17 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   GpuExecutor* GetParentExecutor() { return parent_; }
 
+  port::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
+                         const dnn::RnnStateTensorDescriptor& probs_desc,
+                         const DeviceMemoryBase probs_data,
+                         absl::Span<const int> labels_data,
+                         absl::Span<const int> labels_lengths_data,
+                         absl::Span<const int> input_lengths_data,
+                         DeviceMemoryBase costs_data,
+                         const dnn::RnnStateTensorDescriptor& grads_desc,
+                         DeviceMemoryBase grads_data,
+                         DeviceMemory<uint8> scratch_memory) override;
+
  private:
   GpuExecutor* parent_;  // Parent executor object. Not owned.
 
@@ -782,6 +795,25 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::AlgorithmConfig& algorithm_config,
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory) override;
+
+  port::Status DoCtcLossImpl(
+      Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
+      const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
+      const MIOpenRnnStateTensorDescriptor& grads_desc,
+      DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
+      DeviceMemory<uint8> scratch_memory);
+
+  port::Status DoPrepareForCtcLoss(
+      Stream* stream, dnn::DataType element_type,
+      const dnn::RnnStateTensorDescriptor& probs_desc,
+      const dnn::RnnStateTensorDescriptor& grads_desc,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
+      ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8>* scratch_memory) override;
 
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
