@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 
 namespace mlir {
 namespace TFL {

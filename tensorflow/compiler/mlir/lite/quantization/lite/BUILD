@@ -12,6 +12,7 @@ package_group(
     includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/...",
+        "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/lite/...",
     ],
 )
@@ -38,6 +39,24 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "tfl_to_std",
+    srcs = [
+        "tfl_to_std.cc",
+    ],
+    hdrs = [
+        "tfl_to_std.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
     ],
 )
 
