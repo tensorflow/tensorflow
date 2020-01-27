@@ -67,6 +67,11 @@ void CreateXEvent(const CuptiTracerEvent& event, uint64 offset_ns,
                             GetStatTypeStr(StatType::kCorrelationId)),
                         event.correlation_id);
   }
+  if (!event.annotation.empty()) {
+    xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                            GetStatTypeStr(StatType::kKernelAnnotation)),
+                        event.annotation);
+  }
   if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
     xevent.AddStatValue(
         *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
@@ -107,11 +112,6 @@ void CreateXEvent(const CuptiTracerEvent& event, uint64 offset_ns,
 
   std::vector<Annotation> annotation_stack =
       ParseAnnotationStack(event.annotation);
-  for (int i = 0; i < annotation_stack.size(); ++i) {
-    xevent.AddStatValue(
-        *plane->GetOrCreateStatMetadata(absl::StrCat("level ", i)),
-        annotation_stack[i].name);
-  }
   // If multiple metadata have the same key name, show the values from the top
   // of the stack (innermost annotation). Concatenate the values from "hlo_op".
   absl::flat_hash_set<absl::string_view> key_set;

@@ -23,15 +23,6 @@ namespace tensorflow {
 namespace profiler {
 
 namespace {
-// Given a node_name in the format "op_name:op_type", returns the "op_type".
-// If the "op_type" is missing, returns the node_name.
-// This is done so all ops with the same type appear in the same color in trace
-// viewer.
-inline std::string EventName(absl::string_view node_name) {
-  std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
-  return string(parts.back());
-}
-
 Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   Device device;
   device.set_name(std::string(plane.Name()));
@@ -69,7 +60,9 @@ void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
         auto& args = *event->mutable_args();
         event->set_device_id(device_id);
         event->set_resource_id(resource_id);
-        event->set_name(EventName(xevent.Name()));
+        event->set_name(string(xevent.DisplayName().empty()
+                                   ? xevent.Name()
+                                   : xevent.DisplayName()));
         event->set_timestamp_ps((xevent.TimestampNs() - profile_start_time_ns) *
                                 EnvTime::kNanosToPicos);
         event->set_duration_ps(xevent.DurationNs() * EnvTime::kNanosToPicos);

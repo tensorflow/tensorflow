@@ -102,6 +102,7 @@ enum StatType {
   kCorrelationId,
   kMemcpyDetails,
   kMemallocDetails,
+  kKernelAnnotation,
   kKernelDetails,
   kStream,
   // Stats added when processing traces.
