@@ -335,6 +335,9 @@ class Interpreter {
   void UseNNAPI(bool enable);
 
   /// Set the number of threads available to the interpreter.
+  ///
+  /// NOTE: num_threads should be greater than -1.
+  /// User may use -1, to reset to default values.
   void SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
