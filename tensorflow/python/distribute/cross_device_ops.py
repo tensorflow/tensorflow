@@ -1118,11 +1118,18 @@ class CollectiveAllReduce(CrossDeviceOps):
     if self._communication == CollectiveCommunication.NCCL and batch_size == 1:
       communication_hint = CollectiveCommunication.AUTO.value
 
-    logging.log_first_n(
-        logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
-        "num_workers = %d, communication_hint = %s, num_packs = %d" % (
-            batch_size, self._num_workers, communication_hint,
-            num_actual_packs), 10)
+    if batch_size > 1:
+      logging.info(
+          "Collective batch_all_reduce: %d all-reduces, num_workers = %d, "
+          "communication_hint = %s, num_packs = %d" % (
+              batch_size, self._num_workers, communication_hint,
+              num_actual_packs))
+    else:
+      logging.log_first_n(
+          logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
+          "num_workers = %d, communication_hint = %s, num_packs = %d" % (
+              batch_size, self._num_workers, communication_hint,
+              num_actual_packs), 10)
 
     def batch_fn():
       """Wrapper function around batched all-reduce calls."""
