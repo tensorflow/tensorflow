@@ -567,7 +567,10 @@ cc_library(
 xla_test(
     name = "logdet_test",
     srcs = ["logdet_test.cc"],
-    tags = ["optonly"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":logdet",
         ":matrix",
