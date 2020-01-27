@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/flags.h"
-
 #include <mutex>  // NOLINT
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
@@ -249,11 +247,4 @@ void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
   std::call_once(flags_init, &AllocateAndParseFlags);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
 }
-
-static bool xla_is_enabled = false;
-
-void SetXlaIsEnabled() { xla_is_enabled = true; }
-
-bool IsXlaEnabled() { return xla_is_enabled; }
-
 }  // namespace tensorflow
