@@ -3,7 +3,10 @@ ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
   $(error "Requires make version 3.82 or later (current is $(MAKE_VERSION))")
 endif
 
+# root directory of tensorflow
+TENSORFLOW_ROOT := 
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
+
 
 # Pull in some convenience functions.
 include $(MAKEFILE_DIR)/helper_functions.inc
@@ -74,8 +77,10 @@ CXXFLAGS += -fno-rtti
 CCFLAGS := -DNDEBUG -g -DTF_LITE_STATIC_MEMORY
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
-TARGET_TOOLCHAIN_PREFIX :=
-CC_PREFIX :=
+
+# override these in the makefile.inc for specific compiler targets
+TARGET_TOOLCHAIN_PREFIX := 
+TARGET_TOOLCHAIN_ROOT := 
 
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
@@ -176,8 +181,8 @@ third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
 third_party/flatbuffers/LICENSE.txt
 
 MAKE_PROJECT_FILES := \
-  README_MAKE.md \
   Makefile \
+  README_MAKE.md \
   .vscode/tasks.json
 
 MBED_PROJECT_FILES := \
@@ -235,9 +240,9 @@ PRJDIR := $(GENDIR)prj/
 
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 
-CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
-CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
-AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
+CXX := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
+CC := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
+AR := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
 include $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
@@ -255,18 +260,19 @@ $(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)
 
 # For normal manually-created TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc $(THIRD_PARTY_TARGETS)
+	echo $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -fPIC -c $< -o $@
 
 # For normal manually-created TensorFlow C source files.
 $(OBJDIR)%.o: %.c $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CCFLAGS) $(INCLUDES) -fPIC  -c $< -o $@
 
 # For normal manually-created TensorFlow ASM source files.
 $(OBJDIR)%.o: %.S $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CCFLAGS) $(INCLUDES) -fPIC -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(MICROLITE_LIB_PATH)
@@ -295,7 +301,7 @@ $(BINDIR)%.test_target: $(BINDIR)%_test
 # snease: Add %.bin rule here since BINDIR is now defined
 # These are microcontroller-specific rules for converting the ELF output
 # of the linker into a binary image that can be loaded directly.
-OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+OBJCOPY := ${TARGET_TOOLCHAIN_ROOT}$(TARGET_TOOLCHAIN_PREFIX)objcopy
 $(BINDIR)%.bin: $(BINDIR)%
 	@mkdir -p $(dir $@)
 	$(OBJCOPY) $< $@ -O binary
