@@ -305,7 +305,7 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
 
   for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
     // Reset accumulator.
-    auto vacuum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
+    auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
     for (int j = 0; j < filter_spatial_size; ++j) {
       // Calculate index.
       const int64 index = i + j * padded_filter_inner_dim_size;
@@ -314,29 +314,29 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
       // Load input.
       const auto data_block = Eigen::internal::ploadu<Packet>(buffer + index);
       // Vector multiply-add.
-      vacuum = Eigen::internal::pmadd<Packet>(filter_block, data_block, vacuum);
+      vaccum = Eigen::internal::pmadd<Packet>(filter_block, data_block, vaccum);
     }
     if (depth_multiplier == 1) {
       // Write directly to the output.
-      Eigen::internal::pstoreu<T>(output + base_output_index + i, vacuum);
+      Eigen::internal::pstoreu<T>(output + base_output_index + i, vaccum);
     } else {
       // Buffer output for subsequent reduction step.
-      Eigen::internal::pstoreu<T>(out_buffer + i, vacuum);
+      Eigen::internal::pstoreu<T>(out_buffer + i, vaccum);
     }
   }
 
   if (output_scalar_size > 0) {
-    auto vacuum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
+    auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
     for (int j = 0; j < filter_spatial_size; ++j) {
       const int64 index =
           output_vectorized_size + j * padded_filter_inner_dim_size;
       const auto filter_block = Eigen::internal::ploadu<Packet>(filter + index);
       const auto data_block = Eigen::internal::ploadu<Packet>(buffer + index);
-      vacuum = Eigen::internal::pmadd<Packet>(filter_block, data_block, vacuum);
+      vaccum = Eigen::internal::pmadd<Packet>(filter_block, data_block, vaccum);
     }
     // Load accumulator into an array and loop through output.
     T out_buf[kPacketSize];
-    Eigen::internal::pstoreu<T>(out_buf, vacuum);
+    Eigen::internal::pstoreu<T>(out_buf, vaccum);
     if (depth_multiplier == 1) {
       // Write directly to the output.
       for (int j = 0; j < output_scalar_size; ++j) {
