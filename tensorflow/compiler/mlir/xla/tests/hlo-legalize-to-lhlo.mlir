@@ -11,6 +11,44 @@ func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   return
 }
 
+// CHECK-LABEL: func @func_op
+func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NEXT: %[[MAX_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  %0 = xla_hlo.max %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.max"(%arg0, %arg1, %[[MAX_RESULT]])
+  // CHECK-NEXT: "xla_lhlo.copy"(%[[MAX_RESULT]], %arg2)
+  // CHECK-NEXT: dealloc %[[MAX_RESULT]] : memref<4xf32>
+  return %0 : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @func_op_long
+func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NEXT: %[[MUL_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK-NEXT: %[[SUB_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK-NEXT: %[[MIN_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK-NEXT: %[[ADD_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK-NEXT: %[[MAX_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  %1 = xla_hlo.max %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.max"(%arg0, %arg1, %[[MAX_RESULT]])
+  %2 = xla_hlo.add %arg0, %1 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.add"(%arg0, %[[MAX_RESULT]], %[[ADD_RESULT]])
+  %3 = xla_hlo.min %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.min"(%arg0, %arg1, %[[MIN_RESULT]])
+  %4 = xla_hlo.sub %arg1, %3 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.sub"(%arg1, %[[MIN_RESULT]], %[[SUB_RESULT]])
+  %5 = xla_hlo.mul %2, %4 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.mul"(%[[ADD_RESULT]], %[[SUB_RESULT]], %[[MUL_RESULT]])
+  // CHECK-NEXT: dealloc %[[MAX_RESULT]] : memref<4xf32>
+  // CHECK-NEXT: dealloc %[[ADD_RESULT]] : memref<4xf32>
+  // CHECK-NEXT: dealloc %[[MIN_RESULT]] : memref<4xf32>
+  // CHECK-NEXT: dealloc %[[SUB_RESULT]] : memref<4xf32>
+  // CHECK-NEXT: "xla_lhlo.copy"(%[[MUL_RESULT]], %arg2)
+  // CHECK-NEXT: dealloc %[[MUL_RESULT]] : memref<4xf32>
+  return %5 : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
+}
+
 // CHECK-LABEL: func @fusion
 func @fusion(%multiplier: memref<2x2xf32>, %summand_1: memref<2x2xf32>,
              %summand_2: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -120,7 +158,7 @@ func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
   %tensor_result = "xla_hlo.convert"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK-NEXT: return
+  // CHECK: xla_lhlo.terminator
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
