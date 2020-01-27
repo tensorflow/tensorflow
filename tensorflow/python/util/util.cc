@@ -213,6 +213,14 @@ int IsInstanceOfRegisteredType(PyObject* obj, const char* type_name) {
 // Returns 1 if `o` is considered a mapping for the purposes of Flatten().
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
+int IsMappingHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "Mapping");
+  });
+  if (PyDict_Check(o)) return true;
+  return check_cache->CachedLookup(o);
+}
+
 int IsNestCompatibleMappingHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     return IsInstanceOfRegisteredType(to_check, "MutableMapping");
