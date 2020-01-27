@@ -244,3 +244,38 @@ func @decompose_resource_apply_adam_nesterov(%arg0: tensor<f32>, %arg1: tensor<f
 
   return
 }
+
+// -----
+
+// Tests that composite tf.ResourceGather operation is decomposed.
+
+// CHECK-LABEL: @decompose_resource_gather_op
+// CHECK-SAME: [[INDEX:%.+]]: tensor<?xi32>
+func @decompose_resource_gather_op(%indices : tensor<?xi32>) -> tensor<*xi32> {
+  // CHECK: [[ZERO:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+
+  // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+  %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[READVAR:%.+]] = "tf.ReadVariableOp"([[VAR]])
+  // CHECK: [[GATHER:%.+]] = "tf.GatherV2"([[READVAR]], [[INDEX]], [[ZERO]]) {batch_dims = 0 : i64} : (tensor<*xi32>, tensor<?xi32>, tensor<i64>) -> tensor<*xi32>
+  // CHECK: return [[GATHER]]
+  %0 = "tf.ResourceGather"(%resource, %indices) : (tensor<*x!tf.resource>, tensor<?xi32>) -> (tensor<*xi32>)
+
+  return %0: tensor<*xi32>
+}
+
+
+// -----
+
+// Tests that resource subtype is correctly propagated when decomposing tf.ResourceGather.
+
+// CHECK-LABEL: @decompose_resource_gather_op
+func @decompose_resource_gather_op(%indices : tensor<5xi32>) -> tensor<2x5x16xi32> {
+  %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<2x8x16xi32>>>
+
+  // CHECK: "tf.GatherV2"({{.+}}, {{.+}}, {{.+}}) {batch_dims = 1 : i64} : (tensor<2x8x16xi32>, tensor<5xi32>, tensor<i64>) -> tensor<2x5x16xi32>
+  %0 = "tf.ResourceGather"(%resource, %indices) {batch_dims = 1} : (tensor<*x!tf.resource<tensor<2x8x16xi32>>>, tensor<5xi32>) -> (tensor<2x5x16xi32>)
+
+  return %0: tensor<2x5x16xi32>
+}

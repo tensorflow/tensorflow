@@ -4862,6 +4862,43 @@ var += accum
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_ResourceGatherOp : TF_Op<"ResourceGather", []> {
+  let summary = [{
+Gather slices from the variable pointed to by `resource` according to `indices`.
+  }];
+
+  let description = [{
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
+
+```python
+    # Scalar indices
+    output[:, ..., :] = params[indices, :, ... :]
+
+    # Vector indices
+    output[i, :, ..., :] = params[indices[i], :, ... :]
+
+    # Higher rank indices
+    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+```
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_I32OrI64Tensor:$indices,
+
+    DefaultValuedAttr<I64Attr, "0">:$batch_dims,
+    DefaultValuedAttr<BoolAttr, "true">:$validate_indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
   let summary = "Reverses variable length slices.";
 
