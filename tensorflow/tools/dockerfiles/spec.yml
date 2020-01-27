@@ -75,9 +75,6 @@ slice_sets:
         - add_to_name: ""
           args:
               - USE_PYTHON_3_NOT_2=
-        - add_to_name: "-py2"
-          args:
-              - USE_PYTHON_3_NOT_2=
         - add_to_name: "-py3"
           args:
               - USE_PYTHON_3_NOT_2=1
