@@ -162,11 +162,13 @@ def tfvariable_readonly(_):
   array_ops.identity(new_value, name='result')
 
 
+# TODO(b/147908587): Change x and the two constants back to have a scalar shape
+#                    when the bug is fixed.
 def tfvariable(_):
-  x = variables.Variable(1000.0, name='x')
+  x = variables.Variable([1000.0], name='x', shape=[1])
   old_x = x.value()
   with ops.control_dependencies([old_x]):
-    new_x = x.assign_add(42.0)
+    new_x = x.assign_add([42.0])
   array_ops.stack([old_x, new_x], name='result')
 
 

@@ -451,14 +451,12 @@ tf_py_test(
 
 tf_py_test(
     name = "wrappers_test",
-    size = "large",
+    size = "medium",
     srcs = ["wrappers_test.py"],
     python_version = "PY3",
-    shard_count = 6,
+    shard_count = 12,
     tags = [
-        "no_oss",  # http://b/148111329
         "noasan",  # http://b/78599823
-        "notap",  # http://b/148111329
         "notsan",
     ],
     deps = [

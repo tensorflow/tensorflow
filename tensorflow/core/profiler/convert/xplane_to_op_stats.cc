@@ -19,9 +19,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -29,7 +29,7 @@ namespace {
 
 DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap;
-  XPlaneVisitor plane(&device_plane);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_plane);
   if (auto clock_rate_khz = plane.GetStats(kDevCapClockRateKHz)) {
     cap.set_clock_rate_in_ghz(clock_rate_khz->int64_value() / 1000000.0);
   }
@@ -63,6 +63,14 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   return result;
 }
 
+void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
+  // Currently, we only support profiling one host and one program.
+  env->set_host_count(1);
+  env->set_task_count(1);
+  env->set_device_type(accelerator_count > 0 ? "GPU" : "CPU");
+  env->set_device_core_count(accelerator_count);
+}
+
 }  // namespace
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
@@ -75,8 +83,9 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
   // Device.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
-  for (const XPlane* device_trace :
-       FindPlanesWithPrefix(space, kGpuPlanePrefix)) {
+  const auto& gpu_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  SetRunEnvironment(gpu_planes.size(), op_stats.mutable_run_environment());
+  for (const XPlane* device_trace : gpu_planes) {
     if (!op_stats.has_perf_env()) {
       *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
     }

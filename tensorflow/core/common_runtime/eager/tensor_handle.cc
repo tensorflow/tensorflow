@@ -95,7 +95,8 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
 Status TensorHandle::CreateLocalHandle(const class Tensor& t,
                                        TensorHandle** h) {
   // TODO(b/136608821): Move away from nullptr
-  return CreateLocalHandle(t, nullptr, nullptr, nullptr, h);
+  return CreateLocalHandle(t, /*d=*/nullptr, /*op_device=*/nullptr,
+                           /*ctx=*/nullptr, h);
 }
 
 Status TensorHandle::CreateLocalHandle(const class Tensor& t, Device* d,

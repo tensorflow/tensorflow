@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -181,7 +180,7 @@ OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
       CollectTfOpsFromHostThreadsXPlane(host_trace);
   OpMetricsDb result;
   OpMetricsDbCombiner combiner(&result);
-  XPlaneVisitor plane(&host_trace);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&host_trace);
   plane.ForEachLine([&tf_ops, &combiner](const XLineVisitor& line) {
     ConsumeTfMetricsDbData(
         ConvertHostThreadsXLineToTfMetricsDbData(line, tf_ops), &combiner);
@@ -199,7 +198,7 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
   int64 first_op_offset_ps = kint64max;
   int64 last_op_offset_ps = 0;
 
-  XPlaneVisitor plane(&device_trace);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) return;
     line.ForEachEvent([&](const XEventVisitor& event) {

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/gl/kernels/upsampling_bilinear.h"
-
-#include <vector>
+#include "tensorflow/lite/delegates/gpu/gl/kernels/resize.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,7 +28,7 @@ namespace gpu {
 namespace gl {
 namespace {
 
-TEST(UpsamplingBilinearTest, 1x1x2To2x2x2) {
+TEST(ResizeTest, Bilinear1x1x2To2x2x2) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -41,21 +39,21 @@ TEST(UpsamplingBilinearTest, 1x1x2To2x2x2) {
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 2);
 
-  Upsample2DAttributes attr;
+  Resize2DAttributes attr;
   attr.align_corners = true;
   attr.new_shape = HW(2, 2);
-  attr.type = UpsamplingType::BILINEAR;
+  attr.type = SamplingType::BILINEAR;
 
-  SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input},
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0, 2.0}));
-  ASSERT_OK(model.Invoke(*NewUpsamplingNodeShader()));
+  ASSERT_OK(model.Invoke(*NewResizeNodeShader()));
   EXPECT_THAT(
       model.GetOutput(0),
       Pointwise(FloatNear(1e-6), {1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0}));
 }
 
-TEST(UpsamplingBilinearTest, 1x2x1To1x4x1) {
+TEST(ResizeTest, Bilinear1x2x1To1x4x1) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -66,20 +64,20 @@ TEST(UpsamplingBilinearTest, 1x2x1To1x4x1) {
   output.ref = 1;
   output.shape = BHWC(1, 1, 4, 1);
 
-  Upsample2DAttributes attr;
+  Resize2DAttributes attr;
   attr.align_corners = false;
   attr.new_shape = HW(1, 4);
-  attr.type = UpsamplingType::BILINEAR;
+  attr.type = SamplingType::BILINEAR;
 
-  SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input},
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0, 4.0}));
-  ASSERT_OK(model.Invoke(*NewUpsamplingNodeShader()));
+  ASSERT_OK(model.Invoke(*NewResizeNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1.0, 2.5, 4.0, 4.0}));
 }
 
-TEST(UpsamplingBilinearTest, 2x2x1To4x4x1) {
+TEST(ResizeTest, Bilinear2x2x1To4x4x1) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -90,19 +88,44 @@ TEST(UpsamplingBilinearTest, 2x2x1To4x4x1) {
   output.ref = 1;
   output.shape = BHWC(1, 4, 4, 1);
 
-  Upsample2DAttributes attr;
+  Resize2DAttributes attr;
   attr.align_corners = false;
   attr.new_shape = HW(4, 4);
-  attr.type = UpsamplingType::BILINEAR;
+  attr.type = SamplingType::BILINEAR;
 
-  SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input},
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0, 4.0, 6.0, 8.0}));
-  ASSERT_OK(model.Invoke(*NewUpsamplingNodeShader()));
+  ASSERT_OK(model.Invoke(*NewResizeNodeShader()));
   EXPECT_THAT(
       model.GetOutput(0),
       Pointwise(FloatNear(1e-6), {1.0, 2.5, 4.0, 4.0, 3.5, 4.75, 6.0, 6.0, 6.0,
                                   7.0, 8.0, 8.0, 6.0, 7.0, 8.0, 8.0}));
+}
+
+TEST(ResizeTest, Nearest1x2x1To2x4x1) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 4, 1);
+
+  Resize2DAttributes attr;
+  attr.align_corners = false;
+  attr.new_shape = HW(2, 4);
+  attr.type = SamplingType::NEAREST;
+
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input},
+                      {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {1.0, 2.0}));
+  ASSERT_OK(model.Invoke(*NewResizeNodeShader()));
+  EXPECT_THAT(
+      model.GetOutput(0),
+      Pointwise(FloatNear(1e-6), {1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0}));
 }
 
 }  // namespace

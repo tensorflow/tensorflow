@@ -26,6 +26,17 @@ cc_library(
 )
 
 cc_library(
+    name = "timed",
+    hdrs = [
+        "timed.h",
+    ],
+    deps = [
+        "//tensorflow/core/platform:env_time",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
     name = "collected_metrics",
     hdrs = [
         "collected_metrics.h",
@@ -210,6 +221,7 @@ filegroup(
         "mobile_gauge.h",
         "mobile_sampler.h",
         "sampler.h",
+        "timed.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -225,6 +237,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "timed.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

@@ -1,6 +1,7 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 func @main() {
+  tf_executor.graph {
 // CHECK:      node {
 // CHECK-NEXT:   name: "predicate"
 // CHECK-NEXT:   op: "Const"
@@ -22,7 +23,7 @@ func @main() {
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
 // CHECK:      }
-  %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<i32>} : () -> (tensor<i32>, !_tf.control) loc("predicate")
+    %0:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<i32>} : () -> tensor<i32> loc("predicate")
 
 // CHECK:      node {
 // CHECK-NEXT:   name: "Case"
@@ -42,18 +43,26 @@ func @main() {
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
 // CHECK:      }
-  %1:2 = "_tf.Case"(%0#0) {Tin = [], Tout = ["tfdtype$DT_FLOAT"], branches = [@foo, @bar], device = "", output_shapes = []} : (tensor<i32>) -> (tensor<*xf32>, !_tf.control) loc("Case")
+    %1:2 = tf_executor.island wraps "tf.Case"(%0#0) {Tin = [], Tout = ["tfdtype$DT_FLOAT"], branches = [@foo, @bar], device = "", output_shapes = []} : (tensor<i32>) -> tensor<*xf32> loc("Case")
+    tf_executor.fetch
+  }
   return
 }
 
 // CHECK-DAG: name: "foo"
 func @foo() -> tensor<10xf32> {
-  %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<1.000000e+00> : tensor<10xf32>} : () -> (tensor<10xf32>, !_tf.control) loc("const_1")
-  return %0#0 : tensor<10xf32>
+  %0 = tf_executor.graph {
+    %1:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<1.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32> loc("const_1")
+    tf_executor.fetch %1#0 : tensor<10xf32>
+  }
+  return %0 : tensor<10xf32>
 }
 
 // CHECK-DAG: name: "bar"
 func @bar() -> tensor<10xf32> {
-  %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<2.000000e+00> : tensor<10xf32>} : () -> (tensor<10xf32>, !_tf.control) loc("const_2")
-  return %0#0 : tensor<10xf32>
+  %0 = tf_executor.graph {
+    %1:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<2.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32> loc("const_2")
+    tf_executor.fetch %1#0 : tensor<10xf32>
+  }
+  return %0 : tensor<10xf32>
 }

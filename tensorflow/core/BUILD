@@ -1392,6 +1392,7 @@ cc_library(
         "notap",
     ],
     visibility = ["//visibility:public"],
+    deps = tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
 
@@ -1408,6 +1409,7 @@ cc_library(
         "notap",
     ],
     visibility = ["//visibility:public"],
+    deps = tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
 
@@ -1895,6 +1897,7 @@ cc_library(
         "//tensorflow/core/lib/monitoring:mobile_sampler",
         "//tensorflow/core/lib/monitoring:percentile_sampler",
         "//tensorflow/core/lib/monitoring:sampler",
+        "//tensorflow/core/lib/monitoring:timed",
         "//tensorflow/core/lib/random:exact_uniform_int",
         "//tensorflow/core/lib/random:philox",
         "//tensorflow/core/lib/random:philox_random",

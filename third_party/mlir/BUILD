@@ -2475,6 +2475,16 @@ cc_library(
     alwayslink = 1,
 )
 
+gentbl(
+    name = "tpu_intrinsics_patterns_target",
+    strip_include_prefix = "include",
+    tbl_outs = [("-gen-llvmir-intrinsics -dialect-opclass-base LLVM_TpuOp -llvmir-intrinsics-filter int_tpu", "include/mlir/IR/llvm_tpu_ops_gen.td.inc")],
+    tblgen = ":mlir-tblgen",
+    td_file = "//third_party/llvm/llvm-project/llvm:include/llvm/IR/Intrinsics.td",
+    td_includes = ["third_party/llvm/llvm-project/llvm/include/"],
+    td_srcs = ["//third_party/llvm/llvm-project/llvm:common_target_td_sources"],
+)
+
 # To reference all tablegen files here when checking for updates to them.
 filegroup(
     name = "TdFiles",

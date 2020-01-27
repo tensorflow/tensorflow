@@ -15,6 +15,7 @@ py_library(
     srcs = [
         "__init__.py",
         "hdf5_format.py",
+        "model_architectures.py",
         "model_config.py",
         "save.py",
         "saved_model/base_serialization.py",
@@ -46,6 +47,18 @@ py_library(
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model/model_utils",
         "//tensorflow/python/training/tracking",
+    ],
+)
+
+tf_py_test(
+    name = "save_model_architecture_test",
+    srcs = ["save_model_architecture_test.py"],
+    python_version = "PY3",
+    shard_count = 16,
+    deps = [
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

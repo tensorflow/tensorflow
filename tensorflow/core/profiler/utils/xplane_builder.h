@@ -126,6 +126,7 @@ class XLineBuilder {
  public:
   explicit XLineBuilder(XLine* line) : line_(line) {}
 
+  int64 Id() { return line_->id(); }
   void SetId(int64 id) { line_->set_id(id); }
 
   void SetName(absl::string_view name) { line_->set_name(string(name)); }
@@ -156,12 +157,20 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
  public:
   explicit XPlaneBuilder(XPlane* plane);
 
+  int64 Id() { return plane_->id(); }
   void SetId(int64 id) { plane_->set_id(id); }
 
   void SetName(absl::string_view name) { plane_->set_name(string(name)); }
 
   void ReserveLines(size_t num_lines) {
     plane_->mutable_lines()->Reserve(num_lines);
+  }
+
+  template <typename ForEachLineFunc>
+  void ForEachLine(ForEachLineFunc&& for_each_line) const {
+    for (XLine& line : *plane_->mutable_lines()) {
+      for_each_line(XLineBuilder(&line));
+    }
   }
 
   XLineBuilder GetOrCreateLine(int64 line_id);

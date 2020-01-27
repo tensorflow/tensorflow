@@ -1028,7 +1028,7 @@ tf_cc_tests(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "op_gen_lib.h",
         "rendezvous.h",

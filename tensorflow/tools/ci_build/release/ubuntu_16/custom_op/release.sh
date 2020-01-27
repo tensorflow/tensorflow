@@ -21,8 +21,6 @@ if [[ -z "${TF_VERSION}" ]]; then
   exit
 fi
 
-UBUNTU16_CPU_IMAGE="tensorflow/tensorflow:custom-op-ubuntu16"
-UBUNTU16_GPU_IMAGE="tensorflow/tensorflow:custom-op-gpu-ubuntu16"
 VERSIONED_UBUNTU16_CPU_IMAGE="tensorflow/tensorflow:${TF_VERSION}-custom-op-ubuntu16"
 VERSIONED_UBUNTU16_GPU_IMAGE="tensorflow/tensorflow:${TF_VERSION}-custom-op-gpu-ubuntu16"
 
@@ -37,11 +35,18 @@ docker login -u "${TF_DOCKER_USERNAME}" -p "${TF_DOCKER_PASSWORD}"
 docker push "${VERSIONED_UBUNTU16_CPU_IMAGE}"
 docker push "${VERSIONED_UBUNTU16_GPU_IMAGE}"
 
-# Tag and push the default images
-docker tag "${VERSIONED_UBUNTU16_CPU_IMAGE}" "${UBUNTU16_CPU_IMAGE}"
-docker push "${UBUNTU16_CPU_IMAGE}"
+# Tag and push the default images for official TF releases
+if [[ ${TF_VERSION} == *"rc"* ]]; then
+  echo "Do not update default images as ${TF_VERSION} is a release candidate."
+else
+  UBUNTU16_CPU_IMAGE="tensorflow/tensorflow:custom-op-ubuntu16"
+  UBUNTU16_GPU_IMAGE="tensorflow/tensorflow:custom-op-gpu-ubuntu16"
 
-docker tag "${VERSIONED_UBUNTU16_GPU_IMAGE}" "${UBUNTU16_GPU_IMAGE}"
-docker push "${UBUNTU16_GPU_IMAGE}"
+  docker tag "${VERSIONED_UBUNTU16_CPU_IMAGE}" "${UBUNTU16_CPU_IMAGE}"
+  docker push "${UBUNTU16_CPU_IMAGE}"
+
+  docker tag "${VERSIONED_UBUNTU16_GPU_IMAGE}" "${UBUNTU16_GPU_IMAGE}"
+  docker push "${UBUNTU16_GPU_IMAGE}"
+fi
 
 docker logout#!/bin/bash

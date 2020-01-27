@@ -18,12 +18,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       // CHECK:      name: "ParseExample/ParseExampleV2"
       // CHECK-NEXT: op: "ParseExampleV2"
       // CHECK-NEXT: input: "input0"
-      // CHECK-NEXT: input: "_tf.Const3"
-      // CHECK-NEXT: input: "_tf.Const5"
-      // CHECK-NEXT: input: "_tf.Const2"
-      // CHECK-NEXT: input: "_tf.Const4"
-      // CHECK-NEXT: input: "_tf.Const"
-      // CHECK-NEXT: input: "_tf.Const1"
+      // CHECK-NEXT: input: "tf.Const3"
+      // CHECK-NEXT: input: "tf.Const5"
+      // CHECK-NEXT: input: "tf.Const2"
+      // CHECK-NEXT: input: "tf.Const4"
+      // CHECK-NEXT: input: "tf.Const"
+      // CHECK-NEXT: input: "tf.Const1"
       // CHECK-NEXT: attr {
       // CHECK-NEXT:   key: "Tdense"
       // CHECK-NEXT:     value {

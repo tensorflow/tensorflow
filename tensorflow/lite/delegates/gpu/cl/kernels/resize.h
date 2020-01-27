@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_UPSAMPLE_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_UPSAMPLE_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_RESIZE_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_RESIZE_H_
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -25,7 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Upsample : public GPUOperation {
+class Resize : public GPUOperation {
  public:
   Status AddToQueue(CLCommandQueue* queue) override;
   Status Tune(const TuningParameters& params) override;
@@ -33,30 +33,30 @@ class Upsample : public GPUOperation {
   Status Compile(const CreationContext& creation_context) override;
 
   // Move only
-  Upsample(Upsample&& operation);
-  Upsample& operator=(Upsample&& operation);
-  Upsample(const Upsample&) = delete;
-  Upsample& operator=(const Upsample&) = delete;
+  Resize(Resize&& operation);
+  Resize& operator=(Resize&& operation);
+  Resize(const Resize&) = delete;
+  Resize& operator=(const Resize&) = delete;
 
-  friend Upsample CreateUpsample(const OperationDef& definition,
-                                 const Upsample2DAttributes& attr);
+  friend Resize CreateResize(const OperationDef& definition,
+                             const Resize2DAttributes& attr);
 
  private:
-  Upsample(const OperationDef& definition, const Upsample2DAttributes& attr)
+  Resize(const OperationDef& definition, const Resize2DAttributes& attr)
       : GPUOperation(definition), attr_(attr) {}
 
   Status BindArguments();
   int3 GetGridSize() const;
 
-  Upsample2DAttributes attr_;
+  Resize2DAttributes attr_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
 };
 
-Upsample CreateUpsample(const OperationDef& definition,
-                        const Upsample2DAttributes& attr);
+Resize CreateResize(const OperationDef& definition,
+                    const Resize2DAttributes& attr);
 
-class Upsample3D : public GPUOperation {
+class Resize3D : public GPUOperation {
  public:
   Status AddToQueue(CLCommandQueue* queue) override;
   Status Tune(const TuningParameters& params) override;
@@ -64,31 +64,31 @@ class Upsample3D : public GPUOperation {
   Status Compile(const CreationContext& creation_context) override;
 
   // Move only
-  Upsample3D(Upsample3D&& operation);
-  Upsample3D& operator=(Upsample3D&& operation);
-  Upsample3D(const Upsample3D&) = delete;
-  Upsample3D& operator=(const Upsample3D&) = delete;
+  Resize3D(Resize3D&& operation);
+  Resize3D& operator=(Resize3D&& operation);
+  Resize3D(const Resize3D&) = delete;
+  Resize3D& operator=(const Resize3D&) = delete;
 
-  friend Upsample3D CreateUpsample3D(const OperationDef& definition,
-                                     const Upsample3DAttributes& attr);
+  friend Resize3D CreateResize3D(const OperationDef& definition,
+                                 const Resize3DAttributes& attr);
 
  private:
-  Upsample3D(const OperationDef& definition, const Upsample3DAttributes& attr)
+  Resize3D(const OperationDef& definition, const Resize3DAttributes& attr)
       : GPUOperation(definition), attr_(attr) {}
 
   Status BindArguments();
   int3 GetGridSize() const;
 
-  Upsample3DAttributes attr_;
+  Resize3DAttributes attr_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
 };
 
-Upsample3D CreateUpsample3D(const OperationDef& definition,
-                            const Upsample3DAttributes& attr);
+Resize3D CreateResize3D(const OperationDef& definition,
+                        const Resize3DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_UPSAMPLE_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_RESIZE_H_

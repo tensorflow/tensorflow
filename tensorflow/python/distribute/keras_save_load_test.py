@@ -66,6 +66,7 @@ class KerasSaveLoadTest(test_base.TestSavedModelBase):
                                           distribution_for_restoring,
                                           save_in_scope,
                                           experimental_run_tf_function):
+    self.skipTest('TODO: b/148245425')
     self.run_test_save_strategy_restore_strategy(model_and_input,
                                                  distribution_for_saving,
                                                  distribution_for_restoring,

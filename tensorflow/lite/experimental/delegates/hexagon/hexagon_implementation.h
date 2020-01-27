@@ -126,6 +126,8 @@ struct HexagonNN {
   // Otherwise.
   hexagon_nn_is_device_supported_fn* hexagon_nn_is_device_supported;
 
+  hexagon_nn_version_fn* hexagon_nn_version = nullptr;
+
   bool interface_loaded = false;
 };
 

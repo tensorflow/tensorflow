@@ -54,7 +54,7 @@ filegroup(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "c_api_internal.h",
         "tf_status_helper.h",

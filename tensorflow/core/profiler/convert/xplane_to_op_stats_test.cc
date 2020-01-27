@@ -58,6 +58,22 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
   EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
 }
 
+TEST(ConvertXPlaneToOpStats, RunEnvironment) {
+  XSpace space;
+  XPlaneBuilder device_plane1(space.add_planes());
+  device_plane1.SetName(absl::StrCat(kGpuPlanePrefix, ":0"));
+  XPlaneBuilder device_plane2(space.add_planes());
+  device_plane2.SetName(absl::StrCat(kGpuPlanePrefix, ":1"));
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space);
+  const RunEnvironment& run_env = op_stats.run_environment();
+
+  EXPECT_EQ("GPU", run_env.device_type());
+  EXPECT_EQ(1, run_env.host_count());
+  EXPECT_EQ(1, run_env.task_count());
+  EXPECT_EQ(2, run_env.device_core_count());
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

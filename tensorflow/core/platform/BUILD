@@ -1130,6 +1130,7 @@ filegroup(
         "dynamic_annotations.h",
         "env.h",
         "error.h",
+        "errors.h",
         "file_statistics.h",
         "file_system.h",
         "file_system_helper.h",

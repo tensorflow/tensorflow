@@ -1612,11 +1612,7 @@ def moving_average_update(x, value, momentum):
 
 @keras_export('keras.backend.dot')
 def dot(x, y):
-  """Multiplies 2 tensors (and/or variables) and returns a *tensor*.
-
-  When attempting to multiply a nD tensor
-  with a nD tensor, it reproduces the Theano behavior.
-  (e.g. `(2, 3) * (4, 3, 5) -> (2, 4, 5)`)
+  """Multiplies 2 tensors (and/or variables) and returns a tensor.
 
   Arguments:
       x: Tensor or variable.

@@ -482,6 +482,10 @@ TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
   for (int i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
     for (auto tensor_idx : op->inputs) {
+      // Skip optional tensors.
+      if (tensor_idx == kTfLiteOptionalTensor) {
+        continue;
+      }
       TensorT* tensor = subgraph->tensors[tensor_idx].get();
       BufferT* buffer = model->buffers[tensor->buffer].get();
       if (buffer == nullptr) {

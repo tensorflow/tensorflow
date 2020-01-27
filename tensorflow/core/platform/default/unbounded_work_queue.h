@@ -36,7 +36,8 @@ namespace tensorflow {
 // fragmentation that can result from excessive thread creation.
 class UnboundedWorkQueue {
  public:
-  UnboundedWorkQueue(Env* env, const string& thread_name);
+  UnboundedWorkQueue(Env* env, const string& thread_name,
+                     const ThreadOptions& thread_options = {});
   ~UnboundedWorkQueue();
 
   using WorkFunction = std::function<void()>;
@@ -51,6 +52,7 @@ class UnboundedWorkQueue {
 
   Env* const env_;  // Not owned.
   const string thread_name_;
+  const ThreadOptions thread_options_;
   mutex work_queue_mu_;
   condition_variable work_queue_cv_ GUARDED_BY(work_queue_mu_);
   size_t num_idle_threads_ GUARDED_BY(work_queue_mu_) = 0;

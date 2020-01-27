@@ -213,6 +213,8 @@ def convert_kernel(kernel):
 
   Also works reciprocally, since the transformation is its own inverse.
 
+  This is used for converting legacy Theano-saved model files.
+
   Arguments:
       kernel: Numpy array (3D, 4D or 5D).
 

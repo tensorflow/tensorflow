@@ -57,6 +57,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":jit_compilation_passes",
+        ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -70,6 +71,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_or_rocm([
         ":jit_compilation_passes",
+        ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
@@ -250,11 +252,23 @@ cc_library(
     }),
 )
 
-# Internal targets below this point.
-
 cc_library(
     name = "flags",
     srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla:parse_flags_from_env",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Header-only version of "flags" library, for linking from the shared object
+# without ODR violations.
+cc_library(
+    name = "flags_headers_only",
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
@@ -275,6 +289,8 @@ cc_library(
     ],
     visibility = [":friends"],
 )
+
+# Internal targets below this point.
 
 cc_library(
     name = "xla_launch_util",
@@ -397,6 +413,7 @@ cc_library(
         "xla_kernel_creator.h",
     ],
     deps = [
+        ":flags",
         ":jit_compilation_passes",
         ":xla_kernel_creator_util",
         "//tensorflow/core:core_cpu_internal",

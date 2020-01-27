@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_OPENCL_WRAPPER_H_
 
 #include <CL/cl.h>
+#include <CL/cl_ext.h>
 #include <CL/cl_gl.h>
 #include <CL/cl_platform.h>
 #include "tensorflow/lite/delegates/gpu/common/status.h"

@@ -1874,8 +1874,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
-                return strings::StrCat(op_kernel->name_view(), ":",
-                                       op_kernel->type_string_view());
+                return op_kernel->TraceString(
+                    &state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1892,8 +1892,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
                                        op_kernel->name_view());
           profiler::AnnotatedTraceMe activity(
               [&] {
-                return strings::StrCat(op_kernel->name_view(), ":",
-                                       op_kernel->type_string_view());
+                return op_kernel->TraceString(
+                    &ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->Compute(op_kernel, &ctx);

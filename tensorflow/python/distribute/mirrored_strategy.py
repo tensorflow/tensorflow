@@ -754,7 +754,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # When a tf.function is wrapped to trigger _call_for_each_replica (see
       # the other branch above), AutoGraph stops conversion at
       # _call_for_each_replica itself (TF library functions are whitelisted).
-      # This makes suresure that the Python function that originally passed to
+      # This makes sure that the Python function that originally passed to
       # the tf.function is still converted.
       fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
 
