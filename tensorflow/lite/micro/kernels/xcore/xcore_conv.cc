@@ -66,7 +66,7 @@ namespace conv {
     void* Init_SIDO(TfLiteContext* context, const char* buffer, size_t length) 
     {
         auto* user_data = new UserData();
-        user_data->params.sido = new nn_conv2d_sido_params_t;
+        user_data->params.sido = new nn_conv2d_sido_params_t();
 
         if (buffer)
             parse_options(buffer, length, user_data);
@@ -93,7 +93,7 @@ namespace conv {
 
         auto* user_data = reinterpret_cast<UserData*>(node->user_data);
 
-        if (user_data->params.sido)
+        if (user_data->params.sido->blocks)
         {
             // need to deinit first because something significant has changes with the operator
             conv2d_shallowin_deepout_deinit(user_data->params.sido);
@@ -160,7 +160,7 @@ namespace conv {
     void* Init_DIDO(TfLiteContext* context, const char* buffer, size_t length) 
     {
         auto* user_data = new UserData();
-        user_data->params.dido = new nn_conv2d_dido_params_t;
+        user_data->params.dido = new nn_conv2d_dido_params_t();
 
         if (buffer)
             parse_options(buffer, length, user_data);
@@ -192,7 +192,7 @@ namespace conv {
         user_data->C_in = weights->dims->data[3] * weights->dims->data[5];
         user_data->C_out = weights->dims->data[0] * weights->dims->data[4];
 
-        if (user_data->params.dido)
+        if (user_data->params.dido->blocks)
         {
             // need to deinit first because something significant has changes with the operator
             conv2d_deepin_deepout_deinit(user_data->params.dido);
