@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
@@ -333,35 +332,6 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   return result_or;
 }
 
-// The following function allows deterministic ops to be implemented relatively
-// quickly using environment variables. It is intended to be temporary. The
-// longer-term intention is to enable deterministic ops via tf.config and
-// appropriate plumbing. See the discussion on PR 34951 for more information:
-// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
-// This function and associated comment are replicated in the following three
-// places:
-//   1. tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-//   2. tensorflow/core/kernels/gpu_utils.cc
-//   3. tensorflow/stream_executor/cuda/cuda_dnn.cc
-// When implementing the plumbing, you should also search for the use of
-// TF_DETERMINISTIC_OPS on its own.
-// TODO(duncanriach): move to an API that uses tf.config and implement the first
-//                    phase of plumbing.
-static bool RequireCudnnDeterminism() {
-  static bool require_cudnn_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    bool cudnn_deterministic = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
-                                               /*default_val=*/false,
-                                               &cudnn_deterministic));
-    return deterministic_ops || cudnn_deterministic;
-  }();
-  return require_cudnn_determinism;
-}
-
 StatusOr<tensorflow::AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
@@ -598,41 +568,43 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     }
   }
 
+  // For now, we ignore WRONG_RESULT failures because false-positives are
+  // possible (e.g. perhaps the reference algorithm is the one that's
+  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
+  // quite severe and can be detected with high accuracy.
+  auto has_failure = [](const AutotuneResult& r) {
+    return r.has_failure() &&
+           r.failure().kind() != AutotuneResult::WRONG_RESULT;
+  };
+
   // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
   // error.
   //
   // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
   // in the output of the conv and skip those.
   //
-  // For now, we ignore WRONG_RESULT failures because false-positives are
-  // possible (e.g. perhaps the reference algorithm is the one that's
-  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
-  // quite severe and can be detected with high accuracy.
-  std::vector<AutotuneResult> filtered_results;
-  absl::c_copy_if(
-      profile_results, std::back_inserter(filtered_results),
-      [](const AutotuneResult& r) {
-        return !(r.has_failure() &&
-                 r.failure().kind() != AutotuneResult::WRONG_RESULT);
+  // The successful one should have a smaller key, since we are doing
+  // min_element. If they are both unsuccessful, keep the earlier one in
+  // the vector by comparing pointers.
+  auto result_comparison_key = [&has_failure](const AutotuneResult& r) {
+    return std::make_tuple(
+        has_failure(r),
+        tensorflow::proto_utils::FromDurationProto(r.run_time()));
+  };
+  const auto& best_result = absl::c_min_element(
+      profile_results,
+      [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+        return result_comparison_key(lhs) < result_comparison_key(rhs);
       });
-  if (filtered_results.empty()) {
-    return InternalError(
-        "All algorithms tried for convolution %s failed. Falling back to "
-        "default algorithm. ",
-        instr->ToString());
+
+  if (best_result != profile_results.end() && !has_failure(*best_result)) {
+    return *best_result;
   }
 
-  auto selected_result = filtered_results.begin();
-  if (!RequireCudnnDeterminism()) {
-    selected_result = absl::c_min_element(
-        filtered_results,
-        [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
-                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
-        });
-  }
-
-  return *selected_result;
+  return InternalError(
+      "All algorithms tried for convolution %s failed.  Falling back to "
+      "default algorithm.",
+      instr->ToString());
 }
 
 StatusOr<tensorflow::AutotuneResult>

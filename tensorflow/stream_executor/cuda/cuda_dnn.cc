@@ -648,22 +648,9 @@ bool BatchnormSpatialPersistentEnabled() {
   return is_enabled;
 }
 
-// The following function allows deterministic ops to be implemented relatively
-// quickly using environment variables. It is intended to be temporary. The
-// longer-term intention is to enable deterministic ops via tf.config and
-// appropriate plumbing. See the discussion on PR 34951 for more information:
-// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
-// This function and associated comment are replicated in the following three
-// places:
-//   1. tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-//   2. tensorflow/core/kernels/gpu_utils.cc
-//   3. tensorflow/stream_executor/cuda/cuda_dnn.cc
-// When implementing the plumbing, you should also search for the use of
-// TF_DETERMINISTIC_OPS on its own.
-// TODO(duncanriach): move to an API that uses tf.config and implement the first
-//                    phase of plumbing.
-bool RequireCudnnDeterminism() {
-  static bool require_cudnn_determinism = [] {
+// A helper function to decide whether to enable deterministic functionality.
+bool RequireDeterminism() {
+  static bool require_determinism = [] {
     bool deterministic_ops = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
                                                /*default_val=*/false,
@@ -674,7 +661,7 @@ bool RequireCudnnDeterminism() {
                                                &cudnn_deterministic));
     return deterministic_ops || cudnn_deterministic;
   }();
-  return require_cudnn_determinism;
+  return require_determinism;
 }
 
 std::tuple<int, int> GetCcMajorMinor(Stream* stream) {
@@ -775,7 +762,7 @@ class CudnnPoolingDescriptor {
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
-    const auto cudnn_max_pooling_mode = RequireCudnnDeterminism()
+    const auto cudnn_max_pooling_mode = RequireDeterminism()
                                             ? CUDNN_POOLING_MAX_DETERMINISTIC
                                             : CUDNN_POOLING_MAX;
     CHECK_CUDNN_OK(cudnnSetPoolingNdDescriptor(
@@ -3343,15 +3330,21 @@ bool CudnnSupport::GetConvolveAlgorithms(
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
+  if (RequireDeterminism()) {
+    out_algorithms->push_back({CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+                               tensor_op_math_available});
+    return true;
+  }
+
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
-      // clang-format off
-    CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+    // clang-format off
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
+    CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
     CUDNN_CONVOLUTION_FWD_ALGO_FFT,
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
-      // clang-format on
+    // clang-format on
   };
   if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
@@ -3360,12 +3353,11 @@ bool CudnnSupport::GetConvolveAlgorithms(
     algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 
-  // The algorithms are intentionally ordered for deterministic operation
   for (auto i : algo_types) {
+    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
     if (tensor_op_math_available) {
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
   }
 
   return true;
@@ -3399,8 +3391,15 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
+  if (RequireDeterminism()) {
+    out_algorithms->push_back(
+        {CUDNN_CONVOLUTION_BWD_DATA_ALGO_1, tensor_op_math_available});
+    return true;
+  }
+
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
       // clang-format off
+    CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
     CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
     CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
     CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
@@ -3410,16 +3409,12 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
-  if (!RequireCudnnDeterminism()) {
-    algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_0);
-  }
 
-  // The algorithms are intentionally ordered for deterministic operation
   for (auto i : algo_types) {
+    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
     if (tensor_op_math_available) {
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
   }
 
   return true;
@@ -3431,10 +3426,18 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
+  if (RequireDeterminism()) {
+    out_algorithms->push_back(
+        {CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1, tensor_op_math_available});
+    return true;
+  }
+
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
       // clang-format off
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3,
       // Based on cudnn.h, the following is not implemented.
       // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
 
@@ -3446,17 +3449,12 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
-  if (!RequireCudnnDeterminism()) {
-    algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0);
-    algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3);
-  }
 
-  // The algorithms are intentionally ordered for deterministic operation
   for (auto i : algo_types) {
+    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
     if (tensor_op_math_available) {
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
   }
 
   return true;
