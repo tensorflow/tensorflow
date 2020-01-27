@@ -23,6 +23,7 @@ import functools
 import threading
 import weakref
 
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
@@ -452,6 +453,10 @@ class Function(object):
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
         attributes.update(_noinline=True)
+        if not pywrap_tfe.TF_IsXlaEnabled():
+          raise ValueError("Attempting to use experimental_compile, "
+                           "but XLA support is not linked in. "
+                           "Rebuild with --define=with_xla_support=true.")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(
@@ -1196,6 +1201,10 @@ def function(func=None,
      function (and return zero or more `tf.Tensor` objects).
      If `func` is None, returns a decorator that, when invoked with a single
      `func` argument, returns a callable equivalent to the case above.
+
+  Raises:
+     ValueError when attempting to use experimental_compile, but XLA support is
+     not enabled.
   """
   if input_signature is not None:
     function_lib.validate_signature(input_signature)

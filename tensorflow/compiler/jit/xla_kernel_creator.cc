@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 
@@ -39,6 +40,10 @@ bool RegisterLaunchOpCreator() {
 }
 
 static bool register_me = RegisterLaunchOpCreator();
+static bool register_xla = [] {
+  SetXlaIsEnabled();
+  return true;
+}();
 
 }  // end namespace
 }  // namespace tensorflow
