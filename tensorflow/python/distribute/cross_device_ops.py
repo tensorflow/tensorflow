@@ -29,6 +29,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -1104,40 +1105,65 @@ class CollectiveAllReduce(CrossDeviceOps):
     """All-reduce across all workers in a batch."""
 
     chunked_gv = self._make_gradient_chunks(per_replica_values, self._num_packs)
+    # Actual number of packs may be different from `self._num_packs`.  e.g. if
+    # there are fewer tensors than `self._num_packs`.
+    num_actual_packs = len(chunked_gv)
 
     batch_size = len(per_replica_values)
     # Pass self._communication to the runtime as a communication hint.
     communication_hint = self._communication.value
-    # For now, we use NCCL only when batch_size > 1 and num_packs is 1.
+    # For now, we use NCCL only when batch_size > 1.
     # TODO(b/132575814): switch to NCCL for all collectives when communication
     # is NCCL.
-    if self._communication == CollectiveCommunication.NCCL and (
-        batch_size == 1 or self._num_packs != 1):
+    if self._communication == CollectiveCommunication.NCCL and batch_size == 1:
       communication_hint = CollectiveCommunication.AUTO.value
 
     logging.log_first_n(
         logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
-        "num_workers = %d, communication_hint = %s" % (
-            batch_size, self._num_workers, communication_hint), 10)
+        "num_workers = %d, communication_hint = %s, num_packs = %d" % (
+            batch_size, self._num_workers, communication_hint,
+            num_actual_packs), 10)
 
-    reduced_gv_list = []
-    for chunk in chunked_gv:
-      # By placing all collective ops in a chunk under single name scope, we
-      # ensure they will be picked up by the `ScopedAllocator` grappler
-      # optimizer and packed into a single all-reduce.
-      with ops.name_scope("allreduce"):
-        for grad_and_vars in chunk:
-          # Gradients for the same variable but from different devices.
-          scaled_grads = [g for g, _ in grad_and_vars]
-          collective_reduced = cross_device_utils.build_collective_reduce(
-              scaled_grads, self._num_workers, self._collective_keys, "Add",
-              "Id", communication_hint)
-          result = []
-          for (_, v), g in zip(grad_and_vars, collective_reduced):
-            result.append([g, v])
-          reduced_gv_list.append(result)
+    def batch_fn():
+      """Wrapper function around batched all-reduce calls."""
+      reduced_gv_list = []
+      # Reverse the gradient lists so that the gradient grouping roughly follows
+      # the order in which gradients are calculated in backprop.  This should
+      # enable overlapping gradient all-reduce with backprop for most models.
+      # However, it is likely that for some complicated non-sequential models
+      # this grouping is not optimal.
+      #
+      # TODO(b/147393503): explore solutions for optimal gradient grouping.
+      for chunk in reversed(chunked_gv):
+        # By placing all collective ops in a chunk under single name scope, we
+        # ensure they will be picked up by the `ScopedAllocator` grappler
+        # optimizer and packed into a single all-reduce.
+        with ops.name_scope("allreduce"):
+          for grad_and_vars in reversed(chunk):
+            # Gradients for the same variable but from different devices.
+            scaled_grads = [g for g, _ in grad_and_vars]
+            # Add control dependencies per device from the last gradients to the
+            # current set, in order to serialize NCCL launches.
+            if (communication_hint == CollectiveCommunication.NCCL.value and
+                reduced_gv_list):
+              control_input_grads = [g for g, _ in reduced_gv_list[-1]]
+            else:
+              control_input_grads = []
+            collective_reduced = cross_device_utils.build_collective_reduce(
+                scaled_grads, self._num_workers, self._collective_keys, "Add",
+                "Id", communication_hint, control_input_grads)
+            result = []
+            for (_, v), g in zip(grad_and_vars, collective_reduced):
+              result.append([g, v])
+            reduced_gv_list.append(result)
+      # Reverse the batch reduced gradients to (approximately) recover the order
+      # in the input per_replica_values.
+      reduced_gv_list.reverse()
+      return reduced_gv_list
+    if context.executing_eagerly():
+      batch_fn = def_function.function(batch_fn)
 
-    new_device_grads = [list(x) for x in zip(*reduced_gv_list)]
+    new_device_grads = [list(x) for x in zip(*batch_fn())]
     return _ungroup_and_make_mirrored(
         new_device_grads,
         per_replica_values[0],

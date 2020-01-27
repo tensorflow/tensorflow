@@ -322,7 +322,8 @@ def build_collective_reduce(input_tensors,
                             collective_keys,
                             reduction_op='Add',
                             unary_op='Id',
-                            communication_hint='auto'):
+                            communication_hint='auto',
+                            control_inputs=None):
   """Build a subgraph that does one full all-reduce, using the collective Op.
 
   Args:
@@ -336,6 +337,8 @@ def build_collective_reduce(input_tensors,
     unary_op: string naming the unary final op.
     communication_hint: string providing hint to runtime for choosing collective
       implementation.
+    control_inputs: if not None, add control edges between control_inputs and
+      (index-wise) corresponding collective_reduce tensors
 
   Returns:
     An array of final tensors, one per device, computed by the full reduction.
@@ -351,24 +354,24 @@ def build_collective_reduce(input_tensors,
   group_key = collective_keys.get_group_key(devices)
   instance_key = collective_keys.get_op_instance_key()
   subdiv_offsets = [0]  # TODO(tucker): maybe support non-default subdiv spec
+  if control_inputs:
+    assert len(control_inputs) == len(input_tensors)
 
-  def collective_all_reduce():
-    """Call collective allreduce."""
-    assert not context.executing_eagerly()
-    out_tensors = []
-    for d in range(num_devices):
-      with ops.device(devices[d]):
+  out_tensors = []
+  for dev_idx in range(num_devices):
+    with ops.device(devices[dev_idx]):
+      if control_inputs:
+        assert control_inputs[dev_idx].device == input_tensors[dev_idx].device
+        with ops.control_dependencies([control_inputs[dev_idx]]):
+          reduce_op = collective_ops.all_reduce(
+              input_tensors[dev_idx], group_size, group_key, instance_key,
+              reduction_op, unary_op, subdiv_offsets, communication_hint)
+      else:
         reduce_op = collective_ops.all_reduce(
-            input_tensors[d], group_size, group_key, instance_key, reduction_op,
-            unary_op, subdiv_offsets, communication_hint)
-        out_tensors.append(reduce_op)
-    return out_tensors
-
-  if context.executing_eagerly():
-    # Collective ops will block unless they are executed concurrently such as in
-    # a graph or a defun.
-    collective_all_reduce = def_function.function(collective_all_reduce)
-  return collective_all_reduce()
+            input_tensors[dev_idx], group_size, group_key, instance_key,
+            reduction_op, unary_op, subdiv_offsets, communication_hint)
+      out_tensors.append(reduce_op)
+  return out_tensors
 
 
 def build_collective_gather(input_tensors, num_workers, collective_keys):
