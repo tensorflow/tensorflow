@@ -258,13 +258,26 @@ class SingleOpModel {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
-    for (int i = 0; i < num_inputs; ++i) {
-      const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                                   : params->scale->data[i];
-      quantized_output[i] = input_data[i] / scale;
+    CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
+    if (t->type == kTfLiteInt32) {
+      std::vector<int32_t> quantized_output(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                     : params->scale->data[i];
+        quantized_output[i] = input_data[i] / scale;
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
+    } else {
+      std::vector<int64_t> quantized_output(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                     : params->scale->data[i];
+        quantized_output[i] = input_data[i] / scale;
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
     }
-    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                   quantized_output.data() + quantized_output.size());
   }
 
   const std::vector<int>& GetShape(int id) { return tensor_data_.at(id).shape; }
@@ -762,10 +775,11 @@ template <typename T>
 TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
   if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
+  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
+  if (std::is_same<T, int16_t>::value) return TensorType_INT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
-  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   return TensorType_MIN;  // default value
 }
