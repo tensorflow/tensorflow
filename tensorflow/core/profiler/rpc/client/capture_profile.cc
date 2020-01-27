@@ -113,8 +113,7 @@ Status Profile(const string& service_addr, const string& logdir,
                                            &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
     std::cout
-        << "NOTE: using the trace duration " << duration_ms << "ms."
-        << std::endl
+        << "NOTE: using the trace duration " << duration_ms << "ms.\n"
         << "Set an appropriate duration (with --duration_ms) if you "
            "don't see a full step in your trace or the captured trace is too "
            "large."
@@ -225,16 +224,14 @@ Status StartTracing(const tensorflow::string& service_addr,
     }
     if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))
       break;
-    std::cout << "No trace event is collected. Automatically retrying."
-              << std::endl
+    std::cout << "No trace event is collected. Automatically retrying.\n"
               << std::endl;
   }
 
   if (ShouldRetryTracing(status)) {
     std::cout << "No trace event is collected after " << num_tracing_attempts
               << " attempt(s). "
-              << "Perhaps, you want to try again (with more attempts?)."
-              << std::endl
+              << "Perhaps, you want to try again (with more attempts?).\n"
               << "Tip: increase number of attempts with --num_tracing_attempts."
               << std::endl;
   }
