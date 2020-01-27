@@ -352,13 +352,13 @@ struct AvgPoolMeanReducer {
 
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet
-  finalizePacket(const Packet& vaccum) const {
-    return pdiv(vaccum, packetCount_);
+  finalizePacket(const Packet& vacuum) const {
+    return pdiv(vacuum, packetCount_);
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T
-  finalizeBoth(const T saccum, const Packet& vaccum) const {
-    return (saccum + predux(vaccum)) / (scalarCount_ + predux(packetCount_));
+  finalizeBoth(const T saccum, const Packet& vacuum) const {
+    return (saccum + predux(vacuum)) / (scalarCount_ + predux(packetCount_));
   }
 #endif
 

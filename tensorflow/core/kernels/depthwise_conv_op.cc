@@ -99,7 +99,7 @@ struct DepthwiseConv2DKernel {
 
     for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
       // Reset accumulator.
-      auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
+      auto vacuum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         // Calculate index.
         const int64 index = i + j * padded_filter_inner_dim_size;
@@ -112,15 +112,15 @@ struct DepthwiseConv2DKernel {
         const auto data_block =
             Eigen::internal::ploadu<Packet>(input_buffer + index);
         // Vector multiply-add.
-        vaccum =
-            Eigen::internal::pmadd<Packet>(filter_block, data_block, vaccum);
+        vacuum =
+            Eigen::internal::pmadd<Packet>(filter_block, data_block, vacuum);
       }
       // Store vector accumulator to output.
-      Eigen::internal::pstoreu<T>(output + base_output_index + i, vaccum);
+      Eigen::internal::pstoreu<T>(output + base_output_index + i, vacuum);
     }
 
     if (output_scalar_size > 0) {
-      auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
+      auto vacuum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         const int64 index =
             output_vectorized_size + j * padded_filter_inner_dim_size;
@@ -128,12 +128,12 @@ struct DepthwiseConv2DKernel {
             Eigen::internal::ploadu<Packet>(filter + index);
         const auto data_block =
             Eigen::internal::ploadu<Packet>(input_buffer + index);
-        vaccum =
-            Eigen::internal::pmadd<Packet>(filter_block, data_block, vaccum);
+        vacuum =
+            Eigen::internal::pmadd<Packet>(filter_block, data_block, vacuum);
       }
       // Load accumulator into an array and loop through output.
       T out_buf[kPacketSize];
-      Eigen::internal::pstoreu<T>(out_buf, vaccum);
+      Eigen::internal::pstoreu<T>(out_buf, vacuum);
       const int64 last_output_index =
           base_output_index + output_vectorized_size;
       for (int j = 0; j < output_scalar_size; ++j) {
