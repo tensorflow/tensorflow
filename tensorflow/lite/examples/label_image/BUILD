@@ -23,7 +23,7 @@ cc_binary(
         "//tensorflow:android": [
             "-pie",  # Android 5.0 and later supports only PIE
             "-lm",  # some builtin ops, e.g., tanh, need -lm
-            "-Wl,-rpath=/data/local/tmp", # for hexagon delegate
+            "-Wl,-rpath=/data/local/tmp",  # for hexagon delegate
         ],
         "//conditions:default": [],
     }),
