@@ -4,17 +4,6 @@ package(default_visibility = ["//visibility:public"])
 
 load("//third_party/toolchains/preconfig/generate:containers.bzl", "container_digests")
 
-# Constraint used for platforms below so we can force certain rules to be executed
-# on specific platforms.
-constraint_setting(name = "custom_platforms")
-
-# Constraint for platforms that allow GPU testing (i.e. have a GPU available).
-# This is used in exec_compatible_with of rules that need GPU access.
-constraint_value(
-    name = "gpu_test",
-    constraint_setting = ":custom_platforms",
-)
-
 # Remote build platforms.
 # Each of the platform rules here provide a platform definition that is bound to a docker image.
 # The result of the skylark configuration is checked into
@@ -59,17 +48,6 @@ platform(
     },
 )
 
-# The above platform with GPU support.
-platform(
-    name = "rbe_cuda10.0-cudnn7-ubuntu14.04-gpu",
-    constraint_values = [":gpu_test"],
-    exec_properties = {
-        "dockerRuntime": "nvidia",
-        "Pool": "gpu-pool",
-    },
-    parents = [":rbe_cuda10.0-cudnn7-ubuntu14.04"],
-)
-
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda10.0-cudnn7-centos6.
 platform(
     name = "rbe_cuda10.0-cudnn7-centos6",
@@ -81,17 +59,6 @@ platform(
         "container-image": "docker://gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-centos6@%s" % container_digests["cuda10.0-cudnn7-centos6"],
         "Pool": "default",
     },
-)
-
-# The above platform with GPU support.
-platform(
-    name = "rbe_cuda10.0-cudnn7-centos6-gpu",
-    constraint_values = [":gpu_test"],
-    exec_properties = {
-        "dockerRuntime": "nvidia",
-        "Pool": "gpu-pool",
-    },
-    parents = [":rbe_cuda10.0-cudnn7-centos6"],
 )
 
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.ubuntu16.04-manylinux2010.
@@ -120,17 +87,6 @@ platform(
     },
 )
 
-# The above platform with GPU support.
-platform(
-    name = "rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010-gpu",
-    constraint_values = [":gpu_test"],
-    exec_properties = {
-        "dockerRuntime": "nvidia",
-        "Pool": "gpu-pool",
-    },
-    parents = [":rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010"],
-)
-
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda10.1-cudnn7-ubuntu16.04-manylinux2010.
 platform(
     name = "rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010",
@@ -142,17 +98,6 @@ platform(
         "container-image": "docker://gcr.io/tensorflow-testing/nosla-cuda10.1-cudnn7-ubuntu16.04-manylinux2010@%s" % container_digests["cuda10.1-cudnn7-ubuntu16.04-manylinux2010"],
         "Pool": "default",
     },
-)
-
-# The above platform with GPU support.
-platform(
-    name = "rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010-gpu",
-    constraint_values = [":gpu_test"],
-    exec_properties = {
-        "dockerRuntime": "nvidia",
-        "Pool": "gpu-pool",
-    },
-    parents = [":rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"],
 )
 
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.rocm-ubuntu16.04
