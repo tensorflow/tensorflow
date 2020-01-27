@@ -256,7 +256,7 @@ struct DeadTempBufferRemoval : mlir::FunctionPass<DeadTempBufferRemoval> {
 
 void EnableIRPrinting(mlir::PassManager* passManager) {
   auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
-    return VLOG_IS_ON(1);
+    return true; //VLOG_IS_ON(1);
   };
   passManager->enableIRPrinting(/*shouldPrintBeforePass=*/{},
                                 /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
