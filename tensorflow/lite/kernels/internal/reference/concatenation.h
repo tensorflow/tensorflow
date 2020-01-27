@@ -71,12 +71,11 @@ inline void Concatenation(const ConcatenationParams& params,
 // TODO(prabhumk): The quantized implementation of concatentation isn't fully
 // quantized as it takes scale as a floating point value. This should be fixed
 // when optimizng this routine further.
-template <typename InputType>
 inline void ConcatenationWithScaling(const ConcatenationParams& params,
                                      const RuntimeShape* const* input_shapes,
-                                     const InputType* const* input_data,
+                                     const uint8* const* input_data,
                                      const RuntimeShape& output_shape,
-                                     InputType* output_data) {
+                                     uint8* output_data) {
   int axis = params.axis;
   const int32* input_zeropoint = params.input_zeropoint;
   const float* input_scale = params.input_scale;
@@ -109,18 +108,15 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
     base_inner_size *= output_shape.Dims(i);
   }
 
-  int32_t maxval = std::numeric_limits<InputType>::max();
-  int32_t minval = std::numeric_limits<InputType>::min();
-
   const float inverse_output_scale = 1.f / output_scale;
-  InputType* output_ptr = output_data;
+  uint8* output_ptr = output_data;
   for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
       const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
-      const InputType* input_ptr = input_data[i] + k * copy_size;
+      const uint8* input_ptr = input_data[i] + k * copy_size;
       if (input_zeropoint[i] == output_zeropoint &&
           input_scale[i] == output_scale) {
-        memcpy(output_ptr, input_ptr, copy_size * sizeof(InputType));
+        memcpy(output_ptr, input_ptr, copy_size);
       } else {
         const float scale = input_scale[i] * inverse_output_scale;
         const float bias = -input_zeropoint[i] * scale;
@@ -128,8 +124,8 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
           const int32_t value =
               static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
               output_zeropoint;
-          output_ptr[j] =
-              static_cast<InputType>(std::max(std::min(maxval, value), minval));
+          output_ptr[j] = static_cast<uint8>(
+            std::max<int32_t>(std::min<int32_t>(255, value), 0));
         }
       }
       output_ptr += copy_size;
