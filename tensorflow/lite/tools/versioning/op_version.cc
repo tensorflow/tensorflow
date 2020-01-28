@@ -46,6 +46,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEPTHWISE_CONV_2D:
+      // If the op is a signed int8 hybrid operation, we need to return
+      // version 4.
+      if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
+          op_sig.input_types.at(1) == TensorType_INT8 &&
+          op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        return 4;
+      }
       // If the op has signed int8 op_sig.inputs and op_sig.outputs, its
       // version 3.
       if (op_sig.input_types.at(0) == TensorType_INT8 &&
