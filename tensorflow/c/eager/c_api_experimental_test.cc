@@ -88,8 +88,8 @@ void ExecuteWithProfiling(bool async) {
     EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:GPU:0"));
   }
 #endif
-  // "Host Threads" is included in the CPU device name when using XPlane.
-  EXPECT_TRUE(HasSubstr(profile_proto_str, "Host Threads"));
+  // "/host:CPU" is collected by TraceMe
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));
   EXPECT_TRUE(HasSubstr(profile_proto_str, "MatMul"));
   TF_DeleteBuffer(profiler_result);
 
