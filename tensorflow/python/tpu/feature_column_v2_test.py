@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from absl.testing import parameterized
 
 from tensorflow.python.client import session
@@ -158,6 +160,17 @@ class EmbeddingColumnTestV2(test.TestCase):
       self.assertAllEqual(expected_lookups, embedding_lookup.eval())
       self.assertAllEqual(expected_lookups_sequence,
                           sequence_embedding_lookup[0].eval())
+
+  def test_deepcopy(self):
+    categorical_column = fc_lib.categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    embedding_column = tpu_fc.embedding_column_v2(
+        categorical_column, dimension=2)
+    embedding_column_copy = copy.deepcopy(embedding_column)
+    self.assertEqual(embedding_column.dimension,
+                     embedding_column_copy.dimension)
+    self.assertEqual(embedding_column._max_sequence_length,
+                     embedding_column_copy._max_sequence_length)
 
 
 class SharedEmbeddingColumnTestV2(test.TestCase):
@@ -302,6 +315,21 @@ class SharedEmbeddingColumnTestV2(test.TestCase):
       self.assertAllEqual(expected_lookups_a, embedding_lookup_a.eval())
       self.assertAllEqual(expected_lookups_b,
                           embedding_lookup_b[0].eval())
+
+  def test_deepcopy(self):
+    vocabulary_size = 3
+    categorical_column_a = fc_lib.categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    categorical_column_b = fc_lib.categorical_column_with_identity(
+        key='bbb', num_buckets=vocabulary_size)
+    embedding_dimension = 2
+    columns = tpu_fc.shared_embedding_columns_v2(
+        [categorical_column_b, categorical_column_a],
+        dimension=embedding_dimension)
+    columns_copy = copy.deepcopy(columns)
+    self.assertEqual(
+        [column._shared_embedding_collection_name for column in columns],
+        [column._shared_embedding_collection_name for column in columns_copy])
 
 
 class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
