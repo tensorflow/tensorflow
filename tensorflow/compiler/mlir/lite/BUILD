@@ -267,6 +267,7 @@ tf_cc_test(
 cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
+        "transforms/dilated_conv.cc",
         "transforms/extract_ophint.cc",
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
@@ -282,6 +283,7 @@ cc_library(
         "transforms/unroll_batch_matmul.cc",
     ],
     hdrs = [
+        "transforms/dilated_conv.h",
         "transforms/passes.h",
         "transforms/unroll_batch_matmul.h",
     ],
