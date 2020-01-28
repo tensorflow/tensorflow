@@ -4899,6 +4899,36 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_ResourceScatterUpdateOp : TF_Op<"ResourceScatterUpdate", []> {
+  let summary = [{
+Assigns sparse updates to the variable referenced by `resource`.
+  }];
+
+  let description = [{
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] = updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] = updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
   let summary = "Reverses variable length slices.";
 
@@ -6763,6 +6793,14 @@ On GPU, if an out of bound index is found, the index is ignored.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{ return Verify(*this); }];
+
+  let builders = [
+    OpBuilder<
+      "Builder* builder, OperationState& result, "
+      "Value tensor, Value indices, Value updates",
+      [{build(builder, result, tensor.getType(), tensor, indices, updates);}]
+    >
+  ];
 }
 
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {

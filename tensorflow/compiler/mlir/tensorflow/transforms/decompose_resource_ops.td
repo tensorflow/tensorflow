@@ -225,3 +225,16 @@ def DecomposeResourceGather : Pat<
     (TF_ConstOp $batch_dims), // axis
     $batch_dims
   )>;
+
+// Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
+// tf.TensorScatterUpdate, and tf.AssignVariable.
+def DecomposeResourceScatterUpdate : Pat<
+  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
+  (TF_AssignVariableOp
+    $resource,
+    (TF_TensorScatterUpdateOp
+      (CreateTFReadVariableOp $src_op, $updates, $resource),
+      $indices,
+      $updates
+    )
+  )>;
