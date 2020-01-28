@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <list>
 #include <string>
-#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
@@ -88,7 +88,6 @@ struct OptimizationProfileConfig {
     }
     for (int i = 0; i < shapes.size(); i++) {
        auto current_shape = shapes[i];
-       auto trt_shape = TensorShapeToTrtDims(current_shape, false);
        // min, max, and opt must have the same nbDims, which is
        // already verified in SetDimensions.
        if (min[i].nbDims != current_shape.dims()) {
