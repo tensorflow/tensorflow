@@ -240,6 +240,7 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
       VLOG(2) << "Reject non-row-major fusion instr " << instr->ToString();
       continue;
     } else {
+      VLOG(2) << "Find a fusion candidate " << instr->ToString();
       fusion_instrs_.push_back(instr);
     }
   }
@@ -340,7 +341,12 @@ Status HorizontalFusionImpl::CreateFusedComputation(
       bound_operands->push_back(bound_opnd);
     }
   }
-  *uniq_computation = b.Build();
+  // Always create a dummy tuple instruction to serve as the root of the
+  // computation, as the existence of a root instruction is required by the
+  // HloComputation. The real root instruction will be provided below.
+  auto dummy_root = b.AddInstruction(
+      HloInstruction::CreateTuple(std::vector<HloInstruction*>{}));
+  *uniq_computation = b.Build(dummy_root);
   auto* comp = uniq_computation->get();
 
   // Preparing clone_map, which maps old operand to new operand.
