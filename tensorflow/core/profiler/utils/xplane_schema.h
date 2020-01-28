@@ -99,6 +99,7 @@ enum StatType {
   kBytesAvailable,
   kFragmentation,
   kPeakBytesInUse,
+  kTensorShapes,
   // Device trace arguments.
   kDeviceId,
   kContextId,
