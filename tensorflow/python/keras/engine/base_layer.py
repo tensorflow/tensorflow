@@ -24,6 +24,7 @@ import itertools
 import threading
 
 import numpy as np
+import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from google.protobuf import json_format
@@ -555,12 +556,13 @@ class Layer(module.Module):
               base_layer_utils.generate_placeholders_from_shape, input_shape)
           try:
             outputs = self(inputs, training=False)
-          except TypeError:
-            raise NotImplementedError('We could not automatically infer '
-                                      'the static shape of the layer\'s output.'
-                                      ' Please implement the '
-                                      '`compute_output_shape` method on your '
-                                      'layer (%s).' % self.__class__.__name__)
+          except TypeError as e:
+            six.raise_from(
+                NotImplementedError(
+                    'We could not automatically infer the static shape of the '
+                    'layer\'s output. Please implement the '
+                    '`compute_output_shape` method on your layer (%s).' %
+                    self.__class__.__name__), e)
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
