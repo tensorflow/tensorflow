@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -1709,8 +1710,11 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   message = message or ''
   with ops.name_scope(name, 'assert_shapes', [shapes, data]):
     # Shape specified as None implies no constraint
+    # If shape is sparse_tensor, convert it to dense
     shape_constraints = [
-        (ops.convert_to_tensor(x), s) for x, s in shapes if s is not None
+        (sparse_ops.sparse_tensor_to_dense(x)
+         if sparse_tensor.is_sparse(x) 
+         else ops.convert_to_tensor(x), s) for x, s in shapes if s is not None
     ]
 
     executing_eagerly = context.executing_eagerly()
