@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/profiler/profiler_analysis.grpc.pb.h"
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
-#include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
+#include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
@@ -109,8 +109,8 @@ Status Profile(const string& service_addr, const string& logdir,
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
   if (!response.encoded_trace().empty()) {
-    TF_CHECK_OK(WriteTensorboardTPUProfile(logdir, session_id, "", response,
-                                           &std::cout));
+    TF_CHECK_OK(
+        SaveTensorboardProfile(logdir, session_id, "", response, &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
     std::cout
         << "NOTE: using the trace duration " << duration_ms << "ms.\n"

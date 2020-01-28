@@ -13,33 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_DUMP_TPU_PROFILE_H_
-#define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_DUMP_TPU_PROFILE_H_
+#ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_SAVE_PROFILE_H_
+#define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_SAVE_PROFILE_H_
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 
 namespace tensorflow {
-
 namespace profiler {
-namespace client {
 
-// Dumps all profiling tool data in a TPU profile to a TensorBoard log directory
+// Saves all profiling tool data in a profile to a TensorBoard log directory
 // with the given run name. This writes user-facing log messages to `os`.
-// The following tools are supported:
-//   - Trace viewer
-//   - Op profile
-//   - Input pipeline analyzer
-//   - Overview page
 // Note: this function creates a directory even when all fields in
 // ProfileResponse are unset/empty.
-Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
-                                  const string& host,
-                                  const ProfileResponse& response,
-                                  std::ostream* os);
+Status SaveTensorboardProfile(const string& logdir, const string& run,
+                              const string& host,
+                              const ProfileResponse& response,
+                              std::ostream* os);
 
-}  // namespace client
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_RPC_CLIENT_DUMP_TPU_PROFILE_H_
+#endif  // TENSORFLOW_CORE_PROFILER_RPC_CLIENT_SAVE_PROFILE_H_

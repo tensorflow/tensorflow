@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
+#include "tensorflow/core/profiler/rpc/client/save_profile.h"
 
 #include <cstdio>
 #include <ctime>
@@ -30,14 +30,12 @@ limitations under the License.
 // tensorflow/core/util/event.proto
 #undef ERROR
 #include "tensorflow/core/profiler/op_profile.pb.h"
-#include "tensorflow/core/profiler/rpc/client/trace_events_to_json.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
 
 namespace profiler {
-namespace client {
 namespace {
 
 using ::tensorflow::io::JoinPath;
@@ -45,25 +43,11 @@ using ::tensorflow::protobuf::util::JsonOptions;
 using ::tensorflow::protobuf::util::MessageToJsonString;
 
 constexpr char kJsonOpProfileFileName[] = "op_profile.json";
-constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
 constexpr char kProtoTraceFileName[] = "trace";
 
 constexpr char kFlatProfilerFileName[] = "flat_profiler.pb";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
-
-Status WriteGzippedDataToFile(const string& filename, const string& data) {
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(filename, &file));
-  io::ZlibCompressionOptions options = io::ZlibCompressionOptions::GZIP();
-  io::ZlibOutputBuffer buffer(file.get(), options.input_buffer_size,
-                              options.output_buffer_size, options);
-  TF_RETURN_IF_ERROR(buffer.Init());
-  TF_RETURN_IF_ERROR(buffer.Append(data));
-  TF_RETURN_IF_ERROR(buffer.Close());
-  TF_RETURN_IF_ERROR(file->Close());
-  return Status::OK();
-}
 
 Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
                                const string& encoded_trace, std::ostream* os) {
@@ -71,21 +55,7 @@ Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
       JoinPath(run_dir, absl::StrCat(host_prefix, kProtoTraceFileName));
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), proto_path, encoded_trace));
-  LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
-
-  string json_path =
-      JoinPath(run_dir, absl::StrCat(host_prefix, kJsonTraceFileName));
-  Trace trace;
-  trace.ParseFromString(encoded_trace);
-  if (os) {
-    *os << "Trace contains " << trace.trace_events_size() << " events."
-        << std::endl;
-  }
-  TF_RETURN_IF_ERROR(
-      WriteGzippedDataToFile(json_path, TraceEventsToJson(trace)));
-  if (os) {
-    *os << "Dumped JSON trace data to " << json_path << std::endl;
-  }
+  if (os) *os << "Dumped raw-proto trace data to " << proto_path;
   return Status::OK();
 }
 
@@ -130,10 +100,10 @@ Status DumpToolDataToLogDirectory(StringPiece run_dir,
 
 }  // namespace
 
-Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
-                                  const string& host,
-                                  const ProfileResponse& response,
-                                  std::ostream* os) {
+Status SaveTensorboardProfile(const string& logdir, const string& run,
+                              const string& host,
+                              const ProfileResponse& response,
+                              std::ostream* os) {
   // Dumps profile data to <logdir>/plugins/profile/<run>/.
   string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
   string profile_run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
@@ -142,7 +112,6 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
 
   // Ignore computation_graph for now.
   if (!response.encoded_trace().empty()) {
-    LOG(INFO) << "Converting trace events to TraceViewer JSON.";
     TF_RETURN_IF_ERROR(DumpTraceToLogDirectory(profile_run_dir, host_prefix,
                                                response.encoded_trace(), os));
   }
@@ -159,6 +128,5 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
   return Status::OK();
 }
 
-}  // namespace client
 }  // namespace profiler
 }  // namespace tensorflow
