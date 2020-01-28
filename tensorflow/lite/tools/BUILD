@@ -38,6 +38,34 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "convert_image_to_csv",
+    srcs = ["convert_image_to_csv.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "convert_image_to_csv_test",
+    srcs = ["convert_image_to_csv_test.py"],
+    data = ["//tensorflow/core:image_testdata"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":convert_image_to_csv",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+    ],
+)
+
 tf_cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
