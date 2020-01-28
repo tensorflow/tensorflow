@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -verify-diagnostics -split-input-file
+// RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
 
 func @enforce_same_shape(%arg0: memref<1xf32>, %arg1: memref<2xf32>) -> () {
   // expected-error@+1{{'xla_lhlo.tanh' op requires all operands to have the same type}}
