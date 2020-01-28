@@ -107,10 +107,42 @@ _GRAPH_LEARNING_PHASES = weakref.WeakKeyDictionary()
 # Each set tracks objects created via `freezable_variable` in the graph.
 _FREEZABLE_VARS = weakref.WeakKeyDictionary()
 
-# _DUMMY_EAGER_GRAPH is used as a key in _GRAPH_LEARNING_PHASES.
+
+# _DUMMY_EAGER_GRAPH.key is used as a key in _GRAPH_LEARNING_PHASES.
 # We keep a separate reference to it to make sure it does not get removed from
 # _GRAPH_LEARNING_PHASES.
-_DUMMY_EAGER_GRAPH = threading.local()
+# _DummyEagerGraph inherits from threading.local to make its `key` attribute
+# thread local. This is needed to make set_learning_phase affect only the
+# current thread during eager execution (see b/123096885 for more details).
+class _DummyEagerGraph(threading.local):
+  """_DummyEagerGraph provides a thread local `key` attribute.
+
+  We can't use threading.local directly, i.e. without subclassing, because
+  gevent monkey patches threading.local and its version does not support
+  weak references.
+  """
+
+  class _WeakReferencableClass(object):
+    """This dummy class is needed for two reasons.
+
+    - We need something that supports weak references. Basic types like string
+    and ints don't.
+    - We need something whose hash and equality are based on object identity
+    to make sure they are treated as different keys to _GRAPH_LEARNING_PHASES.
+
+    An empty Python class satisfies both of these requirements.
+    """
+    pass
+
+  def __init__(self):
+    # Constructors for classes subclassing threading.local run once
+    # per thread accessing something in the class. Thus, each thread will
+    # get a different key.
+    super(_DummyEagerGraph, self).__init__()
+    self.key = _DummyEagerGraph._WeakReferencableClass()
+
+
+_DUMMY_EAGER_GRAPH = _DummyEagerGraph()
 
 # This boolean flag can be set to True to leave variable initialization
 # up to the user.
@@ -295,17 +327,17 @@ def learning_phase():
     # will always execute non-eagerly using a function-specific default
     # subgraph.
     if context.executing_eagerly():
-      if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
+      if _DUMMY_EAGER_GRAPH.key not in _GRAPH_LEARNING_PHASES:
         # Fallback to inference mode as default.
         return 0
-      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key]
     learning_phase = symbolic_learning_phase()
     _mark_func_graph_as_unsaveable(graph, learning_phase)
     return learning_phase
 
 
 def global_learning_phase_is_set():
-  return _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES
+  return _DUMMY_EAGER_GRAPH.key in _GRAPH_LEARNING_PHASES
 
 
 def _mark_func_graph_as_unsaveable(graph, learning_phase):
@@ -356,7 +388,7 @@ def set_learning_phase(value):
     if context.executing_eagerly():
       # In an eager context, the learning phase values applies to both the eager
       # context and the internal Keras graph.
-      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key] = value
     _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
@@ -384,7 +416,7 @@ def learning_phase_scope(value):
   with ops.init_scope():
     if context.executing_eagerly():
       previous_eager_value = _GRAPH_LEARNING_PHASES.get(
-          _DUMMY_EAGER_GRAPH, None)
+          _DUMMY_EAGER_GRAPH.key, None)
     previous_graph_value = _GRAPH_LEARNING_PHASES.get(get_graph(), None)
 
   try:
@@ -395,9 +427,9 @@ def learning_phase_scope(value):
     with ops.init_scope():
       if context.executing_eagerly():
         if previous_eager_value is not None:
-          _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_eager_value
-        elif _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES:
-          del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+          _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key] = previous_eager_value
+        elif _DUMMY_EAGER_GRAPH.key in _GRAPH_LEARNING_PHASES:
+          del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key]
 
       graph = get_graph()
       if previous_graph_value is not None:
@@ -427,14 +459,14 @@ def eager_learning_phase_scope(value):
   if global_learning_phase_was_set:
     previous_value = learning_phase()
   try:
-    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key] = value
     yield
   finally:
     # Restore learning phase to initial value or unset.
     if global_learning_phase_was_set:
-      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key] = previous_value
     else:
-      del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+      del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key]
 
 
 def _current_graph(op_input_list):
