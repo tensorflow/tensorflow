@@ -2572,6 +2572,24 @@ tf.math.is_finite(x) ==> [True, True, True, False, False]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_IteratorGetNextOp : TF_Op<"IteratorGetNext", []> {
+  let summary = "Gets the next output from the given iterator .";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$iterator
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
   let summary = "L2 Loss.";
 
