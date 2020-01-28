@@ -157,7 +157,7 @@ def main(_):
   if FLAGS.quantize:
     try:
       tf.contrib.quantize.create_training_graph(quant_delay=0)
-    except ImportError as e:
+    except AttributeError as e:
       msg = e.args[0]
       msg += ('\n\n The --quantize option still requires contrib, which is not '
               'part of TensorFlow 2.0. Please install a previous version:'
