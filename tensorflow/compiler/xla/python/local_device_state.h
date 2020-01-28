@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/python/event_pool.h"
 #include "tensorflow/compiler/xla/python/semaphore.h"
 #include "tensorflow/compiler/xla/python/worker_thread.h"
@@ -41,13 +42,16 @@ class LocalDeviceState {
   //
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
-  LocalDeviceState(se::StreamExecutor* executor, bool synchronous_deallocation,
-                   bool asynchronous, bool allow_event_reuse);
+  LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
+                   bool synchronous_deallocation, bool asynchronous,
+                   bool allow_event_reuse);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
   // StreamExecutor (local) device ordinal.
   int device_ordinal() const { return executor_->device_ordinal(); }
+
+  LocalClient* client() const { return client_; }
 
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
 
@@ -113,7 +117,8 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  se::StreamExecutor* executor_;
+  se::StreamExecutor* const executor_;
+  LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;
   std::unique_ptr<se::Stream> host_to_device_stream_;
   std::vector<std::unique_ptr<se::Stream>> device_to_host_streams_;

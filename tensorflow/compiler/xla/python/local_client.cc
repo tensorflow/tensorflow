@@ -197,7 +197,7 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
     auto device_state = absl::make_unique<LocalDeviceState>(
-        executor, synchronous_deallocation, asynchronous,
+        executor, client, synchronous_deallocation, asynchronous,
         /*allow_event_reuse=*/gpu_platform);
     devices.push_back(MakeDevice(platform_name, i, std::move(device_state)));
   }

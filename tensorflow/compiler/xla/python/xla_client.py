@@ -459,7 +459,7 @@ def transfer_to_infeed(value, device=None):
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
   device = device or backend.local_devices()[0]
-  backend.client.TransferToInfeed(value, device)
+  device.TransferToInfeed(value)
 
 
 def transfer_from_outfeed(shape, device=None):
@@ -476,8 +476,8 @@ def transfer_from_outfeed(shape, device=None):
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
   device = device or backend.local_devices()[0]
-  return backend.client.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent(), device)
+  return device.TransferFromOutfeed(
+      shape.with_major_to_minor_layout_if_absent())
 
 
 DeviceAssignment = _xla.DeviceAssignment

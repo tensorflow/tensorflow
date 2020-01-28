@@ -340,7 +340,34 @@ PYBIND11_MODULE(xla_extension, m) {
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
       .def_property_readonly("platform", &Device::platform_name)
-      .def("__str__", &Device::DebugString);
+      .def("__str__", &Device::DebugString)
+      .def("TransferToInfeed",
+           [](const Device& device, const LiteralSlice& literal) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                                 device.GetLocalDeviceState());
+             return local_device->client()->TransferToInfeedLocal(
+                 literal, local_device->device_ordinal());
+           })
+      .def(
+          "TransferFromOutfeed",
+          [](const Device& device, const Shape& shape) -> StatusOr<py::object> {
+            GlobalPyRefManager()->CollectGarbage();
+            std::shared_ptr<Literal> literal_shared;
+            {
+              py::gil_scoped_release gil_release;
+              TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                                  device.GetLocalDeviceState());
+              TF_ASSIGN_OR_RETURN(
+                  Literal literal,
+                  local_device->client()->TransferFromOutfeedLocal(
+                      shape, local_device->device_ordinal()));
+
+              literal_shared = std::make_shared<Literal>(std::move(literal));
+            }
+            return LiteralToPython(std::move(literal_shared));
+          });
 
   py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
       .def("__repr__", [](const CpuDevice& device) {
@@ -411,8 +438,7 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return result;
            })
-      // TODO(phawkins): delete overload that accepts a device_ordinal after
-      // all callers have been updated to pass a Device.
+      // TODO(phawkins): delete these methods in favor of the versions on Device
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
@@ -430,8 +456,7 @@ PYBIND11_MODULE(xla_extension, m) {
              py::gil_scoped_release gil_release;
              return client->TransferToInfeed(literal, device);
            })
-      // TODO(phawkins): delete overload that accepts a device_ordinal after
-      // all callers have been updated to pass a Device.
+      // TODO(phawkins): delete these methods in favor of the versions on Device
       .def("TransferFromOutfeed",
            [](PyLocalClient* client, const Shape& shape,
               int device_ordinal) -> StatusOr<py::object> {
