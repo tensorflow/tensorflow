@@ -17,9 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#if !TENSORFLOW_USE_ROCM
-  #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
-#endif
+#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
@@ -239,7 +237,6 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     return Status::OK();
   }
 
-#if !TENSORFLOW_USE_ROCM
   if (custom_call->custom_call_target() == kCusolverCholeskyCallTarget) {
     TF_ASSIGN_OR_RETURN(CholeskyOptions options,
                         custom_call->backend_config<CholeskyOptions>());
@@ -283,7 +280,6 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
     return Status::OK();
   }
-#endif
 
   if (IsCublasGemm(*custom_call)) {
     AddThunkToThunkSequence(BuildGemmThunk(custom_call));
