@@ -22,6 +22,10 @@ cd "$SCRIPT_DIR/../../../.."
 DOWNLOADS_DIR=tensorflow/lite/tools/make/downloads
 BZL_FILE_PATH=tensorflow/workspace.bzl
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  function sha256sum() { shasum -a 256 "$@" ; }
+fi
+
 # Ensure it is being run from repo root
 if [ ! -f $BZL_FILE_PATH ]; then
   echo "Could not find ${BZL_FILE_PATH}":
@@ -73,8 +77,7 @@ download_and_extract() {
   curl -Lo ${filepath} ${url}
   if [ -n "${sha256}" ]; then
     echo "checking sha256 of ${dir}"
-    echo "${sha256} ${filepath}" > "${filepath}.sha256"
-    sha256sum -c "${filepath}.sha256"
+    echo "${sha256}  ${filepath}" | sha256sum -c
   fi
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${filepath}
