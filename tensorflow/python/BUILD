@@ -5543,7 +5543,6 @@ tf_py_wrap_cc(
         "grappler/item.i",
         "grappler/tf_optimizer.i",
         "lib/core/strings.i",
-        "lib/io/py_record_reader.i",
         "platform/base.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
