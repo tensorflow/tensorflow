@@ -10,6 +10,7 @@ def distribute_py_test(
         tags = [],
         data = [],
         main = None,
+        size = "medium",
         args = [],
         tpu_args = [],
         shard_count = 1,
@@ -24,6 +25,7 @@ def distribute_py_test(
         tags: tags to be assigned to the different test targets.
         data: data files that need to be associated with the target files.
         main: optional main script.
+        size: size of test, to control timeout.
         args: arguments to the non-tpu tests.
         tpu_args: arguments for the tpu tests.
         shard_count: number of shards to split the tests across.
@@ -37,6 +39,7 @@ def distribute_py_test(
         srcs = srcs,
         data = data,
         main = main,
+        size = size,
         deps = deps,
         shard_count = shard_count,
         tags = tags,
@@ -51,6 +54,7 @@ def distribute_py_test(
             srcs = srcs,
             data = data,
             main = main,
+            size = size,
             args = tpu_args,
             shard_count = shard_count,
             deps = deps,
