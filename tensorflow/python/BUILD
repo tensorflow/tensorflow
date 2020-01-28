@@ -7728,11 +7728,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/compiler/jit:flags",
             "//tensorflow/core:eager_service_proto_cc",
             "//tensorflow/core:master_proto_cc",
             "//tensorflow/core:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/compiler/jit:flags_headers_only",
             "//tensorflow/core:eager_service_proto_cc_headers_only",
             "//tensorflow/core:master_proto_cc_headers_only",
             "//tensorflow/core:worker_proto_cc_headers_only",
