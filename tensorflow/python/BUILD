@@ -7440,6 +7440,26 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "arithmetic_optimizer_test",
+    size = "small",
+    srcs = [
+        "grappler/arithmetic_optimizer_test.py",
+    ],
+    python_version = "PY3",
+    tags = [
+        "grappler",
+    ],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
 # TODO(b/131764887) Remove once LayoutOptimizer is swapped out with GenericLayoutOptimizer.
 #
 # cuda_py_test(
