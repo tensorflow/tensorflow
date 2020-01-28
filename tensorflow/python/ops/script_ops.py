@@ -35,8 +35,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -116,6 +119,10 @@ class EagerFunc(object):
       # TODO(akshayka): Make it possible to return a list of both Tensors and
       # Nones from an EagerPyFunc.
       return constant_op.constant(0.0, dtype=dtype)
+    if sparse_tensor.is_sparse(value):
+      value = sparse_ops.sparse_tensor_to_dense(value)
+    elif(ragged_tensor.is_ragged(value)):
+      value = value.to_tensor()
     return ops.convert_to_tensor(value, dtype=dtype)
 
   def __call__(self, device, token, args):
