@@ -18,28 +18,25 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
-namespace client {
 
 Status ValidateHostPortPair(const string& host_port);
 
 // Collects one sample of monitoring profile and shows user-friendly metrics.
 // If timestamp flag is true, timestamp will be displayed in "%H:%M:%S" format.
-Status Monitor(const tensorflow::string& service_addr, int duration_ms,
+Status Monitor(const string& service_addr, int duration_ms,
                int monitoring_level, bool display_timestamp, string* result);
 
 // Starts tracing on a single or multiple hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
-Status StartTracing(const tensorflow::string& service_addr,
-                    const tensorflow::string& logdir,
-                    const tensorflow::string& workers_list,
-                    bool include_dataset_ops, int duration_ms,
-                    int num_tracing_attempts);
+Status Trace(const string& service_addr, const string& logdir,
+             const string& workers_list, bool include_dataset_ops,
+             int duration_ms, int num_tracing_attempts);
 
-}  // namespace client
 }  // namespace profiler
 }  // namespace tensorflow
 

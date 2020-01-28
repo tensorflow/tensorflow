@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-namespace client {
+namespace {
 
 constexpr uint64 kMaxEvents = 1000000;
 
@@ -44,19 +44,6 @@ string GetCurrentTimeStampAsString() {
   auto result = std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t));
   DCHECK_NE(result, 0);
   return s;
-}
-
-Status ValidateHostPortPair(const string& host_port) {
-  uint32 port;
-  std::vector<string> parts = absl::StrSplit(host_port, ':');
-  // Must be host:port, port must be a number, host must not contain a '/',
-  // host also must not be empty.
-  if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
-      parts[0].find("/") != string::npos || parts[0].empty()) {
-    return errors::InvalidArgument("Could not interpret \"", host_port,
-                                   "\" as a host-port pair.");
-  }
-  return Status::OK();
 }
 
 ProfileRequest PopulateProfileRequest(int duration_ms,
@@ -121,8 +108,7 @@ Status Profile(const string& service_addr, const string& logdir,
   }
 
   if (response.encoded_trace().empty()) {
-    return Status(tensorflow::error::Code::UNAVAILABLE,
-                  "No trace event is collected");
+    return Status(error::Code::UNAVAILABLE, "No trace event is collected");
   }
   return Status::OK();
 }
@@ -131,9 +117,9 @@ Status Profile(const string& service_addr, const string& logdir,
 // hostnames, for the time interval of duration_ms. Possibly save the profiling
 // result in the directory specified by repository_root and session_id.
 Status NewSession(const string& service_addr,
-                  const std::vector<tensorflow::string>& hostnames,
-                  int duration_ms, const string& repository_root,
-                  const string& session_id, const ProfileOptions& opts) {
+                  const std::vector<string>& hostnames, int duration_ms,
+                  const string& repository_root, const string& session_id,
+                  const ProfileOptions& opts) {
   NewProfileSessionRequest new_session_request;
   *new_session_request.mutable_request() =
       PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
@@ -164,15 +150,14 @@ Status NewSession(const string& service_addr,
   std::cout << "Profile session succeed for host(s):"
             << absl::StrJoin(hostnames, ",") << std::endl;
   if (new_session_response.empty_trace()) {
-    return Status(tensorflow::error::Code::UNAVAILABLE,
-                  "No trace event is collected");
+    return Status(error::Code::UNAVAILABLE, "No trace event is collected");
   }
   return Status::OK();
 }
 
 // Creates an empty event file if not already exists, which indicates that we
 // have a plugins/profile/ directory in the current logdir.
-Status MaybeCreateEmptyEventFile(const tensorflow::string& logdir) {
+Status MaybeCreateEmptyEventFile(const string& logdir) {
   // Suffix for an empty event file.  it should be kept in sync with
   // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
   constexpr char kProfileEmptySuffix[] = ".profile-empty";
@@ -187,20 +172,41 @@ Status MaybeCreateEmptyEventFile(const tensorflow::string& logdir) {
   return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
+MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
+                                      bool timestamp) {
+  MonitorRequest request;
+  request.set_duration_ms(duration_ms);
+  request.set_monitoring_level(monitoring_level);
+  request.set_timestamp(timestamp);
+  return request;
+}
+
+}  // namespace
+
+Status ValidateHostPortPair(const string& host_port) {
+  uint32 port;
+  std::vector<string> parts = absl::StrSplit(host_port, ':');
+  // Must be host:port, port must be a number, host must not contain a '/',
+  // host also must not be empty.
+  if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
+      parts[0].find("/") != string::npos || parts[0].empty()) {
+    return errors::InvalidArgument("Could not interpret \"", host_port,
+                                   "\" as a host-port pair.");
+  }
+  return Status::OK();
+}
+
 // Starts tracing on a single or multiple TPU hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
-Status StartTracing(const tensorflow::string& service_addr,
-                    const tensorflow::string& logdir,
-                    const tensorflow::string& workers_list,
-                    bool include_dataset_ops, int duration_ms,
-                    int num_tracing_attempts) {
+Status Trace(const string& service_addr, const string& logdir,
+             const string& workers_list, bool include_dataset_ops,
+             int duration_ms, int num_tracing_attempts) {
   // Use the current timestamp as the run name.
   tensorflow::string session_id = GetCurrentTimeStampAsString();
   constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-  tensorflow::string repository_root =
-      io::JoinPath(logdir, kProfilePluginDirectory);
-  std::vector<tensorflow::string> hostnames;
+  string repository_root = io::JoinPath(logdir, kProfilePluginDirectory);
+  std::vector<string> hostnames;
   if (!workers_list.empty()) {
     hostnames = absl::StrSplit(workers_list, ',');
   }
@@ -209,7 +215,7 @@ Status StartTracing(const tensorflow::string& service_addr,
 
   Status status = Status::OK();
   int remaining_attempts = num_tracing_attempts;
-  tensorflow::ProfileOptions opts;
+  ProfileOptions opts;
   opts.set_include_dataset_ops(include_dataset_ops);
   while (true) {
     std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
@@ -218,7 +224,7 @@ Status StartTracing(const tensorflow::string& service_addr,
       status = Profile(service_addr, logdir, duration_ms, repository_root,
                        session_id, opts);
     } else {
-      tensorflow::string tpu_master = service_addr;
+      string tpu_master = service_addr;
       status = NewSession(tpu_master, hostnames, duration_ms, repository_root,
                           session_id, opts);
     }
@@ -238,16 +244,7 @@ Status StartTracing(const tensorflow::string& service_addr,
   return status;
 }
 
-MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
-                                      bool timestamp) {
-  MonitorRequest request;
-  request.set_duration_ms(duration_ms);
-  request.set_monitoring_level(monitoring_level);
-  request.set_timestamp(timestamp);
-  return request;
-}
-
-Status Monitor(const tensorflow::string& service_addr, int duration_ms,
+Status Monitor(const string& service_addr, int duration_ms,
                int monitoring_level, bool display_timestamp, string* result) {
   MonitorRequest request =
       PopulateMonitorRequest(duration_ms, monitoring_level, display_timestamp);
@@ -267,6 +264,5 @@ Status Monitor(const tensorflow::string& service_addr, int duration_ms,
   return Status::OK();
 }
 
-}  // namespace client
 }  // namespace profiler
 }  // namespace tensorflow
