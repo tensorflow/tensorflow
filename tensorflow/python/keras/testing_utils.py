@@ -75,7 +75,7 @@ def get_test_data(train_samples,
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
                expected_output_dtype=None, expected_output_shape=None,
-               validate_training=True, adapt_data=None):
+               validate_training=True, adapt_data=None, custom_objects=None):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -93,7 +93,9 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
       string or integer values.
     adapt_data: Optional data for an 'adapt' call. If None, adapt() will not
       be tested for this layer. This is only relevant for PreprocessingLayers.
-
+    custom_objects: Optional Objects for your custom layer. If you write a 
+      your layer, you can use this variable.
+      
   Returns:
     The output data (Numpy array) returned by the layer, for additional
     checks to be done by the calling code.
@@ -196,7 +198,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
-  recovered_model = keras.models.Model.from_config(model_config)
+  recovered_model = keras.models.Model.from_config(
+    model_config, custom_objects)
   if model.weights:
     weights = model.get_weights()
     recovered_model.set_weights(weights)
@@ -250,7 +253,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
-  recovered_model = keras.models.Sequential.from_config(model_config)
+  recovered_model = keras.models.Sequential.from_config(
+    model_config, custom_objects)
   if model.weights:
     weights = model.get_weights()
     recovered_model.set_weights(weights)
