@@ -340,7 +340,7 @@ TEST_F(HorizontalFusionTest, RMSPropLike) {
     auto grad_ms_eps_rsq = builder.AddInstruction(HloInstruction::CreateBinary(
         shape, HloOpcode::kMultiply, grad, ms_eps_rsq));
     auto mom_2nd_term = builder.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kMultiply, lr_broadcasted, ms_eps_rsq));
+        shape, HloOpcode::kMultiply, lr_broadcasted, grad_ms_eps_rsq));
     auto mom_out = builder.AddInstruction(HloInstruction::CreateBinary(
         shape, HloOpcode::kAdd, mom_1st_term, mom_2nd_term));
 
