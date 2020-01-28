@@ -335,7 +335,7 @@ Status HorizontalFusionImpl::CreateFusedComputation(
     for (size_t j = 0; j < old_params.size(); ++j) {
       auto bound_opnd = fused_fusion_instrs[i]->mutable_operand(j);
       // in a form of param_i_j
-      auto new_param = b.AddInstruction(HloInstruction::CreateParameter(
+      b.AddInstruction(HloInstruction::CreateParameter(
           fused_comp_param_id++, bound_opnd->shape(),
           absl::StrCat("param_", i, "_", j)));
       bound_operands->push_back(bound_opnd);
