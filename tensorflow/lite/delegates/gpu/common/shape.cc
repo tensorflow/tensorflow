@@ -114,6 +114,10 @@ int GetAxisIndex(Layout layout, Axis axis) {
   return DispatchByLayout(layout, GetIndexByAxisFunc{axis});
 }
 
+bool HasAxis(Layout layout, Axis axis) {
+  return GetAxisIndex(layout, axis) >= 0;
+}
+
 int Size(Layout layout) { return DispatchByLayout(layout, NumAxisFunc()); }
 
 std::string ToString(const Shape& s) {
