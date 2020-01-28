@@ -200,7 +200,7 @@ string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
         DataTypeString(input_dtype), ctx->input(i).shape().DebugString()));
   }
   return strings::StrCat(trace_string, "#shape=(",
-                         absl::StrJoin(tensor_shapes, ","), ")#");
+                         absl::StrJoin(tensor_shapes, ";"), ")#");
 }
 
 void AsyncOpKernel::Compute(OpKernelContext* context) {
