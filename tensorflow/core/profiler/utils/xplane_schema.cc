@@ -77,6 +77,9 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
       {"PartitionedCallOp", kPartitionedCallOp},
+      // GPU related.
+      {"KernelLaunch", kKernelLaunch},
+      {"KernelExecute", kKernelExecute},
   });
   DCHECK_EQ(host_event_type_map->size(), kNumHostEventTypes);
   return *host_event_type_map;

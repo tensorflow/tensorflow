@@ -69,7 +69,10 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
-  kLastHostEventType = kPartitionedCallOp,
+  // GPU related.
+  kKernelLaunch,
+  kKernelExecute,
+  kLastHostEventType = kKernelExecute,
 };
 
 enum StatType {
