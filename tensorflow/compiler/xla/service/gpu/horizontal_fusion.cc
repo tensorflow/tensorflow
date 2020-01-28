@@ -343,7 +343,7 @@ Status HorizontalFusionImpl::CreateFusedComputation(
   }
   // Always create a dummy tuple instruction to serve as the root of the
   // computation, as the existence of a root instruction is required by the
-  // HloComputation. The real root instruction will be provided below.
+  // HloComputation. The real root instruction will replace it below.
   auto dummy_root = b.AddInstruction(
       HloInstruction::CreateTuple(std::vector<HloInstruction*>{}));
   *uniq_computation = b.Build(dummy_root);
@@ -426,6 +426,7 @@ Status HorizontalFusionImpl::CreateFusedComputation(
   // Make a tuple of output_slices.
   auto tuple = comp->AddInstruction(HloInstruction::CreateTuple(output_slices));
   comp->set_root_instruction(tuple, /*accept_different_shape=*/true);
+  comp->RemoveInstruction(dummy_root);
 
   return Status::OK();
 }
