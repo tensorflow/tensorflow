@@ -157,7 +157,8 @@ class ThreadWorkSource {
         blocking_inflight_(0),
         non_blocking_inflight_(0),
         traceme_id_(0),
-        version_(0) {
+        version_(0),
+        sub_thread_pool_waiter_(nullptr) {
     queue_waiters_.next = &queue_waiters_;
     queue_waiters_.prev = &queue_waiters_;
     for (int i = 0; i < NonBlockingWorkShardingFactor(); ++i) {
