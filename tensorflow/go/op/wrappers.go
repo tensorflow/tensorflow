@@ -16699,7 +16699,7 @@ type SobolSampleAttr func(optionalAttr)
 // SobolSampleDtype sets the optional dtype attribute to value.
 //
 // value: The type of the sample. One of: `float32` or `float64`.
-// If not specified, defaults to DT_DOUBLE
+// If not specified, defaults to DT_FLOAT
 func SobolSampleDtype(value tf.DataType) SobolSampleAttr {
 	return func(m optionalAttr) {
 		m["dtype"] = value
