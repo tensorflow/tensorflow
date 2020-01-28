@@ -2125,6 +2125,13 @@ void IrEmitterUnnested::EmitPrologueForReduction(
             InBoundsGEP(partial_result_address, {b_.getInt32(i)}));
     }
   }
+
+  if (!reduction_info->IsRowReduction()) {
+    llvm::Type* bool_ty = b_.getInt1Ty();
+    llvm::AllocaInst* output_inbound_addr = Alloca(bool_ty);
+    Store(llvm::ConstantInt::get(bool_ty, 0), output_inbound_addr);
+    reduction_info->SetCurrentOutputInboundAddress(output_inbound_addr);
+  }
 }
 
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
@@ -2217,7 +2224,17 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
     llvm_ir::LlvmIfData if_lane_id_is_zero_data = llvm_ir::EmitIfThenElse(
         ICmpEQ(thread_id_info.lane_id, constant(0)), "lane_id_is_zero", &b_);
     llvm_ir::SetToFirstInsertPoint(if_lane_id_is_zero_data.true_block, &b_);
+  } else {
+    llvm::Value* output_inbound_addr =
+        reduction_info.GetCurrentOutputInboundAddress();
+    llvm::Value* output_inbound = Load(output_inbound_addr);
+    llvm_ir::LlvmIfData if_output_inbound_data = llvm_ir::EmitIfThenElse(
+        ICmpEQ(output_inbound,
+               llvm::ConstantInt::get(output_inbound->getType(), 1)),
+        "output_inbound", &b_);
+    llvm_ir::SetToFirstInsertPoint(if_output_inbound_data.true_block, &b_);
   }
+
   int num_partial_results = GetNumberOfPartialResults(reduction_info);
 
   // Emit an atomic operation that accumulates the partial reduction to the
@@ -2288,6 +2305,13 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   VLOG(10) << "Emit tile element for reduce " << unnested_hlo->ToString();
   bool returns_tuple = output_instructions.size() > 1;
   int partial_result_index = reduction_info.IsRowReduction() ? 0 : x_iter_num;
+
+  if (!reduction_info.IsRowReduction()) {
+    llvm::Type* bool_ty = b_.getInt1Ty();
+    llvm::AllocaInst* output_inbound_addr =
+        reduction_info.GetCurrentOutputInboundAddress();
+    Store(llvm::ConstantInt::get(bool_ty, 1), output_inbound_addr);
+  }
 
   InlinedVector<llvm_ir::ElementGenerator, 1> input_gens;
   std::vector<std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
