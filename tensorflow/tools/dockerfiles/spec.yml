@@ -40,7 +40,7 @@ releases:
     nightly:
         tag_specs:
             - "{nightly}{py}{jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-devel}{py}"
+            - "{_TAG_PREFIX}{ubuntu-devel}{py-devel}"
 
     # Built per-release and pushed to tensorflow/tensorflow
     # --arg _TAG_PREFIX=<val> should be set to "1.11" (for example) or "latest".
@@ -63,6 +63,15 @@ releases:
 slice_sets:
 
     py:
+        - add_to_name: ""
+          args:
+              - USE_PYTHON_3_NOT_2=1
+        - add_to_name: "-py3"
+          args:
+              - USE_PYTHON_3_NOT_2=1
+
+    # TODO(angerson): On February 3, stop publishing Python 2 devel containers
+    py-devel:
         - add_to_name: ""
           args:
               - USE_PYTHON_3_NOT_2=
