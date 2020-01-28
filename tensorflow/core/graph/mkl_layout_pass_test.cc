@@ -1663,8 +1663,7 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive3);
               "node { name: 'B' op: '" #INPUT "'}"                            \
               "node { name: 'C' op: '" #INPUT "'}"                            \
               "node { name: 'D' op: '_FusedConv2D'"                           \
-              " attr { key: 'T'                value { type: " #T             \
-              " } }"                                                          \
+              " attr { key: 'T'                value { type: " #T " } }"      \
               " attr { key: 'num_args'         value { i: 1 } }"              \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"         \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "    \
@@ -1823,11 +1822,11 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Negative1);
 #define REGISTER_TEST(NAME, T, INPUT)                                          \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
     InitGraph(                                                                 \
-        "node { name: 'A' op: 'DoubleInput'}"                                  \
-        "node { name: 'B' op: 'DoubleInput'}"                                  \
-        "node { name: 'C' op: 'DoubleInput'}"                                  \
+        "node { name: 'A' op: '" #INPUT "'}"                                   \
+        "node { name: 'B' op: '" #INPUT "'}"                                   \
+        "node { name: 'C' op: '" #INPUT "'}"                                   \
         "node { name: 'D' op: '_FusedConv2D'"                                  \
-        " attr { key: 'T'                value { type: DT_DOUBLE } }"          \
+        " attr { key: 'T'                value { type:" #T  "} }"              \
         " attr { key: 'num_args'         value { i: 1 } }"                     \
         " attr { key: 'data_format'      value { s: 'NCHW' } }"                \
         " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} " \
@@ -1839,13 +1838,13 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Negative1);
         " attr { key: 'epsilon'          value { f: 0.001 }}"                  \
         " input: ['A', 'B', 'C']}"                                             \
         "node { name: 'E' op: 'Zeta'"                                          \
-        "attr { key: 'T' value { type: DT_DOUBLE } }"                          \
+        "attr { key: 'T' value { type: " #T "} }"                              \
         " input: ['D', 'C'] }");                                               \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-              "A(DoubleInput);B(DoubleInput);C(DoubleInput);"                  \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                     \
               "D(_FusedConv2D);E(Zeta)|A->D;B->D:1;C->D:2;C->E:1;D->E");       \
-  }
-REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Negative2);
+}
+REGISTER_TEST(NodeRewrite_FusedConv2D_Negative2, DT_DOUBLE, DoubleInput);
 #undef REGISTER_TEST
 
 // Test set: _FusedMatMul -> MklFusedMatMul rewrite tests
@@ -1874,7 +1873,7 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Negative2);
             "DMT/_1->D:4;DMT/_2->D:5");                                        \
 }
 //TODO(nhasabni): Enable bfloat16 test when we enable this op.
-REGISTER_TEST_FLOAT32(NodeRewrite_FusedMatMul_Postive);
+REGISTER_TEST_FLOAT32(NodeRewrite_FusedMatMul_Positive);
 #undef REGISTER_TEST
 
 // Test set: _FusedMatMul -> MklFusedMatMul rewrite tests
@@ -2000,7 +1999,7 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Positive2);
 #define REGISTER_TEST(NAME, T, INPUT)                                          \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
     InitGraph(                                                                 \
-        "node { name: 'A' op: '" #INPUT         "'}"                           \
+        "node { name: 'A' op: '" #INPUT "'}"                                   \
         "node { name: 'B' op: 'Int32Input'}"                                   \
         "node { name: 'C' op: 'Pad'"                                           \
         " attr { key: 'T'                value { type: " #T " } }"             \
