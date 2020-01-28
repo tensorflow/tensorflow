@@ -312,8 +312,7 @@ PYBIND11_MODULE(xla_extension, m) {
                     if (array.ndim() != 2) {
                       return InvalidArgument(
                           "Argument to DeviceAssignment constructor must be a "
-                          "2D array, "
-                          "received an %dD array.",
+                          "2D array, received an %dD array.",
                           array.ndim());
                     }
                     DeviceAssignment result(array.shape(0), array.shape(1));
@@ -570,6 +569,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,
+                  py::call_guard<py::gil_scoped_release>())
+      .def_static("Compile", &PyLocalExecutable::CompileForDevices,
                   py::call_guard<py::gil_scoped_release>())
       .def("local_devices", &PyLocalExecutable::local_devices)
       .def("SizeOfGeneratedCodeInBytes",
