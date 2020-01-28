@@ -74,8 +74,9 @@ const int kAMDGPUInlineThreshold = 0x100000;
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
-// Gets the GPU name as it's known to LLVM for a given compute capability.  If
-// we see an unrecognized compute capability, we return "sm_35".
+// Gets the GPU name as it's known to LLVM for a given compute
+// capability.  If we see an unrecognized compute capability, we
+// return the highest one that is known and below the selected device.
 static string GetSmName(std::pair<int, int> compute_capability) {
   static auto* m = new std::map<std::pair<int, int>, int>({
       {{3, 5}, 35},
@@ -95,6 +96,16 @@ static string GetSmName(std::pair<int, int> compute_capability) {
   if (it != m->end()) {
     sm_version = it->second;
   } else {
+    // Fallback to the most recent version before the unknown version.
+    for (auto iter = m->begin(); iter != m->end(); ++iter) {
+      auto k = iter->first;
+      if (iter->second > sm_version &&
+          ((k.first < compute_capability.first) ||
+           (k.first == compute_capability.first &&
+            k.second <= compute_capability.second))) {
+        sm_version = iter->second;
+      }
+    }
     LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to telling LLVM that we're compiling for sm_"
