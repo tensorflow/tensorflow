@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1483,24 +1482,7 @@ def fused_batch_norm(
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  if compat.forward_compatible(2019, 6, 6):
-    y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
-        x,
-        scale,
-        offset,
-        mean,
-        variance,
-        epsilon=epsilon,
-        data_format=data_format,
-        is_training=is_training,
-        name=name)
-    return y, batch_mean, batch_var
-
-  if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
-    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
-  else:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access
-  y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
+  y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
       x,
       scale,
       offset,
@@ -1511,6 +1493,7 @@ def fused_batch_norm(
       is_training=is_training,
       name=name)
   return y, batch_mean, batch_var
+
 
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])
 def batch_norm_with_global_normalization(t=None,

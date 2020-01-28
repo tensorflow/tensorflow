@@ -1777,8 +1777,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     if (!result_ty || !result_ty.hasStaticShape()) return matchFailure();
 
     SmallVector<int64_t, 4> begin_indices, end_indices, strides;
-    if (!op.GetSlicedBoundRanges(input_shape, &begin_indices, &end_indices,
-                                 &strides))
+    if (!op.GetSlicedBoundRanges(&begin_indices, &end_indices, &strides))
       return matchFailure();
 
     SmallVector<int64_t, 4> hlo_begin_indices, hlo_end_indices, hlo_strides,
@@ -1820,12 +1819,13 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     }
 
     Location loc = op.getLoc();
-    auto reversed = rewriter.create<ReverseOp>(
-        loc, input_ty, op.input(),
-        GetI64ElementsAttr(dims_to_reverse, &rewriter));
+    Value input = op.input();
+    if (!dims_to_reverse.empty())
+      input = rewriter.create<ReverseOp>(
+          loc, input_ty, op.input(),
+          GetI64ElementsAttr(dims_to_reverse, &rewriter));
     auto sliced = rewriter.create<SliceOp>(
-        loc, reversed.getResult(),
-        GetI64ElementsAttr(hlo_begin_indices, &rewriter),
+        loc, input, GetI64ElementsAttr(hlo_begin_indices, &rewriter),
         GetI64ElementsAttr(hlo_end_indices, &rewriter),
         GetI64ElementsAttr(hlo_strides, &rewriter));
 

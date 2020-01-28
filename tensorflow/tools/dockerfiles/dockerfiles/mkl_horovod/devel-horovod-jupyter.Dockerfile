@@ -99,7 +99,7 @@ RUN ${PIP} --no-cache-dir install \
     enum34
 
 # Install bazel
-ARG BAZEL_VERSION=1.1.0
+ARG BAZEL_VERSION=1.2.1
 RUN mkdir /bazel && \
     wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
@@ -163,6 +163,8 @@ COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter matplotlib
+# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
+RUN if [[ "${USE_PYTHON_3_NOT_2}" == "1" ]]; then ${PIP} install ipykernel==5.1.1 nbformat==4.4.0; fi
 RUN ${PIP} install jupyter_http_over_ws
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 

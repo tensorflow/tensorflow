@@ -218,7 +218,7 @@ cc_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "eager_client.h",
         "remote_tensor_handle.h",

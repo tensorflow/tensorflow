@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/profiler/profiler_analysis.grpc.pb.h"
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
-#include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
+#include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
@@ -109,12 +109,11 @@ Status Profile(const string& service_addr, const string& logdir,
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
   if (!response.encoded_trace().empty()) {
-    TF_CHECK_OK(WriteTensorboardTPUProfile(logdir, session_id, "", response,
-                                           &std::cout));
+    TF_CHECK_OK(
+        SaveTensorboardProfile(logdir, session_id, "", response, &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
     std::cout
-        << "NOTE: using the trace duration " << duration_ms << "ms."
-        << std::endl
+        << "NOTE: using the trace duration " << duration_ms << "ms.\n"
         << "Set an appropriate duration (with --duration_ms) if you "
            "don't see a full step in your trace or the captured trace is too "
            "large."
@@ -225,16 +224,14 @@ Status StartTracing(const tensorflow::string& service_addr,
     }
     if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))
       break;
-    std::cout << "No trace event is collected. Automatically retrying."
-              << std::endl
+    std::cout << "No trace event is collected. Automatically retrying.\n"
               << std::endl;
   }
 
   if (ShouldRetryTracing(status)) {
     std::cout << "No trace event is collected after " << num_tracing_attempts
               << " attempt(s). "
-              << "Perhaps, you want to try again (with more attempts?)."
-              << std::endl
+              << "Perhaps, you want to try again (with more attempts?).\n"
               << "Tip: increase number of attempts with --num_tracing_attempts."
               << std::endl;
   }

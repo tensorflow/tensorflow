@@ -43,6 +43,7 @@ from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -77,7 +78,15 @@ class LSTMV2Test(keras_parameterized.TestCase):
         recurrent_dropout=recurrent_dropout,
         unroll=unroll,
         use_bias=use_bias)
-    self.assertFalse(layer.could_use_cudnn)
+    self.assertFalse(layer._could_use_gpu_kernel)
+
+  @test_util.run_v2_only
+  def test_use_on_default_activation_with_gpu_kernel(self):
+    layer = rnn.LSTM(1, activation=nn.tanh)
+    self.assertTrue(layer._could_use_gpu_kernel)
+
+    layer = rnn.LSTM(1, recurrent_activation=nn.sigmoid)
+    self.assertTrue(layer._could_use_gpu_kernel)
 
   def test_static_shape_inference_LSTM(self):
     # Github issue: 15165

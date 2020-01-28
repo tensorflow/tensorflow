@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/profiler/utils/metadata_matcher.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
@@ -84,7 +84,7 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
     const XPlane& host_trace, bool use_device_step_events,
     const StepEvents& device_step_events) {
   StepEvents result;
-  XPlaneVisitor plane(&host_trace);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&host_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
                           line, use_device_step_events, device_step_events),
@@ -117,7 +117,7 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
 
 StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents result;
-  XPlaneVisitor plane(&device_trace);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) return;
     CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);

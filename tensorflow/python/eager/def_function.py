@@ -1207,7 +1207,8 @@ def function(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         inner_function,
-        Function(
+        decorator_name="tf.function",
+        decorator_func=Function(
             inner_function,
             name,
             input_signature=input_signature,

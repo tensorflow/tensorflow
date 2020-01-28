@@ -36,9 +36,17 @@ inline uint64 Hash64(const char* data, size_t n) {
   return Hash64(data, n, 0xDECAFCAFFE);
 }
 
+inline uint64 Hash64(const char* data) { return Hash64(data, ::strlen(data)); }
+
 inline uint64 Hash64(const string& str) {
   return Hash64(str.data(), str.size());
 }
+
+#ifdef USE_TSTRING
+inline uint64 Hash64(const tstring& str) {
+  return Hash64(str.data(), str.size());
+}
+#endif  // USE_TSTRING
 
 inline uint64 Hash64Combine(uint64 a, uint64 b) {
   return a ^ (b + 0x9e3779b97f4a7800ULL + (a << 10) + (a >> 4));

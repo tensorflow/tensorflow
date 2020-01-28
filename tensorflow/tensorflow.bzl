@@ -1727,6 +1727,20 @@ def transitive_hdrs(name, deps = [], **kwargs):
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
+#
+# **NOTE**: The headers brought in are **NOT** fully transitive; certain
+# deep headers may be missing.  Furthermore, the `includes` argument of
+# cc_libraries in the dependencies are *not* going to be respected
+# when you use cc_header_only_library.  Some cases where this creates
+# problems include: Eigen, grpc, MLIR.  In cases such as these, you must
+# find a header-only version of the cc_library rule you care about and
+# link it *directly* in addition to your use of the cc_header_only_library
+# intermediary.
+#
+# For:
+#   * Eigen: it's a header-only library.  Add it directly to your deps.
+#   * GRPC: add a direct dep on @grpc//:grpc++_public_hdrs.
+#
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
     cc_library(
@@ -1873,6 +1887,10 @@ register_extension_info(
     extension_name = "tf_custom_op_library",
     label_regex_for_dep = "{extension_name}",
 )
+
+# Placeholder to use until bazel supports py_strict_library.
+def py_strict_library(name, **kwargs):
+    native.py_library(name = name, **kwargs)
 
 def tf_custom_op_py_library(
         name,

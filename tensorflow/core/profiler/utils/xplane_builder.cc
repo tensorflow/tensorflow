@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-
 namespace tensorflow {
 namespace profiler {
 
@@ -50,10 +48,6 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
     metadata =
         XPlaneBuilder::GetOrCreateEventMetadata(++last_event_metadata_id_);
     metadata->set_name(std::string(name));
-    std::string event_name = TfOpEventName(name);
-    if (event_name != name) {
-      metadata->set_display_name(std::move(event_name));
-    }
   }
   return metadata;
 }

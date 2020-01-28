@@ -40,7 +40,9 @@ limitations under the License.
 #include "mlir/Support/Functional.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -93,19 +95,13 @@ bool IsTailOfShape(Type type1, Type type2) {
   return std::equal(i1, e1, i2);
 }
 
-bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
-                                bool is_depthwise) {
+bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
+                                      const ArrayRef<int64_t> elements_shape,
+                                      bool is_depthwise) {
   // Make sure the val tensor has shape where all dimensions are 1 except
   // last one.
   // Also, val tensor must be of rank 1 or 4 or 0 (scalar).
-  const auto elements = val.dyn_cast<DenseElementsAttr>();
-  const auto elements_shape = elements.getType().getShape();
-  const auto filter_elements = filter.dyn_cast<DenseElementsAttr>();
-  const auto filter_shape = filter_elements.getType().getShape();
-  const auto elements_rank = elements.getType().getRank();
-  if (!elements || !filter_elements) {
-    return false;
-  }
+  const auto elements_rank = elements_shape.size();
   for (int i = 0; i < static_cast<int>(elements_shape.size()) - 1; ++i) {
     if (elements_shape[i] != 1) return false;
   }
@@ -123,6 +119,30 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
                     : filter_shape[0] != elements_depth))
     return false;
   return true;
+}
+
+bool CanFuseConvOrDepthwiseConv(Value filter, Attribute val,
+                                bool is_depthwise) {
+  const auto elements = val.dyn_cast<DenseElementsAttr>();
+  if (!elements) {
+    return false;
+  }
+  const auto elements_shape = elements.getType().getShape();
+  const auto filter_shape = filter.getType().cast<ShapedType>().getShape();
+  return CanFuseConvOrDepthwiseConvShapes(filter_shape, elements_shape,
+                                          is_depthwise);
+}
+
+bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
+                                bool is_depthwise) {
+  if (const auto elements = val.dyn_cast<DenseElementsAttr>()) {
+    if (const auto filter_elements = filter.dyn_cast<DenseElementsAttr>()) {
+      return CanFuseConvOrDepthwiseConvShapes(
+          filter_elements.getType().getShape(), elements.getType().getShape(),
+          is_depthwise);
+    }
+  }
+  return false;
 }
 
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
@@ -151,6 +171,10 @@ ElementsAttr ExpandTo4DForConv(Attribute a) {
 
 ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
   return ExpandTo4DForConvImpl(a, true);
+}
+
+TypeAttr RescaleQtype(Type input, Attribute factor) {
+  return TFL::RescaleQuantizedType(input, factor);
 }
 
 // Returns shape of a ranked tensor.
@@ -269,7 +293,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&cst_tmp)))
       return matchFailure();
-    if (fc_op.fused_activation_function().equals("None")) return matchFailure();
+    if (fc_op.fused_activation_function() != "NONE") return matchFailure();
 
     // Broadcast the constant operand of Mul if it isn't compatible to the
     // filter input. We only support broadcasting the operand along the depth
@@ -316,8 +340,110 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
   }
 };
 
+// Fuse Mul with proceeding Affine ops. This is an C++ implementation of the
+// following table gen implementation, which doesn't derived the result type of
+// the TFL_DequantizeOp.
+// def : Pat<(TFL_MulOp (TFL_Conv2DOp:$conv_output $input,
+//                          (TFL_DequantizeOp (TFL_QuantizeOp
+//                              (ConstantOp F32ElementsAttr:$filter), $qtype)),
+//                          (ConstantOp F32ElementsAttr:$bias),
+//                          $h_factor, $w_factor, TFL_AF_None,
+//                          $padding, $stride_h, $stride_w),
+//                      (ConstantOp F32ElementsAttr:$value), $act_fn),
+//           (TFL_Conv2DOp $input,
+//                      (TFL_DequantizeOp (TFL_QuantizeOp
+//                          (TFL_MulOp (ConstantOp $filter),
+//                                     (ConstantOp (ExpandTo4DForConv $value)),
+//                                      TFL_AF_None),
+//                          (RescaleQtype $qtype, $value))),
+//                      (TFL_MulOp (ConstantOp $bias), (ConstantOp $value),
+//                          TFL_AF_None),
+//                      $h_factor, $w_factor, $act_fn,
+//                      $padding, $stride_h, $stride_w),
+//         [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
+//          (HasOneUse $conv_output),
+//          (IsPerAxisQuantization $qtype), // per-axis quantization
+//         ]>;
+template <typename AffineOpType>
+struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
+  using OpRewritePattern<TFL::MulOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TFL::MulOp mul_op,
+                                     PatternRewriter &rewriter) const override {
+    // Mul. Required 1-D rhs for batch normalization.
+    DenseElementsAttr gamma_cst;
+    Value gamma = mul_op.rhs();
+    if (!matchPattern(gamma, m_Constant(&gamma_cst))) return matchFailure();
+    if (gamma_cst.getType().getRank() != 1) return matchFailure();
+
+    // Affine op
+    Operation *mul_op_lhs = mul_op.lhs().getDefiningOp();
+    auto fc_op = dyn_cast_or_null<AffineOpType>(mul_op_lhs);
+    if (!fc_op) return matchFailure();
+    Value filter = fc_op.filter();
+    Value bias = fc_op.bias();
+
+    // QDQs
+    auto dq_op = dyn_cast_or_null<TFL::DequantizeOp>(filter.getDefiningOp());
+    if (!dq_op) return matchFailure();
+    auto q_op =
+        dyn_cast_or_null<TFL::QuantizeOp>(dq_op.input().getDefiningOp());
+    if (!q_op) return matchFailure();
+    filter = q_op.input();
+
+    // weight constant
+    ElementsAttr cst_tmp;
+    if (!matchPattern(filter, m_Constant(&cst_tmp))) return matchFailure();
+    if (!bias.getType().isa<NoneType>() &&
+        !matchPattern(bias, m_Constant(&cst_tmp)))
+      return matchFailure();
+    if (fc_op.fused_activation_function() != "NONE") return matchFailure();
+
+    // Broadcast the constant operand of Mul if it isn't compatible to the
+    // filter input. We only support broadcasting the operand along the depth
+    // dimension, when the operand's depth is 1.
+    rewriter.setInsertionPoint(q_op);
+    Location loc = fc_op.getLoc();
+    Value broadcasted_gamma;
+    if (isa<TFL::Conv2DOp>(mul_op_lhs)) {
+      auto mul_rhs = ExpandTo4DForConv(gamma_cst);
+      broadcasted_gamma = rewriter.create<ConstOp>(loc, mul_rhs);
+    } else if (isa<TFL::DepthwiseConv2DOp>(mul_op_lhs)) {
+      auto mul_rhs = ExpandTo4DForDepthwiseConv(gamma_cst);
+      broadcasted_gamma = rewriter.create<ConstOp>(loc, mul_rhs);
+    } else {
+      return matchFailure();
+    }
+
+    // Rewrite filter constant. Since the folder of TFL::MulOp couldn't
+    // broadcast the operands, TF::MulOp is used to fold the constant.
+    auto new_filter =
+        rewriter.create<TF::MulOp>(loc, filter, broadcasted_gamma).z();
+    // Update the scale in the quantize op.
+    auto new_qtype = RescaleQtype(q_op.qtype(), gamma_cst);
+    if (!new_qtype) return matchFailure();
+    rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(q_op, new_qtype.getValue(),
+                                                 new_filter, new_qtype);
+
+    // If bias isn't None, it needs to be multiplied as well.
+    if (!bias.getType().isa<NoneType>()) {
+      rewriter.setInsertionPoint(fc_op);
+      auto new_bias = rewriter.create<TF::MulOp>(loc, bias, gamma);
+      fc_op.getOperation()->replaceUsesOfWith(bias, new_bias);
+    }
+
+    // Remove the tailing mul op.
+    mul_op.replaceAllUsesWith(fc_op.getResult());
+    return matchSuccess();
+  }
+};
+
+using FuseConv2DAndMulWithQDQs = FuseAffinOpAndMulWithQDQs<TFL::Conv2DOp>;
+using FuseDepthwiseConv2DAndMulWithQDQs =
+    FuseAffinOpAndMulWithQDQs<TFL::DepthwiseConv2DOp>;
+
 // Fuse Binary Op with following Affine operation.
-template <typename ConcreteType, typename AffineOpType>
+template <typename AffineOpType>
 struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   using OpRewritePattern<AffineOpType>::OpRewritePattern;
 
@@ -451,37 +577,11 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   }
 };
 
-class FuseBinaryOpToFollowingFullyConnected
-    : public FuseBinaryOpToFollowingAffineOp<
-          FuseBinaryOpToFollowingFullyConnected, FullyConnectedOp> {
- public:
-  using BaseType =
-      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingFullyConnected,
-                                      FullyConnectedOp>;
-  explicit FuseBinaryOpToFollowingFullyConnected(MLIRContext *context)
-      : BaseType(context) {}
-};
-
-class FuseBinaryOpToFollowingDepthwiseConv2D
-    : public FuseBinaryOpToFollowingAffineOp<
-          FuseBinaryOpToFollowingDepthwiseConv2D, DepthwiseConv2DOp> {
- public:
-  using BaseType =
-      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingDepthwiseConv2D,
-                                      DepthwiseConv2DOp>;
-  explicit FuseBinaryOpToFollowingDepthwiseConv2D(MLIRContext *context)
-      : BaseType(context) {}
-};
-
-class FuseBinaryOpToFollowingConv2D
-    : public FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingConv2D,
-                                             Conv2DOp> {
- public:
-  using BaseType =
-      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingConv2D, Conv2DOp>;
-  explicit FuseBinaryOpToFollowingConv2D(MLIRContext *context)
-      : BaseType(context) {}
-};
+using FuseBinaryOpToFollowingFullyConnected =
+    FuseBinaryOpToFollowingAffineOp<FullyConnectedOp>;
+using FuseBinaryOpToFollowingDepthwiseConv2D =
+    FuseBinaryOpToFollowingAffineOp<DepthwiseConv2DOp>;
+using FuseBinaryOpToFollowingConv2D = FuseBinaryOpToFollowingAffineOp<Conv2DOp>;
 
 void Optimize::runOnFunction() {
   OwningRewritePatternList patterns;
@@ -499,7 +599,9 @@ void Optimize::runOnFunction() {
   // Fuse the binary ops with the following ops.
   patterns.insert<FuseBinaryOpToFollowingConv2D,
                   FuseBinaryOpToFollowingDepthwiseConv2D,
-                  FuseBinaryOpToFollowingFullyConnected>(ctx);
+                  FuseBinaryOpToFollowingFullyConnected,
+                  FuseConv2DAndMulWithQDQs, FuseDepthwiseConv2DAndMulWithQDQs>(
+      ctx);
   applyPatternsGreedily(func, patterns);
 }
 

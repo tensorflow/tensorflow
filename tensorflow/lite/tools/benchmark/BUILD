@@ -121,6 +121,7 @@ cc_library(
         ":benchmark_utils",
         ":delegate_provider_hdr",
         ":gpu_delegate_provider",
+        ":hexagon_delegate_provider",
         ":logging",
         ":nnapi_delegate_provider",
         "//tensorflow/lite:framework",
@@ -234,6 +235,20 @@ cc_library(
 cc_library(
     name = "nnapi_delegate_provider",
     srcs = ["nnapi_delegate_provider.cc"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/tools/evaluation:utils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "hexagon_delegate_provider",
+    srcs = ["hexagon_delegate_provider.cc"],
     copts = common_copts,
     deps = [
         ":benchmark_model_lib",

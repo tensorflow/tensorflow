@@ -191,3 +191,53 @@ message XRTChainedExecutePlan {
   // The post order with the XRT computations to be executed.
   repeated XRTChainedExecuteOp ops = 1;
 }
+
+// The message used to encode the options for the XRTMetricsCollect operation.
+message XRTMetricsCollect {
+  // A list of regular expressions to match the metric names. Empty means to
+  // return all the metrics reported by the collection registry.
+  repeated string metrics_regex = 1;
+}
+
+message Percentiles {
+  message Point {
+    // In the [0, 100] range.
+    double percentile = 1;
+    double value = 2;
+  }
+
+  // The time (in nanoseconds) of the first sample within the samples buffer.
+  uint64 start_nstime = 1;
+  // The time (in nanoseconds) of the last sample within the samples buffer.
+  uint64 end_nstime = 2;
+  // The minimum value of the samples within the samples buffer.
+  double min_value = 3;
+  // The maximum value of the samples within the samples buffer.
+  double max_value = 4;
+  // The mean value of the samples within the samples buffer.
+  double mean = 5;
+  // The stndard deviation of the samples within the samples buffer.
+  double stddev = 6;
+  // The number samples within the samples buffer.
+  uint64 num_samples = 7;
+  // The total number of times this metrics has been posted a value to.
+  uint64 total_samples = 8;
+  // The sum of all the posted values.
+  double accumulator = 9;
+  // The percentile points reported by the metric.
+  repeated Point points = 10;
+}
+
+message MetricValues {
+  // The metric name.
+  string name = 1;
+
+  oneof values_oneof {
+    Percentiles percentiles_value = 2;
+    int64 int64_value = 3;
+  }
+}
+
+message MetricsReport {
+  repeated MetricValues metrics = 1;
+}

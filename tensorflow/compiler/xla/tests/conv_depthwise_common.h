@@ -31,7 +31,8 @@ namespace xla {
 string GetFloatDataType(bool use_bfloat16);
 
 struct DepthwiseConvolution2DSpec {
-  int64 output_feature, window, stride, pad, lhs_dilate;
+  int64 output_feature = -1, window = -1, stride = -1, pad = -1,
+        lhs_dilate = -1;
   std::vector<int64> activation_dims;
   std::vector<int64> activation_layout;
   std::vector<int64> kernel_dims;

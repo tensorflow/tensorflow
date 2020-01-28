@@ -43,8 +43,15 @@ STANDARD_PREAMBLE_LEN = 2
 _LEADING_WHITESPACE = re.compile(r'\s*')
 
 
+def _unfold_continuations(code_string):
+  """Removes any backslash line continuations from the code."""
+  return code_string.replace('\\\n', '')
+
+
 def dedent_block(code_string):
   """Dedents a code so that its first line starts at row zero."""
+
+  code_string = _unfold_continuations(code_string)
 
   token_gen = tokenize.generate_tokens(six.StringIO(code_string).readline)
 

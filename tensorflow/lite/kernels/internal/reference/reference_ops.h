@@ -295,7 +295,7 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,
                             const RuntimeShape& output_shape,
-                            float* output_data) {
+                            float* output_data, float epsilon = 1e-6) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -307,7 +307,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       const float val = input_data[depth * i + c];
       squared_l2_norm += val * val;
     }
-    const float l2_norm = std::sqrt(squared_l2_norm);
+    float l2_norm = std::sqrt(squared_l2_norm);
+    l2_norm = std::max(l2_norm, epsilon);
     for (int c = 0; c < depth; ++c) {
       output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
     }

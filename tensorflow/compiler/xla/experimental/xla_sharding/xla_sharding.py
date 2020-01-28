@@ -181,7 +181,14 @@ def replicate(tensor, assign_tuple_sharding=False, use_sharding_op=False):
   return tensor
 
 
-def assign_device(tensor, device, assign_tuple_sharding=False):
+def assign_device(tensor,
+                  device,
+                  assign_tuple_sharding=False,
+                  use_sharding_op=False):
+  """Returns a tensor that has AssignDevice sharding attribute."""
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+
   Sharding.assign_device(device).apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding)

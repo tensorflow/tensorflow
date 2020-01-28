@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -102,6 +102,8 @@ std::string ToString(enum OperationType op) {
       return "lstm";
     case OperationType::MAX_UNPOOLING_2D:
       return "max_unpooling";
+    case OperationType::MEAN:
+      return "mean";
     case OperationType::MUL:
       return "mul";
     case OperationType::MULTIPLY_SCALAR:
@@ -144,8 +146,6 @@ std::string ToString(enum OperationType op) {
       return "tanh";
     case OperationType::TRANSPOSE:
       return "transpose";
-    case OperationType::UPSAMPLE_2D:
-      return "upsample_2d";
     default:
       break;
   }
@@ -171,6 +171,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
+          {"mean", OperationType::MEAN},
           {"mul", OperationType::MUL},
           {"multiply_scalar", OperationType::MULTIPLY_SCALAR},
           {"pad", OperationType::PAD},
@@ -191,7 +192,6 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"subtract", OperationType::SUB},
           {"tanh", OperationType::TANH},
           {"transpose", OperationType::TRANSPOSE},
-          {"upsample_2d", OperationType::UPSAMPLE_2D},
       });
   auto op = operations->find(name);
   return op == operations->end() ? OperationType::UNKNOWN : op->second;
@@ -595,25 +595,24 @@ Padding3D CalculateSamePadding(const BHWDC& input,
 }
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
-                           const Upsample2DAttributes& attr) {
+                           const Resize2DAttributes& attr) {
   return attr.align_corners && input_size > 1 && output_size > 1
              ? static_cast<float>(input_size - 1) / (output_size - 1)
              : static_cast<float>(input_size) / output_size;
 }
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
-                           const Upsample3DAttributes& attr) {
+                           const Resize3DAttributes& attr) {
   return attr.align_corners && input_size > 1 && output_size > 1
              ? static_cast<float>(input_size - 1) / (output_size - 1)
              : static_cast<float>(input_size) / output_size;
 }
 
-BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr) {
+BHWC CalculateOutputShape(const BHWC& input, const Resize2DAttributes& attr) {
   return BHWC(input.b, attr.new_shape.h, attr.new_shape.w, input.c);
 }
 
-BHWDC CalculateOutputShape(const BHWDC& input,
-                           const Upsample3DAttributes& attr) {
+BHWDC CalculateOutputShape(const BHWDC& input, const Resize3DAttributes& attr) {
   return BHWDC(input.b, attr.new_shape.h, attr.new_shape.w, attr.new_shape.d,
                input.c);
 }

@@ -761,7 +761,7 @@ class LinearOperator(module.Module):
         "  Requires conversion to a dense matrix and O(N^3) operations.")
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     if self._can_use_cholesky():
-      return linear_operator_util.cholesky_solve_with_broadcast(
+      return linalg_ops.cholesky_solve(
           linalg_ops.cholesky(self.to_dense()), rhs)
     return linear_operator_util.matrix_solve_with_broadcast(
         self.to_dense(), rhs, adjoint=adjoint)

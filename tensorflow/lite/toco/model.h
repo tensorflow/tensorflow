@@ -1840,6 +1840,7 @@ struct ResizeBilinearOperator : Operator {
   ResizeBilinearOperator() : Operator(OperatorType::kResizeBilinear) {}
 
   bool align_corners = false;
+  bool half_pixel_centers = false;
 };
 
 // ResizeNearestNeighborOperator operator. It resizes input images with nearest

@@ -76,6 +76,7 @@ double IdleTimeRatio(const OpMetricsDb& metrics_db) {
 }
 
 uint64 IdleTimePs(const OpMetricsDb& metrics_db) {
+  if (metrics_db.total_time_ps() <= metrics_db.total_op_time_ps()) return 0;
   return metrics_db.total_time_ps() - metrics_db.total_op_time_ps();
 }
 

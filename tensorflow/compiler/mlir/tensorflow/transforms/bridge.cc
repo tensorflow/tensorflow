@@ -59,7 +59,6 @@ void CreateTPUBridge(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
-  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {

@@ -2957,6 +2957,8 @@ bool OpGradientDoesntRequireOutputIndices(
           {"Cos", {true, {}}},
           {"Tan", {true, {}}},
           {"Add", {true, {}}},
+          {"AddN", {true, {}}},
+          {"AddV2", {true, {}}},
           {"Sub", {true, {}}},
           {"Mul", {true, {}}},
           {"Div", {true, {}}},
@@ -2984,6 +2986,8 @@ bool OpGradientDoesntRequireOutputIndices(
 
           // Ops that don't require a subset of outputs.
           {"FusedBatchNorm", {false, {0, 1, 2}}},
+          {"FusedBatchNormV2", {false, {0, 1, 2}}},
+          {"FusedBatchNormV3", {false, {0, 1, 2}}},
       });
 
   auto it = m->find(op_name);
@@ -3031,6 +3035,8 @@ bool OpGradientDoesntRequireInputIndices(
 
           // Ops that don't require a subset of inputs.
           {"FusedBatchNorm", {false, {2}}},
+          {"FusedBatchNormV2", {false, {2}}},
+          {"FusedBatchNormV3", {false, {2}}},
       });
 
   auto it = m->find(op_name);

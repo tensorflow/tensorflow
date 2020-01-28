@@ -353,15 +353,15 @@ TfLiteStatus PopulateQuantizedLstmParams(
 
   // 10000 is used to make sure the kernel logic does not overflow.
   if (!use_cifg) {
-    integer_lstm_param->inv_large_value[0] =
-        std::min(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
+    integer_lstm_param->input_variance_guard =
+        std::max(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
   }
-  integer_lstm_param->inv_large_value[1] =
-      std::min(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
-  integer_lstm_param->inv_large_value[2] =
-      std::min(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
-  integer_lstm_param->inv_large_value[3] =
-      std::min(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
+  integer_lstm_param->forget_variance_guard =
+      std::max(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
+  integer_lstm_param->cell_variance_guard =
+      std::max(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
+  integer_lstm_param->output_variance_guard =
+      std::max(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
 
   return kTfLiteOk;
 }
@@ -371,7 +371,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData();
   op_data->kernel_type = kTfLiteLSTMFullKernel;
-  context->AddTensors(context, /*tensors_to_add=*/7,
+  context->AddTensors(context, /*tensors_to_add=*/8,
                       &op_data->scratch_tensor_index);
   return op_data;
 }
@@ -871,7 +871,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
-    node->temporaries = TfLiteIntArrayCreate(7);
+    node->temporaries = TfLiteIntArrayCreate(8);
   } else if (is_integer) {
     node->temporaries = TfLiteIntArrayCreate(6);
   } else {
@@ -940,7 +940,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                         context->ResizeTensor(context, cell_state_quantized,
                                               cell_state_quantized_size));
     }
-
     // Allocate temporary tensors to store scaling factors and product scaling
     // factors. The latter is a convenience storage which allows to quantize
     // a vector once (which produces the scaling factors) and multiply it with
@@ -986,6 +985,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context,
                         context->ResizeTensor(context, recovered_cell_weights,
                                               recovered_cell_weights_size));
+    }
+    // Allocate a temporary tensor to store accumulate values for matrix
+    // multiplication before multiplication by scaling factor
+    node->temporaries->data[7] = op_data->scratch_tensor_index + 7;
+    TfLiteTensor* accum_scratch = GetTemporary(context, node, /*index=*/7);
+    accum_scratch->type = kTfLiteInt32;
+    accum_scratch->allocation_type = kTfLiteArenaRw;
+    int accum_scratch_dims[2] = {n_cell, n_batch};
+    if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2,
+                                   accum_scratch_dims)) {
+      TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
+      accum_size->data[0] = n_cell;
+      accum_size->data[1] = n_batch;
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, accum_scratch, accum_size));
     }
   }
 
@@ -1135,6 +1149,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             GetTemporary(context, node, /*index=*/5);
         TfLiteTensor* recovered_cell_weights =
             GetTemporary(context, node, /*index=*/6);
+        TfLiteTensor* output_scratch_buffer =
+            GetTemporary(context, node, /*index=*/7);
         return lstm_eval::EvalHybrid(
             input, input_to_input_weights, input_to_forget_weights,
             input_to_cell_weights, input_to_output_weights,
@@ -1155,7 +1171,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             scaling_factors, prod_scaling_factors, recovered_cell_weights,
             input_quantized,
             /*aux_input_quantized=*/nullptr, activation_state_quantized,
-            cell_state_quantized, activation_state, cell_state, output);
+            cell_state_quantized, activation_state, cell_state,
+            output_scratch_buffer, output,
+            CpuBackendContext::GetFromContext(context));
       } else {
         TfLiteTensor* scratch0 = GetTemporary(context, node, /*index=*/0);
         TfLiteTensor* scratch1 = GetTemporary(context, node, /*index=*/1);

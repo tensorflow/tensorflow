@@ -370,6 +370,24 @@ class MaxPooling2D(Pooling2D):
             [[10.],
              [11.],
              [12.]]]], dtype=float32)>
+             
+  Usage Example:
+  
+  >>> input_image = tf.constant([[[[1.], [1.], [2.], [4.]],
+  ...                            [[2.], [2.], [3.], [2.]],
+  ...                            [[4.], [1.], [1.], [1.]],
+  ...                            [[2.], [2.], [1.], [4.]]]]) 
+  >>> output = tf.constant([[[[1], [0]],
+  ...                       [[0], [1]]]]) 
+  >>> model = tf.keras.models.Sequential()
+  >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2), 
+  ...    input_shape=(4,4,1)))
+  >>> model.compile('adam', 'mean_squared_error')
+  >>> model.predict(input_image, steps=1)
+  array([[[[2.],
+           [4.]],
+          [[4.],
+           [4.]]]], dtype=float32)
 
   For example, for stride=(1,1) and padding="same":
 
@@ -776,7 +794,26 @@ class GlobalAveragePooling1D(GlobalPooling1D):
 
 @keras_export('keras.layers.GlobalMaxPool1D', 'keras.layers.GlobalMaxPooling1D')
 class GlobalMaxPooling1D(GlobalPooling1D):
-  """Global max pooling operation for temporal data.
+  """Global max pooling operation for 1D temporal data.
+
+  Downsamples the input representation by taking the maximum value over
+  the time dimension.
+
+  For example:
+
+  >>> x = tf.constant([[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]])
+  >>> x = tf.reshape(x, [3, 3, 1])
+  >>> x
+  <tf.Tensor: shape=(3, 3, 1), dtype=float32, numpy=
+  array([[[1.], [2.], [3.]],
+         [[4.], [5.], [6.]],
+         [[7.], [8.], [9.]]], dtype=float32)>
+  >>> max_pool_1d = tf.keras.layers.GlobalMaxPooling1D()
+  >>> max_pool_1d(x)
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[3.],
+         [6.],
+         [9.], dtype=float32)>
 
   Arguments:
     data_format: A string,

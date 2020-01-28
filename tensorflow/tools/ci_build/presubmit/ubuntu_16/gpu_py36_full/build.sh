@@ -86,6 +86,7 @@ function run_build () {
     --copt="-w" \
     --copt=-mavx \
     --linkopt=-lrt \
+    --linkopt=-lm \
     --distinct_host_configuration=false \
     --remote_default_platform_properties="properties:{name:\"build\" value:\"${CACHE_SILO_VAL}\"}" \
     --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \

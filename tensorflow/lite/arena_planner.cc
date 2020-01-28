@@ -62,6 +62,21 @@ TfLiteStatus ArenaPlanner::ResetAllocations() {
   return kTfLiteOk;
 }
 
+TfLiteStatus ArenaPlanner::ResetAllocationsAfter(int node) {
+  for (int i = 0; i < static_cast<int>(allocs_.size()); ++i) {
+    if (allocs_[i].node > node && allocs_[i].size > 0) {
+      TfLiteTensor& tensor = *graph_info_->tensor(i);
+      if (tensor.allocation_type == kTfLiteArenaRw) {
+        TF_LITE_ENSURE_STATUS(arena_.Deallocate(context_, allocs_[i]));
+        allocs_[i].reset();
+        tensor.data.raw = nullptr;
+      }
+    }
+  }
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Invalidate any existing data.
   TF_LITE_ENSURE_STATUS(ResetAllocations());
@@ -263,7 +278,8 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
     }
     // Handle the current item.
     if (alloc_info.type == AllocationInfo::ALLOC) {
-      TF_LITE_ENSURE_STATUS(CalculateTensorAllocation(alloc_info.tensor));
+      TF_LITE_ENSURE_STATUS(
+          CalculateTensorAllocation(alloc_info.tensor, alloc_info.node));
     } else {
       TF_LITE_ENSURE_STATUS(CalculateTensorDeallocation(alloc_info.tensor));
     }
@@ -298,15 +314,18 @@ TfLiteStatus ArenaPlanner::ResolveTensorAllocation(int tensor_index) {
   return kTfLiteOk;
 }
 
-TfLiteStatus ArenaPlanner::CalculateTensorAllocation(int tensor_index) {
+TfLiteStatus ArenaPlanner::CalculateTensorAllocation(int tensor_index,
+                                                     int node_index) {
   TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
   if (tensor.allocation_type == kTfLiteArenaRw) {
-    TF_LITE_ENSURE_STATUS(arena_.Allocate(
-        context_, tensor_alignment_, tensor.bytes, &allocs_[tensor_index]));
+    TF_LITE_ENSURE_STATUS(arena_.Allocate(context_, tensor_alignment_,
+                                          tensor.bytes, tensor_index,
+                                          node_index, &allocs_[tensor_index]));
   }
   if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
     TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
-        context_, tensor_alignment_, tensor.bytes, &allocs_[tensor_index]));
+        context_, tensor_alignment_, tensor.bytes, tensor_index, node_index,
+        &allocs_[tensor_index]));
   }
   return kTfLiteOk;
 }
@@ -326,7 +345,8 @@ TfLiteStatus ArenaPlanner::CalculateAllocationOfInternalTensors(
     TfLiteIntArray* node_temporaries = node.temporaries;
     for (int i = 0; i < node_temporaries->size; ++i) {
       int tensor_index = node_temporaries->data[i];
-      TF_LITE_ENSURE_STATUS(CalculateTensorAllocation(tensor_index));
+      TF_LITE_ENSURE_STATUS(
+          CalculateTensorAllocation(tensor_index, node_index));
     }
   }
   return kTfLiteOk;

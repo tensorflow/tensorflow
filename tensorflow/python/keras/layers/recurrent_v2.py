@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers import recurrent
@@ -33,8 +34,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -52,6 +55,12 @@ _GPU_DEVICE_NAME = 'GPU'
 _RUNTIME_UNKNOWN = 0
 _RUNTIME_CPU = 1
 _RUNTIME_GPU = 2
+
+_CUDNN_AVAILABLE_MSG = 'Layer %s will use cuDNN kernel when run on GPU.'
+_CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernel since it '
+                            'doesn\'t meet the cuDNN kernel criteria. It will '
+                            'use generic GPU kernel as fallback when running '
+                            'on GPU')
 
 
 @keras_export('keras.layers.GRUCell', v1=[])
@@ -360,11 +369,19 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         time_major=time_major,
         reset_after=reset_after,
         **kwargs)
-    # CuDNN uses following setting by default and not configurable.
-    self.could_use_cudnn = (
-        activation == 'tanh' and recurrent_activation == 'sigmoid' and
+    # GPU kernel uses following setting by default and not configurable.
+    self._could_use_gpu_kernel = (
+        self.activation in (activations.tanh, nn.tanh) and
+        self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
         recurrent_dropout == 0 and not unroll and use_bias and
         reset_after and ops.executing_eagerly_outside_functions())
+    if context.num_gpus() > 0:
+      # Only show the message when there is GPU available, user will not care
+      # about the cuDNN if there isn't any GPU.
+      if self._could_use_gpu_kernel:
+        logging.debug(_CUDNN_AVAILABLE_MSG % self.name)
+      else:
+        logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
   def build(self, input_shape):
     super(GRU, self).build(input_shape)
@@ -377,7 +394,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       # variables happen to work in LSTM, so this check is only needed for GRU.
       # TODO(b/136512020): Make non-resource variables work with the
       # implementation selector.
-      self.could_use_cudnn = False
+      self._could_use_gpu_kernel = False
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
@@ -395,7 +412,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if not self.could_use_cudnn:
+    if not self._could_use_gpu_kernel:
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)
 
@@ -837,7 +854,7 @@ class LSTMCell(recurrent.LSTMCell):
     inputs: A 2D tensor, with shape of `[batch, feature]`.
     states: List of 2 tensors that corresponding to the cell's units. Both of
       them have shape `[batch, units]`, the first tensor is the memory state
-      from previous time step, the second tesnor is the carry state from
+      from previous time step, the second tensor is the carry state from
       previous time step. For timestep 0, the initial state provided by user
       will be feed to cell.
     training: Python boolean indicating whether the layer should behave in
@@ -1060,10 +1077,18 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     self.state_spec = [
         InputSpec(shape=(None, dim)) for dim in (self.units, self.units)
     ]
-    self.could_use_cudnn = (
-        activation == 'tanh' and recurrent_activation == 'sigmoid' and
+    self._could_use_gpu_kernel = (
+        self.activation in (activations.tanh, nn.tanh) and
+        self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
         recurrent_dropout == 0 and not unroll and use_bias and
         ops.executing_eagerly_outside_functions())
+    if context.num_gpus() > 0:
+      # Only show the message when there is GPU available, user will not care
+      # about the cuDNN if there isn't any GPU.
+      if self._could_use_gpu_kernel:
+        logging.debug(_CUDNN_AVAILABLE_MSG % self.name)
+      else:
+        logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
@@ -1081,7 +1106,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if not self.could_use_cudnn:
+    if not self._could_use_gpu_kernel:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)

@@ -44,74 +44,77 @@ class BaseSqueezeOpModel : public SingleOpModel {
   int output_;
 };
 
-class FloatSqueezeOpModel : public BaseSqueezeOpModel {
+template <typename T>
+class SqueezeOpModel : public BaseSqueezeOpModel {
  public:
   using BaseSqueezeOpModel::BaseSqueezeOpModel;
 
-  void SetInput(std::initializer_list<float> data) {
-    PopulateTensor(input_, data);
-  }
+  void SetInput(std::initializer_list<T> data) { PopulateTensor(input_, data); }
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 };
 
-TEST(FloatSqueezeOpTest, SqueezeAll) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
-  FloatSqueezeOpModel m({TensorType_FLOAT32, {1, 24, 1}},
-                        {TensorType_FLOAT32, {24}}, {});
+template <typename T>
+class SqueezeOpTest : public ::testing::Test {};
+
+using DataTypes = ::testing::Types<float, int8_t, int16_t, int32_t>;
+TYPED_TEST_SUITE(SqueezeOpTest, DataTypes);
+
+TYPED_TEST(SqueezeOpTest, SqueezeAll) {
+  std::initializer_list<TypeParam> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                           9,  10, 11, 12, 13, 14, 15, 16,
+                                           17, 18, 19, 20, 21, 22, 23, 24};
+  SqueezeOpModel<TypeParam> m({GetTensorType<TypeParam>(), {1, 24, 1}},
+                              {GetTensorType<TypeParam>(), {24}}, {});
   m.SetInput(data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({24}));
   EXPECT_THAT(
       m.GetOutput(),
-      ElementsAreArray({1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
-                        9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
-                        17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0}));
+      ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
 }
 
-TEST(FloatSqueezeOpTest, SqueezeSelectedAxis) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
-  FloatSqueezeOpModel m({TensorType_FLOAT32, {1, 24, 1}},
-                        {TensorType_FLOAT32, {24}}, {2});
+TYPED_TEST(SqueezeOpTest, SqueezeSelectedAxis) {
+  std::initializer_list<TypeParam> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                           9,  10, 11, 12, 13, 14, 15, 16,
+                                           17, 18, 19, 20, 21, 22, 23, 24};
+  SqueezeOpModel<TypeParam> m({GetTensorType<TypeParam>(), {1, 24, 1}},
+                              {GetTensorType<TypeParam>(), {24}}, {2});
   m.SetInput(data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 24}));
   EXPECT_THAT(
       m.GetOutput(),
-      ElementsAreArray({1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
-                        9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
-                        17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0}));
+      ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
 }
 
-TEST(FloatSqueezeOpTest, SqueezeNegativeAxis) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
-  FloatSqueezeOpModel m({TensorType_FLOAT32, {1, 24, 1}},
-                        {TensorType_FLOAT32, {24}}, {-1, 0});
+TYPED_TEST(SqueezeOpTest, SqueezeNegativeAxis) {
+  std::initializer_list<TypeParam> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                           9,  10, 11, 12, 13, 14, 15, 16,
+                                           17, 18, 19, 20, 21, 22, 23, 24};
+  SqueezeOpModel<TypeParam> m({GetTensorType<TypeParam>(), {1, 24, 1}},
+                              {GetTensorType<TypeParam>(), {24}}, {-1, 0});
   m.SetInput(data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({24}));
   EXPECT_THAT(
       m.GetOutput(),
-      ElementsAreArray({1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
-                        9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
-                        17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0}));
+      ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
 }
 
-TEST(FloatSqueezeOpTest, SqueezeAllDims) {
-  std::initializer_list<float> data = {3.85};
-  FloatSqueezeOpModel m({TensorType_FLOAT32, {1, 1, 1, 1, 1, 1, 1}},
-                        {TensorType_FLOAT32, {1}}, {});
+TYPED_TEST(SqueezeOpTest, SqueezeAllDims) {
+  std::initializer_list<TypeParam> data = {3};
+  SqueezeOpModel<TypeParam> m(
+      {GetTensorType<TypeParam>(), {1, 1, 1, 1, 1, 1, 1}},
+      {GetTensorType<TypeParam>(), {1}}, {});
   m.SetInput(data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.85}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
 }
 
 }  // namespace

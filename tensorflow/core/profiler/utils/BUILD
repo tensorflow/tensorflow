@@ -19,8 +19,19 @@ cc_library(
     deps = [
         ":timespan",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "hardware_type_utils",
+    srcs = ["hardware_type_utils.cc"],
+    hdrs = ["hardware_type_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
     ],
 )
 
@@ -83,6 +94,7 @@ cc_library(
     deps = [
         ":time_utils",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -115,7 +127,6 @@ cc_library(
     hdrs = ["xplane_builder.h"],
     visibility = [":friends"],
     deps = [
-        ":tf_op_utils",
         ":time_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -134,6 +145,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -157,7 +169,6 @@ cc_library(
     deps = [
         ":time_utils",
         ":timespan",
-        ":xplane_schema",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -168,30 +179,11 @@ cc_library(
 )
 
 cc_library(
-    name = "metadata_matcher",
-    srcs = ["metadata_matcher.cc"],
-    hdrs = ["metadata_matcher.h"],
+    name = "tf_xplane_visitor",
+    hdrs = ["tf_xplane_visitor.h"],
+    visibility = [":friends"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "metadata_matcher_test",
-    size = "small",
-    srcs = ["metadata_matcher_test.cc"],
-    deps = [
-        ":metadata_matcher",
         ":xplane_schema",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        ":xplane_visitor",
     ],
 )

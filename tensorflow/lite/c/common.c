@@ -169,6 +169,7 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
     return;
   }
+  // TODO(b/145340303): Tensor data should be aligned.
   if (!tensor->data.raw) {
     tensor->data.raw = malloc(num_bytes);
   } else if (num_bytes > tensor->bytes) {

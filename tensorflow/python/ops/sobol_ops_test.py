@@ -19,6 +19,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -78,6 +81,54 @@ class SobolSampleOpTest(test_util.TensorFlowTestCase):
 
       self.assertAllClose(
           self.evaluate(sample_noskip)[skip:, :], self.evaluate(sample_skip))
+
+  def test_static_shape(self):
+    s = math_ops.sobol_sample(10, 100, dtype=np.float32)
+    self.assertAllEqual([100, 10], s.shape.as_list())
+
+  def test_static_shape_using_placeholder_for_dim(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)])
+    def f(dim):
+      s = math_ops.sobol_sample(dim, 100, dtype=dtypes.float32)
+      assert s.shape.as_list() == [100, None]
+      return s
+
+    self.assertAllEqual([100, 10], self.evaluate(f(10)).shape)
+
+  def test_static_shape_using_placeholder_for_num_results(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)])
+    def f(num_results):
+      s = math_ops.sobol_sample(10, num_results, dtype=dtypes.float32)
+      assert s.shape.as_list() == [None, 10]
+      return s
+
+    self.assertAllEqual([100, 10], self.evaluate(f(100)).shape)
+
+  def test_static_shape_using_only_placeholders(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)] *
+        2)
+    def f(dim, num_results):
+      s = math_ops.sobol_sample(dim, num_results, dtype=dtypes.float32)
+      assert s.shape.as_list() == [None, None]
+      return s
+
+    self.assertAllEqual([100, 10], self.evaluate(f(10, 100)).shape)
+
+  def test_dynamic_shape(self):
+    s = math_ops.sobol_sample(10, 100, dtype=dtypes.float32)
+    self.assertAllEqual([100, 10], self.evaluate(s).shape)
+
+  def test_default_dtype(self):
+    # Create an op without specifying the dtype. Dtype should be float32 in
+    # this case.
+    s = math_ops.sobol_sample(10, 100)
+    self.assertEqual(dtypes.float32, s.dtype)
 
 if __name__ == '__main__':
   googletest.main()

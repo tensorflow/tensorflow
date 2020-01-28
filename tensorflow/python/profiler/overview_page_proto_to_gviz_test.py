@@ -39,15 +39,25 @@ class ProtoToGvizTest(test.TestCase):
   @classmethod
   def setUpClass(cls):
     super(ProtoToGvizTest, cls).setUpClass()
+
+    ProtoToGvizTest.run_env_num_columns = 4
     MockRunEnvironment = collections.namedtuple(  # pylint: disable=invalid-name
-        "MockRunEnvironment",
-        ["host_id", "command_line", "start_time", "bns_address"])
+        "MockRunEnvironment", [
+            "host_id", "command_line", "start_time", "bns_address",
+            "host_count", "task_count", "device_type", "device_core_count"
+        ])
 
     ProtoToGvizTest.mock_run_env = MockRunEnvironment(
+        # Columns
         host_id="1",
         command_line="2",
         start_time=1582202096,
         bns_address="4",
+        # Custom properties
+        host_count=1,
+        task_count=10,
+        device_type="GPU",
+        device_core_count=20,
     )
 
     MockOverviewTfOp = collections.namedtuple(  # pylint: disable=invalid-name
@@ -119,6 +129,10 @@ class ProtoToGvizTest(test.TestCase):
       job.bns_address = self.mock_run_env.bns_address
       run_env.host_dependent_job_info.append(job)
 
+    run_env.host_count = self.mock_run_env.host_count
+    run_env.task_count = self.mock_run_env.task_count
+    run_env.device_type = self.mock_run_env.device_type
+    run_env.device_core_count = self.mock_run_env.device_core_count
     return run_env
 
   def test_run_environment_empty(self):
@@ -129,7 +143,12 @@ class ProtoToGvizTest(test.TestCase):
     self.assertEqual(0, data_table.NumberOfRows(),
                      "Empty table should have 0 rows.")
     # Check the number of columns in Run environment data table.
-    self.assertLen(data_table.columns, len(list(self.mock_run_env)))
+    self.assertLen(data_table.columns, self.run_env_num_columns)
+    # Check custom properties default values.
+    self.assertEqual("0", data_table.custom_properties["host_count"])
+    self.assertEqual("0", data_table.custom_properties["task_count"])
+    self.assertEqual("", data_table.custom_properties["device_type"])
+    self.assertEqual("0", data_table.custom_properties["device_core_count"])
 
   def test_run_environment_simple(self):
     run_env = self.create_mock_run_environment()
@@ -141,8 +160,8 @@ class ProtoToGvizTest(test.TestCase):
     self.assertLen(data, 3)
     self.assertEqual(3, data_table.NumberOfRows(), "Simple table has 3 rows.")
     # Check the number of columns in table descriptor and data table.
-    self.assertLen(table_description, len(list(self.mock_run_env)))
-    self.assertLen(data_table.columns, len(list(self.mock_run_env)))
+    self.assertLen(table_description, self.run_env_num_columns)
+    self.assertLen(data_table.columns, self.run_env_num_columns)
 
     # Prepare expectation to check against.
     # get_run_environment_table_args() formats ns to RFC3339_full format.
@@ -150,7 +169,7 @@ class ProtoToGvizTest(test.TestCase):
         start_time="2020-02-20 12:34:56")
     # Check data against mock values.
     for row in data:
-      self.assertEqual(list(mock_data_run_env), row)
+      self.assertEqual(list(mock_data_run_env[:self.run_env_num_columns]), row)
 
     # Check DataTable against mock values.
     # Only way to access DataTable contents is by CSV
@@ -163,7 +182,19 @@ class ProtoToGvizTest(test.TestCase):
       else:
         self.check_row_types(data, table_description, row_values, rr)
 
-        self.assertEqual(list(mock_data_run_env), row_values)
+        self.assertEqual(
+            list(mock_data_run_env[:self.run_env_num_columns]), row_values)
+
+    # Check custom properties
+    self.assertTrue(data_table.custom_properties["host_count"].startswith(
+        str(self.mock_run_env.host_count)))
+    self.assertTrue(data_table.custom_properties["task_count"].startswith(
+        str(self.mock_run_env.task_count)))
+    self.assertTrue(data_table.custom_properties["device_type"].startswith(
+        self.mock_run_env.device_type))
+    self.assertTrue(
+        data_table.custom_properties["device_core_count"].startswith(
+            str(self.mock_run_env.device_core_count)))
 
   def create_mock_overview_page_analysis(self):
     analysis = overview_page_pb2.OverviewPageAnalysis()

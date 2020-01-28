@@ -26,6 +26,7 @@ load("//third_party/FXdiv:workspace.bzl", FXdiv = "repo")
 load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/clog:workspace.bzl", clog = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
+load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
@@ -48,6 +49,7 @@ def initialize_third_party():
     aws()
     clog()
     cpuinfo()
+    dlpack()
     flatbuffers()
     hexagon_nn()
     highwayhash()
@@ -383,12 +385,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "gast_archive",
         build_file = clean_dep("//third_party:gast.BUILD"),
-        sha256 = "5c7617f1f6c8b8b426819642b16b9016727ddaecd16af9a07753e537eba8a3a5",
-        strip_prefix = "gast-0.3.2",
+        sha256 = "b881ef288a49aa81440d2c5eb8aeefd4c2bb8993d5f50edae7413a85bfdb3b57",
+        strip_prefix = "gast-0.3.3",
         system_build_file = clean_dep("//third_party/systemlibs:gast.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/files.pythonhosted.org/packages/1f/04/4e36c33f8eb5c5b6c622a1f4859352a6acca7ab387257d4b3c191d23ec1d/gast-0.3.2.tar.gz",
-            "https://files.pythonhosted.org/packages/1f/04/4e36c33f8eb5c5b6c622a1f4859352a6acca7ab387257d4b3c191d23ec1d/gast-0.3.2.tar.gz",
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
+            "https://files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
         ],
     )
 
@@ -593,8 +595,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "711a17afaff276f816aca5dc4a68fae4e17a2c12"
-    LLVM_SHA256 = "d58ca492e3311d3b305716c5d6b4047dec90656723db4ddba8156c4a63256498"
+    LLVM_COMMIT = "c8695ba9cdebfc25af3312a84d91ae6f0f98487b"
+    LLVM_SHA256 = "d11de654ff4d374a3807788a30c62224ff5ac6299dd10d5e0afaafc4776fbc6c"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
