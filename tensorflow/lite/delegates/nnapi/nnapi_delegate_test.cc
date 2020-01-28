@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/minimal_logging.h"

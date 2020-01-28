@@ -224,8 +224,7 @@ struct NNAPIValidationFailure {
 class NNAPIDelegateKernel {
  public:
   explicit NNAPIDelegateKernel(const NnApi* nnapi)
-      : initialised_(false),
-        nnapi_(nnapi),
+      : nnapi_(nnapi),
         nn_model_(nullptr, NNFreeModel(nnapi_)),
         nn_compilation_(nullptr, NNFreeCompilation(nnapi_)) {}
   NNAPIDelegateKernel() : NNAPIDelegateKernel(NnApiImplementation()) {}
@@ -256,41 +255,23 @@ class NNAPIDelegateKernel {
       // the given node
       std::vector<NNAPIValidationFailure>* map_failures = nullptr);
 
-  // Initialize the kernel (a NN model) and builds the NN Model.
+  // Initialize the kernel (a NN model).
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params,
                     int* nnapi_errno);
 
-  // Creates the NNAPI Compilation for the NN model. It assumes that Init has
-  // been called and completed successfully.
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        int* nnapi_errno);
 
-  // Invoke the NN Model. Expects Init and Prepare to have been completed
-  // successfully.
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node,
                       int* nnapi_errno);
 
-  // Returns the list of operations supported by the current NNAPI model as
-  // built in Prepare. Every operation is identified by the index as provided
-  // in the delegate parameters given to the delegate during the Init call.
-  // It expects the Init method has been called and completed successfully and
-  // returns kTfLiteError if not. Returns an error if any of the NNAPI
-  // operations fails or if the
-  // ANeuralNetworksModel_getSupportedOperationsForDevices function is not
-  // available in the NnApi object.
-  TfLiteStatus GetOperationsSupportedByTargetNnApiDevices(
-      TfLiteContext* context, std::vector<int>* supported_nodes,
-      int* nnapi_errno);
-
  private:
-  // True if initialization has been completed successfully
-  bool initialised_;
   // Access to NNApi.
   const NnApi* nnapi_;
   // ANN device handle.
@@ -320,8 +301,6 @@ class NNAPIDelegateKernel {
 
   std::unique_ptr<NNMemory> nn_input_memory_;
   std::unique_ptr<NNMemory> nn_output_memory_;
-
-  std::vector<uint8_t> nn_compilation_cache_token_;
 
   void AddDequantizeOperatorsWhereNeeded(const TfLiteContext* context,
                                          int builtin_code,

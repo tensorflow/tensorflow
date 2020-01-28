@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_NNAPI_NNAPI_HANDLER_H_
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 namespace tflite {
@@ -98,10 +97,6 @@ class NnApiHandler {
     };
   }
 
-  void StubModelCreateWith(int(stub)(ANeuralNetworksModel** model)) {
-    nnapi_->ANeuralNetworksModel_create = stub;
-  }
-
   template <int Value>
   void AddOperandReturns() {
     nnapi_->ANeuralNetworksModel_addOperand =
@@ -122,13 +117,6 @@ class NnApiHandler {
         [](ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
            uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount,
            const uint32_t* outputs) { return Value; };
-  }
-
-  void StubAddOperationWith(
-      int(stub)(ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
-                uint32_t inputCount, const uint32_t* inputs,
-                uint32_t outputCount, const uint32_t* outputs)) {
-    nnapi_->ANeuralNetworksModel_addOperation = stub;
   }
 
   template <int Value>
@@ -183,12 +171,6 @@ class NnApiHandler {
         };
   }
 
-  void StubCompilationCreateForDevicesWith(int(stub)(
-      ANeuralNetworksModel* model, const ANeuralNetworksDevice* const* devices,
-      uint32_t numDevices, ANeuralNetworksCompilation** compilation)) {
-    nnapi_->ANeuralNetworksCompilation_createForDevices = stub;
-  }
-
   template <int Value>
   void CompilationFinishReturns() {
     nnapi_->ANeuralNetworksCompilation_finish =
@@ -226,21 +208,6 @@ class NnApiHandler {
   void ExecutionComputeReturns() {
     nnapi_->ANeuralNetworksExecution_compute =
         [](ANeuralNetworksExecution* execution) { return Value; };
-  }
-
-  template <int Value>
-  void GetSupportedOperationsForDevicesReturns() {
-    nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices =
-        [](const ANeuralNetworksModel* model,
-           const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
-           bool* supportedOps) { return Value; };
-  }
-
-  void StubGetSupportedOperationsForDevicesWith(
-      int(stub)(const ANeuralNetworksModel* model,
-                const ANeuralNetworksDevice* const* devices,
-                uint32_t numDevices, bool* supportedOps)) {
-    nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices = stub;
   }
 
   void SetAndroidSdkVersion(int version);
