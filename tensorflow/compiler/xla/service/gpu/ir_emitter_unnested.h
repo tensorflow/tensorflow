@@ -270,7 +270,8 @@ class IrEmitterUnnested : public IrEmitter,
   // Wraps up the code generation for a tile block of a reduction kernel: write
   // the calculated output into the output tensor.
   void EmitEpilogueForReduction(
-      HloInstruction* unnested_hlo, const ReductionCodegenInfo& reduction_info,
+      llvm::Type* index_ty, HloInstruction* unnested_hlo,
+      const ReductionCodegenInfo& reduction_info,
       absl::Span<const HloInstruction* const> reduce_instructions,
       absl::Span<const ShapeIndex> reduction_output_shape_indices,
       absl::Span<HloComputation* const> reducers,

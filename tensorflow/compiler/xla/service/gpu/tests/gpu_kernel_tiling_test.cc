@@ -742,6 +742,30 @@ TEST_F(GpuKernelTilingTest, RowReductionWithSmallDimensionNotTiled) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
 }
 
+TEST_F(GpuKernelTilingTest, RowReductionRequiring64BitIndex) {
+  const char *const kHloString = R"(
+  HloModule LargeReduction
+
+  Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+  }
+
+  ENTRY reduce.1 {
+    parameter = f32[3048576000] parameter(0)
+    init_value = f32[] constant(0)
+    ROOT out = f32[] reduce(parameter, init_value), dimensions={0}, to_apply=Sum
+  }
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  auto expected_ir = R"(
+; CHECK: i64
+  )";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
