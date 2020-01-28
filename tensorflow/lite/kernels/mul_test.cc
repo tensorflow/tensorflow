@@ -339,7 +339,7 @@ TEST(QuantizedMulOpTest, NoActivationInt16) {
 
 TEST(QuantizedMulOpTest, NoActivationInt16Scaled) {
   const float kMin = -2.f;
-  const float kMax = 2.f*32767.f / 32768.f;;
+  const float kMax = 2.f*32767.f / 32768.f;
   QuantizedMulOpModel m({TensorType_INT16, {1, 2, 3, 1}, kMin, kMax},
                         {TensorType_INT16, {1, 2, 3, 1}, 2*kMin, 2*kMax},
                         {TensorType_INT16, {}, 8*kMin, 8*kMax},
