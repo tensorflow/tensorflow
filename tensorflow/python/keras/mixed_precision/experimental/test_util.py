@@ -127,20 +127,20 @@ class AssertTypeLayer(base_layer.Layer):
             (inp.dtype.name, self._assert_type))
 
 
-class AddLayer(AssertTypeLayer):
-  """A layer which adds it's input to a scalar variable."""
+class MultiplyLayer(AssertTypeLayer):
+  """A layer which multiplies its input by a scalar variable."""
 
   def __init__(self,
                regularizer=None,
                use_operator=False,
                var_name='v',
                **kwargs):
-    """Initializes the AddLayer.
+    """Initializes the MultiplyLayer.
 
     Args:
       regularizer: The regularizer on the scalar variable.
-      use_operator: If True, add using the + operator. If False, add using
-        tf.add.
+      use_operator: If True, add using the * operator. If False, add using
+        tf.multiply.
       var_name: The name of the variable. It can be useful to pass a name other
         than 'v', to test having the attribute name (self.v) being different
         from the variable name.
@@ -152,7 +152,7 @@ class AddLayer(AssertTypeLayer):
                                                    custom_objects=globals())
     self._use_operator = use_operator
     self._var_name = var_name
-    super(AddLayer, self).__init__(**kwargs)
+    super(MultiplyLayer, self).__init__(**kwargs)
 
   def build(self, _):
     self.v = self.add_weight(
@@ -162,16 +162,16 @@ class AddLayer(AssertTypeLayer):
   def call(self, inputs):
     self.assert_input_types(inputs)
     assert inputs.dtype == self.v.dtype
-    return self._add(inputs, self.v)
+    return self._multiply(inputs, self.v)
 
-  def _add(self, x, y):
+  def _multiply(self, x, y):
     if self._use_operator:
-      return x + y
+      return x * y
     else:
-      return math_ops.add(x, y)
+      return math_ops.multiply(x, y)
 
   def get_config(self):
-    config = super(AddLayer, self).get_config()
+    config = super(MultiplyLayer, self).get_config()
     config['regularizer'] = regularizers.serialize(self._regularizer)
     config['use_operator'] = self._use_operator
     config['var_name'] = self._var_name

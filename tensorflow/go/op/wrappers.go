@@ -14344,14 +14344,16 @@ func MatrixTriangularSolveAdjoint(value bool) MatrixTriangularSolveAttr {
 // of each inner-most matrix is assumed to be zero and not accessed.
 // If `lower` is False then the strictly lower triangular part of each inner-most
 // matrix is assumed to be zero and not accessed.
-// `rhs` is a tensor of shape `[..., M, K]`.
+// `rhs` is a tensor of shape `[..., M, N]`.
 //
-// The output is a tensor of shape `[..., M, K]`. If `adjoint` is
+// The output is a tensor of shape `[..., M, N]`. If `adjoint` is
 // `True` then the innermost matrices in `output` satisfy matrix equations
 // `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
 // If `adjoint` is `False` then the strictly then the  innermost matrices in
 // `output` satisfy matrix equations
 // `adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
+//
+// Note, the batch shapes for the inputs only need to broadcast.
 //
 // Example:
 // ```python
@@ -16697,7 +16699,7 @@ type SobolSampleAttr func(optionalAttr)
 // SobolSampleDtype sets the optional dtype attribute to value.
 //
 // value: The type of the sample. One of: `float32` or `float64`.
-// If not specified, defaults to DT_DOUBLE
+// If not specified, defaults to DT_FLOAT
 func SobolSampleDtype(value tf.DataType) SobolSampleAttr {
 	return func(m optionalAttr) {
 		m["dtype"] = value

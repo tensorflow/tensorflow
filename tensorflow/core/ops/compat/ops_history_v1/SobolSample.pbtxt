@@ -20,7 +20,7 @@ op {
     name: "dtype"
     type: "type"
     default_value {
-      type: DT_DOUBLE
+      type: DT_FLOAT
     }
     allowed_values {
       list {

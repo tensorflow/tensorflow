@@ -137,12 +137,6 @@ const string& OpKernel::type_string() const { return def_->op(); }
 const string& OpKernel::requested_device() const { return def_->device(); }
 const string& OpKernel::requested_input(int i) const { return def_->input(i); }
 
-// This static function exists only because device_attributes.pb.h is
-// already included here, and it can't be introduced elsewhere.
-/*static*/ int OpKernel::DeviceNumaNode(const DeviceBase* device) {
-  return device->attributes().locality().numa_node();
-}
-
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
   const auto result = input_name_map_.find(input_name);
@@ -182,6 +176,31 @@ Status OpKernel::MakeShape(const Tensor& shape, TensorShape* out) const {
   } else {
     return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
   }
+}
+
+string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
+  string trace_string = strings::StrCat(name_view(), ":", type_string_view());
+  if (!verbose) return trace_string;
+  int num_inputs = ctx->num_inputs();
+  if (num_inputs == 0) return trace_string;
+  std::vector<string> tensor_shapes;
+  tensor_shapes.reserve(num_inputs);
+  for (int i = 0; i < num_inputs; i++) {
+    if (!ctx->has_input(i)) {
+      tensor_shapes.emplace_back();  // Placeholder
+      continue;
+    }
+    DataType input_dtype = ctx->input_dtype(i);
+    if (input_dtype == DataType::DT_RESOURCE ||
+        input_dtype == DataType::DT_VARIANT || IsRefType(input_dtype)) {
+      tensor_shapes.emplace_back();  // Placeholder
+      continue;
+    }
+    tensor_shapes.emplace_back(strings::StrCat(
+        DataTypeString(input_dtype), ctx->input(i).shape().DebugString()));
+  }
+  return strings::StrCat(trace_string, "#shape=(",
+                         absl::StrJoin(tensor_shapes, ","), ")#");
 }
 
 void AsyncOpKernel::Compute(OpKernelContext* context) {

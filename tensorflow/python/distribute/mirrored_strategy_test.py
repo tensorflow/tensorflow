@@ -1322,7 +1322,6 @@ class FunctionTest(test.TestCase):
   def testBackwardFuctionDevicePlacement(self):
     if context.num_gpus() < 1:
       self.skipTest("At least one GPU is required.")
-
     devices = [device_util.resolve("/device:GPU:0"),
                device_util.resolve("/device:CPU:0")]
     ms = mirrored_strategy.MirroredStrategy(devices)

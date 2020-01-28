@@ -171,8 +171,8 @@ class EagerExecutor {
                 bool from_queue);
   void NotifyWaiters(uint64 id) EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
-  // Starts execution of pending EagerNodes. This function loops till
-  // thread_done_ is set to true. If any errors are encontered, these are set
+  // Starts execution of pending EagerNodes. This function loops till executor
+  // state_ is set to kShutDown. If any errors are encontered, these are set
   // inside `status_`. The loop blocks anytime there are no pending nodes, or if
   // `status_` is not ok.
   void Run();
@@ -218,8 +218,8 @@ class EagerExecutor {
   // exits.
   Notification thread_exited_notification_;
 
-  // Indicates that `thread_` should stop as soon as it is done executing the
-  // current EagerNode.
+  // When state_ is set to kShutDown, it indicates that `thread_` should stop as
+  // soon as it is done executing the current EagerNode.
   ExecutorState state_ GUARDED_BY(node_queue_mutex_) = ExecutorState::kActive;
 
   // Thread object that calls the `Run` method in async mode.This thread runs

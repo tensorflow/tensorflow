@@ -57,7 +57,7 @@ cc_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",

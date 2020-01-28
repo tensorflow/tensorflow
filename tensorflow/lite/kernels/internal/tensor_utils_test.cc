@@ -1152,6 +1152,21 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
     EXPECT_NEAR(expected_c_float_data[i], c_float_data[i], 0.001);
   }
 
+  // Call version of MatrixBatchVectorMultiplyAccumulate that uses
+  // CpuBackendGemm.
+  std::vector<int32_t> accum_scratch(a_rows * batches);
+  std::vector<float> c_float_data_2(a_rows * batches, 0.0);
+  CpuBackendContext context;
+  MatrixBatchVectorMultiplyAccumulate(
+      a_int8_data, a_rows, a_cols, b_int8_data, scaling_factor_c, batches,
+      accum_scratch.data(), c_float_data_2.data(),
+      /*result_stride=*/1, &context);
+
+  // Assert (again) we obtain the expected recovered float values.
+  for (int i = 0; i < a_rows * b_cols * batches; ++i) {
+    EXPECT_NEAR(expected_c_float_data[i], c_float_data_2[i], 0.001);
+  }
+
   aligned_free(a_int8_data);
 }
 #endif  // __ANDROID__

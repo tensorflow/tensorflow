@@ -1918,7 +1918,7 @@ REGISTER_OP("SobolSample")
     .Input("dim: int32")
     .Input("num_results: int32")
     .Input("skip: int32")
-    .Attr("dtype: {float, double} = DT_DOUBLE")
+    .Attr("dtype: {float, double} = DT_FLOAT")
     .Output("samples: dtype")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       ShapeHandle unused;

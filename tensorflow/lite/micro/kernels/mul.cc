@@ -55,8 +55,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
       &data->output_activation_max));
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
-    double real_multiplier =
-        input1->params.scale * input2->params.scale / output->params.scale;
+    double real_multiplier = static_cast<double>(input1->params.scale) *
+                             static_cast<double>(input2->params.scale) /
+                             static_cast<double>(output->params.scale);
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
   }
@@ -162,7 +163,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace mul
 
 TfLiteRegistration* Register_MUL() {
-  static TfLiteRegistration r = {nullptr, nullptr, mul::Prepare, mul::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = mul::Prepare;
+  r.invoke = mul::Eval;
   return &r;
 }
 

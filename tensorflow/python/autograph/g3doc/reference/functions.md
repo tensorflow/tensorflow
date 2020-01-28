@@ -54,6 +54,8 @@ The following types of functions are not converted:
   * functions without source code attached (prints a warning)(see
     [limitations](limitations.md))
   * generator functions (prints a warning)
+  * iterator protocol methods (`__next__`, `__iter__`)
+  * context manager methods (`__enter__`, `__exit__`)
 
 When AutoGraph encounters a function that it cannot convert outside of this
 list, it prints a warning.

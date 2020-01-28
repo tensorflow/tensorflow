@@ -651,6 +651,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -930,6 +931,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1055,7 +1057,6 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
         "noguitar",
     ],

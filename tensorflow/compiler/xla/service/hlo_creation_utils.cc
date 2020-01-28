@@ -120,6 +120,21 @@ StatusOr<HloInstruction*> MakeReshapeHlo(
 }
 
 StatusOr<HloInstruction*> MakeDynamicSliceHlo(
+    HloInstruction* operand, absl::Span<HloInstruction* const> start_indices,
+    absl::Span<const int64> slice_sizes) {
+  HloComputation* computation = operand->parent();
+  std::vector<Shape> scalar_start_indices_shapes(
+      start_indices.size(),
+      ShapeUtil::MakeShape(start_indices[0]->shape().element_type(), {}));
+  TF_ASSIGN_OR_RETURN(
+      Shape dynamic_slice_shape,
+      ShapeInference::InferDynamicSliceShape(
+          operand->shape(), scalar_start_indices_shapes, slice_sizes));
+  return computation->AddInstruction(HloInstruction::CreateDynamicSlice(
+      dynamic_slice_shape, operand, start_indices, slice_sizes));
+}
+
+StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, HloInstruction* start_indices,
     absl::Span<const int64> slice_sizes) {
   HloComputation* computation = operand->parent();

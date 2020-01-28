@@ -214,9 +214,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace concatenation
 
 TfLiteRegistration* Register_CONCATENATION() {
-  static TfLiteRegistration r = {/* init */ nullptr,
-                                 /* free */ nullptr, concatenation::Prepare,
-                                 concatenation::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = concatenation::Prepare;
+  r.invoke = concatenation::Eval;
   return &r;
 }
 

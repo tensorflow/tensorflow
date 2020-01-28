@@ -3846,7 +3846,7 @@ tf_module {
   }
   member_method {
     name: "SobolSample"
-    argspec: "args=[\'dim\', \'num_results\', \'skip\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float64\'>\", \'None\'], "
+    argspec: "args=[\'dim\', \'num_results\', \'skip\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "Softmax"

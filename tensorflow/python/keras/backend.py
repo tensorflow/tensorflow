@@ -1612,11 +1612,7 @@ def moving_average_update(x, value, momentum):
 
 @keras_export('keras.backend.dot')
 def dot(x, y):
-  """Multiplies 2 tensors (and/or variables) and returns a *tensor*.
-
-  When attempting to multiply a nD tensor
-  with a nD tensor, it reproduces the Theano behavior.
-  (e.g. `(2, 3) * (4, 3, 5) -> (2, 4, 5)`)
+  """Multiplies 2 tensors (and/or variables) and returns a tensor.
 
   Arguments:
       x: Tensor or variable.
@@ -4425,7 +4421,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
   if clip_max:
     max_value = _constant_to_tensor(max_value, x.dtype.base_dtype)
-    zero = _constant_to_tensor(0., x.dtype.base_dtype)
+    zero = _constant_to_tensor(0, x.dtype.base_dtype)
     x = clip_ops.clip_by_value(x, zero, max_value)
 
   if alpha != 0.:
@@ -5915,7 +5911,8 @@ else:
 _config_path = os.path.expanduser(os.path.join(_keras_dir, 'keras.json'))
 if os.path.exists(_config_path):
   try:
-    _config = json.load(open(_config_path))
+    with open(_config_path) as fh:
+      _config = json.load(fh)
   except ValueError:
     _config = {}
   _floatx = _config.get('floatx', floatx())

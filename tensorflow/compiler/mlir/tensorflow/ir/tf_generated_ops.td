@@ -49,7 +49,7 @@ an output element, this operation computes \\(y = |x|\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AddOp : TF_Op<"Add", [Broadcastable, NoSideEffect]>,
+def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -98,7 +98,7 @@ Inputs must be of same size and shape.
   let hasFolder = 1;
 }
 
-def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
+def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -582,7 +582,7 @@ endian orderings will give different results.
   let hasCanonicalizer = 1;
 }
 
-def TF_BitwiseOrOp : TF_Op<"BitwiseOr", [Broadcastable, Commutative, NoSideEffect]>,
+def TF_BitwiseOrOp : TF_Op<"BitwiseOr", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
                      WithBroadcastableBinOpBuilder {
   let summary = "Elementwise computes the bitwise OR of `x` and `y`.";
 
@@ -743,7 +743,7 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_ComplexOp : TF_Op<"Complex", [Broadcastable, NoSideEffect]> {
+def TF_ComplexOp : TF_Op<"Complex", [NoSideEffect, ResultsBroadcastableShape]> {
   let summary = "Converts two real numbers to a complex number.";
 
   let description = [{
@@ -1259,7 +1259,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_DivOp : TF_Op<"Div", [Broadcastable, NoSideEffect]>,
+def TF_DivOp : TF_Op<"Div", [NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x / y element-wise.";
 
@@ -1282,7 +1282,7 @@ def TF_DivOp : TF_Op<"Div", [Broadcastable, NoSideEffect]>,
   let hasCanonicalizer = 1;
 }
 
-def TF_DivNoNanOp : TF_Op<"DivNoNan", [Broadcastable, NoSideEffect]>,
+def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape]>,
                     WithBroadcastableBinOpBuilder {
   let summary = "Returns 0 if the denominator is zero.";
 
@@ -1844,7 +1844,7 @@ def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, SameOperandsAndResultType]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_FloorDivOp : TF_Op<"FloorDiv", [Broadcastable, NoSideEffect]>,
+def TF_FloorDivOp : TF_Op<"FloorDiv", [NoSideEffect, ResultsBroadcastableShape]>,
                     WithBroadcastableBinOpBuilder {
   let summary = "Returns x // y element-wise.";
 
@@ -1865,7 +1865,7 @@ def TF_FloorDivOp : TF_Op<"FloorDiv", [Broadcastable, NoSideEffect]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_FloorModOp : TF_Op<"FloorMod", [Broadcastable, NoSideEffect]>,
+def TF_FloorModOp : TF_Op<"FloorMod", [NoSideEffect, ResultsBroadcastableShape]>,
                     WithBroadcastableBinOpBuilder {
   let summary = [{
 Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
@@ -2282,7 +2282,7 @@ See also `tf.batch_gather` and `tf.gather_nd`.
   }];
 }
 
-def TF_GreaterOp : TF_Op<"Greater", [Broadcastable, NoSideEffect]>,
+def TF_GreaterOp : TF_Op<"Greater", [NoSideEffect, ResultsBroadcastableShape]>,
                    WithBroadcastableCmpOpBuilder {
   let summary = "Returns the truth value of (x > y) element-wise.";
 
@@ -2315,7 +2315,7 @@ tf.math.greater(x, y) ==> [False, False, True]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_GreaterEqualOp : TF_Op<"GreaterEqual", [Broadcastable, NoSideEffect]>,
+def TF_GreaterEqualOp : TF_Op<"GreaterEqual", [NoSideEffect, ResultsBroadcastableShape]>,
                         WithBroadcastableCmpOpBuilder {
   let summary = "Returns the truth value of (x >= y) element-wise.";
 
@@ -2646,7 +2646,7 @@ def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType
   let hasFolder = 1;
 }
 
-def TF_LeftShiftOp : TF_Op<"LeftShift", [Broadcastable, NoSideEffect]>,
+def TF_LeftShiftOp : TF_Op<"LeftShift", [NoSideEffect, ResultsBroadcastableShape]>,
                      WithBroadcastableBinOpBuilder {
   let summary = "Elementwise computes the bitwise left-shift of `x` and `y`.";
 
@@ -2695,7 +2695,7 @@ bitwise_ops.left_shift(lhs, rhs)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_LessOp : TF_Op<"Less", [Broadcastable, NoSideEffect]>,
+def TF_LessOp : TF_Op<"Less", [NoSideEffect, ResultsBroadcastableShape]>,
                 WithBroadcastableCmpOpBuilder {
   let summary = "Returns the truth value of (x < y) element-wise.";
 
@@ -2728,7 +2728,7 @@ tf.math.less(x, y) ==> [False, True, True]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_LessEqualOp : TF_Op<"LessEqual", [Broadcastable, NoSideEffect]>,
+def TF_LessEqualOp : TF_Op<"LessEqual", [NoSideEffect, ResultsBroadcastableShape]>,
                      WithBroadcastableCmpOpBuilder {
   let summary = "Returns the truth value of (x <= y) element-wise.";
 
@@ -2833,7 +2833,7 @@ For each batch `i` and class `j` we have
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Broadcastable, Commutative, NoSideEffect]>,
+def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
                       WithBroadcastableBinOpBuilder {
   let summary = "Returns the truth value of x AND y element-wise.";
 
@@ -2869,7 +2869,7 @@ def TF_LogicalNotOp : TF_Op<"LogicalNot", [NoSideEffect, SameOperandsAndResultTy
   let hasCanonicalizer = 1;
 }
 
-def TF_LogicalOrOp : TF_Op<"LogicalOr", [Broadcastable, Commutative, NoSideEffect]>,
+def TF_LogicalOrOp : TF_Op<"LogicalOr", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
                      WithBroadcastableBinOpBuilder {
   let summary = "Returns the truth value of x OR y element-wise.";
 
@@ -3485,7 +3485,7 @@ def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
   }];
 }
 
-def TF_MaximumOp : TF_Op<"Maximum", [Broadcastable, NoSideEffect]>,
+def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape]>,
                    WithBroadcastableBinOpBuilder {
   let summary = "Returns the max of x and y (i.e. x > y ? x : y) element-wise.";
 
@@ -3533,7 +3533,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_MinimumOp : TF_Op<"Minimum", [Broadcastable, NoSideEffect]>,
+def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape]>,
                    WithBroadcastableBinOpBuilder {
   let summary = "Returns the min of x and y (i.e. x < y ? x : y) element-wise.";
 
@@ -3651,7 +3651,7 @@ graph_def = foo.get_concrete_function(tf.TensorSpec([10], tf.float32), tf.Tensor
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_MulOp : TF_Op<"Mul", [Broadcastable, Commutative, NoSideEffect]>,
+def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x * y element-wise.";
 
@@ -3672,7 +3672,7 @@ def TF_MulOp : TF_Op<"Mul", [Broadcastable, Commutative, NoSideEffect]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_MulNoNanOp : TF_Op<"MulNoNan", [Broadcastable, NoSideEffect]>,
+def TF_MulNoNanOp : TF_Op<"MulNoNan", [NoSideEffect, ResultsBroadcastableShape]>,
                     WithBroadcastableBinOpBuilder {
   let summary = [{
 Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or NaN.
@@ -4116,7 +4116,7 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PowOp : TF_Op<"Pow", [Broadcastable, NoSideEffect]>,
+def TF_PowOp : TF_Op<"Pow", [NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Computes the power of one value to another.";
 
@@ -4383,6 +4383,28 @@ The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RandomStandardNormalOp : TF_Op<"RandomStandardNormal", []> {
+  let summary = "Outputs random values from a normal distribution.";
+
+  let description = [{
+The generated values will have mean 0 and standard deviation 1.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {
   let summary = "Outputs random values from a uniform distribution.";
 
@@ -4531,7 +4553,7 @@ tf.real(input) ==> [-2.25, 3.25]
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RealDivOp : TF_Op<"RealDiv", [Broadcastable, NoSideEffect]>,
+def TF_RealDivOp : TF_Op<"RealDiv", [NoSideEffect, ResultsBroadcastableShape]>,
                    WithBroadcastableBinOpBuilder {
   let summary = "Returns x / y element-wise for real types.";
 
@@ -4840,6 +4862,73 @@ var += accum
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_ResourceGatherOp : TF_Op<"ResourceGather", []> {
+  let summary = [{
+Gather slices from the variable pointed to by `resource` according to `indices`.
+  }];
+
+  let description = [{
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
+
+```python
+    # Scalar indices
+    output[:, ..., :] = params[indices, :, ... :]
+
+    # Vector indices
+    output[i, :, ..., :] = params[indices[i], :, ... :]
+
+    # Higher rank indices
+    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+```
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_I32OrI64Tensor:$indices,
+
+    DefaultValuedAttr<I64Attr, "0">:$batch_dims,
+    DefaultValuedAttr<BoolAttr, "true">:$validate_indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_ResourceScatterUpdateOp : TF_Op<"ResourceScatterUpdate", []> {
+  let summary = [{
+Assigns sparse updates to the variable referenced by `resource`.
+  }];
+
+  let description = [{
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] = updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] = updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
   let summary = "Reverses variable length slices.";
 
@@ -4981,7 +5070,7 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_RightShiftOp : TF_Op<"RightShift", [Broadcastable, NoSideEffect]>,
+def TF_RightShiftOp : TF_Op<"RightShift", [NoSideEffect, ResultsBroadcastableShape]>,
                       WithBroadcastableBinOpBuilder {
   let summary = "Elementwise computes the bitwise right-shift of `x` and `y`.";
 
@@ -5938,7 +6027,7 @@ I.e., \\(y = x * x = x^2\\).
   let hasCanonicalizer = 1;
 }
 
-def TF_SquaredDifferenceOp : TF_Op<"SquaredDifference", [Broadcastable, Commutative, NoSideEffect]>,
+def TF_SquaredDifferenceOp : TF_Op<"SquaredDifference", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
                              WithBroadcastableBinOpBuilder {
   let summary = "Returns (x - y)(x - y) element-wise.";
 
@@ -6154,7 +6243,6 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
     // `begin_indices`, `end_indices`, and `strides` with their canonical
     // values, respectively.
     bool GetSlicedBoundRanges(
-      ::llvm::ArrayRef<int64_t> shape,
       ::llvm::SmallVectorImpl<int64_t> *begin_indices,
       ::llvm::SmallVectorImpl<int64_t> *end_indices,
       ::llvm::SmallVectorImpl<int64_t> *strides);
@@ -6211,7 +6299,7 @@ shape of `StridedSlice`'s `input`.
   }];
 }
 
-def TF_SubOp : TF_Op<"Sub", [Broadcastable, NoSideEffect]>,
+def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x - y element-wise.";
 
@@ -6705,6 +6793,14 @@ On GPU, if an out of bound index is found, the index is ignored.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{ return Verify(*this); }];
+
+  let builders = [
+    OpBuilder<
+      "Builder* builder, OperationState& result, "
+      "Value tensor, Value indices, Value updates",
+      [{build(builder, result, tensor.getType(), tensor, indices, updates);}]
+    >
+  ];
 }
 
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
@@ -6823,7 +6919,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   let hasFolder = 1;
 }
 
-def TF_TruncateDivOp : TF_Op<"TruncateDiv", [Broadcastable, NoSideEffect]>,
+def TF_TruncateDivOp : TF_Op<"TruncateDiv", [NoSideEffect, ResultsBroadcastableShape]>,
                        WithBroadcastableBinOpBuilder {
   let summary = "Returns x / y element-wise for integer types.";
 
@@ -7232,7 +7328,7 @@ where(input) ==> [[0, 0, 0],
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XdivyOp : TF_Op<"Xdivy", [Broadcastable, NoSideEffect]>,
+def TF_XdivyOp : TF_Op<"Xdivy", [NoSideEffect, ResultsBroadcastableShape]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns 0 if x == 0, and x / y otherwise, elementwise.";
 

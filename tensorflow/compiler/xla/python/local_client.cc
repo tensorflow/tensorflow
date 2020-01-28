@@ -756,12 +756,6 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   }
 
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
-  // The choice of where we wait is arbitrary; the reason for the wait is pacing
-  // to avoid problems such as memory fragmentation and running ahead too far,
-  // not for correctness. Placing it before the executable launch allows the
-  // inputs for the next executable to be fetched even if the launch is delayed.
-  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
-      device_state->compute_semaphore().ScopedAcquire(1));
 
   for (BufferDefinitionEvent* event : events) {
     event->WaitForEventOnStream(device_state->compute_stream());
@@ -775,6 +769,14 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   options.set_device_assignment(device_assignment_.get());
   options.set_run_id(run_id);
+  options.set_rng_seed(device_state->GetNewPrngSeed());
+
+  // The choice of where we wait is arbitrary; the reason for the wait is pacing
+  // to avoid problems such as memory fragmentation and running ahead too far,
+  // not for correctness. Placing it before the executable launch allows the
+  // inputs for the next executable to be fetched even if the launch is delayed.
+  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+      device_state->compute_semaphore().ScopedAcquire(1));
 
   StatusOr<ScopedShapedBuffer> result_buffer_or_status =
       executable_->RunAsync(argument_buffer_ptrs, options);
@@ -868,7 +870,8 @@ PyLocalExecutable::ExecuteOnLocalDevices(
   if (num_local_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
-    const auto [replica, partition] = local_logical_devices_[0];
+    const int replica = local_logical_devices_[0].first;
+    const int partition = local_logical_devices_[0].second;
     results[0] =
         ExecuteHelper(argument_handles[0], replica, partition, RunId());
   } else {
@@ -929,7 +932,8 @@ PyLocalExecutable::ExecuteOnLocalDevices(
   std::vector<std::unique_ptr<PyLocalBuffer>> wrapped_results(
       num_local_devices);
   for (int i = 0; i < num_local_devices; ++i) {
-    auto [replica, partition] = local_logical_devices_[i];
+    const int replica = local_logical_devices_[i].first;
+    const int partition = local_logical_devices_[i].second;
     auto& statusor = results[i];
     if (!statusor.ok()) {
       return AppendStatus(

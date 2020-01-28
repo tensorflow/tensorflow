@@ -972,11 +972,11 @@ xla_test(
 )
 
 # Run dot tests with auto-tuning disabled.  This just does a basic sanity check
-# that enabling xla_gpu_disable_autotune does not break simple graphs.
+# that setting xla_gpu_autotune_level to 0 does not break simple graphs.
 xla_test(
     name = "dot_operation_test_autotune_disabled",
     srcs = ["dot_operation_test.cc"],
-    args = ["--xla_gpu_disable_autotune"],
+    args = ["--xla_gpu_autotune_level=0"],
     backends = ["gpu"],
     shard_count = 20,
     tags = [
@@ -1151,13 +1151,13 @@ xla_test(
 )
 
 # Run convolution tests with auto-tuning disabled.  This just does a basic
-# sanity check that enabling xla_gpu_disable_autotune does not break simple
+# sanity check that setting xla_gpu_autotune_level to 0 does not break simple
 # graphs.
 xla_test(
     name = "convolution_test_autotune_disabled",
     timeout = "long",
     srcs = ["convolution_test.cc"],
-    args = ["--xla_gpu_disable_autotune"],
+    args = ["--xla_gpu_autotune_level=0"],
     backends = ["gpu"],
     shard_count = 40,
     tags = [
@@ -1771,6 +1771,8 @@ xla_test(
     timeout = "long",
     srcs = ["prng_test.cc"],
     shard_count = 6,
+    # TODO(b/148276347) The test fails on macOS.
+    tags = ["nomac"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",

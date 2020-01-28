@@ -4260,6 +4260,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "script_ops_test",
+    srcs = ["ops/script_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":dtypes",
+        ":framework_ops",
+        ":framework_test_lib",
+        ":script_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "standard_ops",
     srcs = ["ops/standard_ops.py"],
@@ -7664,16 +7678,16 @@ tf_python_pybind_extension(
         "util/util.h",
         ":py_exception_registry_hdr",
         "//tensorflow/c:headers",
-        "//tensorflow/c:pywrap_eager_hdrs",
+        "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:headers",
-        "//tensorflow/c/eager:pywrap_eager_hdrs",
-        "//tensorflow/core/common_runtime/eager:pywrap_eager_hdrs",
-        "//tensorflow/core/distributed_runtime:pywrap_eager_hdrs",
-        "//tensorflow/core/distributed_runtime/eager:pywrap_eager_hdrs",
-        "//tensorflow/core/framework:pywrap_eager_hdrs",
-        "//tensorflow/core/profiler/internal:pywrap_eager_hdrs",
-        "//tensorflow/core/profiler/lib:pywrap_eager_hdrs",
-        "//tensorflow/python/eager:pywrap_eager_hdrs",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/framework:pywrap_required_hdrs",
+        "//tensorflow/core/profiler/internal:pywrap_required_hdrs",
+        "//tensorflow/core/profiler/lib:pywrap_required_hdrs",
+        "//tensorflow/python/eager:pywrap_required_hdrs",
     ],
     module_name = "_pywrap_tfe",
     deps = [

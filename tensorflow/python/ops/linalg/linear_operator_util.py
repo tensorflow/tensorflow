@@ -354,13 +354,6 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
     return batch_matrices
 
 
-def cholesky_solve_with_broadcast(chol, rhs, name=None):
-  """Solve systems of linear equations."""
-  with ops.name_scope(name, "CholeskySolveWithBroadcast", [chol, rhs]):
-    chol, rhs = broadcast_matrix_batch_dims([chol, rhs])
-    return linalg_ops.cholesky_solve(chol, rhs)
-
-
 def matrix_solve_with_broadcast(matrix, rhs, adjoint=False, name=None):
   """Solve systems of linear equations."""
   with ops.name_scope(name, "MatrixSolveWithBroadcast", [matrix, rhs]):

@@ -1707,8 +1707,12 @@ tensorflow::Status ConvertResizeBilinearOperator(
   auto* op = new ResizeBilinearOperator;
 
   op->align_corners = false;
+  op->half_pixel_centers = false;
   if (HasAttr(node, "align_corners")) {
     op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+  if (HasAttr(node, "half_pixel_centers")) {
+    op->half_pixel_centers = GetBoolAttr(node, "half_pixel_centers");
   }
 
   op->inputs.push_back(node.input(0));

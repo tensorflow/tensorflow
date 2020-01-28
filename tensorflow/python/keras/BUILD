@@ -364,7 +364,10 @@ tf_py_test(
     srcs = ["integration_test.py"],
     python_version = "PY3",
     shard_count = 16,
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -978,6 +981,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
+        "no_rocm",
         "notsan",  # b/67509773
     ],
     deps = [

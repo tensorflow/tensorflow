@@ -145,7 +145,7 @@ std::string ElementwiseTwoInput::GetCoreCode(
   }
   return absl::Substitute(
       result, context.var_name,
-      src_tensor.ReadWHS(context.x_coord, context.y_coord, context.z_coord));
+      src_tensor.ReadWHS(context.x_coord, context.y_coord, context.s_coord));
 }
 
 std::string ElementwiseTwoInput::GetArgsDeclaration() const {

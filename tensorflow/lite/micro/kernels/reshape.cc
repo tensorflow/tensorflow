@@ -25,7 +25,6 @@ namespace micro {
 namespace reshape {
 
 constexpr int kInputTensor = 0;
-constexpr int kShapeTensor = 1;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus ReshapeOutput(TfLiteContext* context, TfLiteNode* node) {
@@ -89,8 +88,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace reshape
 
 TfLiteRegistration* Register_RESHAPE() {
-  static TfLiteRegistration r = {nullptr, nullptr, reshape::Prepare,
-                                 reshape::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = reshape::Prepare;
+  r.invoke = reshape::Eval;
   return &r;
 }
 

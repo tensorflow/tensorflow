@@ -688,6 +688,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   bool ViolatesMaximumOutstandingAsyncCopies(int64 start_time,
                                              int64 end_time) const;
 
+  // Return true if the asynchronous copy would violate the pipelining order.
+  bool ViolatesAsyncCopyOrdering(int64 start_time, int64 end_time) const;
+
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
                     MemorySpace memory_space, Chunk chunk, int64 start_time,

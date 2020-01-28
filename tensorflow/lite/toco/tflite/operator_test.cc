@@ -416,9 +416,21 @@ TEST_F(OperatorTest, BuiltinMul) {
 TEST_F(OperatorTest, ResizeBilinear) {
   ResizeBilinearOperator op;
   op.align_corners = true;
+  op.half_pixel_centers = false;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
   EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
+}
+
+TEST_F(OperatorTest, ResizeBilinear_HalfPixelCenters) {
+  ResizeBilinearOperator op;
+  op.align_corners = true;
+  op.half_pixel_centers = true;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
 }
 
 TEST_F(OperatorTest, ResizeNearestNeighbor) {

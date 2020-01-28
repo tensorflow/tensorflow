@@ -859,8 +859,8 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
       VLOG(4) << "This would violate the outstanding async copy limit.";
       continue;
     }
-    if (async_copy_ordering_.ViolatesOrdering(alternate_mem_interval.start,
-                                              alternate_mem_interval.end)) {
+    if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
+                                  alternate_mem_interval.end)) {
       VLOG(4) << "This would violate asynchronous copy ordering.";
       continue;
     }
@@ -935,6 +935,23 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
   // Add one because we are checking if adding an additional asynchronous copy
   // would violate the limit.
   return num_async_copies + 1 > options_.max_outstanding_async_copies;
+}
+
+bool AlternateMemoryBestFitHeap::ViolatesAsyncCopyOrdering(
+    int64 start_time, int64 end_time) const {
+  if (async_copy_ordering_.ViolatesOrdering(start_time, end_time)) {
+    return true;
+  }
+
+  // Also check pending async copies.
+  for (const auto& async_copy : pending_async_copies_) {
+    if (async_copy.destination == MemorySpace::kAlternate &&
+        async_copy.start_time <= end_time &&
+        start_time <= async_copy.end_time) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(

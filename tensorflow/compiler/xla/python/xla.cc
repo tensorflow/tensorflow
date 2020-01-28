@@ -767,7 +767,6 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
           py::arg("exponent_bits"), py::arg("mantissa_bits"));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
-  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
   ops.def("ReplicaId", &ReplicaId);
   ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
                                            absl::Span<const int64>)>(&Reshape));
@@ -809,6 +808,10 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("TriangularSolve", &TriangularSolve);
   ops.def("Tuple", &Tuple);
   ops.def("While", &While);
+
+  ops.def("Igamma", &Igamma);
+  ops.def("Igammac", &Igammac);
+  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
 
 #define BINARY_OP(op)                                                 \
   ops.def(                                                            \

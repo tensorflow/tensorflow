@@ -24,6 +24,44 @@ Note: the warning is output to the [abseil](https://github.com/abseil/abseil-py)
 logger, with `WARNING` severity. To direct these warnings to `stdout`, use
 `tf.autograph.set_verbosity(0, True)`.
 
+### "WARNING: Large unrolled loop detected"
+
+This warning is output when AutoGraph detects a `for` or `while` loop that
+creates TensorFlow ops and which has a large number of iterations and creates.
+
+This usually indicates a loop that was intended to run as a `tf.while_loop`, but
+instead runs as a Python loop.
+
+For example, a training loop might mistakenly iterate over a Python `range`,
+instead of `tf.range`:
+
+```
+num_steps = 10000
+step = tf.constant(0)
+for i in range(num_steps):
+  step += 1
+  train_step(model)
+```
+
+Another example is when using custom generators which AutoGraph does not
+support, even if they wrap over supported iterators like Datasets:
+
+```
+def my_iterator(ds):
+  for data in ds:
+    yield data
+
+# Custom iterators always dispatch to a Python for loop.
+for x in my_iterator(tf.data.Dataset.range(10)):
+  tf.print(x)
+```
+
+Note: This verification is only performed when `__debug__` is `True`.
+
+Note: the warning is output to the [abseil](https://github.com/abseil/abseil-py)
+logger, with `WARNING` severity. To direct these warnings to `stdout`, use
+`tf.autograph.set_verbosity(0, True)`.
+
 ### "OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool`"
 
 This exception is raised whenever a `tf.Tensor` is type-cast as a Python `bool`,

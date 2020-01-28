@@ -27,10 +27,7 @@ configure_android_workspace
 
 echo "========== TensorFlow Demo Build Test =========="
 TARGETS=
-
-# TODO(aselle): Reenable once this stops referencing contrib and back enabled.
-# TARGETS+=" //tensorflow/examples/android:tensorflow_demo"
-
+TARGETS+=" //tensorflow/examples/android:tensorflow_demo"
 # Also build the Eager Runtime so it remains compatible with Android for the
 # benefits of clients like TensorFlow Lite. For now it is enough to build only
 # :execute, which what TF Lite needs.

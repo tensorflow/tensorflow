@@ -1694,6 +1694,8 @@ _BINARY_OPS = [
     'ShiftRightArithmetic',
     'ShiftRightLogical',
     'Atan2',
+    'Igamma',
+    'Igammac',
     'Complex',
     'NextAfter',
 ]
