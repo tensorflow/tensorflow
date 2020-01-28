@@ -40,9 +40,25 @@ func @exp_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // -----
 
+// CHECK-LABEL: func @log_memref
+func @log_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
+  "xla_lhlo.log"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @neg_memref
 func @neg_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
   "xla_lhlo.neg"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @rsqrt_memref
+func @rsqrt_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
+  "xla_lhlo.rsqrt"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 
