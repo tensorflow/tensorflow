@@ -2065,7 +2065,18 @@ class DLPackTest(parameterized.TestCase):
           dtype,
       "shape":
           shape
-  } for dtype in dlpack_dtypes for shape in [(), (1,), (2, 3), (4, 1, 2)])
+  } for dtype in dlpack_dtypes for shape in [
+      (),
+      (1,),
+      (2, 3),
+      (2, 0),
+      (0, 7),
+      (4, 1, 2),
+      (2, 1, 3),
+      (2, 4, 1),
+      (3, 1),
+      (1, 3),
+  ])
   def testRoundTrip(self, dtype, shape):
     x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
     backend = xla_client.get_local_backend()
