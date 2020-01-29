@@ -150,8 +150,7 @@ central_storage_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     required_gpus=1)
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(
-    "GradientDescentV1",
-    lambda: gradient_descent.GradientDescentOptimizer(0.001))
+    "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
 adagrad_optimizer_v1_fn = combinations.NamedObject(
     "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
 adam_optimizer_v1_fn = combinations.NamedObject(
@@ -180,7 +179,7 @@ nadam_optimizer_keras_v2_fn = combinations.NamedObject(
 ftrl_optimizer_keras_v2_fn = combinations.NamedObject(
     "FtrlKerasV2", lambda: ftrl_keras_v2.Ftrl(0.001))
 gradient_descent_optimizer_keras_v2_fn = combinations.NamedObject(
-    "GradientDescentKerasV2", lambda: gradient_descent_keras_v2.SGD(0.001))
+    "GradientDescentKerasV2", lambda: gradient_descent_keras_v2.SGD(0.2))
 rmsprop_optimizer_keras_v2_fn = combinations.NamedObject(
     "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
 
