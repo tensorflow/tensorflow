@@ -1082,6 +1082,8 @@ renames = {
         'tf.saved_model.REGRESS_METHOD_NAME',
     'tf.saved_model.signature_constants.REGRESS_OUTPUTS':
         'tf.saved_model.REGRESS_OUTPUTS',
+    'tf.saved_model.signature_def_utils.MethodNameUpdater':
+        'tf.compat.v1.saved_model.signature_def_utils.MethodNameUpdater',
     'tf.saved_model.signature_def_utils.build_signature_def':
         'tf.compat.v1.saved_model.signature_def_utils.build_signature_def',
     'tf.saved_model.signature_def_utils.classification_signature_def':

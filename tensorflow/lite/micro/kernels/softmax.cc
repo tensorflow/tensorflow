@@ -46,9 +46,15 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+      if (output->type == kTfLiteInt16) {
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
+        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // - so no need to verify scale here.
+      } else {
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+        TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
+      }
     }
-    TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
 
     static const int kScaledDiffIntegerBits = 5;
 
@@ -109,9 +115,15 @@ void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                                    GetTensorData<uint8_t>(input), shape,
                                    GetTensorData<uint8_t>(output));
   } else {
-    tflite::reference_integer_ops::Softmax(op_params, shape,
-                                           GetTensorData<int8_t>(input), shape,
-                                           GetTensorData<int8_t>(output));
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_integer_ops::Softmax(
+          op_params, shape, GetTensorData<int8_t>(input), shape,
+          GetTensorData<int16_t>(output));
+    } else {
+      tflite::reference_integer_ops::Softmax(
+          op_params, shape, GetTensorData<int8_t>(input), shape,
+          GetTensorData<int8_t>(output));
+    }
   }
 }
 
@@ -134,9 +146,15 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                                    GetTensorData<uint8_t>(input), shape,
                                    GetTensorData<uint8_t>(output));
   } else {
-    tflite::reference_integer_ops::Softmax(op_params, shape,
-                                           GetTensorData<int8_t>(input), shape,
-                                           GetTensorData<int8_t>(output));
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_integer_ops::Softmax(
+          op_params, shape, GetTensorData<int8_t>(input), shape,
+          GetTensorData<int16_t>(output));
+    } else {
+      tflite::reference_integer_ops::Softmax(
+          op_params, shape, GetTensorData<int8_t>(input), shape,
+          GetTensorData<int8_t>(output));
+    }
   }
 }
 
@@ -161,9 +179,15 @@ void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
         GetTensorShape(output), GetTensorData<uint8_t>(output));
   } else {
-    tflite::reference_integer_ops::Softmax(
-        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-        GetTensorShape(output), GetTensorData<int8_t>(output));
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_integer_ops::Softmax(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+    } else {
+      tflite::reference_integer_ops::Softmax(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+    }
   }
 }
 

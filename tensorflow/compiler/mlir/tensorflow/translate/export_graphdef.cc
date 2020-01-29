@@ -244,7 +244,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(op_to_name_.GetUniqueName(func.getName().str()));
+    node_def->set_name(
+        std::string(op_to_name_.GetUniqueName(func.getName().str())));
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
 
@@ -282,7 +283,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(op_to_name_.GetUniqueName(function.getName().str()));
+    node_def->set_name(
+        std::string(op_to_name_.GetUniqueName(function.getName().str())));
 
   node_def->set_op(FunctionLibraryDefinition::kRetOp);
   DataType dtype;
@@ -579,7 +581,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // If there is a result index specified, ensure only one and that it
       // matches the result index of the op.
       auto result = it.value().cast<mlir::OpResult>();
-      std::string orig_name = output_names[it.index()];
+      std::string orig_name(output_names[it.index()]);
       auto tensor_id = ParseTensorName(orig_name);
       auto name = LegalizeNodeName(
           llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
@@ -607,7 +609,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
     for (auto it : llvm::enumerate(function.getArguments())) {
       // TODO(lyandy): Update when changing feed/fetch import.
-      std::string orig_name = input_names[it.index()];
+      std::string orig_name(input_names[it.index()]);
       std::string name = LegalizeNodeName(orig_name);
       auto tensor_id = ParseTensorName(name);
       TF_RET_CHECK(tensor_id.index() == 0)

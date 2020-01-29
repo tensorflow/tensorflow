@@ -43,8 +43,7 @@ class LSTMOpModel : public SingleOpModel {
         n_input_(n_input),
         n_cell_(n_cell),
         n_output_(n_output),
-        weight_type_(weight_type),
-        is_layer_norm_(is_layer_norm) {
+        weight_type_(weight_type) {
     input_ = AddInput(TensorType_FLOAT32);
 
     if (use_cifg) {
@@ -314,7 +313,6 @@ class LSTMOpModel : public SingleOpModel {
   }
 
   const TensorType weight_type_;
-  const bool is_layer_norm_;
 };
 
 class BaseLstmTest : public ::testing::Test {

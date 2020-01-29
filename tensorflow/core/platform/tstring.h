@@ -24,10 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/ctstring.h"
 
-#define USE_TSTRING
-
-#ifdef USE_TSTRING
-
 // TODO(dero): This include is temporary, and will be superfluous once
 // absl::string_view is aliased to std::string_view.
 #include "absl/strings/string_view.h"
@@ -596,15 +592,5 @@ inline std::ostream& operator<<(std::ostream& o, const tstring& str) {
 }
 
 }  // namespace tensorflow
-
-#else  // USE_TSTRING
-
-namespace tensorflow {
-
-typedef std::string tstring;
-
-}  // namespace tensorflow
-
-#endif  // USE_TSTRING
 
 #endif  // TENSORFLOW_CORE_PLATFORM_TSTRING_H_

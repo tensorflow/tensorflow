@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "llvm-c/Target.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/flags.h"
@@ -142,7 +143,7 @@ static Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
   }
 }
 
-static std::once_flag targets_init;
+static absl::once_flag targets_init;
 
 static void InitializeTargets() {
   // Initialize all LLVM targets so we can cross compile.
@@ -167,7 +168,7 @@ static void InitializeTargets() {
 }
 
 Status Main(const MainFlags& flags) {
-  std::call_once(targets_init, &InitializeTargets);
+  absl::call_once(targets_init, &InitializeTargets);
 
   // Process config.
   tf2xla::Config config;

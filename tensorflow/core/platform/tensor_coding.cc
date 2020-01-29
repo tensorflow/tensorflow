@@ -177,7 +177,6 @@ bool DecodeStringList(const Cord& src, string* strings, int64 n) {
   return true;
 }
 
-#ifdef USE_TSTRING
 bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
   std::vector<uint32> sizes(n);
   CordReader reader(src);
@@ -200,7 +199,6 @@ bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
   }
   return true;
 }
-#endif  // USE_TSTRING
 
 void CopyFromArray(Cord* c, const char* base, size_t bytes) {
   c->CopyFrom(base, bytes);

@@ -3229,6 +3229,8 @@ def defun_with_attributes(func=None,
 class TfMethodTarget(object):
   """Binding target for methods replaced by function and defun."""
 
+  __slots__ = ("weakrefself_target__", "weakrefself_func__")
+
   def __init__(self, target, original_python_function):
     self.weakrefself_target__ = target
     self.weakrefself_func__ = weakref.ref(original_python_function)
@@ -3236,6 +3238,15 @@ class TfMethodTarget(object):
   @property
   def target(self):
     return self.weakrefself_target__()
+
+  @property
+  def target_class(self):
+    true_self = self.weakrefself_target__()
+    if tf_inspect.isclass(true_self):
+      # Class method
+      return true_self
+    else:
+      return true_self.__class__
 
   def call(self, args, kwargs):
     wrapped_fn = self.weakrefself_func__()

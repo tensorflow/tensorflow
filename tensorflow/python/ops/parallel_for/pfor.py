@@ -2872,9 +2872,9 @@ def _convert_log_matrix_determinant(pfor_input):
 
 @RegisterPFor("MatrixTriangularSolve")
 def _convert_matrix_triangular_solve(pfor_input):
-  pfor_input.stack_inputs()
-  matrix = pfor_input.stacked_input(0)
-  rhs = pfor_input.stacked_input(1)
+  pfor_input.expanddim_inputs_for_broadcast()
+  matrix = pfor_input.input(0)[0]
+  rhs = pfor_input.input(1)[0]
   lower = pfor_input.get_attr("lower")
   adjoint = pfor_input.get_attr("adjoint")
   output = linalg_ops.matrix_triangular_solve(

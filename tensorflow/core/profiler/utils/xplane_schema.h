@@ -69,7 +69,10 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
-  kLastHostEventType = kPartitionedCallOp,
+  // GPU related.
+  kKernelLaunch,
+  kKernelExecute,
+  kLastHostEventType = kKernelExecute,
 };
 
 enum StatType {
@@ -96,12 +99,14 @@ enum StatType {
   kBytesAvailable,
   kFragmentation,
   kPeakBytesInUse,
+  kTensorShapes,
   // Device trace arguments.
   kDeviceId,
   kContextId,
   kCorrelationId,
   kMemcpyDetails,
   kMemallocDetails,
+  kKernelAnnotation,
   kKernelDetails,
   kStream,
   // Stats added when processing traces.

@@ -258,13 +258,26 @@ class SingleOpModel {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
-    for (int i = 0; i < num_inputs; ++i) {
-      const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                                   : params->scale->data[i];
-      quantized_output[i] = input_data[i] / scale;
+    CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
+    if (t->type == kTfLiteInt32) {
+      std::vector<int32_t> quantized_output(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                     : params->scale->data[i];
+        quantized_output[i] = input_data[i] / scale;
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
+    } else {
+      std::vector<int64_t> quantized_output(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                     : params->scale->data[i];
+        quantized_output[i] = input_data[i] / scale;
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
     }
-    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                   quantized_output.data() + quantized_output.size());
   }
 
   const std::vector<int>& GetShape(int id) { return tensor_data_.at(id).shape; }
@@ -409,6 +422,74 @@ class SingleOpModel {
   flatbuffers::FlatBufferBuilder builder_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
   std::unique_ptr<OpResolver> resolver_;
+
+  std::vector<flatbuffers::Offset<OperatorCode>> opcodes_;
+  std::vector<flatbuffers::Offset<Operator>> operators_;
+  std::map<string, std::function<TfLiteRegistration*()>> custom_registrations_;
+
+  template <typename T>
+  int AddTensor(TensorData t, std::initializer_list<T> data,
+                bool is_variable = false) {
+    int id = tensors_.size();
+
+    // This is slightly different depending on whether we are adding a
+    // quantized or a regular tensor.
+    bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
+
+    flatbuffers::Offset<QuantizationParameters> q_params = 0;
+
+    if (is_quantized) {
+      if (t.min != 0 || t.max != 0) {
+        if (t.type == TensorType_UINT8) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<uint8_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT8) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int8_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT32) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int32_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT16) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int16_t>(t.min, t.max);
+        } else {
+          LOG(FATAL) << "No support for the requested quantized type";
+        }
+        t.min = 0;
+        t.max = 0;
+      }
+
+      q_params = CreateQuantizationParameters(
+          builder_, /*min=*/0, /*max=*/0,
+          builder_.CreateVector<float>({t.scale}),
+          builder_.CreateVector<int64_t>({t.zero_point}));
+    }
+
+    int buffer_id = 0;
+    if (data.size()) {
+      // Initialize buffers list with empty buffer to allow for non-const
+      // tensors.
+      if (buffers_.empty()) {
+        buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
+      }
+
+      // Add data as a Buffer to buffers list.
+      buffer_id = buffers_.size();
+      auto data_buffer =
+          builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.begin()),
+                                sizeof(T) * data.size());
+      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+    }
+
+    tensors_.push_back(CreateTensor(builder_,
+                                    builder_.CreateVector<int>(t.shape), t.type,
+                                    /*buffer=*/buffer_id,
+                                    /*name=*/0, q_params, is_variable));
+
+    tensor_data_[id] = t;
+
+    return id;
+  }
 
  private:
   template <typename T>
@@ -588,70 +669,6 @@ class SingleOpModel {
     return id;
   }
 
-  template <typename T>
-  int AddTensor(TensorData t, std::initializer_list<T> data,
-                bool is_variable = false) {
-    int id = tensors_.size();
-
-    // This is slightly different depending on whether we are adding a
-    // quantized or a regular tensor.
-    bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
-
-    flatbuffers::Offset<QuantizationParameters> q_params = 0;
-
-    if (is_quantized) {
-      if (t.min != 0 || t.max != 0) {
-        if (t.type == TensorType_UINT8) {
-          std::tie(t.scale, t.zero_point) =
-              QuantizationParams<uint8_t>(t.min, t.max);
-        } else if (t.type == TensorType_INT8) {
-          std::tie(t.scale, t.zero_point) =
-              QuantizationParams<int8_t>(t.min, t.max);
-        } else if (t.type == TensorType_INT32) {
-          std::tie(t.scale, t.zero_point) =
-              QuantizationParams<int32_t>(t.min, t.max);
-        } else if (t.type == TensorType_INT16) {
-          std::tie(t.scale, t.zero_point) =
-              QuantizationParams<int16_t>(t.min, t.max);
-        } else {
-          LOG(FATAL) << "No support for the requested quantized type";
-        }
-        t.min = 0;
-        t.max = 0;
-      }
-
-      q_params = CreateQuantizationParameters(
-          builder_, /*min=*/0, /*max=*/0,
-          builder_.CreateVector<float>({t.scale}),
-          builder_.CreateVector<int64_t>({t.zero_point}));
-    }
-
-    int buffer_id = 0;
-    if (data.size()) {
-      // Initialize buffers list with empty buffer to allow for non-const
-      // tensors.
-      if (buffers_.empty()) {
-        buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
-      }
-
-      // Add data as a Buffer to buffers list.
-      buffer_id = buffers_.size();
-      auto data_buffer =
-          builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.begin()),
-                                sizeof(T) * data.size());
-      buffers_.push_back(CreateBuffer(builder_, data_buffer));
-    }
-
-    tensors_.push_back(CreateTensor(builder_,
-                                    builder_.CreateVector<int>(t.shape), t.type,
-                                    /*buffer=*/buffer_id,
-                                    /*name=*/0, q_params, is_variable));
-
-    tensor_data_[id] = t;
-
-    return id;
-  }
-
   std::vector<int8_t> QuantizeTensor(int index,
                                      const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
@@ -710,10 +727,7 @@ class SingleOpModel {
   std::vector<int32_t> intermediates_;
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
-  std::vector<flatbuffers::Offset<OperatorCode>> opcodes_;
-  std::vector<flatbuffers::Offset<Operator>> operators_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
-  std::map<string, std::function<TfLiteRegistration*()>> custom_registrations_;
   // A function pointer that gets called after the interpreter is created but
   // before evaluation happens. This is useful for applying a delegate.
   std::function<void(Interpreter*)> apply_delegate_fn_;
@@ -762,10 +776,11 @@ template <typename T>
 TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
   if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
+  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
+  if (std::is_same<T, int16_t>::value) return TensorType_INT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
-  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   return TensorType_MIN;  // default value
 }
@@ -821,6 +836,28 @@ struct TypeUnion<uint8_t> {
   static const TensorType tensor_type = TensorType::TensorType_UINT8;
   static const TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
   typedef uint8_t ScalarType;
+};
+
+class MultiOpModel : public SingleOpModel {
+ public:
+  MultiOpModel() : SingleOpModel() {}
+  ~MultiOpModel() {}
+
+  void AddBuiltinOp(BuiltinOperator type, BuiltinOptions builtin_options_type,
+                    const flatbuffers::Offset<void>& builtin_options,
+                    const std::vector<int32_t>& inputs,
+                    const std::vector<int32_t>& outputs);
+
+  void AddCustomOp(const string& name,
+                   const std::vector<uint8_t>& custom_option,
+                   const std::function<TfLiteRegistration*()>& registration,
+                   const std::vector<int32_t>& inputs,
+                   const std::vector<int32_t>& outputs);
+
+  template <typename T>
+  int AddInnerTensor(TensorData t) {
+    return AddTensor<T>(t, {}, false);
+  }
 };
 
 }  // namespace tflite

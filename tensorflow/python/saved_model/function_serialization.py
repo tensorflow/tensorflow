@@ -19,8 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import saved_object_graph_pb2
+from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 def _serialize_function_spec(function_spec, coder):
@@ -72,17 +75,19 @@ def serialize_concrete_function(concrete_function, node_ids, coder):
   return concrete_function_proto
 
 
-def serialize_bare_concrete_function(concrete_function):
+def serialize_bare_concrete_function(concrete_function, name_map):
   """Build a SavedBareConcreteFunction."""
   # pylint: disable=protected-access
+  name = name_map.get(compat.as_text(concrete_function.name),
+                      concrete_function.name)
   return saved_object_graph_pb2.SavedBareConcreteFunction(
-      concrete_function_name=concrete_function.name,
+      concrete_function_name=name,
       allowed_positional_arguments=concrete_function._num_positional_args,
       argument_keywords=concrete_function._arg_keywords)
   # pylint: enable=protected-access
 
 
-def serialize_function(function):
+def serialize_function(function, name_map):
   """Build a SavedFunction proto."""
   coder = nested_structure_coder.StructureCoder()
   proto = saved_object_graph_pb2.SavedFunction()
@@ -92,5 +97,65 @@ def serialize_function(function):
   all_concrete_functions = \
       function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
   for concrete_function in all_concrete_functions:
-    proto.concrete_functions.append(concrete_function.name)
+    proto.concrete_functions.append(
+        name_map.get(compat.as_text(concrete_function.name),
+                     concrete_function.name))
   return proto
+
+
+def wrap_cached_variables(concrete_function):
+  """Wraps the concrete function if it uses cached read tensors.
+
+  This function creates a new concrete function that captures variables
+  instead of the cached read tensors.
+
+  Args:
+    concrete_function: A Concrete function that maybe captures cached read
+      tensors.
+
+  Returns:
+    A concrete function that wraps the original concrete function, which
+    captures variables instead. If the original function did not capture any
+    cached values, then the function is not wrapped and the original object is
+    returned.
+  """
+  outer_graph = func_graph_module.FuncGraph(
+      "{}_no_cache".format(concrete_function.graph.name))
+  captures = concrete_function.graph._captures  # pylint: disable=protected-access
+  mapped_captures = None
+  remapped_captures = {}
+
+  # Update the external captures to use read tensors generated in the outer
+  # graph.
+  with outer_graph.as_default():
+    for capture, placeholder in concrete_function.graph.captures:
+      cached_variable = getattr(capture, "_cached_variable", None)
+      if cached_variable is None:
+        continue
+      cached_variable = cached_variable()
+      new_cached_value = cached_variable.read_value()
+      remapped_captures[id(capture)] = captures[id(capture)]
+      captures[id(capture)] = (new_cached_value, placeholder)
+      mapped_captures = True
+
+  if not mapped_captures:
+    return concrete_function
+
+  inner_concrete = defun.ConcreteFunction(concrete_function.graph)
+
+  def wrap_function(*args):
+    return inner_concrete._call_flat(args, inner_concrete.captured_inputs)  # pylint:disable=protected-access
+
+  args = nest.flatten(concrete_function.structured_input_signature,
+                      expand_composites=True)
+  func_graph_module.func_graph_from_py_func(
+      None, wrap_function, args=tuple(args), kwargs={},
+      func_graph=outer_graph)
+  fn = defun.ConcreteFunction(outer_graph)
+  fn._arg_keywords = concrete_function._arg_keywords  # pylint: disable=protected-access
+  fn._num_positional_args = concrete_function._num_positional_args  # pylint: disable=protected-access
+
+  # Return the captures to their original values
+  for key, capture in remapped_captures.items():
+    captures[key] = capture
+  return fn

@@ -1,12 +1,18 @@
-package(
-    default_visibility = ["//visibility:public"],
-)
-
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE.txt"])
 
 licenses(["notice"])
+
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+)
+
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+)
 
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
@@ -16,6 +22,7 @@ cc_library(
     hdrs = ["//:public_headers"],
     linkstatic = 1,
     strip_include_prefix = "/include",
+    visibility = ["//visibility:public"],
     deps = ["//src:flatbuffers"],
 )
 
@@ -36,12 +43,14 @@ filegroup(
         "include/flatbuffers/stl_emulation.h",
         "include/flatbuffers/util.h",
     ],
+    visibility = ["//:__subpackages__"],
 )
 
 # Public flatc compiler library.
 cc_library(
     name = "flatc_library",
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         "@flatbuffers//src:flatc_library",
     ],
@@ -50,6 +59,17 @@ cc_library(
 # Public flatc compiler.
 cc_binary(
     name = "flatc",
+    linkopts = select({
+        ":freebsd": [
+            "-lm",
+        ],
+        ":windows": [],
+        "//conditions:default": [
+            "-lm",
+            "-ldl",
+        ],
+    }),
+    visibility = ["//visibility:public"],
     deps = [
         "@flatbuffers//src:flatc",
     ],
@@ -75,6 +95,7 @@ cc_library(
     ],
     linkstatic = 1,
     strip_include_prefix = "/include",
+    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -93,4 +114,5 @@ filegroup(
 py_library(
     name = "runtime_py",
     srcs = [":runtime_py_srcs"],
+    visibility = ["//visibility:public"],
 )

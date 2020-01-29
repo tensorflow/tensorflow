@@ -472,6 +472,22 @@ class SaveTest(test.TestCase):
         for node in f.node_def:
           assert_correct_number_of_output_shapes(node)
 
+  def test_save_cached_variable(self):
+    with ops.Graph().as_default(), session_lib.Session() as session:
+      obj = tracking.AutoTrackable()
+      obj.v = variables.Variable(2., caching_device=lambda op: op.device)
+      obj.w = variables.Variable(3.)
+      session.run([obj.v.initializer, obj.w.initializer])
+
+      @def_function.function(input_signature=[])
+      def f():
+        return obj.v + obj.w
+
+      obj.f = f
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(obj, save_dir, signatures=obj.f)
+      self.assertAllClose({"output_0": 5}, _import_and_infer(save_dir, {}))
+
 
 class SavingOptionsTest(test.TestCase):
 

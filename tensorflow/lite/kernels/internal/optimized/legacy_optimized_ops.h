@@ -19,6 +19,7 @@ limitations under the License.
 #include <sys/types.h>
 
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
@@ -2551,8 +2552,10 @@ inline void HybridConv(const int8_t* input_data, const Dims<4>& input_dims,
                        int stride_width, int stride_height, int pad_width,
                        int pad_height, float* scaling_factors_ptr,
                        float output_activation_min, float output_activation_max,
+                       int32_t* scratch_data, const Dims<4>& scratch_dims,
                        float* output_data, const Dims<4>& output_dims,
-                       int8_t* im2col_data, const Dims<4>& im2col_dims) {
+                       int8_t* im2col_data, const Dims<4>& im2col_dims,
+                       CpuBackendContext* context) {
   tflite::ConvParams op_params;
   // Padding type is ignored, but still set.
   op_params.padding_type = PaddingType::kSame;
@@ -2565,8 +2568,9 @@ inline void HybridConv(const int8_t* input_data, const Dims<4>& input_dims,
 
   HybridConv(op_params, scaling_factors_ptr, DimsToShape(input_dims),
              input_data, DimsToShape(filter_dims), filter_data,
-             DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
-             output_data, DimsToShape(im2col_dims), im2col_data);
+             DimsToShape(bias_dims), bias_data, DimsToShape(scratch_dims),
+             scratch_data, DimsToShape(output_dims), output_data,
+             DimsToShape(im2col_dims), im2col_data, context);
 }
 
 template <FusedActivationFunctionType Ac>

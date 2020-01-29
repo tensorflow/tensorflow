@@ -1314,7 +1314,7 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
     }
   }
   copy_start_ = computation->AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})}),
+      ShapeUtil::MakeTupleShape({shape, shape, ShapeUtil::MakeShape(U32, {})}),
       HloOpcode::kCopyStart, producing_instruction));
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));

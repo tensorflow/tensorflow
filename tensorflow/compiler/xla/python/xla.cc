@@ -258,6 +258,8 @@ PYBIND11_MODULE(xla_extension, m) {
            [](const Shape& shape) {
              return std::vector<Shape>(shape.tuple_shapes());
            })
+      .def("leaf_count",
+           [](const Shape& shape) { return ShapeUtil::GetLeafCount(shape); })
       .def(
           "with_major_to_minor_layout_if_absent",
           [](const Shape& shape) {
@@ -279,7 +281,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__hash__",
            [](const Shape& shape) { return absl::Hash<Shape>()(shape); })
       .def("__repr__", [](const Shape& shape) {
-        return shape.ToString(/*print_layouts=*/true);
+        return shape.ToString(/*print_layout=*/true);
       });
 
   py::class_<ProgramShape>(m, "ProgramShape")
@@ -312,8 +314,7 @@ PYBIND11_MODULE(xla_extension, m) {
                     if (array.ndim() != 2) {
                       return InvalidArgument(
                           "Argument to DeviceAssignment constructor must be a "
-                          "2D array, "
-                          "received an %dD array.",
+                          "2D array, received an %dD array.",
                           array.ndim());
                     }
                     DeviceAssignment result(array.shape(0), array.shape(1));
@@ -341,7 +342,34 @@ PYBIND11_MODULE(xla_extension, m) {
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
       .def_property_readonly("platform", &Device::platform_name)
-      .def("__str__", &Device::DebugString);
+      .def("__str__", &Device::DebugString)
+      .def("TransferToInfeed",
+           [](const Device& device, const LiteralSlice& literal) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                                 device.GetLocalDeviceState());
+             return local_device->client()->TransferToInfeedLocal(
+                 literal, local_device->device_ordinal());
+           })
+      .def(
+          "TransferFromOutfeed",
+          [](const Device& device, const Shape& shape) -> StatusOr<py::object> {
+            GlobalPyRefManager()->CollectGarbage();
+            std::shared_ptr<Literal> literal_shared;
+            {
+              py::gil_scoped_release gil_release;
+              TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                                  device.GetLocalDeviceState());
+              TF_ASSIGN_OR_RETURN(
+                  Literal literal,
+                  local_device->client()->TransferFromOutfeedLocal(
+                      shape, local_device->device_ordinal()));
+
+              literal_shared = std::make_shared<Literal>(std::move(literal));
+            }
+            return LiteralToPython(std::move(literal_shared));
+          });
 
   py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
       .def("__repr__", [](const CpuDevice& device) {
@@ -412,8 +440,7 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return result;
            })
-      // TODO(phawkins): delete overload that accepts a device_ordinal after
-      // all callers have been updated to pass a Device.
+      // TODO(phawkins): delete these methods in favor of the versions on Device
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
@@ -431,8 +458,7 @@ PYBIND11_MODULE(xla_extension, m) {
              py::gil_scoped_release gil_release;
              return client->TransferToInfeed(literal, device);
            })
-      // TODO(phawkins): delete overload that accepts a device_ordinal after
-      // all callers have been updated to pass a Device.
+      // TODO(phawkins): delete these methods in favor of the versions on Device
       .def("TransferFromOutfeed",
            [](PyLocalClient* client, const Shape& shape,
               int device_ordinal) -> StatusOr<py::object> {
@@ -570,6 +596,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,
+                  py::call_guard<py::gil_scoped_release>())
+      .def_static("Compile", &PyLocalExecutable::CompileForDevices,
                   py::call_guard<py::gil_scoped_release>())
       .def("local_devices", &PyLocalExecutable::local_devices)
       .def("SizeOfGeneratedCodeInBytes",
@@ -738,6 +766,10 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Pad", &Pad);
   ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
                                              const std::string&)>(&Parameter));
+  ops.def("Parameter",
+          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+                                const std::string&, const std::vector<bool>&)>(
+              &Parameter));
   ops.def("QR",
           [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
             TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));

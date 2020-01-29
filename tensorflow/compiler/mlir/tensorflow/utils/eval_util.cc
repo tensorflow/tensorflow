@@ -97,7 +97,7 @@ mlir::LogicalResult EvaluateOperation(
   // Builds TF operation and sets all the attributes.
   std::string node_name = "unnamed";
   if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    node_name = attr.getValue();
+    node_name = std::string(attr.getValue());
   }
   auto node_def_or = ConvertTFDialectOpToNodeDef(
       inst, node_name.c_str(), /*ignore_unregistered_attrs=*/true);

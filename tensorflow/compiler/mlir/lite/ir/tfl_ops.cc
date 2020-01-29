@@ -797,8 +797,7 @@ struct RemoveAdjacentReshape : public RewritePattern {
     // With
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
-        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand(0),
-        thisOp.getOperand(1));
+        op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
   }
 };
 

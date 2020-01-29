@@ -560,6 +560,15 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
         PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
         PrimitiveType_Name(bitcast->shape().element_type()));
   }
+  if (layout_sensitive_ &&
+      shape_size_function_(bitcast->shape()) !=
+          shape_size_function_(bitcast->operand(0)->shape())) {
+    return InternalError(
+        "Bitcast cannot have different shape sizes of output (%d) and operand "
+        "(%d)",
+        shape_size_function_(bitcast->shape()),
+        shape_size_function_(bitcast->operand(0)->shape()));
+  }
   return Status::OK();
 }
 
@@ -817,11 +826,24 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
 Status ShapeVerifier::HandleCopyStart(HloInstruction* copy_start) {
   return CheckShape(copy_start,
                     ShapeUtil::MakeTupleShape({copy_start->operand(0)->shape(),
+                                               copy_start->operand(0)->shape(),
                                                ShapeUtil::MakeShape(U32, {})}),
                     /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
+  const Shape& operand_shape = copy_done->operand(0)->shape();
+  const Shape& dest_shape = ShapeUtil::GetTupleElementShape(operand_shape, 0);
+  const Shape& src_shape = ShapeUtil::GetTupleElementShape(operand_shape, 1);
+  if (!ShapesSame(dest_shape, src_shape,
+                  /*minor_to_major_only=*/false,
+                  /*ignore_memory_space=*/true)) {
+    return InternalError(
+        "Source and destination buffers in CopyDone arguments need to be the "
+        "same shape found %s and %s\n%s",
+        StringifyShape(dest_shape), StringifyShape(src_shape),
+        copy_done->ToString());
+  }
   return CheckShape(copy_done, ShapeUtil::GetTupleElementShape(
                                    copy_done->operand(0)->shape(), 0));
 }

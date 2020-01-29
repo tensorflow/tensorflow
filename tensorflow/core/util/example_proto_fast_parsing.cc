@@ -1839,16 +1839,10 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
       if (out == nullptr) {
         stream->Skip(bytes_length);
       } else {
-#ifdef USE_TSTRING
         out->resize_uninitialized(bytes_length);
         if (!stream->ReadRaw(out->data(), bytes_length)) {
           return -1;
         }
-#else   // USE_TSTRING
-        if (!stream->ReadString(out, bytes_length)) {
-          return -1;
-        }
-#endif  // USE_TSTRING
         out++;
       }
       num_elements++;

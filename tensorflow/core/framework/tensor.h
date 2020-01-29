@@ -862,32 +862,21 @@ typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
 
 template <typename T>
 typename TTypes<T>::Scalar Tensor::scalar() {
+  static_assert(
+      !std::is_same<T, std::string>::value,
+      "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::Scalar(base<T>());
 }
 
-#ifdef USE_TSTRING
-template <>
-inline typename TTypes<std::string>::Scalar Tensor::scalar<std::string>() {
-  LOG(FATAL)
-      << "std::string is no longer a scalar type, use tensorflow::tstring";
-}
-#endif  // USE_TSTRING
-
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
+  static_assert(
+      !std::is_same<T, std::string>::value,
+      "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::ConstScalar(base<T>());
 }
-
-#ifdef USE_TSTRING
-template <>
-inline typename TTypes<std::string>::ConstScalar Tensor::scalar<std::string>()
-    const {
-  LOG(FATAL)
-      << "std::string is no longer a scalar type, use tensorflow::tstring";
-}
-#endif  // USE_TSTRING
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_dims() {

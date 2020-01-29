@@ -19,14 +19,10 @@ limitations under the License.
 
 %include "tensorflow/python/client/tf_session.i"
 
-%include "tensorflow/python/lib/io/py_record_reader.i"
-
 %include "tensorflow/python/grappler/cluster.i"
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
-
-%include "tensorflow/compiler/mlir/python/mlir.i"
 
 // TODO(slebedev): This is a temporary workaround for projects implicitly
 // relying on TensorFlow exposing tensorflow::Status.

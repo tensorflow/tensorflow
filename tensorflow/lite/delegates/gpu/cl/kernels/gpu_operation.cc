@@ -89,12 +89,12 @@ bool OperationDef::HasAllTensorsOfType(TensorStorageType storage_type) const {
 
 bool OperationDef::IsBatchSupported() const {
   for (const auto& src : src_tensors) {
-    if (src.layout == Layout::BHWC || src.layout == Layout::BHWDC) {
+    if (HasAxis(src.layout, Axis::BATCH)) {
       return true;
     }
   }
   for (const auto& dst : dst_tensors) {
-    if (dst.layout == Layout::BHWC || dst.layout == Layout::BHWDC) {
+    if (HasAxis(dst.layout, Axis::BATCH)) {
       return true;
     }
   }

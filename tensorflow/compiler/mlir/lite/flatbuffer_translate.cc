@@ -523,7 +523,7 @@ class Translator {
 };
 
 std::string Translator::UniqueName(mlir::Value val) {
-  return name_mapper_.GetUniqueName(val);
+  return std::string(name_mapper_.GetUniqueName(val));
 }
 
 Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
@@ -1089,7 +1089,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   for (unsigned i = 0, e = bb.getNumArguments(); i < e; ++i) {
     mlir::BlockArgument arg = bb.getArgument(i);
     std::string name;
-    if (has_input_attr) name = name_mapper_.GetUniqueName(arg);
+    if (has_input_attr) name = std::string(name_mapper_.GetUniqueName(arg));
     if (name.empty()) name = absl::StrCat("arg", i);
     if (!build_tensor_and_buffer(arg, name)) return llvm::None;
   }

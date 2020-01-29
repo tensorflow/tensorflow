@@ -197,7 +197,7 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
     auto device_state = absl::make_unique<LocalDeviceState>(
-        executor, synchronous_deallocation, asynchronous,
+        executor, client, synchronous_deallocation, asynchronous,
         /*allow_event_reuse=*/gpu_platform);
     devices.push_back(MakeDevice(platform_name, i, std::move(device_state)));
   }
@@ -676,16 +676,27 @@ static std::shared_ptr<Device> LookupDevice(const PyLocalClient& client,
 }
 
 PyLocalExecutable::PyLocalExecutable(
-    std::shared_ptr<LocalExecutable> executable,
+    std::vector<std::unique_ptr<LocalExecutable>> executables,
     DeviceAssignment device_assignment, std::shared_ptr<PyLocalClient> client)
     : client_(std::move(client)),
-      executable_(std::move(executable)),
       device_assignment_(
           std::make_shared<DeviceAssignment>(device_assignment)) {
+  executables_.reserve(executables.size());
+  for (auto& executable : executables) {
+    executables_.emplace_back(std::move(executable));
+  }
+
+  // This must go after `executables_` is initialized.
   VLOG(1) << "PyLocalExecutable " << name() << " device_assignment:\n"
           << device_assignment_->ToString();
+
   const int num_replicas = device_assignment_->replica_count();
   const int num_partitions = device_assignment_->computation_count();
+
+  CHECK_EQ(num_partitions, executables_.size())
+      << "Number of executables " << executables_.size()
+      << " did not match number of partitions " << num_partitions;
+
   for (int replica = 0; replica < num_replicas; ++replica) {
     for (int partition = 0; partition < num_partitions; ++partition) {
       int device_id = (*device_assignment_)(replica, partition);
@@ -704,7 +715,7 @@ PyLocalExecutable::PyLocalExecutable(
 }
 
 const std::string& PyLocalExecutable::name() const {
-  Executable* executable = executable_->executable();
+  Executable* executable = executables_[0]->executable();
   if (executable->has_module()) {
     return executable->module().name();
   } else {
@@ -779,7 +790,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
       device_state->compute_semaphore().ScopedAcquire(1));
 
   StatusOr<ScopedShapedBuffer> result_buffer_or_status =
-      executable_->RunAsync(argument_buffer_ptrs, options);
+      executables_[partition]->RunAsync(argument_buffer_ptrs, options);
 
   VLOG(1) << "Replica " << replica << " partition " << partition
           << " completed; ok=" << result_buffer_or_status.ok();
@@ -809,7 +820,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
 
   device_state->ThenRelease(
       device_state->compute_stream(),
-      std::make_tuple(executable_, compute_reservation, device_assignment_));
+      std::make_tuple(executables_[partition], compute_reservation,
+                      device_assignment_));
   return absl::make_unique<PyLocalBuffer>(
       result_buffer.on_host_shape(), result_buffer.on_device_shape(),
       std::move(out_buffer), client_, device);
@@ -949,6 +961,53 @@ PyLocalExecutable::ExecuteOnLocalDevices(
 }
 
 /*static*/ StatusOr<std::unique_ptr<PyLocalExecutable>>
+PyLocalExecutable::CompileForDevices(
+    const XlaComputation& computation,
+    absl::optional<std::vector<Shape>> argument_layouts,
+    const ExecutableBuildOptions* build_options,
+    std::shared_ptr<PyLocalClient> client,
+    const std::vector<std::vector<std::shared_ptr<Device>>>&
+        device_assignment) {
+  if (device_assignment.empty()) {
+    return InvalidArgument(
+        "Device assignment passed to Compile() must be non-empty.");
+  }
+  if (device_assignment[0].empty()) {
+    return InvalidArgument(
+        "Device assignment passed to Compile() must have a nonzero number of "
+        "partitions per replica; replica 0 had 0 partitions.");
+  }
+  DeviceAssignment xla_assignment(device_assignment.size(),
+                                  device_assignment[0].size());
+  for (int replica = 0; replica < device_assignment.size(); ++replica) {
+    if (device_assignment[replica].size() != device_assignment[0].size()) {
+      return InvalidArgument(
+          "Device assignment passed to Compile() has different numbers of "
+          "partitions between replicas; %d partitions for replica %d versus %d "
+          "partitions for replica 0.",
+          device_assignment[replica].size(), replica,
+          device_assignment[0].size());
+    }
+    for (int partition = 0; partition < device_assignment.size(); ++partition) {
+      if (device_assignment[0][0]->platform_name() !=
+          device_assignment[replica][partition]->platform_name()) {
+        return InvalidArgument(
+            "Device assignment passed to Compile() must have devices of a "
+            "single kind, got %s for replica 0 partition 0 and %s for replica "
+            "%d partition %d.",
+            device_assignment[0][0]->platform_name(),
+            device_assignment[replica][partition]->platform_name(), replica,
+            partition);
+      }
+      xla_assignment(replica, partition) =
+          device_assignment[replica][partition]->id();
+    }
+  }
+  return Compile(computation, std::move(argument_layouts), build_options,
+                 std::move(client), xla_assignment);
+}
+
+/*static*/ StatusOr<std::unique_ptr<PyLocalExecutable>>
 PyLocalExecutable::Compile(const XlaComputation& computation,
                            absl::optional<std::vector<Shape>> argument_layouts,
                            const ExecutableBuildOptions* build_options,
@@ -1034,13 +1093,14 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
   TF_RETURN_IF_ERROR(assign_layouts(&result_layout));
   options.set_result_layout(result_layout);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<LocalExecutable> local_executable,
-                      client->client()->Compile(
-                          computation, argument_layout_pointers, options));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      client->client()->Compile(computation, argument_layout_pointers,
+                                options));
 
-  return absl::make_unique<PyLocalExecutable>(
-      std::shared_ptr<LocalExecutable>(std::move(local_executable)),
-      std::move(*device_assignment), std::move(client));
+  return absl::make_unique<PyLocalExecutable>(std::move(local_executables),
+                                              std::move(*device_assignment),
+                                              std::move(client));
 }
 
 }  // namespace xla

@@ -703,10 +703,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     CLDevice device;
     if (options_.device) {
       cl_platform_id platform;
-      if (!FindPlatform(options_.device, &platform)) {
-        return NotFoundError(
-            "Unable to find cl_platform_id for the given cl_device");
-      }
+      RETURN_IF_ERROR(GetDeviceInfo<cl_platform_id>(
+          options_.device, CL_DEVICE_PLATFORM, &platform));
       device = CLDevice(options_.device, platform);
     } else {
       RETURN_IF_ERROR(CreateDefaultGPUDevice(&device));

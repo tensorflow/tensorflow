@@ -57,7 +57,7 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   if (llvm::sys::getHostCPUFeatures(host_features)) {
     for (auto& feature : host_features) {
       if (feature.second) {
-        result.push_back(feature.first());
+        result.push_back(std::string(feature.first()));
       }
     }
   }
@@ -93,8 +93,8 @@ SimpleOrcJIT::SimpleOrcJIT(
       data_layout_(target_machine_->createDataLayout()),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
           execution_session_,
-          [this](const std::string& name) -> llvm::JITSymbol {
-            return this->ResolveRuntimeSymbol(name);
+          [this](llvm::StringRef name) -> llvm::JITSymbol {
+            return this->ResolveRuntimeSymbol(std::string(name));
           },
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
