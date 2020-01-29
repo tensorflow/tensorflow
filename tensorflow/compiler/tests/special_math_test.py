@@ -79,7 +79,7 @@ class IgammaTest(xla_test.XLATestCase, parameterized.TestCase):
         actual = sess.run(math_ops.igamma(a, x))
     self.assertAllClose(expected_values, actual, atol=atol, rtol=rtol)
 
-  @parameterized.parameters((np.float32, 1e-2, 1e-5), (np.float64, 1e-4, 1e-30))
+  @parameterized.parameters((np.float32, 2e-2, 1e-5), (np.float64, 1e-4, 1e-30))
   def testIgammaLargeValues(self, dtype, rtol, atol):
     # Test values near zero.
     x = np.random.uniform(
