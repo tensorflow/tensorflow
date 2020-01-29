@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MAP_LHLO_TO_SCALAR_OP_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MAP_LHLO_TO_SCALAR_OP_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MAP_XLA_TO_SCALAR_OP_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MAP_XLA_TO_SCALAR_OP_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 
 namespace mlir {
@@ -29,6 +30,11 @@ struct ScalarOp;
 
 template <>
 struct ScalarOp<xla_lhlo::AddOp> {
+  using FOp = ::mlir::AddFOp;
+  using IOp = ::mlir::AddIOp;
+};
+template <>
+struct ScalarOp<xla_hlo::AddOp> {
   using FOp = ::mlir::AddFOp;
   using IOp = ::mlir::AddIOp;
 };
@@ -198,4 +204,4 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::CopyOp>(
 }  // namespace xla_lhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MAP_LHLO_TO_SCALAR_OP_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MAP_XLA_TO_SCALAR_OP_H_

@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -47,47 +47,66 @@ ArrayAttr GetNParallelLoopsAttrs(unsigned nParallelLoops, Builder b) {
   return b.getArrayAttr(iteratorTypes);
 }
 
-template <typename LhloOp>
-class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
+template <typename OpTy, bool isLHLO = true>
+class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern<LhloOp>::OpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      LhloOp lhlo_op, ArrayRef<Value> args,
+      OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    auto loc = lhlo_op.getLoc();
-    auto argType =
-        lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
-    if (!argType || !argType.hasRank()) {
+    auto loc = op.getLoc();
+    auto argType = op.getOperand(0).getType().template cast<ShapedType>();
+    if (!argType.hasRank()) {
       emitError(loc, "lhlo to linalg conversion expects ranked args");
       return ConversionPattern::matchFailure();
     }
-    if (!argType || !argType.getElementType().isIntOrFloat()) {
+    if (!argType.getElementType().isIntOrFloat()) {
       return ConversionPattern::matchFailure();
     }
 
     // Construct the indexing maps needed for linalg.generic ops.
     SmallVector<Attribute, 2> indexingMaps;
-    SmallVector<Type, 4> bodyArgTypes, bodyResultTypes;
-    unsigned nloops = 0;
-    int operandCount = args.size() - 1;
-    for (const auto& arg : llvm::enumerate(args)) {
-      auto memrefType = arg.value().getType().dyn_cast<MemRefType>();
-      if (!memrefType) return ConversionPattern::matchFailure();
-      unsigned rank = memrefType.getRank();
-      if (!rank || (nloops && nloops != rank)) {
-        return ConversionPattern::matchFailure();
-      }
-      nloops = std::max(nloops, rank);
+    SmallVector<Type, 4> bodyArgTypes, bodyResultTypes, opResultTypes;
+
+    // This doesnt account for implicit broadcast, but the working assumption
+    // here is that are broadcasts have been made explicit.
+    unsigned nloops = argType.getRank();
+    if (!nloops) {
+      return ConversionPattern::matchFailure();
+    }
+    int operandCount = (isLHLO ? args.size() - 1 : args.size());
+    auto verifyArgOrResultType = [&](Value val) -> ShapedType {
+      auto shapedType = val.getType().dyn_cast<ShapedType>();
+      if (!shapedType ||
+          (!shapedType.isa<MemRefType>() &&
+           !shapedType.isa<RankedTensorType>()) ||
+          shapedType.getRank() != nloops)
+        return nullptr;
       indexingMaps.emplace_back(
           AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
+      return shapedType;
+    };
+    for (const auto& arg : llvm::enumerate(args)) {
+      auto shapedType = verifyArgOrResultType(arg.value());
+      if (!shapedType) return ConversionPattern::matchFailure();
       auto& result_or_body_arg =
           arg.index() < operandCount ? bodyArgTypes : bodyResultTypes;
-      result_or_body_arg.emplace_back(memrefType.getElementType());
+      result_or_body_arg.emplace_back(shapedType.getElementType());
+    }
+    if (!isLHLO) {
+      // HLO operations have return as tensor types.
+      assert(bodyResultTypes.empty() &&
+             "When lowering HLO ops result can't be part of arguments");
+      Value result = op.getOperation()->getResult(0);
+      auto shapedType = verifyArgOrResultType(result);
+      if (!shapedType) return ConversionPattern::matchFailure();
+      bodyResultTypes.push_back(shapedType.getElementType());
+      opResultTypes.push_back(shapedType);
     }
 
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, ArrayRef<Type>{}, args,
+        loc, opResultTypes, args,
         rewriter.getI64IntegerAttr(bodyArgTypes.size()),     // args_in
         rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
         rewriter.getArrayAttr(indexingMaps),
@@ -98,7 +117,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     auto* region = &linalgOp.region();
     auto* block = rewriter.createBlock(region, region->end());
     block->addArguments(bodyArgTypes);
-    block->addArguments(bodyResultTypes);
+    if (isLHLO) block->addArguments(bodyResultTypes);
 
     SmallVector<Value, 4> bodyArgs;
     for (int i = 0, e = bodyArgTypes.size(); i < e; ++i) {
@@ -106,10 +125,10 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     }
 
     rewriter.setInsertionPointToEnd(block);
-    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(lhlo_op), bodyResultTypes, bodyArgs, &rewriter);
+    Value opResult = MapLhloOpToStdScalarOp<OpTy>(
+        llvm::cast<OpTy>(op), bodyResultTypes, bodyArgs, &rewriter);
     rewriter.create<linalg::YieldOp>(loc, opResult);
-    rewriter.eraseOp(lhlo_op);
+    rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
     return ConversionPattern::matchSuccess();
   }
 };
@@ -335,6 +354,11 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
+void populateHLOToLinalgConversionPattern(MLIRContext* context,
+                                          OwningRewritePatternList* patterns) {
+  patterns->insert<PointwiseToLinalgConverter<xla_hlo::AddOp, false>>(context);
+}
+
 // Converts LHLO ops to Linalg generic.
 // Sample result for xla_lhlo::AddOp.
 //
@@ -369,14 +393,31 @@ struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
   }
 };
 
+struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
+  void runOnFunction() override {
+    OwningRewritePatternList patterns;
+    ConversionTarget target(getContext());
+    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect>();
+
+    auto func = getFunction();
+    populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
+    if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
+      signalPassFailure();
+    }
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass() {
   return absl::make_unique<LhloLegalizeToLinalg>();
 }
 
-static PassRegistration<LhloLegalizeToLinalg> legalize_pass(
+static PassRegistration<LhloLegalizeToLinalg> legalize_lhlo_pass(
     "lhlo-legalize-to-linalg", "Legalize from LHLO dialect to Linalg dialect");
+
+static PassRegistration<HloLegalizeToLinalg> legalize_hlo_pass(
+    "hlo-legalize-to-linalg", "Legalize from HLO dialect to Linalg dialect");
 
 }  // namespace xla_lhlo
 }  // namespace mlir
