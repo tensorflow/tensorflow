@@ -249,11 +249,11 @@ TfLiteStatus SymmetricPerChannelQuantization(TensorT* tensor,
                                              std::vector<float>* output_scales,
                                              std::vector<int8_t>* output_value,
                                              ErrorReporter* error_reporter) {
-  const int32_t channel_dim_size = tensor->shape[channel_dim_index];
   if (tensor == nullptr) {
     error_reporter->Report("Cannot quantize. Tensor is null.");
     return kTfLiteError;
   }
+  const int32_t channel_dim_size = tensor->shape[channel_dim_index];
   // Fill per channel max and min values if needed
   if (tensor->quantization == nullptr) {
     tensor->quantization = absl::make_unique<QuantizationParametersT>();

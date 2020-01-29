@@ -34,6 +34,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
@@ -153,11 +154,21 @@ def tftop_k(_):
   array_ops.identity(output[1], name='indices')
 
 
-def tfvariable(_):
+def tfvariable_readonly(_):
   x = variables.Variable(1000.0, name='x')
   old_x = x.value()
   with ops.control_dependencies([old_x]):
-    new_x = x.assign_add(42.0)
+    new_value = math_ops.add(old_x, 42.0)
+  array_ops.identity(new_value, name='result')
+
+
+# TODO(b/147908587): Change x and the two constants back to have a scalar shape
+#                    when the bug is fixed.
+def tfvariable(_):
+  x = variables.Variable([1000.0], name='x', shape=[1])
+  old_x = x.value()
+  with ops.control_dependencies([old_x]):
+    new_x = x.assign_add([42.0])
   array_ops.stack([old_x, new_x], name='result')
 
 
@@ -184,6 +195,7 @@ def write_graph(build_graph, out_dir):
 
 
 def main(_):
+  control_flow_util.enable_control_flow_v2()
   write_graph(tfadd, FLAGS.out_dir)
   write_graph(tfadd_with_ckpt, FLAGS.out_dir)
   write_graph(tfadd_with_ckpt_saver, FLAGS.out_dir)
@@ -196,6 +208,7 @@ def main(_):
   write_graph(tfsplits, FLAGS.out_dir)
   write_graph(tftop_k, FLAGS.out_dir)
   write_graph(tfvariable, FLAGS.out_dir)
+  write_graph(tfvariable_readonly, FLAGS.out_dir)
   write_graph(tfvariable_sequential_updates, FLAGS.out_dir)
 
 

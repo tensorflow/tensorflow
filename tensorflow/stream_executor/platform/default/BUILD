@@ -6,9 +6,7 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 cc_library(
     name = "platform",
-    textual_hdrs = [
-        "initialize.h",
-    ],
+    textual_hdrs = ["initialize.h"],
     deps = ["//tensorflow/core:lib"],
 )
 
@@ -21,6 +19,7 @@ cc_library(
     }),
     hdrs = ["dso_loader.h"],
     copts = tf_copts(),
+    tags = ["nobuilder"],
     deps = [
         "//tensorflow/stream_executor:platform",
         "//tensorflow/stream_executor/lib",

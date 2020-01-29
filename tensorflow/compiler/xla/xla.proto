@@ -158,7 +158,7 @@ message DebugOptions {
   bool xla_gpu_crash_on_verification_failures = 101;
 
   // Disable GEMM and Convolution auto-tuning.
-  bool xla_gpu_disable_autotune = 123;
+  int32 xla_gpu_autotune_level = 123;
 
   // Force the host platform to pretend that there are these many host
   // "devices".  All these devices are backed by the same threadpool.  Defaults
@@ -252,7 +252,9 @@ message DebugOptions {
   // Blacklist for cuDNN convolutions.
   string xla_gpu_algorithm_blacklist_path = 128;
 
-  // Next id: 130
+  // Guarantee run-to-run determinism from reductions on XLA:GPU.
+  bool xla_gpu_deterministic_reductions = 130;
+  // Next id: 131
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -121,8 +121,8 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
         &stream_compute_compatibility.first,
         &stream_compute_compatibility.second);
-    GpuVersion nvdia_compute_compatibility = stream_compute_compatibility;
-    TF_RET_CHECK(nvdia_compute_compatibility == gpu_version_)
+    GpuVersion nvidia_compute_compatibility = stream_compute_compatibility;
+    TF_RET_CHECK(nvidia_compute_compatibility == gpu_version_)
         << "Compute capability mismatch; expected {"
         << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
         << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
@@ -417,7 +417,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
               slice.allocation()->parameter_number(),
               slice.allocation()->param_shape_index());
           CHECK(output_alias)
-              << "Ouput buffer is coming from parameter "
+              << "Output buffer is coming from parameter "
               << slice.allocation()->parameter_number() << " at index "
               << slice.allocation()->param_shape_index()
               << ", but no alias exists";

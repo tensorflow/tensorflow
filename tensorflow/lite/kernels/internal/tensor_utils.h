@@ -100,6 +100,15 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
 
+// Same as the function above, but provide a scratch buffer for the
+// int8 x int8 -> int32 and a CpuBackendContext for the accumulator
+// computation.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, int32_t* scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* context);
+
 // Same as the function above except that vector values
 // are quantized with asymmetric quantization per-batch and the matrix
 // is quantized per row.
@@ -314,14 +323,26 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input);
 
 // Cwise product of two vectors.
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result);
+template <typename T>
+inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
+                                     const T* __restrict__ vector2, int v_size,
+                                     T* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    *result++ = *vector1++ * *vector2++;
+  }
+}
 
 // Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
 // assumption here is that result array is initialized to valid values.
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result);
+template <typename T>
+inline void VectorVectorCwiseProductAccumulate(const T* __restrict__ vector1,
+                                               const T* __restrict__ vector2,
+                                               int v_size,
+                                               T* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    *result++ += *vector1++ * *vector2++;
+  }
+}
 
 // Dot product of two vectors.
 float VectorVectorDotProduct(const float* vector1, const float* vector2,

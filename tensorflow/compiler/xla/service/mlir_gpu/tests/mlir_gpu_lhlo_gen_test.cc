@@ -84,6 +84,20 @@ ENTRY %Compare (x: f32[2,2], y: f32[2,2]) -> pred[2,2] {
 )");
 }
 
+TEST_F(LhloGenTest, Copy) {
+  CompileAndVerifyIr(R"(
+HloModule Copy
+
+ENTRY %Copy (x: f32[2,4]) -> f32[2,4] {
+  %x = f32[2,4] parameter(0)
+  ROOT %copy = f32[2,4] copy(f32[2,4] %x)
+})",
+                     R"(
+;CHECK: func @copy(%[[OPERAND:.*]]: memref<2x4xf32>, %[[RESULT:.*]]: memref<2x4xf32>) {
+;CHECK:   "xla_lhlo.copy"(%[[OPERAND]], %[[RESULT]]) : (memref<2x4xf32>, memref<2x4xf32>) -> ()
+      )");
+}
+
 TEST_F(LhloGenTest, Select) {
   CompileAndVerifyIr(R"(
 HloModule Select
@@ -390,6 +404,105 @@ ENTRY %AddReduce (x: f32[100,10], c: f32[]) -> f32[100] {
 ;CHECK:      tensor_store %[[RES]], %[[FRES]] : memref<f32>
 ;CHECK:     "xla_lhlo.terminator"() : () -> ()
 ;CHECK-NEXT: }) {dimensions = dense<1> : tensor<1xi64>} : ([[ARGT]], memref<f32>, [[REST]]) -> ()
+      )");
+}
+
+TEST_F(LhloGenTest, Abs) {
+  CompileAndVerifyIr(R"(
+HloModule Abs
+ENTRY %Abs (val: f32[2,2]) -> f32[2,2] {
+  %val = f32[2,2]{1,0} parameter(0)
+  ROOT %abs = f32[2,2]{1,0} abs(f32[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @abs(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.abs"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
+TEST_F(LhloGenTest, Ceil) {
+  CompileAndVerifyIr(R"(
+HloModule Ceil
+ENTRY %Ceil (val: f32[2,2]) -> f32[2,2] {
+  %val = f32[2,2]{1,0} parameter(0)
+  ROOT %ceil = f32[2,2]{1,0} ceil(f32[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @ceil(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.ceil"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
+TEST_F(LhloGenTest, Cos) {
+  CompileAndVerifyIr(R"(
+HloModule Cos
+ENTRY %Cos (val: f32[2,2]) -> f32[2,2] {
+  %val = f32[2,2]{1,0} parameter(0)
+  ROOT %cos = f32[2,2]{1,0} cosine(f32[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @cosine(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.cos"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
+TEST_F(LhloGenTest, Neg) {
+  CompileAndVerifyIr(R"(
+HloModule Neg
+ENTRY %Neg (val: f32[2,2]) -> f32[2,2] {
+  %val = f32[2,2]{1,0} parameter(0)
+  ROOT %neg = f32[2,2]{1,0} negate(f32[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @negate(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.neg"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
+TEST_F(LhloGenTest, Rem) {
+  CompileAndVerifyIr(R"(
+HloModule Rem
+ENTRY %Rem(x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  ROOT %rem = f32[2,2]{1,0} remainder(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+})",
+                     R"(
+;CHECK: func @remainder(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.remainder"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
+TEST_F(LhloGenTest, Sign) {
+  CompileAndVerifyIr(R"(
+HloModule Sign
+ENTRY %Sign (val: f32[2,2]) -> f32[2,2] {
+  %val = f32[2,2]{1,0} parameter(0)
+  ROOT %sign = f32[2,2]{1,0} sign(f32[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @sign(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.sign"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
+TEST_F(LhloGenTest, Tanh) {
+  CompileAndVerifyIr(R"(
+HloModule Tanh
+ENTRY %Tanh (val: f32[2,2]) -> f32[2,2] {
+  %val = f32[2,2]{1,0} parameter(0)
+  ROOT %tanh = f32[2,2]{1,0} tanh(f32[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @tanh(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.tanh"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
       )");
 }
 

@@ -95,7 +95,8 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
 Status TensorHandle::CreateLocalHandle(const class Tensor& t,
                                        TensorHandle** h) {
   // TODO(b/136608821): Move away from nullptr
-  return CreateLocalHandle(t, nullptr, nullptr, nullptr, h);
+  return CreateLocalHandle(t, /*d=*/nullptr, /*op_device=*/nullptr,
+                           /*ctx=*/nullptr, h);
 }
 
 Status TensorHandle::CreateLocalHandle(const class Tensor& t, Device* d,
@@ -276,7 +277,7 @@ bool TensorHandle::IsReady() const {
   return is_ready_;
 }
 
-Status TensorHandle::WaitReady(const char* caller) {
+Status TensorHandle::WaitReady(const char* caller) const {
   if (!IsReady()) {
     profiler::TraceMe activity(absl::StrCat(caller, " WaitReady"),
                                profiler::TraceMeLevel::kInfo);
@@ -296,8 +297,8 @@ Status TensorHandle::TensorValue(tensorflow::TensorValue* t) {
   return tensor_handle_data_->TensorValue(t);
 }
 
-Device* TensorHandle::DeviceOrHostCPU(EagerContext* ctx) const {
-  return (device_ == nullptr) ? ctx->HostCPU() : device_;
+Device* TensorHandle::DeviceOrHostCPU(const EagerContext& ctx) const {
+  return (device_ == nullptr) ? ctx.HostCPU() : device_;
 }
 
 Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
@@ -375,7 +376,7 @@ Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
   return Status::OK();
 }
 
-Status TensorHandle::NumDims(int* num_dims) {
+Status TensorHandle::NumDims(int* num_dims) const {
   DCHECK(num_dims != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank()) {
     *num_dims = inference_shape_.dims();
@@ -386,7 +387,7 @@ Status TensorHandle::NumDims(int* num_dims) {
   }
 }
 
-Status TensorHandle::Dim(int dim_index, int64* dim) {
+Status TensorHandle::Dim(int dim_index, int64* dim) const {
   DCHECK(dim != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank() &&
       inference_shape_.dim_size(dim_index) != -1) {
@@ -398,7 +399,7 @@ Status TensorHandle::Dim(int dim_index, int64* dim) {
   }
 }
 
-Status TensorHandle::NumElements(int64* num_elements) {
+Status TensorHandle::NumElements(int64* num_elements) const {
   DCHECK(num_elements != nullptr);
   if (!IsReady() && inference_shape_.IsFullyDefined()) {
     *num_elements = inference_shape_.num_elements();
@@ -589,7 +590,8 @@ void TensorHandle::Poison(Status status) {
   is_ready_ = true;
 }
 
-Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
+Status TensorHandle::CopyToDevice(const EagerContext& ctx,
+                                  tensorflow::Device* dstd,
                                   tensorflow::Tensor* output) {
   tensorflow::Device* srcd = DeviceOrHostCPU(ctx);
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;

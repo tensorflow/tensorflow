@@ -47,31 +47,13 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  auto executable_status = local_client_->Compile(
-      computation_status.ValueOrDie(), {&pair_float, &single_float},
-      ExecutableBuildOptions());
-  TF_ASSERT_OK(executable_status.status());
-  HloModule& module = const_cast<HloModule&>(
-      executable_status.ValueOrDie()->executable()->module());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables, local_client_->Compile(computation_status.ValueOrDie(),
+                                               {&pair_float, &single_float},
+                                               ExecutableBuildOptions()));
+  HloModule& module =
+      const_cast<HloModule&>(executables[0]->executable()->module());
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
-}
-
-XLA_TEST_F(TestUtilsTest, Token) {
-  auto module = ParseAndReturnUnverifiedModule(
-                    R"(HloModule outfeed_module
-
-    ENTRY InfeedToOutfeed {
-      token0 = token[] parameter(0)
-      infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
-      infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
-      outfeed = token[] outfeed(infeed.data, token0)
-      ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token0)
-      infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
-      infeed.1.token = token[] get-tuple-element(infeed.1), index=1
-      outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
-    })")
-                    .ValueOrDie();
-  TF_ASSERT_OK(MakeFakeArguments(module.get()).status());
 }
 
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {

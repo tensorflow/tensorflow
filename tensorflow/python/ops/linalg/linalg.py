@@ -39,6 +39,7 @@ from tensorflow.python.ops.linalg.linear_operator_low_rank_update import *
 from tensorflow.python.ops.linalg.linear_operator_lower_triangular import *
 from tensorflow.python.ops.linalg.linear_operator_permutation import *
 from tensorflow.python.ops.linalg.linear_operator_toeplitz import *
+from tensorflow.python.ops.linalg.linear_operator_tridiag import *
 from tensorflow.python.ops.linalg.linear_operator_zeros import *
 # pylint: enable=wildcard-import
 

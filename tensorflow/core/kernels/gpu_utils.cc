@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/gpu_utils.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <iterator>
 
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
@@ -40,11 +41,10 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
   if (RedzoneCheckDisabled()) {
     return buffer;
   }
-  se::DeviceMemoryBase output_tensor;
   auto output_rz_or = rz_allocator->AllocateBytes(buffer.size());
   if (!output_rz_or.ok()) {
-    static std::once_flag rz_allocation_failure_logged;
-    std::call_once(rz_allocation_failure_logged, []() {
+    static absl::once_flag rz_allocation_failure_logged;
+    absl::call_once(rz_allocation_failure_logged, []() {
       LOG(WARNING) << "Failed to allocate memory for convolution redzone "
                    << "checking; skipping this check. This is benign and only "
                    << "means that we won't check cudnn for out-of-bounds reads "
@@ -63,8 +63,8 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
-    static std::once_flag failure_logged;
-    std::call_once(failure_logged, [&]() {
+    static absl::once_flag failure_logged;
+    absl::call_once(failure_logged, [&]() {
       LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
                    << "reads and writes with an error message: '"
                    << rz_status.status().error_message()
@@ -250,4 +250,4 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

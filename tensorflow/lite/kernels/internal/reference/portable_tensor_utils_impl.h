@@ -32,9 +32,15 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
-bool PortableIsZeroVector(const float* vector, int v_size);
-
-bool PortableIsZeroVector(const int8_t* vector, int v_size);
+template <typename T>
+bool PortableIsZeroVector(const T* vector, int v_size) {
+  for (int i = 0; i < v_size; ++i) {
+    if (vector[i] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
@@ -63,6 +69,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vector, const float* scaling_factors,
+    int n_batch, int32_t* scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* context);
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride,
     const float* per_channel_scale, const int32_t* input_offset);
@@ -77,17 +89,6 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const int m_cols, const int8_t* __restrict__ vectors,
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
-
-// Cwise product of two vectors.
-void PortableVectorVectorCwiseProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      float* result);
-
-// Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
-// assumption here is that result array is initialized to valid values.
-void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
-                                                const float* vector2,
-                                                int v_size, float* result);
 
 // Dot product of two vectors.
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,

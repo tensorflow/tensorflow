@@ -84,7 +84,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
                   : (T == F16 || T == BF16) ? U16 : PRIMITIVE_TYPE_INVALID;
   };
 
-  // Native types that correspond to the primtive types above.
+  // Native types that correspond to the primitive types above.
   using NativeT = typename primitive_util::PrimitiveTypeToNative<T>::type;
   using NativeRefT =
       typename primitive_util::PrimitiveTypeToNative<RefT::value>::type;
@@ -242,7 +242,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
         [&](const Literal* input_literal) { return &input_literal->shape(); });
 
     TF_ASSIGN_OR_RETURN(
-        auto executable,
+        auto executables,
         client_->Compile(computation, input_shapes, build_opts));
 
     std::vector<ScopedShapedBuffer> input_buffers;
@@ -264,7 +264,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     run_opts.set_intra_op_thread_pool(
         client_->backend().eigen_intra_op_thread_pool_device());
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                        executable->Run(input_buffer_pointers, run_opts));
+                        executables[0]->Run(input_buffer_pointers, run_opts));
 
     TF_ASSIGN_OR_RETURN(Literal result_literal,
                         client_->ShapedBufferToLiteral(result));
@@ -746,7 +746,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // The platform under test.
   const string platform_;
 
-  // Testing will ignore inputs for which known_incorect_fn_ returns true. The
+  // Testing will ignore inputs for which known_incorrect_fn_ returns true. The
   // argument to the function is the raw bits for the data being test, zero
   // extended to 64 bits if the data type is less than 64 bits.
   std::function<bool(int64)> known_incorrect_fn_;

@@ -1481,6 +1481,33 @@ class MultiAUCTest(test.TestCase):
     expected_result = 1.0 - 0.5 * 0.43 * 0.67
     self.assertAllClose(self.evaluate(result), expected_result, 1e-1)
 
+  def test_pr_interpolation_unweighted(self):
+    self.setup()
+    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, curve='PR',
+                          multi_label=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    good_result = auc_obj(self.y_true_good, self.y_pred)
+    with self.subTest(name='good'):
+      # PR AUCs are 0.917 and 1.0 respectively
+      self.assertAllClose(self.evaluate(good_result), (0.91667 + 1.0) / 2.0,
+                          1e-1)
+    bad_result = auc_obj(self.y_true_bad, self.y_pred)
+    with self.subTest(name='bad'):
+      # PR AUCs are 0.917 and 0.5 respectively
+      self.assertAllClose(self.evaluate(bad_result), (0.91667 + 0.5) / 2.0,
+                          1e-1)
+
+  def test_pr_interpolation(self):
+    self.setup()
+    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, curve='PR',
+                          multi_label=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    good_result = auc_obj(self.y_true_good, self.y_pred,
+                          sample_weight=self.sample_weight)
+    # PR AUCs are 0.939 and 1.0 respectively
+    self.assertAllClose(self.evaluate(good_result), (0.939 + 1.0) / 2.0,
+                        1e-1)
+
 
 if __name__ == '__main__':
   test.main()

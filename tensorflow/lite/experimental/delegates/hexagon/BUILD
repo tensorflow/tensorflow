@@ -76,6 +76,7 @@ cc_library(
         ":hexagon_implementation",
         ":utils",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
     ],
 )

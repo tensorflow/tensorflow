@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -90,7 +91,8 @@ enum TemporaryTensor {
   kScalingFactors = 4,
   kProductScalingFactors = 5,
   kRecoveredCellWeights = 6,
-  kNumTemporaryTensors = 7
+  kAccumScratch = 7,
+  kNumTemporaryTensors
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -497,6 +499,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                         context->ResizeTensor(context, recovered_cell_weights,
                                               recovered_cell_weights_size));
     }
+
+    // Allocate a temporary tensor to store the accumulated int32 values.
+    node->temporaries->data[kAccumScratch] =
+        scratch_tensor_index + kAccumScratch;
+    TfLiteTensor* accum_scratch = GetTemporary(context, node, kAccumScratch);
+    accum_scratch->type = kTfLiteInt32;
+    accum_scratch->allocation_type = kTfLiteArenaRw;
+    int accum_scratch_dims[2] = {n_cell, n_batch};
+    if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2,
+                                   accum_scratch_dims)) {
+      TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
+      accum_size->data[0] = n_cell;
+      accum_size->data[1] = n_batch;
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, accum_scratch, accum_size));
+    }
   }
   return kTfLiteOk;
 }
@@ -615,6 +633,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTemporary(context, node, /*index=*/5);
       TfLiteTensor* recovered_cell_weights =
           GetTemporary(context, node, /*index=*/6);
+      TfLiteTensor* accum_scratch =
+          GetTemporary(context, node, /*index=*/kAccumScratch);
       return lstm_eval::EvalHybrid(
           input, input_to_input_weights, input_to_forget_weights,
           input_to_cell_weights, input_to_output_weights,
@@ -633,7 +653,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*output_offset=*/0, scratch_buffer, scaling_factors,
           prod_scaling_factors, recovered_cell_weights, input_quantized,
           /*aux_input_quantized=*/nullptr, activation_state_quantized,
-          cell_state_quantized, activation_state, cell_state, output);
+          cell_state_quantized, activation_state, cell_state, accum_scratch,
+          output, CpuBackendContext::GetFromContext(context));
     }
     default:
       context->ReportError(context, "Type %d is not currently supported.",

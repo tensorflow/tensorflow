@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
+
 import numpy as np
 
 
@@ -126,7 +127,7 @@ class SoftmaxTest(test.TestCase):
     self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32))
 
-  @unittest.skipUnless(test.is_built_with_cuda(),
+  @unittest.skipUnless(test.is_built_with_gpu_support(),
                        "Test only applicable when running on GPUs")
   def testFloatGPU(self):
     if test.is_gpu_available(cuda_only=True):
@@ -141,7 +142,7 @@ class SoftmaxTest(test.TestCase):
     self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16))
 
-  @unittest.skipUnless(test.is_built_with_cuda(),
+  @unittest.skipUnless(test.is_built_with_gpu_support(),
                        "Test only applicable when running on GPUs")
   def testHalfGPU(self):
     if test.is_gpu_available(cuda_only=True):

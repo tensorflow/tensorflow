@@ -1133,7 +1133,7 @@ bool CopyDataFromInput(const Literal& input_literal, int64 input_start,
   auto base_case = [&](int64 axis, int64 dst_index, int64 src_index,
                        bool within_src_bounds) {
     if (axis == 0) {
-      // For IRFFT, the negavie frequencies are only needed for the sweep along
+      // For IRFFT, the negative frequencies are only needed for the sweep along
       // the X axis, which is performed last. Leave this part of the working set
       // uninitialized until then.
       const int64 length = fft_lengths[axis];
@@ -1684,7 +1684,7 @@ class OutputOffsetIndexToInputIndex {
   std::vector<int64> input_index_;
 };
 
-// Rehapes the gather indices input to have a trailing degenerate `1` dimension
+// Reshapes the gather indices input to have a trailing degenerate `1` dimension
 // if necessary.  Hands over the ownership of the newly created literal (if
 // there is one) to `reshaped_start_indices`.
 static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
@@ -1769,7 +1769,7 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       //                                       output_dim_size);
       input_index_clamped[i] =
           std::min(operand_shape.dimensions(i) - output_dim_size,
-                   std::max(0LL, input_gather_index[i]));
+                   std::max(int64{0}, input_gather_index[i]));
     }
     for (int i = 0, e = input_index.size(); i < e; i++) {
       input_index[i] = input_index_clamped[i] + input_window_index[i];
@@ -1872,14 +1872,15 @@ Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
         "user.");
   }
 
-  // The token in index {1} is undefined, but since we can't represent undefined
-  // values using a Literal, we just use 0. This should be safe though since we
-  // ensure that the only user of a kCopyStart is a kCopyDone which "eats" the
-  // token. Also note that MakeTuple copies its arguments, so this is
-  // memory-safe.
-  const Literal token_literal = LiteralUtil::CreateR0<uint32>(0);
+  // The context in index {2} is undefined, but since we can't represent
+  // undefined values using a Literal, we just use 0. This should be safe though
+  // since we ensure that the only user of a kCopyStart is a kCopyDone which
+  // consumes the context. Also note that MakeTuple copies its arguments, so
+  // this is memory-safe.
+  const Literal context_literal = LiteralUtil::CreateR0<uint32>(0);
   evaluated_[copy_start] = LiteralUtil::MakeTuple(
-      {&GetEvaluatedLiteralFor(copy_start->operand(0)), &token_literal});
+      {&GetEvaluatedLiteralFor(copy_start->operand(0)),
+       &GetEvaluatedLiteralFor(copy_start->operand(0)), &context_literal});
   return Status::OK();
 }
 

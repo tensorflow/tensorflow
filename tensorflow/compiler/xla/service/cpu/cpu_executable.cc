@@ -271,7 +271,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
               slice.allocation()->parameter_number(),
               slice.allocation()->param_shape_index());
           CHECK(output_alias)
-              << "Ouput buffer is coming from parameter "
+              << "Output buffer is coming from parameter "
               << slice.allocation()->parameter_number() << " at index "
               << slice.allocation()->param_shape_index()
               << ", but no alias exists";
@@ -329,7 +329,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   //
   // Logically we want this lambda to capture `buffers` by move, ultimately our
   // functor needs to be wrapped in an std::function, and that requires its
-  // functor to be copyable.  Thus we perpitrate the hack of capturing buffers
+  // functor to be copyable.  Thus we perpetrate the hack of capturing buffers
   // "by shared pointer".
   //
   // We also need to change the types of some of the variables we capture:

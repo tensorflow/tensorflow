@@ -28,7 +28,7 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
                      int32 multiplier, int32 shift, int32 bias,
                      const RuntimeShape& output_shape, int8_t* output_data,
                      int start_depth, int end_depth) {
-  gemmlowp::ScopedProfilingLabel label("Mean4D/Int8/MeanImpl");
+  ruy::profiler::ScopeLabel label("Mean4D/Int8/MeanImpl");
 
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
@@ -181,7 +181,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                  float input_scale, const RuntimeShape& unextended_output_shape,
                  int8_t* output_data, int32 output_zero_point,
                  float output_scale, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("Mean4D/Int8");
+  ruy::profiler::ScopeLabel label("Mean4D/Int8");
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
   TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);

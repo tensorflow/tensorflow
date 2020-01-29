@@ -1,25 +1,26 @@
 # Settings for apollo3 evb and SparkFun Edge platforms.
-ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge))
+ifeq ($(TARGET),$(filter $(TARGET),\
+  apollo3evb\
+  sparkfun_edge\
+  ))
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m4
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
   # Download the Ambiq Apollo3 SDK and set this variable to find the header
   # files:
-  APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0
+  APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
   # Need a pointer to the GNU ARM toolchain for crtbegin.o for the fp functions
   # with the hard interfaces.
   GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
   $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
   $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
-  $(eval $(call add_third_party_download,$(AM_SDK_URL),$(AM_SDK_MD5),AmbiqSuite-Rel2.0.0,patch_am_sdk))
-  $(eval $(call add_third_party_download,$(AP3_URL),$(AP3_MD5),apollo3_ext,))
-  $(eval $(call add_third_party_download,$(CUST_CMSIS_URL),$(CUST_CMSIS_MD5),CMSIS_ext,))
+  $(eval $(call add_third_party_download,$(AM_SDK_URL),$(AM_SDK_MD5),$(AM_SDK_DEST),patch_am_sdk))
 
-  ifeq ($(TARGET), sparkfun_edge)
-    $(eval $(call add_third_party_download,$(SPARKFUN_EDGE_BSP_URL),$(SPARKFUN_EDGE_BSP_MD5),AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP,))
-    # Make sure that we download the full Ambiq SDK before the SparkFun one.
-$(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP: $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0
+  ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
+    $(eval $(call add_third_party_download,$(SF_BSPS_URL),$(SF_BSPS_MD5),$(AM_SDK_DEST)/$(SF_BSPS_DEST),))
+    # Make sure that we download the full Ambiq SDK before the SparkFun BSPs.
+$(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
   endif
 
   # Use the faster depthwise conv implementation.
@@ -52,10 +53,13 @@ $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3
     -Wvla \
     -Wall \
     -Wextra \
+    -Wsign-compare \
+    -Wdouble-promotion \
+    -Wunused-variable \
+    -Wshadow \
+    -Wmissing-field-initializers \
     -Wno-unused-parameter \
-    -Wno-missing-field-initializers \
     -Wno-write-strings \
-    -Wno-sign-compare \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \
@@ -77,8 +81,10 @@ $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3
   ifeq ($(TARGET), apollo3evb)
     BOARD_BSP_PATH := $(APOLLO3_SDK)/boards/apollo3_evb/bsp
   endif
-  ifeq ($(TARGET), sparkfun_edge)
-    BOARD_BSP_PATH := $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/bsp
+  ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
+    BOARD_BSP_PATH := $(APOLLO3_SDK)/$(SF_BSPS_DEST)/$(subst sparkfun_,,$(TARGET))/bsp
+    INCLUDES+= \
+      -I$(APOLLO3_SDK)/$(SF_BSPS_DEST)/common/third_party/hm01b0
   endif
   MICROLITE_LIBS := \
     $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \
@@ -88,7 +94,6 @@ $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3
   INCLUDES += \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Include/ \
-    -I$(MAKEFILE_DIR)/downloads/CMSIS_ext/ \
     -I$(GCC_ARM)/arm-none-eabi/ \
     -I$(APOLLO3_SDK)/mcu/apollo3/ \
     -I$(APOLLO3_SDK)/CMSIS/AmbiqMicro/Include/ \
@@ -109,12 +114,8 @@ $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3
     $(APOLLO3_SDK)/utils/am_util_delay.c \
     $(APOLLO3_SDK)/utils/am_util_faultisr.c \
     $(APOLLO3_SDK)/utils/am_util_id.c \
-    $(APOLLO3_SDK)/utils/am_util_stdio.c
-
-  ifeq ($(TARGET), apollo3evb)
-    MICROLITE_CC_SRCS += \
-      $(APOLLO3_SDK)/devices/am_devices_led.c
-  endif
+    $(APOLLO3_SDK)/utils/am_util_stdio.c \
+    $(APOLLO3_SDK)/devices/am_devices_led.c
 
   CMSIS_SRC_DIR := $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source
   CMSIS_SRCS := \
@@ -127,11 +128,6 @@ $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3
   $(CMSIS_SRC_DIR)/CommonTables/arm_common_tables.c \
   $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_mean_q15.c \
   $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_max_q7.c
-
-  AP3_EXT_MICRO_DIR := $(MAKEFILE_DIR)/downloads/apollo3_ext
-  AP3_MICRO_DIR := tensorflow/lite/micro/examples/micro_speech/apollo3
-  CMSIS_DIR := tensorflow/lite/micro/examples/micro_speech/CMSIS
-  CMSIS_EXT_DIR := $(MAKEFILE_DIR)/downloads/CMSIS_ext
 
   MICRO_SPEECH_TEST_SRCS += \
     $(AP3_MICRO_DIR)/_main.c

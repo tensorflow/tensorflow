@@ -591,7 +591,7 @@ def get_iterator(dataset, distribution_strategy):
 
 def initialize_iterator(iterator, distribution_strategy):
   with distribution_strategy.scope():
-    init_op = control_flow_ops.group(iterator.initialize())
+    init_op = control_flow_ops.group(iterator.initializer)
     if not context.executing_eagerly():
       K.get_session((init_op,)).run(init_op)
 

@@ -87,6 +87,9 @@ struct XlaDeviceFlags {
   // Enabling this mode by a legacy flag is a temporary mechanism. When this
   // feature is battle-tested, we will switch this to be a session option.
   bool tf_xla_compile_on_demand;
+
+  // Enables "XLA" devices if this flag is set.
+  bool tf_xla_enable_xla_devices;
 };
 
 // Flags common to the _Xla* ops and their kernels.
@@ -151,6 +154,15 @@ GetIntroduceFloatingPointJitterPassFlags();
 // Has the side-effect of parsing TF_XLA_FLAGS if that hasn't happened yet.
 void AppendMarkForCompilationPassFlags(
     std::vector<tensorflow::Flag>* flag_list);
+
+// Makes all future calls to `IsXlaEnabled()` return `true`.
+//
+// Should only be called when XLA is linked in.
+void SetXlaIsEnabled();
+
+// Returns whether XLA is enabled.
+bool IsXlaEnabled();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_FLAGS_H_

@@ -695,6 +695,7 @@ REGISTER_OP("IteratorFromStringHandleV2")
 
 REGISTER_OP("SerializeIterator")
     .Input("resource_handle: resource")
+    .Attr("external_state_policy: int = 0")
     .Output("serialized: variant")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(c->UnknownDim()));

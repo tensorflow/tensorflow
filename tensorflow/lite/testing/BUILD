@@ -7,7 +7,7 @@ load(
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",  # @unused
@@ -50,6 +50,7 @@ exports_files([
         "no_gpu",  # Executing with TF GPU configurations is redundant.
         "no_oss",
         "tflite_not_portable_intentional",
+        "noasan",  # b/148160116
     ],
     test_name = test_name,
     deps = [
@@ -121,8 +122,8 @@ py_library(
     srcs = ["zip_test_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_string_util",
         ":generate_examples_report",
-        ":string_util_wrapper",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -219,16 +220,19 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        "//tensorflow:ios": [],
+        "//conditions:default": ["//tensorflow/lite/delegates/flex:delegate"],
+    }),
 )
 
 tf_cc_test(
@@ -355,6 +359,7 @@ cc_library(
         ":join",
         ":split",
         ":tf_driver",
+        ":tflite_driver",
         "//tensorflow/lite:string",
     ] + select({
         "//conditions:default": [
@@ -403,6 +408,9 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
         ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
+        ],
     }),
 )
 
@@ -434,6 +442,9 @@ cc_library(
         ],
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
         ],
     }),
 )
@@ -504,14 +515,19 @@ cc_library(
     ],
 )
 
-tf_py_wrap_cc(
-    name = "string_util_wrapper",
+pybind_extension(
+    name = "_pywrap_string_util",
     srcs = [
-        "string_util.i",
+        "string_util_wrapper.cc",
     ],
+    hdrs = ["string_util.h"],
+    features = ["-use_header_modules"],
+    module_name = "_pywrap_string_util",
     deps = [
         ":string_util_lib",
+        "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

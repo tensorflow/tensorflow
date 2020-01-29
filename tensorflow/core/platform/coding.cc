@@ -107,6 +107,12 @@ void PutVarint32(string* dst, uint32 v) {
   dst->append(buf, ptr - buf);
 }
 
+void PutVarint32(tstring* dst, uint32 v) {
+  char buf[5];
+  char* ptr = EncodeVarint32(buf, v);
+  dst->append(buf, ptr - buf);
+}
+
 char* EncodeVarint64(char* dst, uint64 v) {
   static const int B = 128;
   unsigned char* ptr = reinterpret_cast<unsigned char*>(dst);
@@ -119,6 +125,12 @@ char* EncodeVarint64(char* dst, uint64 v) {
 }
 
 void PutVarint64(string* dst, uint64 v) {
+  char buf[10];
+  char* ptr = EncodeVarint64(buf, v);
+  dst->append(buf, ptr - buf);
+}
+
+void PutVarint64(tstring* dst, uint64 v) {
   char buf[10];
   char* ptr = EncodeVarint64(buf, v);
   dst->append(buf, ptr - buf);

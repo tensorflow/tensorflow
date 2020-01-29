@@ -121,9 +121,10 @@ void ElementwiseTwoInput::SetLinkIndex(int index) { link_index_ = index; }
 
 std::string ElementwiseTwoInput::GetCoreCode(
     const LinkingContext& context) const {
-  TensorCodeGenerator src_tensor(absl::StrCat("src_data_", link_index_),
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 definition_.src_tensors[1]);
+  TensorCodeGenerator src_tensor(
+      absl::StrCat("src_data_", link_index_),
+      WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      definition_.src_tensors[1]);
   std::string result;
   switch (op_type_) {
     case OperationType::DIV:
@@ -144,22 +145,22 @@ std::string ElementwiseTwoInput::GetCoreCode(
   }
   return absl::Substitute(
       result, context.var_name,
-      src_tensor.Read3D(context.x_coord, context.y_coord, context.z_coord));
+      src_tensor.ReadWHS(context.x_coord, context.y_coord, context.s_coord));
 }
 
 std::string ElementwiseTwoInput::GetArgsDeclaration() const {
   std::string args;
-  TensorCodeGenerator src_tensor(absl::StrCat("src_data_", link_index_),
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 definition_.src_tensors[1]);
-  absl::StrAppend(&args, ",\n", src_tensor.GetDeclaration(AccessType::READ));
+  absl::StrAppend(&args, ",\n",
+                  GetTensorDeclaration(AccessType::READ,
+                                       absl::StrCat("src_data_", link_index_),
+                                       definition_.src_tensors[1]));
   absl::StrAppend(&args, ",\n   int4 src_size_", link_index_);
   return args;
 }
 
 Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
   RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
   return OkStatus();
 }
 

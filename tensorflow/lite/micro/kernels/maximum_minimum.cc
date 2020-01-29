@@ -117,22 +117,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace maximum_minimum
 
 TfLiteRegistration* Register_MAXIMUM() {
-  static TfLiteRegistration r = {
-      /* init */ nullptr,
-      /* free */ nullptr,
-      /* prepare */ nullptr,
-      maximum_minimum::Eval<maximum_minimum::kReference,
-                            maximum_minimum::MaximumOp>};
+  static TfLiteRegistration r = {};
+  r.invoke = maximum_minimum::Eval<maximum_minimum::kReference,
+                                   maximum_minimum::MaximumOp>;
   return &r;
 }
 
 TfLiteRegistration* Register_MINIMUM() {
-  static TfLiteRegistration r = {
-      /* init */ nullptr,
-      /* free */ nullptr,
-      /* prepare */ nullptr,
-      maximum_minimum::Eval<maximum_minimum::kReference,
-                            maximum_minimum::MinimumOp>};
+  static TfLiteRegistration r = {};
+  r.invoke = maximum_minimum::Eval<maximum_minimum::kReference,
+                                   maximum_minimum::MinimumOp>;
   return &r;
 }
 

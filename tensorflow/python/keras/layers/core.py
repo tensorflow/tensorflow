@@ -363,9 +363,20 @@ class Activation(Layer):
     activation: Activation function, such as `tf.nn.relu`, or string name of
       built-in activation function, such as "relu".
 
+  Usage:
+
+  >>> layer = tf.keras.layers.Activation('relu')
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [0.0, 0.0, 0.0, 2.0]
+  >>> layer = tf.keras.layers.Activation(tf.nn.relu)
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [0.0, 0.0, 0.0, 2.0]
+
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
-    (tuple of integers, does not include the samples axis)
+    (tuple of integers, does not include the batch axis)
     when using this layer as the first layer in a model.
 
   Output shape:
@@ -391,41 +402,45 @@ class Activation(Layer):
 
 @keras_export('keras.layers.Reshape')
 class Reshape(Layer):
-  """Reshapes an output to a certain shape.
-
-  Arguments:
-    target_shape: Target shape. Tuple of integers,
-      does not include the samples dimension (batch size).
+  """Layer that reshapes inputs into the given shape.
 
   Input shape:
-    Arbitrary, although all dimensions in the input shaped must be fixed.
-    Use the keyword argument `input_shape`
-    (tuple of integers, does not include the samples axis)
-    when using this layer as the first layer in a model.
+    Arbitrary, although all dimensions in the input shape must be known/fixed.
+    Use the keyword argument `input_shape` (tuple of integers, does not include
+    the samples/batch size axis) when using this layer as the first layer
+    in a model.
 
   Output shape:
     `(batch_size,) + target_shape`
 
   Example:
 
-  ```python
-  # as first layer in a Sequential model
-  model = Sequential()
-  model.add(Reshape((3, 4), input_shape=(12,)))
-  # now: model.output_shape == (None, 3, 4)
-  # note: `None` is the batch dimension
+  >>> # as first layer in a Sequential model
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Reshape((3, 4), input_shape=(12,)))
+  >>> # model.output_shape == (None, 3, 4), `None` is the batch size.
+  >>> model.output_shape
+  (None, 3, 4)
 
-  # as intermediate layer in a Sequential model
-  model.add(Reshape((6, 2)))
-  # now: model.output_shape == (None, 6, 2)
+  >>> # as intermediate layer in a Sequential model
+  >>> model.add(tf.keras.layers.Reshape((6, 2)))
+  >>> model.output_shape
+  (None, 6, 2)
 
-  # also supports shape inference using `-1` as dimension
-  model.add(Reshape((-1, 2, 2)))
-  # now: model.output_shape == (None, None, 2, 2)
-  ```
+  >>> # also supports shape inference using `-1` as dimension
+  >>> model.add(tf.keras.layers.Reshape((-1, 2, 2)))
+  >>> model.output_shape
+  (None, None, 2, 2)
   """
 
   def __init__(self, target_shape, **kwargs):
+    """Creates a `tf.keras.layers.Reshape`  layer instance.
+
+    Args:
+      target_shape: Target shape. Tuple of integers, does not include the
+        samples dimension (batch size).
+      **kwargs: Any additional layer keyword arguments.
+    """
     super(Reshape, self).__init__(**kwargs)
     self.target_shape = tuple(target_shape)
 
@@ -592,8 +607,7 @@ class Flatten(Layer):
     if (self.data_format == 'channels_first'
         and K.ndim(inputs) is not None and K.ndim(inputs) > 1):
       permutation = [0]
-      permutation.extend([i for i in
-                          range(2, K.ndim(inputs))])
+      permutation.extend(range(2, K.ndim(inputs)))
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
@@ -630,7 +644,7 @@ class Flatten(Layer):
       output_shape = tensor_shape.TensorShape([1])
     else:
       output_shape = [input_shape[0]]
-    if all(input_shape[1:]):
+    if np.all(input_shape[1:]):
       output_shape += [np.prod(input_shape[1:], dtype=int)]
     else:
       output_shape += [None]
@@ -858,7 +872,7 @@ class Lambda(Layer):
     untracked_new_vars = [v for v in created_variables
                           if v.experimental_ref() not in tracked_weights]
     if untracked_new_vars:
-      variable_str = '\n'.join(['  {}'.format(i) for i in untracked_new_vars])
+      variable_str = '\n'.join('  {}'.format(i) for i in untracked_new_vars)
       error_str = textwrap.dedent(
           '''
           The following Variables were created within a Lambda layer ({name})
@@ -875,7 +889,7 @@ class Lambda(Layer):
     untracked_used_vars = [v for v in accessed_variables
                            if v.experimental_ref() not in tracked_weights]
     if untracked_used_vars and not self._already_warned:
-      variable_str = '\n'.join(['  {}'.format(i) for i in untracked_used_vars])
+      variable_str = '\n'.join('  {}'.format(i) for i in untracked_used_vars)
       self._warn(textwrap.dedent(
           '''
           The following Variables were used a Lambda layer's call ({name}), but

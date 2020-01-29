@@ -71,7 +71,7 @@ def get_test_data(train_samples,
           (x[train_samples:], y[train_samples:]))
 
 
-@test_util.use_deterministic_cudnn
+@test_util.disable_cudnn_autotune
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
                expected_output_dtype=None, expected_output_shape=None,
@@ -603,6 +603,15 @@ def get_model_from_layers(layers,
     return keras.Model(inputs, outputs, name=name)
 
   raise ValueError('Unknown model type {}'.format(model_type))
+
+
+class Bias(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+  def call(self, inputs):
+    return inputs + self.bias
 
 
 class _MultiIOSubclassModel(keras.Model):

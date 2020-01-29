@@ -141,18 +141,37 @@ class EagerContext : public core::RefCounted {
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
 
-  const std::vector<DeviceType>& prioritized_device_type_list() {
+  const std::vector<DeviceType>& prioritized_device_type_list() const {
     return prioritized_device_type_list_;
   }
 
-  // Clears the kernel caches.
-  void ClearCaches();
+  // Clear pending nodes in thread executors and kernel caches.
+  void ClearCachesAndThreadExecutors();
+  // Clear pending nodes in default executor and kernel caches.
+  void ClearCachesAndDefaultExecutor();
 
   // Sets the device placement policy for the current thread.
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);
 
   // Returns the device placement policy for the current thread.
   ContextDevicePlacementPolicy GetDevicePlacementPolicy() const;
+
+  // Select an appropriate device for an operation.
+  //
+  // Given the preferred device for the operation, and the list of devices the
+  // operation supports, finds the best suitable device for the operation in
+  // this context.
+  //
+  // The preferred device is specified as a `ParsedName` containing the elements
+  // (details) that the resulting device should match. If there are no such
+  // devices, and the context currently allows soft device placement, a suitable
+  // device not matching `preferred` will be chosen.
+  //
+  // The chosen device is stored in the `device` argument. The argument is not
+  // modified unless this method returns `Status::OK()`.
+  Status SelectDevice(const DeviceNameUtils::ParsedName& preferred,
+                      const PrioritizedDeviceTypeVector& supported,
+                      Device** device) const;
 
   // Sets the implicit copy policy for the current thread.
   void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);
@@ -164,7 +183,7 @@ class EagerContext : public core::RefCounted {
 
   bool LazyCopyFunctionRemoteInputs() const;
 
-  bool FindFunctionByName(const string& name);
+  bool FindFunctionByName(const string& name) const;
 
   Status FindFunctionOpData(const string& name,
                             const tensorflow::OpRegistrationData** op_data);
@@ -248,6 +267,8 @@ class EagerContext : public core::RefCounted {
   void SetShouldStoreGraphs(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
+
+  void ListDevices(std::vector<tensorflow::DeviceAttributes>* devices);
 
   void StartStep();
   void EndStep();

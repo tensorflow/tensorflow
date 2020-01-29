@@ -691,6 +691,23 @@ def _XLogyGrad(op, grad):
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
 
 
+@ops.RegisterGradient("Xlog1py")
+def _XLog1pyGrad(op, grad):
+  """Returns gradient of xlog1py(x, y) with respect to x and y."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  with ops.control_dependencies([grad]):
+    not_zero_x = math_ops.cast(
+        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
+    partial_x = gen_math_ops.xlog1py(not_zero_x, y)
+    partial_y = gen_math_ops.xdivy(x, y + 1.)
+    return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
+            array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
+
+
 @ops.RegisterGradient("Xdivy")
 def _XDivyGrad(op, grad):
   """Returns gradient of xdivy(x, y) with respect to x and y."""
@@ -927,8 +944,10 @@ def _BetaincGrad(op, grad):
   log_beta = (
       gen_math_ops.lgamma(a) + gen_math_ops.lgamma(b) -
       gen_math_ops.lgamma(a + b))
-  partial_x = math_ops.exp((b - 1) * math_ops.log(1 - x) +
-                           (a - 1) * math_ops.log(x) - log_beta)
+  # We use xlog1py and xlogy since the derivatives should tend to
+  # zero one one of the tails when a is 1. or b is 1.
+  partial_x = math_ops.exp(math_ops.xlog1py(b - 1, -x) +
+                           math_ops.xlogy(a - 1, x) - log_beta)
 
   # TODO(b/36815900): Mark None return values as NotImplemented
   if compat.forward_compatible(2020, 3, 14):

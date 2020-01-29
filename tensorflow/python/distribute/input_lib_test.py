@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import json
 import threading
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -138,8 +139,7 @@ class DistributedIteratorTestBase(test.TestCase):
       self.skipTest("unsupported test combination.")
 
     devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    device_map = values.ReplicaDeviceMap(devices)
-    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
 
     if api_type == "wrap_into_iterator":
       iterator = self._wrap_iterator(
@@ -171,9 +171,7 @@ class DistributedIteratorTestBase(test.TestCase):
     if iteration_type == "get_next":
       evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
       if isinstance(iterator, input_lib.DistributedIteratorV1):
-        evaluate(control_flow_ops.group(iterator.initialize()))
-      else:
-        evaluate(control_flow_ops.group(iterator._initializer))
+        evaluate(control_flow_ops.group(iterator.initializer))
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
@@ -192,7 +190,7 @@ class DistributedIteratorTestBase(test.TestCase):
 
       # After re-initializing the iterator, should be able to iterate again.
       if isinstance(iterator, input_lib.DistributedIteratorV1):
-        evaluate(control_flow_ops.group(iterator.initialize()))
+        evaluate(control_flow_ops.group(iterator.initializer))
       else:
         evaluate(control_flow_ops.group(iterator._initializer))
 
@@ -236,9 +234,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
     dataset_fn = lambda _: dataset_ops.DatasetV1.range(10)
 
-    devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    device_map = values.ReplicaDeviceMap(devices)
-    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
 
     dist_dataset = input_lib.get_distributed_dataset(
         dataset_fn(distribute_lib.InputContext()), input_workers, distribution)
@@ -260,9 +256,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
           ]))
   def testDatasetV2IterError(self, distribution):
     worker_device_pairs = [("", ["/device:CPU:0"])]
-    devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    device_map = values.ReplicaDeviceMap(devices)
-    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
     dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
 
     dist_dataset = input_lib.get_distributed_dataset(
@@ -351,7 +345,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
   def testTPU(self, input_type, api_type, iteration_type, distribution,
               enable_get_next_as_optional):
     worker_device_pairs = collections.OrderedDict()
-    for tpu_device in distribution.extended._tpu_devices:
+    for tpu_device in distribution.extended.worker_devices:
       host_device = device_util.get_host_for_device(tpu_device)
       worker_device_pairs.setdefault(host_device, [])
       worker_device_pairs[host_device].append(tpu_device)
@@ -426,9 +420,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
           ]))
   def testIterableIterator(self, distribution):
     worker_device_pairs = [("", ["/device:CPU:0"])]
-    devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    device_map = values.ReplicaDeviceMap(devices)
-    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
 
     dataset = dataset_ops.DatasetV2.range(10)
     dist_dataset = input_lib.get_distributed_dataset(dataset, input_workers,
@@ -960,6 +952,69 @@ class DistributedIteratorMultiWorkerTest(
           expected_values,
           strategy,
           sess=sess)
+
+
+class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          input_type=["dataset", "dataset_fn"],
+      ))
+  def testInputSignatureForPerReplicaValues(self, distribution, input_type):
+    def dataset_fn(ctx):
+      del ctx  # unused
+      return dataset_ops.DatasetV2.from_tensor_slices(
+          np.ones([10, 12]).astype(np.float32)).batch(4)
+
+    if input_type == "dataset":
+      ds = distribution.experimental_distribute_dataset(
+          dataset_fn(distribute_lib.InputContext()))
+      type_spec = ds.element_spec
+    else:
+      ds = distribution.experimental_distribute_datasets_from_function(
+          dataset_fn)
+      iterator = iter(ds)
+      type_spec = iterator.element_spec
+
+    @def_function.function(input_signature=[type_spec])
+    def process_inputs(inputs):
+      distribution.experimental_run_v2(lambda inputs: inputs, args=(inputs,))
+
+    for x in ds:
+      process_inputs(x)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+      ))
+  def testInputSignatureForNestedPerReplicaValues(self, distribution):
+    a = np.ones((10, 2)) * 5
+    b = np.ones((10, 3)) * 6
+    dataset = dataset_ops.DatasetV2.from_tensor_slices((a, b)).batch(2)
+
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    @def_function.function(input_signature=[dist_dataset.element_spec])
+    def process_inputs(inputs):
+      distribution.experimental_run_v2(lambda inputs: inputs, args=(inputs,))
+
+    for x in dist_dataset:
+      process_inputs(x)
 
 
 if __name__ == "__main__":

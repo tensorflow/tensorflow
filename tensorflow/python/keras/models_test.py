@@ -312,10 +312,10 @@ def _has_placeholder(graph):
   return any('Placeholder' in s for s in ops_types)
 
 
-@keras_parameterized.run_with_all_model_types
-@keras_parameterized.run_all_keras_modes
 class CheckpointingTests(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_optimizer_dependency(self):
     model = _get_model()
     opt = adam.AdamOptimizer(.01)

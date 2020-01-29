@@ -106,6 +106,17 @@ ENTRY %TestComputation {
 })");
 }
 
+TEST_F(GpuConvolutionRegressionTest, Conv0D) {
+  CheckForHloText(R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %parameter.1 = f32[10,5]{1,0} parameter(0)
+  %parameter.2 = f32[5,7]{0,1} parameter(1)
+  ROOT %custom-call.1 = (f32[10,7]{1,0}, u8[0]{0}) custom-call(f32[10,5]{1,0} %parameter.1, f32[5,7]{0,1} %parameter.2), window={}, dim_labels=bf_io->bf, custom_call_target="__cudnn$convForward", backend_config="{conv_result_scale:1}"
+})");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

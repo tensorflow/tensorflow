@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import densenet
+from tensorflow.python.keras.applications import efficientnet
 from tensorflow.python.keras.applications import inception_resnet_v2
 from tensorflow.python.keras.applications import inception_v3
 from tensorflow.python.keras.applications import mobilenet
@@ -52,6 +53,14 @@ MODEL_LIST_NO_NASNET = [
     (densenet.DenseNet121, 1024),
     (densenet.DenseNet169, 1664),
     (densenet.DenseNet201, 1920),
+    (efficientnet.EfficientNetB0, 1280),
+    (efficientnet.EfficientNetB1, 1280),
+    (efficientnet.EfficientNetB2, 1408),
+    (efficientnet.EfficientNetB3, 1536),
+    (efficientnet.EfficientNetB4, 1792),
+    (efficientnet.EfficientNetB5, 2048),
+    (efficientnet.EfficientNetB6, 2304),
+    (efficientnet.EfficientNetB7, 2560),
 ]
 
 NASNET_LIST = [
@@ -71,6 +80,16 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
     for v1, v2 in zip(shape1, shape2):
       if v1 != v2:
         raise AssertionError('Shapes differ: %s vs %s' % (shape1, shape2))
+
+  @parameterized.parameters(*MODEL_LIST)
+  def test_application_base(self, app, _):
+    # Can be instantiated with default arguments
+    model = app(weights=None)
+    # Can be serialized and deserialized
+    config = model.get_config()
+    reconstructed_model = model.__class__.from_config(config)
+    self.assertEqual(len(model.weights), len(reconstructed_model.weights))
+    backend.clear_session()
 
   @parameterized.parameters(*MODEL_LIST)
   def test_application_notop(self, app, last_dim):

@@ -43,7 +43,7 @@ namespace {
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
   ErrorSpec error_spec_{0.0001, 0.0001};
-  ErrorSpec strict_error_spec_{0x1p-48, 0x1p-48};
+  ErrorSpec strict_error_spec_{3.6e-15, 3.6e-15};
 };
 
 class ArrayElementwiseOpTestParamCount
@@ -3009,7 +3009,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit
 // broadcast.
-XLA_TEST_F(ArrayElementwiseOpTest, ImplictBroadcastInFusedExpressions) {
+XLA_TEST_F(ArrayElementwiseOpTest, ImplicitBroadcastInFusedExpressions) {
   XlaBuilder builder(TestName());
   auto x_literal = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto y_literal = LiteralUtil::CreateR1<float>({4, 5});

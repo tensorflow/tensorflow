@@ -558,6 +558,25 @@ TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
               HasSubstr("Bitcast can not change the element type"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY BitcastNeedsToBeNoOp {
+   constant.0 = f32[2] constant({0.0, 0.0})
+   ROOT bitcast = f32[3] bitcast(constant.0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Bitcast cannot have different shape sizes of output "
+                        "(12) and operand (8)"));
+}
+
 TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -622,7 +641,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDone) {
 
   ENTRY CopyStartAndCopyDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    copy-start = (f32[2,3]{1,0:S(2)}, u32[]) copy-start(p0)
+    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
@@ -639,7 +658,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDoneWrongLayout) {
 
   ENTRY CopyStartAndCopyDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    copy-start = (f32[2,3]{0,1:S(2)}, u32[]) copy-start(p0)
+    copy-start = (f32[2,3]{0,1:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
@@ -667,10 +686,9 @@ TEST_F(HloVerifierTest, CopyStartAndCopyDoneWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.error_message(),
-      HasSubstr(
-          "Expected instruction to have shape equal to (f32[2,3], u32[])"));
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to "
+                        "(f32[2,3], f32[2,3], u32[])"));
 }
 
 TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
@@ -679,7 +697,7 @@ TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
 
   ENTRY CopyStartAndCopyDone {
     p0 = f32[2,3] parameter(0)
-    copy-start = (f32[2,3], u32[]) copy-start(p0)
+    copy-start = (f32[2,3], f32[2,3], u32[]) copy-start(p0)
     copy-done.1 = f32[2,3] copy-done(copy-start)
     copy-done.2 = f32[2,3] copy-done(copy-start)
     ROOT tuple = (f32[2,3], f32[2,3]) tuple(copy-done.1, copy-done.2)
@@ -702,7 +720,7 @@ TEST_F(HloVerifierTest, CopyDoneNoCopyStart) {
   ENTRY CopyStartAndCopyDone {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
-    tuple = (f32[2,3], u32[]) tuple(p0, p1)
+    tuple = (f32[2,3], f32[2,3], u32[]) tuple(p0, p0, p1)
     ROOT copy-done = f32[2,3] copy-done(tuple)
   }
   )";
@@ -1011,6 +1029,57 @@ TEST_F(HloVerifierTest, AllReduceVerifier) {
   EXPECT_THAT(
       verifier().Run(module.get()).status().error_message(),
       HasSubstr("mix of layout constrained and unconstrained AllReduce"));
+}
+
+TEST_F(HloVerifierTest, ChannelVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    %input = f32[8,12] parameter(0)
+    %token0 = token[] after-all()
+    %send = (f32[8,12], u32[], token[]) send(%input, %token0), channel_id=1
+    %send-done = token[] send-done(%send), channel_id=1
+    %crs = f32[8,12] all-reduce(%input), replica_groups={}, to_apply=add,
+      channel_id=1
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(%input, %crs)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("used for different types of channel instructions"));
+}
+
+TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    %input = f32[8,12] parameter(0)
+    %permute = f32[8,12] collective-permute(%input),
+      source_target_pairs={{0,1},{1,0}}, channel_id=1
+    %crs = f32[8,12] all-reduce(%input), replica_groups={}, to_apply=add,
+      channel_id=1
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(%permute, %crs)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("used for different types of channel instructions"));
 }
 
 }  // namespace

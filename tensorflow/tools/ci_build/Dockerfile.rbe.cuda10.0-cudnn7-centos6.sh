@@ -15,7 +15,7 @@
 # ==============================================================================
 #
 # Script to create a centos6 docker image.
-# Before running, copy tensorrt into /tmp after downlading it from:
+# Before running, copy tensorrt into /tmp after downloading it from:
 # https://developer.nvidia.com/nvidia-tensorrt-5x-download
 #
 # TODO(klimek): once there are downloadable images for tensorrt for centos6

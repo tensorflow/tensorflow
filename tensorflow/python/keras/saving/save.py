@@ -27,11 +27,12 @@ from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
-if sys.version >= '3.4':
+if sys.version_info >= (3, 4):
   import pathlib
 try:
   import h5py
@@ -56,7 +57,18 @@ def save_model(model,
                options=None):
   """Saves a model as a TensorFlow SavedModel or HDF5 file.
 
+  Usage:
+
+  >>> model = tf.keras.Sequential([
+  ...     tf.keras.layers.Dense(5, input_shape=(3,)),
+  ...     tf.keras.layers.Softmax()])
+  >>> model.save('/tmp/model')
+  >>> loaded_model = tf.keras.models.load_model('/tmp/model')
+  >>> x = tf.random.uniform((10, 3))
+  >>> assert np.allclose(model.predict(x), loaded_model.predict(x))
+
   The saved model contains:
+
       - the model's configuration (topology)
       - the model's weights
       - the model's optimizer's state (if any)
@@ -65,7 +77,12 @@ def save_model(model,
   the exact same state, without any of the code
   used for model definition or training.
 
-  _SavedModel serialization_ (not yet added)
+  Note that the model weights may have different scoped names after being
+  loaded. Scoped names include the model/layer names, such as
+  "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+  access specific variables, e.g. `model.get_layer("dense_1").kernel`.
+
+  _SavedModel serialization_
 
   The SavedModel serialization path uses `tf.saved_model.save` to save the model
   and all trackable objects attached to the model (e.g. layers and variables).
@@ -98,7 +115,7 @@ def save_model(model,
   default_format = 'tf' if tf2.enabled() else 'h5'
   save_format = save_format or default_format
 
-  if sys.version >= '3.4' and isinstance(filepath, pathlib.Path):
+  if sys.version_info >= (3, 4) and isinstance(filepath, pathlib.Path):
     filepath = str(filepath)
 
   if (save_format == 'h5' or
@@ -125,6 +142,21 @@ def save_model(model,
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model`.
 
+  Usage:
+
+  >>> model = tf.keras.Sequential([
+  ...     tf.keras.layers.Dense(5, input_shape=(3,)),
+  ...     tf.keras.layers.Softmax()])
+  >>> model.save('/tmp/model')
+  >>> loaded_model = tf.keras.models.load_model('/tmp/model')
+  >>> x = tf.random.uniform((10, 3))
+  >>> assert np.allclose(model.predict(x), loaded_model.predict(x))
+
+  Note that the model weights may have different scoped names after being
+  loaded. Scoped names include the model/layer names, such as
+  "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+  access specific variables, e.g. `model.get_layer("dense_1").kernel`.
+
   Arguments:
       filepath: One of the following:
           - String or `pathlib.Path` object, path to the saved model
@@ -136,26 +168,26 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
           after loading.
 
   Returns:
-      A Keras model instance. If an optimizer was found
-      as part of the saved model, the model is already
-      compiled. Otherwise, the model is uncompiled and
-      a warning will be displayed. When `compile` is set
-      to False, the compilation is omitted without any
-      warning.
+      A Keras model instance. If the original model was compiled, and saved with
+      the optimizer, then the returned model will be compiled. Otherwise, the
+      model will be left uncompiled. In the case that an uncompiled model is
+      returned, a warning is displayed if the `compile` argument is set to
+      `True`.
 
   Raises:
       ImportError: if loading from an hdf5 file and h5py is not available.
       IOError: In case of an invalid savefile.
   """
-  if (h5py is not None and (
-      isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
-    return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
+  with generic_utils.CustomObjectScope(custom_objects or {}):
+    if (h5py is not None and (
+        isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
+      return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
 
-  if sys.version >= '3.4' and isinstance(filepath, pathlib.Path):
-    filepath = str(filepath)
-  if isinstance(filepath, six.string_types):
-    loader_impl.parse_saved_model(filepath)
-    return saved_model_load.load(filepath, compile)
+    if sys.version_info >= (3, 4) and isinstance(filepath, pathlib.Path):
+      filepath = str(filepath)
+    if isinstance(filepath, six.string_types):
+      loader_impl.parse_saved_model(filepath)
+      return saved_model_load.load(filepath, compile)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

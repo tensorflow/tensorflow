@@ -18,6 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
@@ -218,7 +219,7 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu,
+          distribution=strategy_combinations.all_strategies,
           optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
           mode=['eager'],
           iteration_type=['iterator', 'dataset'],
@@ -226,21 +227,6 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
       ))
   def test_dnn_correctness_minus_tpus(self, distribution, optimizer_fn,
                                       iteration_type, inside_func):
-    self.dnn_correctness(distribution, optimizer_fn, iteration_type,
-                         inside_func)
-
-  # TODO(b/133325470): Enable this test for all optimizers once we understand
-  # the root cause of flakiness.
-  @combinations.generate(
-      combinations.combine(
-          distribution=[strategy_combinations.tpu_strategy_one_step],
-          optimizer_fn=[strategy_combinations.adagrad_optimizer_keras_v2_fn],
-          mode=['eager'],
-          iteration_type=['iterator', 'dataset'],
-          inside_func=[False, True]
-      ))
-  def test_dnn_correctness_tpus(self, distribution, optimizer_fn,
-                                iteration_type, inside_func):
     self.dnn_correctness(distribution, optimizer_fn, iteration_type,
                          inside_func)
 

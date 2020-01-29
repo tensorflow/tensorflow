@@ -88,7 +88,7 @@ Status ConvertGraphDefToXlaViaMlir(const GraphDef& graph_def,
   GraphDebugInfo debug_info;
   mlir::MLIRContext context;
   GraphImportConfig specs;
-  specs.prune_unused_nodes = false;
+  specs.prune_unused_nodes = true;
   specs.convert_legacy_fed_inputs = false;
   specs.graph_as_function = false;
   specs.upgrade_legacy = false;

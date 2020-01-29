@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -28,6 +28,15 @@ namespace tensorflow {
 // Lowers MLIR module to XLA HLO inside an XlaComputation. The input module
 // should only contain operations in tf dialect. If the input module contains
 // operation in the tf_executor dialect, for example, returns an error.
+//
+// Operations in tf dialect are lowered to XLA HLO through the following steps:
+//   . Legalizes control flow operations.
+//   . Decomposes compound resource operations so that the only remaining
+//     operations on resource variables are resource reads/writes..
+//   . Replaces resource reads/writes with function inputs/outputs and
+//     eliminates the use of resource variables.
+//   . Legalizes the operations to XLA HLO operations.
+//   . Canonicalizes the XLA HLO operations.
 //
 // use_tuple_args: when this is true, always create a tuple argument for the
 //   entry computation.

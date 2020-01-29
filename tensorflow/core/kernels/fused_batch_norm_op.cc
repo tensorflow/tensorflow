@@ -202,6 +202,7 @@ struct FusedBatchNorm<CPUDevice, T, U> {
       }
     };
     if (is_training) {
+      // TODO(b/137108598): Extend kernel to allow use of exponential averaging.
       mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
       auto x_centered =
           x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
@@ -854,12 +855,15 @@ struct FusedBatchNorm<GPUDevice, T, U> {
       workspace_allocator.reset(
           new functor::CudnnBatchNormAllocatorInTemp<uint8>(context));
     }
+    // TODO(b/137108598): Extend kernel to allow use of exponential averaging.
+    const double exponential_average_factor = 1.0;
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationForward(
                 x_ptr, scale_ptr, offset_ptr, estimated_mean_ptr,
                 estimated_variance_ptr, side_input_ptr, x_desc,
                 scale_offset_desc, static_cast<double>(epsilon),
+                exponential_average_factor,
                 AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
                 &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr,
                 is_training, std::move(var_to_inv_var),
@@ -1003,7 +1007,8 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
 
     std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
         workspace_allocator;
-    DeviceMemory<uint8>* reserve_space_data = nullptr;
+    DeviceMemory<uint8>* reserve_space_data_ptr = nullptr;
+    DeviceMemory<uint8> reserve_space_data;
 #if CUDNN_VERSION >= 7402
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
@@ -1013,9 +1018,9 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
       // the cudnn kernel outputs inverse variance in forward and reuse it in
       // backward
       if (reserve_space.dims() != 0) {
-        auto reserve_space_uint8 = functor::CastDeviceMemory<uint8, U>(
+        reserve_space_data = functor::CastDeviceMemory<uint8, U>(
             const_cast<Tensor*>(&reserve_space));
-        reserve_space_data = &reserve_space_uint8;
+        reserve_space_data_ptr = &reserve_space_data;
       }
     }
 #endif  // CUDNN_VERSION >= 7402
@@ -1026,7 +1031,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
                 y_backprop_ptr, x_ptr, scale_ptr, mean_ptr, inv_variance_ptr,
                 x_desc, scale_offset_desc, static_cast<double>(epsilon),
                 &x_backprop_ptr, &scale_backprop_ptr, &offset_backprop_ptr,
-                reserve_space_data, workspace_allocator.get())
+                reserve_space_data_ptr, workspace_allocator.get())
             .ok();
 
     if (!cudnn_launch_status) {

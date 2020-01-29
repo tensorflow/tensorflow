@@ -50,6 +50,9 @@ class BaseFFTOpsTest(test.TestCase):
 
   def _compare_forward(self, x, rank, fft_length=None, use_placeholder=False,
                        rtol=1e-4, atol=1e-4):
+    if test.is_built_with_rocm() and x.dtype in (np.complex64, np.complex128):
+      self.skipTest("Complex datatype not yet supported in ROCm.")
+      return
     x_np = self._np_fft(x, rank, fft_length)
     if use_placeholder:
       x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
@@ -61,6 +64,9 @@ class BaseFFTOpsTest(test.TestCase):
 
   def _compare_backward(self, x, rank, fft_length=None, use_placeholder=False,
                         rtol=1e-4, atol=1e-4):
+    if test.is_built_with_rocm() and x.dtype in (np.complex64, np.complex128):
+      self.skipTest("Complex datatype not yet supported in ROCm.")
+      return
     x_np = self._np_ifft(x, rank, fft_length)
     if use_placeholder:
       x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
@@ -78,6 +84,9 @@ class BaseFFTOpsTest(test.TestCase):
 
   def _check_grad_complex(self, func, x, y, result_is_complex=True,
                           rtol=1e-2, atol=1e-2):
+    if test.is_built_with_rocm():
+      self.skipTest("Complex datatype not yet supported in ROCm.")
+      return
     with self.cached_session(use_gpu=True):
       def f(inx, iny):
         inx.set_shape(x.shape)
@@ -174,6 +183,9 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       itertools.product(VALID_FFT_RANKS, range(3),
                         (np.complex64, np.complex128)))
   def test_basic(self, rank, extra_dims, np_type):
+    if test.is_built_with_rocm():
+      self.skipTest("Complex datatype not yet supported in ROCm.")
+      return
     dims = rank + extra_dims
     tol = 1e-4 if np_type == np.complex64 else 1e-8
     self._compare(

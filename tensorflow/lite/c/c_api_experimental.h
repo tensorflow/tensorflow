@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,4 +51,4 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_EXPERIMENTAL_H_
+#endif  // TENSORFLOW_LITE_C_C_API_EXPERIMENTAL_H_

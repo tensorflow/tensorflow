@@ -43,7 +43,7 @@ class Padding : public GPUOperation {
   Status BindArguments();
   int3 GetGridSize() const;
 
-  int4 prepended_;
+  PadAttributes attributes_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
 };

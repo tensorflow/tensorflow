@@ -63,6 +63,14 @@ struct EventTypeSpan {
   EventType type;  // type of this event.
   Timespan span;   // timespan of this event.
   EventTypeSpan(EventType t, Timespan s) : type(t), span(s) {}
+  // Equality test.
+  bool operator==(const EventTypeSpan& other) const {
+    return type == other.type && span == other.span;
+  }
+  // Inequality test.
+  bool operator!=(const EventTypeSpan& other) const {
+    return !(*this == other);
+  }
 };
 
 // Record of an event that is used as a step marker.
@@ -72,6 +80,13 @@ struct StepMarker {
   Timespan span;           // timespan of this event.
   StepMarker(bool device, absl::string_view name, Timespan s)
       : on_device(device), event_name(name), span(s) {}
+  // Equality test.
+  bool operator==(const StepMarker& other) const {
+    return on_device == other.on_device && event_name == other.event_name &&
+           span == other.span;
+  }
+  // Inequality test.
+  bool operator!=(const StepMarker& other) const { return !(*this == other); }
 };
 
 // Details of a step. Note that this could be the result of combining the
@@ -102,10 +117,19 @@ class StepDetails {
   void AppendMarkers(const std::vector<StepMarker>& other_markers);
   // Appends the events from another step to this step.
   void AppendEvents(const std::vector<EventTypeSpan>& other_events);
+  // Equality test.
+  bool operator==(const StepDetails& other) const;
+  // Inequality test.
+  bool operator!=(const StepDetails& other) const { return !(*this == other); }
+  // Returns a string that prints the content of this object.
+  std::string DebugString() const;
 };
 
 // Map from step_id to the events happened in that step.
 using StepEvents = absl::flat_hash_map<int64 /*step_id*/, StepDetails>;
+
+// Equality test for StepEvents.
+bool operator==(const StepEvents& a, const StepEvents& b);
 
 // Returns the event type of the given CPU event.
 EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id);
@@ -115,6 +139,15 @@ EventType ClassifyGpuEvent(absl::string_view event_name);
 
 // Returns the name of the given EventType.
 std::string PrintEventType(EventType event_type);
+
+// Returns a string that prints the given EventTypeSpan.
+std::string PrintEventTypeSpan(const EventTypeSpan& event_type_span);
+
+// Returns a string that prints the given StepMarker.
+std::string PrintStepMarker(const StepMarker& step_marker);
+
+// Returns a string that prints the given StepEvents.
+std::string PrintStepEvents(const StepEvents& step_events);
 
 // Combines the src StepEvents into dst.
 void CombineStepEvents(const StepEvents& src, StepEvents* dst);

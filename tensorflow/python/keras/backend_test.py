@@ -236,6 +236,10 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.is_keras_tensor(x), False)
     x = keras.Input(shape=(1,))
     self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    x = keras.Input(shape=(None,), ragged=True)
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
+    x = keras.Input(shape=(None, None), sparse=True)
+    self.assertEqual(keras.backend.is_keras_tensor(x), True)
     with self.assertRaises(ValueError):
       keras.backend.is_keras_tensor(0)
 
@@ -539,6 +543,10 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
     # threshold, alpha, and max_value
     relu_op = keras.backend.relu(x, alpha=0.25, threshold=4, max_value=5)
     self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 5]])
+
+    # Test case for GitHub issue 35430, with integer dtype
+    x = keras.Input(shape=(), name='x', dtype='int64')
+    y = keras.layers.ReLU(max_value=100, dtype='int64')(x)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1782,7 +1790,6 @@ class TestCTC(test.TestCase):
               decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
     self.assertAllClose(log_prob_truth, log_prob_pred)
 
-  @test_util.run_v1_only('b/120545219')
   def test_ctc_batch_cost(self):
     with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)

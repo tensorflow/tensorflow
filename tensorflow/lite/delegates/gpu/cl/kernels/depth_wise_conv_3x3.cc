@@ -33,8 +33,12 @@ std::string GenerateDepthWiseConvCode(
     const std::vector<ElementwiseOperation*>& linked_operations,
     const CLDevice& device, bool weights_are_buffer, bool local_mem_uploads) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data", "dst_size", op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
   const auto mode = GetFastestZeroMode(device);
@@ -64,7 +68,7 @@ std::string GenerateDepthWiseConvCode(
   c += "   ACCUM_FLT4 r2 = (ACCUM_FLT4)(0.0f);\n";
   c += "   ACCUM_FLT4 r3 = (ACCUM_FLT4)(0.0f);\n";
   if (!local_mem_uploads) {
-    c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) "
+    c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) "
          "return;\n";
   }
   if (local_mem_uploads) {
@@ -156,19 +160,19 @@ std::string GenerateDepthWiseConvCode(
            "] * (FLT)(x3_in && " + y_in + ");\n";
     } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
       const std::string y_in = "y" + std::to_string(y) + "_in";
-      c += "    s0 = " + src_tensor.Read3D(xc[0], yc[y], "Z", mode) +
+      c += "    s0 = " + src_tensor.ReadWHS(xc[0], yc[y], "Z", mode) +
            " * (FLT)(x0_in && " + y_in + ");\n";
-      c += "    s1 = " + src_tensor.Read3D(xc[1], yc[y], "Z", mode) +
+      c += "    s1 = " + src_tensor.ReadWHS(xc[1], yc[y], "Z", mode) +
            " * (FLT)(x1_in && " + y_in + ");\n";
-      c += "    s2 = " + src_tensor.Read3D(xc[2], yc[y], "Z", mode) +
+      c += "    s2 = " + src_tensor.ReadWHS(xc[2], yc[y], "Z", mode) +
            " * (FLT)(x2_in && " + y_in + ");\n";
-      c += "    s3 = " + src_tensor.Read3D(xc[3], yc[y], "Z", mode) +
+      c += "    s3 = " + src_tensor.ReadWHS(xc[3], yc[y], "Z", mode) +
            " * (FLT)(x3_in && " + y_in + ");\n";
     } else {
-      c += "    s0 = " + src_tensor.Read3D(xc[0], yc[y], "Z", mode) + ";\n";
-      c += "    s1 = " + src_tensor.Read3D(xc[1], yc[y], "Z", mode) + ";\n";
-      c += "    s2 = " + src_tensor.Read3D(xc[2], yc[y], "Z", mode) + ";\n";
-      c += "    s3 = " + src_tensor.Read3D(xc[3], yc[y], "Z", mode) + ";\n";
+      c += "    s0 = " + src_tensor.ReadWHS(xc[0], yc[y], "Z", mode) + ";\n";
+      c += "    s1 = " + src_tensor.ReadWHS(xc[1], yc[y], "Z", mode) + ";\n";
+      c += "    s2 = " + src_tensor.ReadWHS(xc[2], yc[y], "Z", mode) + ";\n";
+      c += "    s3 = " + src_tensor.ReadWHS(xc[3], yc[y], "Z", mode) + ";\n";
     }
   };
   c += "  {\n";
@@ -227,33 +231,33 @@ std::string GenerateDepthWiseConvCode(
   c += "  r2 += TO_ACCUM_TYPE(" + bias + ");\n";
   c += "  r3 += TO_ACCUM_TYPE(" + bias + ");\n";
   if (local_mem_uploads) {
-    c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) "
+    c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) "
          "return;\n";
   }
   c += "  if(X + 0 < dst_size.x && Y + 0 < dst_size.y) {\n";
   c += "    FLT4 result = TO_FLT4(r0);\n";
-  c += "  " + dst_tensor.GetAddress("address", "X + 0", "Y + 0", "Z") + "\n";
+  c += "  " + dst_tensor.GetAddressWHS("address", "X + 0", "Y + 0", "Z") + "\n";
   LinkingContext context{"result", "X + 0", "Y + 0", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X + 0", "Y + 0", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("result", "X + 0", "Y + 0", "Z") + "\n";
   c += "  }\n";
   c += "  if(X + 1 < dst_size.x && Y + 0 < dst_size.y) {\n";
   c += "    FLT4 result = TO_FLT4(r1);\n";
   context = {"result", "X + 1", "Y + 0", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X + 1", "Y + 0", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("result", "X + 1", "Y + 0", "Z") + "\n";
   c += "  }\n";
   c += "  if(X + 0 < dst_size.x && Y + 1 < dst_size.y) {\n";
   c += "    FLT4 result = TO_FLT4(r2);\n";
   context = {"result", "X + 0", "Y + 1", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X + 0", "Y + 1", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("result", "X + 0", "Y + 1", "Z") + "\n";
   c += "  }\n";
   c += "  if(X + 1 < dst_size.x && Y + 1 < dst_size.y) {\n";
   c += "    FLT4 result = TO_FLT4(r3);\n";
   context = {"result", "X + 1", "Y + 1", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X + 1", "Y + 1", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("result", "X + 1", "Y + 1", "Z") + "\n";
   c += "  }\n";
   c += "}\n";
 
@@ -313,7 +317,7 @@ Status DepthWiseConv3x3::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
 
   return OkStatus();
 }
@@ -321,7 +325,7 @@ Status DepthWiseConv3x3::BindArguments() {
 int3 DepthWiseConv3x3::GetGridSize() const {
   const int grid_x = IntegralDivideRoundUp(dst_[0]->Width(), 2);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), 2);
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

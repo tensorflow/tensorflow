@@ -43,7 +43,6 @@ extern template Status Base64Encode<string>(StringPiece source,
 extern template Status Base64Encode<string>(StringPiece source,
                                             bool with_padding, string* encoded);
 
-#ifdef USE_TSTRING
 extern template Status Base64Decode<tstring>(StringPiece data,
                                              tstring* decoded);
 extern template Status Base64Encode<tstring>(StringPiece source,
@@ -51,7 +50,6 @@ extern template Status Base64Encode<tstring>(StringPiece source,
 extern template Status Base64Encode<tstring>(StringPiece source,
                                              bool with_padding,
                                              tstring* encoded);
-#endif  // USE_TSTRING
 
 }  // namespace tensorflow
 

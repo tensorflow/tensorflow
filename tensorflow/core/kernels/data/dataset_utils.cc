@@ -18,9 +18,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -207,6 +209,10 @@ Status HashNodeImpl(const GraphDef& graph, const NodeDef& node, uint64* hash,
 
   uint64 attr_hash = 0;
   for (const auto& attr : node.attr()) {
+    if (attr.first == kColocationAttrName ||
+        attr.first == kColocationGroupPrefix) {
+      continue;
+    }
     uint64 tmp_hash;
     TF_RETURN_IF_ERROR(HashAttrImpl(graph.library(), attr.first, attr.second,
                                     &tmp_hash, visited, cache));
@@ -260,6 +266,10 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
 
   uint64 attr_hash = 0;
   for (const auto& attr : func.attr()) {
+    if (attr.first == kColocationAttrName ||
+        attr.first == kColocationGroupPrefix) {
+      continue;
+    }
     uint64 tmp_hash;
     TF_RETURN_IF_ERROR(HashAttrImpl(library, attr.first, attr.second, &tmp_hash,
                                     visited, cache));
@@ -269,6 +279,10 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
   uint64 arg_attr_hash = 0;
   for (const auto& arg_attr : func.arg_attr()) {
     for (const auto& attr : arg_attr.second.attr()) {
+      if (attr.first == kColocationAttrName ||
+          attr.first == kColocationGroupPrefix) {
+        continue;
+      }
       uint64 tmp_hash;
       TF_RETURN_IF_ERROR(HashAttrImpl(library, attr.first, attr.second,
                                       &tmp_hash, visited, cache));
@@ -448,11 +462,31 @@ Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) {
   return ReadTensorInternal(key, val);
 }
 
+Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
+                                           int64* val) {
+  return ReadScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
+                                           tstring* val) {
+  return ReadScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataReader::ReadTensor(StringPiece name, StringPiece key,
+                                           Tensor* val) {
+  return ReadTensorInternal(name, key, val);
+}
+
 bool VariantTensorDataReader::Contains(StringPiece key) {
   string name;
   if (!GetIteratorName(key, &name).ok()) {
     return false;
   }
+  return Contains(name, key);
+}
+
+bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) {
+  string name(n);
   return map_[name].find(string(key)) != map_[name].end();
 }
 
@@ -460,6 +494,20 @@ template <typename T>
 Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  return ReadScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
+                                                   Tensor* val) {
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  return ReadTensorInternal(name, key, val);
+}
+
+template <typename T>
+Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
+                                                   StringPiece key, T* val) {
+  string name(n);
   if (map_[name].find(string(key)) == map_[name].end()) {
     return errors::NotFound(key);
   }
@@ -467,10 +515,10 @@ Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
   return Status::OK();
 }
 
-Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
+Status VariantTensorDataReader::ReadTensorInternal(StringPiece n,
+                                                   StringPiece key,
                                                    Tensor* val) {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  string name(n);
   if (map_[name].find(string(key)) == map_[name].end()) {
     return errors::NotFound(key);
   }
@@ -490,6 +538,21 @@ Status VariantTensorDataWriter::WriteScalar(StringPiece key,
 Status VariantTensorDataWriter::WriteTensor(StringPiece key,
                                             const Tensor& val) {
   return WriteTensorInternal(key, val);
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
+                                            const int64 val) {
+  return WriteScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
+                                            const tstring& val) {
+  return WriteScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataWriter::WriteTensor(StringPiece name, StringPiece key,
+                                            const Tensor& val) {
+  return WriteTensorInternal(name, key, val);
 }
 
 void VariantTensorDataWriter::MaybeFlush() {
@@ -535,9 +598,9 @@ Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
     return errors::FailedPrecondition(
         "Cannot call WriteScalar after GetData or ReleaseData is called");
   }
-  Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
-  val_t.scalar<T>()() = val;
-  return WriteTensorInternal(key, val_t);
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  return WriteScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
@@ -548,7 +611,31 @@ Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
   }
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  return WriteTensorInternal(name, key, val);
+}
+
+template <typename T>
+Status VariantTensorDataWriter::WriteScalarInternal(StringPiece name,
+                                                    StringPiece key,
+                                                    const T& val) {
+  if (is_flushed_) {
+    return errors::FailedPrecondition(
+        "Cannot call WriteScalar after GetData or ReleaseData is called");
+  }
+  Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+  val_t.scalar<T>()() = val;
+  return WriteTensorInternal(name, key, val_t);
+}
+
+Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
+                                                    StringPiece key,
+                                                    const Tensor& val) {
+  if (is_flushed_) {
+    return errors::FailedPrecondition(
+        "Cannot call WriteTensor after GetData or ReleaseData is called");
+  }
   DCHECK_EQ(key.find(kDelimiter), string::npos);
+  string name(n);
   if (keys_.count(name) == 0) {
     keys_[name] = std::vector<string>();
   }

@@ -1375,8 +1375,8 @@ Status BufferAssigner::AssignPresetBuffers(
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
     auto preset_allocations_iter = preset_allocations.find(value.color());
     CHECK(preset_allocations_iter != preset_allocations.end())
-        << "No preset value allocation for color " << value.color()
-        << " found.";
+        << "No preset value allocation for color " << value.color() << " for "
+        << value.ToShortString() << " found.";
     preset_allocations_iter->second->AddAssignment(value, chunk.offset,
                                                    chunk.size);
 
@@ -1647,7 +1647,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       /*is_thread_local=*/false, &buffers_to_assign_sequentially,
       assignment.get()));
   // Assign buffers with sequential ordering, if any. If all global
-  // computations are sequential, we can run heap simuation on the whole
+  // computations are sequential, we can run heap simulation on the whole
   // module, which reduces memory usage.
   const bool run_whole_module_heap_simulation =
       buffers_to_assign_sequentially.size() == global_computations.size();

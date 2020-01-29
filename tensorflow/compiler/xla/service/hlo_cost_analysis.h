@@ -149,7 +149,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // if the HLO was not found to have a cost in the analysis.
   //
   // Note that the cost for sub HLO instructions are also returned if asked. For
-  // example, body and condidition of a while, fused instructions within a
+  // example, body and condition of a while, fused instructions within a
   // fusion, or the add instruction of a reduce.
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;

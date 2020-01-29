@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MEMORY_PLANNER_GREEDY_MEMORY_PLANNER_H_
 #define TENSORFLOW_LITE_MICRO_MEMORY_PLANNER_GREEDY_MEMORY_PLANNER_H_
 
+#include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/memory_planner/memory_planner.h"
 
 namespace tflite {
@@ -60,7 +61,7 @@ class GreedyMemoryPlanner : public MemoryPlanner {
 
   // Returns the high-water mark of used memory. This is the minimum size of a
   // memory arena you'd need to allocate to hold these buffers.
-  int GetMaximumMemorySize() override;
+  size_t GetMaximumMemorySize() override;
 
   // How many buffers have been recorded.
   int GetBufferCount() override;
@@ -125,6 +126,8 @@ class GreedyMemoryPlanner : public MemoryPlanner {
 
   // Whether buffers have been added since the last plan was calculated.
   bool need_to_calculate_offsets_;
+
+  TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
 }  // namespace tflite

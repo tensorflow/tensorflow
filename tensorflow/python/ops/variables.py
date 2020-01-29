@@ -21,6 +21,7 @@ import enum  # pylint: disable=g-bad-import-order
 import itertools
 import functools
 import os
+
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -583,8 +584,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the assignment has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -601,8 +602,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the addition has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -619,8 +620,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the subtraction has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -633,8 +634,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -650,8 +650,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered addition has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -668,8 +667,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered maximization has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -686,8 +684,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered minimization has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -703,8 +700,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered multiplication has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -720,8 +716,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered division has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -737,8 +732,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -784,8 +778,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -835,8 +828,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -883,8 +875,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered addition has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -931,8 +922,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -1324,9 +1314,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     @property
     def spec(self):
       """Computes the spec string used for saving."""
-      full_shape_str = " ".join(["%d" % d for d in self.full_shape]) + " "
+      full_shape_str = " ".join("%d" % d for d in self.full_shape) + " "
       sl_spec = ":".join(
-          ["%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape)])
+          "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape))
       return full_shape_str + sl_spec
 
     def to_proto(self, export_scope=None):

@@ -182,6 +182,19 @@ def softsign(x):
   return nn.softsign(x)
 
 
+@keras_export('keras.activations.swish')
+def swish(x):
+  """Swish activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The swish activation applied to `x`.
+  """
+  return nn.swish(x)
+
+
 @keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
   """Applies the rectified linear unit activation function.
@@ -194,6 +207,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   and to use a non-zero multiple of the input for values below the threshold.
 
   For example:
+
   >>> foo = tf.constant([-10, -5, 0.0, 5, 10], dtype = tf.float32)
   >>> tf.keras.activations.relu(foo).numpy()
   array([ 0.,  0.,  0.,  5., 10.], dtype=float32)
@@ -382,6 +396,7 @@ def deserialize(name, custom_objects=None):
       TensorFlow Activation function denoted by input string.
 
   For example:
+
   >>> tf.keras.activations.deserialize('linear')
    <function linear at 0x1239596a8>
   >>> tf.keras.activations.deserialize('sigmoid')

@@ -18,11 +18,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 // TODO(mihaimaruseac): After all filesystems are converted, all calls to
@@ -165,16 +164,18 @@ Status ModularFileSystem::GetChildren(const std::string& dir,
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   std::string translated_name = TranslateName(dir);
-  char** children;
+  // Note that `children` is allocated by the plugin and freed by core
+  // TensorFlow, so we need to use `plugin_memory_free_` here.
+  char** children = nullptr;
   const int num_children =
       ops_->get_children(filesystem_.get(), translated_name.c_str(), &children,
                          plugin_status.get());
   if (num_children >= 0) {
     for (int i = 0; i < num_children; i++) {
       result->push_back(std::string(children[i]));
-      free(children[i]);
+      plugin_memory_free_(children[i]);
     }
-    free(children);
+    plugin_memory_free_(children);
   }
 
   return StatusFromTF_Status(plugin_status.get());
@@ -186,15 +187,17 @@ Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
     return internal::GetMatchingPaths(this, Env::Default(), pattern, result);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
-  char** matches;
+  // Note that `matches` is allocated by the plugin and freed by core
+  // TensorFlow, so we need to use `plugin_memory_free_` here.
+  char** matches = nullptr;
   const int num_matches = ops_->get_matching_paths(
       filesystem_.get(), pattern.c_str(), &matches, plugin_status.get());
   if (num_matches >= 0) {
     for (int i = 0; i < num_matches; i++) {
       result->push_back(std::string(matches[i]));
-      free(matches[i]);
+      plugin_memory_free_(matches[i]);
     }
-    free(matches);
+    plugin_memory_free_(matches);
   }
 
   return StatusFromTF_Status(plugin_status.get());
@@ -358,7 +361,8 @@ std::string ModularFileSystem::TranslateName(const std::string& name) const {
   CHECK(p != nullptr) << "TranslateName(" << name << ") returned nullptr";
 
   std::string ret(p);
-  free(p);
+  // Since `p` is allocated by plugin, free it using plugin's method.
+  plugin_memory_free_(p);
   return ret;
 }
 
@@ -433,6 +437,10 @@ Status ModularWritableFile::Tell(int64* position) {
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   *position = ops_->tell(file_.get(), plugin_status.get());
   return StatusFromTF_Status(plugin_status.get());
+}
+
+Status RegisterFilesystemPlugin(const std::string& dso_path) {
+  return filesystem_registration::RegisterFilesystemPluginImpl(dso_path);
 }
 
 }  // namespace tensorflow

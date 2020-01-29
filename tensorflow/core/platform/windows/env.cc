@@ -20,6 +20,7 @@ limitations under the License.
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #undef LoadLibrary
 #undef ERROR
@@ -213,5 +214,17 @@ void WindowsEnv::GetLocalTempDirectories(std::vector<string>* list) {
   list->push_back("C:\\tmp\\");
   list->push_back("C:\\temp\\");
 }
+
+int setenv(const char* name, const char* value, int overwrite) {
+  if (!overwrite) {
+    char* env_val = getenv(name);
+    if (env_val) {
+      return 0;
+    }
+  }
+  return _putenv_s(name, value);
+}
+
+int unsetenv(const char* name) { return _putenv_s(name, ""); }
 
 }  // namespace tensorflow

@@ -17,7 +17,28 @@ platform(
     remote_execution_properties = """
         properties:{
           name:"container-image"
-          value:"docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:f954613b8773930142ac101b6731283bc3a3bc0ef811b7cfe6ae159f412762e7"
+          value:"docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:6bee34693b356baf3b0ba700f4eb27a23d3a04e0c47cbb9de813c61ef30c0b9f"
+        }
+        properties:{
+          name: "OSFamily" value: "Windows"
+        }
+        """,
+)
+
+platform(
+    name = "rbe_windows_1803_gpu",
+    constraint_values = [
+        "@bazel_tools//platforms:x86_64",
+        "@bazel_tools//platforms:windows",
+    ],
+    remote_execution_properties = """
+        properties:{
+          name:"container-image"
+          value:""
+        }
+        properties:{
+          name:"sandbox"
+          value:"none"
         }
         properties:{
           name: "OSFamily" value: "Windows"

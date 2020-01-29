@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stacktrace.h"
 #endif
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 
 namespace tensorflow {
@@ -380,6 +382,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   }
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
   if (ptr != nullptr) {
+    AddTraceMe("MemoryAllocation");
     return ptr;
   }
 
@@ -387,6 +390,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   if (Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
+      AddTraceMe("MemoryAllocation");
       return ptr;
     }
   }
@@ -399,6 +403,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     if (MergeTimestampedChunks(rounded_bytes)) {
       ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
       if (ptr != nullptr) {
+        AddTraceMe("MemoryAllocation");
         return ptr;
       }
     }
@@ -412,6 +417,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
       Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
+      AddTraceMe("MemoryAllocation");
       return ptr;
     }
   }
@@ -433,6 +439,22 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     LOG(WARNING) << RenderOccupancy();
   }
   return nullptr;
+}
+
+void BFCAllocator::AddTraceMe(absl::string_view traceme_name) {
+  tensorflow::profiler::TraceMe trace_me(
+      [&]() EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+        AllocatorStats stats = stats_;
+        int64 bytes_available =
+            memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;
+        return absl::StrCat(traceme_name, "#allocator_name=", name_,
+                            ",bytes_reserved=", stats.bytes_reserved,
+                            ",bytes_allocated=", stats.bytes_in_use,
+                            ",bytes_available=", bytes_available,
+                            ",peak_bytes_in_use=", stats.peak_bytes_in_use,
+                            "#");
+      },
+      /*level=*/profiler::TraceMeLevel::kInfo);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
@@ -580,6 +602,8 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   if (VLOG_IS_ON(4)) {
     LOG(INFO) << "F: " << RenderOccupancy();
   }
+
+  AddTraceMe("MemoryDeallocation");
 }
 
 // Merges h1 and h2 when Chunk(h1)->next is h2 and Chunk(h2)->prev is c1.
@@ -1009,8 +1033,6 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
   mas->set_bytes_in_use(stats_.bytes_in_use);
   mas->set_peak_bytes_in_use(stats_.peak_bytes_in_use);
   mas->set_largest_alloc_size(stats_.largest_alloc_size);
-  int64 largest_free_chunk = 0;
-  int64 free_bytes = 0;
 
   // Record summary data for every bin.
   const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
@@ -1046,21 +1068,11 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       if (timing_counter_) {
         mc->set_freed_at_count(c->in_use() ? 0 : c->freed_at_count);
       }
-      if (!c->in_use()) {
-        free_bytes += c->size;
-        if (c->size > largest_free_chunk) {
-          largest_free_chunk = c->size;
-        }
-      }
       h = c->next;
     }
   }
-  double frag_metric = 0.0;
-  if (free_bytes > 0) {
-    frag_metric =
-        (free_bytes - largest_free_chunk) / static_cast<double>(free_bytes);
-  }
-  mas->set_fragmentation_metric(frag_metric);
+
+  mas->set_fragmentation_metric(GetFragmentation());
 
 #ifdef TENSORFLOW_MEM_DEBUG
   // Record the recent size history
@@ -1075,6 +1087,31 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 #endif
 
   return md;
+}
+
+double BFCAllocator::GetFragmentation() {
+  int64 largest_free_chunk = 0;
+  int64 free_bytes = 0;
+  for (const auto& region : region_manager_.regions()) {
+    ChunkHandle chunk_handle = region_manager_.get_handle(region.ptr());
+    while (chunk_handle != kInvalidChunkHandle) {
+      const Chunk* chunk = ChunkFromHandle(chunk_handle);
+      if (!chunk->in_use()) {
+        free_bytes += chunk->size;
+        if (chunk->size > largest_free_chunk) {
+          largest_free_chunk = chunk->size;
+        }
+      }
+      chunk_handle = chunk->next;
+    }
+  }
+  double frag_metric = 0.0;
+  if (free_bytes > 0) {
+    frag_metric =
+        (free_bytes - largest_free_chunk) / static_cast<double>(free_bytes);
+  }
+
+  return frag_metric;
 }
 
 absl::optional<AllocatorStats> BFCAllocator::GetStats() {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
 
+#define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
 #include <type_traits>
@@ -545,31 +546,42 @@ struct functor_traits<google_floor_mod<Scalar>> {
 #define ENABLE_FLOAT_EQUALITY_WARNING
 #endif
 
-template <typename Scalar, bool IsInteger = Eigen::NumTraits<Scalar>::IsInteger>
-struct scalar_round_op_google {
+template <typename Scalar, bool IsInteger = Eigen::NumTraits<Scalar>::IsInteger,
+          bool HasRint = packet_traits<Scalar>::HasRint>
+struct scalar_round_half_to_even_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex),
                         NUMERIC_TYPE_MUST_BE_REAL)
 
-    Scalar round_val = Eigen::numext::floor(x);
-    const Scalar fraction = x - round_val;
-    if (fraction > Scalar(.5)) {
-      round_val += Scalar(1.0);
-    } else if (fraction == Scalar(.5)) {
-      const Scalar nearest_even_int =
-          round_val - Scalar(2) * Eigen::numext::floor(Scalar(.5) * x);
-      bool is_odd = (nearest_even_int == Scalar(1));
-      if (is_odd) {
-        round_val += Scalar(1);
-      }
+    const Scalar round_val = Eigen::numext::floor(x + Scalar(0.5));
+    const Scalar fraction = round_val - x;
+    if (TF_PREDICT_FALSE(fraction == Scalar(.5))) {
+      return Scalar(2) * Eigen::numext::floor(Scalar(.5) * x + Scalar(0.5));
+    } else {
+      return round_val;
     }
-    return round_val;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    Packet half = pset1<Packet>(Scalar(0.5));
+    Packet round_val = pfloor(padd(x, half));
+    Packet fraction = psub(round_val, x);
+    Packet half_mask = pcmp_eq(fraction, half);
+    bool any_halves = predux_any(half_mask);
+    if (TF_PREDICT_FALSE(any_halves)) {
+      Packet two = pset1<Packet>(Scalar(2));
+      Packet nearest_even = pmul(two, pfloor(pmadd(half, x, half)));
+      return pselect(half_mask, nearest_even, round_val);
+    } else {
+      return round_val;
+    }
   }
 };
 
 template <typename Scalar>
-struct scalar_round_op_google<Scalar, true> {
+struct scalar_round_half_to_even_op<Scalar, true, false> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     return x;
@@ -581,14 +593,28 @@ struct scalar_round_op_google<Scalar, true> {
 };
 
 template <typename Scalar>
-struct functor_traits<scalar_round_op_google<Scalar>> {
+struct scalar_round_half_to_even_op<Scalar, false, true> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x) const {
+    return Eigen::numext::rint(x);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    return print(x);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<scalar_round_half_to_even_op<Scalar>> {
   enum {
     Cost = Eigen::NumTraits<Scalar>::IsInteger ? 0
                                                : 4 * NumTraits<Scalar>::AddCost,
 #if TENSORFLOW_USE_ROCM
     PacketAccess = false,
 #else
-    PacketAccess = Eigen::NumTraits<Scalar>::IsInteger
+    PacketAccess = packet_traits<Scalar>::HasFloor &&
+                   packet_traits<Scalar>::HasAdd &&
+                   packet_traits<Scalar>::HasMul,
 #endif
   };
 };
@@ -691,6 +717,41 @@ struct functor_traits<xlogy_op<Scalar>> {
 };
 
 template <typename Scalar>
+struct xlog1py_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xlog1py_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x * numext::log1p(y);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
+                                                        const Packet& y) const {
+    Packet zeros = pzero(x);
+    Packet mask = pcmp_eq(x, zeros);
+    scalar_log1p_op<Scalar> log1p_op;
+    Packet log1p_y = log1p_op.packetOp(y);
+    Packet x_log1p_y = pmul(x, log1p_y);
+    return pselect(mask, x, x_log1p_y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xlog1py_op<Scalar>> {
+  enum {
+    Cost = functor_traits<scalar_log1p_op<Scalar>>::Cost +
+           Eigen::NumTraits<Scalar>::MulCost,
+#if TENSORFLOW_USE_ROCM
+    PacketAccess = false,
+#else
+    PacketAccess = functor_traits<scalar_log1p_op<Scalar>>::PacketAccess
+#endif
+  };
+};
+
+template <typename Scalar>
 struct xdivy_op {
   EIGEN_EMPTY_STRUCT_CTOR(xdivy_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
@@ -729,13 +790,17 @@ template <typename T>
 struct scalar_erfinv_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_erfinv_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x) const {
-    T y = numext::ndtri((x + static_cast<T>(1.)) / static_cast<T>(2.));
-    return y / static_cast<T>(numext::sqrt(2.));
+    constexpr T half = T(0.5);
+    T y = numext::ndtri(half * x + half);
+    constexpr T half_sqrt = T(M_SQRT1_2);
+    return y * half_sqrt;
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
-    Packet y = pndtri<Packet>(pmadd(pset1<Packet>(0.5), x, pset1<Packet>(0.5)));
-    return pdiv(y, psqrt(pset1<Packet>(2.)));
+    Packet half = pset1<Packet>(T(0.5));
+    Packet y = pndtri<Packet>(pmadd(half, x, half));
+    Packet half_sqrt = pset1<Packet>(T(M_SQRT1_2));
+    return pmul(y, half_sqrt);
   }
 };
 
@@ -960,31 +1025,13 @@ template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
 
 template <typename T>
-struct round : base<T, Eigen::internal::scalar_round_op_google<T>> {};
+struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};
 
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
-/** this should go in Eigen
- * \brief Template functor to compute the round to int value of a scalar
- */
-template <typename Scalar>
-struct scalar_rint_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
-  operator()(const Scalar& a) const {
-#if defined(__CUDACC__) || defined(__HIPCC__)
-    return ::rint(a);
-#elif defined(__ANDROID__)
-    return rint(a);
-#else
-    return std::rint(a);
-#endif
-  }
-};
-
 template <typename T>
-struct rint : base<T, scalar_rint_op<T>> {};
+struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Binary functors
@@ -1123,6 +1170,9 @@ struct xdivy : base<T, Eigen::internal::xdivy_op<T>> {};
 
 template <typename T>
 struct xlogy : base<T, Eigen::internal::xlogy_op<T>> {};
+
+template <typename T>
+struct xlog1py : base<T, Eigen::internal::xlog1py_op<T>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};

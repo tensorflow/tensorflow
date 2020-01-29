@@ -49,7 +49,9 @@ HexagonNN CreateNewHexagonInterface() {
   void* libhexagon_interface =
       dlopen("libhexagon_interface.so", RTLD_LAZY | RTLD_LOCAL);
   if (libhexagon_interface == nullptr) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to load libhexagon_interface.so");
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                    "Failed to load libhexagon_interface.so, Error: %s",
+                    dlerror());
     return hexagon_nn;
   }
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_config, hexagon_nn);
@@ -72,6 +74,7 @@ HexagonNN CreateNewHexagonInterface() {
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_global_init, hexagon_nn);
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_is_device_supported,
                 hexagon_nn);
+  LOAD_FUNCTION(libhexagon_interface, hexagon_nn_version, hexagon_nn);
   hexagon_nn.interface_loaded = true;
   return hexagon_nn;
 }

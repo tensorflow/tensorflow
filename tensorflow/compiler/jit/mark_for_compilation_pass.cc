@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
@@ -1187,7 +1188,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
 
     if (!whitelist.empty() && !whitelist.contains(node->def().op())) {
-      VLOG(1) << "Rejecting " << node->name()
+      VLOG(1) << "Rejecting TF operation " << node->def().op()
               << " as it is not listed in --tf_xla_ops_to_cluster.";
       continue;
     }
@@ -1413,7 +1414,7 @@ Status MarkForCompilationPassImpl::Run() {
 void MarkForCompilationPassImpl::DumpPostClusteringGraphs() {
   DumpGraphToFile("mark_for_compilation", *graph_, flib_def_);
 
-  // We also dump out an annoated version of the TF graph where the nodes
+  // We also dump out an annotated version of the TF graph where the nodes
   // names are prefixed with the cluster names.  This can help visualizing the
   // clustering decisions on TensorBoard.
   Graph new_graph(graph_->op_registry());
@@ -1616,8 +1617,8 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
 
   if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
       device_type.type_string() == DEVICE_CPU) {
-    static std::once_flag once;
-    std::call_once(once, [] {
+    static absl::once_flag once;
+    absl::call_once(once, [] {
       LOG(WARNING)
           << "(One-time warning): Not using XLA:CPU for cluster because envvar "
              "TF_XLA_FLAGS=--tf_xla_cpu_global_jit was not set.  If you want "
@@ -1770,14 +1771,15 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
            {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin",
             "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp", "Expm1",
             "Floor", "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal", "Log",
-            "Log1p", "Invert", "LogicalNot", "Neg", "Rint", "Round", "Rsqrt",
-            "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt", "Square",
-            "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Lgamma", "Digamma",
+            "Log1p", "Invert", "LogicalNot", "Ndtri", "Neg", "Rint", "Round",
+            "Rsqrt", "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt",
+            "Square", "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Erfinv",
+            "Lgamma", "Digamma",
             // Binary
             "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
-            "MulNoNan", "FloorDiv", "Xlogy", "Xdivy", "FloorMod", "BitwiseAnd",
-            "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift", "LogicalAnd",
-            "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
+            "MulNoNan", "FloorDiv", "Xlogy", "Xlog1py", "Xdivy", "FloorMod",
+            "BitwiseAnd", "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift",
+            "LogicalAnd", "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
             "ReciprocalGrad", "RsqrtGrad", "SqrtGrad", "TruncateDiv",
             "TruncateMod", "Equal", "NotEqual", "Greater", "GreaterEqual",
             "Less", "LessEqual", "SigmoidGrad", "SoftplusGrad", "SoftsignGrad",
@@ -1871,6 +1873,8 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "Einsum",
                                      "EmptyTensorList",
                                      "ExtractImagePatches",
+                                     "Igamma",
+                                     "Igammac",
                                      "FFT",
                                      "FFT2D",
                                      "FFT3D",
@@ -2035,6 +2039,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "XlaDynamicSlice",
                                      "XlaDynamicUpdateSlice",
                                      "XlaEinsum",
+                                     "XlaGather",
                                      "XlaIf",
                                      "XlaKeyValueSort",
                                      "XlaPad",
@@ -2042,6 +2047,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "XlaReduce",
                                      "XlaReduceWindow",
                                      "XlaReplicaId",
+                                     "XlaScatter",
                                      "XlaSelectAndScatter",
                                      "XlaSelfAdjointEig",
                                      "XlaSend",

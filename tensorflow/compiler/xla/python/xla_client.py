@@ -1,3 +1,4 @@
+# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,8 +29,6 @@ import os
 from absl import logging
 import numpy as np
 
-import six
-
 # Note this module does *not* depend on any Python protocol buffers. The XLA
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
@@ -44,8 +43,7 @@ from tensorflow.compiler.xla.python.xla_extension import ops
 # pylint: disable=invalid-name
 
 
-@six.add_metaclass(abc.ABCMeta)
-class Backend(object):
+class Backend(object, metaclass=abc.ABCMeta):
   """Abstract base class for XLA backends."""
 
   def __init__(self, platform):
@@ -85,20 +83,21 @@ class Backend(object):
     """Compiles a computation. Returns an executable."""
 
   @abc.abstractmethod
-  def get_default_device_assignment(self, num_replicas):
+  def get_default_device_assignment(self, num_replicas, num_partitions):
     """Returns the default device assignment that `compile` would use.
 
     If `compile_options.device_assignment` isn't set, `compile` will pick a
-    deterministic device assignment based on the number of replicas, possibly
-    optimizing for device locality. This method returns that assignment, which
-    is useful for e.g. manually replicating a value before passing it to a
-    compiled executable.
+    deterministic device assignment based on the number of replicas and
+    partitions, possibly optimizing for device locality. This method returns
+    that assignment, which is useful for e.g. manually replicating a value
+    before passing it to a compiled executable.
 
     Args:
       num_replicas: the number of replicas needed.
+      num_partitions: the number of partitions needed.
 
     Returns:
-      A list of Devices of length `num_replicas` indexed by replica ID.
+      A list of list of Devices of size `(num_replicas, num_partitions)`.
     """
 
 
@@ -141,6 +140,7 @@ class LocalBackend(Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
+    options.num_partitions = compile_options.num_partitions
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
@@ -153,14 +153,13 @@ class LocalBackend(Backend):
                                         options, self.client,
                                         compile_options.device_assignment)
 
-  def get_default_device_assignment(self, num_replicas):
-    return self.client.GetDefaultDeviceAssignment(num_replicas)
-
-  def serialize(self, executable):
-    return self.client.SerializeExecutable(executable)
-
-  def deserialize(self, serialized_executable):
-    return self.client.DeserializeExecutable(serialized_executable, self.client)
+  def get_default_device_assignment(self, num_replicas, num_partitions=None):
+    if num_partitions is not None:
+      return self.client.GetDefaultDeviceAssignment(num_replicas,
+                                                    num_partitions)
+    else:
+      # TODO(skye): delete this case after all callers can handle 2D output
+      return self.client.GetDefaultDeviceAssignment(num_replicas)
 
 
 xla_platform_names = {
@@ -444,7 +443,7 @@ def shape_from_pyval(pyval):
   return convert(pyval)
 
 
-def transfer_to_infeed(value, device_ordinal=0):
+def transfer_to_infeed(value, device=None):
   """Transfers the given value into the XLA infeed queue.
 
   XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
@@ -454,29 +453,31 @@ def transfer_to_infeed(value, device_ordinal=0):
   Args:
     value: the value that the caller would like to enqueue into the XLA infeed
       queue
-    device_ordinal: the device to infeed the value to. Each device has a
+    device: the device to infeed the value to. Each device has a
       distinct infeed queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  backend.client.TransferToInfeed(value, device_ordinal)
+  device = device or backend.local_devices()[0]
+  device.TransferToInfeed(value)
 
 
-def transfer_from_outfeed(shape, device_ordinal=0):
-  """Transfers a literal of the given shape from `device_ordinal`'s outfeed.
+def transfer_from_outfeed(shape, device=None):
+  """Transfers a literal of the given shape from `device`'s outfeed.
 
   Args:
     shape: The shape of the value to transfer from outfeed.
-    device_ordinal: The device ordinal to transfer the outfeed value from. Each
-      device has a distinct outfeed queue..
+    device: The device from which to transfer the outfeed value. Each device has
+      a distinct outfeed queue..
 
   Returns:
     The literal value that is produced from the outfeed queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  return backend.client.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent(), device_ordinal)
+  device = device or backend.local_devices()[0]
+  return device.TransferFromOutfeed(
+      shape.with_major_to_minor_layout_if_absent())
 
 
 DeviceAssignment = _xla.DeviceAssignment
@@ -518,6 +519,7 @@ class CompileOptions(object):
     self.dump_hlo_as_proto = None
     self.hlo_profile = None
     self.num_replicas = 1
+    self.num_partitions = 1
     self.argument_layouts = None
     self.result_layout = None
     self.device_assignment = None
@@ -749,7 +751,7 @@ class ComputationBuilder(object):
   def ClearSharding(self):
     """Clears the sharding.
 
-    Ops will be shared according to the default placement policy.
+    Ops will be sharded according to the default placement policy.
     """
     self._builder.ClearSharding()
 
@@ -877,7 +879,8 @@ class ComputationBuilder(object):
     """
     return self.Constant(np.array(value, dtype=np.bool))
 
-  def ParameterWithShape(self, shape, name=None, parameter_num=None):
+  def ParameterWithShape(self, shape, name=None, parameter_num=None,
+                         replicated=False):
     """Enqueues a Parameter op onto the computation, given a shape.
 
     Args:
@@ -887,6 +890,8 @@ class ComputationBuilder(object):
         next linear parameter number is used. The default value capability can
         be used for auto-numbering. If you're using auto-numbering for some
         parameters, use it for *all* parameters to avoid clashes.
+      replicated: whether to mark the parameter's leaves as replicated. May be
+        a bool, in which case it applies to all leaves, or an iterable of bools.
 
     Returns:
       An XlaOp.
@@ -895,10 +900,12 @@ class ComputationBuilder(object):
       name = ''
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
+    if isinstance(replicated, bool):
+      replicated = [replicated] * shape.leaf_count()
 
     return ops.Parameter(self._builder, parameter_num,
                          shape.with_major_to_minor_layout_if_absent(),
-                         name.encode('utf8'))
+                         name.encode('utf8'), replicated)
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
     """Enqueues a Parameter op onto the computation.
@@ -1505,7 +1512,7 @@ class ComputationBuilder(object):
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
       batch_group_count: number of batch groups for grouped convolution.
-    Returns: a XlaOp representing the ConvGenralDilated operation.
+    Returns: a XlaOp representing the ConvGeneralDilated operation.
     """
     if dimension_numbers is None:
       dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
@@ -1692,6 +1699,8 @@ _BINARY_OPS = [
     'ShiftRightArithmetic',
     'ShiftRightLogical',
     'Atan2',
+    'Igamma',
+    'Igammac',
     'Complex',
     'NextAfter',
 ]

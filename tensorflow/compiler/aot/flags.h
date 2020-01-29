@@ -25,6 +25,7 @@ namespace tensorflow {
 namespace tfcompile {
 
 // Flags for the tfcompile binary.  See *.cc file for descriptions.
+
 struct MainFlags {
   string graph;
   string config;

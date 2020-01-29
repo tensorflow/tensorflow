@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import doctest
-import textwrap
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -72,12 +71,18 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
       ['No floats at end of sentence: 1.0.', []],
       ['No floats with ellipsis: 1.0...', []],
       # A numpy array
-      [
-          textwrap.dedent("""
-          array([[1., 2., 3.],
-                 [4., 5., 6.]], dtype=float32)
-          """), [1, 2, 3, 4, 5, 6]
+      ["""array([[1., 2., 3.],
+                 [4., 5., 6.]], dtype=float32)""", [1, 2, 3, 4, 5, 6]
       ],
+      # Match both parts of a complex number
+      # python style
+      ['(0.0002+30000j)', [0.0002, 30000]],
+      ['(2.3e-10-3.34e+9j)', [2.3e-10, -3.34e+9]],
+      # numpy style
+      ['array([1.27+5.j])', [1.27, 5]],
+      ['(2.3e-10+3.34e+9j)', [2.3e-10, 3.34e+9]],
+      ["""array([1.27e-09+5.e+00j,
+                 2.30e+01-1.e-03j])""", [1.27e-09, 5.e+00, 2.30e+01, -1.e-03]],
       # Check examples in tolerence.
       ['1e-6', [0]],
       ['0.0', [1e-6]],
@@ -123,10 +128,8 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
 
   @parameterized.parameters(
       # CHeck examples out of tolerence.
-      ['1.001e-6', [0]],
-      ['0.0', [1.001e-6]],
-      ['1.000001001e9', [1e9]],
-      ['1e9', [1.000001001e9]],
+      ['1.001e-2', [0]],
+      ['0.0', [1.001e-3]],
   )
   def test_fail_tolerences(self, text, expected_floats):
     extract_floats = tf_doctest_lib._FloatExtractor()

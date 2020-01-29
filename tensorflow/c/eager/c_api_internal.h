@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -62,36 +63,10 @@ struct TFE_ContextOptions {
 };
 
 struct TFE_Context {
-  TFE_Context(const tensorflow::SessionOptions& opts,
-              TFE_ContextDevicePlacementPolicy default_device_placement_policy,
-              TFE_ContextMirroringPolicy default_mirroring_policy, bool async,
-              const bool lazy_remote_inputs_copy,
-              const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
-              tensorflow::Rendezvous* rendezvous,
-              const tensorflow::CustomKernelCreator* custom_kernel_creator)
-      : context(new tensorflow::EagerContext(
-            opts,
-            static_cast<tensorflow::ContextDevicePlacementPolicy>(
-                default_device_placement_policy),
-            static_cast<tensorflow::ContextMirroringPolicy>(
-                default_mirroring_policy),
-            async, lazy_remote_inputs_copy, device_mgr, device_mgr_owned,
-            rendezvous, custom_kernel_creator)) {}
-
-  ~TFE_Context() {
-    // TODO(iga): Add a separate API method to shutdown TFE_Context so that we
-    // don't send RPCs and block in destructor.
-    context->WaitForAndCloseRemoteContexts();
-    // context->RefCountIsOne() should be true here.
-    // TODO(iga): Remove EagerContext refcounting.
-    context->Unref();
-  }
-
   tensorflow::EagerContext* context;
 };
 
 struct TFE_TensorHandle {
-  explicit TFE_TensorHandle(tensorflow::TensorHandle* h) : handle(h) {}
   static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
                                              TF_Status* s) {
     tensorflow::TensorHandle* handle;
@@ -99,10 +74,11 @@ struct TFE_TensorHandle {
     if (!s->status.ok()) {
       return nullptr;
     }
-    return new TFE_TensorHandle(handle);
+    return new TFE_TensorHandle{
+        std::make_unique<tensorflow::TensorHandleInterface>(handle)};
   }
 
-  tensorflow::TensorHandle* handle;
+  std::unique_ptr<AbstractTensorHandleInterface> handle;
 };
 
 struct TFE_TensorDebugInfo {
@@ -113,43 +89,9 @@ struct TFE_TensorDebugInfo {
   std::vector<tensorflow::int64> dev_dims;
 };
 
-struct TFE_OpInferenceContext {
-  explicit TFE_OpInferenceContext(const tensorflow::OpDef* op_def)
-      : op_def(op_def) {}
-
-  const tensorflow::OpDef* op_def;  // op definition from protobuf
-  int input_arg_idx = 0;  // arg definition index for the next input to be added
-  tensorflow::gtl::FlatSet<std::string> attrs;  // attributes inferred so far
-};
-
 struct TFE_Op {
-  TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
-         const tensorflow::AttrTypeMap* t,
-         TFE_OpInferenceContext* inference_ctx)
-      : operation(ctx->context, op, is_function, t),
-        inference_ctx(inference_ctx) {}
-
-  void Clear() {
-    operation.Clear();
-    inference_ctx.reset();
-  }
-
-  tensorflow::Status Reset(TFE_Context* ctx, const char* op, bool is_function,
-                           const tensorflow::AttrTypeMap* t,
-                           const char* raw_device_name,
-                           TFE_OpInferenceContext* infer_ctx) {
-    inference_ctx.reset(infer_ctx);
-    return operation.Reset(ctx->context, op, is_function, t, raw_device_name,
-                           nullptr);
-  }
-
   tensorflow::EagerOperation operation;
-  std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };
-
-TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
-                     const char* raw_device_name, TF_Status* status,
-                     TFE_Op* op_to_reset = nullptr);
 
 struct TFE_Profiler {
   explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }

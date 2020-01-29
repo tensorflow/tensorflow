@@ -84,6 +84,25 @@ struct NumTraits<tensorflow::bfloat16>
   }
 };
 
+template <>
+struct NumTraits<tensorflow::tstring> : GenericNumTraits<tensorflow::tstring> {
+  enum {
+    RequireInitialization = 1,
+    ReadCost = HugeCost,
+    AddCost = HugeCost,
+    MulCost = HugeCost
+  };
+
+  static inline int digits10() { return 0; }
+
+ private:
+  static inline tensorflow::tstring epsilon();
+  static inline tensorflow::tstring dummy_precision();
+  static inline tensorflow::tstring lowest();
+  static inline tensorflow::tstring highest();
+  static inline tensorflow::tstring infinity();
+  static inline tensorflow::tstring quiet_NaN();
+};
 
 using ::tensorflow::operator==;
 using ::tensorflow::operator!=;

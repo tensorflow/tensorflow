@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 
@@ -211,6 +212,8 @@ def convert_kernel(kernel):
   """Converts a Numpy kernel matrix from Theano format to TensorFlow format.
 
   Also works reciprocally, since the transformation is its own inverse.
+
+  This is used for converting legacy Theano-saved model files.
 
   Arguments:
       kernel: Numpy array (3D, 4D or 5D).

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -45,8 +44,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
     initial_dist = [0.2] * 5 if initial_known else None
     classes = math_ops.cast(classes, dtypes.int64)  # needed for Windows build.
     dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
-        200, seed=21, reshuffle_each_iteration=False).map(
-            lambda c: (c, string_ops.as_string(c))).repeat()
+        200, seed=21).map(lambda c: (c, string_ops.as_string(c))).repeat()
 
     get_next = self.getNext(
         dataset.apply(

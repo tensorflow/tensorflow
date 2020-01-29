@@ -37,6 +37,12 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "tflite_experimental_runtime",
+    values = {"define": "tflite_experimental_runtime=true"},
+    visibility = ["//visibility:public"],
+)
+
 TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",
@@ -198,6 +204,7 @@ cc_library(
         "allocation.h",
         "context.h",
         "context_util.h",
+        "core/macros.h",
         "core/subgraph.h",
         "error_reporter.h",
         "graph_info.h",
@@ -459,13 +466,15 @@ cc_test(
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.
 # Note: This target is not yet finalized, and the exact set of exported (C/C++)
-# APIs is subject to change.
+# APIs is subject to change. The output library name is platform dependent:
+#   - Linux/Android: `libtensorflowlite.so`
+#   - Mac: `libtensorflowlite.dylib`
+#   - Windows: `tensorflowlite.dll`
 tflite_cc_shared_object(
-    name = "libtensorflowlite.so",
+    name = "tensorflowlite",
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
-            "-Wl,-install_name,@rpath/libtensorflowlite.so",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
@@ -473,6 +482,7 @@ tflite_cc_shared_object(
             "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
         ],
     }),
+    per_os_targets = True,
     deps = [
         ":framework",
         ":tflite_exported_symbols.lds",

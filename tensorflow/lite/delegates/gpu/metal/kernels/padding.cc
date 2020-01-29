@@ -33,7 +33,7 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::string GetPaddingCode() {
+std::string GetPaddingCode(const PadAttributes& attr) {
   const std::string channels[] = {".x", ".y", ".z", ".w"};
   std::string code = R"(
     #include <metal_stdlib>
@@ -43,8 +43,14 @@ std::string GetPaddingCode() {
       int4 src_size;
       int4 dst_size;
       int4 padding;
-    };
-
+    };)";
+  if (attr.type == PaddingContentType::REFLECT) {
+    code += R"(
+    int reflect(int x, int size) {
+      return size - 1 - abs(abs(x) - size + 1);
+    })";
+  }
+  code += R"(
     $0
     kernel void ComputeFunction(
                                 $1
@@ -56,29 +62,82 @@ std::string GetPaddingCode() {
 
       FLT4 value = FLT4(0.0f);
       int s_x = static_cast<int>(gid.x) - params.padding.x;
-      int s_y = static_cast<int>(gid.y) - params.padding.y;
+      int s_y = static_cast<int>(gid.y) - params.padding.y;)";
+  if (attr.type == PaddingContentType::REFLECT) {
+    code += R"(
+      s_x = reflect(s_x, params.src_size.x);
+      s_y = reflect(s_y, params.src_size.y);
+)";
+    if (attr.prepended.c == 0 && attr.appended.c == 0) {
+      // optimized case
+      code +=
+          "      int buffer_index = (int(gid.z) * params.src_size.y + s_y) * "
+          "params.src_size.x + s_x;\n";
+      code += "      value = src_buffer[buffer_index];\n";
+    } else {
+      code += "      int start_channel = static_cast<int>(gid.z) * 4;\n";
+      for (int i = 0; i < 4; ++i) {
+        const auto& s = channels[i];
+        code += "      {\n";
+        code += "        int channel = start_channel + " + std::to_string(i) +
+                ";\n";
+        code += "        int s_z = channel - params.padding.z;\n";
+        // We need additional clamp for z, so that we use alignment for channels
+        // and can proceed extra channels that can lead to reading out of
+        // resource.
+        code +=
+            "        s_z = clamp(reflect(s_z, params.src_size.z), 0, "
+            "params.src_size.z - 1);\n";
+        code +=
+            "        int buffer_index = ((s_z / 4) * params.src_size.y + s_y) "
+            "* params.src_size.x + s_x;\n";
+        code += "        FLT4 t = src_buffer[buffer_index];\n";
+        code += "        FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
+        code += "        value" + s + " = t_ar[s_z % 4];\n";
+        code += "      }\n";
+      }
+    }
+  } else {
+    code += R"(
       bool inside_x = s_x >= 0 && s_x < params.src_size.x;
       bool inside_y = s_y >= 0 && s_y < params.src_size.y;
       if (inside_x && inside_y) {
         int start_channel = static_cast<int>(gid.z) * 4;
-  )";
-  for (int i = 0; i < 4; ++i) {
-    const auto& s = channels[i];
-    code += "    {\n";
-    code += "    int channel = start_channel + " + std::to_string(i) + ";\n";
-    code += "    int s_z = channel - params.padding.z;\n";
-    code += "    if (s_z >= 0 && s_z < params.src_size.z) {\n";
-    code +=
-        "      int buffer_index = ((s_z / 4) * params.src_size.y + s_y) * "
-        "params.src_size.x + "
-        "s_x;\n";
-    code += "      FLT4 t = src_buffer[buffer_index];\n";
-    code += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
-    code += "      value" + s + " = t_ar[s_z % 4];\n";
-    code += "    }\n";
-    code += "    }\n";
+    )";
+    if (attr.prepended.c == 0 && attr.appended.c == 0) {
+      // optimized case
+      code +=
+          "        int buffer_index = (int(gid.z) * params.src_size.y + s_y) * "
+          "params.src_size.x + s_x;\n";
+      code += "        value = src_buffer[buffer_index];\n";
+    } else if (attr.prepended.c % 4 == 0) {
+      code += R"(
+        int s_z = static_cast<int>(gid.z) - params.padding.z / 4;
+        if (s_z >= 0 && s_z < params.src_size.w) {
+          int buffer_index = (s_z * params.src_size.y + s_y) * params.src_size.x + s_x;
+          value = src_buffer[buffer_index];
+        })";
+    } else {
+      for (int i = 0; i < 4; ++i) {
+        const auto& s = channels[i];
+        code += "    {\n";
+        code +=
+            "    int channel = start_channel + " + std::to_string(i) + ";\n";
+        code += "    int s_z = channel - params.padding.z;\n";
+        code += "    if (s_z >= 0 && s_z < params.src_size.z) {\n";
+        code +=
+            "      int buffer_index = ((s_z / 4) * params.src_size.y + s_y) * "
+            "params.src_size.x + "
+            "s_x;\n";
+        code += "      FLT4 t = src_buffer[buffer_index];\n";
+        code += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
+        code += "      value" + s + " = t_ar[s_z % 4];\n";
+        code += "    }\n";
+        code += "    }\n";
+      }
+    }
+    code += "  }\n";
   }
-  code += "  }\n";
   code +=
       "  int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * "
       "params.dst_size.x + "
@@ -96,7 +155,7 @@ std::vector<ComputeTaskDescriptorPtr> Padding(int id, ValueId input_id,
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  desc->shader_source = GetPaddingCode();
+  desc->shader_source = GetPaddingCode(attr);
 
   desc->input_buffers = {
       {input_id, "device FLT4* const src_buffer"},

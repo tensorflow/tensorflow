@@ -2,6 +2,7 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -478,6 +479,7 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
+        "//tensorflow/core/platform:rules_cc_bzl",
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -860,7 +862,7 @@ gen_api_init_files(
     output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
     root_file_name = "v1.py",
-    root_init_template = "api_template_v1.__init__.py",
+    root_init_template = "$(location api_template_v1.__init__.py)",
 )
 
 gen_api_init_files(
@@ -883,7 +885,7 @@ gen_api_init_files(
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
     root_file_name = "v2.py",
-    root_init_template = "api_template.__init__.py",
+    root_init_template = "$(location api_template.__init__.py)",
 )
 
 py_library(

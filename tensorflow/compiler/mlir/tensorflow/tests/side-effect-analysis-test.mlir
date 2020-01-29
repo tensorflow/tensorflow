@@ -737,3 +737,91 @@ func @while_cond(
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Predecessors: {5}}}
 }
+
+// -----
+
+// Tests that the pass tracks control dependencies based on TF op registry
+// statefulness flag, for ops not yet defined in ODS.
+
+// CHECK-LABEL: func @tf_registry_ops
+func @tf_registry_ops(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf.string>, %arg1: tensor<!tf.string>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Successors: {7}}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Successors: {5}}}
+      "tf.PrintV2"(%arg0) { output_stream = "stderr", end = "\n" }
+      // expected-remark@above {{ID: 0}}
+      // expected-remark@above {{Successors: {2}}}
+        : (tensor<!tf.string>) -> ()
+      %merge_summary = "tf.MergeSummary"(%arg0, %arg1) { N = 2 }
+      // expected-remark@above {{ID: 1}}
+        : (tensor<!tf.string>, tensor<!tf.string>) -> (tensor<!tf.string>)
+      "tf.PrintV2"(%merge_summary) { output_stream = "stderr", end = "\n" }
+      // expected-remark@above {{ID: 2}}
+      // expected-remark@above {{Predecessors: {0}}}
+      // expected-remark@above {{Successors: {3}}}
+        : (tensor<!tf.string>) -> ()
+      tf_executor.yield
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Predecessors: {6}}}
+}
+
+// -----
+
+// Tests that the pass tracks control dependencies for resource arguments with
+// aliasing table (unique IDs).
+
+// CHECK-LABEL: func @arguments_with_unique_ids
+func @arguments_with_unique_ids(
+  // expected-remark@above {{ID: 9}}
+  %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.resource_arg_unique_id = 0 : i64},
+  %arg1: tensor<*x!tf.resource<tensor<32xf32>>> {tf.resource_arg_unique_id = 0 : i64},
+  %arg2: tensor<*x!tf.resource<tensor<32xf32>>> {tf.resource_arg_unique_id = 33 : i64}) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Successors: {8}}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Successors: {6}}}
+      %r0 = "tf.ReadVariableOp"(%arg0) :
+      // expected-remark@above {{ID: 0}}
+      // expected-remark@above {{Successors: {3}}}
+        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %r1 = "tf.ReadVariableOp"(%arg1) :
+      // expected-remark@above {{ID: 1}}
+      // expected-remark@above {{Successors: {3}}}
+        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %r2 = "tf.ReadVariableOp"(%arg2) :
+      // expected-remark@above {{ID: 2}}
+      // expected-remark@above {{Successors: {4}}}
+        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      "tf.AssignVariableOp"(%arg1, %r0) :
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Predecessors: {0,1}}}
+      // expected-remark@above {{Successors: {4}}}
+        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      tf_executor.yield
+      // expected-remark@above {{ID: 4}}
+      // expected-remark@above {{Predecessors: {2,3}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Predecessors: {7}}}
+}
+

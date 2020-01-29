@@ -72,7 +72,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
     docker_toolchain_autoconfig(
         name = name,
         base = base,
-        bazel_version = "0.29.1",
+        bazel_version = "1.2.1",
         build_bazel_src = build_bazel_src,
         config_repos = config_repos,
         env = env,

@@ -53,6 +53,20 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "c_api_internal.h",
+        "tf_status_helper.h",
+        "tf_status_internal.h",
+        "tf_tensor_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = [
@@ -288,6 +302,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "@com_google_absl//absl/strings",
@@ -625,7 +640,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:ops_testutil",
-        "//third_party/eigen3",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 

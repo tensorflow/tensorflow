@@ -91,14 +91,11 @@ Status EagerExecutor::SyncExecute(EagerNode* node) {
   if (node->AsAsync() != nullptr) {
     return errors::Internal("Executor does not support executing async nodes");
   }
-  Status s = status();
-  if (!s.ok()) {
-    return s;
-  }
+  // NOTE: SyncExecute runs every node regardless of error status in executor.
 
   uint64 id = next_node_id_++;
 
-  s = node->Prepare();
+  Status s = node->Prepare();
   if (!s.ok()) {
     return s;
   }
@@ -129,11 +126,8 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
 
   // Inline execution in sync mode.
   if (!Async()) {
-    status = this->status();
-    if (status.ok()) {
-      status = RunItem(std::move(item), false);
-    }
-    return status;
+    // In sync mode, run the node item regardless of executor status.
+    return RunItem(std::move(item), /*from_queue=*/false);
   } else {
     tensorflow::mutex_lock l(node_queue_mutex_);
     DVLOG(3) << "Add node [id " << item->id << "]" << item->node->DebugString()
@@ -225,7 +219,7 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
 
     bool need_notification = from_queue;
     if (from_queue) {
-      // Since this was from the async queue, pop it from the front of ht queue.
+      // Since this was from the async queue, pop it from the front of the queue
       DCHECK(!node_queue_.empty() && item.get() == node_queue_.front().get());
       node_queue_.pop();
     } else if (async) {
@@ -322,7 +316,7 @@ void EagerExecutor::Run() {
       curr_item.reset(node_queue_.front().get());
       curr_item->Ref();
     }
-    Status status = RunItem(std::move(curr_item), true);
+    Status status = RunItem(std::move(curr_item), /*from_queue=*/true);
     if (!status.ok()) {
       VLOG(1) << "Failed to run item: " << status;
     }
