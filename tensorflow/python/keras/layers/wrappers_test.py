@@ -186,7 +186,6 @@ class TimeDistributedTest(keras_parameterized.TestCase):
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
 
-  @tf_test_util.run_v1_only(reason='b/148248386')
   def test_TimeDistributed_batchnorm(self):
     with self.cached_session():
       # test that wrapped BN updates still work.
@@ -206,8 +205,6 @@ class TimeDistributedTest(keras_parameterized.TestCase):
       # Assert that mean and variance changed.
       assert not np.array_equal(td.get_weights()[2], np.array([0, 0]))
       assert not np.array_equal(td.get_weights()[3], np.array([1, 1]))
-      # Verify input_map has one mapping from inputs to reshaped inputs.
-      self.assertEqual(len(td._input_map.keys()), 1)
 
   def test_TimeDistributed_trainable(self):
     # test layers that need learning_phase to be set
