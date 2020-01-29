@@ -96,13 +96,13 @@ static string GetSmName(std::pair<int, int> compute_capability) {
   // most recent version before the unknown version.
   for (auto iter = m->begin(); iter != m->end(); ++iter) {
     auto k = iter->first;
-    if ((k.first < compute_capability.first) ||
+    if (k.first < compute_capability.first ||
 	(k.first == compute_capability.first &&
 	 k.second <= compute_capability.second)) {
       sm_version = iter->second;
     }
   }
-  std::cout << "SM " << sm_version;
+
   if (sm_version != compute_capability.first*10 + compute_capability.second) {
     LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
                  << ", " << compute_capability.second << ") ."
