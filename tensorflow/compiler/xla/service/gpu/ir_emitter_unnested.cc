@@ -1481,11 +1481,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
     llvm::Type* int8_double_pointer =
         llvm::PointerType::get(b_.getInt8PtrTy(), /*AddressSpace=*/0);
     for (int64 idx : gte_index) {
-<<<<<<< HEAD
-      loc = PointerBitCastOrAddrSpaceCast(loc, int8_double_pointer);
-=======
       loc = b_.CreatePointerBitCastOrAddrSpaceCast(loc, int8_double_pointer);
->>>>>>> google_upstream/master
       loc = Load(InBoundsGEP(loc, {b_.getInt64(idx)}));
     }
 
@@ -2137,31 +2133,6 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     HloComputation* reducer, llvm::Type* element_type,
     llvm::Value* partial_result_address) {
   for (int distance = 16; distance >= 1; distance /= 2) {
-<<<<<<< HEAD
-    for (int i = 0; i != reducers.size(); ++i) {
-      llvm::Type* element_type =
-          partial_result_addresses[i]->getType()->getElementType();
-      int bit_width = llvm_ir::GetSizeInBits(element_type);
-      llvm::Value* result_from_other_lane = Alloca(
-          element_type, nullptr, "result_from_other_lane" + llvm::Twine(i));
-      // Bitcast cannot be applied to aggregate types (even packed ones), so
-      // we bitcast addresses of load/store to intN* of the same bit-width.
-      llvm::Type* shuffled_value_type =
-          element_type->isStructTy() ? b_.getIntNTy(bit_width) : element_type;
-      auto convert_pointer_for_shuffle = [&](llvm::Value* ptr) {
-        return PointerBitCastOrAddrSpaceCast(
-            ptr, shuffled_value_type->getPointerTo());
-      };
-      llvm::Value* partial_result =
-          Load(convert_pointer_for_shuffle(partial_result_addresses[i]),
-               "partial_reduction_result");
-      Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_),
-            convert_pointer_for_shuffle(result_from_other_lane));
-      TF_CHECK_OK(EmitCallToNestedComputation(
-          *reducers[i], {partial_result_addresses[i], result_from_other_lane},
-          partial_result_addresses[i]));
-    }
-=======
     int bit_width = llvm_ir::GetSizeInBits(element_type);
     llvm::Value* result_from_other_lane =
         Alloca(element_type, nullptr, "result_from_other_lane");
@@ -2181,7 +2152,6 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     TF_CHECK_OK(EmitCallToNestedComputation(
         *reducer, {partial_result_address, result_from_other_lane},
         partial_result_address));
->>>>>>> google_upstream/master
   }
 }
 

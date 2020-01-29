@@ -596,13 +596,9 @@ class LocalCollectiveAllReduceStrategy(
   @combinations.generate(
       combinations.combine(
           mode=['graph', 'eager'], required_gpus=2, use_dataset=[True, False]))
-<<<<<<< HEAD
-  def testMakeInputFnIterator(self, use_dataset):
+  def testMakeInputFnIterator(self, required_gpus, use_dataset):
     self.skipTest('Irrelevant Python API failure')
     num_gpus = 2
-=======
-  def testMakeInputFnIterator(self, required_gpus, use_dataset):
->>>>>>> google_upstream/master
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * required_gpus)
     else:

@@ -344,11 +344,7 @@ tf_py_test(
     size = "medium",
     srcs = ["recurrent_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
-    shard_count = 10,
-=======
     shard_count = 12,
->>>>>>> google_upstream/master
     tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",

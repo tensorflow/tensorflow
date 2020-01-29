@@ -37,11 +37,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
-<<<<<<< HEAD
 from tensorflow.python.platform import build_info
-=======
 from tensorflow.python.platform import tf_logging as logging
->>>>>>> google_upstream/master
 from tensorflow.python.util.tf_export import keras_export
 
 
