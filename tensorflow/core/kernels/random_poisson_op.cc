@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
@@ -290,7 +291,7 @@ class RandomPoissonOp : public OpKernel {
     const Tensor& rate_t = ctx->input(1);
 
     TensorShape samples_shape;
-    OP_REQUIRES_OK(ctx, MakeShape(shape_t, &samples_shape));
+    OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &samples_shape));
     const int64 num_samples = samples_shape.num_elements();
 
     samples_shape.AppendShape(rate_t.shape());

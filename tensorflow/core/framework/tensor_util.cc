@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -365,6 +366,23 @@ bool CompressTensorProtoInPlace(int64 min_num_elements,
 }
 
 #undef HANDLE_COMPRESS_CASE
+
+Status MakeShape(const Tensor& shape, TensorShape* out) {
+  if (!TensorShapeUtils::IsVector(shape.shape())) {
+    return errors::InvalidArgument(
+        "shape must be a vector of {int32,int64}, got shape ",
+        shape.shape().DebugString());
+  }
+  if (shape.dtype() == DataType::DT_INT32) {
+    auto vec = shape.flat<int32>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else if (shape.dtype() == DataType::DT_INT64) {
+    auto vec = shape.flat<int64>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else {
+    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
+  }
+}
 
 }  // namespace tensor
 }  // namespace tensorflow

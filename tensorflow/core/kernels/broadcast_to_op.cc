@@ -21,10 +21,12 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/broadcast_to_op.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -45,8 +47,7 @@ class BroadcastToOp : public OpKernel {
     const Tensor& shape_tensor = ctx->input(1);
 
     TensorShape output_shape;
-    OP_REQUIRES_OK(ctx,
-                   ctx->op_kernel().MakeShape(shape_tensor, &output_shape));
+    OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_tensor, &output_shape));
 
     // Handle copy.
     if (output_shape == input_shape) {
@@ -91,7 +92,7 @@ class BroadcastToOp : public OpKernel {
   }
 };
 
-// As MakeShape is able to handle both DT_INT32 and DT_INT64,
+// As tensor::MakeShape is able to handle both DT_INT32 and DT_INT64,
 // no need to have TypeConstraint for `Tidx`
 #define REGISTER_KERNEL(type)                                           \
   REGISTER_KERNEL_BUILDER(                                              \

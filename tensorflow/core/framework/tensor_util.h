@@ -325,6 +325,10 @@ inline bool CompressTensorProtoInPlace(TensorProto* tensor) {
                                     kDefaultMinCompressionRatio, tensor);
 }
 
+// Make a TensorShape from the contents of shape_t. Shape_t must be a
+// 1-dimensional tensor of type int32 or int64.
+Status MakeShape(const Tensor& shape_t, TensorShape* out);
+
 }  // namespace tensor
 }  // namespace tensorflow
 

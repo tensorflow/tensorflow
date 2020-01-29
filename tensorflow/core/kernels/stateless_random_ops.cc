@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
@@ -74,7 +75,7 @@ class StatelessRandomOpBase : public OpKernel {
     const Tensor& shape_t = context->input(0);
     const Tensor& seed_t = context->input(1);
     TensorShape shape;
-    OP_REQUIRES_OK(context, MakeShape(shape_t, &shape));
+    OP_REQUIRES_OK(context, tensor::MakeShape(shape_t, &shape));
     OP_REQUIRES(context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
                 errors::InvalidArgument("seed must have shape [2], not ",
                                         seed_t.shape().DebugString()));

@@ -162,23 +162,6 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   }
 }
 
-Status OpKernel::MakeShape(const Tensor& shape, TensorShape* out) const {
-  if (!IsLegacyVector(shape.shape())) {
-    return errors::InvalidArgument(
-        "shape must be a vector of {int32,int64}, got shape ",
-        shape.shape().DebugString());
-  }
-  if (shape.dtype() == DataType::DT_INT32) {
-    auto vec = shape.flat<int32>();
-    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
-  } else if (shape.dtype() == DataType::DT_INT64) {
-    auto vec = shape.flat<int64>();
-    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
-  } else {
-    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
-  }
-}
-
 string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
   string trace_string = strings::StrCat(name_view(), ":", type_string_view());
   if (!verbose) return trace_string;
