@@ -26,26 +26,31 @@ def F32ElementsAttr : ElementsAttrBase<
 def ExtractSingleElementAsFloat : NativeCodeCall<
     "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
 
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
 // Multi-pattern consisting of matching stand-alone convolution op followed by
 // activation op.
 multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
-  def : Pat<(ActFnOp (TFL_Conv2DOp $input, $filter, $bias,
+  def : Pat<(ActFnOp (TFL_Conv2DOp:$conv_out $input, $filter, $bias,
                                    $h_factor, $w_factor, TFL_AF_None,
                                    $padding, $stride_h, $stride_w)),
             (TFL_Conv2DOp $input, $filter, $bias,
                           $h_factor, $w_factor, ActFnAttr,
-                          $padding, $stride_h, $stride_w)>;
-  def : Pat<(ActFnOp (TFL_DepthwiseConv2DOp $input, $filter, $bias,
+                          $padding, $stride_h, $stride_w),
+            [(HasOneUse $conv_out)]>;
+  def : Pat<(ActFnOp (TFL_DepthwiseConv2DOp:$conv_out $input, $filter, $bias,
                                    $h_factor, $w_factor, TFL_AF_None,
                                    $padding, $stride_h, $stride_w,
                                    $multiplier)),
             (TFL_DepthwiseConv2DOp $input, $filter, $bias,
                                    $h_factor, $w_factor, ActFnAttr,
                                    $padding, $stride_h, $stride_w,
-                                   $multiplier)>;
+                                   $multiplier),
+            [(HasOneUse $conv_out)]>;
 }
 
 // TODO(hinsu): Also fuse ops corresponding to SIGN_BIT fused
@@ -60,9 +65,6 @@ foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
   CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
-
-// Checks if the value has only one user.
-def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 // If we see a binary op (add, sub) op adding a constant value to a convolution
 // op with constant bias, we can fuse the binary op into the convolution op by
@@ -291,8 +293,9 @@ multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
   foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                        [TFL_Relu6Op, TFL_AF_Relu6],
                        [TFL_Relu1Op, TFL_AF_Relu1]] in {
-    def : Pat<(actFnPair[0] (BinaryOp $lhs, $rhs, TFL_AF_None)),
-              (BinaryOp $lhs, $rhs, actFnPair[1])>;
+    def : Pat<(actFnPair[0] (BinaryOp:$binary_out $lhs, $rhs, TFL_AF_None)),
+              (BinaryOp $lhs, $rhs, actFnPair[1]),
+              [(HasOneUse $binary_out)]>;
   }
 }
 
@@ -381,6 +384,27 @@ def : Pat<(TFL_MaximumOp (TFL_MulOp:$mul_out $input1,
           [(ConstDoubleValueLessThan<"1"> $alpha),
            (EqualOperands $input1, $input2),
            (HasOneUse $mul_out)]>;
+
+// Checks if the operand0's rank is one less than operand1's rank.
+def PReluAlphaRankCheck : Constraint<
+  CPred<"$0.getType().cast<ShapedType>().getRank() == "
+  "$1.getType().cast<ShapedType>().getRank() - 1">>;
+
+// PReLU pattern from Keras:
+// f(x) = Relu(x) + (-alpha * Relu(-x))
+def : Pat<(TFL_AddOp
+           (TFL_ReluOp:$relu_out $input1),
+           (TFL_MulOp:$mul_out
+            (TFL_ReluOp (TFL_NegOp:$input_neg_out $input2)),
+            $neg_alpha,
+            TFL_AF_None),
+           TFL_AF_None),
+          (TFL_PReluOp $input1, (TFL_NegOp $neg_alpha)),
+          [(EqualOperands $input1, $input2),
+           (PReluAlphaRankCheck $neg_alpha, $input1),
+           (HasOneUse $relu_out),
+           (HasOneUse $mul_out),
+           (HasOneUse $input_neg_out)]>;
 
 // The constant folding in this pass might produce constant in the tf dialect.
 // This rule is to legalize these constant to the tfl dialect.
