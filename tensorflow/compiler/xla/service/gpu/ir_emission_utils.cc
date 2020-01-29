@@ -128,7 +128,8 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
-    const stream_executor::DeviceDescription* device_description) {
+    int smallest_input_dtype_bits,
+    const stream_executor::DeviceDescription *device_description) {
   if (reduction_dimensions.is_row_reduction) {
     int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
@@ -141,11 +142,15 @@ std::array<int64, 3> GetReductionTiling(
     }
     int cc_major = 0, cc_minor = 0;
     if (device_description != nullptr) {
-      device_description->cuda_compute_capability(&cc_major, &cc_minor);
+      device_description->cuda_compute_capability(
+          &cc_major, &cc_minor);
     }
-    if (cc_major == 0) {  // Not an NVIDIA GPU.
+    int unroll_x = 8;
+    if (cc_major >= 7 && smallest_input_dtype_bits <= 16) {
+      // TODO: Benchmark with int8 too.
+      unroll_x = 32;
     }
-    return {tile_z, 1, 8};
+    return {tile_z, 1, unroll_x};
   }
 
   // Column reduction.

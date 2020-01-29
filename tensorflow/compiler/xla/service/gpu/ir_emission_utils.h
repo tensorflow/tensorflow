@@ -198,6 +198,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 // non-optimized value.
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
     const stream_executor::DeviceDescription* device_description);
 
 // Emits call to "vprintf" with given format and arguments.
