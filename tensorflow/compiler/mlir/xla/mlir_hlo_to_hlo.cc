@@ -124,7 +124,8 @@ static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
   xla::FftType fft_type_enum;
   // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
   // call below should never return false.
-  if (!FftType_Parse(fft_type_str, &fft_type_enum)) return xla::FftType::FFT;
+  if (!FftType_Parse(std::string(fft_type_str), &fft_type_enum))
+    return xla::FftType::FFT;
   return fft_type_enum;
 }
 
@@ -179,7 +180,7 @@ static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
   xla::TriangularSolveOptions::Transpose transpose_enum;
   // Illegal tanspose string would be caught by the verifier, so
   // 'Transpose_Parse' call below should never return false.
-  if (!xla::TriangularSolveOptions::Transpose_Parse(transpose_str,
+  if (!xla::TriangularSolveOptions::Transpose_Parse(std::string(transpose_str),
                                                     &transpose_enum))
     return xla::TriangularSolveOptions::NO_TRANSPOSE;
   return transpose_enum;
@@ -550,8 +551,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   if (op.has_side_effect()) return failure();
   auto& value_map = *ctx.values;
   value_map[op] = xla::CustomCall(
-      ctx.builder, op.call_target_name(), GetTuple(op.args(), ctx),
-      xla::TypeToShape(op.getType()), op.backend_config());
+      ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
+      xla::TypeToShape(op.getType()), std::string(op.backend_config()));
   return success();
 }
 
@@ -560,8 +561,9 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   // The shape argument expected by the xla client API is the type of the first
   // element in the result tuple.
   auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
-  value_map[op] = xla::InfeedWithToken(
-      value_map[op.token()], xla::TypeToShape(result_type), op.infeed_config());
+  value_map[op] =
+      xla::InfeedWithToken(value_map[op.token()], xla::TypeToShape(result_type),
+                           std::string(op.infeed_config()));
   return success();
 }
 
@@ -586,9 +588,10 @@ LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] = xla::OutfeedWithToken(
-      value_map[op.operand()], value_map[op.token()],
-      xla::TypeToShape(op.operand().getType()), op.outfeed_config());
+  value_map[op] =
+      xla::OutfeedWithToken(value_map[op.operand()], value_map[op.token()],
+                            xla::TypeToShape(op.operand().getType()),
+                            std::string(op.outfeed_config()));
   return success();
 }
 
@@ -754,7 +757,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::Trace(op.tag(), value_map[op.operand()]);
+  xla::Trace(std::string(op.tag()), value_map[op.operand()]);
   return success();
 }
 

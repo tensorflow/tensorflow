@@ -2040,7 +2040,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     if (op.keep_dims()) {
       result = rewriter.create<ReshapeOp>(loc, op.getType(), result);
     }
-    rewriter.replaceOp(op, {result}, {op.reduction_indices()});
+    rewriter.replaceOp(op, {result});
 
     return this->matchSuccess();
   }
@@ -2338,7 +2338,7 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
       result = rewriter.create<ReshapeOp>(loc, output_type, result);
     }
 
-    rewriter.replaceOp(op, {result}, {op.multiples()});
+    rewriter.replaceOp(op, {result});
 
     return matchSuccess();
   }
@@ -2385,7 +2385,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
       rewriter.create<ReturnOp>(loc, reducer.getResult());
     }
 
-    rewriter.replaceOp(op, {result}, {op.orig_output()});
+    rewriter.replaceOp(op, {result});
 
     return matchSuccess();
   }
@@ -2530,7 +2530,7 @@ class ConvertConv2DBackpropInputOp
         /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
         /*precision_config=*/ArrayAttr());
 
-    rewriter.replaceOp(op, {result}, {op.input_sizes()});
+    rewriter.replaceOp(op, {result});
 
     return matchSuccess();
   }
@@ -2732,7 +2732,7 @@ class ConvertConv2DBackpropFilterOp
         /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
         /*precision_config=*/ArrayAttr());
 
-    rewriter.replaceOp(op, {result}, {op.filter_sizes()});
+    rewriter.replaceOp(op, {result});
 
     return matchSuccess();
   }
@@ -2784,9 +2784,7 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
     Value result = rewriter.create<SelectOp>(loc, op.getType(), compare,
                                              on_value, off_value);
 
-    rewriter.replaceOp(
-        op, {result},
-        {op.indices(), op.on_value(), op.depth(), op.off_value()});
+    rewriter.replaceOp(op, {result});
 
     return matchSuccess();
   }

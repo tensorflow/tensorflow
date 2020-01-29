@@ -122,7 +122,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
           os << formatv(
               "  auto {0} = Convert{1}ForOptionWriter(op.{0}(), fbb);\n",
               val.getName(), record->getClasses()[0]->getName());
-          options.push_back(val.getName());
+          options.push_back(std::string(val.getName()));
         }
       }
     }

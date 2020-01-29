@@ -1514,7 +1514,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   }
 
   return absl::make_unique<KernelThunk>(
-      non_constant_buffers, kernel->getName(),
+      non_constant_buffers, std::string(kernel->getName()),
       implements_whole_instruction ? inst : nullptr, unroll_factor);
 }
 

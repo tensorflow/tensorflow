@@ -167,7 +167,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   auto metadata_str = compile->getAttrOfType<StringAttr>("metadata");
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
-  metadata.ParseFromString(metadata_str.getValue());
+  metadata.ParseFromString(std::string(metadata_str.getValue()));
   int64_t num_replicas = replicate.n().getLimitedValue();
   // Find the formattable operands of `execute`, which must be mirrored
   // variables (arguments of `replicate`), and must be pass-throughs from while

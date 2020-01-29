@@ -124,7 +124,9 @@ class NameUniquifier : public OpOrArgNameMapper {
       : flib_(flib) {}
 
  private:
-  bool IsUnique(llvm::StringRef name) override { return !flib_.Contains(name); }
+  bool IsUnique(llvm::StringRef name) override {
+    return !flib_.Contains(std::string(name));
+  }
 
   std::string GetName(OpOrVal op_or_val) override {
     DCHECK(false) << "Unimplemented";
@@ -1047,15 +1049,16 @@ void ImporterBase::GetArgsAndRetsFromFunctionBody(
 Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   // If the library function has been converted already, nothing needs to be
   // done.
-  if (tf_name_to_mlir_name_->find(func_name) != tf_name_to_mlir_name_->end())
+  if (tf_name_to_mlir_name_->find(std::string(func_name)) !=
+      tf_name_to_mlir_name_->end())
     return Status::OK();
 
-  std::string mlir_func_name =
-      function_name_uniquifier_->GetUniqueName(func_name);
-  (*tf_name_to_mlir_name_)[func_name] = mlir_func_name;
+  std::string mlir_func_name(
+      function_name_uniquifier_->GetUniqueName(func_name));
+  (*tf_name_to_mlir_name_)[std::string(func_name)] = mlir_func_name;
 
   const auto& func_lib = graph_flib_;
-  const auto* func_def = func_lib.Find(func_name);
+  const auto* func_def = func_lib.Find(std::string(func_name));
   if (func_def == nullptr) {
     return errors::FailedPrecondition(
         absl::StrCat("Failed to find function '", StringRefToView(func_name),
@@ -1089,7 +1092,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
 
   // Checks for an associated custom gradient function. Adds it to the attribute
   // list of this function.
-  auto grad_func_name = func_lib.FindGradient(func_name);
+  auto grad_func_name = func_lib.FindGradient(std::string(func_name));
   if (!grad_func_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
@@ -3019,7 +3022,7 @@ Status SavedModelV1Importer::ReadVariablesFromSession(
   std::vector<std::string> variable_names;
   variable_names.reserve(variable_names_and_ops.size());
   for (const auto& name_and_location : variable_names_and_ops)
-    variable_names.push_back(name_and_location.first);
+    variable_names.push_back(std::string(name_and_location.first));
 
   std::vector<Tensor> resource_tensors;
   TF_RETURN_IF_ERROR(bundle_.GetSession()->Run(

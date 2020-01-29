@@ -701,7 +701,7 @@ struct ConvertTensorListStack
     if ((ranked_type && ranked_type.getRank() == 0) ||
         !matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
       // If no constant is spotted, just forward the operand.
-      rewriter.replaceOp(op, {input}, llvm::None);
+      rewriter.replaceOp(op, {input});
       return matchSuccess();
     }
 

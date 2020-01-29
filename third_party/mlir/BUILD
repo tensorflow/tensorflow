@@ -2279,7 +2279,6 @@ cc_library(
         "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/LinalgTransforms.h",
-        "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
     includes = ["include"],
