@@ -560,6 +560,15 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
         PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
         PrimitiveType_Name(bitcast->shape().element_type()));
   }
+  if (layout_sensitive_ &&
+      shape_size_function_(bitcast->shape()) !=
+          shape_size_function_(bitcast->operand(0)->shape())) {
+    return InternalError(
+        "Bitcast cannot have different shape sizes of output (%d) and operand "
+        "(%d)",
+        shape_size_function_(bitcast->shape()),
+        shape_size_function_(bitcast->operand(0)->shape()));
+  }
   return Status::OK();
 }
 

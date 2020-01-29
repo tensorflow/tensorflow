@@ -558,6 +558,25 @@ TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
               HasSubstr("Bitcast can not change the element type"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY BitcastNeedsToBeNoOp {
+   constant.0 = f32[2] constant({0.0, 0.0})
+   ROOT bitcast = f32[3] bitcast(constant.0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Bitcast cannot have different shape sizes of output "
+                        "(12) and operand (8)"));
+}
+
 TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
   const char* const hlo_string = R"(
   HloModule Module
