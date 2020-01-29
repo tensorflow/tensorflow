@@ -126,7 +126,7 @@ class Layer(module.Module):
       using Python control flow. If `False`, we assume that the layer can
       safely be used to generate a static computation graph.
 
-  Attributes (read-only properties):
+  Attributes:
     name: The name of the layer (string).
     dtype: The dtype of the layer's computations and weights. If mixed
       precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
@@ -139,13 +139,10 @@ class Layer(module.Module):
       included in backprop.
     weights: The concatenation of the lists trainable_weights and
       non_trainable_weights (in this order).
-
-  Mutable properties:
     trainable: Whether the layer should be trained (boolean).
     input_spec: Optional (list of) `InputSpec` object(s) specifying the
       constraints on inputs that can be accepted by the layer.
 
-  ### Dtypes and casting
   Each layer has a dtype, which is typically the dtype of the layer's
   computations and variables. A layer's dtype can be queried via the
   `Layer.dtype` property. The dtype is specified with the `dtype` constructor
