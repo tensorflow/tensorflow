@@ -92,20 +92,18 @@ static string GetSmName(std::pair<int, int> compute_capability) {
       {{7, 5}, 75},
   });
   int sm_version = 35;
-  auto it = m->find(compute_capability);
-  if (it != m->end()) {
-    sm_version = it->second;
-  } else {
-    // Fallback to the most recent version before the unknown version.
-    for (auto iter = m->begin(); iter != m->end(); ++iter) {
-      auto k = iter->first;
-      if (iter->second > sm_version &&
-          ((k.first < compute_capability.first) ||
-           (k.first == compute_capability.first &&
-            k.second <= compute_capability.second))) {
-        sm_version = iter->second;
-      }
+  // If the current compute capability isn't known, fallback to the
+  // most recent version before the unknown version.
+  for (auto iter = m->begin(); iter != m->end(); ++iter) {
+    auto k = iter->first;
+    if ((k.first < compute_capability.first) ||
+	(k.first == compute_capability.first &&
+	 k.second <= compute_capability.second)) {
+      sm_version = iter->second;
     }
+  }
+  std::cout << "SM " << sm_version;
+  if (sm_version != compute_capability.first*10 + compute_capability.second) {
     LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to telling LLVM that we're compiling for sm_"
