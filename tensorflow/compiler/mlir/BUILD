@@ -46,7 +46,7 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:AffineDialectRegistration",
         "@llvm-project//mlir:LoopDialectRegistration",
-        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:MlirOptMain",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOpsDialectRegistration",
         "@llvm-project//mlir:Support",

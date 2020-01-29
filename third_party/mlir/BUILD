@@ -1707,7 +1707,7 @@ cc_library(
 
 # TODO(jpienaar): Update this.
 cc_library(
-    name = "MlirOptLib",
+    name = "MlirOptMain",
     srcs = [
         "lib/Support/MlirOptMain.cpp",
     ],
@@ -1784,13 +1784,13 @@ cc_binary(
 
 # TODO(jpienaar): This library should be removed.
 cc_library(
-    name = "MlirOptMain",
+    name = "MlirOptLib",
     srcs = [
         "tools/mlir-opt/mlir-opt.cpp",
     ],
     deps = [
         ":Analysis",
-        ":MlirOptLib",
+        ":MlirOptMain",
         ":Pass",
         ":Support",
         "@llvm-project//llvm:support",
