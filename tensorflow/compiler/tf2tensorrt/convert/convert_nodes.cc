@@ -2660,8 +2660,7 @@ Status ConvertSlice(OpConverterParams* params) {
   // undefined, we don't convert to be safe.
   const bool batch_size_is_defined = input_dims[0] > 0;
   const bool size_is_modified =
-      size[0] != -1 && (!batch_size_is_defined ||
-                        (batch_size_is_defined && size[0] != input_dims[0]));
+      size[0] != -1 && (!batch_size_is_defined || size[0] != input_dims[0]);
   if (begin_is_modified || size_is_modified) {
     return errors::Unimplemented(
         "TensorRT does not allow modifications to the batch dimension, at ",
@@ -2758,8 +2757,7 @@ Status ConvertStridedSlice(OpConverterParams* params) {
     // the batch size is undefined, we don't convert to be safe.
     const bool batch_size_is_defined = (input_dims[0] > 0);
     const bool end_is_modified =
-        !(end_mask & 1) && (!batch_size_is_defined ||
-                            (batch_size_is_defined && end[0] != input_dims[0]));
+        !(end_mask & 1) && (!batch_size_is_defined || end[0] != input_dims[0]);
     if (begin_is_modified || stride_is_modified || end_is_modified) {
       return errors::Unimplemented(
           "TensorRT does not allow modifications to the batch dimension, at ",
