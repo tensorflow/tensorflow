@@ -1141,6 +1141,9 @@ class TrtGraphConverterV2(object):
       # Enable profile generation.
       self._for_each_trt_node(self._converted_graph_def,
                               partial(_set_profile_generation_mode, True))
+      # Profile generation is enabled using the _profile_generation_mode
+      # attribute of the TRTEngineOps. We need to rebuild the function to
+      # change this attribute.
       _rebuild_func()
 
     # Use the first input in explicit batch mode to build TensorRT engines
