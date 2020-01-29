@@ -2015,7 +2015,6 @@ class AUC(Metric):
                               1] - self.true_positives[1:]
     p = self.true_positives + self.false_positives
     dp = p[:self.num_thresholds - 1] - p[1:]
-
     prec_slope = math_ops.div_no_nan(
         dtp, math_ops.maximum(dp, 0), name='prec_slope')
     intercept = self.true_positives[1:] - math_ops.multiply(prec_slope, p[1:])
@@ -2028,13 +2027,26 @@ class AUC(Metric):
             name='recall_relative_ratio'),
         array_ops.ones_like(p[1:]))
 
-    return math_ops.reduce_sum(
-        math_ops.div_no_nan(
-            prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
-            math_ops.maximum(self.true_positives[1:] + self.false_negatives[1:],
-                             0),
-            name='pr_auc_increment'),
-        name='interpolate_pr_auc')
+    pr_auc_increment = math_ops.div_no_nan(
+        prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
+        math_ops.maximum(self.true_positives[1:] + self.false_negatives[1:], 0),
+        name='pr_auc_increment')
+
+    if self.multi_label:
+      by_label_auc = math_ops.reduce_sum(
+          pr_auc_increment, name=self.name + '_by_label', axis=0)
+      if self.label_weights is None:
+        # Evenly weighted average of the label AUCs.
+        return math_ops.reduce_mean(by_label_auc, name=self.name)
+      else:
+        # Weighted average of the label AUCs.
+        return math_ops.div_no_nan(
+            math_ops.reduce_sum(
+                math_ops.multiply(by_label_auc, self.label_weights)),
+            math_ops.reduce_sum(self.label_weights),
+            name=self.name)
+    else:
+      return math_ops.reduce_sum(pr_auc_increment, name='interpolate_pr_auc')
 
   def result(self):
     if (self.curve == metrics_utils.AUCCurve.PR and
