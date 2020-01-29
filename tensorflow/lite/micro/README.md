@@ -45,7 +45,7 @@ Here are the core requirements that a platform needs to run the framework:
 
 -   Global variable initialization. We do use a pattern of relying on global
     variables being set before `main()` is run in some places, so you'll need to
-    make sure your compiler toolchain
+    make sure your compiler toolchain supports this.
 
 And that's it! You may be wondering about some other common requirements that
 are needed by a lot of non-embedded software, so here's a brief list of things
