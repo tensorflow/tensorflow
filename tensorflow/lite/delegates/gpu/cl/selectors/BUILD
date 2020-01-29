@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/kernels:lstm",
         "//tensorflow/lite/delegates/gpu/cl/kernels:max_unpooling",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:mean",
         "//tensorflow/lite/delegates/gpu/cl/kernels:multiply_add",
         "//tensorflow/lite/delegates/gpu/cl/kernels:padding",
         "//tensorflow/lite/delegates/gpu/cl/kernels:pooling",

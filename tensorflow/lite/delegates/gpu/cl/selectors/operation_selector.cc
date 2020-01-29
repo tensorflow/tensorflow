@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
@@ -113,6 +114,10 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
       SelectMaxUnpooling(attr, op_def, gpu_op);
       return OkStatus();
+    }
+    case OperationType::MEAN: {
+      auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
+      return SelectMean(attr, op_def, gpu_op);
     }
     case OperationType::MULTIPLY_SCALAR: {
       auto attr =
