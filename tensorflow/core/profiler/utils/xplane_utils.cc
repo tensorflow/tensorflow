@@ -15,9 +15,19 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 #include "absl/strings/match.h"
+#include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
+namespace {
+
+// Creates a Timespan from an XEvent.
+// WARNING: This should only be used when comparing events from the same XLine.
+Timespan XEventTimespan(const XEvent& event) {
+  return Timespan(event.offset_ps(), event.duration_ps());
+}
+
+}  // namespace
 
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
   for (const XPlane& plane : space.planes()) {
@@ -42,6 +52,35 @@ XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name) {
   XPlane* plane = space->add_planes();
   plane->set_name(std::string(name));
   return plane;
+}
+
+bool IsNested(const XEvent& event, const XEvent& parent) {
+  return XEventTimespan(parent).Includes(XEventTimespan(event));
+}
+
+void AddOrUpdateIntStat(int64 metadata_id, int64 value, XEvent* event) {
+  for (auto& stat : *event->mutable_stats()) {
+    if (stat.metadata_id() == metadata_id) {
+      stat.set_int64_value(value);
+      return;
+    }
+  }
+  XStat* stat = event->add_stats();
+  stat->set_metadata_id(metadata_id);
+  stat->set_int64_value(value);
+}
+
+void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
+                        XEvent* event) {
+  for (auto& stat : *event->mutable_stats()) {
+    if (stat.metadata_id() == metadata_id) {
+      stat.set_str_value(std::string(value));
+      return;
+    }
+  }
+  XStat* stat = event->add_stats();
+  stat->set_metadata_id(metadata_id);
+  stat->set_str_value(std::string(value));
 }
 
 }  // namespace profiler
