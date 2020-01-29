@@ -502,6 +502,14 @@ BHWC CalculateOutputShape(const BHWC& input,
   return BHWC(input.b, 1, 1, attr.weights.shape.o);
 }
 
+BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
+  const int b = attr.dims.find(Axis::BATCH) == attr.dims.end() ? input.b : 1;
+  const int h = attr.dims.find(Axis::HEIGHT) == attr.dims.end() ? input.h : 1;
+  const int w = attr.dims.find(Axis::WIDTH) == attr.dims.end() ? input.w : 1;
+  const int c = attr.dims.find(Axis::CHANNELS) == attr.dims.end() ? input.c : 1;
+  return BHWC(b, h, w, c);
+}
+
 Status CalculateOutputShape(const std::vector<BHWC>& input,
                             const ConcatAttributes& attr, BHWC* output_shape) {
   BHWC new_shape = input[0];

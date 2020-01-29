@@ -449,6 +449,9 @@ struct FullyConnectedAttributes {
 BHWC CalculateOutputShape(const BHWC& input,
                           const FullyConnectedAttributes& attr);
 
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
+
 struct ReshapeAttributes {
   BHWC new_shape;
 };
