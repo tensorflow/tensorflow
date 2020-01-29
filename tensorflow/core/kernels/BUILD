@@ -3913,7 +3913,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "argmax_op",
     prefix = "argmax_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_cuda_or_rocm([":reduction_ops"]),
 )
 
 tf_kernel_library(
