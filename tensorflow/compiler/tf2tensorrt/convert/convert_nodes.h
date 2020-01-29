@@ -147,7 +147,7 @@ Status ConvertGraphDefToEngine(
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
-    TrtShapeOptimizationProfile& profiles);
+    TrtShapeOptimizationProfile* profiles);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -468,7 +468,7 @@ class Converter {
                          int max_batch_size, size_t max_workspace_size_bytes,
                          nvinfer1::IGpuAllocator* allocator,
                          TRTInt8Calibrator* calibrator,
-                         TrtShapeOptimizationProfile& profiles);
+                         TrtShapeOptimizationProfile* profiles);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by op converters to convert individual TF node and add layers

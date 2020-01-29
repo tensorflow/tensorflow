@@ -926,7 +926,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
         segment_graph_def_, precision_mode_, batch_size, workspace_size_,
         input_engine_shapes, &logger, allocator, calibrator_.get(), &engine,
         use_calibration_, use_implicit_batch_, &convert_successfully,
-        cache_res->profiles_);
+        &cache_res->profiles_);
     if (!status.ok()) {
       LOG(WARNING) << "Engine creation for " << name() << " failed. "
                    << "The native segment will be used instead. "
@@ -1019,7 +1019,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
         cres->calibrator_.get(), &cres->engine_,
         /*use_calibration=*/true,
         this->use_implicit_batch_,
-        /*convert_successfully=*/nullptr, cache_res->profiles_);
+        /*convert_successfully=*/nullptr, &cache_res->profiles_);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes

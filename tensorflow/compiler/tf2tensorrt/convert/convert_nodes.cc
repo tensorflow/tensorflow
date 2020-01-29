@@ -1333,7 +1333,7 @@ Status Converter::BuildCudaEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
     int max_batch_size, size_t max_workspace_size_bytes,
     nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
-    TrtShapeOptimizationProfile& profiles) {
+    TrtShapeOptimizationProfile* profiles) {
   VLOG(1) << "Configuring TensorRT builder";
   trt_builder_->setMaxBatchSize(max_batch_size);
   trt_builder_->setGpuAllocator(allocator);
@@ -1353,8 +1353,8 @@ Status Converter::BuildCudaEngine(
       builder_config->setInt8Calibrator(nullptr);
     }
   }
-  if (!use_implicit_batch_) {
-    profiles.configureBuilder(trt_builder_.get(), builder_config.get(),
+  if (!use_implicit_batch_ && profiles) {
+    profiles->configureBuilder(trt_builder_.get(), builder_config.get(),
                               network());
   }
   VLOG(1) << "Building TensorRT engine";
@@ -5681,7 +5681,7 @@ Status ConvertGraphDefToEngine(
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
-    TrtShapeOptimizationProfile& profiles) {
+    TrtShapeOptimizationProfile* profiles) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
