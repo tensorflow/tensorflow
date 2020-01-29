@@ -207,6 +207,7 @@ cc_test(
         ":block_map",
         ":cpu_cache_size",
         ":path",
+        ":side_pair",
         "@com_google_googletest//:gtest",
     ],
 )
