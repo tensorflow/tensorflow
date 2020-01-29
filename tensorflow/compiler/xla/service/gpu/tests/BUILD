@@ -59,7 +59,6 @@ tf_cc_test(
         "gemm_rewrite_test.cc",
     ],
     tags = tf_cuda_tests_tags() + [
-        "no_oss",  # TODO(b/148106593): Re-enable this test in OSS.
         "no_rocm",
     ],
     deps = [
