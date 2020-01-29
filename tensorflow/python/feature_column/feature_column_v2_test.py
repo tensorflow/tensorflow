@@ -41,7 +41,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
@@ -2102,12 +2101,11 @@ class LinearModelTest(test.TestCase):
     model = fc.LinearModel(columns)
     model.compile(
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        loss='categorical_crossentropy',
+        loss='binary_crossentropy',
         metrics=['accuracy'])
 
     x = {'a': np.random.random((10, 1))}
-    y = np.random.randint(20, size=(10, 1))
-    y = np_utils.to_categorical(y, num_classes=20)
+    y = np.random.randint(0, 2, size=(10, 1))
     model.fit(x, y, epochs=1, batch_size=5)
     model.fit(x, y, epochs=1, batch_size=5)
     model.evaluate(x, y, batch_size=5)
