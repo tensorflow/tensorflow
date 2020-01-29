@@ -1956,6 +1956,13 @@ static void EmitTile(
   IrArray::Index source_idx = tile_origin_index.AddOffsetToDim(
       start_offset_x, KernelMappingScheme::DimX, b);
 
+  // True when we all threads will always completly unroll.
+  // So we do not need to emit condition.
+  bool always_full_unroll = false;
+  if (mapping_scheme.GetDimsInElems()[2] % tile_size_x == 0){
+    always_full_unroll = true;
+  }
+
   ksl->For(
       loop_name + "_y_in_tile",
       /*start=*/y,
@@ -1970,8 +1977,12 @@ static void EmitTile(
               constant(j * step_x), KernelMappingScheme::DimX, b);
           // The if-statement below always evaluates to true for the blocks
           // where the entire processed tile fits within the input buffer.
-          ksl->If(loop_name + "_x_in_tile", b->CreateICmpULT(x_loc, tile_width),
-                  [&] { emit_elem_function(source_idx_x, y_loc, x_loc, j); });
+          if (!always_full_unroll) {
+            ksl->If(loop_name + "_x_in_tile", b->CreateICmpULT(x_loc, tile_width),
+                    [&] { emit_elem_function(source_idx_x, y_loc, x_loc, j); });
+          } else {
+            emit_elem_function(source_idx_x, y_loc, x_loc, j);
+          }
         }
       });
 }
