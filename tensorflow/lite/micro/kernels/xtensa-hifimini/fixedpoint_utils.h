@@ -217,6 +217,20 @@ inline void QuantizeMultiplier(double double_multiplier,
   *quantized_multiplier = static_cast<int32_t>(q_fixed);
 }
 
+//
+// Convert a floating point number to a Q representation for 24 bit integers.
+//
+inline int CreateQConstantForInt24(int integer_bits, float f) {
+  const double min_bounds = static_cast<double>(INT24_MIN);
+  const double max_bounds = static_cast<double>(INT24_MAX);
+
+  int fractional_bits = 23 - integer_bits;
+  double raw = std::round(f * static_cast<double>(1 << fractional_bits));
+  raw = std::max(raw, min_bounds);
+  raw = std::min(raw, max_bounds);
+  return static_cast<int>(raw);
+}
+
 }  // namespace hifimini
 }  // namespace xtensa
 }  // namespace micro
