@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
 #include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/types.h"
@@ -126,17 +128,17 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   }
 
   VLOG(1) << "Building executable";
-  auto compile_result =
-      client->Compile(computation, argument_layout_ptrs, build_options);
-  if (!compile_result.ok()) {
-    return compile_result.status();
-  }
-  *program = std::move(compile_result.ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client->Compile(computation, argument_layout_ptrs, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  *program = std::move(executables[0]);
   return Status::OK();
 }
 
 void XRTCompileOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTCompileOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetCompileCell());
 
   ResourceMgr* rm;
   OP_REQUIRES_OK(ctx, XRTGenericDeviceAccessor::GetResourceManager(ctx, &rm));
@@ -207,6 +209,7 @@ XRTReleaseCompilationRefOp::~XRTReleaseCompilationRefOp() = default;
 
 void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTReleaseCompilationRefOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetReleaseCompilationCell());
 
   ResourceMgr* rm;
   OP_REQUIRES_OK(ctx, XRTGenericDeviceAccessor::GetResourceManager(ctx, &rm));

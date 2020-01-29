@@ -23,9 +23,11 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 
+#include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
@@ -57,6 +59,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/tensor_list.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
 
@@ -161,6 +167,86 @@ TF::SliceOp CreateSliceOpForTensorList(Location loc, Value input_list,
   return rewriter->create<TF::SliceOp>(loc, result_type, input_list,
                                        start_position, slice_size);
 }
+
+// Converts tf.Const containing variant of type TensorList to a tensor of
+// primitive element types. Each of the individual tensor in the list is
+// converted to an ElementsAttr and then those are packed together using
+// tf.Pack op.
+struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      TF::ConstOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // Verify that the opaque elements attribute contains tensor of type variant
+    // and scalar shape. The variant type should hold a TensorList.
+    auto opaque_attr = op.value().dyn_cast<OpaqueElementsAttr>();
+    if (!opaque_attr) return matchFailure();
+    tensorflow::Tensor tensor;
+    if (!tensorflow::ConvertToTensor(opaque_attr, &tensor).ok())
+      return matchFailure();
+    if (tensor.dtype() != tensorflow::DT_VARIANT) return matchFailure();
+    if (!tensorflow::TensorShapeUtils::IsScalar(tensor.shape()))
+      return matchFailure();
+
+    const tensorflow::TensorList *list =
+        tensor.scalar<tensorflow::Variant>()().get<tensorflow::TensorList>();
+    if (!list) return matchFailure();
+
+    // Verify output type is variant and contains exactly one ranked subtypes.
+    auto variant_ty =
+        getElementTypeOrSelf(op.getType()).dyn_cast<TF::VariantType>();
+    if (!variant_ty) return matchFailure();
+    ArrayRef<TensorType> subtypes = variant_ty.getSubtypes();
+    if (subtypes.size() != 1) return matchFailure();
+    RankedTensorType list_element_ty =
+        subtypes.front().dyn_cast<RankedTensorType>();
+    if (!list_element_ty) return matchFailure();
+
+    // Extract tensor elements for the TensorList and construct result type
+    // based on the number of elements and element shape.
+    const std::vector<tensorflow::Tensor> &tensors = list->tensors();
+    llvm::SmallVector<int64_t, 4> result_shape = {
+        static_cast<int64_t>(tensors.size())};
+    result_shape.append(list_element_ty.getShape().begin(),
+                        list_element_ty.getShape().end());
+    auto result_ty =
+        RankedTensorType::get(result_shape, list_element_ty.getElementType());
+
+    // If the list is empty, directly create the final result instead of
+    // creating the tf.Pack op. tf.Pack op requires at least one operand.
+    if (tensors.empty()) {
+      absl::InlinedVector<tensorflow::int64, 4> tf_shape;
+      tf_shape.reserve(result_shape.size());
+      for (int64_t dim : result_shape) {
+        tf_shape.push_back(dim);
+      }
+
+      tensorflow::Tensor tensor(list->element_dtype,
+                                tensorflow::TensorShape(tf_shape));
+      auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
+      if (!attr_or.ok()) return matchFailure();
+      rewriter.replaceOpWithNewOp<TF::ConstOp>(op, attr_or.ValueOrDie());
+      return matchSuccess();
+    }
+
+    // Extract individual tensor list element and combine them using the tf.Pack
+    // op.
+    Location loc = op.getLoc();
+    llvm::SmallVector<Value, 4> values;
+    values.reserve(tensors.size());
+    for (const tensorflow::Tensor &tensor : tensors) {
+      auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
+      if (!attr_or.ok()) return matchFailure();
+
+      auto value = rewriter.create<TF::ConstOp>(loc, attr_or.ValueOrDie());
+      values.push_back(value);
+    }
+    rewriter.replaceOpWithNewOp<TF::PackOp>(
+        op, result_ty, values, /*axis=*/rewriter.getI64IntegerAttr(0));
+    return matchSuccess();
+  }
+};
 
 struct ConvertTensorListSetItem
     : public OpConversionPattern<TF::TensorListSetItemOp> {
@@ -768,7 +854,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
 
   OwningRewritePatternList patterns;
   patterns
-      .insert<ConvertEmptyTensorList, ConvertIdentity,
+      .insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
               ConvertTensorListFromTensor, ConvertTensorListGetItem,
               ConvertTensorListLength, ConvertTensorListPushBack,
               ConvertTensorListReserve, ConvertTensorListSetItem,

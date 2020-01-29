@@ -58,7 +58,7 @@ class MemoryPlanner {
                                  int last_time_used) = 0;
 
   // The largest contguous block of memory that's needed to hold the layout.
-  virtual int GetMaximumMemorySize() = 0;
+  virtual size_t GetMaximumMemorySize() = 0;
   // How many buffers have been added to the planner.
   virtual int GetBufferCount() = 0;
   // Calculated layout offset for the N-th buffer added to the planner.

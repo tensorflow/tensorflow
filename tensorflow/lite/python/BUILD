@@ -1,6 +1,13 @@
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+flatbuffer_py_library(
+    name = "schema_py",
+    srcs = ["//tensorflow/lite/schema:schema.fbs"],
 )
 
 py_library(

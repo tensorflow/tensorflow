@@ -105,8 +105,13 @@ class TpuBackend(xla_client.Backend):
                                              options, self.client,
                                              compile_options.device_assignment)
 
-  def get_default_device_assignment(self, num_replicas, num_partitions):
-    return self.client.GetDefaultDeviceAssignment(num_replicas, num_partitions)
+  def get_default_device_assignment(self, num_replicas, num_partitions=None):
+    if num_partitions is not None:
+      return self.client.GetDefaultDeviceAssignment(num_replicas,
+                                                    num_partitions)
+    else:
+      # TODO(henrytan): delete this case after all callers can handle 2D output
+      return self.client.GetDefaultDeviceAssignment(num_replicas)
 
   def serialize(self, executable):
     return self.client.SerializeExecutable(executable)

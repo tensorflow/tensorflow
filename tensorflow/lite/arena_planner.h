@@ -45,11 +45,6 @@ struct AllocationInfo;
 // execution. Since dynamic tensors don't have sizes until after the
 // corresponding operation is executed, this class supports incremental
 // planning.
-//
-// TODO(b/127354079): Remove the constrain below when the issue is fixed.
-// WARNING: MemoryPlanner's behavior must be deterministic. If the first N
-// nodes are unchanged, it must produce exactly the same allocation plan for
-// the first N nodes.
 class ArenaPlanner : public MemoryPlanner {
  public:
   // Ownership of 'context' is not taken and it must remain util the
@@ -64,6 +59,7 @@ class ArenaPlanner : public MemoryPlanner {
   ArenaPlanner& operator=(const ArenaPlanner&) = delete;
 
   TfLiteStatus ResetAllocations() override;
+  TfLiteStatus ResetAllocationsAfter(int node) override;
   TfLiteStatus PlanAllocations() override;
   TfLiteStatus ExecuteAllocations(int first_node, int last_node) override;
   TfLiteStatus ReleaseNonPersistentMemory() override;
@@ -87,7 +83,7 @@ class ArenaPlanner : public MemoryPlanner {
   TfLiteStatus ResolveTensorAllocation(int tensor_index);
 
   // Register an allocation for the given tensor.
-  TfLiteStatus CalculateTensorAllocation(int tensor_index);
+  TfLiteStatus CalculateTensorAllocation(int tensor_index, int node_index);
 
   // Register a deallocation for the given tensor.
   TfLiteStatus CalculateTensorDeallocation(int tensor_index);

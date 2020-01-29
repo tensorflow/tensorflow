@@ -54,7 +54,7 @@ filegroup(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "c_api_internal.h",
         "tf_status_helper.h",
@@ -640,7 +640,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:ops_testutil",
-        "//third_party/eigen3",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 

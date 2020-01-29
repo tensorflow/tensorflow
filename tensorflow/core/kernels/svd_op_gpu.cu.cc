@@ -114,7 +114,8 @@ class SvdOpGpu : public AsyncOpKernel {
     // Gesvdjbatched handles matrices up to 32x32.
     // TODO(jamessspencer): if not full_matrices, compute full U and V matrices
     // using Gesvdjbatched and return slices.
-    const bool batched = m <= 32 && n <= 32 && batch_size > 1 && full_matrices_;
+    const bool batched =
+        m <= 32 && n <= 32 && batch_size > 1 && (full_matrices_ || m == n);
 
     // Copies of U and V if required so can take transposes after SVD.
     Tensor u_copy, v_copy;

@@ -216,10 +216,10 @@ class _DumpingCallback(object):
         if source_utils.is_extension_uncompiled_python_source(file_path):
           try:
             lines, _ = source_utils.load_source(file_path)
-          except IOError:
-            # Accept the fact that some source files are not readable. Here we
-            # use best effort to send the source-file contents.
-            pass
+          except IOError as e:
+            logging.warn(
+                "Failed to read source code from path: %s. Reason: %s",
+                file_path, e)
         writer = self.get_writer()
         writer.WriteSourceFile(debug_event_pb2.SourceFile(
             file_path=file_path, host_name=self._hostname, lines=lines))

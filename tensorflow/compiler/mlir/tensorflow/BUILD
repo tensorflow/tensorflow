@@ -383,15 +383,24 @@ cc_library(
 )
 
 cc_library(
+    name = "parse_text_proto",
+    srcs = ["utils/parse_text_proto.cc"],
+    hdrs = ["utils/parse_text_proto.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:casts",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "import_utils",
-    srcs = [
-        "utils/import_utils.cc",
-    ],
-    hdrs = [
-        "utils/import_utils.h",
-    ],
+    srcs = ["utils/import_utils.cc"],
+    hdrs = ["utils/import_utils.h"],
     deps = [
         ":error_util",
+        ":parse_text_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
@@ -598,6 +607,7 @@ cc_library(
     srcs = ["utils/mangling_util.cc"],
     hdrs = ["utils/mangling_util.h"],
     deps = [
+        ":parse_text_proto",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

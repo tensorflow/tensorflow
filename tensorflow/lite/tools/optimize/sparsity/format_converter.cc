@@ -39,6 +39,10 @@ uint64_t GetFlattenedIndex(const std::vector<int>& indices,
 
 std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
   std::vector<int> values;
+  if (!int_array) {
+    return values;
+  }
+
   values.resize(int_array->size);
   for (size_t i = 0; i < int_array->size; i++) {
     values[i] = int_array->data[i];

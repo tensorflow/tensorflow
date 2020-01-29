@@ -936,6 +936,14 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
       auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kRepicationAttr);
       entry_args_same_across_replicas.push_back(attr && attr.getValue());
       any_arg_replicated |= entry_args_same_across_replicas.back();
+      // Pass the alias info to the builder so that it will build the alias info
+      // into the resulting HloModule.
+      auto aliasing_output =
+          f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
+      if (aliasing_output) {
+        builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
+                           /*param_number=*/i, /*param_index=*/{});
+      }
     }
     // Do not populate this field when nothing is replicated, since empty field
     // means no replication. This avoids the need for unrelated tests to handle

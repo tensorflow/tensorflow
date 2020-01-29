@@ -357,6 +357,8 @@ class Network(base_layer.Layer):
         self._feed_input_shapes.append(layer._batch_input_shape)
         self._feed_inputs.append(layer.input)
 
+    self._compute_tensor_usage_count()
+
   def _set_output_names(self):
     """Assigns unique names to the Network's outputs.
 
@@ -863,7 +865,8 @@ class Network(base_layer.Layer):
     tensor_dict = {}
 
     for x, y in zip(self.inputs, inputs):
-      tensor_dict[str(id(x))] = y
+      x_id = str(id(x))
+      tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
       if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
         try:
           y.set_shape(y.shape.merge_with(x.shape))
@@ -890,7 +893,7 @@ class Network(base_layer.Layer):
 
           # Call layer (reapplying ops to new inputs).
           computed_tensors = nest.map_structure(
-              lambda t: tensor_dict[str(id(t))], node.input_tensors)
+              lambda t: tensor_dict[str(id(t))].pop(), node.input_tensors)
 
           # Ensure `training` arg propagation if applicable.
           kwargs = copy.copy(node.arguments) if node.arguments else {}
@@ -909,7 +912,7 @@ class Network(base_layer.Layer):
           def _map_tensor_if_from_keras_layer(t):
             if isinstance(t, ops.Tensor) and hasattr(t, '_keras_history'):
               t_id = str(id(t))
-              return tensor_dict[t_id]
+              return tensor_dict[t_id].pop()
             return t
 
           kwargs = nest.map_structure(_map_tensor_if_from_keras_layer, kwargs)
@@ -920,13 +923,14 @@ class Network(base_layer.Layer):
           # Update tensor_dict.
           for x, y in zip(
               nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
-            tensor_dict[str(id(x))] = y
+            x_id = str(id(x))
+            tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
 
     output_tensors = []
     output_shapes = []
     for x in self.outputs:
       assert str(id(x)) in tensor_dict, 'Could not compute output ' + str(x)
-      tensor = tensor_dict[str(id(x))]
+      tensor = tensor_dict[str(id(x))].pop()
       output_shapes.append(x.shape)
       output_tensors.append(tensor)
 
@@ -1470,6 +1474,46 @@ class Network(base_layer.Layer):
         layer._attribute_sentinel.add_parent(self._attribute_sentinel)
         layer_set.add(layer)
     self._handle_deferred_layer_dependencies(deferred_layers)
+
+    self._compute_tensor_usage_count()
+
+  def _compute_tensor_usage_count(self):
+    """Compute the #. of tensor usages for all the output tensors of layers.
+
+    The computed tensor usage count is saved as `self._tensor_usage_count`. This
+    is later used for saving memory in eager computation by releasing
+    no-longer-needed tensors as early as possible.
+    """
+    tensor_usage_count = collections.Counter()
+    available_tensors = set(str(id(tensor)) for tensor in self.inputs)
+
+    depth_keys = list(self._nodes_by_depth.keys())
+    depth_keys.sort(reverse=True)
+    depth_keys = depth_keys[1:]
+
+    for depth in depth_keys:
+      for node in self._nodes_by_depth[depth]:
+        input_tensors = {
+            str(id(tensor)) for tensor in nest.flatten(node.input_tensors)
+        }
+        if input_tensors.issubset(available_tensors):
+          kwargs = copy.copy(node.arguments) if node.arguments else {}
+
+          for tensor in nest.flatten(kwargs):
+            if isinstance(tensor, ops.Tensor) and hasattr(tensor,
+                                                          '_keras_history'):
+              tensor_usage_count[str(id(tensor))] += 1
+
+          for tensor in nest.flatten(node.input_tensors):
+            tensor_usage_count[str(id(tensor))] += 1
+
+          for output_tensor in nest.flatten(node.output_tensors):
+            available_tensors.add(str(id(output_tensor)))
+
+    for tensor in self.outputs:
+      tensor_usage_count[str(id(tensor))] += 1
+
+    self._tensor_usage_count = tensor_usage_count
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the network have been created.

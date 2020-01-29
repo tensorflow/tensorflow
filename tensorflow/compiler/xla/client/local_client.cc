@@ -337,7 +337,7 @@ Backend* LocalClient::mutable_backend() {
   return local_service_->mutable_backend();
 }
 
-StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
+StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& options) {
@@ -347,12 +347,20 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
     VLOG(3) << "Set device ordinal to default value of: "
             << updated_options.device_ordinal();
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      local_service_->CompileExecutable(
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
+                      local_service_->CompileExecutables(
                           computation, argument_layouts, updated_options));
-  return absl::make_unique<LocalExecutable>(std::move(executable),
-                                            local_service_->mutable_backend(),
-                                            updated_options);
+
+  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+  local_executables.reserve(executables.size());
+
+  for (auto& executable : executables) {
+    local_executables.push_back(absl::make_unique<LocalExecutable>(
+        std::move(executable), local_service_->mutable_backend(),
+        updated_options));
+  }
+
+  return std::move(local_executables);
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(

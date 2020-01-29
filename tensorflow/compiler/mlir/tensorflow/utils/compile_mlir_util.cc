@@ -212,6 +212,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   tf2xla.addPass(mlir::xla_hlo::createLegalizeTFControlFlowPass());
+  tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
   // We need to run LegalizeTFPass 2 times because first
   // LegalizeTFPass(allow_partial_conversion=true) can expose more graph pruning

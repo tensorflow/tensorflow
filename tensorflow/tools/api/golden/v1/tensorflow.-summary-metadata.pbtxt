@@ -21,6 +21,13 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_STRING
     }
+    field {
+      name: "data_class"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.DataClass"
+    }
     nested_type {
       name: "PluginData"
       field {

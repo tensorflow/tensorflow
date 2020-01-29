@@ -441,6 +441,12 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
       // _Arg/Placeholder nodes.
       if (absl::StartsWith(attr.first, "_")) {
         arg_attrs.mutable_attr()->insert(attr);
+      } else if (attr.first == "shape") {
+        // Preserve known shapes by moving them to the _output_shapes list.
+        // The _Arg shape function knows how to extract them from there.
+        AttrValue value;
+        *(value.mutable_list()->add_shape()) = attr.second.shape();
+        arg_attrs.mutable_attr()->insert({"_output_shapes", value});
       }
       if (attr.first == "_resource_arg_unique_id") {
         resource_arg_unique_id = attr.second.i();

@@ -20,12 +20,15 @@ limitations under the License.
 #include <limits>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/ruy/cpu_cache_size.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 
 namespace ruy {
 namespace {
 
 #if RUY_PLATFORM(NEON_64)
+
+// Unless otherwise specified, these tests have been tuned on ARM Cortex-A55.
 void MakeBlockMapTuningTest(int rows, int cols, int depth, int kernel_rows,
                             int kernel_cols, int lhs_scalar_size,
                             int rhs_scalar_size, int tentative_thread_count,
@@ -34,7 +37,7 @@ void MakeBlockMapTuningTest(int rows, int cols, int depth, int kernel_rows,
   BlockMap block_map;
   MakeBlockMap(rows, cols, depth, kernel_rows, kernel_cols, lhs_scalar_size,
                rhs_scalar_size, tentative_thread_count, path,
-               /* cache_friendly_traversal_threshold */ 32768, &block_map);
+               LocalDataCacheSize(path), SharedDataCacheSize(path), &block_map);
   EXPECT_EQ(block_map.num_blocks_base_log2, expected_num_blocks_base_log2);
   EXPECT_EQ(std::min(block_map.rectangularness_log2[Side::kLhs],
                      block_map.rectangularness_log2[Side::kRhs]),
@@ -120,6 +123,10 @@ TEST(BlockMapTest, MakeBlockMapTuningTest32bit) {
                          /* tentative_thread_count */ 4, Path::kNeonDotprod,
                          /* expected_num_blocks_base_log2 */ 3,
                          /* expected_rectangularness_log2 */ 0);
+  MakeBlockMapTuningTest(4096, 4096, 4096, 8, 8, 4, 4,
+                         /* tentative_thread_count */ 4, Path::kNeonDotprod,
+                         /* expected_num_blocks_base_log2 */ 7,
+                         /* expected_rectangularness_log2 */ 0);
 }
 
 TEST(BlockMapTest, MakeBlockMapTuningTestRectangular) {
@@ -132,6 +139,7 @@ TEST(BlockMapTest, MakeBlockMapTuningTestRectangular) {
                          /* expected_num_blocks_base_log2 */ 0,
                          /* expected_rectangularness_log2 */ 6);
 }
+
 #endif
 
 }  // namespace

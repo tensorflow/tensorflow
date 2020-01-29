@@ -2252,14 +2252,16 @@ constexpr const T &Clamp(const T &val, const T &low, const T &high) {
 }
 
 // For the given `input_shape`, calculates the sliced shape using the given
-// `begin`, `end`, and `stride` ranges and `begin_mask` and `end_mask` masks.
-// Updates the result back to `input_shape`. At the same time, canonicalizes
-// `begin`, `end`, and `strides. The calculation follows tf.StridedSlice op
-// semantics.
+// `begin`, `end`, and `stride` ranges and `begin_mask`, `end_mask`, and
+// `shrink_axis_mask` masks. Updates the result back to `input_shape`. If
+// `shrink_axis_mask` is not zero, this function will not drop the corresponding
+// dimensions in `input_shape`; it will turn them into 1s. At the same time,
+// canonicalizes `begin`, `end`, and `strides. The calculation follows
+// tf.StridedSlice op semantics.
 static void CalculateSlicedShapeAndBoundRanges(
     MutableArrayRef<int64_t> input_shape, int32_t begin_mask, int32_t end_mask,
-    MutableArrayRef<int64_t> begin, MutableArrayRef<int64_t> end,
-    MutableArrayRef<int64_t> stride) {
+    int32_t shrink_axis_mask, MutableArrayRef<int64_t> begin,
+    MutableArrayRef<int64_t> end, MutableArrayRef<int64_t> stride) {
   assert(input_shape.size() <= 32);  // Only 32-bit masks are supported.
 
   // Make sure ranges' ranks are consistent with the input.
@@ -2302,20 +2304,26 @@ static void CalculateSlicedShapeAndBoundRanges(
     if (interval_len != 0 && (interval_len < 0) == (stride_i < 0))
       size_i = (interval_len / stride_i) + (interval_len % stride_i != 0);
 
-    input_shape[i] = size_i;
     begin[i] = begin_i;
-    end[i] = end_i;
-    stride[i] = stride_i;
+    if ((1 << i) & shrink_axis_mask) {
+      // Shrink this dimension. It means we only take the element at begin_i.
+      input_shape[i] = 1;
+      end[i] = begin_i + 1;
+      stride[i] = 1;
+    } else {
+      input_shape[i] = size_i;
+      end[i] = end_i;
+      stride[i] = stride_i;
+    }
   }
 }
 
 bool StridedSliceOp::GetSlicedBoundRanges(
-    ArrayRef<int64_t> shape, SmallVectorImpl<int64_t> *begin_indices,
+    SmallVectorImpl<int64_t> *begin_indices,
     SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
   if (this->ellipsis_mask().getZExtValue() ||
-      this->new_axis_mask().getZExtValue() ||
-      this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(antiagainst): support these masks
+      this->new_axis_mask().getZExtValue())
+    return false;  // TODO(b/146512589): support these masks
 
   // TODO(hinsu): Support lowering for ops with dynamic begin and end values
   // when it is possible to derive indices based on mask attributes.
@@ -2325,7 +2333,9 @@ bool StridedSliceOp::GetSlicedBoundRanges(
       !matchPattern(this->strides(), m_Constant(&strides_attr)))
     return false;
 
-  auto input_shape = llvm::to_vector<4>(shape);
+  auto input_ty = this->input().getType().dyn_cast<RankedTensorType>();
+  if (!input_ty || !input_ty.hasStaticShape()) return false;
+  auto input_shape = llvm::to_vector<4>(input_ty.getShape());
   int rank = input_shape.size();
 
   begin_indices->clear();
@@ -2344,7 +2354,8 @@ bool StridedSliceOp::GetSlicedBoundRanges(
 
   CalculateSlicedShapeAndBoundRanges(
       input_shape, this->begin_mask().getZExtValue(),
-      this->end_mask().getZExtValue(), *begin_indices, *end_indices, *strides);
+      this->end_mask().getZExtValue(), this->shrink_axis_mask().getZExtValue(),
+      *begin_indices, *end_indices, *strides);
   return true;
 }
 
@@ -2372,7 +2383,7 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
   if (this->ellipsis_mask().getZExtValue() ||
       this->new_axis_mask().getZExtValue() ||
       this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(antiagainst): support these masks
+    return false;  // TODO(b/146512589): support these masks
 
   DenseIntElementsAttr shape_attr;
   DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
@@ -2403,6 +2414,7 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
 
   CalculateSlicedShapeAndBoundRanges(*shape, this->begin_mask().getZExtValue(),
                                      this->end_mask().getZExtValue(),
+                                     this->shrink_axis_mask().getZExtValue(),
                                      *begin_indices, *end_indices, *strides);
   return true;
 }

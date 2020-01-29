@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
 }
 
 std::unique_ptr<SequenceTransformation> NewRemoveDegenerateUpsampling() {
-  auto type = ToString(OperationType::UPSAMPLE_2D);
+  auto type = ToString(OperationType::RESIZE);
   return absl::make_unique<RemoveOperation>(
       [type](GraphFloat32* graph, Node* node) {
         if (node->operation.type != type) {

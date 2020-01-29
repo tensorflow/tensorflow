@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
+#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
@@ -152,6 +153,75 @@ void EagerContext::InitPrioritizedDeviceTypeList() {
     }
   }
   prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
+}
+
+namespace {
+// Using absl::StrJoin with lambda does not work in tf-lite builds.
+// TODO(b/148160441): Replace with absl::StrJoin once DeviceBase has operator<<.
+std::vector<string> DevicesToString(const std::vector<Device*>& devices) {
+  std::vector<string> v;
+  v.reserve(devices.size());
+  for (Device* d : devices) {
+    v.push_back(d->name());
+  }
+  return v;
+}
+}  // namespace
+
+Status EagerContext::SelectDevice(const DeviceNameUtils::ParsedName& preferred,
+                                  const PrioritizedDeviceTypeVector& supported,
+                                  Device** device) const {
+  std::vector<Device*> selected;
+  const DeviceSet& pflr_devices = *pflr()->device_set();
+
+  // If there are no preferred devices, select the first registered device from
+  // the supported device list.
+  if (!DeviceNameUtils::HasSomeDetails(preferred)) {
+    // TODO(b/148213212): Allow setting default device in eager context.
+    selected = ColocationGraph::FilterSupportedDevices(
+        pflr_devices.devices(), supported, /*default_local_device=*/nullptr);
+    if (selected.empty()) {
+      return errors::InvalidArgument(
+          "No supported device found in available devices [",
+          absl::StrJoin(DevicesToString(pflr_devices.devices()), ", "), "].");
+    }
+    *device = selected[0];
+    return Status::OK();
+  }
+
+  // If the caller specified a preferred device, select the first matching
+  // registered device from the supported device list. If nothing matches and
+  // soft placement is enabled, pick a suitable device from the available ones.
+  pflr_devices.FindMatchingDevices(preferred, &selected);
+
+  if (!selected.empty()) {
+    selected = ColocationGraph::FilterSupportedDevices(
+        selected, supported, /*default_local_device=*/nullptr);
+  }
+
+  if (selected.empty() && AllowSoftPlacement()) {
+    DeviceNameUtils::ParsedName soft_device_name = preferred;
+    soft_device_name.type.clear();
+    soft_device_name.has_type = false;
+    soft_device_name.has_id = false;
+    // TODO(b/148213746): Soft placement logic picks up another task if the
+    // requested does not exist.
+    pflr_devices.FindMatchingDevices(soft_device_name, &selected);
+    if (!selected.empty()) {
+      selected = ColocationGraph::FilterSupportedDevices(
+          selected, supported, /*default_local_device=*/nullptr);
+    }
+  }
+
+  if (selected.empty()) {
+    return errors::InvalidArgument(
+        "Could not satisfy device specification '", preferred,
+        "'. All available devices [",
+        absl::StrJoin(DevicesToString(pflr_devices.devices()), ", "), "].");
+  }
+
+  *device = selected[0];
+  return Status::OK();
 }
 
 void EagerContext::ResetClusterFLR(

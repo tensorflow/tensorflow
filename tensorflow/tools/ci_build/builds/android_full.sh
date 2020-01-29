@@ -41,7 +41,7 @@ for CPU in ${CPUS//,/ }
 do
     echo "========== Building native libs for Android ${CPU} =========="
     bazel build --config=monolithic --cpu=${CPU} \
-        --compilation_mode=opt --cxxopt=-std=c++11 \
+        --compilation_mode=opt --cxxopt=-std=c++14 \
         --crosstool_top=//external:android/crosstool \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
         //tensorflow/core:android_tensorflow_lib \
@@ -64,7 +64,7 @@ done
 # TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
 echo "========== Building TensorFlow Android Jar and Demo =========="
 bazel --bazelrc=/dev/null build --config=monolithic --fat_apk_cpu=${CPUS} \
-    --compilation_mode=opt --cxxopt=-std=c++11 \
+    --compilation_mode=opt --cxxopt=-std=c++14 \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
     //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java \
     //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java.aar \

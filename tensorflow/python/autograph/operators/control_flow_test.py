@@ -640,7 +640,7 @@ class WhileLoopTest(test.TestCase):
     self.assertEqual(i, 5)
     self.assertEqual(self.evaluate(s), 1234)
 
-  def test_python_infinite_loop(self):
+  def test_python_while_infinite(self):
     if not __debug__:
       self.skipTest('Feature disabled in optimized mode.')
     with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
@@ -653,7 +653,47 @@ class WhileLoopTest(test.TestCase):
             symbol_names=(),
             opts={})
 
-  def test_python_long_loop_unroll_warning(self):
+  def test_python_for_infinite(self):
+    if not __debug__:
+      self.skipTest('Feature disabled in optimized mode.')
+    with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
+      with self.assertRaisesRegexp(ValueError, 'iteration limit'):
+        control_flow.for_stmt(
+            iter_=range(101),
+            extra_test=None,
+            body=lambda i: None,
+            get_state=None,
+            set_state=None,
+            symbol_names=(),
+            opts={})
+
+  def test_python_while_large_unroll_warning(self):
+    if not __debug__:
+      self.skipTest('Feature disabled in optimized mode.')
+    with test.mock.patch.object(
+        control_flow, 'INEFFICIENT_UNROLL_MIN_ITERATIONS', 10):
+      with ops.Graph().as_default():
+        out_capturer = six.StringIO()
+        with test.mock.patch.object(sys, 'stdout', out_capturer):
+          with test.mock.patch.object(ag_logging, 'echo_log_to_stdout', True):
+            def custom_iterator():
+              for i in range(11):
+                c = constant_op.constant(i)
+                yield c
+
+            i = 0
+            control_flow.for_stmt(
+                iter_=custom_iterator(),
+                extra_test=None,
+                body=lambda i: None,
+                get_state=None,
+                set_state=None,
+                symbol_names=(),
+                opts={})
+        self.assertTrue(re.match(
+            r'.* Large unrolled loop.*Const.*', out_capturer.getvalue()))
+
+  def test_python_for_large_unroll_warning(self):
     if not __debug__:
       self.skipTest('Feature disabled in optimized mode.')
     with test.mock.patch.object(
@@ -676,8 +716,7 @@ class WhileLoopTest(test.TestCase):
                 symbol_names=('i',),
                 opts={})
         self.assertTrue(re.match(
-            r'.*ops.*loop.*large.*iterations.*Add.*',
-            out_capturer.getvalue()))
+            r'.* Large unrolled loop.*Add.*', out_capturer.getvalue()))
 
 
 @test_util.run_all_in_graph_and_eager_modes

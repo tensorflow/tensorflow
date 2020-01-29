@@ -544,6 +544,10 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
     relu_op = keras.backend.relu(x, alpha=0.25, threshold=4, max_value=5)
     self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 5]])
 
+    # Test case for GitHub issue 35430, with integer dtype
+    x = keras.Input(shape=(), name='x', dtype='int64')
+    y = keras.layers.ReLU(max_value=100, dtype='int64')(x)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BackendShapeOpsTest(test.TestCase):

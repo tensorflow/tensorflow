@@ -71,12 +71,11 @@ inline void LstmStepWithAuxInput(
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
-  const bool is_layer_norm_lstm =
-      (forget_layer_norm_coefficients_ptr != nullptr);
+  const bool use_layer_norm = (forget_layer_norm_coefficients_ptr != nullptr);
 
   // Initialize scratch buffers with bias for regular lstm or initialize with
   // zero for layer norm lstm.
-  if (is_layer_norm_lstm) {
+  if (use_layer_norm) {
     if (!use_cifg) {
       std::fill_n(input_gate_scratch, n_cell * n_batch, 0.0f);
     }
@@ -158,7 +157,7 @@ inline void LstmStepWithAuxInput(
           cell_to_input_weights_ptr, n_cell, cell_state_ptr, n_batch,
           input_gate_scratch);
     }
-    if (is_layer_norm_lstm) {
+    if (use_layer_norm) {
       logger->LogTensorValue(intemediate_tensor_indexes[0], input_gate_scratch,
                              n_cell * n_batch, error_reporter);
       tensor_utils::MeanStddevNormalization(
@@ -179,7 +178,7 @@ inline void LstmStepWithAuxInput(
         cell_to_forget_weights_ptr, n_cell, cell_state_ptr, n_batch,
         forget_gate_scratch);
   }
-  if (is_layer_norm_lstm) {
+  if (use_layer_norm) {
     logger->LogTensorValue(intemediate_tensor_indexes[1], forget_gate_scratch,
                            n_cell * n_batch, error_reporter);
     tensor_utils::MeanStddevNormalization(forget_gate_scratch,
@@ -196,7 +195,7 @@ inline void LstmStepWithAuxInput(
   // For each batch and cell: update the cell.
   tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
                                          n_batch * n_cell, cell_state_ptr);
-  if (is_layer_norm_lstm) {
+  if (use_layer_norm) {
     logger->LogTensorValue(intemediate_tensor_indexes[2], cell_scratch,
                            n_cell * n_batch, error_reporter);
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
@@ -229,7 +228,7 @@ inline void LstmStepWithAuxInput(
         cell_to_output_weights_ptr, n_cell, cell_state_ptr, n_batch,
         output_gate_scratch);
   }
-  if (is_layer_norm_lstm) {
+  if (use_layer_norm) {
     logger->LogTensorValue(intemediate_tensor_indexes[3], output_gate_scratch,
                            n_cell * n_batch, error_reporter);
     tensor_utils::MeanStddevNormalization(output_gate_scratch,
@@ -483,7 +482,7 @@ struct OpData {
   TfLiteLSTMKernelType kernel_type;
 
   // If the lstm is layer norm.
-  bool is_layer_norm_lstm;
+  bool use_layer_norm;
 
   // These fields are only used by full kernel.
   int scratch_tensor_index;

@@ -22,14 +22,17 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
+#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
 
@@ -186,6 +189,14 @@ class SingleOpModel {
     return AddConstInput(TensorData{type, shape}, data);
   }
 
+  // Add a constant sparse tensor as input. For unit test purpose, we choose to
+  // compress all dimensions and traverse them in the original order.
+  template <typename T>
+  int AddConstSparseInput(TensorType type, std::initializer_list<int> shape,
+                          std::initializer_list<T> data) {
+    return AddSparseTensor(TensorData{type, shape}, data);
+  }
+
   // Add a null input tensor (optional input) and return kTfLiteOptionalTensor.
   int AddNullInput();
 
@@ -247,13 +258,26 @@ class SingleOpModel {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
-    for (int i = 0; i < num_inputs; ++i) {
-      const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                                   : params->scale->data[i];
-      quantized_output[i] = input_data[i] / scale;
+    CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
+    if (t->type == kTfLiteInt32) {
+      std::vector<int32_t> quantized_output(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                     : params->scale->data[i];
+        quantized_output[i] = input_data[i] / scale;
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
+    } else {
+      std::vector<int64_t> quantized_output(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                     : params->scale->data[i];
+        quantized_output[i] = input_data[i] / scale;
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
     }
-    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                   quantized_output.data() + quantized_output.size());
   }
 
   const std::vector<int>& GetShape(int id) { return tensor_data_.at(id).shape; }
@@ -351,8 +375,21 @@ class SingleOpModel {
   template <typename T>
   std::vector<T> ExtractVector(int index) const {
     const T* v = interpreter_->typed_tensor<T>(index);
+    const auto* tensor = interpreter_->tensor(index);
     CHECK(v);
-    return std::vector<T>(v, v + GetTensorSize(index));
+    int tensor_size;
+    if (tensor->sparsity) {
+      // Getting the size of the sparse buffer this way is based on the
+      // assumption that the last dimension of the tensor is a compressed
+      // dimension.
+      tensor_size = tensor->sparsity
+                        ->dim_metadata[tensor->sparsity->dim_metadata_size - 1]
+                        .array_indices->size;
+    } else {
+      tensor_size = GetTensorSize(index);
+    }
+
+    return std::vector<T>(v, v + tensor_size);
   }
 
   std::vector<int> GetTensorShape(int index) {
@@ -501,6 +538,70 @@ class SingleOpModel {
   }
 
   template <typename T>
+  int AddSparseTensor(const TensorData& t, std::initializer_list<T> data) {
+    int id = tensors_.size();
+    const auto& shape = t.shape;
+    const int dims_count = shape.size();
+    std::vector<TfLiteDimensionType> format(dims_count);
+    std::vector<int> traversal_order(dims_count);
+    std::vector<T> dense_data(data);
+
+    // Compress all dimensions and traverse them in the original order.
+    for (int i = 0; i < dims_count; i++) {
+      format[i] = kTfLiteDimSparseCSR;
+      traversal_order[i] = i;
+    }
+
+    tflite::optimize::sparsity::FormatConverter<T> converter(
+        shape, traversal_order, format);
+    converter.DenseToSparse(dense_data.data());
+
+    const auto& dim_metadata = converter.GetDimMetadata();
+    const auto& sparse_data = converter.GetData();
+
+    // Build sparsity parameter.
+    std::vector<flatbuffers::Offset<DimensionMetadata>> fb_dim_metadata(
+        dims_count);
+    for (int i = 0; i < dims_count; i++) {
+      const int metadata_idx = 2 * i;
+      fb_dim_metadata[i] = CreateDimensionMetadata(
+          builder_, DimensionType_SPARSE_CSR, 0,
+          builder_.CreateVector(dim_metadata[metadata_idx]),
+          builder_.CreateVector(dim_metadata[metadata_idx + 1]));
+    }
+
+    flatbuffers::Offset<SparsityParameters> s_param = CreateSparsityParameters(
+        builder_, builder_.CreateVector(traversal_order), 0,
+        builder_.CreateVector(fb_dim_metadata));
+
+    int buffer_id = 0;
+    if (data.size()) {
+      // Initialize buffers list with empty buffer to allow for non-const
+      // tensors.
+      if (buffers_.empty()) {
+        buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
+      }
+
+      // Add compressed data as a Buffer to buffers list.
+      buffer_id = buffers_.size();
+      auto data_buffer = builder_.CreateVector(
+          reinterpret_cast<const uint8_t*>(sparse_data.data()),
+          sizeof(T) * sparse_data.size());
+      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+    }
+
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape), t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/0, /*quantization=*/0, /*is_variable=*/false, s_param));
+
+    inputs_.push_back(id);
+    tensor_data_[id] = t;
+
+    return id;
+  }
+
+  template <typename T>
   int AddTensor(TensorData t, std::initializer_list<T> data,
                 bool is_variable = false) {
     int id = tensors_.size();
@@ -631,6 +732,13 @@ class SingleOpModel {
   std::function<void(Interpreter*)> apply_delegate_fn_;
 };
 
+// Populate string tensors.
+template <>
+inline void SingleOpModel::PopulateTensor<string>(
+    int index, const std::initializer_list<string>& data) {
+  PopulateStringTensor(index, data);
+}
+
 // Base class for single op unit tests.
 // The tests are parameterized to test multiple kernels for a single op.
 // The parameters are strings like "optimized" and "reference" to have better
@@ -667,10 +775,11 @@ template <typename T>
 TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
   if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
+  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
+  if (std::is_same<T, int16_t>::value) return TensorType_INT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
-  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   return TensorType_MIN;  // default value
 }

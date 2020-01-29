@@ -995,6 +995,27 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(sum_dataset(ds).numpy(), 45)
     self.assertEqual(sum_dataset(ds).numpy(), 45)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedAutomaticControlDependencies(self):
+    counter_var = variables.Variable(0)
+
+    def map_fn(x):
+      counter_var.assign_add(1)
+      return x
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(10).map(map_fn)
+
+    @def_function.function
+    def fn():
+      it = iter(dataset_fn())
+      for _ in range(10):
+        _ = next(it)
+      return counter_var
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), 10)
+
 
 if __name__ == "__main__":
   test.main()

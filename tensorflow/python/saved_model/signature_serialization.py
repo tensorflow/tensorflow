@@ -23,6 +23,7 @@ from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training.tracking import base
@@ -95,19 +96,24 @@ def find_function_to_export(saveable_view):
 def canonicalize_signatures(signatures):
   """Converts `signatures` into a dictionary of concrete functions."""
   if signatures is None:
-    return {}
+    return {}, {}
   if not isinstance(signatures, collections_abc.Mapping):
     signatures = {
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signatures}
   concrete_signatures = {}
+  wrapped_functions = {}
   for signature_key, function in signatures.items():
-    signature_function = _get_signature(function)
+    original_function = signature_function = _get_signature(function)
+
     if signature_function is None:
       raise ValueError(
           ("Expected a TensorFlow function to generate a signature for, but "
            "got {}. Only `tf.functions` with an input signature or "
            "concrete functions can be used as a signature.").format(function))
 
+    wrapped_functions[original_function] = signature_function = (
+        wrapped_functions.get(original_function) or
+        function_serialization.wrap_cached_variables(original_function))
     _validate_inputs(signature_function)
 
     # Re-wrap the function so that it returns a dictionary of Tensors. This
@@ -141,7 +147,7 @@ def canonicalize_signatures(signatures):
     # pylint: enable=protected-access
     concrete_signatures[signature_key] = final_concrete
     # pylint: enable=cell-var-from-loop
-  return concrete_signatures
+  return concrete_signatures, wrapped_functions
 
 
 def _is_flat(sequence):

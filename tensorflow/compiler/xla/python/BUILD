@@ -152,6 +152,7 @@ cc_library(
         ":worker_thread",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
         "@com_google_absl//absl/memory",

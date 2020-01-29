@@ -1625,6 +1625,10 @@ bool NNAPIDelegateKernel::Validate(
       Expect(!builtin->align_corners,
              NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support align_corners == true.", &val_ctx);
+      // TODO(b/147696142): Update when NNAPI delegate can support TF2 behavior.
+      Expect(!builtin->half_pixel_centers,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support half_pixel_centers == true.", &val_ctx);
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(input.type == kTfLiteFloat32,
                NNAPIValidationFailureType::kUnsupportedInputType,
@@ -3107,7 +3111,7 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
         model_token) {
       // Compilation caching could be enabled, try construct the uint8
       // token.
-      // TODO(133342794): use a generic token generator class.
+      // TODO(b/133342794): use a generic token generator class.
       uint64_t token_parts[4];
       // bits from model_token.
       token_parts[0] = std::hash<std::string>{}(model_token);

@@ -109,17 +109,17 @@ std::string Add::GetCoreCode(const LinkingContext& context) const {
         WHSPoint{size_name + ".x", size_name + ".y", size_name + ".z"},
         definition_.src_tensors[i]);
     if (src_depthes_[i] != dst_depth_) {
-      absl::StrAppend(&result, "  if (", context.z_coord, " < ",
+      absl::StrAppend(&result, "  if (", context.s_coord, " < ",
                       src_depthes_[i], ") {\n");
       absl::StrAppend(&result, "  ", context.var_name, " += ",
                       src_tensor.ReadWHS(context.x_coord, context.y_coord,
-                                         context.z_coord) +
+                                         context.s_coord) +
                           ";\n");
       absl::StrAppend(&result, "  }\n");
     } else {
       absl::StrAppend(&result, "  ", context.var_name, " += ",
                       src_tensor.ReadWHS(context.x_coord, context.y_coord,
-                                         context.z_coord) +
+                                         context.s_coord) +
                           ";\n");
     }
   }

@@ -21,6 +21,8 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
+// Creates a tf.ReadVariable op that reads a resource `$2` that has the same
+// element type as `$1`. The op created will use location of `$1`.
 def CreateTFReadVariableOp: NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "  $0.getLoc(),"
@@ -212,3 +214,27 @@ def DecomposeResourceApplyAdamNesterov :
       (TF_AssignVariableOp $v_resource, $new_v)
     ]
   >;
+
+// Pattern to decompose tf.ResourceGather into tf.ReadVariable and tf.GatherV2.
+def DecomposeResourceGather : Pat<
+  (TF_ResourceGatherOp:$old_result
+    $resource, $indices, $batch_dims, $validate_indices),
+  (TF_GatherV2Op
+    (CreateTFReadVariableOp $old_result, $old_result, $resource),
+    $indices,
+    (TF_ConstOp $batch_dims), // axis
+    $batch_dims
+  )>;
+
+// Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
+// tf.TensorScatterUpdate, and tf.AssignVariable.
+def DecomposeResourceScatterUpdate : Pat<
+  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
+  (TF_AssignVariableOp
+    $resource,
+    (TF_TensorScatterUpdateOp
+      (CreateTFReadVariableOp $src_op, $updates, $resource),
+      $indices,
+      $updates
+    )
+  )>;

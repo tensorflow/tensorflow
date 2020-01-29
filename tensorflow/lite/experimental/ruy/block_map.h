@@ -27,9 +27,9 @@ enum class BlockMapTraversalOrder {
   // Fractal Z-order curve, https://en.wikipedia.org/wiki/Z-order_curve
   kFractalZ,
   // Variant of Z-order doing a U instead of a Z.
-  kFractalU
-  // TODO(benoitjacob) add Hilbert curve order. More complex decoding might be
-  // worth it.
+  kFractalU,
+  // Hilbert curve, https://en.wikipedia.org/wiki/Hilbert_curve
+  kFractalHilbert
 };
 
 // A BlockMap describes a tiling of a matrix, typically the destination matrix
@@ -103,12 +103,21 @@ struct BlockMap {
   SidePair<int> large_blocks;
 };
 
+// Returns the traversal order to be used for the given matrix multiplication
+// parameters.
+BlockMapTraversalOrder GetTraversalOrder(int rows, int cols, int depth,
+                                         int lhs_scalar_size,
+                                         int rhs_scalar_size,
+                                         int local_data_cache_size,
+                                         int shared_data_cache_size);
+
 // Create a BlockMap suitable for tiling the destination matrix in a
 // matrix multiplication with the given parameters.
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
                   int tentative_thread_count, Path path,
-                  int cache_friendly_traversal_threshold, BlockMap* block_map);
+                  int local_data_cache_size, int shared_data_cache_size,
+                  BlockMap* block_map);
 
 // Maps an integer index to a block position in the grid.
 void GetBlockByIndex(const BlockMap& block_map, int index,

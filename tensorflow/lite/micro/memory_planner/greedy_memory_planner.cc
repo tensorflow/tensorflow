@@ -240,17 +240,19 @@ void GreedyMemoryPlanner::CalculateOffsetsIfNeeded() {
   }
 }
 
-int GreedyMemoryPlanner::GetMaximumMemorySize() {
+size_t GreedyMemoryPlanner::GetMaximumMemorySize() {
   CalculateOffsetsIfNeeded();
   if (buffer_count_ == 0) {
     return 0;
   }
   ListEntry* entry = &buffers_sorted_by_offset_[0];
-  int max_size = 0;
+  size_t max_size = 0;
   while (entry) {
     BufferRequirements* requirements =
         &requirements_[entry->requirements_index];
-    const int current_size = entry->offset + requirements->size;
+    // TODO(b/148246793): Update all size and offset variables types from
+    //                    int to size_t
+    const size_t current_size = entry->offset + requirements->size;
     if (current_size > max_size) {
       max_size = current_size;
     }

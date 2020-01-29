@@ -1112,9 +1112,9 @@ class LayerNormalization(Layer):
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
-      # later contuct a separate calculation on the scale and offset.
-      scale = _set_const_tensor(1.0, inputs.dtype, [pre_dim])
-      offset = _set_const_tensor(0.0, inputs.dtype, [pre_dim])
+      # later constuct a separate calculation on the scale and offset.
+      scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
+      offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
 
       # Compute layer normalization using the fused_batch_norm function.
       outputs, _, _ = nn.fused_batch_norm(
@@ -1129,9 +1129,9 @@ class LayerNormalization(Layer):
       scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
 
       if scale is not None:
-        outputs = outputs * scale
+        outputs = outputs * math_ops.cast(scale, outputs.dtype)
       if offset is not None:
-        outputs = outputs + offset
+        outputs = outputs + math_ops.cast(offset, outputs.dtype)
 
     # If some components of the shape got lost due to adjustments, fix that.
     outputs.set_shape(input_shape)

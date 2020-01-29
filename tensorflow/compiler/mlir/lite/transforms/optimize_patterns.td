@@ -23,6 +23,9 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 
+def ExtractSingleElementAsFloat : NativeCodeCall<
+    "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -358,6 +361,7 @@ class ValueEquals<string val> : Constraint<CPred<
   "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
   "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
 
+// ReLU patterns
 def : Pat<(TFL_MinimumOp (TFL_MaximumOp $input,
                           (ConstantOp $NegOne)),
            (ConstantOp $One)),
@@ -369,6 +373,14 @@ def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
            (ConstantOp $NegOne)),
           (TFL_Relu1Op $input),
           [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+
+def : Pat<(TFL_MaximumOp (TFL_MulOp:$mul_out $input1,
+                          (ConstantOp F32ElementsAttr:$alpha), TFL_AF_None),
+           $input2),
+          (TFL_LeakyReluOp $input1, ExtractSingleElementAsFloat:$alpha),
+          [(ConstDoubleValueLessThan<"1"> $alpha),
+           (EqualOperands $input1, $input2),
+           (HasOneUse $mul_out)]>;
 
 // The constant folding in this pass might produce constant in the tf dialect.
 // This rule is to legalize these constant to the tfl dialect.

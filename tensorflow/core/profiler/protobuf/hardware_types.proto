@@ -25,6 +25,6 @@ message DeviceCapabilities {
   double clock_rate_in_ghz = 1;
   uint32 num_cores = 2;
   uint64 memory_size_in_bytes = 3;
-  uint64 memory_bandwidth = 4;
+  uint64 memory_bandwidth = 4;  // Bytes/s.
   CudaComputeCapability compute_capability = 5;
 }

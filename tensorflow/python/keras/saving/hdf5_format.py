@@ -174,7 +174,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
       # instantiate optimizer
       training_config = f.attrs.get('training_config')
       if training_config is None:
-        logging.warning('No training configuration found in save file: '
+        logging.warning('No training configuration found in the save file, so '
                         'the model was *not* compiled. Compile it manually.')
         return model
       training_config = json.loads(training_config.decode('utf-8'))
@@ -621,7 +621,9 @@ def save_weights_to_hdf5_group(f, layers):
   f.attrs['backend'] = K.backend().encode('utf8')
   f.attrs['keras_version'] = str(keras_version).encode('utf8')
 
-  for layer in layers:
+  # Sort model layers by layer name to ensure that group names are strictly
+  # growing to avoid prefix issues.
+  for layer in sorted(layers, key=lambda x: x.name):
     g = f.create_group(layer.name)
     weights = _legacy_weights(layer)
     weight_values = K.batch_get_value(weights)

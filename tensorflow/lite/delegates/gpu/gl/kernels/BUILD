@@ -630,9 +630,9 @@ cc_test(
 )
 
 cc_library(
-    name = "upsampling_bilinear",
-    srcs = ["upsampling_bilinear.cc"],
-    hdrs = ["upsampling_bilinear.h"],
+    name = "resize",
+    srcs = ["resize.cc"],
+    hdrs = ["resize.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -644,15 +644,15 @@ cc_library(
 )
 
 cc_test(
-    name = "upsampling_bilinear_test",
-    srcs = ["upsampling_bilinear_test.cc"],
+    name = "resize_test",
+    srcs = ["resize_test.cc"],
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":resize",
         ":test_util",
-        ":upsampling_bilinear",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
     ],
@@ -673,10 +673,10 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "relu",
     "mean",
     "reshape",
+    "resize",
     "slice",
     "softmax",
     "transpose_conv",
-    "upsampling_bilinear",
 ]
 
 NON_TFLITE_GPU_BINARY_RELEASE_OPERATORS = [

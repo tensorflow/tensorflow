@@ -153,9 +153,15 @@ static void PopulateShapedBufferFromBuffer(
     const SharedDeviceBuffer& buffer,
     ShapeTree<se::DeviceMemoryBase>::iterator* iterator,
     const ShapeTree<se::DeviceMemoryBase>::iterator& end) {
+<<<<<<< HEAD
   for (const se::DeviceMemoryBase& device_mem : buffer.device_memory()) {
     CHECK(*iterator != end);
     (*iterator)->second = device_mem;
+=======
+  for (const se::DeviceMemoryBase& buf : buffer.device_memory()) {
+    CHECK(*iterator != end);
+    (*iterator)->second = buf;
+>>>>>>> google_upstream/master
     ++*iterator;
   }
   for (const auto& child : buffer.children()) {

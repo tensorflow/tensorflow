@@ -1472,13 +1472,35 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
   auto& builder = *x.builder();
   return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(a));
+    TF_ASSIGN_OR_RETURN(Shape b_shape, builder.GetShape(b));
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder.GetShape(x));
+    if (b_shape.element_type() != shape.element_type() ||
+        x_shape.element_type() != shape.element_type()) {
+      return InvalidArgument(
+          "Operands to RegularizedIncompleteBeta must have identical types, "
+          "got shapes %s, %s, and %s",
+          shape.ToString(), b_shape.ToString(), x_shape.ToString());
+    }
+    if (!primitive_util::IsFloatingPointType(shape.element_type())) {
+      return InvalidArgument(
+          "Operands to RegularizedIncompleteBeta must be real-valued "
+          "floating-point, but got %s",
+          PrimitiveType_Name(shape.element_type()));
+    }
+    PrimitiveType element_type = shape.element_type();
+    if (element_type == F16 || element_type == BF16) {
+      element_type = F32;
+      a = ConvertElementType(a, F32);
+      b = ConvertElementType(b, F32);
+      x = ConvertElementType(x, F32);
+    }
 
     // The partial numerator for the incomplete beta function is given
     // here: http://dlmf.nist.gov/8.17.E23 Note that there is a special
     // case: the partial numerator for the first iteration is one.
     auto NthPartialBetaincNumerator =
-        [&shape](XlaOp iteration, absl::Span<const XlaOp> inputs,
-                 XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+        [&](XlaOp iteration, absl::Span<const XlaOp> inputs,
+            XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
       auto a = inputs[0];
       auto b = inputs[1];
       auto x = inputs[2];
@@ -1489,7 +1511,7 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
       auto iteration_is_one = Eq(iteration_bcast, FullLike(iteration_bcast, 1));
       auto iteration_minus_one = iteration_bcast - FullLike(iteration_bcast, 1);
       auto m = iteration_minus_one / FullLike(iteration_minus_one, 2);
-      m = ConvertElementType(m, shape.element_type());
+      m = ConvertElementType(m, element_type);
       auto one = FullLike(a, 1.0);
       auto two = FullLike(a, 2.0);
       // Partial numerator terms.
@@ -1534,7 +1556,7 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
     XlaOp continued_fraction;
 
     // Thresholds and iteration counts taken from Cephes.
-    if (shape.element_type() == F32) {
+    if (element_type == F32) {
       continued_fraction = LentzThompsonBarnettAlgorithm(
           /*num_iterations=*/200,
           /*small=*/std::numeric_limits<float>::epsilon() / 2.0f,
@@ -1543,7 +1565,7 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
           /*nth_partial_denominator=*/NthPartialBetaincDenominator, {a, b, x},
           "Betainc");
     } else {
-      TF_RET_CHECK(shape.element_type() == F64);
+      TF_RET_CHECK(element_type == F64);
       continued_fraction = LentzThompsonBarnettAlgorithm(
           /*num_iterations=*/600,
           /*small=*/std::numeric_limits<double>::epsilon() / 2.0f,
@@ -1561,13 +1583,15 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
     auto lbeta = Lbeta(a, b);
     auto result =
         continued_fraction * Exp(Log(x) * a + Log1p(-x) * b - lbeta) / a;
-    result =
-        Select(result_is_nan, NanValue(&builder, shape.element_type()), result);
+    result = Select(result_is_nan, NanValue(&builder, element_type), result);
 
     // We have an additional fixup to do if we are taking advantage of the
     // symmetry relation.
-    return Select(converges_rapidly, result,
-                  Sub(FullLike(result, 1.0), result));
+    auto out =
+        Select(converges_rapidly, result, Sub(FullLike(result, 1.0), result));
+    return shape.element_type() == element_type
+               ? out
+               : ConvertElementType(out, shape.element_type());
   });
 }
 

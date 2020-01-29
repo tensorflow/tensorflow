@@ -270,6 +270,8 @@ struct DepthwiseConvParams {
   int32 stride_height;
   int32 output_width;
   int32 output_height;
+  float float_output_activation_min;
+  float float_output_activation_max;
 };
 
 // Encapsulates constant parameters used in DepthwiseConv using dot-product ops.

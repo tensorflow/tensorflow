@@ -34,10 +34,17 @@ class CallInliner : public HloModulePass {
   // instructions to their inlined versions.
   static StatusOr<InlinedInstructionMap> Inline(HloInstruction* call);
 
+  // If single_call_site is true, only functions with a single call site will be
+  // inlined.
+  explicit CallInliner(bool single_call_site = false)
+      : single_call_site_(single_call_site) {}
   ~CallInliner() override = default;
   absl::string_view name() const override { return "CallInliner"; }
 
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  bool single_call_site_;
 };
 
 }  // namespace xla

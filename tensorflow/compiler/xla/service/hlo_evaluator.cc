@@ -1872,14 +1872,15 @@ Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
         "user.");
   }
 
-  // The token in index {1} is undefined, but since we can't represent undefined
-  // values using a Literal, we just use 0. This should be safe though since we
-  // ensure that the only user of a kCopyStart is a kCopyDone which "eats" the
-  // token. Also note that MakeTuple copies its arguments, so this is
-  // memory-safe.
-  const Literal token_literal = LiteralUtil::CreateR0<uint32>(0);
+  // The context in index {2} is undefined, but since we can't represent
+  // undefined values using a Literal, we just use 0. This should be safe though
+  // since we ensure that the only user of a kCopyStart is a kCopyDone which
+  // consumes the context. Also note that MakeTuple copies its arguments, so
+  // this is memory-safe.
+  const Literal context_literal = LiteralUtil::CreateR0<uint32>(0);
   evaluated_[copy_start] = LiteralUtil::MakeTuple(
-      {&GetEvaluatedLiteralFor(copy_start->operand(0)), &token_literal});
+      {&GetEvaluatedLiteralFor(copy_start->operand(0)),
+       &GetEvaluatedLiteralFor(copy_start->operand(0)), &context_literal});
   return Status::OK();
 }
 
