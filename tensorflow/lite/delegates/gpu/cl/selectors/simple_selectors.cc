@@ -92,9 +92,6 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
 
 Status SelectResize(const Resize2DAttributes& attr, const OperationDef& op_def,
                     std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.type != SamplingType::BILINEAR) {
-    return UnimplementedError("Resize2D supports only bilinear sampling.");
-  }
   Resize operation = CreateResize(op_def, attr);
   *ptr = absl::make_unique<Resize>(std::move(operation));
   return OkStatus();
