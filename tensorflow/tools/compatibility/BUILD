@@ -265,7 +265,6 @@ py_test(
     name = "test_file_v2_0",
     size = "small",
     srcs = ["test_file_v2_0.py"],
-    tags = ["no_rocm"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_rocm"],
