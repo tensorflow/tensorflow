@@ -376,6 +376,34 @@ func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> 
 
 // -----
 
+func @recv_invalid_number_of_results(%token: !xla_hlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !xla_hlo.token> {
+  // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
+  %0 = "xla_hlo.recv"(%token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 3 : i64  // Host to device channel
+    },
+    is_host_transfer = true
+  } : (!xla_hlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !xla_hlo.token>
+  return %0 : tuple<tensor<3x4xi32>, tensor<i32>, !xla_hlo.token>
+}
+
+// -----
+
+func @recv_non_token_second_result(%token: !xla_hlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
+  // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
+  %0 = "xla_hlo.recv"(%token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 3 : i64  // Host to device channel
+    },
+    is_host_transfer = true
+  } : (!xla_hlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>>
+  return %0 : tuple<tensor<3x4xi32>, tensor<i32>>
+}
+
+// -----
+
 func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
   %shape = xla_hlo.constant dense<[2, 3, 5]> : tensor<3xi64>
   // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit integer or floating-point values, but got 'tensor<complex<f32>>'}}
