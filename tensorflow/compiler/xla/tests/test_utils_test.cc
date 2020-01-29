@@ -47,12 +47,12 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  auto executable_status = local_client_->Compile(
-      computation_status.ValueOrDie(), {&pair_float, &single_float},
-      ExecutableBuildOptions());
-  TF_ASSERT_OK(executable_status.status());
-  HloModule& module = const_cast<HloModule&>(
-      executable_status.ValueOrDie()->executable()->module());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables, local_client_->Compile(computation_status.ValueOrDie(),
+                                               {&pair_float, &single_float},
+                                               ExecutableBuildOptions()));
+  HloModule& module =
+      const_cast<HloModule&>(executables[0]->executable()->module());
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
 }
 

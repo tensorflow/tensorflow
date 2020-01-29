@@ -283,7 +283,8 @@ class PyLocalBuffer {
 };
 
 // Represents a compiled computation that can be executed given handles to
-// device-allocated literals. Wraps an XLA LocalExecutable.
+// device-allocated literals. Wraps one or more XLA LocalExecutables (one per
+// partition, as specified by the build options).
 class PyLocalExecutable {
  public:
   // Compiles a computation to an executable.
@@ -304,20 +305,24 @@ class PyLocalExecutable {
       std::shared_ptr<PyLocalClient> client,
       absl::optional<DeviceAssignment> device_assignment);
 
-  PyLocalExecutable(std::shared_ptr<LocalExecutable> executable,
+  PyLocalExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                     DeviceAssignment device_assignment,
                     std::shared_ptr<PyLocalClient> client);
 
   int num_replicas() const {
-    return executable_->build_options().num_replicas();
+    return executables_[0]->build_options().num_replicas();
   }
 
   int num_partitions() const {
-    return executable_->build_options().num_partitions();
+    return executables_[0]->build_options().num_partitions();
   }
 
   int64 SizeOfGeneratedCodeInBytes() const {
-    return executable_->executable()->SizeOfGeneratedCodeInBytes();
+    int64 size = 0;
+    for (auto& executable : executables_) {
+      size += executable->executable()->SizeOfGeneratedCodeInBytes();
+    }
+    return size;
   }
 
   const DeviceAssignment& device_assignment() const {
@@ -346,7 +351,7 @@ class PyLocalExecutable {
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteOnLocalDevices(
       absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
 
-  void Delete() { executable_ = nullptr; }
+  void Delete() { executables_.clear(); }
 
   const string& name() const;
 
@@ -359,7 +364,8 @@ class PyLocalExecutable {
   // asynchronous execution, the process being executed can outlive the
   // executable itself.
   std::shared_ptr<PyLocalClient> const client_;
-  std::shared_ptr<LocalExecutable> executable_;
+  // One executable per partition.
+  std::vector<std::shared_ptr<LocalExecutable>> executables_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   // The replica and partition indices of device_assignment_ to be run by this

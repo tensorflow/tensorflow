@@ -128,12 +128,11 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   }
 
   VLOG(1) << "Building executable";
-  auto compile_result =
-      client->Compile(computation, argument_layout_ptrs, build_options);
-  if (!compile_result.ok()) {
-    return compile_result.status();
-  }
-  *program = std::move(compile_result.ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client->Compile(computation, argument_layout_ptrs, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  *program = std::move(executables[0]);
   return Status::OK();
 }
 
