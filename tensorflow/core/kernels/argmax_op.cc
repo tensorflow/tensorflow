@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// See docs in ../ops/math_ops.cc.
+
 #define EIGEN_USE_THREADS
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -38,39 +40,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-template <typename Device>
-struct CustomArgOp;
-
-template <>
-struct CustomArgOp<CPUDevice> {
-  template <typename T, typename Tout, typename ArgFunctor>
-  // Determines whether the custom kernel in argmax_op_gpu.cu.cc should be
-  // used, and if so, runs it by calling DoGpuArgOp. If it was run,
-  // returns true. Otherwise, it returns false and the caller must calculate the
-  // arg min or max itself.
-  static bool CustomArgFunc(OpKernelContext* context, const Tensor& input,
-                            int axis, Tensor* output) {
-    return false;
-  }
-};
-
-template <>
-struct CustomArgOp<GPUDevice> {
-  template <typename T, typename Tout, typename ArgFunctor>
-  static bool CustomArgFunc(OpKernelContext* context, const Tensor& input,
-                            int axis, Tensor* output) {
-    if (output->NumElements() <= 1024 || output->dims() > 7) {
-      // The custom kernel is faster than Eigen when the number of output
-      // elements is relatively small. We also only handle the Eigen case for up
-      // to 7 dimensions.
-      DoGpuArgOp<T, Tout, ArgFunctor::is_argmax>(context, input, axis, output);
-      return true;
-    } else {
-      return false;
-    }
-  }
-};
 
 template <typename Device, typename T, typename Tout, typename ArgFunctor>
 class ArgOp : public OpKernel {
@@ -109,11 +78,6 @@ class ArgOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
     if (output_shape.num_elements() == 0) {
-      return;
-    }
-
-    if (CustomArgOp<Device>::template CustomArgFunc<T, Tout, ArgFunctor>(
-            context, input, axis, output)) {
       return;
     }
 

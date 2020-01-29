@@ -18,8 +18,6 @@ limitations under the License.
 // Generator definition for ArgMaxOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -45,7 +43,6 @@ struct ArgMax {
   DECLARE_COMPUTE_SPEC(7);
 
 #undef DECLARE_COMPUTE_SPEC
-  enum { is_argmax = true };
 };
 
 template <typename Device, typename T, typename Tout>
@@ -66,14 +63,9 @@ struct ArgMin {
   DECLARE_COMPUTE_SPEC(7);
 
 #undef DECLARE_COMPUTE_SPEC
-  enum { is_argmax = false };
 };
 
 }  // namespace functor
-
-template <typename T, typename Tout, bool is_argmax>
-void DoGpuArgOp(OpKernelContext* context, const Tensor& input, int axis,
-                Tensor* output);
 
 }  // namespace tensorflow
 
