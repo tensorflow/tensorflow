@@ -541,7 +541,6 @@ class NNTest(PForTestCase):
       labels_i = array_ops.gather(labels, i)
       loss = nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels_i, logits=logits_i)
-      total_loss = math_ops.reduce_sum(loss)
       return loss
 
     self._test_loop_fn(loop_fn, 3)
