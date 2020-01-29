@@ -2793,12 +2793,11 @@ def TFL_CastOp : TFL_Op<"cast", [
     Casts input from input type to output type.
   }];
 
-  // TODO(b/135538711): Add complex types here.
   let arguments = (ins
-    TensorOf<[F32, I1, I32, I64, TFL_Quint8, TFL_Uint8]>:$input
+    TensorOf<[F32, I1, I32, I64, TFL_Quint8, TFL_Uint8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TensorOf<[F32, I1, I32, I64]>:$output);
+  let results = (outs TensorOf<[F32, I1, I32, I64, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
