@@ -96,17 +96,14 @@ absl::optional<const XStat*> EventNode::GetContextStat(int64 stat_type) const {
 
 std::string EventNode::GetGroupName() const {
   std::vector<std::string> name_parts;
-  if (auto graph_type_stat = GetContextStat(StatType::kGraphType);
-      graph_type_stat.has_value()) {
+  if (auto graph_type_stat = GetContextStat(StatType::kGraphType)) {
     name_parts.push_back((*graph_type_stat)->str_value());
   }
   int64 step_num = 0;
-  if (auto step_num_stat = GetContextStat(StatType::kStepNum);
-      step_num_stat.has_value()) {
+  if (auto step_num_stat = GetContextStat(StatType::kStepNum)) {
     step_num = (*step_num_stat)->int64_value();
   }
-  if (auto iter_num_stat = GetContextStat(StatType::kIterNum);
-      iter_num_stat.has_value()) {
+  if (auto iter_num_stat = GetContextStat(StatType::kIterNum)) {
     step_num += (*iter_num_stat)->int64_value();
   }
   name_parts.push_back(absl::StrCat(step_num));
