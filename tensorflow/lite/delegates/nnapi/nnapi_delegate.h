@@ -17,13 +17,23 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
 namespace tflite {
+
+namespace delegate {
+namespace nnapi {
+class NNAPIDelegateKernel;
+}  // namespace nnapi
+}  // namespace delegate
+
+using tflite::delegate::nnapi::NNAPIDelegateKernel;
 
 // TFliteDelegate to interface with NNAPI.
 class StatefulNnApiDelegate : public TfLiteDelegate {
@@ -144,6 +154,21 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Constains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
     int nnapi_errno;
+    // Cache of kernels already built in StatefulNnApiDelegate::DoPrepare
+    // when trying to understand if all nodes are supported by the target
+    // accelerators.
+    // The key is the index of the first node in the partition.
+    // Couldn't use unique_ptr because of problems building on gcc
+    std::unordered_map<int, NNAPIDelegateKernel*> delegate_state_cache;
+
+    ~Data();
+
+    // Caches an initialised NNAPIDelegateKernel.
+    void CacheDelegateKernel(const TfLiteDelegateParams* delegate_params,
+                             NNAPIDelegateKernel* delegate_state);
+    // Returns a cached NNAPIDelegateKernel if available.
+    absl::optional<NNAPIDelegateKernel*> GetCachedDelegateKernel(
+        const TfLiteDelegateParams* delegate_params);
   };
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate
