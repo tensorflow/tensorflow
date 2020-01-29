@@ -315,13 +315,14 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                 errors::InvalidArgument(
                     "profile_generation_mode_=true is only supported if "
                     "use_implicit_batch=false"));
-  }
-  if (use_implicit_batch_) {
-    VLOG(1) << "Attribute input_shapes it not set. This happens probably "
-            << "because you are using a model that is already converted "
-            << "to TensorRT (i.e. includes TRTEngineOp in graph). If you "
-            << "convert the original model again to TensorRT, the "
-            << "attributes input_shapes will be set automatically.";
+
+    if (input_partial_shapes_.size()==0) {
+      VLOG(1) << "Attribute input_shapes it not set. This happens probably "
+              << "because you are using a model that is already converted "
+              << "to TensorRT (i.e. includes TRTEngineOp in graph). If you "
+              << "convert the original model again to TensorRT, the "
+              << "attributes input_shapes will be set automatically.";
+    }
   } else {
     OP_REQUIRES(context, input_partial_shapes_.size() > 0,
                 errors::InvalidArgument(
