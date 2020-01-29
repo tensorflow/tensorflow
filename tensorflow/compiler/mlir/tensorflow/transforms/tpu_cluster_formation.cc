@@ -247,7 +247,7 @@ void UpdateLaunchOpResultExternalUses(tf_device::LaunchOp launch_op,
   for (auto ret_vals : llvm::zip(results, launch_op.getResults())) {
     Value old_ret = std::get<0>(ret_vals);
     Value new_ret = std::get<1>(ret_vals);
-    for (auto& use : old_ret.getUses())
+    for (auto& use : llvm::make_early_inc_range(old_ret.getUses()))
       if (!launch_op_block.findAncestorOpInBlock(*use.getOwner()))
         use.set(new_ret);
   }

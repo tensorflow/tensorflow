@@ -2615,7 +2615,7 @@ Status CreateSavedModelIR(
       // module, create a wrapper around it and decorate the wrapper with the
       // tf_saved_model attributes instead.
       if (!mlir::SymbolTable::symbolKnownUseEmpty(orig_func.getName(),
-                                                  module)) {
+                                                  &module.getBodyRegion())) {
         func = orig_func.cloneWithoutRegions();
         module.insert(module.getBody()->begin(), func);
         func.addEntryBlock();

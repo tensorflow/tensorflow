@@ -170,7 +170,7 @@ static LogicalResult VerifySavedModelModule(
     }
   }
   SymbolTable symbol_table(module);
-  auto symbol_uses = SymbolTable::getSymbolUses(module);
+  auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
   if (!symbol_uses.hasValue()) {
     return module.emitError() << "modules with 'tf_saved_model.semantics' must "
                                  "have analyzable symbol uses";
