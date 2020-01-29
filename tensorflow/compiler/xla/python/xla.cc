@@ -258,6 +258,8 @@ PYBIND11_MODULE(xla_extension, m) {
            [](const Shape& shape) {
              return std::vector<Shape>(shape.tuple_shapes());
            })
+      .def("leaf_count",
+           [](const Shape& shape) { return ShapeUtil::GetLeafCount(shape); })
       .def(
           "with_major_to_minor_layout_if_absent",
           [](const Shape& shape) {
@@ -279,7 +281,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__hash__",
            [](const Shape& shape) { return absl::Hash<Shape>()(shape); })
       .def("__repr__", [](const Shape& shape) {
-        return shape.ToString(/*print_layouts=*/true);
+        return shape.ToString(/*print_layout=*/true);
       });
 
   py::class_<ProgramShape>(m, "ProgramShape")
@@ -764,6 +766,10 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Pad", &Pad);
   ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
                                              const std::string&)>(&Parameter));
+  ops.def("Parameter",
+          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+                                const std::string&, const std::vector<bool>&)>(
+              &Parameter));
   ops.def("QR",
           [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
             TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
