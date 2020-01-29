@@ -933,9 +933,8 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       self.assertLen(y, 5)
       self.assertAllClose(y[0], np.concatenate([y[1], y[3]], axis=1))
 
-  @tf_test_util.run_v1_only(reason='b/148247985')
-  def test_Bidirectional_sequence_output_with_masking(self):
-    rnn = keras.layers.LSTM
+  @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
+  def test_Bidirectional_sequence_output_with_masking(self, rnn):
     samples = 2
     dim = 5
     timesteps = 3
