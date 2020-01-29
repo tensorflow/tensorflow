@@ -80,7 +80,7 @@ void WaitTest(const Duration& spin_duration, const Duration& delay) {
     const auto& condition = [&value, &end_value]() {
       return value.load() == end_value.load();
     };
-    ruy::WaitUntil(condition, spin_duration, &condvar, &mutex);
+    ruy::Wait(condition, spin_duration, &condvar, &mutex);
     EXPECT_EQ(value.load(), end_value.load());
   }
   end_value.store(-1);
