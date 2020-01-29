@@ -35,6 +35,10 @@ constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kMaxChannels = 256;
 
+// Conv is quantized along dimension 0:
+// https://www.tensorflow.org/lite/performance/quantization_spec
+constexpr int kConvQuantizedDimension = 0;
+
 // This file has 2 implementation of Conv.
 
 struct OpData {
@@ -92,13 +96,15 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     const TfLiteTensor* bias =
         GetOptionalInputTensor(context, node, kBiasTensor);
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+    int output_channels = filter->dims->data[kConvQuantizedDimension];
 
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier,
-        reinterpret_cast<int*>(data->per_channel_output_shift)));
+        reinterpret_cast<int*>(data->per_channel_output_shift),
+        output_channels));
   }
   return kTfLiteOk;
 }
@@ -228,12 +234,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
-    // Conv is quantized along dimension 0:
-    // https://www.tensorflow.org/lite/performance/quantization_spec
-    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
-                      affine_quantization->scale->size);
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+
+    TF_LITE_ENSURE(context,
+                   affine_quantization->scale->size == 1 ||
+                       affine_quantization->scale->size ==
+                           filter->dims->data[kConvQuantizedDimension]);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                       affine_quantization->zero_point->size);
   }
 
