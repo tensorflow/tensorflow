@@ -4431,7 +4431,7 @@ TEST_F(HloEvaluatorTest, CopyStartCopyDone) {
   HloModule test
   ENTRY CopyStartCopyDone {
     init = f32[] constant(42.0)
-    copy-start = (f32[]{:S(1)}, u32[]) copy-start(init)
+    copy-start = (f32[]{:S(1)}, f32[], u32[]) copy-start(init)
     ROOT copy-done = f32[] copy-done(copy-start)
   }
   )";
