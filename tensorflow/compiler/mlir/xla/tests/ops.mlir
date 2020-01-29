@@ -268,6 +268,22 @@ func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -
 
 // -----
 
+func @infeed_invalid_number_of_results(%token: !xla_hlo.token) -> tuple<tuple<tensor<i32>>, !xla_hlo.token, tensor<i32>> {
+  // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
+  %0 = "xla_hlo.infeed"(%token) {infeed_config = "foobar"} : (!xla_hlo.token) -> tuple<tuple<tensor<i32>>, !xla_hlo.token, tensor<i32>>
+  return %0 : tuple<tuple<tensor<i32>>, !xla_hlo.token, tensor<i32>>
+}
+
+// -----
+
+func @infeed_non_token_second_result(%token: !xla_hlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>> {
+  // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
+  %0 = "xla_hlo.infeed"(%token) {infeed_config = "foobar"} : (!xla_hlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>>
+  return %0 : tuple<tuple<tensor<i32>>, tensor<i32>>
+}
+
+// -----
+
 func @map_mismatched_args(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // expected-error@+1 {{expects number of operands to match the arity of map computation, but got: 2 and 1}}
   %0 = "xla_hlo.map"(%arg0, %arg1) ( {
