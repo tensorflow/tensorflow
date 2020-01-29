@@ -151,12 +151,11 @@ inline void LstmStepFloat(
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
-  const bool use_layer_norm_lstm =
-      (forget_layer_norm_coefficients_ptr != nullptr);
+  const bool use_layer_norm = (forget_layer_norm_coefficients_ptr != nullptr);
 
   // Initialize scratch buffers with bias for regular lstm or initialize with
   // zero for layer norm lstm.
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     if (!use_cifg) {
       std::fill_n(input_gate_scratch, n_cell * n_batch, 0.0f);
     }
@@ -243,7 +242,7 @@ inline void LstmStepFloat(
           cell_to_input_weights_ptr, n_cell, cell_state_ptr, n_batch,
           input_gate_scratch);
     }
-    if (use_layer_norm_lstm) {
+    if (use_layer_norm) {
       tensor_utils::MeanStddevNormalization(
           input_gate_scratch, input_gate_scratch, n_cell, n_batch);
       tensor_utils::VectorBatchVectorCwiseProduct(
@@ -262,7 +261,7 @@ inline void LstmStepFloat(
         cell_to_forget_weights_ptr, n_cell, cell_state_ptr, n_batch,
         forget_gate_scratch);
   }
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::MeanStddevNormalization(forget_gate_scratch,
                                           forget_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -277,7 +276,7 @@ inline void LstmStepFloat(
   // For each batch and cell: update the cell.
   tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
                                          n_batch * n_cell, cell_state_ptr);
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
                                           n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -308,7 +307,7 @@ inline void LstmStepFloat(
         cell_to_output_weights_ptr, n_cell, cell_state_ptr, n_batch,
         output_gate_scratch);
   }
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::MeanStddevNormalization(output_gate_scratch,
                                           output_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -485,11 +484,11 @@ inline void LstmStepHybrid(
   // can check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
-  const bool use_layer_norm_lstm =
-      (forget_layer_norm_coefficients_ptr != nullptr);
+  const bool use_layer_norm = (forget_layer_norm_coefficients_ptr != nullptr);
 
-  // Initialize scratch buffers with bias.
-  if (use_layer_norm_lstm) {
+  // Initialize scratch buffers with bias for regular lstm or initialize with
+  // zero for layer norm lstm.
+  if (use_layer_norm) {
     if (!use_cifg) {
       std::fill_n(input_gate_scratch, n_cell * n_batch, 0.0f);
     }
@@ -671,7 +670,7 @@ inline void LstmStepHybrid(
           recovered_cell_weights, n_cell, cell_state_ptr, n_batch,
           input_gate_scratch);
     }
-    if (use_layer_norm_lstm) {
+    if (use_layer_norm) {
       tensor_utils::MeanStddevNormalization(
           input_gate_scratch, input_gate_scratch, n_cell, n_batch);
       tensor_utils::VectorBatchVectorCwiseProduct(
@@ -693,7 +692,7 @@ inline void LstmStepHybrid(
         recovered_cell_weights, n_cell, cell_state_ptr, n_batch,
         forget_gate_scratch);
   }
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::MeanStddevNormalization(forget_gate_scratch,
                                           forget_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -708,7 +707,7 @@ inline void LstmStepHybrid(
   // For each batch and cell: update the cell.
   tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
                                          n_batch * n_cell, cell_state_ptr);
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
                                           n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -742,7 +741,7 @@ inline void LstmStepHybrid(
         recovered_cell_weights, n_cell, cell_state_ptr, n_batch,
         output_gate_scratch);
   }
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::MeanStddevNormalization(output_gate_scratch,
                                           output_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
@@ -976,7 +975,7 @@ inline void LstmStepInteger(
   // Get hyper parameters.
   const bool use_cifg = (input_to_input_weight_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weight_ptr != nullptr);
-  const bool use_layer_norm_lstm = (layer_norm_forget_weight_ptr != nullptr);
+  const bool use_layer_norm = (layer_norm_forget_weight_ptr != nullptr);
   const bool use_projection = (proj_weight_ptr != nullptr);
 
   // Check for nullptrs.
@@ -1018,7 +1017,7 @@ inline void LstmStepInteger(
         scratch_1_ptr);
   }
 
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::ApplyLayerNorm(
         scratch_1_ptr, layer_norm_forget_weight_ptr, forget_bias_ptr,
         layer_norm_forget_scale_a, layer_norm_forget_scale_b,
@@ -1039,7 +1038,7 @@ inline void LstmStepInteger(
       effective_recurrent_to_cell_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_2_ptr, context);
 
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::ApplyLayerNorm(scratch_2_ptr, layer_norm_cell_weight_ptr,
                                  cell_bias_ptr, layer_norm_cell_scale_a,
                                  layer_norm_cell_scale_b, cell_variance_guard,
@@ -1069,7 +1068,7 @@ inline void LstmStepInteger(
           scratch_0_ptr);
     }
 
-    if (use_layer_norm_lstm) {
+    if (use_layer_norm) {
       tensor_utils::ApplyLayerNorm(
           scratch_0_ptr, layer_norm_input_weight_ptr, input_bias_ptr,
           layer_norm_input_scale_a, layer_norm_input_scale_b,
@@ -1110,7 +1109,7 @@ inline void LstmStepInteger(
         scratch_3_ptr);
   }
 
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     tensor_utils::ApplyLayerNorm(
         scratch_3_ptr, layer_norm_output_weight_ptr, output_bias_ptr,
         layer_norm_output_scale_a, layer_norm_output_scale_b,

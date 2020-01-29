@@ -50,7 +50,7 @@ struct OpData {
   TfLiteLSTMKernelType kernel_type;
 
   // If the lstm is layer norm.
-  bool use_layer_norm_lstm;
+  bool use_layer_norm;
 
   // These fields are only used by full kernel.
   int scratch_tensor_index;
@@ -92,7 +92,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
 
   // Calculate effective scales.
   OpData* op_data = static_cast<OpData*>(node->user_data);
-  const bool use_layer_norm_lstm = op_data->use_layer_norm_lstm;
+  const bool use_layer_norm = op_data->use_layer_norm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
@@ -147,7 +147,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   std::vector<float> intermediate_scale;
   std::vector<int32> intermediate_zp;
   for (int i = 0; i < 4; ++i) {
-    if (use_layer_norm_lstm) {
+    if (use_layer_norm) {
       const TfLiteTensor* intermediate = GetIntermediates(context, node, i);
       auto* params = static_cast<TfLiteAffineQuantization*>(
           intermediate->quantization.params);
@@ -218,7 +218,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
     cell_to_output_weight_scale = cell_to_output_weights->params.scale;
   }
 
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     if (!use_cifg) {
       layer_norm_input_scale = input_layer_norm_coefficients->params.scale;
     }
@@ -381,8 +381,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                                         TfLiteNode* node, int n_input,
                                         int n_output, int n_cell,
-                                        bool use_layer_norm_lstm,
-                                        bool is_integer) {
+                                        bool use_layer_norm, bool is_integer) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
 
   // Making sure clipping parameters have valid values.
@@ -574,7 +573,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       ((projection_weights != nullptr) || (projection_bias == nullptr));
   TF_LITE_ENSURE(context, projection_tensors_consistent == true);
 
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     const TfLiteTensor* input_layer_norm_coefficients = GetOptionalInputTensor(
         context, node, kInputLayerNormCoefficientsTensor);
     if (use_cifg) {
@@ -714,7 +713,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   // When there is layer normalization, the gate bias does not apply to matmul
   // directly:
   //      y = ln(w * x + w * r + w * c) + b.
-  const bool is_layer_norm = op_data->use_layer_norm_lstm;
+  const bool is_layer_norm = op_data->use_layer_norm;
 
   // Forget gate.
   const TfLiteTensor* forget_gate_bias =
@@ -801,13 +800,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* forget_layer_norm_coefficients = GetOptionalInputTensor(
         context, node, kForgetLayerNormCoefficientsTensor);
     if (forget_layer_norm_coefficients == nullptr) {
-      op_data->use_layer_norm_lstm = false;
+      op_data->use_layer_norm = false;
     } else {
-      op_data->use_layer_norm_lstm = true;
+      op_data->use_layer_norm = true;
     }
   } else if (node->inputs->size == 20) {
     // This is deprecated and is only kept here for backward compatibility.
-    op_data->use_layer_norm_lstm = false;
+    op_data->use_layer_norm = false;
   } else {
     context->ReportError(
         context, "The LSTM Full kernel expects 20 or 24 inputs. Got %d inputs",
@@ -815,7 +814,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  const bool use_layer_norm_lstm = op_data->use_layer_norm_lstm;
+  const bool use_layer_norm = op_data->use_layer_norm;
 
   // Inferring batch size, number of outputs and number of cells from the
   // input tensors.
@@ -839,9 +838,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Check that input tensor dimensions matches with each other.
-  TF_LITE_ENSURE_OK(context, CheckInputTensorDimensions(
-                                 context, node, n_input, n_output, n_cell,
-                                 use_layer_norm_lstm, is_integer));
+  TF_LITE_ENSURE_OK(
+      context, CheckInputTensorDimensions(context, node, n_input, n_output,
+                                          n_cell, use_layer_norm, is_integer));
 
   // Get the pointer to output, activation_state and cell_state tensors.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
