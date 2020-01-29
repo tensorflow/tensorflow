@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 
 const float kNearZeroTolerance = 1.0e-6;
 
@@ -495,5 +495,5 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
   // Returns false if the steps finish without errors.
   return false;
 }
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir

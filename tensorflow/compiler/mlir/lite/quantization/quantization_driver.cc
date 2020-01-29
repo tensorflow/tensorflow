@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 namespace {
 static bool EmptyParams(QuantParams p) { return p == quant::QuantizedType(); }
 
@@ -820,5 +820,5 @@ void ApplyQuantizationParamsPropagation(
       .Run();
 }
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir

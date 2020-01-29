@@ -46,9 +46,9 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
   std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
 
-  OUT(0) << "static std::unique_ptr<OpQuantSpec> "
+  OUT(0) << "static std::unique_ptr<quant::OpQuantSpec> "
             "GetOpQuantSpec(mlir::Operation *op) {\n";
-  OUT(2) << "auto spec = absl::make_unique<OpQuantSpec>();\n";
+  OUT(2) << "auto spec = absl::make_unique<quant::OpQuantSpec>();\n";
   llvm::SmallVector<llvm::StringRef, 3> matches;
   for (auto *def : defs) {
     Operator op(def);
@@ -74,7 +74,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
         if (acc_uniform_trait_regex.match(trait_str, &matches)) {
           OUT(4) << "spec->biases_params.emplace(std::make_pair(" << matches[1]
                  << ", std::make_pair(tfl.GetAllNonBiasOperands(),"
-                 << "GetUniformQuantizedTypeForBias)));\n";
+                 << "quant::GetUniformQuantizedTypeForBias)));\n";
           matches.clear();
         }
         // There is a "QuantChannelDim" trait, set the quantization dimension.

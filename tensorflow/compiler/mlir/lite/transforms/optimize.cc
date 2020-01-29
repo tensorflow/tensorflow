@@ -174,7 +174,7 @@ ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
 }
 
 TypeAttr RescaleQtype(Type input, Attribute factor) {
-  return TFL::RescaleQuantizedType(input, factor);
+  return quant::RescaleQuantizedType(input, factor);
 }
 
 // Returns shape of a ranked tensor.

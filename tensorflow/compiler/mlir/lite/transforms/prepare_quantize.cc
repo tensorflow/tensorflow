@@ -145,7 +145,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
     if (auto shaped = input_type.dyn_cast<ShapedType>()) {
       if (shaped.getElementType().isa<FloatType>()) {
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
-        TypeAttr params = GetQuantizedTypeAttr(
+        TypeAttr params = quant::GetQuantizedTypeAttr(
             builder, input_type, builder.getF64FloatAttr(min_max.first),
             builder.getF64FloatAttr(min_max.second), /*quant_dim=*/-1, num_bits,
             narrow_range, is_signed);
@@ -177,7 +177,7 @@ bool PrepareQuantizePass::RemoveRedundantStats(FuncOp func) {
 }
 
 using PrepareQuantStats =
-    TFL::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
+    quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
@@ -201,7 +201,7 @@ void PrepareQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
   if (is_signed) {
-    patterns.insert<ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
+    patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
     patterns.insert<PrepareQuantStats>(8, false, true, ctx);

@@ -136,7 +136,7 @@ def : Pat<(TF_ReshapeOp
 // Casts result type of $1 to a quantized type by using the quantization
 // parameters from the type in $0.
 class UpdateShapeWithAxis<int i> : NativeCodeCall<
-  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1.getType(), " # i # ")">;
+  "quant::CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1.getType(), " # i # ")">;
 
 class UsedBy<string op> : Constraint<
   CPred<"llvm::isa<mlir::TFL::" # op # "Op>(*$0.getUsers().begin())">>;

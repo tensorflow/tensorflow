@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
@@ -442,7 +442,7 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
 bool RemoveRedundantStatsOps(mlir::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter);
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
