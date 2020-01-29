@@ -79,10 +79,11 @@ _VERBOSE_DIFFS_HELP = """
      false, only print which libraries have differences.
 """
 
-_API_GOLDEN_FOLDER_V1 = 'tensorflow/tools/api/golden/v1'
-_API_GOLDEN_FOLDER_V2 = 'tensorflow/tools/api/golden/v2'
-_TEST_README_FILE = 'tensorflow/tools/api/tests/README.txt'
-_UPDATE_WARNING_FILE = 'tensorflow/tools/api/tests/API_UPDATE_WARNING.txt'
+_API_GOLDEN_FOLDER_V1 = resource_loader.get_path_to_datafile('../golden/v1')
+_API_GOLDEN_FOLDER_V2 = resource_loader.get_path_to_datafile('../golden/v2')
+_TEST_README_FILE = resource_loader.get_path_to_datafile('README.txt')
+_UPDATE_WARNING_FILE = resource_loader.get_path_to_datafile(
+    'API_UPDATE_WARNING.txt')
 
 _NON_CORE_PACKAGES = ['estimator']
 
