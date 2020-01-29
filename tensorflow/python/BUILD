@@ -7449,6 +7449,7 @@ cuda_py_test(
     tags = [
         "grappler",
     ],
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":array_ops",
         ":client_testlib",
