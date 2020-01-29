@@ -31,12 +31,13 @@ namespace micro {
 namespace xtensa {
 namespace hifimini {
 
-// Quantized softmax with int8 input and output.
-void Softmax(const SoftmaxParams& params,
+// Quantized softmax with int8 input and int8/int16 output.
+template <typename OutputT = int8_t>
+inline void Softmax(const SoftmaxParams& params,
                     const RuntimeShape& input_shape, const int8* input_data,
-                    const RuntimeShape& output_shape, int8* output_data) {
-  const int32 input_beta_multiplier = params.input_multiplier;
-  const int32 input_beta_left_shift = params.input_left_shift;
+                    const RuntimeShape& output_shape, OutputT* output_data) {
+  const int32_t input_beta_multiplier = params.input_multiplier;
+  const int32_t input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
@@ -46,9 +47,10 @@ void Softmax(const SoftmaxParams& params,
   static const int kScaledDiffIntegerBits = 5;
   static const int kAccumulationIntegerBits = 12;
   using FixedPointScaledDiff =
-      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+      gemmlowp::FixedPoint<int32_t, kScaledDiffIntegerBits>;
+  using FixedPointAccum =
+      gemmlowp::FixedPoint<int32_t, kAccumulationIntegerBits>;
+  using FixedPoint0 = gemmlowp::FixedPoint<int32_t, 0>;
 
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -64,10 +66,10 @@ void Softmax(const SoftmaxParams& params,
 
     FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32_t input_diff =
+          static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
+        const int32_t input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
                 input_diff, input_beta_multiplier, input_beta_left_shift);
         const FixedPointScaledDiff scaled_diff_f8 =
@@ -82,26 +84,29 @@ void Softmax(const SoftmaxParams& params,
         sum_of_exps.raw(), kAccumulationIntegerBits, &num_bits_over_unit));
 
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32_t input_diff =
+          static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
+        const int32_t input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
                 input_diff, input_beta_multiplier, input_beta_left_shift);
         const FixedPointScaledDiff scaled_diff_f8 =
             FixedPointScaledDiff::FromRaw(input_diff_rescaled);
 
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
-        const int32 unsat_output = gemmlowp::RoundingDivideByPOT(
-            (shifted_scale * exp_in_0).raw(), num_bits_over_unit + 31 - 8);
-        const int32 shifted_output = unsat_output - 128;
-
-        output_data[i * depth + c] = static_cast<int8>(
-            std::max(std::min(shifted_output, static_cast<int32>(127)),
-                     static_cast<int32>(-128)));
-
+        const int32_t unsat_output = gemmlowp::RoundingDivideByPOT(
+            (shifted_scale * exp_in_0).raw(),
+            num_bits_over_unit + 31 - (sizeof(OutputT) * 8));
+        // TODO(b/148494470): Handle int32 shifts properly:
+        const int32_t shifted_output =
+            unsat_output -
+            (static_cast<int32_t>(std::numeric_limits<OutputT>::max()) + 1);
+        output_data[i * depth + c] = static_cast<OutputT>(std::max(
+            std::min(shifted_output,
+                     static_cast<int32_t>(std::numeric_limits<OutputT>::max())),
+            static_cast<int32_t>(std::numeric_limits<OutputT>::min())));
       } else {
-        output_data[i * depth + c] = -128;
+        output_data[i * depth + c] = std::numeric_limits<OutputT>::min();
       }
     }
   }
@@ -132,14 +137,21 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+      if (output->type == kTfLiteInt16) {
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
+        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // - so no need to verify scale here.
+      } else {
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+        TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
+      }
     }
-    TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
 
     static const int kScaledDiffIntegerBits = 5;
 
     tflite::PreprocessSoftmaxScaling(
-        params->beta, input->params.scale, kScaledDiffIntegerBits,
+        static_cast<double>(params->beta),
+        static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
         &data->input_multiplier, &data->input_left_shift);
     data->diff_min = -1.0 * tflite::CalculateInputRadius(
                                 kScaledDiffIntegerBits, data->input_left_shift);
@@ -160,8 +172,14 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
   op_params.input_left_shift = data->input_left_shift;
   op_params.diff_min = data->diff_min;
 
-  xtensa::hifimini::Softmax(op_params, shape, GetTensorData<int8_t>(input),
-                            shape, GetTensorData<int8_t>(output));
+  if (output->type == kTfLiteInt16) {
+    xtensa::hifimini::Softmax(op_params, shape, GetTensorData<int8_t>(input),
+                              shape, GetTensorData<int16_t>(output));
+
+  } else {
+    xtensa::hifimini::Softmax(op_params, shape, GetTensorData<int8_t>(input),
+                              shape, GetTensorData<int8_t>(output));
+  }
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
