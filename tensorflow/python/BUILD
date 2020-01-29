@@ -1130,6 +1130,7 @@ py_library(
         ":platform",
         ":pywrap_tensorflow",
         ":pywrap_tfe",
+        ":pywrap_mlir",
         ":random_seed",
         ":sparse_tensor",
         ":tensor_spec",
@@ -5544,7 +5545,6 @@ tf_py_wrap_cc(
         "grappler/tf_optimizer.i",
         "lib/core/strings.i",
         "platform/base.i",
-        "//tensorflow/compiler/mlir/python:mlir.i",
     ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
@@ -5572,7 +5572,6 @@ tf_py_wrap_cc(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
-        "//tensorflow/compiler/mlir:passes",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
@@ -5593,6 +5592,7 @@ tf_py_wrap_cc(
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/compiler/mlir/python:mlir",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
@@ -5631,6 +5631,7 @@ WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
     "//tensorflow/core/common_runtime/eager:context",  # tfe
     "//tensorflow/core/profiler/lib:profiler_session",  # tfe
     "//tensorflow/c:tf_status_helper",  # tfe
+    "//tensorflow/compiler/mlir/python:mlir",  # mlir
 ]
 
 # Filter the DEF file to reduce the number of symbols to 64K or less.
@@ -7677,6 +7678,34 @@ py_library(
         ":decode_proto_ops_gen",
         ":encode_proto_ops_gen",
         ":framework_ops",
+    ],
+)
+
+py_library(
+    name = "pywrap_mlir",
+    srcs = ["pywrap_mlir.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_pywrap_mlir",
+        ":pywrap_tensorflow",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_mlir",
+    srcs = ["mlir_wrapper.cc"],
+    hdrs = [
+        "lib/core/safe_ptr.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
+    ],
+    module_name = "_pywrap_mlir",
+    deps = [
+        ":pybind11_lib",
+        ":pybind11_status",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

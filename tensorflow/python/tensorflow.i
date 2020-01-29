@@ -24,8 +24,6 @@ limitations under the License.
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
 
-%include "tensorflow/compiler/mlir/python/mlir.i"
-
 // TODO(slebedev): This is a temporary workaround for projects implicitly
 // relying on TensorFlow exposing tensorflow::Status.
 %unignoreall
