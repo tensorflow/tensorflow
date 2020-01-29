@@ -2898,7 +2898,9 @@ def TFL_FakeQuantOp : TFL_Op<"fake_quant", [NoSideEffect]> {
   let arguments = (
     ins AnyTensor:$input,
     // The expected [min, max] range of values.
-    MinMaxAttr:$minmax,
+    F32Attr:$min,
+    F32Attr:$max,
+
     // The bitwidth of the quantization; between 2 and 16, inclusive.
     I32Attr:$num_bits,
     // Quantization range starts from 0 or 1; starts from 1 if true.
@@ -2907,6 +2909,8 @@ def TFL_FakeQuantOp : TFL_Op<"fake_quant", [NoSideEffect]> {
   let results = (outs AnyTensor:$output);
 
   let hasCanonicalizer = 0b1;
+
+  let hasOptions = 1;
 }
 
 def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
