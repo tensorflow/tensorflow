@@ -103,7 +103,6 @@ cc_library(
     hdrs = ["simple_selectors.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl/kernels:add",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:apply_mask",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_xy",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_z",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",

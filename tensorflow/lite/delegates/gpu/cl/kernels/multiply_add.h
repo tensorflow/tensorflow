@@ -40,7 +40,7 @@ class MultiplyAdd : public ElementwiseOperation {
   MultiplyAdd(const MultiplyAdd&) = delete;
   MultiplyAdd& operator=(const MultiplyAdd&) = delete;
 
-  Status UploadMul(const MultiplyScalarAttributes& attr,
+  Status UploadMul(const MultiplyAttributes& attr,
                    CalculationsPrecision scalar_precision, CLContext* context);
   Status UploadAdd(const AddAttributes& attr,
                    CalculationsPrecision scalar_precision, CLContext* context);
@@ -61,7 +61,7 @@ class MultiplyAdd : public ElementwiseOperation {
 
   friend Status CreateMultiplyAdd(const CreationContext& creation_context,
                                   const OperationDef& definition,
-                                  const MultiplyScalarAttributes& attr,
+                                  const MultiplyAttributes& attr,
                                   MultiplyAdd* result);
 
   friend Status CreateMultiplyAdd(const CreationContext& creation_context,
@@ -71,7 +71,7 @@ class MultiplyAdd : public ElementwiseOperation {
 
   friend Status CreateMultiplyAdd(const CreationContext& creation_context,
                                   const OperationDef& definition,
-                                  const MultiplyScalarAttributes& mul_attr,
+                                  const MultiplyAttributes& mul_attr,
                                   const AddAttributes& add_attr,
                                   MultiplyAdd* result);
 
@@ -91,8 +91,7 @@ class MultiplyAdd : public ElementwiseOperation {
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
-                         const MultiplyScalarAttributes& attr,
-                         MultiplyAdd* result);
+                         const MultiplyAttributes& attr, MultiplyAdd* result);
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
@@ -100,7 +99,7 @@ Status CreateMultiplyAdd(const CreationContext& creation_context,
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
-                         const MultiplyScalarAttributes& mul_attr,
+                         const MultiplyAttributes& mul_attr,
                          const AddAttributes& add_attr, MultiplyAdd* result);
 
 template <DataType T>
@@ -126,6 +125,36 @@ Status MultiplyAdd::UploadAdd(const ::tflite::gpu::Tensor<Linear, T>& add,
   use_add_vec_ = true;
   return OkStatus();
 }
+
+class ApplyMask : public ElementwiseOperation {
+ public:
+  // Move only
+  ApplyMask(ApplyMask&& operation);
+  ApplyMask& operator=(ApplyMask&& operation);
+  ApplyMask(const ApplyMask&) = delete;
+  ApplyMask& operator=(const ApplyMask&) = delete;
+
+  void SetLinkIndex(int index) override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
+  std::string GetArgsDeclaration() const override;
+  Status BindArguments(CLKernel* kernel) override;
+
+ private:
+  friend ApplyMask CreateApplyMask(const OperationDef& definition,
+                                   const BHWC& src_shape,
+                                   const BHWC& mask_shape);
+
+  enum class MaskType { LAYER, CHANNELS, TENSOR };
+
+  explicit ApplyMask(const OperationDef& definition, MaskType mask_type)
+      : ElementwiseOperation(definition), mask_type_(mask_type) {}
+
+  MaskType mask_type_;
+  int link_index_;
+};
+
+ApplyMask CreateApplyMask(const OperationDef& definition, const BHWC& src_shape,
+                          const BHWC& mask_shape);
 
 }  // namespace cl
 }  // namespace gpu

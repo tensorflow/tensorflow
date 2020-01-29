@@ -68,11 +68,6 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
         return OkStatus();
       }
     }
-    case OperationType::APPLY_MASK: {
-      SelectApplyMask(op_def, inputs[0]->tensor.shape, inputs[1]->tensor.shape,
-                      gpu_op);
-      return OkStatus();
-    }
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
       std::vector<int> channels(inputs.size());
@@ -119,10 +114,17 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
       return SelectMean(attr, op_def, gpu_op);
     }
-    case OperationType::MULTIPLY_SCALAR: {
-      auto attr =
-          absl::any_cast<MultiplyScalarAttributes>(node.operation.attributes);
-      return SelectMultiplyScalar(attr, creation_context, op_def, gpu_op);
+    case OperationType::MUL: {
+      if (node.operation.attributes.has_value()) {
+        auto attr =
+            absl::any_cast<MultiplyAttributes>(node.operation.attributes);
+
+        return SelectMultiplyScalar(attr, creation_context, op_def, gpu_op);
+      } else {
+        SelectApplyMask(op_def, inputs[0]->tensor.shape,
+                        inputs[1]->tensor.shape, gpu_op);
+        return OkStatus();
+      }
     }
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);

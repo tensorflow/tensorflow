@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
@@ -155,7 +154,7 @@ Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
   return OkStatus();
 }
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr) {

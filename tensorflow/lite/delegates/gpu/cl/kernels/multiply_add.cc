@@ -105,7 +105,7 @@ Status MultiplyAdd::BindArguments(CLKernel* kernel) {
   return OkStatus();
 }
 
-Status MultiplyAdd::UploadMul(const MultiplyScalarAttributes& attr,
+Status MultiplyAdd::UploadMul(const MultiplyAttributes& attr,
                               CalculationsPrecision scalar_precision,
                               CLContext* context) {
   auto mul = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
@@ -135,8 +135,7 @@ Status MultiplyAdd::UploadAdd(const AddAttributes& attr,
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
-                         const MultiplyScalarAttributes& attr,
-                         MultiplyAdd* result) {
+                         const MultiplyAttributes& attr, MultiplyAdd* result) {
   const auto scalar_precision = creation_context.device->IsPowerVR()
                                     ? CalculationsPrecision::F32
                                     : definition.precision;
@@ -162,7 +161,7 @@ Status CreateMultiplyAdd(const CreationContext& creation_context,
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
-                         const MultiplyScalarAttributes& mul_attr,
+                         const MultiplyAttributes& mul_attr,
                          const AddAttributes& add_attr, MultiplyAdd* result) {
   const auto scalar_precision = creation_context.device->IsPowerVR()
                                     ? CalculationsPrecision::F32
@@ -174,6 +173,76 @@ Status CreateMultiplyAdd(const CreationContext& creation_context,
       result->UploadAdd(add_attr, scalar_precision, creation_context.context));
   result->SetLinkIndex(0);
   return OkStatus();
+}
+
+ApplyMask::ApplyMask(ApplyMask&& operation)
+    : ElementwiseOperation(std::move(operation)),
+      mask_type_(operation.mask_type_),
+      link_index_(operation.link_index_) {}
+
+ApplyMask& ApplyMask::operator=(ApplyMask&& operation) {
+  if (this != &operation) {
+    mask_type_ = operation.mask_type_;
+    link_index_ = operation.link_index_;
+    ElementwiseOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+void ApplyMask::SetLinkIndex(int index) { link_index_ = index; }
+
+std::string ApplyMask::GetCoreCode(const LinkingContext& context) const {
+  const std::string size_name = "mask_size_op" + std::to_string(link_index_);
+  const std::string tensor_name = absl::StrCat("mask_data_op", link_index_);
+  TensorCodeGenerator mask(
+      tensor_name,
+      WHSPoint{size_name + ".x", size_name + ".y", size_name + ".z"},
+      definition_.src_tensors[1]);
+  switch (mask_type_) {
+    case MaskType::TENSOR:
+      return context.var_name + " *= " +
+             mask.ReadWHS(context.x_coord, context.y_coord, context.s_coord) +
+             ";\n";
+    case MaskType::CHANNELS:
+      return context.var_name +
+             " *= " + mask.ReadWHS("0", "0", context.s_coord) + ";\n";
+    case MaskType::LAYER:
+      return context.var_name +
+             " *= " + mask.ReadWHS(context.x_coord, context.y_coord, "0") +
+             ".x;\n";
+  }
+}
+
+std::string ApplyMask::GetArgsDeclaration() const {
+  std::string args;
+  const std::string tensor_name = absl::StrCat("mask_data_op", link_index_);
+  absl::StrAppend(&args, ",\n",
+                  GetTensorDeclaration(AccessType::READ, tensor_name,
+                                       definition_.src_tensors[1]));
+  const std::string size_name = "mask_size_op" + std::to_string(link_index_);
+  absl::StrAppend(&args, ",\n   int4 ", size_name);
+  return args;
+}
+
+Status ApplyMask::BindArguments(CLKernel* kernel) {
+  RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
+  return OkStatus();
+}
+
+ApplyMask CreateApplyMask(const OperationDef& definition, const BHWC& src_shape,
+                          const BHWC& mask_shape) {
+  ApplyMask::MaskType mask_type;
+  if (mask_shape == src_shape) {
+    mask_type = ApplyMask::MaskType::TENSOR;
+  } else if (mask_shape.c == 1) {
+    mask_type = ApplyMask::MaskType::LAYER;
+  } else {
+    mask_type = ApplyMask::MaskType::CHANNELS;
+  }
+  ApplyMask operation(definition, mask_type);
+  operation.SetLinkIndex(0);
+  return operation;
 }
 
 }  // namespace cl

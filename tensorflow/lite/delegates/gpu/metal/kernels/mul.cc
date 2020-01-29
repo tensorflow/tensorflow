@@ -128,9 +128,10 @@ std::vector<ComputeTaskDescriptorPtr> ApplyMask(int id, ValueId input_id_0,
   return {desc};
 }
 
-std::vector<ComputeTaskDescriptorPtr> Multiply(
-    int id, ValueId input_id, ValueId output_id,
-    const MultiplyScalarAttributes& attr, const RuntimeOptions& options) {
+std::vector<ComputeTaskDescriptorPtr> Multiply(int id, ValueId input_id,
+                                               ValueId output_id,
+                                               const MultiplyAttributes& attr,
+                                               const RuntimeOptions& options) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = true;
