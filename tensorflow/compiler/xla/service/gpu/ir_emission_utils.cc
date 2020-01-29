@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -126,7 +127,8 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 }
 
 std::array<int64, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions) {
+    const ReductionDimensions& reduction_dimensions,
+    const stream_executor::DeviceDescription* device_description) {
   if (reduction_dimensions.is_row_reduction) {
     int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
@@ -136,6 +138,12 @@ std::array<int64, 3> GetReductionTiling(
     if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
         0) {
       return {tile_z, 1, 64};
+    }
+    int cc_major = 0, cc_minor = 0;
+    if (device_description != nullptr) {
+      device_description->cuda_compute_capability(&cc_major, &cc_minor);
+    }
+    if (cc_major == 0) {  // Not an NVIDIA GPU.
     }
     return {tile_z, 1, 8};
   }

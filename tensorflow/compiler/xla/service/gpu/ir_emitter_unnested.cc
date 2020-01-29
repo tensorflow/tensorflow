@@ -3076,7 +3076,8 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
            << reduction_dimensions.dimensions[2];
 
   std::array<int64, 3> reduction_tiling =
-      GetReductionTiling(reduction_dimensions);
+      GetReductionTiling(reduction_dimensions,
+                         &ir_emitter_context_->device_description());
   bool dilated_x =
       reduction_dimensions.is_row_reduction ||
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
