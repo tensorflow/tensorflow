@@ -56,7 +56,7 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
 
   TrtUniquePtrType<nvinfer1::ICudaEngine> CreateTRTEngine(bool dynamic=false) {
     TrtUniquePtrType<nvinfer1::IBuilder> builder(
-        nvinfer1::createInferBuilder(logger));
+        nvinfer1::createInferBuilder(logger_));
     TrtUniquePtrType<nvinfer1::INetworkDefinition> network;
     if (!dynamic) {
       network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
@@ -70,9 +70,9 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
     nvinfer1::Dims dims;
     dims.nbDims = 1;
     dims.d[0] = dynamic ? -1 : 1;
-    const char *inName = "input";
+    const char *in_name = "input";
     nvinfer1::ITensor* input =
-        network->addInput(inName, nvinfer1::DataType::kFLOAT, dims);
+        network->addInput(in_name, nvinfer1::DataType::kFLOAT, dims);
     EXPECT_NE(nullptr, input);
 
     // Add a unary layer.
@@ -99,9 +99,12 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
         nvinfer1::Dims dim;
         dim.nbDims = 1;
         dim.d[0] = i;
-        profile->setDimensions(inName, nvinfer1::OptProfileSelector::kMIN, dim);
-        profile->setDimensions(inName, nvinfer1::OptProfileSelector::kOPT, dim);
-        profile->setDimensions(inName, nvinfer1::OptProfileSelector::kMAX, dim);
+        profile->setDimensions(in_name, nvinfer1::OptProfileSelector::kMIN,
+                               dim);
+        profile->setDimensions(in_name, nvinfer1::OptProfileSelector::kOPT,
+                               dim);
+        profile->setDimensions(in_name, nvinfer1::OptProfileSelector::kMAX,
+                               dim);
         int idx = builder_config->addOptimizationProfile(profile);
         EXPECT_NE(-1, idx);
       }
@@ -112,7 +115,7 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
     EXPECT_NE(nullptr, engine);
     return engine;
   }
-  Logger logger;
+  Logger logger_;
 };
 
 TEST_F(TRTEngineResourceOpsTest, Basic) {
