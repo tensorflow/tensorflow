@@ -1291,9 +1291,6 @@ HloInstruction* HloFusionInstruction::AddFusionOperand(
   CHECK_EQ(operand_count(),
            fused_instructions_computation()->parameter_instructions().size());
   const int64 param_no = operand_count();
-  // Name the parameter after the instruction it represents in the outer
-  // (non-fusion) computation.
-  // string param_name = StrCat(new_operand->name(), ".param_", param_no);
   string param_name = StrCat("param_", param_no);
   HloInstruction* fused_parameter =
       fused_instructions_computation()->AddParameter(
