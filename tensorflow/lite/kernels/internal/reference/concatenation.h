@@ -124,8 +124,8 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
           const int32_t value =
               static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
               output_zeropoint;
-          output_ptr[j] = static_cast<uint8>(
-            std::max<int32_t>(std::min<int32_t>(255, value), 0));
+          output_ptr[j] = static_cast<uint8_t>(
+              std::max<int32_t>(std::min<int32_t>(255, value), 0));
         }
       }
       output_ptr += copy_size;
