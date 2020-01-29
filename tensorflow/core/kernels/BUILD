@@ -536,6 +536,7 @@ tf_cuda_library(
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -782,7 +783,7 @@ cc_library(
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
-    }),
+    }) + ["@com_google_absl//absl/base"],
 )
 
 cc_library(
@@ -801,6 +802,7 @@ cc_library(
         ],
     }),
     deps = [
+        "@com_google_absl//absl/base",
         "//third_party/eigen3",
         "//tensorflow/core/platform:dynamic_annotations",
     ] + select({
@@ -820,6 +822,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/eigen3",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -1888,6 +1891,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -4978,6 +4982,7 @@ cc_library(
 )
 
 PARSING_DEPS = [
+    "@com_google_absl//absl/base",
     "//tensorflow/core:core_cpu_internal",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -6868,6 +6873,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "@com_google_absl//absl/base",
         "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",

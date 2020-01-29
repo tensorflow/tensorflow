@@ -18,6 +18,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
@@ -237,8 +238,8 @@ NcclManager* NcclManager::instance() {
 #if TENSORFLOW_USE_ROCM
   // singleton does not count against total instances
   // see comment above in Collective constructor concerning ROCm platform
-  static std::once_flag once;
-  std::call_once(once, [] { --NcclManager::instance_count; });
+  static absl::once_flag once;
+  absl::call_once(once, [] { --NcclManager::instance_count; });
 #endif
   return instance;
 }

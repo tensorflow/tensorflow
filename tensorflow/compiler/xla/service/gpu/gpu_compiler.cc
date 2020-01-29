@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
 
 #include "absl/memory/memory.h"

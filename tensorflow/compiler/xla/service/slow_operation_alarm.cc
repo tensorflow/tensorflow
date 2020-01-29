@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 
 #include <list>
-#include <mutex>  // NOLINT (for std::call_once, not std::mutex)
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
@@ -29,7 +29,7 @@ namespace {
 
 absl::Mutex mu(absl::kConstInit);
 absl::CondVar* ready;
-std::once_flag init_flag;
+absl::once_flag init_flag;
 std::list<SlowOperationAlarm*>* outstanding_alarms ABSL_PT_GUARDED_BY(mu) =
     nullptr;
 
@@ -73,7 +73,7 @@ void AlarmLoop() {
 }
 
 void ScheduleAlarm(SlowOperationAlarm* alarm) {
-  std::call_once(init_flag, [] {
+  absl::call_once(init_flag, [] {
     ready = new absl::CondVar();
     outstanding_alarms = new std::list<SlowOperationAlarm*>();
     (void)tensorflow::Env::Default()->StartThread(

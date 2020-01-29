@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
@@ -70,7 +71,7 @@ class ParseExampleOp : public OpKernel {
       OP_REQUIRES_OK(ctx, GetInputListKeys(ctx, "dense_keys", &dense_keys_t));
       OP_REQUIRES_OK(ctx, GetInputListKeys(ctx, "sparse_keys", &sparse_keys_t));
     }
-    std::call_once(flag_, [&dense_keys_t, &sparse_keys_t, &ragged_keys_t]() {
+    absl::call_once(flag_, [&dense_keys_t, &sparse_keys_t, &ragged_keys_t]() {
       metrics::RecordParseDenseFeature(dense_keys_t.size());
       metrics::RecordParseSparseFeature(sparse_keys_t.size());
       metrics::RecordParseRaggedFeature(ragged_keys_t.size());
@@ -284,7 +285,7 @@ class ParseExampleOp : public OpKernel {
 
   ParseExampleAttrs attrs_;
   int op_version_;
-  std::once_flag flag_;
+  absl::once_flag flag_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseExample").Device(DEVICE_CPU),
@@ -434,7 +435,7 @@ class ParseSequenceExampleOp : public OpKernel {
                                      &feature_list_sparse_keys));
       OP_REQUIRES_OK(ctx, ctx->input("feature_list_ragged_keys",
                                      &feature_list_ragged_keys));
-      std::call_once(flag_, [&]() {
+      absl::call_once(flag_, [&]() {
         metrics::RecordParseDenseFeature(
             context_dense_keys->NumElements() +
             feature_list_dense_keys->NumElements());
@@ -707,7 +708,7 @@ class ParseSequenceExampleOp : public OpKernel {
 
   ParseSequenceExampleAttrs attrs_;
   int op_version_;
-  std::once_flag flag_;
+  absl::once_flag flag_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseSequenceExample").Device(DEVICE_CPU),
@@ -753,7 +754,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
         attrs_.num_feature_list_dense);
     std::vector<string> feature_list_sparse_keys_t(
         attrs_.num_feature_list_sparse);
-    std::call_once(
+    absl::call_once(
         flag_, [&context_dense_keys_t, &context_sparse_keys_t,
                 &feature_list_dense_keys_t, &feature_list_sparse_keys_t]() {
           metrics::RecordParseDenseFeature(context_dense_keys_t.size() +
@@ -1129,7 +1130,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
 
  protected:
   ParseSingleSequenceExampleAttrs attrs_;
-  std::once_flag flag_;
+  absl::once_flag flag_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseSingleSequenceExample").Device(DEVICE_CPU),

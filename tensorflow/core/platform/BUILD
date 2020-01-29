@@ -164,6 +164,7 @@ cc_library(
         ":byte_order",
         ":logging",
         ":platform_port",
+        "@com_google_absl//absl/base",
     ],
 )
 
