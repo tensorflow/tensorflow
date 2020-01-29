@@ -22,8 +22,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-const absl::string_view kHostThreads = "Host Threads";
-const absl::string_view kGpuPlanePrefix = "GPU:";
+const absl::string_view kHostThreads = "/host:CPU";
+const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 
