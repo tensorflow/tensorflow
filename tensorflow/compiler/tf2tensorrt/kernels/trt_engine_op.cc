@@ -578,10 +578,15 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_idx,
     LOG(ERROR) << msg;
     return errors::NotFound(msg);
   }
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  int n_profiles = cuda_engine->getNbOptimizationProfiles();
+#else
+  int n_profiles = 1;
+#endif
   // If we have more then one optimization profiles then the binding idx
   // depends on the profile number
   const int bindings_per_profile =
-      cuda_engine->getNbBindings() / cuda_engine->getNbOptimizationProfiles();
+      cuda_engine->getNbBindings() / n_profiles;
   *binding_idx = *binding_idx + profile_idx * bindings_per_profile;
   return Status::OK();
 }

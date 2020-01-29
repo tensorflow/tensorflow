@@ -53,11 +53,11 @@ void TrtShapeOptimizationProfile::initProfiles() {
   }
 }
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status TrtShapeOptimizationProfile::addProfiles(
     nvinfer1::IBuilder *builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition *network) {
   // Create a vector of optimization profiles
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
     Status status = profiles_[i].setDimensions(network, optProfile);
@@ -85,19 +85,19 @@ Status TrtShapeOptimizationProfile::addProfiles(
   if (config->getNbOptimizationProfiles() == 0) {
      return errors::Internal("Failure in adding an optimization profile.");
   }
-#endif
 // if TRT_VERSION < 6, then we do not need to add
   return Status::OK();
 }
+#endif
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status TrtShapeOptimizationProfile::configureBuilder(
   nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
   const nvinfer1::INetworkDefinition* network) {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   addProfiles(builder, config, network);
-#endif
   return Status::OK();
 }
+#endif
 
 int TrtShapeOptimizationProfile::getProfileNumber(std::vector<TensorShape> shapes) {
   for (int i = 0; i < profiles_.size(); i++) {
@@ -129,11 +129,13 @@ Status TrtShapeOptimizationProfile::createExecutionContexts(
       //   set optimizationprofiles.
       // - The 0th profile is set implicitly for the first execution context
       //   therefore we do not need to set.
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
       bool stat = ctx->setOptimizationProfile(i);
       if (!stat) {
         ctx->destroy();
         return errors::Internal("Could not set TRT optimization profile.");
       }
+#endif
     }
     exec_context.push_back(
       std::move(TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx)));
@@ -145,6 +147,7 @@ Status TrtShapeOptimizationProfile::createExecutionContexts(
 
 Status TrtShapeOptimizationProfile::RestoreProfiles(
     const nvinfer1::ICudaEngine *engine) {
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   if (!engine || engine->hasImplicitBatchDimension()) {
     // Nothing to do, we cannot have profiles in implicit batch mode
     return Status::OK();
@@ -169,6 +172,7 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
     VLOG(2) << "Restored profile " << cfg.DebugString();
     profiles_.push_back(std::move(cfg));
   }
+#endif
   return Status::OK();
 }
 

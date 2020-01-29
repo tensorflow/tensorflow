@@ -59,6 +59,7 @@ struct OptimizationProfileConfig {
                   ", max: ", tensorflow::tensorrt::DebugString(max), "]");
   }
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Set the stored min/opt/max dimensions for profile
   //
   // Parameters:
@@ -78,6 +79,7 @@ struct OptimizationProfileConfig {
     }
     return Status::OK();
   }
+#endif
 
   // Returns true if profile range completely includes the given shapes.
   bool IncludesShapes(const std::vector<TensorShape>& shapes) const {
@@ -139,10 +141,12 @@ class TrtShapeOptimizationProfile {
   // is compatible with the given input shapes.
   int getProfileNumber(std::vector<TensorShape> shapes);
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Creates optimization profiles and add them to the builder config.
   Status configureBuilder(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network);
+#endif
 
   // Creates execution contexts for each optimization profile.
   Status createExecutionContexts(
@@ -167,10 +171,12 @@ class TrtShapeOptimizationProfile {
   // The optimization profiles generated from input_shapes_
   std::vector<OptimizationProfileConfig> profiles_;
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   /// Add optimization profiles to the builder config
   Status addProfiles(nvinfer1::IBuilder *builder,
                      nvinfer1::IBuilderConfig* config,
                      const nvinfer1::INetworkDefinition *network);
+#endif
 };
 
 }  // namespace tensorrt
