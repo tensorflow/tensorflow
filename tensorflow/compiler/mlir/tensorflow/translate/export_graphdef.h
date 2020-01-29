@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Module.h"  // TF:llvm-project
@@ -33,6 +34,15 @@ using stream_executor::port::StatusOr;
 // Given an MLIR module, returns a GraphDef.
 StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
     mlir::ModuleOp module, const GraphExportConfig& configs);
+
+// Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
+// The "main" function of the module is stored in the graph and the rest of
+// functions are stored in the library. Control ret nodes are stored separately
+// in `control_ret_nodes`.
+stream_executor::port::Status ConvertMlirToGraph(
+    mlir::ModuleOp module, const GraphExportConfig& configs,
+    std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
+    absl::flat_hash_set<Node*>* control_ret_nodes);
 
 // Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
 // The "main" function of the module is stored in the graph and the rest of
