@@ -43,7 +43,7 @@ def _initialized_session():
   return sess
 
 
-class EmbeddingColumnTestV2(test.TestCase):
+class EmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
 
   def test_defaults(self):
     categorical_column = fc_lib.categorical_column_with_identity(
@@ -77,8 +77,16 @@ class EmbeddingColumnTestV2(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, embedding_column._parse_example_spec)
 
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': True,
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': False,
+      })
   @test_util.deprecated_graph_mode_only
-  def test_feature_layer_cpu(self):
+  def test_feature_layer_cpu(self, use_safe_embedding_lookup):
     # Inputs.
     vocabulary_size = 3
     sparse_input = sparse_tensor.SparseTensorValue(
@@ -135,12 +143,14 @@ class EmbeddingColumnTestV2(test.TestCase):
     embedding_column = tpu_fc.embedding_column_v2(
         categorical_column,
         dimension=embedding_dimension,
-        initializer=_initializer)
+        initializer=_initializer,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
     sequence_embedding_column = tpu_fc.embedding_column_v2(
         sequence_categorical_column,
         dimension=embedding_dimension,
         initializer=_initializer,
-        max_sequence_length=2)
+        max_sequence_length=2,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
     # Provide sparse input and get dense result.
     features = {'aaa': sparse_input, 'bbb': sparse_input}
@@ -160,6 +170,16 @@ class EmbeddingColumnTestV2(test.TestCase):
       self.assertAllEqual(expected_lookups, embedding_lookup.eval())
       self.assertAllEqual(expected_lookups_sequence,
                           sequence_embedding_lookup[0].eval())
+      # The graph will still have SparseFillEmptyRows due to sequence being
+      # a Rank3 embedding lookup.
+      if use_safe_embedding_lookup:
+        self.assertEqual(2, [
+            x.type for x in ops.get_default_graph().get_operations()
+        ].count('SparseFillEmptyRows'))
+      else:
+        self.assertEqual(1, [
+            x.type for x in ops.get_default_graph().get_operations()
+        ].count('SparseFillEmptyRows'))
 
   def test_deepcopy(self):
     categorical_column = fc_lib.categorical_column_with_identity(
@@ -173,7 +193,7 @@ class EmbeddingColumnTestV2(test.TestCase):
                      embedding_column_copy._max_sequence_length)
 
 
-class SharedEmbeddingColumnTestV2(test.TestCase):
+class SharedEmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
 
   @test_util.deprecated_graph_mode_only
   def test_defaults(self):
@@ -238,8 +258,16 @@ class SharedEmbeddingColumnTestV2(test.TestCase):
     self.assertEqual((embedding_dimension,), embedding_column_a.variable_shape)
     self.assertEqual((embedding_dimension,), embedding_column_b.variable_shape)
 
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': True
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': False
+      })
   @test_util.deprecated_graph_mode_only
-  def test_feature_layer_cpu(self):
+  def test_feature_layer_cpu(self, use_safe_embedding_lookup):
     # Inputs.
     vocabulary_size = 3
     input_a = sparse_tensor.SparseTensorValue(
@@ -296,7 +324,8 @@ class SharedEmbeddingColumnTestV2(test.TestCase):
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
         initializer=_initializer,
-        max_sequence_lengths=[0, 2])
+        max_sequence_lengths=[0, 2],
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
     # Provide sparse input and get dense result.
     dense_features = fc_lib.DenseFeatures([embedding_column_a])
@@ -315,6 +344,16 @@ class SharedEmbeddingColumnTestV2(test.TestCase):
       self.assertAllEqual(expected_lookups_a, embedding_lookup_a.eval())
       self.assertAllEqual(expected_lookups_b,
                           embedding_lookup_b[0].eval())
+      # The graph will still have SparseFillEmptyRows due to sequence being
+      # a Rank3 embedding lookup.
+      if use_safe_embedding_lookup:
+        self.assertEqual(2, [
+            x.type for x in ops.get_default_graph().get_operations()
+        ].count('SparseFillEmptyRows'))
+      else:
+        self.assertEqual(1, [
+            x.type for x in ops.get_default_graph().get_operations()
+        ].count('SparseFillEmptyRows'))
 
   def test_deepcopy(self):
     vocabulary_size = 3
