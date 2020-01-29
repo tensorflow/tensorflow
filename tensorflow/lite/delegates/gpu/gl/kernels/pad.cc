@@ -80,6 +80,10 @@ class Pad : public NodeShader {
     int src_z = channel - $prepended.z$;
     src_z = abs(src_z);
     src_z = $input_data_0_c$ - 1 - abs(src_z - $input_data_0_c$ + 1);
+    // We need additional clamp for z, so that we use alignment for channels
+    // and can proceed extra channels that can lead to reading out of
+    // resource.
+    src_z = clamp(src_z, 0, $input_data_0_c$ - 1);
     value_0[i] = $input_data_0[src_x, src_y, src_z / 4]$[src_z % 4];
   }
 )";

@@ -82,7 +82,12 @@ std::string GetPaddingCode(const PadAttributes& attr) {
         code += "        int channel = start_channel + " + std::to_string(i) +
                 ";\n";
         code += "        int s_z = channel - params.padding.z;\n";
-        code += "        s_z = reflect(s_z, params.src_size.z);\n";
+        // We need additional clamp for z, so that we use alignment for channels
+        // and can proceed extra channels that can lead to reading out of
+        // resource.
+        code +=
+            "        s_z = clamp(reflect(s_z, params.src_size.z), 0, "
+            "params.src_size.z - 1);\n";
         code +=
             "        int buffer_index = ((s_z / 4) * params.src_size.y + s_y) "
             "* params.src_size.x + s_x;\n";
