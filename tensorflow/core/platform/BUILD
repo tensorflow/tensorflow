@@ -890,10 +890,17 @@ tf_cc_test(
     name = "subprocess_test",
     size = "small",
     srcs = ["subprocess_test.cc"],
+    data = [
+        "//tensorflow/core/platform/testdata:test_echo",
+        "//tensorflow/core/platform/testdata:test_echo_argv_1",
+        "//tensorflow/core/platform/testdata:test_noop",
+        "//tensorflow/core/platform/testdata:test_stderr",
+    ],
     tags = [
         "no_windows",
     ],
     deps = [
+        ":strcat",
         ":subprocess",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
