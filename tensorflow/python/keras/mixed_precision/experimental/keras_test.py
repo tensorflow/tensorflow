@@ -429,10 +429,6 @@ class KerasModelTest(keras_parameterized.TestCase):
         not testing_utils.should_run_tf_function()):
       self.skipTest('b/142352416: This combination of features is currently '
                     'broken.')
-    if (save_format == 'tf' and model_type != 'subclass' and
-        not context.executing_eagerly()):
-      self.skipTest('b/134519980: This combination of features is currently '
-                    'broken.')
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
