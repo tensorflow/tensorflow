@@ -477,6 +477,8 @@ def recompute_grad(f):
   @custom_gradient
   def inner(*args, **kwargs):
     """Inner function closure for calculating gradients."""
+    current_var_scope = variable_scope.get_variable_scope()
+
     result = f(*args, **kwargs)
 
     def grad(*dresult, **grad_kwargs):
@@ -488,7 +490,8 @@ def recompute_grad(f):
         if variables is not None:
           t.watch(variables)
         with ops.control_dependencies(dresult):
-          result = f(*id_args, **kwargs)
+          with variable_scope.variable_scope(current_var_scope):
+            result = f(*id_args, **kwargs)
       kw_vars = []
       if variables is not None:
         kw_vars = list(variables)
