@@ -217,6 +217,9 @@ ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
     if (stb_bs_attr.getValue({i}) != bts_bs_attr.getValue({i})) return {};
   }
 
+  // TODO(haoliang): support 1-D dilated conv.
+  if (stb_bs_attr.getNumElements() < 2) return {};
+
   int dilation_h_factor =
       stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
   int dilation_w_factor =
