@@ -194,11 +194,6 @@ def _get_python_lib(repository_ctx, python_bin):
                  "import site\n" +
                  "import os\n" +
                  "\n" +
-                 "try:\n" +
-                 "  input = raw_input\n" +
-                 "except NameError:\n" +
-                 "  pass\n" +
-                 "\n" +
                  "python_paths = []\n" +
                  "if os.getenv('PYTHONPATH') is not None:\n" +
                  "  python_paths = os.getenv('PYTHONPATH').split(':')\n" +
