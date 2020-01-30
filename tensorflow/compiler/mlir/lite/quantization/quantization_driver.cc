@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
@@ -38,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
+
+#define DEBUG_TYPE "quantization-driver"
 
 namespace mlir {
 namespace quant {
@@ -279,6 +282,37 @@ class QuantizationDriver {
       return;
     }
     cached.first->second = InitializeState(op, index, res, /*as_result=*/true);
+  }
+
+  void DumpStates(Operation *current_op) {
+    if (current_op) {
+      llvm::errs() << "\n\n\n" << current_op->getName() << "\n";
+    }
+    fn_.walk([&](Operation *op) {
+      if (llvm::isa<quant::QuantizeCastOp>(op) ||
+          llvm::isa<quant::DequantizeCastOp>(op) || llvm::isa<ConstantOp>(op))
+        return;
+      if (current_op == op) llvm::errs() << "===>>>";
+      llvm::errs() << op->getName() << " : (";
+      for (auto i = 0; i < op->getNumOperands(); ++i) {
+        if (auto params = GetOperandQuantState(op, i).params)
+          params.print(llvm::errs());
+        else
+          op->getOperand(i).getType().cast<ShapedType>().getElementType().print(
+              llvm::errs());
+        llvm::errs() << ",";
+      }
+      llvm::errs() << ") -> (";
+      for (auto i = 0; i < op->getNumResults(); ++i) {
+        if (auto params = GetResultQuantState(op, i).params)
+          params.print(llvm::errs());
+        else
+          op->getResult(i).getType().cast<ShapedType>().getElementType().print(
+              llvm::errs());
+        llvm::errs() << ",";
+      }
+      llvm::errs() << ")\n";
+    });
   }
 
   FuncOp fn_;
@@ -712,6 +746,8 @@ bool QuantizationDriver::PropagateParams() {
     Operation *op = work_list_.back();
     work_list_.pop_back();
 
+    LLVM_DEBUG(DumpStates(op));
+
     // This op has been quantized, so we should not consider it again.
     if (llvm::is_contained(quantized_, op)) continue;
     quantized_.insert(op);
@@ -736,12 +772,23 @@ bool QuantizationDriver::PropagateParams() {
       }
 
       // Use the final state to set all the operands' parameters.
-      for (int i = 0, e = op->getNumOperands(); i != e; ++i)
-        changed |= SetOperandParams(op, i, params);
+      for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
+        if (auto type = op->getOperand(i).getType().dyn_cast<ShapedType>()) {
+          // Without this check, it will accidently propagate the quantization
+          // information by the shared non-float tensors.
+          if (type.getElementType().isa<FloatType>())
+            changed |= SetOperandParams(op, i, params);
+        }
+      }
 
       // Use the final state to set all the results' parameters.
       for (int res = 0, e = op->getNumResults(); res != e; ++res)
-        changed |= SetResultParams(op, res, params);
+        if (auto type = op->getResult(res).getType().dyn_cast<ShapedType>()) {
+          // Without this check, it will accidently propagate the quantization
+          // information by the shared non-float-tensors.
+          if (type.getElementType().isa<FloatType>())
+            changed |= SetResultParams(op, res, params);
+        }
     }
 
     // TODO(fengliuai): make the bit width configurable.
