@@ -27,7 +27,7 @@ func @reduce(%arg: memref<100x10xf32>,
 // CHECK: %[[RHS:.*]] = linalg.slice %[[VAL]][%[[IDX]], %[[IDX1]]] : memref<100x10xf32>, index, index, memref<f32, #map0>
 // CHECK: "xla_lhlo.add"(%[[LHS]], %[[RHS]], %[[LHS]]) : (memref<f32, #map0>, memref<f32, #map0>, memref<f32, #map0>) -> ()
 // CHECK: }
-// CHECK: gpu.return
+// CHECK: gpu.terminator
 // CHECK: }
 // CHECK: return
 // CHECK: }
