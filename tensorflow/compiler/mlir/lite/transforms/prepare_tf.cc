@@ -82,6 +82,7 @@ class PrepareTFPass : public FunctionPass<PrepareTFPass> {
 };
 
 // TODO(fengliuai): move this rule to PreparePatterns.td
+// TODO(fengliuai): reuse the quantization/tensorflow/tf_to_quant pass.
 // TODO(b/140968741): propagate the sign from the command line. Currently all
 // the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
 // actually INT8.

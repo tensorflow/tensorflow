@@ -66,6 +66,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
+        "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_to_quant",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
