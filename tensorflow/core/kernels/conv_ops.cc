@@ -28,7 +28,6 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"

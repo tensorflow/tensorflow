@@ -568,7 +568,7 @@ class ApplyGradientDescentOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha.shape().DebugString()));
     const Tensor& delta = ctx->input(2);
@@ -610,7 +610,7 @@ class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha_dev = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha_dev.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_dev.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha_dev.shape().DebugString()));
     const Tensor& delta = ctx->input(2);
@@ -1064,7 +1064,7 @@ class ApplyProximalGradientDescentOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha.shape().DebugString()));
     const Tensor& l1 = ctx->input(2);
@@ -1132,7 +1132,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(2);
@@ -1286,7 +1286,7 @@ class ApplyAdagradOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(1)));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& grad = ctx->input(3);
@@ -1401,7 +1401,7 @@ class ApplyAdagradV2Op : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(1)));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& epsilon = ctx->input(3);
@@ -1631,7 +1631,7 @@ class SparseApplyAdagradOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& grad = ctx->input(3);
@@ -1800,7 +1800,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& epsilon = ctx->input(3);
@@ -2169,7 +2169,7 @@ class ApplyAdagradDAOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Tensor& lr = ctx->input(4);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(5);
@@ -2183,7 +2183,7 @@ class ApplyAdagradDAOp : public OpKernel {
         errors::InvalidArgument("l2 regularization strength is not a scalar: ",
                                 l2.shape().DebugString()));
     const Tensor& global_step = ctx->input(7);
-    OP_REQUIRES(ctx, IsLegacyScalar(global_step.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(global_step.shape()),
                 errors::InvalidArgument("global_step is not a scalar: ",
                                         global_step.shape().DebugString()));
 
@@ -2272,7 +2272,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
 
@@ -2289,7 +2289,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
                                 l2.shape().DebugString()));
 
     const Tensor& global_step = ctx->input(8);
-    OP_REQUIRES(ctx, IsLegacyScalar(global_step.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(global_step.shape()),
                 errors::InvalidArgument("global_step is not a scalar: ",
                                         global_step.shape().DebugString()));
 

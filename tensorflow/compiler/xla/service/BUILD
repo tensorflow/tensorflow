@@ -1767,6 +1767,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "convolution_4d_expander",
+    srcs = ["convolution_4d_expander.cc"],
+    hdrs = ["convolution_4d_expander.h"],
+    deps = [
+        ":hlo",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "convolution_4d_expander_test",
+    srcs = ["convolution_4d_expander_test.cc"],
+    deps = [
+        "convolution_4d_expander",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "batchnorm_expander_test",
     size = "small",
@@ -2526,8 +2556,6 @@ cc_library(
 tf_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
-    # TODO(b/148275965) The test fails on macOS.
-    tags = ["nomac"],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -4445,6 +4473,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",

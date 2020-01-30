@@ -33,12 +33,12 @@ cc_library(
         ":map_dataset_op",
         ":name_utils",
         ":range_dataset_op",
-        ":serialization_utils",
         ":take_dataset_op",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -46,7 +46,8 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/kernels:ops_testutil",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 

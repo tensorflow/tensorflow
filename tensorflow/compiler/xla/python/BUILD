@@ -96,6 +96,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -152,6 +153,7 @@ cc_library(
         ":worker_thread",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
         "@com_google_absl//absl/memory",
@@ -206,6 +208,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",

@@ -59,12 +59,8 @@ class LiteTest(test_util.TensorFlowTestCase):
   """Base class of all the tests in this module."""
 
   def setUp(self):
-    # Some cases are broken when we enable the new converter by default.
-    # Explicitly disabling it for now.
-    # TODO(b/145763157): Investigate if these are real issues.
     self._original_use_experimental_new_converter = (
         lite._USE_EXPERIMENTAL_NEW_CONVERTER)
-    lite._USE_EXPERIMENTAL_NEW_CONVERTER = False
     super(LiteTest, self).setUp()
 
   def tearDown(self):

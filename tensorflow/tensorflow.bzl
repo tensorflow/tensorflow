@@ -1888,6 +1888,10 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+# Placeholder to use until bazel supports py_strict_library.
+def py_strict_library(name, **kwargs):
+    native.py_library(name = name, **kwargs)
+
 def tf_custom_op_py_library(
         name,
         srcs = [],

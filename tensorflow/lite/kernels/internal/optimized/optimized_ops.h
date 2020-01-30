@@ -1246,8 +1246,10 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
                        const RuntimeShape& filter_shape,
                        const int8_t* filter_data,
                        const RuntimeShape& bias_shape, const float* bias_data,
-                       const RuntimeShape& output_shape, float* output_data,
-                       const RuntimeShape& im2col_shape, int8_t* im2col_data) {
+                       const RuntimeShape& accum_scratch_shape,
+                       int32_t* accum_scratch, const RuntimeShape& output_shape,
+                       float* output_data, const RuntimeShape& im2col_shape,
+                       int8_t* im2col_data, CpuBackendContext* context) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const float output_activation_min = params.float_activation_min;
@@ -1310,11 +1312,17 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
 
   std::fill_n(output_data, output_rows * output_cols, 0.0f);
 
+#ifdef TFLITE_WITH_RUY_GEMV
+  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+      filter_data, filter_rows, filter_cols, gemm_input_data,
+      scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,
+      output_data, /*result_stride=*/1, context);
+#else
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, output_data,
       /*result_stride=*/1);
-
+#endif
   AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
                                    bias_shape, bias_data, output_shape,
                                    output_data);

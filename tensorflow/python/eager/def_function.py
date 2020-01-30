@@ -23,6 +23,7 @@ import functools
 import threading
 import weakref
 
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
@@ -452,6 +453,10 @@ class Function(object):
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
         attributes.update(_noinline=True)
+        if not pywrap_tfe.TF_IsXlaEnabled():
+          raise ValueError("Attempting to use experimental_compile, "
+                           "but XLA support is not linked in. "
+                           "Rebuild with --define=with_xla_support=true.")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(
@@ -1166,23 +1171,16 @@ def function(func=None,
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,
       which can then be detected when processing serialized function.
-      See
-      https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md
-      for details.  For an example of utilizing this attribute see:
-      https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc
+      See [standardizing composite ops](https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md)  # pylint: disable=line-too-long
+      for details.  For an example of utilizing this attribute see this
+      [example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc)
       The code above automatically detects and substitutes function that
       implements "embedded_matmul" and allows TFLite to substitute its own
       implementations. For instance, a tensorflow user can use this
        attribute to mark that their function also implements
-      `embedded_matmul``` (perhaps more efficiently!)
-      by specifying it using this flag.
-
-        ```python
-        @tf.function(experimental_implements="embedded_matmul"):
-        def embedding_matmul(a, b):
-           # custom implementation here
-        ```
-
+      `embedded_matmul` (perhaps more efficiently!)
+      by specifying it using this parameter:
+      `@tf.function(experimental_implements="embedded_matmul")`
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,
@@ -1196,6 +1194,10 @@ def function(func=None,
      function (and return zero or more `tf.Tensor` objects).
      If `func` is None, returns a decorator that, when invoked with a single
      `func` argument, returns a callable equivalent to the case above.
+
+  Raises:
+     ValueError when attempting to use experimental_compile, but XLA support is
+     not enabled.
   """
   if input_signature is not None:
     function_lib.validate_signature(input_signature)

@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -94,9 +95,9 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 
 struct TimerStats {
   tensorflow::mutex stats_mutex;
-  double cumulative_secs GUARDED_BY(stats_mutex) = 0;
-  double max_secs GUARDED_BY(stats_mutex) = 0;
-  uint64 times_called GUARDED_BY(stats_mutex) = 0;
+  double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
+  double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
+  uint64 times_called ABSL_GUARDED_BY(stats_mutex) = 0;
 };
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL

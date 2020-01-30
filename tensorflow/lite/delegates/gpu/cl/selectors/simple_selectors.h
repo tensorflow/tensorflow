@@ -70,7 +70,10 @@ void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
 void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
+                  std::unique_ptr<GPUOperation>* ptr);
+
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr);

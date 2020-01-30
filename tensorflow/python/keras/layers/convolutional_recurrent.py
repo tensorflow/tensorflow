@@ -283,7 +283,8 @@ class ConvRNN2D(RNN):
     shape = list(self.cell.kernel_shape)
     shape[-1] = self.cell.filters
     initial_state = self.cell.input_conv(initial_state,
-                                         array_ops.zeros(tuple(shape)),
+                                         array_ops.zeros(tuple(shape),
+                                                         initial_state.dtype),
                                          padding=self.cell.padding)
 
     if hasattr(self.cell.state_size, '__len__'):

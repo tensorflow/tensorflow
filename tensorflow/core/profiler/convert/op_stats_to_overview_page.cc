@@ -138,6 +138,51 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   return analysis;
 }
 
+// Converts from HostIndependentJobInfo to OverviewPageHostIndependentJobInfo.
+OverviewPageHostIndependentJobInfo ToOverviewPageHostIndependentJobInfo(
+    const HostIndependentJobInfoResult& host_independent_job_info) {
+  OverviewPageHostIndependentJobInfo result;
+  result.set_change_list(host_independent_job_info.change_list());
+  result.set_build_time(host_independent_job_info.build_time());
+  result.set_build_target(host_independent_job_info.build_target());
+  result.set_profile_duration_ms(
+      host_independent_job_info.profile_duration_ms());
+  return result;
+}
+
+// Converts from HostDependentJobInfo to OverviewPageHostDependentJobInfo.
+OverviewPageHostDependentJobInfo ToOverviewPageHostDependentJobInfo(
+    const HostDependentJobInfoResult& host_dependent_job_info) {
+  OverviewPageHostDependentJobInfo result;
+  result.set_host_id(host_dependent_job_info.host_id());
+  result.set_command_line(host_dependent_job_info.command_line());
+  result.set_start_time(host_dependent_job_info.start_time());
+  result.set_bns_address(host_dependent_job_info.bns_address());
+  result.set_profile_time_ns(host_dependent_job_info.profile_time_ns());
+  return result;
+}
+
+OverviewPageRunEnvironment ComputeRunEnvironment(
+    const RunEnvironment& run_environment) {
+  OverviewPageRunEnvironment re;
+  re.set_host_count(run_environment.host_count());
+  re.set_task_count(run_environment.task_count());
+  re.set_device_type(run_environment.device_type());
+  re.set_device_core_count(run_environment.device_core_count());
+  re.set_per_core_batch_size(run_environment.per_core_batch_size());
+  re.set_replica_count(run_environment.replica_count());
+  re.set_num_cores_per_replica(run_environment.num_cores_per_replica());
+  *re.mutable_host_independent_job_info() =
+      ToOverviewPageHostIndependentJobInfo(
+          run_environment.host_independent_job_info());
+  for (const auto& host_dependent_job_info :
+       run_environment.host_dependent_job_info()) {
+    *re.add_host_dependent_job_info() =
+        ToOverviewPageHostDependentJobInfo(host_dependent_job_info);
+  }
+  return re;
+}
+
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type) {
   OverviewPageAnalysis analysis = ComputeAnalysisResult(op_stats);
@@ -149,7 +194,8 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
   SetCommonRecommendation(bottleneck.common, hardware_type, &recommendation);
 
   OverviewPage overview_page;
-  *overview_page.mutable_run_environment() = op_stats.run_environment();
+  *overview_page.mutable_run_environment() =
+      ComputeRunEnvironment(op_stats.run_environment());
   *overview_page.mutable_analysis() = analysis;
   *overview_page.mutable_input_analysis() = input_analysis;
   *overview_page.mutable_recommendation() = recommendation;

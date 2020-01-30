@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
@@ -321,7 +322,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   py::class_<TF_DeviceList> TF_DeviceList_class(m, "TF_DeviceList");
   py::class_<TF_Function> TF_Function_class(m, "TF_Function");
-  py::class_<TF_Buffer> TF_Buffer_class(m, "TF_Buffer");
 
   m.def("TFE_Py_RegisterExceptionClass", [](const py::handle& e) {
     return tensorflow::pyo_or_throw(TFE_Py_RegisterExceptionClass(e.ptr()));
@@ -338,6 +338,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_SetXlaConstantFoldingDisabled", &TF_SetXlaConstantFoldingDisabled);
   m.def("TF_GetXlaConstantFoldingDisabled", &TF_GetXlaConstantFoldingDisabled);
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
+  m.def("TF_IsXlaEnabled", [] { return tensorflow::IsXlaEnabled(); });
 
   // // TFE_Context Logic
   m.def(
@@ -367,12 +368,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_HostAddressSpace", [](py::handle& o, TF_Buffer& buf) {
     TFE_HostAddressSpace(tensorflow::InputTFE_Context(o), &buf);
   });
-  m.def("TFE_ContextAddFunction", [](py::handle& ctx, py::handle& func) {
+  m.def("TFE_ContextAddFunction", [](py::handle& ctx, TF_Function* func) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
-    SwigPyObject* sstable_swig = reinterpret_cast<SwigPyObject*>(func.ptr());
-    auto function = reinterpret_cast<TF_Function*>(sstable_swig->ptr);
-    TFE_ContextAddFunction(tensorflow::InputTFE_Context(ctx), function,
+    TFE_ContextAddFunction(tensorflow::InputTFE_Context(ctx), func,
                            status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
@@ -1063,13 +1062,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   // Util buffer helper functions
   m.def("TF_NewBufferFromString", &TF_NewBufferFromString,
-        py::return_value_policy::reference);
-  m.def("TF_NewBuffer", &TF_NewBuffer, py::return_value_policy::reference);
-  m.def("TF_GetBuffer", [](TF_Buffer* buf) {
-    return tensorflow::pyo_or_throw(PyBytes_FromStringAndSize(
-        reinterpret_cast<const char*>(buf->data), buf->length));
-  });
-  m.def("TF_DeleteBuffer", &TF_DeleteBuffer,
         py::return_value_policy::reference);
 
   // C API Enum

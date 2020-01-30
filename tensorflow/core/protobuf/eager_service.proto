@@ -109,7 +109,10 @@ message UpdateContextRequest {
   // Identifies the full cluster, and this particular worker's position within.
   ServerDef server_def = 1;
 
-  // Device attributes in the cluster
+  // Device attributes in the cluster.
+  // If this field is empty, it indicates that this is a simple update request
+  // that only increments the cluster view ID and does not require changes to
+  // the workers it connects to.
   repeated DeviceAttributes cluster_device_attributes = 2;
 
   // The ID of the context to be updated. A context with the specified ID must

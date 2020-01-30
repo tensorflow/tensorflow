@@ -344,6 +344,7 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &estimated_variance,
     const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
     DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
     DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
@@ -358,10 +359,11 @@ Stream &Stream::ThenBatchNormalizationForward(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationForward(
           this, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, x_desc, scale_offset_desc, epsilon, activation_mode, y,
-          batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
-          reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)));
+          side_input, x_desc, scale_offset_desc, epsilon,
+          exponential_average_factor, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -401,6 +403,7 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &estimated_variance,
     const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
     DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
     DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
@@ -415,10 +418,11 @@ Stream &Stream::ThenBatchNormalizationForward(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationForward(
           this, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, x_desc, scale_offset_desc, epsilon, activation_mode, y,
-          batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
-          reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)));
+          side_input, x_desc, scale_offset_desc, epsilon,
+          exponential_average_factor, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)));
     } else {
       SetErrorAndLogNoDnnSupport();
     }

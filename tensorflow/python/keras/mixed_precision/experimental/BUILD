@@ -223,14 +223,15 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    shard_count = 10,
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",

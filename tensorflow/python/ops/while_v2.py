@@ -24,7 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

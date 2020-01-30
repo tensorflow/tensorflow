@@ -10528,6 +10528,27 @@ op {
   is_stateful: true
 }
 op {
+  name: "Dawsn"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "DebugGradientIdentity"
   input_arg {
     name: "input"
@@ -14581,6 +14602,27 @@ op {
   }
 }
 op {
+  name: "Expint"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "Expm1"
   input_arg {
     name: "x"
@@ -15994,6 +16036,48 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "FresnelCos"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "FresnelSin"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -17946,6 +18030,43 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+}
+op {
+  name: "ImageProjectiveTransformV2"
+  input_arg {
+    name: "images"
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "transforms"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "output_shape"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "transformed_images"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "interpolation"
+    type: "string"
   }
 }
 op {
@@ -41543,7 +41664,7 @@ op {
     name: "dtype"
     type: "type"
     default_value {
-      type: DT_DOUBLE
+      type: DT_FLOAT
     }
     allowed_values {
       list {
@@ -45087,6 +45208,27 @@ op {
         type: DT_UINT8
         type: DT_UINT16
         type: DT_STRING
+      }
+    }
+  }
+}
+op {
+  name: "Spence"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }

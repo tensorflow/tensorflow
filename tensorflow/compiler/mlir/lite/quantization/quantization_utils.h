@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
@@ -113,8 +113,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 
     rewriter.setInsertionPointAfter(op);
     Type result_type = quant_type.castFromExpressedType(op.getType());
-    auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg(),
-                                TypeAttr::get(result_type));
+    auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
     op.getResult().replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.arg());
@@ -316,7 +315,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
 
   PatternMatchResult matchAndRewrite(Q op,
                                      PatternRewriter& rewriter) const override {
-    Type output_type = op.output().getType();
+    Type output_type = op.getResult().getType();
     auto qtype = QType::getQuantizedElementType(output_type);
     if (!qtype || qtype.isSigned()) return this->matchFailure();
 
@@ -355,8 +354,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     if (!new_qtype) return this->matchFailure();
     Type new_output_type = new_qtype.castFromExpressedType(
         QType::castToExpressedType(output_type));
-    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.input(),
-                                   TypeAttr::get(new_output_type));
+    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.arg());
     return this->matchSuccess();
   }
 };
@@ -444,7 +442,7 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
 bool RemoveRedundantStatsOps(mlir::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter);
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_

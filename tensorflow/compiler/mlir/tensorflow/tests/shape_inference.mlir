@@ -214,4 +214,27 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: tensor<4xf32>
     return %graph : tensor<*xf32>
   }
+
+  // CHECK-LABEL: func @next_iteration_user
+  func @next_iteration_user(%arg0: tensor<32x?x256x4xf32>) -> tensor<?x?x?xf32> {
+    %0 = tf_executor.graph {
+      // CHECK: tf_executor.NextIteration.Source
+      // CHECK-SAME: : tensor<32x?x4xf32>
+      %1:3 = tf_executor.NextIteration.Source : tensor<?x?x?xf32>
+      %out, %c_out = tf_executor.island {
+        %dims = "tf.Const"() {value = dense<[32, -1, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+        // CHECK: "tf.Reshape"
+        // CHECK-SAME: -> tensor<32x?x4xf32>
+        %reshape = "tf.Reshape"(%arg0, %dims) : (tensor<32x?x256x4xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+        // CHECK: tf_executor.yield
+        // CHECK-SAME: : tensor<32x?x4xf32>
+        tf_executor.yield %reshape : tensor<?x?x?xf32>
+      }
+      // CHECK: tf_executor.NextIteration.Sink
+      // CHECK-SAME: : tensor<32x?x4xf32>
+      tf_executor.NextIteration.Sink[%1#1] %out : tensor<?x?x?xf32>
+      tf_executor.fetch %1#0 : tensor<?x?x?xf32>
+    }
+    return %0 : tensor<?x?x?xf32>
+  }
 }

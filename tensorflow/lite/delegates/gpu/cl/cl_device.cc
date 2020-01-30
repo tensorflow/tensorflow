@@ -467,11 +467,6 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
   return OkStatus();
 }
 
-bool FindPlatform(cl_device_id device, cl_platform_id* platform) {
-  return clGetDeviceInfo(device, CL_DEVICE_PLATFORM, sizeof(cl_platform_id),
-                         platform, nullptr) == CL_SUCCESS;
-}
-
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

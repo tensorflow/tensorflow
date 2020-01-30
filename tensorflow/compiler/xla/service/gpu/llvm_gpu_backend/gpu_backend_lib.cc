@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -492,8 +493,8 @@ namespace nvptx {
 StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
-  static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
+  static absl::once_flag backend_init_flag;
+  absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
 
   string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -712,8 +713,8 @@ namespace amdgpu {
 StatusOr<std::vector<uint8>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config, const string& rocdl_dir_path) {
-  static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
+  static absl::once_flag backend_init_flag;
+  absl::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
 
   std::vector<uint8> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;

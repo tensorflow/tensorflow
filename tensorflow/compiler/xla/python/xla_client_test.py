@@ -548,6 +548,23 @@ class BufferTest(ComputationTest):
     self.assertEqual(xla_shape.dimensions(), (1, 2))
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
+  def testTupleShape(self):
+    t = (
+        np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),
+        np.array([2, 3, 4, 5], dtype=np.int32),
+    )
+    b0 = xla_client.Buffer.from_pyval(t[0])
+    b1 = xla_client.Buffer.from_pyval(t[1])
+    device = xla_client.get_local_backend().local_devices()[0]
+    tuple_buffer = xla_client.Buffer.make_tuple([b0, b1], device=device)
+    tuple_shape = tuple_buffer.shape()
+    self.assertEqual(tuple_shape.leaf_count(), 2)
+    shapes = tuple_shape.tuple_shapes()
+    self.assertLen(shapes, 2)
+    shape1, shape2 = shapes
+    self.assertEqual(shape1.dimensions(), (1, 4))
+    self.assertEqual(shape2.dimensions(), (4,))
+
   def testBlockHostUntilReadyWorks(self):
     arg = np.array([[1., 2.]], np.float32)
     arg_buffer = xla_client.Buffer.from_pyval(arg)
@@ -2048,7 +2065,18 @@ class DLPackTest(parameterized.TestCase):
           dtype,
       "shape":
           shape
-  } for dtype in dlpack_dtypes for shape in [(), (1,), (2, 3), (4, 1, 2)])
+  } for dtype in dlpack_dtypes for shape in [
+      (),
+      (1,),
+      (2, 3),
+      (2, 0),
+      (0, 7),
+      (4, 1, 2),
+      (2, 1, 3),
+      (2, 4, 1),
+      (3, 1),
+      (1, 3),
+  ])
   def testRoundTrip(self, dtype, shape):
     x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
     backend = xla_client.get_local_backend()

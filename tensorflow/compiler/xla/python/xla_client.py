@@ -459,7 +459,7 @@ def transfer_to_infeed(value, device=None):
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
   device = device or backend.local_devices()[0]
-  backend.client.TransferToInfeed(value, device)
+  device.TransferToInfeed(value)
 
 
 def transfer_from_outfeed(shape, device=None):
@@ -476,8 +476,8 @@ def transfer_from_outfeed(shape, device=None):
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
   device = device or backend.local_devices()[0]
-  return backend.client.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent(), device)
+  return device.TransferFromOutfeed(
+      shape.with_major_to_minor_layout_if_absent())
 
 
 DeviceAssignment = _xla.DeviceAssignment
@@ -751,7 +751,7 @@ class ComputationBuilder(object):
   def ClearSharding(self):
     """Clears the sharding.
 
-    Ops will be shared according to the default placement policy.
+    Ops will be sharded according to the default placement policy.
     """
     self._builder.ClearSharding()
 
@@ -879,7 +879,8 @@ class ComputationBuilder(object):
     """
     return self.Constant(np.array(value, dtype=np.bool))
 
-  def ParameterWithShape(self, shape, name=None, parameter_num=None):
+  def ParameterWithShape(self, shape, name=None, parameter_num=None,
+                         replicated=False):
     """Enqueues a Parameter op onto the computation, given a shape.
 
     Args:
@@ -889,6 +890,8 @@ class ComputationBuilder(object):
         next linear parameter number is used. The default value capability can
         be used for auto-numbering. If you're using auto-numbering for some
         parameters, use it for *all* parameters to avoid clashes.
+      replicated: whether to mark the parameter's leaves as replicated. May be
+        a bool, in which case it applies to all leaves, or an iterable of bools.
 
     Returns:
       An XlaOp.
@@ -897,10 +900,12 @@ class ComputationBuilder(object):
       name = ''
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
+    if isinstance(replicated, bool):
+      replicated = [replicated] * shape.leaf_count()
 
     return ops.Parameter(self._builder, parameter_num,
                          shape.with_major_to_minor_layout_if_absent(),
-                         name.encode('utf8'))
+                         name.encode('utf8'), replicated)
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
     """Enqueues a Parameter op onto the computation.

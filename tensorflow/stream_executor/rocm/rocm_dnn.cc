@@ -1056,13 +1056,11 @@ class ScopedFusionPlanBase {
     return status;
   }
 
-  miopenStatus_t SetBatchNormForwardArgs(const int op_idx, const float* alpha,
-                                         const float* beta, const void* scale,
-                                         const void* offset, void* running_mean,
-                                         void* running_variance,
-                                         void* saved_mean,
-                                         void* saved_inv_variance,
-                                         double epsilon) {
+  miopenStatus_t SetBatchNormForwardArgs(
+      const int op_idx, const float* alpha, const float* beta,
+      const void* scale, const void* offset, void* running_mean,
+      void* running_variance, void* saved_mean, void* saved_inv_variance,
+      double epsilon, double exponential_average_factor) {
     miopenFusionOpDescriptor_t batchnorm_op;
     auto status =
         wrap::miopenFusionPlanGetOp(fusion_plan_, op_idx, &batchnorm_op);
@@ -1071,12 +1069,10 @@ class ScopedFusionPlanBase {
                  << ToString(status);
     }
 
-    double exp_avg_factor = 1.0;
-
     status = wrap::miopenSetOpArgsBatchNormForward(
         fusion_args_, batchnorm_op, alpha, beta, scale, offset, saved_mean,
-        saved_inv_variance, running_mean, running_variance, exp_avg_factor,
-        epsilon);
+        saved_inv_variance, running_mean, running_variance, epsilon,
+        exponential_average_factor);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "call to miopenSetOpArgsBatchNormForward failed: "
                  << ToString(status);
@@ -1435,7 +1431,7 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
     float beta = 0.0;
     return ScopedFusionPlanBase::SetBatchNormForwardArgs(
         k_batchnorm_op_idx, &alpha, &beta, scale, offset, batch_mean, batch_var,
-        saved_mean, saved_var, epsilon);
+        saved_mean, saved_var, epsilon, /*exponential_average_factor=*/1.0);
   }
 
   miopenStatus_t SetActivationForwardArgs(
@@ -3279,6 +3275,7 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& estimated_variance,
     const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
@@ -3289,9 +3286,9 @@ bool MIOpenSupport::DoBatchNormalizationForward(
   return DoBatchNormalizationForwardImpl<Eigen::half, float>(
       stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
       estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
-      epsilon, activation_mode, y, batch_mean, batch_var, saved_mean,
-      saved_inv_var, is_training, std::move(var_to_inv_var),
-      std::move(inv_var_to_var));
+      epsilon, exponential_average_factor, activation_mode, y, batch_mean,
+      batch_var, saved_mean, saved_inv_var, is_training,
+      std::move(var_to_inv_var), std::move(inv_var_to_var));
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
@@ -3301,6 +3298,7 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& estimated_variance,
     const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
@@ -3311,9 +3309,9 @@ bool MIOpenSupport::DoBatchNormalizationForward(
   return DoBatchNormalizationForwardImpl<float, float>(
       stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale, offset,
       estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
-      epsilon, activation_mode, y, batch_mean, batch_var, saved_mean,
-      saved_inv_var, is_training, std::move(var_to_inv_var),
-      std::move(inv_var_to_var));
+      epsilon, exponential_average_factor, activation_mode, y, batch_mean,
+      batch_var, saved_mean, saved_inv_var, is_training,
+      std::move(var_to_inv_var), std::move(inv_var_to_var));
 }
 
 template <class T, class U>
@@ -3325,6 +3323,7 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     const DeviceMemory<U>& estimated_variance,
     const DeviceMemory<U>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
     DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
@@ -3348,8 +3347,8 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
         miopen.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
         x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
         const_cast<void*>(scale.opaque()), const_cast<void*>(offset.opaque()),
-        1.0, batch_mean->opaque(), batch_var->opaque(), epsilon,
-        saved_mean->opaque(), saved_inv_var->opaque());
+        exponential_average_factor, batch_mean->opaque(), batch_var->opaque(),
+        epsilon, saved_mean->opaque(), saved_inv_var->opaque());
   } else {
     const void* maybe_inv_var = estimated_variance.opaque();
     status = wrap::miopenBatchNormalizationForwardInference(

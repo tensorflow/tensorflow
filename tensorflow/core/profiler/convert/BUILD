@@ -43,17 +43,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "run_metadata_to_trace_events",
-    srcs = ["run_metadata_to_trace_events.cc"],
-    hdrs = ["run_metadata_to_trace_events.h"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "op_metrics_db_combiner",
     srcs = ["op_metrics_db_combiner.cc"],
     hdrs = ["op_metrics_db_combiner.h"],

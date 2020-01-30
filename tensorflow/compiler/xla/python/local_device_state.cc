@@ -25,12 +25,14 @@ limitations under the License.
 namespace xla {
 
 LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
+                                   LocalClient* client,
                                    bool synchronous_deallocation,
                                    bool asynchronous, bool allow_event_reuse)
     : synchronous_deallocation_(synchronous_deallocation),
       event_pool_(allow_event_reuse),
       compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1),
       executor_(executor),
+      client_(client),
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {

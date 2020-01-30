@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -71,7 +72,7 @@ class PythonRefManager {
 
  private:
   absl::Mutex mu_;
-  std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
+  std::deque<pybind11::object> python_garbage_ ABSL_GUARDED_BY(mu_);
 };
 
 // A global PythonRefManager. Unless `CollectGarbage()` is called before

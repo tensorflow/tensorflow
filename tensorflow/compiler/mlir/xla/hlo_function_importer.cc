@@ -58,7 +58,7 @@ namespace {
 // direction. Longterm solution is to add a function attribute to maintain the
 // original HLO naming.
 string SanitizeFunctionName(llvm::StringRef name) {
-  string output = name;
+  string output(name);
   llvm::for_each(output, [](char& x) { x = x == '-' ? '_' : x; });
   return output;
 }

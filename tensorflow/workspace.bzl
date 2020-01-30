@@ -197,11 +197,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "e81b91b22f1c7155deea4c457548ecdbd698cfed493444fceb7f9b5d797bb9a9",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-b9362fb8f76fbba805b56afbc0f5de0a279631b5",
+        sha256 = "71905cca5553804beee85e9ab8b254931d3cbeda8df1a40e5af3773f5b657179",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-3fda850c46e5e589668a85d89299433e0686eec9",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/b9362fb8f76fbba805b56afbc0f5de0a279631b5/eigen-b9362fb8f76fbba805b56afbc0f5de0a279631b5.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/b9362fb8f76fbba805b56afbc0f5de0a279631b5/eigen-b9362fb8f76fbba805b56afbc0f5de0a279631b5.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/3fda850c46e5e589668a85d89299433e0686eec9/eigen-3fda850c46e5e589668a85d89299433e0686eec9.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/3fda850c46e5e589668a85d89299433e0686eec9/eigen-3fda850c46e5e589668a85d89299433e0686eec9.tar.gz",
         ],
     )
 
@@ -595,8 +595,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "c8695ba9cdebfc25af3312a84d91ae6f0f98487b"
-    LLVM_SHA256 = "d11de654ff4d374a3807788a30c62224ff5ac6299dd10d5e0afaafc4776fbc6c"
+    LLVM_COMMIT = "4b04e117357553205b9c9a95da7e44f026cd842f"
+    LLVM_SHA256 = "26f8b7456c3b057a69718027e404986052c75d2639b2bc76fff4118cca64dfcc"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

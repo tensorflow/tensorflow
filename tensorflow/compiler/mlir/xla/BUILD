@@ -132,8 +132,9 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_affine",
     srcs = ["transforms/lhlo_legalize_to_affine.cc"],
-    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
+    hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
+        ":hlo",
         ":lhlo",
         "//tensorflow/compiler/xla:status",
         "@com_google_absl//absl/memory",
@@ -147,10 +148,11 @@ cc_library(
 )
 
 cc_library(
-    name = "lhlo_legalize_to_linalg",
-    srcs = ["transforms/lhlo_legalize_to_linalg.cc"],
-    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
+    name = "xla_legalize_to_linalg",
+    srcs = ["transforms/xla_legalize_to_linalg.cc"],
+    hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
+        ":hlo",
         ":lhlo",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
@@ -167,8 +169,9 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_gpu",
     srcs = ["transforms/lhlo_legalize_to_gpu.cc"],
-    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
+    hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
+        ":hlo",
         ":lhlo",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",

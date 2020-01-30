@@ -22,7 +22,7 @@ source tensorflow/tools/ci_build/ctpu/ctpu.sh
 install_ubuntu_16_pip_deps pip3.7
 update_bazel_linux
 install_ctpu pip3.7
-ctpu_up -s v2-8 -g tensorflow-windows
+ctpu_up -s v2-8 -p tensorflow-testing-tpu
 
 # Run configure.
 export TF_NEED_GCP=1

@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1128,7 +1128,7 @@ def _BroadcastToGrad(op, grad):
   input_value_shape = array_ops.shape(input_value)
   if not context.executing_eagerly():
     broadcast_shape_static = tensor_shape.TensorShape(
-        pywrap_tensorflow.TF_TryEvaluateConstant_wrapper(
+        pywrap_tf_session.TF_TryEvaluateConstant_wrapper(
             broadcast_shape.graph._c_graph, broadcast_shape._as_tf_output()))  # pylint: disable=protected-access
     if broadcast_shape_static.is_fully_defined():
       broadcast_shape = constant_op.constant(

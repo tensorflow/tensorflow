@@ -156,6 +156,23 @@ class EagerContext : public core::RefCounted {
   // Returns the device placement policy for the current thread.
   ContextDevicePlacementPolicy GetDevicePlacementPolicy() const;
 
+  // Select an appropriate device for an operation.
+  //
+  // Given the preferred device for the operation, and the list of devices the
+  // operation supports, finds the best suitable device for the operation in
+  // this context.
+  //
+  // The preferred device is specified as a `ParsedName` containing the elements
+  // (details) that the resulting device should match. If there are no such
+  // devices, and the context currently allows soft device placement, a suitable
+  // device not matching `preferred` will be chosen.
+  //
+  // The chosen device is stored in the `device` argument. The argument is not
+  // modified unless this method returns `Status::OK()`.
+  Status SelectDevice(const DeviceNameUtils::ParsedName& preferred,
+                      const PrioritizedDeviceTypeVector& supported,
+                      Device** device) const;
+
   // Sets the implicit copy policy for the current thread.
   void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);
 
@@ -275,6 +292,7 @@ class EagerContext : public core::RefCounted {
 
   uint64 GetContextId();
   uint64 GetContextViewId();
+  void IncrementContextViewId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
@@ -340,6 +358,24 @@ class EagerContext : public core::RefCounted {
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
+
+  // For the specified remote worker, preprocess and set its device filters.
+  Status SetRemoteDeviceFilters(const string& remote_worker,
+                                const std::vector<string>& device_filters);
+
+  // For the specified remote worker, apply the stored device filters to the
+  // list of device attributes following these rules:
+  // (1) if the remote worker does not have device filters, all devices are
+  //     visible to the worker;
+  // (2) if the device is on the remote worker, then it is visible;
+  // (3) if the device matches at least one device filter, then it is visible.
+  // The result is saved as a boolean vector of the same length (i.e.,
+  // filtered_device_mask) indicating whether each of the devices is visible to
+  // the remote worker.
+  void FilterDevicesForRemoteWorkers(
+      const string& remote_worker,
+      const protobuf::RepeatedPtrField<DeviceAttributes>& device_attrs,
+      std::vector<bool>* filtered_device_mask);
 
   // TODO(fishx): Remove the custom deleter once we remove forward declaration.
   const std::unique_ptr<eager::RemoteMgr,
@@ -551,6 +587,11 @@ class EagerContext : public core::RefCounted {
   std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
       remote_mgr_;
   bool is_master_ GUARDED_BY(remote_state_mu_);
+
+  // Maps from a remote worker to a list of parsed device filters.
+  std::unordered_map<string, std::vector<DeviceNameUtils::ParsedName>>
+      cluster_device_filters_ GUARDED_BY(remote_state_mu_);
+
 #endif  // IS_MOBILE_PLATFORM
 
   // For a multi device function, the target device of each input is unknown

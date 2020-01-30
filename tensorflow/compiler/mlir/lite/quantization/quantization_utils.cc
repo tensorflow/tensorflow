@@ -30,10 +30,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 
 const float kNearZeroTolerance = 1.0e-6;
 
@@ -496,5 +495,5 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
   // Returns false if the steps finish without errors.
   return false;
 }
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir

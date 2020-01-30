@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -32,6 +33,16 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 
 // Returns the plane with the given name, create it if necessary.
 XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name);
+
+// Returns true if event is nested by parent.
+bool IsNested(const tensorflow::profiler::XEvent& event,
+              const tensorflow::profiler::XEvent& parent);
+
+void AddOrUpdateIntStat(int64 metadata_id, int64 value,
+                        tensorflow::profiler::XEvent* event);
+
+void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
+                        tensorflow::profiler::XEvent* event);
 
 }  // namespace profiler
 }  // namespace tensorflow

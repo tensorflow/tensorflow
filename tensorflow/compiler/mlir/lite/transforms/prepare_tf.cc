@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unroll_batch_matmul.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -149,9 +150,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
         rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
-    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_value,
-                                          max_value, quant_dim, num_bits,
-                                          narrow_range, /*is_signed=*/false);
+    TypeAttr qtype = quant::GetQuantizedTypeAttr(
+        rewriter, res_type, min_value, max_value, quant_dim, num_bits,
+        narrow_range, /*is_signed=*/false);
     if (!qtype) this->matchFailure();
 
     // Finally, use the quantization parameter to create the quantize and
@@ -503,6 +504,12 @@ void PrepareTFPass::runOnFunction() {
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+
+  // This pattern will try to identify and optimize for dilated convolution.
+  // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
+  // replaced with a single Conv op with dilation parameter.
+  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
+                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
   TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.

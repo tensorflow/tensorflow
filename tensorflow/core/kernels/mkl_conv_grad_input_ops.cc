@@ -521,8 +521,8 @@ class MklConvCustomBackpropInputOp
     TensorShape input_tf_shape;
     CHECK_EQ(TensorShapeUtils::IsVector(input_tensor.shape()), true);
     // Conv[2D|3D]BackpropInputV2 supports both DT_INT32 and DT_INT64
-    // output_shape MakeShape is able to handle both DT_INT32 and DT_INT64 for
-    // input_tensor.
+    // output_shape tensor::MakeShape is able to handle both DT_INT32 and
+    // DT_INT64 for input_tensor.
     CHECK_EQ(this->MakeShape(input_tensor, &input_tf_shape).ok(), true);
     return input_tf_shape;
   }

@@ -28,10 +28,19 @@ namespace tflite {
 // underlying buffer is set, the alloc can be resolved into an actual memory
 // pointer.
 struct ArenaAlloc {
-  ArenaAlloc() : offset(0), size(0) {}
+  ArenaAlloc() { reset(); }
 
   size_t offset;
   size_t size;
+  int32_t tensor;
+  int32_t node;
+
+  inline void reset() {
+    offset = 0;
+    size = 0;
+    tensor = -1;
+    node = -1;
+  }
 
   inline bool operator<(const ArenaAlloc& other) const {
     return offset < other.offset;
@@ -53,7 +62,7 @@ class SimpleMemoryArena {
         allocs_() {}
 
   TfLiteStatus Allocate(TfLiteContext* context, size_t alignment, size_t size,
-                        ArenaAlloc* new_alloc);
+                        int32_t tensor, int32_t node, ArenaAlloc* new_alloc);
 
   TfLiteStatus Deallocate(TfLiteContext* context, const ArenaAlloc& alloc);
 

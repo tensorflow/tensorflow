@@ -139,7 +139,16 @@ void Benchmark() {
       if (benchmark_cubic) {
         printf("size");
         for (const auto& result : results) {
-          printf(",%s", PathName(*result).c_str());
+          if (results.size() > 1) {
+            printf(",%s:Gop/s", PathName(*result).c_str());
+          } else {
+            printf(",Gop/s");
+          }
+          if (GetBoolEnvVarOrFalse("RUY_BENCHMARK_PMU")) {
+            printf(
+                ",l1_refill,l2_refill,l3_refill,l1tlb_refill,l2tlb_refill,"
+                "mispred,frontend_stall,backend_stall");
+          }
         }
         printf("\n");
       } else {

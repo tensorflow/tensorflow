@@ -1011,12 +1011,8 @@ class CudnnRnnParamsDescriptor {
 
   cudnnFilterDescriptor_t handle() const { return handle_.get(); }
   int64 params_size_in_bytes() const { return params_size_in_bytes_; }
-  ParamsRegions params_weights() const {
-    return weights_;
-  }
-  ParamsRegions params_biases() const {
-    return biases_;
-  }
+  ParamsRegions params_weights() const { return weights_; }
+  ParamsRegions params_biases() const { return biases_; }
 
  private:
   FilterDescriptor handle_;
@@ -1483,9 +1479,7 @@ class CudnnRnnSequenceTensorDescriptor
 #endif
   }
 
-  const cudnnTensorDescriptor_t* handles() const {
-    return handles_.data();
-  }
+  const cudnnTensorDescriptor_t* handles() const { return handles_.data(); }
 #if CUDNN_VERSION >= 7201
   const cudnnRNNDataDescriptor_t data_handle() const {
     return rnn_data_handle_.get();
@@ -3337,14 +3331,14 @@ bool CudnnSupport::GetConvolveAlgorithms(
   }
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
-    // clang-format off
+      // clang-format off
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
     CUDNN_CONVOLUTION_FWD_ALGO_FFT,
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
-    // clang-format on
+      // clang-format on
   };
   if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
@@ -3467,6 +3461,7 @@ bool CudnnSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& estimated_variance,
     const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
@@ -3478,10 +3473,10 @@ bool CudnnSupport::DoBatchNormalizationForward(
       DoBatchNormalizationForwardImpl<float, float>(
           stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale,
           offset, estimated_mean, estimated_variance, side_input, x_desc,
-          scale_offset_desc, epsilon, activation_mode, y, batch_mean, batch_var,
-          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
-          workspace_allocator, std::move(var_to_inv_var),
-          std::move(inv_var_to_var)),
+          scale_offset_desc, epsilon, exponential_average_factor,
+          activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
+          is_training, reserve_space_allocator, workspace_allocator,
+          std::move(var_to_inv_var), std::move(inv_var_to_var)),
       /*report_error=*/true);
 }
 
@@ -3492,6 +3487,7 @@ bool CudnnSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& estimated_variance,
     const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
@@ -3503,10 +3499,10 @@ bool CudnnSupport::DoBatchNormalizationForward(
       DoBatchNormalizationForwardImpl<Eigen::half, float>(
           stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
           estimated_mean, estimated_variance, side_input, x_desc,
-          scale_offset_desc, epsilon, activation_mode, y, batch_mean, batch_var,
-          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
-          workspace_allocator, std::move(var_to_inv_var),
-          std::move(inv_var_to_var)),
+          scale_offset_desc, epsilon, exponential_average_factor,
+          activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
+          is_training, reserve_space_allocator, workspace_allocator,
+          std::move(var_to_inv_var), std::move(inv_var_to_var)),
       /*report_error=*/true);
 }
 
@@ -3519,6 +3515,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     const DeviceMemory<U>& estimated_variance,
     const DeviceMemory<U>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
     DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
@@ -3626,7 +3623,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
           /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
           /*bnScale=*/scale.opaque(),
           /*bnBias=*/offset.opaque(),
-          /*exponentialAverageFactor=*/1.0,
+          /*exponentialAverageFactor=*/exponential_average_factor,
           /*resultRunningMean=*/batch_mean_opaque,
           /*resultRunningVariance=*/batch_var_opaque,
           /*epsilon=*/epsilon,
@@ -3644,8 +3641,8 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
       RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTraining(
           cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
           x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
-          scale.opaque(), offset.opaque(), 1.0, batch_mean_opaque,
-          batch_var_opaque, epsilon, saved_mean->opaque(),
+          scale.opaque(), offset.opaque(), exponential_average_factor,
+          batch_mean_opaque, batch_var_opaque, epsilon, saved_mean->opaque(),
           saved_inv_var->opaque()));
     }
   } else {

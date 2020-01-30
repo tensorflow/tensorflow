@@ -154,7 +154,8 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* recovered_cell_weights, TfLiteTensor* input_quantized,
     TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
     TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output);
+    TfLiteTensor* cell_state, TfLiteTensor* output_scratch_buffer,
+    TfLiteTensor* output, CpuBackendContext* context);
 
 TfLiteStatus EvalInteger(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,

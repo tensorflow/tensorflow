@@ -27,11 +27,14 @@ namespace mlir {
 namespace TFTPU {
 
 void CreateTPUBridge(OpPassManager &pm) {
+  // Run island coarsening before shape inference to allow more exact shape
+  // inference using constant folding within islands.
+  pm.nest<FuncOp>().addPass(
+      tf_executor::CreateTFExecutorIslandCoarseningPass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
   OpPassManager &func_pm = pm.nest<FuncOp>();
-  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateTPUClusterFormationPass());
   func_pm.addPass(createCanonicalizerPass());
   // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass

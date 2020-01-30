@@ -16,14 +16,15 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
 
 #include <memory>
+#include <set>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/multiply_add.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/pooling.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
@@ -92,9 +94,6 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
 
 Status SelectResize(const Resize2DAttributes& attr, const OperationDef& op_def,
                     std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.type != SamplingType::BILINEAR) {
-    return UnimplementedError("Resize2D supports only bilinear sampling.");
-  }
   Resize operation = CreateResize(op_def, attr);
   *ptr = absl::make_unique<Resize>(std::move(operation));
   return OkStatus();
@@ -145,7 +144,17 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
   *ptr = absl::make_unique<StridedSlice>(std::move(operation));
 }
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
+                  std::unique_ptr<GPUOperation>* ptr) {
+  if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
+    return UnimplementedError("Mean operation supports only HW plane");
+  }
+  Mean operation = CreateMean(op_def);
+  *ptr = absl::make_unique<Mean>(std::move(operation));
+  return OkStatus();
+}
+
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr) {

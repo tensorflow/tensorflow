@@ -736,28 +736,43 @@ Defined Functions:
 
     @def_function.function(input_signature=[
         tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
+        # Test unused inputs.
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
     ])
     def func2(self, x, y):
+      del y
       return {'res': x + self.var}
 
-  @parameterized.named_parameters(('VariablesToFeedNone', ''),
-                                  ('VariablesToFeedAll', 'all'),
-                                  ('VariablesToFeedMyVar', 'my_var'))
-  def testAOTCompileCPUFreezesAndCompiles(self, variables_to_feed):
+    @def_function.function(input_signature=[
+        # Test large inputs.
+        tensor_spec.TensorSpec(shape=(2048, 16), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+    ])
+    def func3(self, x, y):
+      del y
+      return {'res': x + self.var}
+
+  @parameterized.named_parameters(
+      ('VariablesToFeedNone', '', 'func2'),
+      ('VariablesToFeedAll', 'all', 'func2'),
+      ('VariablesToFeedMyVar', 'my_var', 'func2'),
+      ('VariablesToFeedNoneLargeConstant', '', 'func3'))
+  def testAOTCompileCPUFreezesAndCompiles(self, variables_to_feed, func):
     if not test.is_built_with_xla():
       self.skipTest('Skipping test because XLA is not compiled in.')
 
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
     dummy_model = self.AOTCompileDummyModel()
+    func = dummy_model.func2 if func == 'func2' else dummy_model.func3
     with self.cached_session():
       self.evaluate(dummy_model.var.initializer)
-      save.save(dummy_model, saved_model_dir)
+      save.save(dummy_model, saved_model_dir, signatures={'func': func})
 
     self.parser = saved_model_cli.create_parser()
     output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
     args = self.parser.parse_args([
         'aot_compile_cpu', '--dir', saved_model_dir, '--tag_set', 'serve',
+        '--signature_def_key', 'func',
         '--output_prefix', output_prefix, '--variables_to_feed',
         variables_to_feed, '--cpp_class', 'Generated'
     ])  # Use the default seving signature_key.

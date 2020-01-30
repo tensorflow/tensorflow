@@ -53,7 +53,7 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
 
 // Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 // buffers if necessary.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass();
 
 }  // namespace xla_hlo
 
