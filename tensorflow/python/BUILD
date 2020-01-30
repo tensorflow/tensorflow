@@ -5769,7 +5769,7 @@ genrule(
               --output $@ \\
               --target _pywrap_tensorflow_internal.pyd \\
               --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind) \\
-              --lib_paths $(location :pybind_symbol_target_libs_file)
+              --lib_paths_file $(location :pybind_symbol_target_libs_file)
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
