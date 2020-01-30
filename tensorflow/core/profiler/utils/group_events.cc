@@ -98,7 +98,7 @@ std::string EventNode::GetGroupName() const {
   if (auto graph_type_stat = GetContextStat(StatType::kGraphType)) {
     name_parts.push_back((*graph_type_stat)->str_value());
   }
-  int64 step_num = 0;
+  int64 step_num = group_id_.value_or(0);
   if (auto step_num_stat = GetContextStat(StatType::kStepNum)) {
     step_num = (*step_num_stat)->int64_value();
   }
