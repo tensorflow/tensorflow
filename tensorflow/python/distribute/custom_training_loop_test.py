@@ -98,6 +98,28 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
   @combinations.generate(
       combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testStatefulExperimentalRunAlwaysExecute(self, distribution):
+    with distribution.scope():
+      v = variables.Variable(
+          0.0, aggregation=variables.VariableAggregation.MEAN)
+
+    @def_function.function
+    def train_step():
+
+      def assign_add():
+        v.assign_add(1.0)
+
+      distribution.experimental_run_v2(assign_add)
+      return array_ops.zeros([])
+
+    train_step()
+    self.assertAllEqual(1.0, v.numpy())
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.strategies_minus_tpu,
           mode=["eager"]))
   def testFullEager(self, distribution):
