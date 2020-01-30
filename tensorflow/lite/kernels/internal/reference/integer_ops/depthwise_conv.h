@@ -134,8 +134,6 @@ inline void DepthwiseConvPerChannel(
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
   const int depth_multiplier = params.depth_multiplier;
-  const int32 input_offset = params.input_offset;
-  const int32 output_offset = params.output_offset;
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
     // Check dimensions of the tensors.
@@ -188,7 +186,7 @@ inline void DepthwiseConvPerChannel(
                   // case so actually the value in the accumulator should not
                   // exceed 40 bits
                   acc += static_cast<int64_t>(filter_val) *
-                         static_cast<int64_t>(input_val + input_offset);
+                         static_cast<int64_t>(input_val);
                 }
               }
             }
@@ -198,7 +196,6 @@ inline void DepthwiseConvPerChannel(
             int32 scaled_acc = MultiplyByQuantizedMultiplier(
                 acc, output_multiplier[output_channel],
                 output_shift[output_channel]);
-            scaled_acc += output_offset;
             scaled_acc = std::max(scaled_acc, output_activation_min);
             scaled_acc = std::min(scaled_acc, output_activation_max);
             output_data[Offset(output_shape, batch, out_y, out_x,

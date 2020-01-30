@@ -1871,56 +1871,6 @@ class PerChannelQuantizedDepthwiseConvolutionOpModel16x8
   }
 };
 
-TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimpleTest16x8) {
-  const float ulp = (float)1 / (float)512;
-  PerChannelQuantizedDepthwiseConvolutionOpModel16x8 m(
-      GetRegistration(),
-      {TensorType_INT16, {1, 2, 3, 2}, -64 + ulp, 64, ulp, -1},
-      {TensorType_INT8,
-       // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
-       {1, 2, 2, 4},
-       0,
-       0,
-       0,
-       0,
-       /*per_channel_quantization=*/true,
-       /*per_channel_quantization_scales=*/{1, 2, 3, 4},
-       /*per_channel_quantization_offsets=*/{0, 0, 0, 0},
-       /*channel_index=*/3},
-      {TensorType_INT16, {}, -64 + ulp, 64, 0.5, -1}, Padding_VALID);
-  m.SetInput({
-      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
-      3, 2,    // batch = 0, y = 0, x = 0
-      1, -1,   // batch = 0, y = 0, x = 1
-      -2, -3,  // batch = 0, y = 0, x = 2
-      4, 3,    // batch = 0, y = 1, x = 0
-      2, -2,   // batch = 0, y = 1, x = 1
-      -3, -4,  // batch = 0, y = 1, x = 2
-  });
-  m.SetFilter(
-      /*filter data*/
-      {
-          // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
-          // depth multiplier = 2
-          1, 2, 3, 4,  // y = 0, x = 0
-          3, 4, 5, 6,  // y = 0, x = 1
-          7, 8, 5, 6,  // y = 1, x = 0
-          3, 4, 1, 2,  // y = 1, x = 1
-      });
-  m.SetBias({3, -2, 4, 6});
-
-  // Invoke and verify output.
-  // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
-  m.Invoke();
-  EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear(
-                  {43, 48, 22 - 2 * ulp, 22, 3, -4, -29 - 2 * ulp, -54})));
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({43 * 512 - 1, 48 * 512 - 1, 22 * 512 - 3,
-                                22 * 512 - 1, 3 * 512 - 1, -4 * 512 - 1,
-                                -29 * 512 - 3, -54 * 512 - 1}));
-}
-
 TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
        Simple3x3FilterPaddingSameTest) {
   PerChannelQuantizedDepthwiseConvolutionOpModel m(

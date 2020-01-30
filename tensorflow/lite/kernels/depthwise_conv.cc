@@ -118,14 +118,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteType filter_type = filter->type;
   const bool is_hybrid =
       data_type == kTfLiteFloat32 && filter_type == kTfLiteInt8;
-  TF_LITE_ENSURE(context, data_type == kTfLiteFloat32 ||
-                              data_type == kTfLiteUInt8 ||
-                              data_type == kTfLiteInt8 ||
-                              data_type == kTfLiteInt16);
+  TF_LITE_ENSURE(context,
+                 data_type == kTfLiteFloat32 || data_type == kTfLiteUInt8 ||
+                     data_type == kTfLiteInt8 || data_type == kTfLiteInt16);
   TF_LITE_ENSURE_EQ(context, output->type, data_type);
   if (!is_hybrid) {
     TF_LITE_ENSURE(context,
-                 filter->type == data_type || data_type == kTfLiteInt16);
+                   filter->type == data_type || data_type == kTfLiteInt16);
   }
 
   // Filter in DepthwiseConv is expected to be [1, H, W, O].
@@ -139,6 +138,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     } else if (data_type == kTfLiteInt16) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt64);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       TF_LITE_ENSURE_EQ(context, bias->type, data_type);
     }
@@ -409,7 +410,6 @@ TfLiteStatus EvalQuantizedPerChannel16x8(
     TfLiteContext* context, TfLiteNode* node, TfLiteDepthwiseConvParams* params,
     OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
     const TfLiteTensor* bias, TfLiteTensor* output) {
-  
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
@@ -419,10 +419,7 @@ TfLiteStatus EvalQuantizedPerChannel16x8(
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.dilation_height_factor = params->dilation_height_factor;
   op_params.depth_multiplier = params->depth_multiplier;
-  
-  op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = 0;
-  op_params.output_offset = output->params.zero_point;
   // TODO(b/130439627): Use calculated value for clamping.
   op_params.quantized_activation_min = std::numeric_limits<int16_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int16_t>::max();
@@ -434,7 +431,7 @@ TfLiteStatus EvalQuantizedPerChannel16x8(
       GetTensorData<int8>(filter), GetTensorShape(bias),
       GetTensorData<std::int64_t>(bias), GetTensorShape(output),
       GetTensorData<int16>(output));
-  
+
   return kTfLiteOk;
 }
 
