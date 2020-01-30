@@ -127,6 +127,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     rewriter.setInsertionPointToEnd(block);
     Value opResult = MapLhloOpToStdScalarOp<OpTy>(
         llvm::cast<OpTy>(op), bodyResultTypes, bodyArgs, &rewriter);
+    if (!opResult) {
+      return ConversionPattern::matchFailure();
+    }
     rewriter.create<linalg::YieldOp>(loc, opResult);
     rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
     return ConversionPattern::matchSuccess();
@@ -338,17 +341,25 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
   patterns->insert<BroadcastInDimConverter,
                    ConstConverter,
                    IotaConverter,
+                   PointwiseToLinalgConverter<xla_lhlo::AbsOp>,
                    PointwiseToLinalgConverter<xla_lhlo::AddOp>,
                    PointwiseToLinalgConverter<xla_lhlo::AndOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::CeilOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CompareOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::ConvertOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CopyOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::CosOp>,
                    PointwiseToLinalgConverter<xla_lhlo::DivOp>,
                    PointwiseToLinalgConverter<xla_lhlo::ExpOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MaxOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MinOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MulOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::NegOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::RemOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SelectOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::SignOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
                    ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>
                   >(context);
   // clang-format on
