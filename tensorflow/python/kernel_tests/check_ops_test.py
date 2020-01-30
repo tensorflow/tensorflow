@@ -37,6 +37,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
@@ -1591,6 +1592,11 @@ class AssertShapesTest(test.TestCase):
         (rank_one_size_one, (1,)),
         (rank_zero, (1,)),
     ])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_tensor_input(self):
+    A = array_ops.ones([2, 2], name="rank_two")
+    check_ops.assert_shapes(((sparse_ops.from_dense(A), [2, 2]),))
 
   @test_util.run_in_graph_and_eager_modes
   def test_raise_static_rank_1_size_not_1_mismatch_scalar(self):
