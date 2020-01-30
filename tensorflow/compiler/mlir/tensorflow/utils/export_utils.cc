@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -212,11 +213,17 @@ void UpdateCompositeWhileOp(NodeDef* node_def) {
   }
 }
 
-// Returns true if the control dialect op should map to Ref node in TensorFlow
-// Graph. For NextIteration it uses the 1st operand type. For all others
-// (Enter/Exit/Merge/Switch), if the output type is ref,
-// they correspond to the Ref equivalent op in TF Graph.
+// Returns true if the executor/control dialect op should map to Ref node in
+// TensorFlow Graph. For control dialect NextIteration it uses the 1st operand
+// type. For executor dialect NextIteration it uses the 2nd operand type. For
+// all others (Enter/Exit/Merge/Switch), if the output type is ref, they
+// correspond to the Ref equivalent op in TF Graph.
 static bool IsRefTypeControlOp(mlir::Operation* op) {
+  if (auto next_iter_sink =
+          llvm::dyn_cast<mlir::tf_executor::NextIterationSinkOp>(op))
+    return mlir::getElementTypeOrSelf(next_iter_sink.input().getType())
+        .isa<mlir::TF::TensorFlowRefType>();
+
   auto op_name_or_status = GetTensorFlowOpName(op->getName().getStringRef());
   if (!op_name_or_status.ok()) return false;
 
@@ -239,15 +246,18 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   // When being converted to MLIR, some prefixes and suffixes are added to the
   // operation types, and we have to remove them when converting the
   // operations back to a graph:
-  // - "_tf." or "tf.": every operation type has this prefix.
-  // - ".sink": only the NextIteration operation has this suffix. We don't
-  // need to consider ".source" because the nodes with this suffix are skipped
-  // by the caller and will not be added to the graph.
-  if (!op_name.consume_front("_tf.") && !op_name.consume_front("tf.")) {
+  // - "_tf.", "tf." or "tf_executor." : every operation type has this prefix.
+  // - ".sink" or ".Sink": only the NextIteration operation has this suffix. We
+  // don't need to consider ".source"/".Source" because the nodes with this
+  // suffix are skipped by the caller and will not be added to the graph.
+  if (!op_name.consume_front("_tf.") && !op_name.consume_front("tf.") &&
+      !op_name.consume_front("tf_executor.")) {
     return errors::FailedPrecondition("op node '", op_name.str(),
                                       "' was not a TF op!");
   }
-  op_name.consume_back(".sink");
+  // Control dialect NextIteration sink ends with ".sink" and Executor dialect
+  // NextIteration sink ends with ".Sink".
+  if (!op_name.consume_back(".sink")) op_name.consume_back(".Sink");
   return op_name;
 }
 

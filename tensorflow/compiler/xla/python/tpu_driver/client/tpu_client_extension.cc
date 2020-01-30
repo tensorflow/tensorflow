@@ -165,7 +165,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("shape", &PyTpuBuffer::on_host_shape)
       .def("device",
            [](PyTpuBuffer* buffer) -> std::shared_ptr<Device> {
-             return buffer->client()->local_devices()[buffer->device_id()];
+             return buffer->client()->devices()[buffer->device_id()];
            })
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted", [](const PyTpuBuffer& buffer) {
@@ -174,6 +174,8 @@ PYBIND11_MODULE(tpu_client_extension, m) {
 
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
       .def_static("Compile", &PyTpuExecutable::Compile,
+                  py::call_guard<py::gil_scoped_release>())
+      .def_static("Compile", &PyTpuExecutable::CompileForDevices,
                   py::call_guard<py::gil_scoped_release>())
       .def("local_devices", &PyTpuExecutable::local_devices)
       .def("SizeOfGeneratedCodeInBytes",

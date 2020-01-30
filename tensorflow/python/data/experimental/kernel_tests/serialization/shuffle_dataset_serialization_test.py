@@ -41,14 +41,10 @@ class ShuffleDatasetSerializationTest(
       seed=None,
       reshuffle_each_iteration=None,
   ):
-    dataset = dataset_ops.Dataset.range(range_limit).shuffle(
+    return dataset_ops.Dataset.range(range_limit).shuffle(
         buffer_size,
         seed=seed,
         reshuffle_each_iteration=reshuffle_each_iteration).repeat(num_repeats)
-    # TODO(b/138399725): Re-enable default optimizations.
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    return dataset.with_options(options)
 
   @combinations.generate(
       combinations.times(

@@ -1,4 +1,12 @@
 # Settings for Hexagon toolchain.
+# REQUIRED:
+#   - Hexagon SDK 3.5 Toolkit (for hexagon-clang++, hexagon-sim).
+#   - HEXAGON_SDK_PREFIX environment variable must be set to location of
+#     Hexagon_SDK/<version>/ on your machine.
+#
+# Unlike other targets, there is not currently a way to automatically download
+# the Hexagon SDK.  For this reason, users are required to manually download
+# and configure the SDK.
 ifeq ($(TARGET), hexagon)
   TARGET_ARCH := hexagon
 
@@ -50,6 +58,10 @@ ifeq ($(TARGET), hexagon)
   CCFLAGS = $(PLATFORM_ARGS) -std=c11
   LDFLAGS += \
     -Wl,--gc-sections -lhexagon
+
+  ifndef HEXAGON_SDK_PREFIX
+	  $(error HEXAGON_SDK_PREFIX is undefined)
+  endif
 
   INCLUDES += \
     -I$(HEXAGON_SDK_PREFIX)/libs/common/qurt/computev66/include/posix \

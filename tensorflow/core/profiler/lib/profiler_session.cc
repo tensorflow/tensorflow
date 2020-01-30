@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/convert/run_metadata_to_trace_events.h"
+#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
 #endif
@@ -101,13 +101,13 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
 }
 
 Status ProfilerSession::SerializeToString(string* content) {
-  RunMetadata run_metadata;
-  TF_RETURN_IF_ERROR(CollectData(&run_metadata));
+  profiler::XSpace xspace;
+  TF_RETURN_IF_ERROR(CollectData(&xspace));
   profiler::Trace trace;
 #if !defined(IS_MOBILE_PLATFORM)
   uint64 end_time_ns = EnvTime::NowNanos();
-  profiler::ConvertRunMetadataToTraceEvents(start_time_ns_, end_time_ns,
-                                            &run_metadata, &trace);
+  profiler::ConvertXSpaceToTraceEvents(start_time_ns_, end_time_ns, xspace,
+                                       &trace);
 #endif
   trace.SerializeToString(content);
   return Status::OK();

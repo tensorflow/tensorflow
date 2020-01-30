@@ -159,3 +159,81 @@ func @verifier_replicate_result_return_operand_type(%arg0: tensor<*xi32>) {
     tf_device.return %arg0 : tensor<*xi32>
   }) {n = 2 : i32} : () -> (tensor<*xi32>, tensor<*xi1>)
 }
+
+// -----
+
+// Check that a parallel_execute op with a single region is not allowed.
+func @parallel_execute_single_region() {
+  "tf_device.parallel_execute"() ( {
+// expected-error@-1 {{'tf_device.parallel_execute' op must have at least two regions.}}
+    tf_device.return
+  }) {} : () -> ()
+  return
+}
+
+// -----
+
+// Check that a parallel_execute op with empty regions are not allowed.
+func @parallel_execute_empty_region() {
+  "tf_device.parallel_execute"() ( {
+// expected-error@-1 {{'tf_device.parallel_execute' op regions must not be empty. Found an empty region (0).}}
+  },
+  {
+  tf_device.return
+  }) {} : () -> ()
+  return
+}
+
+// -----
+
+// Check that a parallel_execute ops with invalid number of output types are
+// not allowed.
+func @parallel_execute_invalid_output_type_numbers() {
+  "tf_device.parallel_execute"() ({
+// expected-error@-1 {{'tf_device.parallel_execute' op number of output types (3) must match the total number of outputs from all regions (2).}}
+    %0 = "tf.opA"() : () -> (tensor<*xi1>)
+    %1 = "tf.opB"() : () -> (tensor<*xi32>)
+    tf_device.return %0, %1 : tensor<*xi1>, tensor<*xi32>
+  },
+  {
+    %2 = "tf.opC"() : () -> (tensor<*xi1>)
+    tf_device.return
+  }) {} : () -> (tensor<*xi1>, tensor<*xi32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+// Check that a parallel_execute ops with mismatching output types are not
+// allowed.
+func @parallel_execute_mismatched_output_types() {
+  "tf_device.parallel_execute"() ({
+// expected-error@-1 {{'tf_device.parallel_execute' op output types must be a concatenated list of output types for each regions.}}
+    %0 = "tf.opA"() : () -> (tensor<*xi1>)
+    %1 = "tf.opB"() : () -> (tensor<*xi32>)
+    tf_device.return %0, %1 : tensor<*xi1>, tensor<*xi32>
+  },
+  {
+    %2 = "tf.opC"() : () -> (tensor<*xi1>)
+    tf_device.return
+  }) {} : () -> (tensor<*xi1>, tensor<*xi1>)
+  return
+}
+
+// -----
+
+// Check that a parallel_execute ops with unmatching output types for
+// multiple regions with data outputs are not allowed.
+func @parallel_execute_regions_with_invalid_data_results() {
+  "tf_device.parallel_execute"() ({
+// expected-error@-1 {{'tf_device.parallel_execute' op output types must be a concatenated list of output types for each regions.}}
+    %0 = "tf.opA"() : () -> (tensor<*xi1>)
+    %1 = "tf.opB"() : () -> (tensor<*xi32>)
+    tf_device.return %0, %1 : tensor<*xi1>, tensor<*xi32>
+  },
+  {
+    %2 = "tf.opC"() : () -> (tensor<*xf32>)
+    tf_device.return %2 : tensor<*xf32>
+  }) {} : () -> (tensor<*xi1>, tensor<*xi32>, tensor<*xi1>)
+  return
+}

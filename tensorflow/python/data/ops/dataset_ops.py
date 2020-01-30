@@ -43,6 +43,7 @@ from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -4316,3 +4317,63 @@ class _UnbatchDataset(UnaryDataset):
   @property
   def element_spec(self):
     return self._structure
+
+
+def _collect_resource_inputs(op):
+  """Collects resource inputs for the given ops (and its variant inputs)."""
+
+  def _process(op_queue, seen_ops):
+    """Processes the next element of the op queue."""
+
+    result = []
+    op = op_queue.pop()
+    if op in seen_ops:
+      return result
+    seen_ops.add(op)
+    for t in op.inputs:
+      if t.dtype == dtypes.variant:
+        # Conservatively assume that any variant inputs are datasets.
+        op_queue.append(t.op)
+      elif t.dtype == dtypes.resource:
+        result.append(t)
+    return result
+
+  op_queue = [op]
+  seen_ops = set()
+  resource_inputs = []
+  while op_queue:
+    resource_inputs.extend(_process(op_queue, seen_ops))
+
+  return resource_inputs
+
+
+@auto_control_deps.register_acd_resource_resolver
+def _resource_resolver(op, resource_inputs):
+  """Updates resource inputs for tf.data ops with indirect dependencies."""
+
+  updated = False
+  if op.type in [
+      "DatasetToSingleElement", "DatasetToTFRecord", "ReduceDataset"
+  ]:
+    indirect_resource_inputs = _collect_resource_inputs(op)
+    for inp in indirect_resource_inputs:
+      if inp not in resource_inputs:
+        updated = True
+        resource_inputs.add(inp)
+
+  if op.type in [
+      "IteratorGetNext", "IteratorGetNextSync", "IteratorGetNextAsOptional"
+  ]:
+    iterator_resource = op.inputs[0]
+    make_iterator_ops = [
+        op for op in iterator_resource.consumers() if op.type == "MakeIterator"
+    ]
+
+    if len(make_iterator_ops) == 1:
+      indirect_resource_inputs = _collect_resource_inputs(make_iterator_ops[0])
+      for inp in indirect_resource_inputs:
+        if inp not in resource_inputs:
+          updated = True
+          resource_inputs.add(inp)
+
+  return updated

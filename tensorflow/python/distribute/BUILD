@@ -651,6 +651,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -930,6 +931,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1195,6 +1197,7 @@ distribute_py_test(
     full_precision = True,
     main = "saved_model_save_load_test.py",
     shard_count = 5,
+    tags = ["no_rocm"],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/saved_model",
@@ -1224,6 +1227,7 @@ distribute_py_test(
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
     shard_count = 5,
+    tags = ["no_rocm"],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras/saving",

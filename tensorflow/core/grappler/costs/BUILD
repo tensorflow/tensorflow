@@ -138,6 +138,8 @@ tf_cuda_library(
     deps = [
         ":cost_estimator",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:gpu_id",
@@ -231,6 +233,7 @@ cc_library(
     hdrs = ["virtual_scheduler.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_estimator",
         ":graph_properties",
         ":op_context",
         ":utils",
@@ -242,7 +245,8 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
-        "//tensorflow/core/grappler/costs:cost_estimator",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

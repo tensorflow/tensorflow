@@ -57,7 +57,7 @@ cc_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
@@ -731,6 +731,27 @@ cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     python_version = "PY3",
+    deps = [
+        ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/autograph/core",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "def_function_test_cpu_only",
+    srcs = ["def_function_test_cpu_only.py"],
+    python_version = "PY3",
+    # --config=cuda implicitly links in XLA.
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_oss",  # No way to force no XLA linkage in OSS build from here.
+        "no_pip",
+        "nogpu",
+    ],
     deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",

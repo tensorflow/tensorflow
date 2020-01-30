@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -64,6 +63,37 @@ static Type GetQuantizedType(Builder builder, Type input_type,
   }
   if (!quantizedEleType) return {};
   return converter.convert(quantizedEleType);
+}
+
+// TODO(fengliuai): promote this utility method to mlir QuantOps.
+TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
+  auto factor_values = factor.dyn_cast_or_null<DenseFPElementsAttr>();
+  if (!factor_values) return {};
+  auto ele_type = quant::QuantizedType::getQuantizedElementType(input);
+  if (!ele_type) return {};
+  if (auto qtype = ele_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+    ArrayRef<double> scales = qtype.getScales();
+    // Broadcasting hasn't been implemented yet.
+    if (scales.size() != factor_values.getNumElements()) return {};
+    SmallVector<double, 4> new_scales;
+    new_scales.reserve(scales.size());
+    auto scales_iter = scales.begin();
+    for (auto f : factor_values) {
+      new_scales.push_back(*(scales_iter++) *
+                           std::fabs(FloatAttr::getValueAsDouble(f)));
+    }
+    // We are assuming symmetric quantization.
+    auto new_ele_type = quant::UniformQuantizedPerAxisType::get(
+        qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
+        new_scales, qtype.getZeroPoints(), qtype.getQuantizedDimension(),
+        qtype.getStorageTypeMin(), qtype.getStorageTypeMax());
+    if (auto new_type = new_ele_type.castFromExpressedType(
+            quant::QuantizedType::castToExpressedType(input))) {
+      return TypeAttr::get(new_type);
+    }
+  }
+  // Currently, we only support per-axis quantized type.
+  return {};
 }
 
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,

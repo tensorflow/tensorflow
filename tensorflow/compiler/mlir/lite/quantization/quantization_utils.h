@@ -113,8 +113,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 
     rewriter.setInsertionPointAfter(op);
     Type result_type = quant_type.castFromExpressedType(op.getType());
-    auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg(),
-                                TypeAttr::get(result_type));
+    auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
     op.getResult().replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.arg());
@@ -316,7 +315,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
 
   PatternMatchResult matchAndRewrite(Q op,
                                      PatternRewriter& rewriter) const override {
-    Type output_type = op.output().getType();
+    Type output_type = op.getResult().getType();
     auto qtype = QType::getQuantizedElementType(output_type);
     if (!qtype || qtype.isSigned()) return this->matchFailure();
 
@@ -352,13 +351,18 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
       return this->matchFailure();
     }
 
+    if (!new_qtype) return this->matchFailure();
     Type new_output_type = new_qtype.castFromExpressedType(
         QType::castToExpressedType(output_type));
-    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.input(),
-                                   TypeAttr::get(new_output_type));
+    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.arg());
     return this->matchSuccess();
   }
 };
+
+// Given a quantized type `input`, magnifying its scales by the factor stored in
+// `factor`. If `input` isn't a quantized type or the `factor` doesn't match the
+// dimension size of `input` or isn't floating-point, nullptr will be returned.
+TypeAttr RescaleQuantizedType(Type input, Attribute factor);
 
 // Converts the min/max/num_bits/narrow_range information to a
 // QuantizedType, and then returns the attribute containing the QuantizedType.

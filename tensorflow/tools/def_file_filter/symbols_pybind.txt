@@ -189,3 +189,9 @@ tensorflow::Set_TF_Status_from_Status
 
 [context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
+
+[mlir] # mlir
+tensorflow::ExperimentalRunPassPipeline
+tensorflow::ExperimentalConvertSavedModelV1ToMlir
+tensorflow::ExperimentalConvertSavedModelToMlir
+tensorflow::ImportGraphDef

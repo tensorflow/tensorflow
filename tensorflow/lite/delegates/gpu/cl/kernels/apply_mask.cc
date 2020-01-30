@@ -54,11 +54,11 @@ std::string ApplyMask::GetCoreCode(const LinkingContext& context) const {
   switch (mask_type_) {
     case MaskType::TENSOR:
       return context.var_name + " *= " +
-             mask.ReadWHS(context.x_coord, context.y_coord, context.z_coord) +
+             mask.ReadWHS(context.x_coord, context.y_coord, context.s_coord) +
              ";\n";
     case MaskType::CHANNELS:
       return context.var_name +
-             " *= " + mask.ReadWHS("0", "0", context.z_coord) + ";\n";
+             " *= " + mask.ReadWHS("0", "0", context.s_coord) + ";\n";
     case MaskType::LAYER:
       return context.var_name +
              " *= " + mask.ReadWHS(context.x_coord, context.y_coord, "0") +

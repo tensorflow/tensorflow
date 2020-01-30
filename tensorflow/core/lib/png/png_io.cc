@@ -424,12 +424,10 @@ template bool WriteImageToBuffer<string>(
     const void* image, int width, int height, int row_bytes, int num_channels,
     int channel_bits, int compression, string* png_string,
     const std::vector<std::pair<string, string> >* metadata);
-#ifdef USE_TSTRING
 template bool WriteImageToBuffer<tstring>(
     const void* image, int width, int height, int row_bytes, int num_channels,
     int channel_bits, int compression, tstring* png_string,
     const std::vector<std::pair<string, string> >* metadata);
-#endif  // USE_TSTRING
 
 }  // namespace png
 }  // namespace tensorflow

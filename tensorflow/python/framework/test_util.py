@@ -1646,9 +1646,9 @@ def disable_cudnn_autotune(func):
       original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
       os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
       original_xla_flags = os.environ.get("XLA_FLAGS")
-      new_xla_flags = "--xla_gpu_disable_autotune"
+      new_xla_flags = "--xla_gpu_autotune_level=0"
       if original_xla_flags:
-        new_xla_flags += " " + original_xla_flags
+        new_xla_flags = original_xla_flags + " " + new_xla_flags
       os.environ["XLA_FLAGS"] = new_xla_flags
 
       result = f(self, *args, **kwargs)

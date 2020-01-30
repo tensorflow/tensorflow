@@ -34,12 +34,14 @@ namespace tflite {
 
 TfLiteStatus SimpleMemoryArena::Allocate(TfLiteContext* context,
                                          size_t alignment, size_t size,
+                                         int32_t tensor, int32_t node,
                                          ArenaAlloc* new_alloc) {
   TF_LITE_ENSURE(context, alignment <= arena_alignment_);
-
+  new_alloc->tensor = tensor;
+  new_alloc->node = node;
+  new_alloc->size = size;
   if (size == 0) {
     new_alloc->offset = 0;
-    new_alloc->size = 0;
     return kTfLiteOk;
   }
 
@@ -74,7 +76,6 @@ TfLiteStatus SimpleMemoryArena::Allocate(TfLiteContext* context,
   high_water_mark_ = std::max(high_water_mark_, best_offset + size);
 
   new_alloc->offset = best_offset;
-  new_alloc->size = size;
   allocs_.insert(best_insertion_it, *new_alloc);
 
   return kTfLiteOk;
@@ -89,15 +90,14 @@ TfLiteStatus SimpleMemoryArena::Deallocate(TfLiteContext* context,
   int erased_allocs_count = 0;
   auto it = allocs_.begin();
   while (it != allocs_.end()) {
-    if (it->offset == alloc.offset) {
-      TF_LITE_ENSURE_EQ(context, it->size, alloc.size);
+    if (it->tensor == alloc.tensor) {
       erased_allocs_count++;
       it = allocs_.erase(it);
     } else {
       ++it;
     }
   }
-  TF_LITE_ENSURE_EQ(context, erased_allocs_count, 1);
+  TF_LITE_ENSURE(context, erased_allocs_count <= 1);
   return kTfLiteOk;
 }
 

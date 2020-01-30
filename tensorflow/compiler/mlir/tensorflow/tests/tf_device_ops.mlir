@@ -112,3 +112,42 @@ func @replicate_with_inner_ops() {
   }
   return
 }
+
+// CHECK-LABEL: func @parallel_execute_two_regions
+func @parallel_execute_two_regions() {
+  "tf_device.parallel_execute"() ({
+    tf_device.return
+  },
+  {
+    tf_device.return
+  }) {} : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @parallel_execute_two_regions_with_ops
+func @parallel_execute_two_regions_with_ops() {
+  "tf_device.parallel_execute"() ({
+    %0 = "tf.opA"() : () -> (tensor<*xi1>)
+    %1 = "tf.opB"() : () -> (tensor<*xi32>)
+    tf_device.return %0, %1 : tensor<*xi1>, tensor<*xi32>
+  },
+  {
+    %2 = "tf.opC"() : () -> (tensor<*xi1>)
+    tf_device.return
+  }) {} : () -> (tensor<*xi1>, tensor<*xi32>)
+  return
+}
+
+// CHECK-LABEL: func @parallel_execute_regions_with_data_results
+func @parallel_execute_regions_with_data_results() {
+  "tf_device.parallel_execute"() ({
+    %0 = "tf.opA"() : () -> (tensor<*xi1>)
+    %1 = "tf.opB"() : () -> (tensor<*xi32>)
+    tf_device.return %0, %1 : tensor<*xi1>, tensor<*xi32>
+  },
+  {
+    %2 = "tf.opC"() : () -> (tensor<*xf32>)
+    tf_device.return %2 : tensor<*xf32>
+  }) {} : () -> (tensor<*xi1>, tensor<*xi32>, tensor<*xf32>)
+  return
+}

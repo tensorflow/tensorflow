@@ -42,7 +42,7 @@ TEST(MulTest, Scalar) {
   output.shape = BHWC(1, 2, 2, 1);
 
   MultiplyScalarAttributes attr;
-  attr.param = 2;
+  attr.param = 2.f;
 
   // TODO(eignasheva): change to MULTIPLY_SCALAR
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});

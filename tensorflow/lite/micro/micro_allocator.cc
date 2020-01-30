@@ -502,12 +502,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     // the tensor info array, which will be released.
     size_t actual_available_arena_size =
         arena_size - memory_allocator_->GetDataSize();
-    // Make sure we have enough room.
-    // TODO(b/147871342): make GetMaximumMemorySize return size_t.
-    // int is more than enough to hold arena_size since we're only dealing with
-    // at most several megabytes memory.
-    if (planner.GetMaximumMemorySize() >
-        static_cast<int>(actual_available_arena_size)) {
+    // Make sure we have enough arena size.
+    if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
       error_reporter_->Report(
           "Arena size is too small for activation buffers. Needed %d but only "
           "%d was available.",

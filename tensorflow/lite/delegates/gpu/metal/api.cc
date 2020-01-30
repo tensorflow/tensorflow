@@ -40,10 +40,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/upsample.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -232,6 +232,11 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           graph, node_id, inputs[0], outputs[0],
           absl::any_cast<ReshapeAttributes>(node->operation.attributes));
       break;
+    case OperationType::RESIZE:
+      *tasks = Resize(
+          node_id, inputs[0], outputs[0],
+          absl::any_cast<Resize2DAttributes>(node->operation.attributes));
+      break;
     case OperationType::SLICE:
       *tasks =
           Slice(node_id, inputs[0], outputs[0],
@@ -245,11 +250,6 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
       break;
     }
-    case OperationType::UPSAMPLE_2D:
-      *tasks = Upsample(
-          node_id, inputs[0], outputs[0],
-          absl::any_cast<Upsample2DAttributes>(node->operation.attributes));
-      break;
     case OperationType::ABS:
     case OperationType::COS:
     case OperationType::HARD_SWISH:
@@ -274,7 +274,6 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::CONST:
     case OperationType::LSTM:
     case OperationType::MUL:
-    case OperationType::RESIZE:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:

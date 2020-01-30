@@ -273,10 +273,10 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal/kernels:prelu_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:relu_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:reshape_test.mm",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:resize_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:slice_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:softmax_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:transpose_conv_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:upsample_test.mm",
     ],
     hdrs = [
     ],

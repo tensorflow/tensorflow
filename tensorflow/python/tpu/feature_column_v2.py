@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import math
 
 import enum
@@ -401,6 +402,14 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
         max_norm=None,
         trainable=True)
 
+  def __getnewargs__(self):
+    return (self._tpu_categorical_column, self.dimension, self.combiner,
+            self.initializer, self._max_sequence_length, self._learning_rate_fn)
+
+  def __deepcopy__(self, memo):
+    return _TPUEmbeddingColumnV2(
+        *(copy.deepcopy(a, memo) for a in self.__getnewargs__()))
+
   def __init__(self,
                categorical_column,
                dimension,
@@ -571,6 +580,16 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
         combiner=combiner,
         shared_embedding_column_creator=shared_embedding_column_creator,
         max_norm=None)
+
+  def __getnewargs__(self):
+    return (self._tpu_categorical_column, self.shared_embedding_column_creator,
+            self.combiner, self._initializer,
+            self._shared_embedding_collection_name, self._max_sequence_length,
+            self._learning_rate_fn)
+
+  def __deepcopy__(self, memo):
+    return _TPUSharedEmbeddingColumnV2(
+        *(copy.deepcopy(a, memo) for a in self.__getnewargs__()))
 
   def __init__(self,
                categorical_column,

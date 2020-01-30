@@ -372,6 +372,7 @@ genrule(
         "--target_triple " + target_llvm_triple() +
         " --tag_set serve "
     ),
+    tags = ["no_rocm"],
     tools = [
         ":saved_model_cli",
     ],
@@ -386,6 +387,7 @@ cc_library(
     hdrs = if_xla_available([
         ":compiled_model.h",
     ]),
+    tags = ["no_rocm"],
     deps = if_xla_available([
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/core/platform:types",

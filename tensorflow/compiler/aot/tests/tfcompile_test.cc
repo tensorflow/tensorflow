@@ -38,7 +38,9 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfsplits_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tftop_k_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_mlir_bridge.h"
 #else
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
@@ -511,8 +513,6 @@ TEST(TFCompileTest, VariableReadonly) {
   EXPECT_EQ(fn.var_x(), 23);
 }
 
-// TODO(bixia): the following tests failed with MLIR bridge.
-#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Variable) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
@@ -585,7 +585,6 @@ TEST(TFCompileTest, VariableSequentialUpdatesNoAlloc) {
   fn.Run();
   EXPECT_NEAR(x, 0.594322f, 1e-6);
 }
-#endif
 
 TEST(TFCompileTest, AssertEqAndReturnDiff) {
   // Assert is converted into a no-op in XLA, so there is no failure even if the

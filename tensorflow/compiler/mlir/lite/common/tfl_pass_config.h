@@ -34,7 +34,7 @@ struct PassConfig {
         quant_specs(std::move(specs)),
         skip_control_dialect(false),
         form_clusters(false),
-        inline_functions(false),
+        inline_functions(true),
         unfold_batch_matmul(true) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be

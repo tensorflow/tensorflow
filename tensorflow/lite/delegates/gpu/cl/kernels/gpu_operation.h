@@ -48,8 +48,8 @@ struct LinkingContext {
   std::string x_coord;
   // y coordinate name (as it appears in kernel) for variable
   std::string y_coord;
-  // z coordinate name (as it appears in kernel) for variable
-  std::string z_coord;
+  // s coordinate name (as it appears in kernel) for variable
+  std::string s_coord;
 };
 
 struct OperationDef {

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -61,12 +63,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
-namespace mlir {
-/// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OpPassBase<FuncOp>>
-CreateTFExecutorToControlDialectConversion();
-}  // namespace mlir
-
 namespace tensorflow {
 using llvm::dyn_cast;
 using llvm::isa;
@@ -78,6 +74,9 @@ using mlir::Value;
 using stream_executor::port::StatusOr;
 
 namespace {
+
+constexpr char kInvalidExecutorGraphMsg[] =
+    "Functions must be of a single Graph with single op Islands: ";
 
 bool IsLegalChar(char c, bool first_char) {
   if (isalpha(c)) return true;
@@ -122,6 +121,60 @@ class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
   }
 };
 
+// Checks functions in module are of single tf_executor.graph and each
+// tf_executor.island in tf_executor.graph only has a single op.
+Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
+  Status status = Status::OK();
+  module.walk([&](mlir::FuncOp function) {
+    if (function.getBlocks().size() != 1) {
+      status = errors::FailedPrecondition(
+          kInvalidExecutorGraphMsg,
+          "only single block functions are supported.");
+      return mlir::WalkResult::interrupt();
+    }
+
+    auto block = function.front().without_terminator();
+    auto graph = llvm::dyn_cast<mlir::tf_executor::GraphOp>(block.begin());
+    if (!graph) {
+      status = errors::FailedPrecondition(
+          kInvalidExecutorGraphMsg,
+          "first op in function is not a tf_executor.graph.");
+      return mlir::WalkResult::interrupt();
+    }
+
+    if (!has_single_element(block)) {
+      status = errors::FailedPrecondition(
+          kInvalidExecutorGraphMsg,
+          "function does not only contain a single tf_executor.graph.");
+      return mlir::WalkResult::interrupt();
+    }
+
+    for (Operation& op : graph.GetBody()) {
+      auto island = llvm::dyn_cast<mlir::tf_executor::IslandOp>(op);
+      if (!island) continue;
+
+      if (!island.WrapsSingleOp()) {
+        status = errors::FailedPrecondition(
+            kInvalidExecutorGraphMsg,
+            "tf_executor.island must perfectly wrap a single op.");
+        return mlir::WalkResult::interrupt();
+      }
+    }
+
+    return mlir::WalkResult::advance();
+  });
+
+  return status;
+}
+
+// Finds first inner op if `op` is a tf_executor.island. Otherwise `op` is
+// returned.
+Operation* GetIslandInnerOpOrSelf(mlir::Operation* op) {
+  auto island = llvm::dyn_cast<mlir::tf_executor::IslandOp>(op);
+  if (island) return &island.GetBody().front();
+  return op;
+}
+
 // Stateful helper class to export a function into a Graph.
 class Exporter {
  public:
@@ -145,7 +198,8 @@ class Exporter {
   // another graph.
   static StatusOr<std::unique_ptr<Graph>> Convert(
       const GraphExportConfig& configs, const Dialect* tf_dialect,
-      mlir::FuncOp function, FunctionDefLibrary* flib);
+      mlir::FuncOp function, FunctionDefLibrary* flib,
+      absl::flat_hash_set<Node*>* control_ret_nodes);
 
  private:
   explicit Exporter(Graph* graph, const Dialect* tf_dialect)
@@ -153,18 +207,20 @@ class Exporter {
 
   Status AddArgumentNode(BlockArgument arg, unsigned index,
                          llvm::StringRef name);
-  Status AddReturnNode(mlir::ReturnOp op,
-                       llvm::ArrayRef<llvm::StringRef> names);
+  Status AddFetchNode(mlir::FuncOp function, mlir::tf_executor::FetchOp fetch,
+                      llvm::ArrayRef<llvm::StringRef> names);
   Status AddInstructionNode(Operation* inst);
-  Status AddNextIterationNode(Operation* inst);
   Status AddEdge(Operation* inst);
 
   StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(BlockArgument arg,
                                                      unsigned index,
                                                      llvm::StringRef name);
-  StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(Operation* inst,
+  StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(mlir::FuncOp function,
+                                                   Value operand,
                                                    unsigned index,
                                                    llvm::StringRef name);
+  Status GetControlRetNodes(mlir::tf_executor::FetchOp fetch,
+                            absl::flat_hash_set<Node*>* control_ret_nodes);
   // Adds one edge between src_node and dst_node. If it is not a control edge,
   // an index is used to find out the right operand of the dst_node.
   Status AddEdgeBetweenNodes(Value src, Node* dst_node, unsigned dst_index);
@@ -177,18 +233,6 @@ class Exporter {
   // will be converted to one node in the graph.
   typedef absl::InlinedVector<Node*, 4> NodeVector;
   absl::flat_hash_map<Operation*, NodeVector> returns_;
-
-  // Each NextIteration node in the original graph is converted to a pair of
-  // source and sink operations in the MLIR, and we use the following two maps
-  // to pair and convert them back to a single NextIteration node. We choose to
-  // the "name" attribute, which is from the unique node name, to find out the
-  // pairs: When scanning the operations in the block, the source operations
-  // are inserted to the name_to_inst_ first, and the other "sink" operation
-  // can be paired by checking this map and both are inserted to the
-  // source_to_sink_ map.
-  llvm::StringMap<Operation*> name_to_inst_;
-  absl::flat_hash_map<Operation*, Operation*> source_to_sink_;
-
   const mlir::Dialect* tf_dialect_;
 };
 
@@ -232,19 +276,18 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 }
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
-    Operation* inst, unsigned index, llvm::StringRef name) {
+    mlir::FuncOp function, Value operand, unsigned index,
+    llvm::StringRef name) {
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(op_to_name_.GetUniqueName(
-        inst->getParentOfType<mlir::FuncOp>().getName().str()));
+    node_def->set_name(op_to_name_.GetUniqueName(function.getName().str()));
 
   node_def->set_op(FunctionLibraryDefinition::kRetOp);
-  auto inst_op = inst->getOperand(index);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
-      inst_op.getType().cast<mlir::TensorType>().getElementType(), &dtype));
+      operand.getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
@@ -257,16 +300,18 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
 Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
                                      unsigned dst_index) {
   if (auto input_result = src.dyn_cast<mlir::OpResult>()) {
-    auto* input_inst = input_result.getOwner();
-    // replaces the input node by the sink one if it is an NextIteration source:
-    auto it = source_to_sink_.find(input_inst);
-    if (it != source_to_sink_.end()) {
-      input_inst = source_to_sink_[input_inst];
-    }
+    auto* input_inst = GetIslandInnerOpOrSelf(input_result.getOwner());
+    // Replaces the input node with NextIteration sink if it is a NextIteration
+    // source.
+    if (auto next_iter_source =
+            llvm::dyn_cast<mlir::tf_executor::NextIterationSourceOp>(
+                input_inst))
+      input_inst = next_iter_source.GetSink();
+
     auto node_it = nodes_.find(input_inst);
     TF_RET_CHECK(node_it != nodes_.end())
         << "Use of OpResult encountered before def!";
-    if (input_result.getType().isa<mlir::TFControlFlow::TFControlType>()) {
+    if (input_result.getType().isa<mlir::tf_executor::ControlType>()) {
       graph_->AddControlEdge(node_it->second, dst_node);
     } else {
       graph_->AddEdge(node_it->second, input_result.getResultNumber(), dst_node,
@@ -285,30 +330,64 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
 }
 
 Status Exporter::AddEdge(Operation* inst) {
-  auto* dst_node = nodes_[inst];
-  bool is_return_op = isa<mlir::ReturnOp>(inst);
-  for (int index = 0, e = inst->getNumOperands(); index < e; index++) {
-    auto src = inst->getOperand(index);
-    // For return operation, the edge is from the operand owner to one of the
-    // faked return nodes. The input index is always 0 for the return node.
-    if (is_return_op) {
-      dst_node = returns_[inst][index];
-      TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(src, dst_node, 0));
-    } else {
-      // Assume the TF_Control input is always at the end, so the last index
-      // value is passed into the function but not used.
-      TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(src, dst_node, index));
+  // For tf_executor.fetch, add only its data edges. Control edges are captured
+  // later.
+  if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
+    for (auto operand_and_idx : llvm::enumerate(fetch.getOperands())) {
+      Value operand = operand_and_idx.value();
+      if (operand.getType().isa<mlir::tf_executor::ControlType>()) break;
+
+      auto* dst_node = returns_[fetch][operand_and_idx.index()];
+      TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(operand, dst_node, 0));
     }
+
+    return Status::OK();
   }
+
+  // For tf_executor.NextIteration.Sink, skip its token operand and add data and
+  // control edges with their index offset by 1.
+  if (auto next_iter_sink =
+          llvm::dyn_cast<mlir::tf_executor::NextIterationSinkOp>(inst)) {
+    auto* dst_node = nodes_[inst];
+    TF_RETURN_IF_ERROR(
+        AddEdgeBetweenNodes(next_iter_sink.input(), dst_node, 0));
+    for (auto control_and_idx : llvm::enumerate(next_iter_sink.controlInputs()))
+      TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(control_and_idx.value(), dst_node,
+                                             control_and_idx.index() + 1));
+
+    return Status::OK();
+  }
+
+  // For tf_executor.NextIteration.Source, op can be skipped as it is assumed
+  // there are no operands.
+  if (llvm::isa<mlir::tf_executor::NextIterationSourceOp>(inst)) {
+    assert(inst->getNumOperands() == 0);
+    return Status::OK();
+  }
+
+  Operation* op = GetIslandInnerOpOrSelf(inst);
+  auto* dst_node = nodes_[op];
+  int operand_offset = 0;
+  // For tf_executor.island, add data edges from its wrapped op before control
+  // edges.
+  if (auto island = llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
+    for (auto operand_and_idx : llvm::enumerate(op->getOperands()))
+      TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(operand_and_idx.value(), dst_node,
+                                             operand_and_idx.index()));
+
+    operand_offset = op->getNumOperands();
+  }
+
+  // For all other ops (including tf_executor.island), add remaining edges.
+  for (auto operand_and_idx : llvm::enumerate(inst->getOperands()))
+    TF_RETURN_IF_ERROR(
+        AddEdgeBetweenNodes(operand_and_idx.value(), dst_node,
+                            operand_and_idx.index() + operand_offset));
+
   return Status::OK();
 }
 
 Status Exporter::AddInstructionNode(Operation* inst) {
-  Status status;
-
-  if (inst->isKnownTerminator())
-    return errors::InvalidArgument("std.return is only allowed terminator");
-
   std::unique_ptr<NodeDef> node_def;
   auto name = op_to_name_.GetUniqueName(inst);
   // Convert registered TF ops to NodeDef. Only registered ops are handled to
@@ -317,6 +396,7 @@ Status Exporter::AddInstructionNode(Operation* inst) {
                       ConvertTFDialectOpToNodeDef(
                           inst, name, /*ignore_unregistered_attrs=*/false));
 
+  Status status;
   Node* node = graph_->AddNode(*node_def, &status);
   TF_RETURN_IF_ERROR(status);
   DCHECK(node != nullptr);
@@ -351,9 +431,23 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
         "Arg in 'main' should only have one user.");
   }
   auto* input = *arg.user_begin();
+  auto* parent = input->getParentOp();
+  auto island = llvm::dyn_cast_or_null<mlir::tf_executor::IslandOp>(parent);
+  if (!island)
+    return errors::FailedPrecondition(
+        "User of arg in 'main' must be in an inner op of a "
+        "tf_executor.island.");
+
+  if (!island.control().use_empty())
+    return errors::FailedPrecondition(
+        "tf_executor.island of user of arg in 'main' must have no control "
+        "output users.");
+
   auto input_name = input->getName().getStringRef();
   input_name.consume_back(".input");
-  mlir::OpBuilder builder(arg.getOwner());
+
+  mlir::OpBuilder builder(island.getContext());
+  builder.setInsertionPointToStart(&island.GetBody());
   auto loc = mlir::NameLoc::get(
       builder.getIdentifier(op_to_name_.GetUniqueName(input)),
       builder.getContext());
@@ -378,16 +472,22 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
   return Status::OK();
 }
 
-// Creates return nodes per operand of a ReturnOp. If names is supplied, those
+// Creates return nodes per operand of a FetchOp. If names is supplied, those
 // names will be used per node in order instead of generating a unique name.
-Status Exporter::AddReturnNode(mlir::ReturnOp op,
-                               llvm::ArrayRef<llvm::StringRef> names) {
+Status Exporter::AddFetchNode(mlir::FuncOp function,
+                              mlir::tf_executor::FetchOp fetch,
+                              llvm::ArrayRef<llvm::StringRef> names) {
   Status status;
-  auto& return_nodes = returns_[op];
-  for (int index : llvm::seq<int>(0, op.getNumOperands())) {
+  auto& return_nodes = returns_[fetch];
+  for (auto operand_and_idx : llvm::enumerate(fetch.getOperands())) {
+    if (operand_and_idx.value().getType().isa<mlir::tf_executor::ControlType>())
+      break;
+
     TF_ASSIGN_OR_RETURN(
         auto node_def,
-        GetReturnNode(op, index, names.empty() ? "" : names[index]));
+        GetReturnNode(function, operand_and_idx.value(),
+                      operand_and_idx.index(),
+                      names.empty() ? "" : names[operand_and_idx.index()]));
     Node* node = graph_->AddNode(*node_def, &status);
     TF_RETURN_IF_ERROR(status);
     return_nodes.push_back(node);
@@ -395,31 +495,27 @@ Status Exporter::AddReturnNode(mlir::ReturnOp op,
   return Status::OK();
 }
 
-// Handles an NextIteration node specially:
-// - NextIteration "source" will not be added to the graph but inserted to a
-//   map by using its name attribute;
-// - NextIteration "sink" is paired with the "source" with the name attribute.
-//   It is added to the graph like the other operations.
-Status Exporter::AddNextIterationNode(Operation* inst) {
-  // TODO(jpienaar): Update the above comment and the importer.
-  // The source and sink nodes are inserted during import with a unique
-  // location.
-  auto name = inst->getLoc().cast<mlir::NameLoc>().getName().strref();
-  if (inst->getName().getStringRef().endswith(".source")) {
-    name_to_inst_[name] = inst;
-    return Status::OK();
+// Collects control ret Nodes based on tf_executor.graph's associated
+// tf_executor.fetch control inputs.
+Status Exporter::GetControlRetNodes(
+    mlir::tf_executor::FetchOp fetch,
+    absl::flat_hash_set<Node*>* control_ret_nodes) {
+  for (Value fetch_operand : fetch.getOperands()) {
+    if (fetch_operand.getType().isa<mlir::tf_executor::ControlType>()) {
+      Operation* defining_op =
+          GetIslandInnerOpOrSelf(fetch_operand.getDefiningOp());
+      auto node_it = nodes_.find(defining_op);
+      TF_RET_CHECK(node_it != nodes_.end());
+      control_ret_nodes->insert(node_it->second);
+    }
   }
-  source_to_sink_[name_to_inst_[name]] = inst;
-  return AddInstructionNode(inst);
+  return Status::OK();
 }
 
 StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     const GraphExportConfig& configs, const Dialect* tf_dialect,
-    mlir::FuncOp function, FunctionDefLibrary* flib) {
-  if (function.getBlocks().size() != 1) {
-    return errors::FailedPrecondition(
-        "Input FuncOp must have only one basic block!");
-  }
+    mlir::FuncOp function, FunctionDefLibrary* flib,
+    absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::Block& block = function.front();
 
   // Determine if _Arg and _Retval nodes should use input and output names.
@@ -466,22 +562,25 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
   Exporter exporter(graph.get(), tf_dialect);
 
+  auto graph_op = llvm::cast<mlir::tf_executor::GraphOp>(block.front());
+
   // Set input and output names and increment the use counter for them to help
   // generate unique names.
   if (!output_names.empty()) {
-    auto term = block.getTerminator();
-    TF_RET_CHECK(output_names.size() == term->getNumOperands())
+    const int num_data_results = graph_op.getNumResults();
+    TF_RET_CHECK(output_names.size() == num_data_results)
         << "output names (" << output_names.size()
-        << ") != terminator operands (" << term->getNumOperands() << ")";
+        << ") != terminator operands (" << num_data_results << ")";
     llvm::DenseMap<Operation*, llvm::StringRef> output_op_to_name;
     llvm::StringMap<Operation*> name_to_op;
-    for (auto it : llvm::enumerate(term->getOperands())) {
+    for (auto it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
+      // Skip control rets.
+      if (it.index() >= num_data_results) break;
       // If there is a result index specified, ensure only one and that it
       // matches the result index of the op.
       auto result = it.value().cast<mlir::OpResult>();
       std::string orig_name = output_names[it.index()];
       auto tensor_id = ParseTensorName(orig_name);
-      TF_RET_CHECK(result.getResultNumber() == tensor_id.index());
       auto name = LegalizeNodeName(
           llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
 
@@ -491,12 +590,14 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         continue;
       }
 
-      if (output_op_to_name.insert({it.value().getDefiningOp(), name}).second) {
-        TF_RET_CHECK(name_to_op.insert({name, result.getDefiningOp()}).second)
+      TF_RET_CHECK(result.getResultNumber() == tensor_id.index());
+      Operation* defining_op = GetIslandInnerOpOrSelf(result.getDefiningOp());
+      if (output_op_to_name.insert({defining_op, name}).second) {
+        TF_RET_CHECK(name_to_op.insert({name, defining_op}).second)
             << "multiple operations associated with the same name";
-        exporter.op_to_name_.InitOpName(result.getDefiningOp(), name);
+        exporter.op_to_name_.InitOpName(defining_op, name);
       } else {
-        TF_RET_CHECK(output_op_to_name[result.getDefiningOp()] == name)
+        TF_RET_CHECK(output_op_to_name[defining_op] == name)
             << "associating multiple names with the same op not supported";
       }
     }
@@ -517,7 +618,9 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         // Ensure name does not get reused.
         (void)exporter.op_to_name_.GetUniqueName(name);
       } else {
-        exporter.op_to_name_.InitOpName(*it.value().user_begin(), name);
+        Operation* defining_op =
+            GetIslandInnerOpOrSelf(*it.value().user_begin());
+        exporter.op_to_name_.InitOpName(defining_op, name);
       }
     }
   }
@@ -550,48 +653,60 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   };
 
   // Adds nodes for operations.
-  for (Operation& inst : block) {
-    auto op_name = GetTensorFlowOpName(inst.getName().getStringRef());
-    if (op_name.ok()) {
-      // If it is TF Control dialect specific op, look up custom operation
-      // in the module and first convert that, then add it to function
-      // definition library
-      // TODO(prakalps): If two functions have cyclic dependence, this will
-      // introduce an infinite loop.
-      TF_RETURN_IF_ERROR(convert_called_function(op_name.ValueOrDie().str()));
-    }
-
-    if (IsLegacyCallInstruction(&inst)) {
-      TF_RETURN_IF_ERROR(convert_called_function(
-          inst.getAttrOfType<mlir::SymbolRefAttr>("f").getLeafReference()));
-    }
-
-    for (auto type : inst.getResultTypes()) {
+  for (Operation& inst : graph_op.GetBody()) {
+    for (auto type : inst.getResultTypes())
       if (!type.isa<mlir::TensorType>() &&
-          !type.isa<mlir::TFControlFlow::TFControlType>()) {
+          !type.isa<mlir::tf_executor::ControlType>() &&
+          !type.isa<mlir::tf_executor::TokenType>())
         return errors::InvalidArgument(
-            "Values must be of tensor type or TensorFlow control type. Found ",
+            "Values must be of tensor type, TensorFlow control type, or "
+            "TensorFlow token type. Found ",
             mlir::debugString(type));
-      }
-    }
 
-    if (inst.getName().getStringRef().contains("NextIteration")) {
-      TF_RETURN_IF_ERROR(exporter.AddNextIterationNode(&inst));
-    } else if (auto return_op = llvm::dyn_cast<mlir::ReturnOp>(inst)) {
-      TF_RETURN_IF_ERROR(exporter.AddReturnNode(
-          return_op, graph_as_function ? output_names
-                                       : llvm::ArrayRef<llvm::StringRef>()));
+    if (llvm::isa<mlir::tf_executor::NextIterationSourceOp>(inst)) {
+      // Skip tf_executor.NextIteration.Source as associated
+      // tf_executor.NextIteration.Sink will be used instead.
+      continue;
+    } else if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
+      TF_RETURN_IF_ERROR(exporter.AddFetchNode(
+          function, fetch,
+          graph_as_function ? output_names
+                            : llvm::ArrayRef<llvm::StringRef>()));
+    } else if (auto island =
+                   llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
+      Operation& inner_op = island.GetBody().front();
+      auto op_name = GetTensorFlowOpName(inner_op.getName().getStringRef());
+      if (op_name.ok()) {
+        // If it is TF Control dialect specific op, look up custom operation
+        // in the module and first convert that, then add it to function
+        // definition library
+        // TODO(prakalps): If two functions have cyclic dependence, this will
+        // introduce an infinite loop.
+        TF_RETURN_IF_ERROR(convert_called_function(op_name.ValueOrDie().str()));
+      }
+
+      if (IsLegacyCallInstruction(&inner_op)) {
+        TF_RETURN_IF_ERROR(convert_called_function(
+            inner_op.getAttrOfType<mlir::SymbolRefAttr>("f")
+                .getLeafReference()));
+      }
+
+      TF_RETURN_IF_ERROR(exporter.AddInstructionNode(&inner_op));
     } else {
       TF_RETURN_IF_ERROR(exporter.AddInstructionNode(&inst));
     }
   }
   // Adds edges between the argument, operation and return nodes.
-  for (Operation& inst : block) {
+  for (Operation& inst : graph_op.GetBody()) {
     TF_RETURN_IF_ERROR(exporter.AddEdge(&inst));
   }
   // Fixes the edges between the inserted nodes and special "_SOURCE" and
   // "_SINK".
   FixupSourceAndSinkEdges(graph.get());
+
+  TF_RETURN_IF_ERROR(
+      exporter.GetControlRetNodes(graph_op.GetFetch(), control_ret_nodes));
+
   return graph;
 }
 
@@ -607,10 +722,18 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   if (flib_def.Find(function_name)) return Status::OK();
 
   // TODO(fengliuai): use a small flib_def to reduce overhead
+  absl::flat_hash_set<Node*> control_ret_nodes;
   TF_ASSIGN_OR_RETURN(auto sub_graph,
-                      Exporter::Convert(configs, tf_dialect, function, flib));
+                      Exporter::Convert(configs, tf_dialect, function, flib,
+                                        &control_ret_nodes));
+  const auto control_ret = [&](const Node* n) -> absl::optional<string> {
+    return control_ret_nodes.contains(n)
+               ? absl::make_optional<string>(n->name())
+               : absl::nullopt;
+  };
   FunctionDef func_def;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*sub_graph, function_name, &func_def));
+  TF_RETURN_IF_ERROR(
+      GraphToFunctionDef(*sub_graph, function_name, control_ret, &func_def));
 
   // The node defs in FunctionDef might contain debug info which was added
   // by the GraphToFunctionDef method. We should remove it if we don't want
@@ -687,8 +810,10 @@ Status Exporter::Convert(mlir::ModuleOp module,
     return errors::FailedPrecondition("entry function `main` must be present");
 
   // Updates the graph and the function library definition.
-  TF_ASSIGN_OR_RETURN(*graph, Exporter::Convert(configs, tf_dialect,
-                                                entry_func.value(), &flib));
+  absl::flat_hash_set<Node*> control_ret_nodes;
+  TF_ASSIGN_OR_RETURN(
+      *graph, Exporter::Convert(configs, tf_dialect, entry_func.value(), &flib,
+                                &control_ret_nodes));
   for (auto& func_def : flib.function()) {
     TF_RETURN_IF_ERROR(flib_def->AddFunctionDef(func_def));
   }
@@ -703,12 +828,7 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
                           const GraphExportConfig& configs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def) {
-  mlir::PassManager pass_manager(module.getContext());
-  pass_manager.addPass(mlir::CreateTFExecutorToControlDialectConversion());
-  if (mlir::failed(pass_manager.run(module))) {
-    return errors::FailedPrecondition(
-        "Failed to convert TFExecutor Dialect to Control Dialect.");
-  }
+  TF_RETURN_IF_ERROR(HasSingleGraphSingleOpIslandsFunctions(module));
   return Exporter::Convert(module, configs, graph, flib_def);
 }
 

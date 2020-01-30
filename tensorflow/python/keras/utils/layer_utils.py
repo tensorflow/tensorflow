@@ -24,6 +24,7 @@ import six
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.conv_utils import convert_kernel
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
@@ -326,11 +327,16 @@ def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
   return weights + non_trainable_extra_variables
 
 
+@deprecation.deprecated('2020-06-23',
+                        'The Theano kernel format is legacy; '
+                        'this utility will be removed.')
 @keras_export('keras.utils.convert_all_kernels_in_model')
 def convert_all_kernels_in_model(model):
   """Converts all convolution kernels in a model from Theano to TensorFlow.
 
   Also works from TensorFlow to Theano.
+
+  This is used for converting legacy Theano-saved model files.
 
   Arguments:
       model: target model for the conversion.

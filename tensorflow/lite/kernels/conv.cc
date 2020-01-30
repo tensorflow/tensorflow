@@ -71,6 +71,7 @@ struct OpData {
   int input_quantized_id = kTensorNotAllocated;
   int scaling_factors_id = kTensorNotAllocated;
   int input_offset_id = kTensorNotAllocated;
+  int accum_scratch_id = kTensorNotAllocated;
 
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -92,6 +93,7 @@ struct OpData {
   int32_t hwcn_weights_index;
   int32_t input_quantized_index;
   int32_t scaling_factors_index;
+  int32_t accum_scratch_index;
 
   int32_t input_offset_index;
   bool need_hwcn_weights = false;
@@ -262,6 +264,13 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
     }
     ++temporaries_count;
 
+    // Allocate tensor to store the accumulators for the matrix multiply.
+    data->accum_scratch_index = temporaries_count;
+    if (data->accum_scratch_id == kTensorNotAllocated) {
+      TF_LITE_ENSURE_OK(
+          context, context->AddTensors(context, 1, &data->accum_scratch_id));
+    }
+    ++temporaries_count;
     if (is_per_channel) {
       data->input_offset_index = temporaries_count;
       if (data->input_offset_id == kTensorNotAllocated) {
@@ -483,6 +492,21 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       scaling_factors_size->data[0] = height;
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
+    }
+
+    node->temporaries->data[data->accum_scratch_index] = data->accum_scratch_id;
+    TfLiteTensor* accum_scratch =
+        GetTemporary(context, node, data->accum_scratch_index);
+    accum_scratch->type = kTfLiteInt32;
+    accum_scratch->allocation_type = kTfLiteArenaRw;
+    int accum_scratch_dims[2] = {channels_out, batches};
+    if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2,
+                                   accum_scratch_dims)) {
+      TfLiteIntArray* accum_scratch_size = TfLiteIntArrayCreate(2);
+      accum_scratch_size->data[0] = channels_out;
+      accum_scratch_size->data[1] = batches;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, accum_scratch,
+                                                       accum_scratch_size));
     }
 
     if (is_hybrid_per_channel) {
@@ -771,7 +795,7 @@ template <KernelType kernel_type>
 void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                 TfLiteConvParams* params, OpData* data, TfLiteTensor* input,
                 TfLiteTensor* filter, TfLiteTensor* bias, TfLiteTensor* im2col,
-                TfLiteTensor* output) {
+                TfLiteTensor* accum_scratch, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -816,9 +840,11 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
           op_params, scaling_factors_ptr, GetTensorShape(input),
           quantized_input_ptr_batch, GetTensorShape(filter),
           GetTensorData<int8_t>(filter), GetTensorShape(bias),
-          GetTensorData<float>(bias), GetTensorShape(output),
+          GetTensorData<float>(bias), GetTensorShape(accum_scratch),
+          GetTensorData<int32_t>(accum_scratch), GetTensorShape(output),
           GetTensorData<float>(output), GetTensorShape(im2col),
-          GetTensorData<int8_t>(im2col));
+          GetTensorData<int8_t>(im2col),
+          CpuBackendContext::GetFromContext(context));
       break;
     }
   }
@@ -859,8 +885,11 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
           EvalHybridPerChannel<kernel_type>(context, node, params, data, input,
                                             filter, bias, im2col, output);
         } else {
+          TfLiteTensor* accum_scratch =
+              &context->tensors[node->temporaries
+                                    ->data[data->accum_scratch_index]];
           EvalHybrid<kernel_type>(context, node, params, data, input, filter,
-                                  bias, im2col, output);
+                                  bias, im2col, accum_scratch, output);
         }
       } else {
         EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,

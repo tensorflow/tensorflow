@@ -606,6 +606,7 @@ table ResizeBilinearOptions {
   new_height: int (deprecated);
   new_width: int (deprecated);
   align_corners: bool;
+  half_pixel_centers: bool;
 }
 
 table ResizeNearestNeighborOptions {

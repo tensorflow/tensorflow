@@ -271,16 +271,38 @@ DeviceInfo::DeviceInfo(cl_device_id id)
       supports_image3d_writes = true;
     }
   }
+
+  f32_config =
+      GetDeviceInfo<cl_device_fp_config>(id, CL_DEVICE_SINGLE_FP_CONFIG);
+  supports_fp32_rtn = f32_config & CL_FP_ROUND_TO_NEAREST;
+
+  if (supports_fp16) {
+    auto status = GetDeviceInfo<cl_device_fp_config>(
+        id, CL_DEVICE_HALF_FP_CONFIG, &f16_config);
+    if (status.ok()) {
+      supports_fp16_rtn = f16_config & CL_FP_ROUND_TO_NEAREST;
+    } else {  // happens on PowerVR
+      f16_config = f32_config;
+      supports_fp16_rtn = supports_fp32_rtn;
+    }
+  } else {
+    f16_config = 0;
+    supports_fp16_rtn = false;
+  }
+
   if (vendor == Vendor::POWERVR && !supports_fp16) {
     // PowerVR doesn't have full support of fp16 and so doesn't list this
     // extension. But it can support fp16 in MADs and as buffers/textures types,
     // so we will use it.
     supports_fp16 = true;
+    f16_config = f32_config;
+    supports_fp16_rtn = supports_fp32_rtn;
   }
 
-  if ((vendor == Vendor::QUALCOMM &&
-       IsGPUVersionInRange(adreno_info.gpu_version, 400, 500)) ||
-      vendor == Vendor::NVIDIA) {
+  if (!supports_image3d_writes &&
+      ((vendor == Vendor::QUALCOMM &&
+        IsGPUVersionInRange(adreno_info.gpu_version, 400, 500)) ||
+       vendor == Vendor::NVIDIA)) {
     // in local tests Adreno 430 can write in image 3d, at least on small sizes,
     // but it doesn't have cl_khr_3d_image_writes in list of available
     // extensions
@@ -374,6 +396,10 @@ bool CLDevice::SupportsImageBuffer() const {
 
 bool CLDevice::SupportsImage3D() const { return info_.SupportsImage3D(); }
 
+bool CLDevice::SupportsFP32RTN() const { return info_.supports_fp32_rtn; }
+
+bool CLDevice::SupportsFP16RTN() const { return info_.supports_fp16_rtn; }
+
 std::string CLDevice::GetPlatformVersion() const {
   return GetPlatformInfo(platform_id_, CL_PLATFORM_VERSION);
 }
@@ -439,11 +465,6 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
 
   *result = CLDevice(devices[0], platforms[0]);
   return OkStatus();
-}
-
-bool FindPlatform(cl_device_id device, cl_platform_id* platform) {
-  return clGetDeviceInfo(device, CL_DEVICE_PLATFORM, sizeof(cl_platform_id),
-                         platform, nullptr) == CL_SUCCESS;
 }
 
 }  // namespace cl
