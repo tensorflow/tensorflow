@@ -61,7 +61,7 @@ Status CollectDataToResponse(const ProfileRequest& req,
     trace.SerializeToString(response->mutable_encoded_trace());
   }
   if (tools.contains(kTensorflowStats)) {
-    profiler::OpStats op_stats = profiler::ConvertXSpaceToOpStats(xspace);
+    profiler::OpStats op_stats = profiler::ConvertXSpaceToOpStats(&xspace);
     profiler::TfStatsDatabase tf_stats_db =
         profiler::ConvertOpStatsToTfStats(op_stats);
     AddToolData(kTensorflowStats, tf_stats_db, response);

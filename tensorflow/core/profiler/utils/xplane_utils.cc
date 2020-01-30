@@ -36,10 +36,26 @@ const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
   return nullptr;
 }
 
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    if (plane.name() == name) return &plane;
+  }
+  return nullptr;
+}
+
 std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
                                                 absl::string_view prefix) {
   std::vector<const XPlane*> result;
   for (const XPlane& plane : space.planes()) {
+    if (absl::StartsWith(plane.name(), prefix)) result.push_back(&plane);
+  }
+  return result;
+}
+
+std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
+                                                 absl::string_view prefix) {
+  std::vector<XPlane*> result;
+  for (XPlane& plane : *space->mutable_planes()) {
     if (absl::StartsWith(plane.name(), prefix)) result.push_back(&plane);
   }
   return result;
@@ -81,6 +97,29 @@ void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
   XStat* stat = event->add_stats();
   stat->set_metadata_id(metadata_id);
   stat->set_str_value(std::string(value));
+}
+
+void CreateXEvent(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
+  auto event_builder = line_builder->AddEvent(
+      *plane_builder->GetOrCreateEventMetadata(event_name));
+  event_builder.SetOffsetPs(offset_ps);
+  event_builder.SetDurationPs(duration_ps);
+  for (const auto& stat_type_and_value : stats) {
+    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(stat_type_and_value.first)),
+                               stat_type_and_value.second);
+  }
+}
+
+void CreateXEvent(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    HostEventType event_type, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
+  CreateXEvent(plane_builder, line_builder, GetHostEventTypeStr(event_type),
+               offset_ps, duration_ps, stats);
 }
 
 }  // namespace profiler

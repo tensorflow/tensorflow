@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-OpStats ConvertXSpaceToOpStats(const XSpace& space);
+OpStats ConvertXSpaceToOpStats(XSpace* space);
 
 }  // namespace profiler
 }  // namespace tensorflow

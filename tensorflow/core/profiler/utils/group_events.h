@@ -99,7 +99,7 @@ void CreateEventGroup(const std::vector<int64 /*EventType*/>& root_event_types,
 
 // Groups events in host_trace and device_traces using the nesting relationship
 // within the same thread and connect_info_list across threads, and populates
-// event_group_name_map.
+// event_group_name_map if not nullptr.
 void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
                  const std::vector<int64>& root_event_types, XPlane* host_trace,
                  const std::vector<XPlane*>& device_traces,
