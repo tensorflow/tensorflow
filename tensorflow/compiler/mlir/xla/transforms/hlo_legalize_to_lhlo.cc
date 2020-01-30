@@ -109,7 +109,7 @@ class HloToLhloOpConverter : public ConversionPattern {
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
       buffer_args.push_back(
-          GetBufferForResultValue(op->getLoc(), result, &rewriter));
+          InsertAllocAndDealloc(op->getLoc(), result, &rewriter));
     }
     rewriter.create<LhloOpTy>(op->getLoc(), llvm::None, buffer_args,
                               op->getAttrs());
@@ -194,10 +194,43 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
   PatternMatchResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
-    rewriter.eraseOp(op);
+    rewriter.replaceOpWithNewOp<xla_lhlo::CopyOp>(
+        op, llvm::None, operands.front(), operands.back());
     return matchSuccess();
   }
 };
+
+/// Removes Lhlo.CopyOp that copies from an allocated buffer to the block
+/// argument. All uses of the buffer are replaced with the block argument.
+void RemoveRedundantCopies(ModuleOp module) {
+  llvm::SmallVector<Operation*, 2> eraseList;
+  module.walk([&](xla_lhlo::CopyOp copyOp) {
+    auto arguments = copyOp.getOperation()->getBlock()->getArguments();
+    if (std::any_of(
+            arguments.begin(), arguments.end(),
+            [&](BlockArgument arg) { return copyOp.output() == arg; }) &&
+        std::none_of(
+            arguments.begin(), arguments.end(),
+            [&](BlockArgument arg) { return copyOp.operand() == arg; })) {
+      Value operand = copyOp.operand();
+      Value output = copyOp.output();
+      copyOp.erase();
+      for (auto op : operand.getUsers()) {
+        if (!isa<DeallocOp>(op)) {
+          op->replaceUsesOfWith(operand, output);
+        }
+      }
+      auto allocOp = operand.getDefiningOp();
+      if (auto deallocOp = dyn_cast<DeallocOp>(*allocOp->getUsers().begin())) {
+        eraseList.push_back(deallocOp);
+        eraseList.push_back(allocOp);
+      }
+    }
+  });
+  for (auto op : eraseList) {
+    op->erase();
+  }
+}
 
 // Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 // buffers if necessary.
@@ -255,14 +288,11 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //               %arg1: memref<4xf32>,
 //               %arg2: memref<4xf32>) {
 //   %0 = alloc() {temp = true} : memref<4xf32>
-//   %1 = alloc() {temp = true} : memref<4xf32>
-//   "xla_lhlo.max"(%arg0, %arg1, %1) {name = "maximum.47"} :
+//   "xla_lhlo.max"(%arg0, %arg1, %0) {name = "maximum.47"} :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
-//   "xla_lhlo.add"(%arg0, %1, %0) {name = "maximum.47"} :
+//   "xla_lhlo.add"(%arg0, %0, %arg2) {name = "maximum.47"} :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
 //   dealloc %1 : memref<4xf32>
-//   "xla_lhlo.copy"(%0, %arg2) : (memref<4xf32>, memref<4xf32>) -> ()
-//   dealloc %0 : memref<4xf32>
 //   "xla_lhlo.terminator"() : () -> ()
 // }
 
@@ -291,6 +321,8 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
     if (failed(applyFullConversion(module, target, patterns, nullptr))) {
       signalPassFailure();
     }
+
+    RemoveRedundantCopies(module);
   }
 };
 
