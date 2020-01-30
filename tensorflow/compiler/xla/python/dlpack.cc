@@ -53,8 +53,6 @@ void DLPackTensorDeleter(DLManagedTensor* t) {
 
 StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
   switch (type) {
-    case PRED:
-      return DLDataType{kDLInt, 1, 1};
     case S8:
       return DLDataType{kDLInt, 8, 1};
     case S16:
@@ -79,6 +77,7 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
       return DLDataType{kDLFloat, 64, 1};
     case BF16:
       return DLDataType{kDLBfloat, 16, 1};
+    case PRED:
     case C64:
     case C128:
     default:
@@ -95,8 +94,6 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
   switch (type.code) {
     case kDLInt:
       switch (type.bits) {
-        case 1:
-          return PRED;
         case 8:
           return S8;
         case 16:
@@ -112,8 +109,6 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
       }
     case kDLUInt:
       switch (type.bits) {
-        case 1:
-          return PRED;
         case 8:
           return U8;
         case 16:

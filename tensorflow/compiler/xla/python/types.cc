@@ -140,7 +140,7 @@ StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
 }
 
 // Returns the strides for `shape`.
-std::vector<ssize_t> StridesForShape(const Shape& shape) {
+std::vector<ssize_t> ByteStridesForShape(const Shape& shape) {
   std::vector<ssize_t> strides;
   CHECK(shape.IsArray());
   CHECK(shape.has_layout());
@@ -182,7 +182,7 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
       format,                         // Python struct-style format descriptor
       m.shape().dimensions_size(),    // Number of dimensions
       m.shape().dimensions(),         // Buffer dimensions
-      StridesForShape(m.shape())      // Strides (in bytes) for each index
+      ByteStridesForShape(m.shape())  // Strides (in bytes) for each index
   );
 
   py::array array(pybind11::dtype(info), info.shape, info.strides, info.ptr,

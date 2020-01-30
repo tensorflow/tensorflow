@@ -2049,34 +2049,41 @@ class SetShardingTest(ComputationTest):
     np.testing.assert_allclose(ans, 4.14)
 
 
-dlpack_dtypes = [
+int_dtypes = [
     np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32,
-    np.uint64, np.float16, np.float32, np.float64, bfloat16
+    np.uint64
 ]
+float_dtypes = [np.float16, np.float32, np.float64]
+complex_dtypes = [np.complex64, np.complex128]
+dlpack_dtypes = int_dtypes + float_dtypes + [bfloat16]
+standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+
+testcase_shapes = [
+    (),
+    (1,),
+    (2, 3),
+    (2, 0),
+    (0, 7),
+    (4, 1, 2),
+    (2, 1, 3),
+    (2, 4, 1),
+    (3, 1),
+    (1, 3),
+]
+
+
+def FormatShapeAndDtype(shape, dtype):
+  return "_{}[{}]".format(np.dtype(dtype).name, ",".join(map(str, shape)))
 
 
 class DLPackTest(parameterized.TestCase):
 
   # pylint: disable=g-complex-comprehension
   @parameterized.named_parameters({
-      "testcase_name":
-          "_{}[{}]".format(dtype.__name__, ",".join(map(str, shape))),
-      "dtype":
-          dtype,
-      "shape":
-          shape
-  } for dtype in dlpack_dtypes for shape in [
-      (),
-      (1,),
-      (2, 3),
-      (2, 0),
-      (0, 7),
-      (4, 1, 2),
-      (2, 1, 3),
-      (2, 4, 1),
-      (3, 1),
-      (1, 3),
-  ])
+      "testcase_name": FormatShapeAndDtype(shape, dtype),
+      "dtype": dtype,
+      "shape": shape
+  } for dtype in dlpack_dtypes for shape in testcase_shapes)
   def testRoundTrip(self, dtype, shape):
     x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
     backend = xla_client.get_local_backend()
@@ -2100,6 +2107,35 @@ class DLPackTest(parameterized.TestCase):
     self.assertRaisesRegex(RuntimeError,
                            ".*a DLPack tensor may be consumed at most once.*",
                            ConsumeDLPackTensor)
+
+
+class BufferProtocolTest(parameterized.TestCase):
+
+  # pylint: disable=g-complex-comprehension
+  @parameterized.named_parameters({
+      "testcase_name": FormatShapeAndDtype(shape, dtype),
+      "dtype": dtype,
+      "shape": shape
+  } for dtype in standard_dtypes for shape in testcase_shapes)
+  def testRoundTrip(self, dtype, shape):
+    x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
+    backend = xla_client.get_local_backend("cpu")
+    buffer = xla_client.Buffer.from_pyval(x, backend=backend)
+    y = np.array(buffer, copy=False)
+    np.testing.assert_array_equal(x, y)
+    self.assertEqual(y.__array_interface__["data"][0],
+                     buffer.unsafe_buffer_pointer())
+
+  def testDeleteWithActiveView(self):
+    x = np.random.randn(20, 10)
+    backend = xla_client.get_local_backend("cpu")
+    buffer = xla_client.Buffer.from_pyval(x, backend=backend)
+    buffer_ptr = buffer.unsafe_buffer_pointer()
+    y = np.array(buffer, copy=False)
+    buffer.delete()
+    # It is still legal to access `y`; the array view must keep it alive.
+    np.testing.assert_array_equal(x, y)
+    self.assertEqual(y.__array_interface__["data"][0], buffer_ptr)
 
 
 if __name__ == "__main__":

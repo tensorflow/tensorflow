@@ -54,6 +54,12 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
+// Returns a numpy-style format descriptor string for `type`.
+StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns the strides for `shape`.
+std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
+
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
 // buffers with the literals. Takes ownership of `literal` and keeps the
