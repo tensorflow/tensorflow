@@ -154,6 +154,7 @@ tf_cc_test(
     srcs = [
         "stream_assignment_test.cc",
     ],
+    tags = ["no_pip"],
     deps = [
         ":stream_assignment",
         "//tensorflow/compiler/xla:test_helpers",
@@ -826,6 +827,7 @@ cc_library(
 tf_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
+    tags = ["no_pip"],
     deps = [
         ":gpu_fusible",
         ":instruction_fusion",
@@ -861,6 +863,7 @@ cc_library(
 tf_cc_test(
     name = "multi_output_fusion_test",
     srcs = ["multi_output_fusion_test.cc"],
+    tags = ["no_pip"],
     deps = [
         ":gpu_fusible",
         ":instruction_fusion",
@@ -953,6 +956,7 @@ cc_library(
 tf_cc_test(
     name = "fusion_merger_test",
     srcs = ["fusion_merger_test.cc"],
+    tags = ["no_pip"],
     deps = [
         ":fusion_merger",
         ":gpu_fusible",
@@ -1035,6 +1039,7 @@ cc_library(
 tf_cc_test(
     name = "cublas_gemm_pad_for_tensor_cores_test",
     srcs = ["cublas_gemm_pad_for_tensor_cores_test.cc"],
+    tags = ["no_pip"],
     deps = [
         ":cublas_gemm_pad_for_tensor_cores",
         ":ir_emission_utils",
@@ -1395,6 +1400,7 @@ tf_cc_test(
     srcs = [
         "gpu_hlo_schedule_test.cc",
     ],
+    tags = ["no_pip"],
     deps = [
         ":gpu_hlo_schedule",
         ":stream_assignment",
@@ -1412,6 +1418,7 @@ tf_cc_test(
 tf_cc_test(
     name = "while_transformer_test",
     srcs = ["while_transformer_test.cc"],
+    tags = ["no_pip"],
     deps = [
         ":instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
@@ -1500,6 +1507,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_fusible_test",
     srcs = ["gpu_fusible_test.cc"],
+    tags = ["no_pip"],
     deps = [
         ":gpu_fusible",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1580,6 +1588,7 @@ cc_library(
 tf_cc_test(
     name = "variadic_op_splitter_test",
     srcs = ["variadic_op_splitter_test.cc"],
+    tags = ["no_pip"],
     deps = [
         ":ir_emission_utils",
         ":variadic_op_splitter",
@@ -1626,6 +1635,7 @@ tf_cc_test(
     name = "hlo_algorithm_blacklist_test",
     srcs = ["hlo_algorithm_blacklist_test.cc"],
     data = ["data/hlo_algorithm_blacklist.pbtxt"],
+    tags = ["no_pip"],
     deps = [
         ":hlo_algorithm_blacklist",
         "//tensorflow/core:lib",
@@ -1649,6 +1659,7 @@ cc_library(
 tf_cc_test(
     name = "alias_passthrough_params_test",
     srcs = ["alias_passthrough_params_test.cc"],
+    tags = ["no_pip"],
     deps = [
         ":alias_passthrough_params",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
