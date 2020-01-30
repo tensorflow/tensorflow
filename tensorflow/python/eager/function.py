@@ -33,8 +33,8 @@ from six.moves import map
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import _pywrap_utils
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -482,7 +482,7 @@ class _EagerDefinedFunction(object):
         output_names = []
     else:
       output_names = []
-    fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
+    fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
         graph._c_graph,  # pylint: disable=protected-access
         compat.as_str(name),
         False,
@@ -499,14 +499,14 @@ class _EagerDefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(iga): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use status.
-      pywrap_tensorflow.TF_FunctionSetAttrValueProto(
-          fn, compat.as_str(name), serialized)
+      pywrap_tf_session.TF_FunctionSetAttrValueProto(fn, compat.as_str(name),
+                                                     serialized)
 
     # TODO(apassos) avoid creating a FunctionDef (specially to grab the
     # signature, but also in general it's nice not to depend on it.
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tensorflow.TF_FunctionToFunctionDef(fn, buffer_)
-      proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
+      pywrap_tf_session.TF_FunctionToFunctionDef(fn, buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
     self._name = compat.as_bytes(function_def.signature.name)

@@ -23,7 +23,7 @@ import tempfile
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow_internal
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
@@ -1160,15 +1160,13 @@ class GetTensorFlowVersionLinesTest(test_util.TensorFlowTestCase):
   def testGetVersionWithoutDependencies(self):
     out = debugger_cli_common.get_tensorflow_version_lines()
     self.assertEqual(2, len(out.lines))
-    self.assertEqual(
-        "TensorFlow version: %s" % pywrap_tensorflow_internal.__version__,
-        out.lines[0])
+    self.assertEqual("TensorFlow version: %s" % pywrap_tf_session.__version__,
+                     out.lines[0])
 
   def testGetVersionWithDependencies(self):
     out = debugger_cli_common.get_tensorflow_version_lines(True)
-    self.assertIn(
-        "TensorFlow version: %s" % pywrap_tensorflow_internal.__version__,
-        out.lines)
+    self.assertIn("TensorFlow version: %s" % pywrap_tf_session.__version__,
+                  out.lines)
     self.assertIn("  numpy: %s" % np.__version__, out.lines)
 
 

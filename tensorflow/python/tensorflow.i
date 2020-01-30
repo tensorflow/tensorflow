@@ -17,8 +17,6 @@ limitations under the License.
  * The includes are intentionally not alphabetically sorted, as the order of
  * includes follows dependency order */
 
-%include "tensorflow/python/client/tf_session.i"
-
 %include "tensorflow/python/grappler/cluster.i"
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"

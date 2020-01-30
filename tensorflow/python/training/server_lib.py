@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import device_filters_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
