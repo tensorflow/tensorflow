@@ -84,26 +84,26 @@ void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
 
 }  // namespace
 
-absl::optional<const XStat*> EventNode::GetContextStat(int64 stat_type) const {
+const XStat* EventNode::GetContextStat(int64 stat_type) const {
   if (const XStat* stat = GetStat(*visitor_, *event_, stat_type)) {
     return stat;
   } else if (parent_) {
     return parent_->GetContextStat(stat_type);
   }
-  return absl::nullopt;
+  return nullptr;
 }
 
 std::string EventNode::GetGroupName() const {
   std::vector<std::string> name_parts;
-  if (auto graph_type_stat = GetContextStat(StatType::kGraphType)) {
-    name_parts.push_back((*graph_type_stat)->str_value());
+  if (const XStat* graph_type_stat = GetContextStat(StatType::kGraphType)) {
+    name_parts.push_back(graph_type_stat->str_value());
   }
   int64 step_num = group_id_.value_or(0);
-  if (auto step_num_stat = GetContextStat(StatType::kStepNum)) {
-    step_num = (*step_num_stat)->int64_value();
+  if (const XStat* step_num_stat = GetContextStat(StatType::kStepNum)) {
+    step_num = step_num_stat->int64_value();
   }
-  if (auto iter_num_stat = GetContextStat(StatType::kIterNum)) {
-    step_num += (*iter_num_stat)->int64_value();
+  if (const XStat* iter_num_stat = GetContextStat(StatType::kIterNum)) {
+    step_num += iter_num_stat->int64_value();
   }
   name_parts.push_back(absl::StrCat(step_num));
   return absl::StrJoin(name_parts, " ");
@@ -159,12 +159,11 @@ void ConnectInterThread(
       for (const auto& parent_event_node : *parent_event_node_list) {
         std::vector<int64> stats;
         for (auto stat_type : stat_types) {
-          absl::optional<const XStat*> stat =
-              parent_event_node->GetContextStat(stat_type);
+          const XStat* stat = parent_event_node->GetContextStat(stat_type);
           if (!stat) break;
-          stats.push_back((*stat)->value_case() == (*stat)->kInt64Value
-                              ? (*stat)->int64_value()
-                              : (*stat)->uint64_value());
+          stats.push_back(stat->value_case() == stat->kInt64Value
+                              ? stat->int64_value()
+                              : stat->uint64_value());
         }
         if (stats.size() == stat_types.size()) {
           connect_map[stats] = parent_event_node.get();
@@ -176,12 +175,11 @@ void ConnectInterThread(
       for (const auto& child_event_node : *child_event_node_list) {
         std::vector<int64> stats;
         for (auto stat_type : stat_types) {
-          absl::optional<const XStat*> stat =
-              child_event_node->GetContextStat(stat_type);
+          const XStat* stat = child_event_node->GetContextStat(stat_type);
           if (!stat) break;
-          stats.push_back((*stat)->value_case() == (*stat)->kInt64Value
-                              ? (*stat)->int64_value()
-                              : (*stat)->uint64_value());
+          stats.push_back(stat->value_case() == stat->kInt64Value
+                              ? stat->int64_value()
+                              : stat->uint64_value());
         }
         if (stats.size() == stat_types.size()) {
           if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {

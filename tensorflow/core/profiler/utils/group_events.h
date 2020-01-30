@@ -60,7 +60,7 @@ class EventNode {
 
   const XEvent& GetEvent() const { return *event_; }
 
-  absl::optional<const XStat*> GetContextStat(int64 stat_type) const;
+  const XStat* GetContextStat(int64 stat_type) const;
 
   void AddStepName(absl::string_view step_name);
 
