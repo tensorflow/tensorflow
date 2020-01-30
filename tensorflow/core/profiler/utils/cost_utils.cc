@@ -40,13 +40,16 @@ static OpInfo::TensorProperties GetTensorProperties(absl::string_view info) {
   if (!DataTypeFromString(parts[0], &data_type)) return tensor_prop;
   tensor_prop.set_dtype(data_type);
   absl::ConsumeSuffix(&parts[1], "]");
+  if (parts[1].empty()) {  // Scalar type.
+    tensor_prop.mutable_shape()->add_dim()->set_size(1);
+    return tensor_prop;
+  }
   std::vector<absl::string_view> dims = absl::StrSplit(parts[1], ',');
   for (const auto dim : dims) {
     int size;
     if (!absl::SimpleAtoi(dim, &size)) return OpInfo::TensorProperties();
     tensor_prop.mutable_shape()->add_dim()->set_size(size);
   }
-  if (dims.empty()) tensor_prop.mutable_shape()->add_dim()->set_size(1);
   return tensor_prop;
 }
 
