@@ -88,8 +88,8 @@ TfOpRoofLineCostEstimator::OpRoofLineStats TfOpRoofLineCostEstimator::Predict(
   }
 
   grappler::OpContext op_context;
-  op_context.name = tf_op.type;
-  op_context.op_info.set_op(tf_op.type);
+  op_context.name = std::string(tf_op.type);
+  op_context.op_info.set_op(op_context.name);
   for (const auto& tensor : input_tensors) {
     *op_context.op_info.add_inputs() = GetTensorProperties(tensor);
   }
