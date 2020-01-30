@@ -1183,8 +1183,8 @@ def function(func=None,
       `@tf.function(experimental_implements="embedded_matmul")`
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
-    experimental_relax_shapes: When True, `tf.function` may generate fewer,
-      graphs that are less specialized on input shapes.
+    experimental_relax_shapes: When True, `tf.function` may generate fewer graphs
+      that are less specialized on input shapes.
     experimental_compile: If True, the function is always compiled by
       [XLA](https://www.tensorflow.org/xla). XLA may be more efficient in some
       cases (e.g. TPU, XLA_GPU, dense tensor computations).
