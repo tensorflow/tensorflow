@@ -27,7 +27,6 @@ import io
 import gviz_api
 
 # pylint: disable=g-direct-tensorflow-import
-from tensorflow.core.profiler.protobuf import op_stats_pb2
 from tensorflow.core.profiler.protobuf import overview_page_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.profiler import overview_page_proto_to_gviz
@@ -109,7 +108,7 @@ class ProtoToGvizTest(test.TestCase):
       self.assertEqual(str(expected_value), cell_str)
 
   def create_empty_run_environment(self):
-    return op_stats_pb2.RunEnvironment()
+    return overview_page_pb2.OverviewPageRunEnvironment()
 
   def create_empty_overview_page_analysis(self):
     return overview_page_pb2.OverviewPageAnalysis()
@@ -118,11 +117,11 @@ class ProtoToGvizTest(test.TestCase):
     return overview_page_pb2.OverviewPageRecommendation()
 
   def create_mock_run_environment(self):
-    run_env = op_stats_pb2.RunEnvironment()
+    run_env = overview_page_pb2.OverviewPageRunEnvironment()
 
     # Add 3 rows
     for _ in range(0, 3):
-      job = op_stats_pb2.HostDependentJobInfoResult()
+      job = overview_page_pb2.OverviewPageHostDependentJobInfo()
       job.host_id = self.mock_run_env.host_id
       job.command_line = self.mock_run_env.command_line
       job.start_time = self.mock_run_env.start_time

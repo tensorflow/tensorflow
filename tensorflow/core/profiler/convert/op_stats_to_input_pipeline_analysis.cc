@@ -509,15 +509,14 @@ InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
   InputPipelineAnalysisResult result =
       ComputeGenericInputPipelineAnalysisResult(
           op_stats.step_db().step_sequence());
-  result.set_hardware_type(hardware_type);
+  result.set_hardware_type(HardwareType_Name(hardware_type));
   GenerateHostResult(op_stats.host_op_metrics_db(), &result);
   *result.mutable_recommendation() = GenerateRecommendation();
   return result;
 }
 
-void InfeedAnalysis(HardwareType hardware_type, double infeed_percent,
-                    int* observation_index, string* input_classification,
-                    string* input_statement) {
+void InfeedAnalysis(double infeed_percent, int* observation_index,
+                    string* input_classification, string* input_statement) {
   absl::string_view non_input_time = "other time";
   string infeed_percent_str = absl::StrFormat("%.1lf", infeed_percent);
   if (infeed_percent >= kHighlyInfeedBoundThresholdInPercent) {
@@ -591,8 +590,8 @@ GenericBottleneck GenericOverallBottleneck(
   int observation_index = 0;
   string input_classification;
   string input_statement;
-  InfeedAnalysis(result.hardware_type(), input_percent, &observation_index,
-                 &input_classification, &input_statement);
+  InfeedAnalysis(input_percent, &observation_index, &input_classification,
+                 &input_statement);
 
   string kernel_launch_classification;
   string kernel_launch_statement;

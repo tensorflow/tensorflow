@@ -30,7 +30,6 @@ from google.protobuf.any_pb2 import Any
 # pylint: enable=g-importing-member
 
 # pylint: disable=g-direct-tensorflow-import
-from tensorflow.core.profiler.protobuf import hardware_types_pb2
 from tensorflow.core.profiler.protobuf import input_pipeline_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.profiler import input_pipeline_proto_to_gviz
@@ -66,7 +65,7 @@ class ProtoToGvizTest(test.TestCase):
 
   def create_mock_input_pipeline(self):
     ipa = input_pipeline_pb2.InputPipelineAnalysisResult()
-    ipa.hardware_type = hardware_types_pb2.HardwareType.CPU_ONLY
+    ipa.hardware_type = "CPU_ONLY"
     ipa.step_time_summary.CopyFrom(self.create_mock_step_summary(10))
     ipa.input_percent_summary.CopyFrom(self.create_mock_step_summary(20))
 

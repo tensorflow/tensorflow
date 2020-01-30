@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
@@ -67,9 +68,8 @@ GenericBottleneck GenericOverallBottleneck(
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
     const OpStats& op_stats, const HardwareType& hardware_type);
 
-void InfeedAnalysis(HardwareType hardware_type, double infeed_percent,
-                    int* observation_index, string* input_classification,
-                    string* input_statement);
+void InfeedAnalysis(double infeed_percent, int* observation_index,
+                    string* input_classification, string* input_statement);
 
 }  // namespace profiler
 }  // namespace tensorflow
