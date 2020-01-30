@@ -2200,7 +2200,13 @@ class Layer(module.Module):
 
     # Optionally load weight values specified at layer instantiation.
     if getattr(self, '_initial_weights', None) is not None:
-      self.set_weights(self._initial_weights)
+      if ops.executing_eagerly_outside_functions():
+        with ops.init_scope():
+          # Using `init_scope` since we want variable assignment in
+          # `set_weights` to be treated like variable initialization.
+          self.set_weights(self._initial_weights)
+      else:
+        self.set_weights(self._initial_weights)
       self._initial_weights = None
 
   def _symbolic_call(self, inputs):
