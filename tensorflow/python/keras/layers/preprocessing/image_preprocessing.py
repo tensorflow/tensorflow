@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -594,6 +596,135 @@ def transform(images,
         output_shape=output_shape,
         transforms=transforms,
         interpolation=interpolation.upper())
+
+
+def get_rotation_matrix(angles, image_height, image_width, name=None):
+  """Returns projective transform(s) for the given angle(s).
+
+  Args:
+    angles: A scalar angle to rotate all images by, or (for batches of images) a
+      vector with an angle to rotate each image in the batch. The rank must be
+      statically known (the shape is not `TensorShape(None)`).
+    image_height: Height of the image(s) to be transformed.
+    image_width: Width of the image(s) to be transformed.
+    name: The name of the op.
+
+  Returns:
+    A tensor of shape (num_images, 8). Projective transforms which can be given
+      to operation `image_projective_transform_v2`. If one row of transforms is
+       [a0, a1, a2, b0, b1, b2, c0, c1], then it maps the *output* point
+       `(x, y)` to a transformed *input* point
+       `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
+       where `k = c0 x + c1 y + 1`.
+  """
+  with ops.name_scope(name, 'rotation_matrix'):
+    x_offset = ((image_width - 1) - (math_ops.cos(angles) *
+                                     (image_width - 1) - math_ops.sin(angles) *
+                                     (image_height - 1))) / 2.0
+    y_offset = ((image_height - 1) - (math_ops.sin(angles) *
+                                      (image_width - 1) + math_ops.cos(angles) *
+                                      (image_height - 1))) / 2.0
+    num_angles = array_ops.shape(angles)[0]
+    return array_ops.concat(
+        values=[
+            math_ops.cos(angles)[:, None],
+            -math_ops.sin(angles)[:, None],
+            x_offset[:, None],
+            math_ops.sin(angles)[:, None],
+            math_ops.cos(angles)[:, None],
+            y_offset[:, None],
+            array_ops.zeros((num_angles, 2), dtypes.float32),
+        ],
+        axis=1)
+
+
+class RandomRotation(Layer):
+  """Randomly rotate each image.
+
+  By default, random rotations are only applied during training.
+  At inference time, the layer does nothing. If you need to apply random
+  rotations at inference time, set `training` to True when calling the layer.
+
+  Input shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)`, data_format='channels_last'.
+
+  Output shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)`, data_format='channels_last'.
+
+  Attributes:
+    factor: a positive float represented as fraction of 2pi, or a tuple of size
+      2 representing lower and upper bound for rotating clockwise and
+      counter-clockwise. When represented as a single float, lower = upper.
+    fill_mode: Points outside the boundaries of the input are filled according
+      to the given mode (one of `{'constant', 'nearest', 'bilinear', 'reflect',
+      'wrap'}`).
+    seed: Integer. Used to create a random seed.
+  Raise:
+    ValueError: if lower bound is not between [0, 1], or upper bound is
+      negative.
+  """
+
+  def __init__(self,
+               factor,
+               fill_mode='nearest',
+               seed=None,
+               **kwargs):
+    self.factor = factor
+    if isinstance(factor, (tuple, list)):
+      self.lower = factor[0]
+      self.upper = factor[1]
+    else:
+      self.lower = self.upper = factor
+    if self.lower < 0. or self.upper < 0.:
+      raise ValueError('Factor cannot have negative values, '
+                       'got {}'.format(factor))
+    if fill_mode not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+    self.fill_mode = fill_mode
+    self.seed = seed
+    self._rng = make_generator(self.seed)
+    self.input_spec = InputSpec(ndim=4)
+    super(RandomRotation, self).__init__(**kwargs)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = K.learning_phase()
+
+    def random_rotated_inputs():
+      """Rotated inputs with random ops."""
+      inputs_shape = array_ops.shape(inputs)
+      batch_size = inputs_shape[0]
+      h_axis, w_axis = 1, 2
+      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
+      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      min_angle = self.lower * 2. * np.pi
+      max_angle = self.upper * 2. * np.pi
+      angles = self._rng.uniform(
+          shape=[batch_size], minval=-min_angle, maxval=max_angle)
+      return transform(
+          inputs,
+          get_rotation_matrix(angles, img_hd, img_wd),
+          interpolation=self.fill_mode)
+
+    output = tf_utils.smart_cond(training, random_rotated_inputs,
+                                 lambda: inputs)
+    output.set_shape(inputs.shape)
+    return output
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+  def get_config(self):
+    config = {
+        'factor': self.factor,
+        'fill_mode': self.fill_mode,
+        'seed': self.seed,
+    }
+    base_config = super(RandomRotation, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 class RandomContrast(Layer):

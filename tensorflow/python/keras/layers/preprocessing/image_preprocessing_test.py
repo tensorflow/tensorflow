@@ -513,5 +513,46 @@ class RandomTranslationTest(keras_parameterized.TestCase):
     self.assertEqual(layer_1.name, layer.name)
 
 
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomRotationTest(keras_parameterized.TestCase):
+
+  def _run_test(self, factor):
+    np.random.seed(1337)
+    num_samples = 2
+    orig_height = 5
+    orig_width = 8
+    channels = 3
+    kwargs = {'factor': factor}
+    with tf_test_util.use_gpu():
+      testing_utils.layer_test(
+          image_preprocessing.RandomRotation,
+          kwargs=kwargs,
+          input_shape=(num_samples, orig_height, orig_width, channels),
+          expected_output_shape=(None, orig_height, orig_width, channels))
+
+  @parameterized.named_parameters(('random_rotate_4', .4),
+                                  ('random_rotate_3', .3),
+                                  ('random_rotate_tuple_factor', (.5, .4)))
+  def test_random_rotation(self, factor):
+    self._run_test(factor)
+
+  def test_random_rotation_inference(self):
+    with CustomObjectScope(
+        {'RandomTranslation': image_preprocessing.RandomRotation}):
+      input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+      expected_output = input_images
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomRotation(.5)
+        actual_output = layer(input_images, training=0)
+        self.assertAllClose(expected_output, actual_output)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.RandomRotation(.5, name='image_preproc')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.RandomRotation.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
 if __name__ == '__main__':
   test.main()
