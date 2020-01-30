@@ -857,6 +857,50 @@ def _DigammaGrad(op, grad):
       return grad * partial_x
 
 
+@ops.RegisterGradient("Dawsn")
+def _DawsnGrad(op, grad):
+  """Compute gradient of dawsn(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * (1. - 2 * x * y)
+
+
+@ops.RegisterGradient("Expint")
+def _ExpintGrad(op, grad):
+  """Compute gradient of expint(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.exp(x) / x
+
+
+@ops.RegisterGradient("FresnelCos")
+def _FresnelCosGrad(op, grad):
+  """Compute gradient of fresnel_cos(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.cos((np.pi  / 2.) * math_ops.square(x))
+
+
+@ops.RegisterGradient("FresnelSin")
+def _FresnelSinGrad(op, grad):
+  """Compute gradient of fresnel_sin(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.sin((np.pi  / 2.) * math_ops.square(x))
+
+
+@ops.RegisterGradient("Spence")
+def _SpenceGrad(op, grad):
+  """Compute gradient of spence(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    partial_x = math_ops.log(x) / (1 - x)
+    partial_x = array_ops.where(
+        math_ops.equal(x, 1.), -array_ops.ones_like(x), partial_x)
+    return grad * partial_x
+
+
 @ops.RegisterGradient("BesselI0e")
 def _BesselI0eGrad(op, grad):
   """Compute gradient of bessel_i0e(x) with respect to its argument."""

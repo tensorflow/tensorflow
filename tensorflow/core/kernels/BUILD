@@ -3901,6 +3901,7 @@ cc_library(
         ":scan_ops",
         ":segment_reduction_ops",
         ":sequence_ops",
+        "//tensorflow/core/kernels/special_math:special_math_op",
     ],
 )
 

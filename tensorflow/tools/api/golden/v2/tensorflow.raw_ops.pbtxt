@@ -949,6 +949,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'filename\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Dawsn"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "DebugGradientIdentity"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1417,6 +1421,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Expint"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Expm1"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1567,6 +1575,14 @@ tf_module {
   member_method {
     name: "FractionalMaxPoolGrad"
     argspec: "args=[\'orig_input\', \'orig_output\', \'out_backprop\', \'row_pooling_sequence\', \'col_pooling_sequence\', \'overlapping\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "FresnelCos"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "FresnelSin"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "FusedBatchNorm"
@@ -4131,6 +4147,10 @@ tf_module {
   member_method {
     name: "SparseToSparseSetOperation"
     argspec: "args=[\'set1_indices\', \'set1_values\', \'set1_shape\', \'set2_indices\', \'set2_values\', \'set2_shape\', \'set_operation\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "Spence"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Split"

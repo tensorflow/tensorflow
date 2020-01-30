@@ -1,5 +1,9 @@
 path: "tensorflow.math"
 tf_module {
+  member {
+    name: "special"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "abs"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "

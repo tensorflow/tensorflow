@@ -41,6 +41,7 @@ TENSORFLOW_API_INIT_FILES = [
     "lookup/__init__.py",
     "lookup/experimental/__init__.py",
     "math/__init__.py",
+    "math/special/__init__.py",
     "mixed_precision/__init__.py",
     "mixed_precision/experimental/__init__.py",
     "mlir/__init__.py",
