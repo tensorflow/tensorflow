@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -712,6 +714,81 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
       return distribution.experimental_local_results(outputs)
 
     train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def test_nested_tf_functions(self, distribution):
+    # The test builds two computations with keras layers, one with nested
+    # tf.function, and the other without nested tf.function. We run these
+    # computations independently on the model with same weights, and make sure
+    # the variables are still the same after one training step.
+
+    inputs = np.random.random((10, 3)).astype(np.float32)
+    targets = np.ones((10, 4), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets)).repeat()
+    dataset = dataset.batch(10, drop_remainder=True)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    def get_model():
+      x = keras.layers.Input(shape=(3,), name="input")
+      y = keras.layers.Dense(4, name="dense")(x)
+      model = keras.Model(x, y)
+      return model
+
+    with distribution.scope():
+      model = get_model()
+      optimizer = keras.optimizer_v2.gradient_descent.SGD(0.1, momentum=0.01)
+      weights_file = os.path.join(self.get_temp_dir(), ".h5")
+      model.save_weights(weights_file)
+      model2 = get_model()
+      model2.load_weights(weights_file)
+
+    # Make sure model and model2 variables are in sync when initialized.
+    for model_v, model2_v in zip(model.variables, model2.variables):
+      self.assertAllClose(model_v.numpy(), model2_v.numpy())
+
+    def compute_loss(images, targets):
+      outputs = model(images)
+      return math_ops.reduce_sum(outputs - targets)
+
+    @def_function.function
+    def train_step_without_nested_tf_function(inputs):
+
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          loss = compute_loss(images, targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+
+      distribution.experimental_run_v2(step_fn, args=(inputs,))
+
+    @def_function.function
+    def compute_loss2(images, targets):
+      outputs = model2(images)
+      return math_ops.reduce_sum(outputs - targets)
+
+    @def_function.function
+    def train_step_with_nested_tf_function(inputs):
+
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          loss = compute_loss2(images, targets)
+        grads = tape.gradient(loss, model2.variables)
+        optimizer.apply_gradients(zip(grads, model2.variables))
+
+      distribution.experimental_run_v2(step_fn, args=(inputs,))
+
+    inputs = next(input_iterator)
+
+    train_step_without_nested_tf_function(inputs)
+    train_step_with_nested_tf_function(inputs)
+
+    # Make sure model and model2 variables are still in sync.
+    for model_v, model2_v in zip(model.variables, model2.variables):
+      self.assertAllClose(model_v.numpy(), model2_v.numpy())
 
 
 if __name__ == "__main__":
