@@ -1036,7 +1036,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         Defaults to `True`.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
-        `tf.compat.v1.set_random_seed` for behavior.
+        `tf.random.set_seed` for behavior.
 
     Returns:
      Dataset: A `Dataset` of strings corresponding to file names.
@@ -1174,7 +1174,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         elements from this dataset from which the new dataset will sample.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
-        `tf.compat.v1.set_random_seed` for behavior.
+        `tf.random.set_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
@@ -1396,11 +1396,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     determines the resulting shape for each dimension of each component in an
     output element:
 
-    * If the dimension is a constant (e.g. `tf.compat.v1.Dimension(37)`), the
-    component will be padded out to that length in that dimension.
-    * If the dimension is unknown (e.g. `tf.compat.v1.Dimension(None)`), the
-    component will be padded out to the maximum length of all elements in that
-    dimension.
+    * If the dimension is a constant, the component will be padded out to that
+      length in that dimension.
+    * If the dimension is unknown, the component will be padded out to the
+      maximum length of all elements in that dimension.
 
     >>> A = (tf.data.Dataset
     ...      .range(1, 5, output_type=tf.int32)
@@ -1452,11 +1451,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       padded_shapes: (Optional.) A nested structure of `tf.TensorShape` or
         `tf.int64` vector tensor-like objects representing the shape to which
         the respective component of each input element should be padded prior
-        to batching. Any unknown dimensions (e.g. `tf.compat.v1.Dimension(None)`
-        in a `tf.TensorShape` or `-1` in a tensor-like object) will be padded to
-        the maximum size of that dimension in each batch. If unset all
-        dimensions of all components are padded to the maximum size in the
-        batch. `padded_shapes` must be set if any component has an unknown rank.
+        to batching. Any unknown dimensions will be padded to the maximum size
+        of that dimension in each batch. If unset, all dimensions of all
+        components are padded to the maximum size in the batch. `padded_shapes`
+        must be set if any component has an unknown rank.
       padding_values: (Optional.) A nested structure of scalar-shaped
         `tf.Tensor`, representing the padding values to use for the respective
         components. None represents that the nested structure should be padded
@@ -2466,7 +2464,7 @@ def _ensure_same_dataset_graph(dataset):
 
 @tf_export(v1=["data.make_one_shot_iterator"])
 def make_one_shot_iterator(dataset):
-  """Creates a `tf.compat.v1.data.Iterator` for enumerating the elements of a dataset.
+  """Creates a `tf.compat.v1.data.Iterator` for enumerating dataset elements.
 
   Note: The returned iterator will be initialized automatically.
   A "one-shot" iterator does not support re-initialization.
@@ -3521,7 +3519,7 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
         elements from this dataset from which the new dataset will sample.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
-        `tf.compat.v1.set_random_seed` for behavior.
+        `tf.random.set_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
