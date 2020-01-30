@@ -19,6 +19,7 @@ limitations under the License.
 #define TFL_OPS
 
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 
 def TFL_Dialect : Dialect {
@@ -247,41 +248,6 @@ def TFL_ComparisonBinaryBuilder : OpBuilder<
   [{
     buildComparisonBinOp(builder, result, lhs, rhs);
   }]>;
-
-//===----------------------------------------------------------------------===//
-// TFL op interface for stateful operands.
-
-def TFL_StatefulOp : OpInterface<"StatefulOpInterface"> {
-  let description = [{
-    Interface for ops that are stateful and need to identify stateful operands.
-
-    Stateful operands correspond to TF's variables semantics. An op that has 1
-    or more stateful operands is a stateful op.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      [{Returns the indices of stateful operands.}],
-      "std::vector<int>", "GetStatefulOperands", (ins)
-    >,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
-// TFL op interface for output channel index.
-
-def TFL_ChannelDimIndexInterface : OpInterface<"ChannelDimIndexInterface"> {
-  let description = [{
-    Interface for defining the index of out channel index.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      [{Returns the dimension index of the output channels.}],
-      "int", "GetChannelDimIndex", (ins)
-    >,
-  ];
-}
 
 //===----------------------------------------------------------------------===//
 // TFL op base class.

@@ -26,6 +26,7 @@ package_group(
 filegroup(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
+        "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
@@ -47,6 +48,17 @@ gentbl(
             "-gen-op-doc",
             "g3doc/tfl_ops.md",
         ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "tensorflow_lite_op_interfaces_inc_gen",
+    tbl_outs = [
         (
             "-gen-op-interface-decls",
             "ir/tfl_ops_interface.h.inc",
@@ -57,7 +69,7 @@ gentbl(
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/tfl_ops.td",
+    td_file = "ir/tfl_op_interfaces.td",
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
     ],
@@ -387,6 +399,7 @@ genrule(
     name = "op_quant_spec_getters_inc",
     srcs = [
         "ir/tfl_ops.td",
+        "ir/tfl_op_interfaces.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
     outs = [
