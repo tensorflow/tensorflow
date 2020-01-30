@@ -199,7 +199,8 @@ class LinearOperatorAdjointTest(
 
   def test_solve_adjoint_complex_operator(self):
     if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS solve operations for complex types")    
+      self.skipTest("ROCm does not support BLAS solve operations"
+        " for complex types")
     matrix1 = self.evaluate(linear_operator_test_util.random_tril_matrix(
         [4, 4], dtype=dtypes.complex128, force_well_conditioned=True) +
                             1j * linear_operator_test_util.random_tril_matrix(

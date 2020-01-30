@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 

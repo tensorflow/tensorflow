@@ -144,7 +144,6 @@ namespace functor {
   extern template struct SeluGrad<GPUDevice, T>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-// TODO(rocm) : qint8 datatype currently not supported on the ROCm platform
 template <>
 void Relu<GPUDevice, qint8>::operator()(
     const GPUDevice& d, typename TTypes<qint8>::ConstTensor features,

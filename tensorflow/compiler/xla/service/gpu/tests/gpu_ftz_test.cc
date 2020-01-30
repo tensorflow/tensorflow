@@ -76,11 +76,6 @@ class GpuFtzDisabledTest : public GpuFtzTest {
 };
 
 // Check that we emit mul.ftz.f32 when in ftz mode, and plain mul.f32 otherwise.
-//
-// On the ROCM platform the "ptx" string is not populated for the compiled
-// executable, and hence the call to CompileAdnVerifyPtx does not do the
-// "VerifyPtx" part, it merely compiles the executable
-//
 TEST_F(GpuFtzEnabledTest, MultiplyFtz) {
   CompileAndOptionallyVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
     CHECK-NOT: mul.rn.f32
@@ -88,11 +83,6 @@ TEST_F(GpuFtzEnabledTest, MultiplyFtz) {
     CHECK-NOT: mul.rn.f32
   )");
 }
-//
-// On the ROCM platform the "ptx" string is not populated for the compiled
-// executable, and hence the call to CompileAdnVerifyPtx does not do the
-// "VerifyPtx" part, it merely compiles the executable
-//
 TEST_F(GpuFtzDisabledTest, MultiplyFtz) {
   CompileAndOptionallyVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
     CHECK-NOT: mul.rn.ftz.f32
@@ -106,11 +96,6 @@ TEST_F(GpuFtzDisabledTest, MultiplyFtz) {
 // calls to ex2.approx.  When ftz is on, we get two calls to the ftz version;
 // when ftz is off, we get one call to the ftz version and one call to the
 // regular version.
-//
-// On the ROCM platform the "ptx" string is not populated for the compiled
-// executable, and hence the call to CompileAdnVerifyPtx does not do the
-// "VerifyPtx" part, it merely compiles the executable
-//
 TEST_F(GpuFtzEnabledTest, ExpFtz) {
   CompileAndOptionallyVerifyPtx(CreateUnaryOpModule(HloOpcode::kExp), R"(
     CHECK-NOT: ex2.approx.f32
@@ -122,11 +107,6 @@ TEST_F(GpuFtzEnabledTest, ExpFtz) {
   )");
 }
 
-//
-// On the ROCM platform the "ptx" string is not populated for the compiled
-// executable, and hence the call to CompileAdnVerifyPtx does not do the
-// "VerifyPtx" part, it merely compiles the executable
-//
 TEST_F(GpuFtzDisabledTest, ExpFtz) {
   CompileAndOptionallyVerifyPtx(CreateUnaryOpModule(HloOpcode::kExp), R"(
     CHECK-NOT: ex2.approx.f32
