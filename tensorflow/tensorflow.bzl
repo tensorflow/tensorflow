@@ -7,7 +7,7 @@ load(
     "register_extension_info",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
-    "tf_exec_compatible_with",
+    "tf_exec_properties",
     "tf_gpu_tests_tags",
     "tf_sycl_tests_tags",
 )
@@ -1027,7 +1027,7 @@ def tf_cc_test(
         data = data +
                tf_binary_dynamic_kernel_dsos() +
                tf_binary_additional_srcs(),
-        exec_compatible_with = tf_exec_compatible_with(kwargs),
+        exec_properties = tf_exec_properties(kwargs),
         # Nested select() statements seem not to be supported when passed to
         # linkstatic, and we already have a cuda select() passed in to this
         # function.
@@ -1175,7 +1175,7 @@ def tf_gpu_only_cc_test(
             "//conditions:default": 0,
         }),
         tags = tags,
-        exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
+        exec_properties = tf_exec_properties({"tags": tags}),
     )
 
 register_extension_info(
@@ -1262,7 +1262,7 @@ def tf_cc_test_mkl(
             }) + _rpath_linkopts(src_to_test_name(src)),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
             data = data + tf_binary_dynamic_kernel_dsos(),
-            exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
+            exec_properties = tf_exec_properties({"tags": tags}),
             linkstatic = linkstatic,
             tags = tags,
             size = size,
@@ -2101,7 +2101,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
         }),
-        exec_compatible_with = tf_exec_compatible_with(kwargs),
+        exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )
 

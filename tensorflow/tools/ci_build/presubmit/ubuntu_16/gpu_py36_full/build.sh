@@ -88,14 +88,14 @@ function run_build () {
     --linkopt=-lrt \
     --linkopt=-lm \
     --distinct_host_configuration=false \
-    --remote_default_platform_properties="properties:{name:\"build\" value:\"${CACHE_SILO_VAL}\"}" \
+    --remote_default_exec_properties=build=${CACHE_SILO_VAL} \
     --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
     --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8 \
     --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.0:jdk8 \
     --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8 \
     --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8 \
     --extra_toolchains=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain-linux-x86_64 \
-    --extra_execution_platforms=@org_tensorflow//third_party/toolchains:rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010,@org_tensorflow//third_party/toolchains:rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010-gpu \
+    --extra_execution_platforms=@org_tensorflow//third_party/toolchains:rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010 \
     --host_platform=@org_tensorflow//third_party/toolchains:rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010 \
     --local_test_jobs=4 \
     --remote_timeout=3600 \
