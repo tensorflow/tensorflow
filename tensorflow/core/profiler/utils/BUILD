@@ -233,3 +233,21 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
+
+cc_library(
+    name = "cost_utils",
+    srcs = ["cost_utils.cc"],
+    hdrs = ["cost_utils.h"],
+    deps = [
+        ":tf_op_utils",
+        ":xplane_schema",
+        ":xplane_visitor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/costs:op_level_cost_estimator",
+        "//tensorflow/core/grappler/costs:op_performance_data_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
