@@ -124,8 +124,7 @@ class ScatterUpdateOp : public OpKernel {
       auto indices_flat = indices.flat<Index>();
       auto params_flat = params.flat_outer_dims<T>();
 
-      if (TensorShapeUtils::IsScalar(updates.shape()) ||
-          TensorShapeUtils::IsScalar(updates.shape())) {
+      if (TensorShapeUtils::IsScalar(updates.shape())) {
         const auto update = updates.scalar<T>();
         functor::ScatterScalarFunctor<Device, T, Index, op> functor;
         const Index bad_i = functor(c, c->template eigen_device<Device>(),
