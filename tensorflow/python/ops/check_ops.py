@@ -1127,7 +1127,7 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
     ValueError:  If static checks determine `x` has wrong rank.
   """
   with ops.name_scope(name, 'assert_rank', (x, rank) + tuple(data or [])):
-    x = ops.convert_to_tensor(x, name='x')
+    x = x if sparse_tensor.is_sparse(x) else ops.convert_to_tensor(x, name='x')
     rank = ops.convert_to_tensor(rank, name='rank')
     message = message or ''
 
@@ -1226,7 +1226,7 @@ def assert_rank_at_least(
   """
   with ops.name_scope(
       name, 'assert_rank_at_least', (x, rank) + tuple(data or [])):
-    x = ops.convert_to_tensor(x, name='x')
+    x = x if sparse_tensor.is_sparse(x) else ops.convert_to_tensor(x, name='x')
     rank = ops.convert_to_tensor(rank, name='rank')
     message = message or ''
 
@@ -1390,7 +1390,7 @@ def assert_rank_in(
   """
   with ops.name_scope(
       name, 'assert_rank_in', (x,) + tuple(ranks) + tuple(data or [])):
-    x = ops.convert_to_tensor(x, name='x')
+    x = x if sparse_tensor.is_sparse(x) else ops.convert_to_tensor(x, name='x')
     ranks = tuple([ops.convert_to_tensor(rank, name='rank') for rank in ranks])
     message = message or ''
 
@@ -1712,8 +1712,7 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
     # Shape specified as None implies no constraint
     # If shape is sparse_tensor, convert it to dense
     shape_constraints = [
-        (sparse_ops.sparse_tensor_to_dense(x)
-         if sparse_tensor.is_sparse(x) 
+        (x if sparse_tensor.is_sparse(x) 
          else ops.convert_to_tensor(x), s) for x, s in shapes if s is not None
     ]
 
