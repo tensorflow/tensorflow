@@ -46,6 +46,7 @@ static OpInfo::TensorProperties GetTensorProperties(absl::string_view info) {
     if (!absl::SimpleAtoi(dim, &size)) return OpInfo::TensorProperties();
     tensor_prop.mutable_shape()->add_dim()->set_size(size);
   }
+  if (dims.empty()) tensor_prop.mutable_shape()->add_dim()->set_size(1);
   return tensor_prop;
 }
 

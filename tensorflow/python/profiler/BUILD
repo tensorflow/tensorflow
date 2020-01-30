@@ -169,36 +169,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "overview_page_proto_to_gviz_test",
-    size = "small",
-    srcs = ["overview_page_proto_to_gviz_test.py"],
-    main = "overview_page_proto_to_gviz_test.py",
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":overview_page_proto_to_gviz",
-        "//tensorflow/core/profiler/protobuf:overview_page_proto_py_pb2",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/gviz_api",
-    ],
-)
-
-py_test(
-    name = "input_pipeline_proto_to_gviz_test",
-    size = "small",
-    srcs = ["input_pipeline_proto_to_gviz_test.py"],
-    main = "input_pipeline_proto_to_gviz_test.py",
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":input_pipeline_proto_to_gviz",
-        "//tensorflow/core/profiler/protobuf:input_pipeline_proto_py_pb2",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/gviz_api",
-    ],
-)
-
 py_library(
     name = "traceme",
     srcs = ["traceme.py"],
@@ -217,18 +187,4 @@ py_library(
         "//tensorflow/python/profiler/internal:_pywrap_scoped_annotation",
         "@six_archive//:six",
     ],
-)
-
-py_library(
-    name = "overview_page_proto_to_gviz",
-    srcs = ["overview_page_proto_to_gviz.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//third_party/py/gviz_api"],
-)
-
-py_library(
-    name = "input_pipeline_proto_to_gviz",
-    srcs = ["input_pipeline_proto_to_gviz.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//third_party/py/gviz_api"],
 )
