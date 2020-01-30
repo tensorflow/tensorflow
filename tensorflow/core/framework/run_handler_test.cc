@@ -205,5 +205,37 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPool) {
   delete tp;
 }
 
+TEST_F(RunHandlerTest, TestWaitTimeout) {
+  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(1, 1));
+
+  // Get the single handler in the pool.
+  std::vector<std::unique_ptr<RunHandler>> blocking_handles;
+  const int32 kMaxConcurrentHandlers = 128;  // Copied from run_handler.cc.
+  blocking_handles.reserve(kMaxConcurrentHandlers);
+  for (int i = 0; i < kMaxConcurrentHandlers; ++i) {
+    blocking_handles.push_back(pool->Get(i));
+  }
+
+  // A subsequent request with a non-zero timeout will fail by returning
+  // nullptr.
+  auto null_handle = pool->Get(128, 1);
+  EXPECT_EQ(null_handle.get(), nullptr);
+
+  // A subsequent request with no timeout will succeed once the blocking handle
+  // is returned.
+  auto tp = std::make_unique<thread::ThreadPool>(Env::Default(), "test", 4);
+  std::atomic<int64> release_time;
+
+  tp->Schedule([&blocking_handles, &release_time]() {
+    Env::Default()->SleepForMicroseconds(5000);
+    release_time = EnvTime::NowNanos();
+    blocking_handles[0].reset();
+  });
+
+  auto next_handle = pool->Get(129, 0);
+  EXPECT_GT(EnvTime::NowNanos(), release_time);
+  EXPECT_NE(next_handle.get(), nullptr);
+}
+
 }  // namespace
 }  // namespace tensorflow
