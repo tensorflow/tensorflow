@@ -186,6 +186,7 @@ COMMON_PROTO_SRCS = [
     "protobuf/config.proto",
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
+    "protobuf/device_filters.proto",
     "protobuf/device_properties.proto",
     "protobuf/graph_debug_info.proto",
     "protobuf/queue_runner.proto",
