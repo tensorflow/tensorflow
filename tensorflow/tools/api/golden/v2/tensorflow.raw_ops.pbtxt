@@ -1765,6 +1765,10 @@ tf_module {
     argspec: "args=[\'input\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
+    name: "ImageProjectiveTransformV2"
+    argspec: "args=[\'images\', \'transforms\', \'output_shape\', \'interpolation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "ImageSummary"
     argspec: "args=[\'tag\', \'tensor\', \'max_images\', \'bad_color\', \'name\'], varargs=None, keywords=None, defaults=[\'3\', \'dtype: DT_UINT8\\ntensor_shape {\\n  dim {\\n    size: 4\\n  }\\n}\\nint_val: 255\\nint_val: 0\\nint_val: 0\\nint_val: 255\\n\', \'None\'], "
   }

@@ -2924,6 +2924,7 @@ cc_library(
         ":encode_png_op",
         ":extract_jpeg_shape_op",
         ":generate_box_proposals_op",
+        ":image_ops",
         ":non_max_suppression_op",
         ":random_crop_op",
         ":resize_area_op",
@@ -3081,6 +3082,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sample_distorted_bounding_box_op",
     prefix = "sample_distorted_bounding_box_op",
+    deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "image_ops",
+    prefix = "image_ops",
     deps = IMAGE_DEPS,
 )
 
