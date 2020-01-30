@@ -45,6 +45,7 @@ cuda_py_test(
     srcs = ["linear_operator_adjoint_test.py"],
     shard_count = 5,
     tags = [
+        "no_rocm",
         "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],

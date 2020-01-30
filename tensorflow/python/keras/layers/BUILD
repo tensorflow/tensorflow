@@ -791,6 +791,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 12,
     tags = [
+        "no_rocm",
         "noasan",  # http://b/78599823
         "notsan",
     ],

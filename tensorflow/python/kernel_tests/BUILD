@@ -758,6 +758,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["matrix_triangular_solve_op_test.py"],
     shard_count = 3,
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:linalg_ops",
@@ -2099,7 +2100,10 @@ cuda_py_test(
     name = "linalg_ops_test",
     size = "medium",
     srcs = ["linalg_ops_test.py"],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_rocm",
+        "no_windows_gpu",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
