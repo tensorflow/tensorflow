@@ -59,6 +59,8 @@ class S3FileSystem : public FileSystem {
 
   Status RenameFile(const string& src, const string& target) override;
 
+  virtual Status HasAtomicMove(const string& path, bool* has_atomic_move) override;
+
  private:
   // Returns the member S3 client, initializing as-needed.
   // When the client tries to access the object in S3, e.g.,

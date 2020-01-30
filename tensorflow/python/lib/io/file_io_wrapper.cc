@@ -127,7 +127,13 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     return true;
   });
-
+  m.def("HasAtomicMove", [](const std::string& path) {
+    bool has_atomic_move;
+    const auto status = tensorflow::Env::Default()->HasAtomicMove(path, &has_atomic_move);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    return has_atomic_move;
+  });
+  
   py::class_<tensorflow::FileStatistics>(m, "FileStatistics")
       .def_readonly("length", &tensorflow::FileStatistics::length)
       .def_readonly("mtime_nsec", &tensorflow::FileStatistics::mtime_nsec)

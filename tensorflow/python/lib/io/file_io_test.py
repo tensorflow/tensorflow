@@ -28,7 +28,6 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
-
 class FileIoTest(test.TestCase):
 
   def setUp(self):
@@ -616,7 +615,11 @@ class FileIoTest(test.TestCase):
     with gfile.GFile(filename, "rb") as f:
       info = np.load(f, allow_pickle=True)
     _ = [i for i in info.items()]
-
+  
+  def testHasAtomicMove(self):
+    self.assertFalse(file_io.has_atomic_move('s3://x/y'))
+    self.assertTrue(file_io.has_atomic_move('/a/b/c'))
+    
 
 if __name__ == "__main__":
   test.main()

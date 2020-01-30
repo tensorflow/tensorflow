@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
 
 from google.protobuf import text_format
 
@@ -665,24 +664,6 @@ class _ModelWithOptimizerUsingDefun(util.Checkpoint):
     gradients = tape.gradient(loss, trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, trainable_variables))
     return {"loss": loss}
-
-
-class MemoryTests(test.TestCase):
-
-  def setUp(self):
-    self._model = _ModelWithOptimizerUsingDefun()
-
-  @test_util.assert_no_garbage_created
-  def test_no_reference_cycles(self):
-    x = constant_op.constant([[3., 4.]])
-    y = constant_op.constant([2.])
-    self._model.call(x, y)
-    if sys.version_info[0] < 3:
-      # TODO(allenl): debug reference cycles in Python 2.x
-      self.skipTest("This test only works in Python 3+. Reference cycles are "
-                    "created in older Python versions.")
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    save.save(self._model, save_dir, self._model.call)
 
 
 if __name__ == "__main__":

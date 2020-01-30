@@ -77,6 +77,11 @@ Status FileSystem::IsDirectory(const string& name) {
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
 }
 
+Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
+  *has_atomic_move = true; 
+  return Status::OK();
+}
+
 void FileSystem::FlushCaches() {}
 
 bool FileSystem::FilesExist(const std::vector<string>& files,

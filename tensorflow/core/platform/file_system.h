@@ -237,6 +237,17 @@ class FileSystem {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual tensorflow::Status IsDirectory(const string& fname);
 
+  /// \brief Returns whether the given path is on a file system
+  /// that has atomic move capabilities. This can be used
+  /// to determine if there needs to be a temp location to safely write objects.
+  /// The second boolean argument has_atomic_move contains this information.
+  ///
+  /// Returns one of the following status codes (not guaranteed exhaustive):
+  ///  * OK - The path is on a recognized file system,
+  ///         so has_atomic_move holds the above information.
+  ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in TF
+  virtual Status HasAtomicMove(const string& path, bool* has_atomic_move);
+  
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches();
 
