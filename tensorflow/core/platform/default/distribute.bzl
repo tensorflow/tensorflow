@@ -15,6 +15,8 @@ def distribute_py_test(
         tpu_args = [],
         shard_count = 1,
         full_precision = False,
+        disable_v2 = False,
+        disable_v3 = False,
         **kwargs):
     """Generates py_test targets for CPU and GPU.
 
@@ -30,6 +32,8 @@ def distribute_py_test(
         tpu_args: arguments for the tpu tests.
         shard_count: number of shards to split the tests across.
         full_precision: unused.
+        disable_v2: whether tests for TPU version 2 should be generated.
+        disable_v3: whether tests for TPU version 3 should be generated.
         **kwargs: extra keyword arguments to the non-tpu test.
     """
     _ignore = (full_precision)
@@ -59,4 +63,6 @@ def distribute_py_test(
             shard_count = shard_count,
             deps = deps,
             tags = tags,
+            disable_v2 = disable_v2,
+            disable_v3 = disable_v3,
         )
