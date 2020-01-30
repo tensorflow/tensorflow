@@ -194,7 +194,12 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       A `TensorShape` object.
     """
     return tensor_util.constant_value_as_shape(self._dense_shape)
-
+  
+  @property
+  def name(self):
+    """Get the name of the sparse tensor"""
+    return self.__str__()
+  
   @property
   def graph(self):
     """The `Graph` that contains the index, value, and dense_shape tensors."""
