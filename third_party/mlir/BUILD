@@ -435,6 +435,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":Analysis",
         ":DialectUtils",
         ":IR",
         ":StandardOps",
