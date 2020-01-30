@@ -554,5 +554,58 @@ class RandomRotationTest(keras_parameterized.TestCase):
     self.assertEqual(layer_1.name, layer.name)
 
 
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomZoomTest(keras_parameterized.TestCase):
+
+  def _run_test(self, height_factor, width_factor):
+    np.random.seed(1337)
+    num_samples = 2
+    orig_height = 5
+    orig_width = 8
+    channels = 3
+    kwargs = {'height_factor': height_factor, 'width_factor': width_factor}
+    with tf_test_util.use_gpu():
+      testing_utils.layer_test(
+          image_preprocessing.RandomZoom,
+          kwargs=kwargs,
+          input_shape=(num_samples, orig_height, orig_width, channels),
+          expected_output_shape=(None, orig_height, orig_width, channels))
+
+  @parameterized.named_parameters(
+      ('random_zoom_4_by_6', .4, .6), ('random_zoom_2_by_3', .2, .3),
+      ('random_zoom_tuple_factor', (.4, .5), (.2, .3)))
+  def test_random_zoom_in(self, height_factor, width_factor):
+    self._run_test(height_factor, width_factor)
+
+  @parameterized.named_parameters(
+      ('random_zoom_4_by_6', 1.4, 1.6), ('random_zoom_2_by_3', 1.2, 1.3),
+      ('random_zoom_tuple_factor', (1.4, 1.5), (1.2, 1.3)))
+  def test_random_zoom_out(self, height_factor, width_factor):
+    self._run_test(height_factor, width_factor)
+
+  def test_random_zoom_invalid_factor(self):
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomZoom((.5, .4), .2)
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomZoom(.2, (.5, .4))
+
+  def test_random_zoom_inference(self):
+    with CustomObjectScope(
+        {'RandomZoom': image_preprocessing.RandomZoom}):
+      input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+      expected_output = input_images
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomZoom(.5, .5)
+        actual_output = layer(input_images, training=0)
+        self.assertAllClose(expected_output, actual_output)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.RandomZoom(.5, .6, name='image_preproc')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.RandomZoom.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
 if __name__ == '__main__':
   test.main()
