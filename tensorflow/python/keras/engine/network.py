@@ -24,7 +24,6 @@ import copy
 import itertools
 import json
 import os
-import threading
 
 import numpy as np
 import six
@@ -198,56 +197,23 @@ class Network(base_layer.Layer):
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
                                            'autocast'})
 
-    # Object to store all thread local layer properties.
-    self._thread_local = threading.local()
+    super(Network, self).__init__(name=name, **kwargs)
 
-    self._init_set_name(name, zero_based=True)
-    self._activity_regularizer = None
-    # This acts just like the `trainable` attribute of any layer instance.
-    self._trainable = kwargs.get('trainable', True)
-    # This attribute has no effect if the model is created using the Functional
-    # API. Instead, `model.dynamic` is determined based on the internal layers.
-    self._dynamic = kwargs.get('dynamic', False)
     self._is_compiled = False
-    self._layers = []
 
     # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
 
-    self.supports_masking = False
     if not hasattr(self, 'optimizer'):
       # Don't reset optimizer if already set.
       self.optimizer = None
 
-    # Private attributes to implement compatibility with Layer.
-    self._maybe_create_attribute('_trainable_weights', [])
-    self._maybe_create_attribute('_non_trainable_weights', [])
-    self._updates = []  # Used in symbolic mode only.
-    self._losses = []
-    self._callable_losses = []
-    # A list of metric instances corresponding to the symbolic metric tensors
-    # added using the `add_metric` API.
-    self._metrics = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     if context.executing_eagerly():
       self._graph = None
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
-
-    # Both graph and subclassed networks have a dtype policy. For graph
-    # networks, the policy's compute and variable dtypes are ignored, but other
-    # fields, like the loss scale, are used by Models. For subclassed networks,
-    # the compute and variable dtypes are used as like any ordinary layer.
-    self._set_dtype_policy(kwargs.get('dtype', None))
-
-    # All layers in order of horizontal graph traversal.
-    # Entries are unique. Includes input and output layers.
-    self._maybe_create_attribute('_layers', [])
-
-    # Used in symbolic mode only, only in conjunction with graph-networks
-    self._outbound_nodes = []
-    self._inbound_nodes = []
 
     self._trackable_saver = (
         trackable_utils.saver_with_op_caching(self))

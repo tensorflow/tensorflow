@@ -195,7 +195,7 @@ class Layer(module.Module):
     # the layer's weights.
     self.built = False
     # Provides information about which inputs are compatible with the layer.
-    self.input_spec = None
+    self._input_spec = None
     self.supports_masking = False
     self._supports_ragged_inputs = False
 
@@ -216,6 +216,10 @@ class Layer(module.Module):
     # added using the `add_metric` API.
     self._metrics = []
 
+    # Both graph and subclassed networks have a dtype policy. For graph
+    # networks, the policy's compute and variable dtypes are ignored, but other
+    # fields, like the loss scale, are used by Models. For subclassed networks,
+    # the compute and variable dtypes are used as like any ordinary layer.
     self._set_dtype_policy(dtype)
     # Boolean indicating whether the layer automatically casts its inputs to the
     # layer's compute_dtype.
@@ -223,16 +227,21 @@ class Layer(module.Module):
                                 base_layer_utils.v2_dtype_behavior_enabled())
 
     # Dependencies tracked via attribute assignment.
+    # All layers in order of horizontal graph traversal.
+    # Entries are unique. For models includes input and output layers.
     self._maybe_create_attribute('_layers', [])
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
+    # Used in symbolic mode only, only in conjunction with graph-networks
     self._inbound_nodes = []
     self._outbound_nodes = []
 
     self._init_call_fn_args()
 
     # Whether the `call` method can be used to build a TF graph without issues.
+    # This attribute has no effect if the model is created using the Functional
+    # API. Instead, `model.dynamic` is determined based on the internal layers.
     self._dynamic = dynamic
 
     # Manage input shape information if passed.
@@ -250,10 +259,7 @@ class Layer(module.Module):
       self._batch_input_shape = batch_input_shape
 
     # Manage initial weight values if passed.
-    if 'weights' in kwargs:
-      self._initial_weights = kwargs['weights']
-    else:
-      self._initial_weights = None
+    self._initial_weights = kwargs.get('weights', None)
 
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
@@ -2199,7 +2205,7 @@ class Layer(module.Module):
       self.built = True
 
     # Optionally load weight values specified at layer instantiation.
-    if getattr(self, '_initial_weights', None) is not None:
+    if self._initial_weights is not None:
       if ops.executing_eagerly_outside_functions():
         with ops.init_scope():
           # Using `init_scope` since we want variable assignment in
