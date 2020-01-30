@@ -232,6 +232,7 @@ cc_library(
         "//tensorflow/core/platform:numbers",
         "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -920,6 +921,7 @@ cc_library(
     name = "refcounting_hash_map",
     hdrs = ["refcounting_hash_map.h"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
