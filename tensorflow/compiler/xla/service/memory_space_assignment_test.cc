@@ -2826,6 +2826,21 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, Determinism) {
+  // Run memory space assignment a few times to make sure every time it compiles
+  // to the same thing.
+  std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
+
+  AssignMemorySpace(module.get());
+  std::string module_str = module->ToString();
+
+  for (int i = 0; i < 10; ++i) {
+    std::unique_ptr<HloModule> other_module = CreateEvictAndPrefetchModule();
+    AssignMemorySpace(other_module.get());
+    EXPECT_EQ(module_str, other_module->ToString());
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));

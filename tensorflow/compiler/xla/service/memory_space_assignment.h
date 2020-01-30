@@ -470,8 +470,11 @@ class MemorySpaceAssignment {
   };
 
   using AllocationSequence = std::list<std::unique_ptr<Allocation>>;
-  using AllocationMap =
-      absl::flat_hash_map<const HloValue*, AllocationSequence>;
+  struct ValueAndAllocationSequence {
+    const HloValue* value;
+    AllocationSequence sequence;
+  };
+  using AllocationSequenceList = std::vector<ValueAndAllocationSequence>;
 
   // Runs the MemorySpaceAssignment pass.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
@@ -535,7 +538,7 @@ class MemorySpaceAssignment {
   int64 alternate_memory_space_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
-  AllocationMap allocation_map_;
+  AllocationSequenceList allocation_sequence_list_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
 
   // These maps hold vectors of new instructions that need to be scheduled after
@@ -603,12 +606,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   using MemorySpace = MemorySpaceAssignment::MemorySpace;
 
   AlternateMemoryBestFitHeap(
-      MemorySpaceAssignment::AllocationMap* allocation_map,
+      MemorySpaceAssignment::AllocationSequenceList* allocation_sequence_list,
       const MemorySpaceAssignment::Options& options,
       const HloAliasAnalysis& alias_analysis,
       const HloLiveRange& hlo_live_range)
       : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes),
-        allocation_map_(allocation_map),
+        allocation_sequence_list_(allocation_sequence_list),
         options_(options),
         alias_analysis_(alias_analysis),
         hlo_live_range_(hlo_live_range) {
@@ -678,9 +681,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   std::vector<const BufferInterval*> GetSortedColocatedIntervals(
       const BufferInterval& interval) const;
 
-  // Since the allocations are recorded to the AllocationMap, we don't maintain
-  // result_ in GlobalDecreasingSizeBestFitHeap. Override AddToChunkMap to avoid
-  // unnecessarily adding the chunk to the chunk map.
+  // Since the allocations are recorded to the AllocationSequenceList, we don't
+  // maintain result_ in GlobalDecreasingSizeBestFitHeap. Override AddToChunkMap
+  // to avoid unnecessarily adding the chunk to the chunk map.
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
   // Returns true if the addition of an asynchronous copy in the given time
@@ -708,7 +711,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
     return options_.max_size_in_bytes - reserved_in_bytes_;
   }
 
-  MemorySpaceAssignment::AllocationMap* allocation_map_;
+  MemorySpaceAssignment::AllocationSequenceList* allocation_sequence_list_;
   const MemorySpaceAssignment::Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;

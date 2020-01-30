@@ -267,8 +267,8 @@ AlternateMemoryBestFitHeap::GetSortedColocatedIntervals(
     }
   }
 
-  absl::c_sort(colocated_intervals, [&](const BufferInterval* x,
-                                        const BufferInterval* y) {
+  absl::c_stable_sort(colocated_intervals, [&](const BufferInterval* x,
+                                               const BufferInterval* y) {
     return std::make_pair(x->start, x->end) < std::make_pair(y->start, y->end);
   });
   return colocated_intervals;
@@ -333,11 +333,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
-    // Skip if we have already allocated for this buffer.
-    if (allocation_map_->contains(interval.buffer)) {
-      continue;
-    }
-
     if (!IsIntervalAllowedInAlternateMemory(interval)) {
       continue;
     }
@@ -384,13 +379,14 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     for (const BufferInterval* colocated_interval : colocated_intervals) {
       const HloValue* value = colocated_interval->buffer;
       const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+      allocation_sequence_list_->push_back({value, {}});
       MemorySpaceAssignment::AllocationSequence* allocation_sequence =
-          &(*allocation_map_)[value];
+          &allocation_sequence_list_->back().sequence;
       int64 definition_time =
           instruction_schedule.at(value->defining_instruction());
       // Sort the uses by the use time.
       std::vector<HloUse> uses = value->uses();
-      absl::c_sort(uses, [&](HloUse use1, HloUse use2) {
+      absl::c_stable_sort(uses, [&](HloUse use1, HloUse use2) {
         return instruction_schedule.at(use1.instruction) <
                instruction_schedule.at(use2.instruction);
       });
@@ -474,9 +470,9 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
   }
 
   if (VLOG_IS_ON(3)) {
-    for (const auto& alloc_pair : *allocation_map_) {
-      VLOG(3) << "Allocation for " << alloc_pair.first->ToShortString();
-      for (const auto& alloc : alloc_pair.second) {
+    for (const auto& value_and_sequence : *allocation_sequence_list_) {
+      VLOG(3) << "Allocation for " << value_and_sequence.value->ToShortString();
+      for (const auto& alloc : value_and_sequence.sequence) {
         std::string addr_str = ": default";
         if (alloc->memory_space() == MemorySpace::kAlternate) {
           addr_str = absl::StrCat(": alt ", alloc->chunk().offset);
@@ -1183,8 +1179,8 @@ MemorySpaceAssignment::Run(HloModule* module,
   MemorySpaceAssignment memory_space_assignment(
       module, options.alternate_memory_space, hlo_live_range);
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
-      &memory_space_assignment.allocation_map_, options, alias_analysis,
-      hlo_live_range);
+      &memory_space_assignment.allocation_sequence_list_, options,
+      alias_analysis, hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
@@ -1356,8 +1352,8 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
 Status MemorySpaceAssignment::Process() {
   // Insert CopyStart/CopyDone pairs.
   int64 alternate_memory_size = 0;
-  for (auto& buffer_and_sequence : allocation_map_) {
-    for (auto& allocation : buffer_and_sequence.second) {
+  for (auto& value_and_sequence : allocation_sequence_list_) {
+    for (auto& allocation : value_and_sequence.sequence) {
       TF_RETURN_IF_ERROR(allocation->Process(this));
       // Add the offset and size of the allocation in the alternate memory to
       // the output map. Special case for bitcast: since bitcast doesn't define
@@ -1520,8 +1516,8 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
   for (MemorySpace memory_space :
        {MemorySpace::kDefault, MemorySpace::kAlternate}) {
     std::vector<CopyAllocation*> copy_allocations;
-    for (auto& buffer_and_sequence : allocation_map_) {
-      for (auto& allocation : buffer_and_sequence.second) {
+    for (auto& value_and_sequence : allocation_sequence_list_) {
+      for (auto& allocation : value_and_sequence.sequence) {
         if (allocation->is_copy_allocation()) {
           auto copy_allocation = static_cast<CopyAllocation*>(allocation.get());
           if (copy_allocation->memory_space() == memory_space) {
