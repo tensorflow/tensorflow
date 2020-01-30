@@ -50,8 +50,8 @@ namespace tensorflow {
 namespace {
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
-// 50 MB chosen
-static const uint64 kS3MultipartPartSize = 50 * 1024 * 1024;
+static const int64 kS3TimeoutMsec = 300000; // 5 min
+static const uint64 kS3MultipartPartSize = 50 * 1024 * 1024;  // 50MB
 static const int kS3GetChildrenMaxKeys = 100;
 static const int kExecutorPoolSize = 5;
 static const int kUploadRetries = 5;
@@ -119,23 +119,22 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
         cfg.verifySSL = true;
       }
     }
-    // if these timeouts are low, you may see an error Unable to connect to endpoint
-    const char* connect_timeout = getenv("S3_CONNECT_TIMEOUT_MSEC");
-    if (connect_timeout) {
-      int64 timeout;
-
-      if (strings::safe_strto64(connect_timeout, &timeout)) {
-        cfg.connectTimeoutMs = timeout;
-      }
+    // if these timeouts are low, you may see an error when 
+    // uploading/downloading large files: Unable to connect to endpoint
+    const char* connect_timeout_str = getenv("S3_CONNECT_TIMEOUT_MSEC");
+    int64 connect_timeout = kS3TimeoutMsec;
+    if (connect_timeout_str) {
+      // if conversion is unsafe, below method doesn't modify connect_timeout
+      strings::safe_strto64(connect_timeout_str, &connect_timeout);
     }
-    const char* request_timeout = getenv("S3_REQUEST_TIMEOUT_MSEC");
-    if (request_timeout) {
-      int64 timeout;
-
-      if (strings::safe_strto64(request_timeout, &timeout)) {
-        cfg.requestTimeoutMs = timeout;
-      }
+    cfg.connectTimeoutMs = connect_timeout;
+    
+    const char* request_timeout_str = getenv("S3_REQUEST_TIMEOUT_MSEC");
+    int64 request_timeout = kS3TimeoutMsec;
+    if (request_timeout_str) {
+      strings::safe_strto64(request_timeout_str, &request_timeout);
     }
+    cfg.requestTimeoutMs = request_timeout;
 
     init = true;
   }
