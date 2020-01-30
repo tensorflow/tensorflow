@@ -45,7 +45,7 @@ void TfLiteInterpreterOptionsAddBuiltinOp(
 void TfLiteInterpreterOptionsAddCustomOp(TfLiteInterpreterOptions* options,
                                          const char* name,
                                          const TfLiteRegistration* registration,
-                                         int min_version, int max_version) {
+                                         int32_t min_version, int32_t max_version) {
   options->op_resolver.AddCustom(name, registration, min_version, max_version);
 }
 
