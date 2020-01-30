@@ -396,8 +396,6 @@ cc_library(
     srcs = ["lib/core/numpy.cc"],
     hdrs = ["lib/core/numpy.h"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
@@ -503,6 +501,27 @@ cc_library(
 )
 
 cc_library(
+    name = "pybind11_status_headers",
+    hdrs = [
+        "lib/core/py_exception_registry.h",
+        "lib/core/pybind11_status.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+    ],
+    features = [
+        "-parse_headers",
+    ],
+    visibility = tf_external_workspace_visible(visibility),
+    deps = [
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "pybind11_status",
     hdrs = [
         "lib/core/py_exception_registry.h",
@@ -512,11 +531,8 @@ cc_library(
     features = ["-parse_headers"],
     visibility = tf_external_workspace_visible(visibility),
     deps = [
-        "//tensorflow/c:tf_status_headers",
+        ":pybind11_status_headers",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
@@ -818,6 +834,34 @@ cc_library(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_library(
+    name = "ndarray_tensor_headers",
+    hdrs = [
+        "lib/core/bfloat16.h",
+        "lib/core/ndarray_tensor.h",
+        "lib/core/ndarray_tensor_bridge.h",
+        "lib/core/numpy.h",
+        "lib/core/safe_ptr.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/c/eager:headers",
+    ],
+    features = [
+        "-parse_headers",
+    ],
+    visibility = tf_external_workspace_visible(visibility + [
+        "//learning/deepmind/courier:__subpackages__",
+    ]),
+    deps = [
+        ":numpy_lib",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework_internal_headers_lib",
+        "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
 )
