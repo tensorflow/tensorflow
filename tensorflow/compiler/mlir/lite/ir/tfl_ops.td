@@ -684,7 +684,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
     SameOperandsAndResultsScale,
     TFL_OperandHasAtleastRank<0, 1>,
     PredOpTrait<"params and output must have same element type",
-      TCresVTEtIsSameAsOp<0, 0>>
+      TFL_TCresVTEtIsSameAsOp<0, 0>>
   ]> {
   let summary = "Gather operator";
 
@@ -693,7 +693,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8]>:$params,
+    TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8, QI16]>:$params,
     TensorOf<[I32, I64]>:$indices,
     I32Attr:$axis
   );
@@ -706,7 +706,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8]>:$output
+    TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -1068,7 +1068,8 @@ def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect, SameOperandsAndResultType]> {
   let hasOptions = 0b1;
 }
 
-def TFL_ExpandDimsOp: TFL_Op<"expand_dims", [NoSideEffect]> {
+def TFL_ExpandDimsOp: TFL_Op<"expand_dims", [
+    NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Inserts a dimension of 1 into a tensor's shape.";
 
   let description = [{
@@ -1660,7 +1661,8 @@ def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
   let customOption = "ReducerOptions";
 }
 
-def TFL_ReduceMinOp: TFL_Op<"reduce_min", [NoSideEffect]> {
+def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
+    NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Min-reduction operator";
 
   let description = [{
@@ -1679,7 +1681,8 @@ def TFL_ReduceMinOp: TFL_Op<"reduce_min", [NoSideEffect]> {
   let customOption = "ReducerOptions";
 }
 
-def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [NoSideEffect]> {
+def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [
+    NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Max-reduction operator";
 
   let description = [{
@@ -1811,14 +1814,14 @@ def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8]>>:$values,
+    Variadic<TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8, QI16]>>:$values,
 
     I32Attr:$values_count,
     I32Attr:$axis
   );
 
   let results = (outs
-    TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8]>:$output
+    TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8, QI16]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2434,7 +2437,7 @@ def TFL_TransposeOp : TFL_Op<"transpose",
   let hasFolder = 1;
 }
 
-def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect]> {
+def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Unpacks a tensor along a dimension into multiple tensors";
 
   let description = [{
