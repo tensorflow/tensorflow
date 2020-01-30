@@ -350,7 +350,7 @@ int QuantizationDriver::InitializeState(Operation *op, int index, Value val,
 }
 
 bool QuantizationDriver::SetConstantResultParams(Operation *op) {
-  ElementsAttr attr;
+  DenseFPElementsAttr attr;
   Value res = op->getResult(0);
   if (!matchPattern(res, m_Constant(&attr))) {
     return false;
