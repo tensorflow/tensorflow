@@ -27,9 +27,10 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
-prefix_path = "tensorflow/core/lib"
+prefix_path = resource_loader.get_path_to_datafile("../../core/lib")
 
 
 class DecodeImageOpTest(test.TestCase):
