@@ -389,7 +389,7 @@ Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
 
 // Warn about XLA_CPU/XLA_GPU exactly once.
 static void ShowXlaDeviceDeprecationWarning() {
-  absl::once_flag once;
+  static absl::once_flag once;
   absl::call_once(once, [] {
     LOG(WARNING) << "XLA_GPU and XLA_CPU devices are deprecated and will be "
                     "removed in subsequent releases. Instead, use either "
