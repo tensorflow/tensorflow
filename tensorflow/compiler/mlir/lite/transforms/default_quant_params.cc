@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -104,7 +105,9 @@ void DefaultQuantParamsPass::runOnFunction() {
 
   func.walk([&](Operation *op) {
     if (op->isKnownTerminator() ||
-        op->hasTrait<OpTrait::quant::NoQuantizableResult>())
+        op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
+        llvm::isa<quant::QuantizeCastOp>(op) ||
+        llvm::isa<quant::DequantizeCastOp>(op))
       return;
 
     for (auto res : op->getResults()) {

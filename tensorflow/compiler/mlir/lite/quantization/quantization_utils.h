@@ -167,9 +167,12 @@ struct QuantizationPattern : public RewritePattern {
         return matchFailure();
       }
 
-      // If it is terminator or not quantizable, we shouldn't rewrite.
+      // If it is terminator or not quantizable or any ops form the mlir quant
+      // ops dialect, we shouldn't rewrite.
       if (quantized_op->isKnownTerminator() ||
-          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
+          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
+          llvm::isa<quant::QuantizeCastOp>(quantized_op) ||
+          llvm::isa<quant::DequantizeCastOp>(quantized_op)) {
         return matchFailure();
       }
 
