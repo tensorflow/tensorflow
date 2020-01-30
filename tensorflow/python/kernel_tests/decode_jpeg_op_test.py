@@ -30,9 +30,11 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
-prefix_path = 'third_party/tensorflow/core/lib/jpeg/testdata'
+prefix_path = resource_loader.get_path_to_datafile(
+    '../../core/lib/jpeg/testdata')
 
 
 class DecodeJpegBenchmark(test.Benchmark):
