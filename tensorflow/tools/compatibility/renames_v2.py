@@ -849,7 +849,7 @@ renames = {
     'tf.nn.ctc_beam_search_decoder_v2':
         'tf.nn.ctc_beam_search_decoder',
     'tf.nn.ctc_loss_v2':
-        'tf.nn.ctc_loss',
+        'tf.compat.v1.nn.ctc_loss_v2',
     'tf.nn.depthwise_conv2d_native':
         'tf.compat.v1.nn.depthwise_conv2d_native',
     'tf.nn.depthwise_conv2d_native_backprop_filter':
