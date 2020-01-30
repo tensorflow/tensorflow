@@ -127,6 +127,7 @@ function ctpu_delete {
       --zone="${TPU_ZONE}" \
       --name="${TPU_NAME}" \
       --tpu-only \
-      -noconf && break || sleep 60
+      -noconf && return 0 || sleep 60
   done
+  return 1
 }
