@@ -743,6 +743,7 @@ cc_library(
     hdrs = [
         "exhaustive_op_test_utils.h",
     ],
+    tags = ["no_pip"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -785,6 +786,7 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":client_library_test_base",
@@ -807,6 +809,7 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":client_library_test_base",
@@ -829,6 +832,7 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":client_library_test_base",
@@ -851,6 +855,7 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
@@ -871,6 +876,7 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
@@ -891,6 +897,7 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
@@ -911,6 +918,7 @@ xla_test(
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
+        "no_pip",
     ],
     deps = [
         ":exhaustive_op_test_utils",
