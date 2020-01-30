@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
@@ -386,14 +387,28 @@ Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   return Status::OK();
 }
 
+// Warn about XLA_CPU/XLA_GPU exactly once.
+static void ShowXlaDeviceDeprecationWarning() {
+  absl::once_flag once;
+  absl::call_once(once, [] {
+    LOG(WARNING) << "XLA_GPU and XLA_CPU devices are deprecated and will be "
+                    "removed in subsequent releases. Instead, use either "
+                    "@tf.function(experimental_compile=True) for must-compile "
+                    "semantics, or run with TF_XLA_FLAGS=--tf_xla_auto_jit=2 "
+                    "for auto-clustering best-effort compilation.";
+  });
+}
+
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
+  ShowXlaDeviceDeprecationWarning();
   op_kernel->Compute(context);
 }
 
 void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
+  ShowXlaDeviceDeprecationWarning();
   VLOG(2) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
   op_kernel->ComputeAsync(context, done);
