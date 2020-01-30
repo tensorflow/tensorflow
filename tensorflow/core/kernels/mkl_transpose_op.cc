@@ -16,16 +16,23 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 #if defined(INTEL_MKL)
+
 #define EIGEN_USE_THREADS
 
 #if !defined(INTEL_MKL_DNN_ONLY)
 #include "mkl_trans.h"
 #endif
 
+#ifdef ENABLE_MKLDNN_V1
+// MKL-DNN 1.0 renames TENSOR_MAX_DIMS (0.x) as MKLDNN_MAX_NDIMS
+#define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
+#endif
+
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
+#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::stream;
@@ -78,9 +85,8 @@ Status MKLTranspose2D<complex64>(const char trans, const Tensor& in,
   mkl_comatcopy(
       'R', trans, in.dim_size(0), in.dim_size(1), alpha,
       reinterpret_cast<const MKL_Complex8*>(in.flat<complex64>().data()),
-      in.dim_size(1),
-      reinterpret_cast<MKL_Complex8*>(
-          const_cast<complex64*>(out->flat<complex64>().data())),
+      in.dim_size(1), reinterpret_cast<MKL_Complex8*>(const_cast<complex64*>(
+                          out->flat<complex64>().data())),
       in.dim_size(0));
   return Status::OK();
 }
@@ -92,9 +98,8 @@ Status MKLTranspose2D<complex128>(const char trans, const Tensor& in,
   mkl_zomatcopy(
       'R', trans, in.dim_size(0), in.dim_size(1), alpha,
       reinterpret_cast<const MKL_Complex16*>(in.flat<complex128>().data()),
-      in.dim_size(1),
-      reinterpret_cast<MKL_Complex16*>(
-          const_cast<complex128*>(out->flat<complex128>().data())),
+      in.dim_size(1), reinterpret_cast<MKL_Complex16*>(const_cast<complex128*>(
+                          out->flat<complex128>().data())),
       in.dim_size(0));
   return Status::OK();
 }
@@ -124,7 +129,7 @@ template <typename T>
 Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
                       Tensor* out_tensor, const gtl::ArraySlice<int32>& perm) {
   try {
-    engine cpu_engine = engine(engine::cpu, 0);
+    engine cpu_engine = engine(ENGINE_CPU, 0);
     MklDnnData<T> in(&cpu_engine);
     MklDnnData<T> out(&cpu_engine);
 
@@ -141,12 +146,24 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     out.SetUsrMem(in_dims, out_strides, out_tensor);
 
     std::vector<primitive> net;
+    std::shared_ptr<stream> transpose_stream;
+    transpose_stream.reset(new CPU_STREAM(cpu_engine));
+#ifdef ENABLE_MKLDNN_V1
+    const int net_idx = 0;
+    net.push_back(reorder(in.GetOpMem(), out.GetOpMem()));
+    std::vector<std::unordered_map<int, memory>> net_args;
+    net_args.push_back(
+        {{MKLDNN_ARG_FROM, in.GetOpMem()}, {MKLDNN_ARG_TO, out.GetOpMem()}});
+    net.at(net_idx).execute(*transpose_stream, net_args.at(net_idx));
+#else
     net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
-    stream(stream::kind::eager).submit(net).wait();
+    transpose_stream->submit(net).wait();
+#endif
+
     return Status::OK();
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + std::string(e.message) + ", in file " +
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       std::string(e.message) + ", in file " +
                        std::string(__FILE__) + ":" + std::to_string(__LINE__);
     return errors::Aborted("Operation received an exception:", error_msg);
   }
