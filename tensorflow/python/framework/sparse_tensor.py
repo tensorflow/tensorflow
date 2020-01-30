@@ -194,7 +194,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       A `TensorShape` object.
     """
     return tensor_util.constant_value_as_shape(self._dense_shape)
-  
+
   @property
   def name(self):
     """Get the name of the sparse tensor"""
