@@ -731,6 +731,7 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
   // Find the minimum free chunk that can hold this buffer.
   ChunkCandidate chunk_candidate{Chunk{-1, INT64_MAX}, result_.heap_size};
   Chunk& min_fit_chunk = chunk_candidate.chunk;
+  int64 preferred_chunk_end = preferred_offset + buffer_interval.size;
   auto use_free_chunk_if_smaller = [&](int64 free_offset, int64 free_size) {
     if (free_size < buffer_interval.size) {
       return;
@@ -738,8 +739,14 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
 
     // If a preferred offset is provided, pick that offset.
     if (free_offset <= preferred_offset &&
-        free_offset + free_size >= preferred_offset + buffer_interval.size) {
+        free_offset + free_size >= preferred_chunk_end) {
       min_fit_chunk = {preferred_offset, buffer_interval.size};
+    } else if (free_offset + free_size == result_.heap_size &&
+               free_offset <= preferred_offset) {
+      // If the free offset is at the very end and if the preferred offset lies
+      // in this, pick the preferred offset and grow the heap.
+      min_fit_chunk = {preferred_offset, buffer_interval.size};
+      chunk_candidate.heap_size = preferred_chunk_end;
     }
 
     // Pick the min-fit chunk only if we didn't have a preferred offset or a
@@ -761,7 +768,7 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
   // When preferred offset is provided and the preferred offset is larger than
   // the current heap size, simply use the preferred offset provided.
   if (result_.heap_size <= preferred_offset) {
-    chunk_candidate.heap_size = preferred_offset + buffer_interval.size;
+    chunk_candidate.heap_size = preferred_chunk_end;
     min_fit_chunk = {preferred_offset, buffer_interval.size};
   }
 

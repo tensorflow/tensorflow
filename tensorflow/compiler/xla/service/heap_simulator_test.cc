@@ -1009,7 +1009,42 @@ TEST_F(NoFragmentationStatsHeapTest, Mixed) {
   EXPECT_EQ(40, heap.Finish().heap_size);
 }
 
-class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {};
+class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
+ protected:
+  class InheritedGlobalDecreasingSizeBestFitHeap
+      : public GlobalDecreasingSizeBestFitHeap {
+   public:
+    InheritedGlobalDecreasingSizeBestFitHeap()
+        : GlobalDecreasingSizeBestFitHeap(/*alignment=*/1) {}
+
+    // Finds a chunk candidate and returns the offset and the new heap size.
+    std::pair<int64, int64> FindChunkCandidate(const HloValue* buffer,
+                                               int64 size, int64 start,
+                                               int64 end,
+                                               int64 preferred_offset = -1) {
+      buffer_interval_.buffer = buffer;
+      buffer_interval_.size = size;
+      buffer_interval_.start = start;
+      buffer_interval_.end = end;
+      chunk_candidate_ = GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
+          buffer_interval_, preferred_offset);
+      EXPECT_EQ(chunk_candidate_.chunk.size, size);
+      return {chunk_candidate_.chunk.offset, chunk_candidate_.heap_size};
+    }
+
+    // Commits the previously found chunk candidate.
+    void CommitChunk() {
+      GlobalDecreasingSizeBestFitHeap::CommitChunk(buffer_interval_,
+                                                   chunk_candidate_);
+    }
+
+   private:
+    BufferInterval buffer_interval_;
+    ChunkCandidate chunk_candidate_;
+  };
+
+  InheritedGlobalDecreasingSizeBestFitHeap heap_;
+};
 
 TEST_F(GlobalDecreasingSizeBestFitHeapTest, Empty) {
   GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
@@ -1224,6 +1259,55 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedIII) {
   EXPECT_EQ(30, result.chunk_map.at(buffer_a_).offset);
   EXPECT_EQ(0, result.chunk_map.at(buffer_b_).offset);
   EXPECT_EQ(30, result.chunk_map.at(buffer_c_).offset);
+}
+
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, ChunkCandidate) {
+  // space
+  //   ^
+  // 35|
+  //   |            +-----------+
+  //   |            |           |
+  // 30|            |           |
+  //   |            |  po: 15   |
+  //   |            |           |
+  // 25|            +-----g-----+
+  //   |         +-----+
+  //   |         |po:20|
+  // 20|         +--f--+
+  //   |                                +-----+
+  //   |                                |     |
+  // 15|                                |     |
+  //   |      +-----------------+       |po:10|
+  //   |      |                 |       |     |
+  // 10|      +-------c---------+       +--e--+
+  //   |         +-----+  +-----------+
+  //   |         |     |  |   po: 5   |
+  //  5|         |     |  +-----a-----+
+  //   |+-----+  |     |
+  //   ||po:10|  |     |
+  //  0|+--d--+  +--b--+
+  //   -----------------------------------------> time
+  //    0  1  2  3  4  5  6  7  8  9 10 11 12 13
+  using pair = std::pair<int64, int64>;
+  EXPECT_EQ(pair(5, 10), heap_.FindChunkCandidate(buffer_a_, 5, 6, 10, 5));
+  heap_.CommitChunk();  // offset: 5, size: 5, start: 6, end: 10
+  // Preferred offset 5 is returned.
+  EXPECT_EQ(pair(0, 10), heap_.FindChunkCandidate(buffer_b_, 10, 3, 5));
+  heap_.CommitChunk();  // offset: 0, size: 10, start: 3, end: 5
+  EXPECT_EQ(pair(10, 15), heap_.FindChunkCandidate(buffer_c_, 5, 2, 8));
+  heap_.CommitChunk();  // offset: 10, size: 5, start: 2, end: 8
+  EXPECT_EQ(pair(0, 15), heap_.FindChunkCandidate(buffer_d_, 5, 0, 2, 10));
+  heap_.CommitChunk();  // offset: 0, size: 5, start: 0, end: 2
+  // Preferred offset 10 could not be given because it is occupied.
+  EXPECT_EQ(pair(10, 20), heap_.FindChunkCandidate(buffer_e_, 10, 11, 13, 10));
+  heap_.CommitChunk();  // offset: 10, size: 10, start: 11, end: 13
+  // Preferred offset 10 is returned.
+  EXPECT_EQ(pair(20, 25), heap_.FindChunkCandidate(buffer_f_, 5, 3, 5, 20));
+  heap_.CommitChunk();  // offset: 20, size: 5, start: 3, end: 5
+  // Preferred offset 20 is returned.
+  EXPECT_EQ(pair(25, 35), heap_.FindChunkCandidate(buffer_g_, 10, 4, 8, 15));
+  heap_.CommitChunk();  // offset: 25, size: 10, start: 4, end: 8
+  // Preferred offset 15 could not be given because it is occupied.
 }
 
 }  // namespace
