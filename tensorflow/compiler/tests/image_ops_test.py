@@ -596,6 +596,9 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
   )
 
   def test(self, src_y, src_x, dst_y, dst_x):
+    if test.is_built_with_rocm():
+      self.skipTest('Disabled on ROCm, because it runs out of memory')
+
     max_y = max(src_y - 1, 1) * (dst_y - 1) + 1
     max_x = max(src_x - 1, 1) * (dst_x - 1) + 1
 
