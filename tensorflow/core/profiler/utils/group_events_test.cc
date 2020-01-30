@@ -38,11 +38,10 @@ using ::tensorflow::profiler::XPlaneVisitor;
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
+    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
     const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
-  auto event_builder =
-      line_builder->AddEvent(*plane_builder->GetOrCreateEventMetadata(
-          GetHostEventTypeStr(event_type)));
+  auto event_builder = line_builder->AddEvent(
+      *plane_builder->GetOrCreateEventMetadata(event_name));
   event_builder.SetOffsetPs(offset_ps);
   event_builder.SetDurationPs(duration_ps);
   for (const auto& stat_type_and_value : stats) {
@@ -50,6 +49,14 @@ void CreateXEvent(
                                    GetStatTypeStr(stat_type_and_value.first)),
                                stat_type_and_value.second);
   }
+}
+
+void CreateXEvent(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    HostEventType event_type, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
+  CreateXEvent(plane_builder, line_builder, GetHostEventTypeStr(event_type),
+               offset_ps, duration_ps, stats);
 }
 
 // Test if events on the same thread are connected correctly according to the
@@ -68,8 +75,7 @@ TEST(GroupEventsTest, ConnectIntraThreadTest) {
                190, {});
 
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(&plane);
-  EventNodeMap event_node_map(
-      {{HostEventType::kTraceContext, {}}, {HostEventType::kFunctionRun, {}}});
+  EventNodeMap event_node_map;
   ConnectIntraThread(plane_visitor, &plane, &event_node_map);
   EXPECT_EQ(event_node_map[HostEventType::kTraceContext].size(), 1);
   EXPECT_EQ(event_node_map[HostEventType::kFunctionRun].size(), 2);
@@ -102,8 +108,7 @@ TEST(GroupEventsTest, ConnectInterThreadTest) {
                {{StatType::kStepId, 1}});
 
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(&plane);
-  EventNodeMap event_node_map({{HostEventType::kFunctionRun, {}},
-                               {HostEventType::kExecutorStateProcess, {}}});
+  EventNodeMap event_node_map;
   ConnectIntraThread(plane_visitor, &plane, &event_node_map);
   std::vector<InterThreadConnectInfo> connect_info_list(
       {{HostEventType::kFunctionRun,
@@ -150,8 +155,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
                {{StatType::kStepId, 0}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kUnknownHostEventType, 30, 70,
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
                {{StatType::kCorrelationId, 100}, {StatType::kDeviceId, 1}});
 
   XPlane device_plane;
@@ -161,8 +165,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   device_plane_builder.ReserveLines(1);
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&device_plane_builder, &stream,
-               HostEventType::kUnknownHostEventType, 200, 300,
+  CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, 100}});
 
   std::vector<InterThreadConnectInfo> connect_info_list(

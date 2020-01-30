@@ -48,6 +48,21 @@ absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
   return absl::nullopt;
 }
 
+int64 GetEventType(const XPlaneVisitor& visitor, const XEvent& event) {
+  if (absl::optional<int64> event_type = visitor.GetEventType(event)) {
+    return *event_type;
+  } else if (absl::optional<int64> kernel_event_type =
+                 GetKernelEventType(visitor, event)) {
+    // KernelLaunch and KernelExecute event types are not supported by
+    // XPlaneVisitor and should be checked separately.
+    // TODO(148346217): Make XPlaneVisitor support KernelLaunch and
+    // KernelExecute event types.
+    return *kernel_event_type;
+  } else {
+    return HostEventType::kUnknownHostEventType;
+  }
+}
+
 const XStat* GetStat(const XPlaneVisitor& visitor, const XEvent& event,
                      int64 stat_type) {
   for (const auto& stat : event.stats()) {
@@ -65,22 +80,6 @@ void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
   if (maybe_group_id_stat_metadata_id) {
     AddOrUpdateIntStat(*maybe_group_id_stat_metadata_id, group_id, event);
   }
-}
-
-// Create EventNodeMap with the event types in connect_info_list and
-// root_event_types.
-EventNodeMap CreateEventNodeMap(
-    const std::vector<InterThreadConnectInfo>& connect_info_list,
-    const std::vector<int64>& root_event_types) {
-  EventNodeMap event_node_map;
-  for (const auto& connect_info : connect_info_list) {
-    event_node_map.try_emplace(connect_info.parent_event_type);
-    event_node_map.try_emplace(connect_info.child_event_type);
-  }
-  for (int64 event_type : root_event_types) {
-    event_node_map.try_emplace(event_type);
-  }
-  return event_node_map;
 }
 
 }  // namespace
@@ -123,41 +122,28 @@ void EventNode::AddStepName(absl::string_view step_name) {
                      step_name, event_);
 }
 
+bool EventNode::IsNestedIn(EventNode* parent) {
+  return parent && IsNested(GetEvent(), parent->GetEvent());
+}
+
 void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* host_trace,
                         EventNodeMap* event_node_map) {
   for (auto& line : *host_trace->mutable_lines()) {
-    // absl::string_view thread_name = line.name();
-    std::stack<std::shared_ptr<EventNode>> parent_nodes;
+    std::vector<EventNode*> parent_nodes;
     for (auto& event : *line.mutable_events()) {
-      auto cur_node = std::make_shared<EventNode>(&visitor, &event);
+      auto cur_node = absl::make_unique<EventNode>(&visitor, &event);
       while (!parent_nodes.empty()) {
-        std::shared_ptr<EventNode> parent_node = parent_nodes.top();
-        if (IsNested(cur_node->GetEvent(), parent_node->GetEvent())) {
-          parent_node->AddChild(cur_node);
-          cur_node->SetParent(parent_node.get());
+        EventNode* parent_node = parent_nodes.back();
+        if (cur_node->IsNestedIn(parent_node)) {
+          parent_node->AddChild(cur_node.get());
           break;
         } else {
-          parent_nodes.pop();
+          parent_nodes.pop_back();
         }
       }
-      parent_nodes.push(cur_node);
-      if (auto it = gtl::FindOrNull(
-              *event_node_map, visitor.GetEventType(event).value_or(
-                                   HostEventType::kUnknownHostEventType))) {
-        it->push_back(cur_node);
-      }
-      // KernelLaunch and KernelExecute event types are not supported by
-      // XPlaneVisitor and should be checked separately.
-      // TODO(148346217): Make XPlaneVisitor support KernelLaunch and
-      // KernelExecute event types.
-      if (event_node_map->contains(HostEventType::kKernelLaunch) ||
-          event_node_map->contains(HostEventType::kKernelExecute)) {
-        absl::optional<int64> kernel_event_type =
-            GetKernelEventType(visitor, event);
-        if (kernel_event_type) {
-          (*event_node_map)[*kernel_event_type].push_back(cur_node);
-        }
-      }
+      parent_nodes.push_back(cur_node.get());
+      (*event_node_map)[GetEventType(visitor, event)].push_back(
+          std::move(cur_node));
     }
   }
 }
@@ -166,8 +152,7 @@ void ConnectInterThread(
     const EventNodeMap& event_node_map,
     const std::vector<InterThreadConnectInfo>& connect_info_list) {
   for (const auto& connect_info : connect_info_list) {
-    absl::flat_hash_map<std::vector<int64>, std::shared_ptr<EventNode>>
-        connect_map;
+    absl::flat_hash_map<std::vector<int64>, EventNode*> connect_map;
     const std::vector<int64>& stat_types = connect_info.stat_types;
     if (auto parent_event_node_list =
             gtl::FindOrNull(event_node_map, connect_info.parent_event_type)) {
@@ -182,7 +167,7 @@ void ConnectInterThread(
                               : (*stat)->uint64_value());
         }
         if (stats.size() == stat_types.size()) {
-          connect_map[stats] = parent_event_node;
+          connect_map[stats] = parent_event_node.get();
         }
       }
     }
@@ -199,9 +184,8 @@ void ConnectInterThread(
                               : (*stat)->uint64_value());
         }
         if (stats.size() == stat_types.size()) {
-          if (auto parent_event_node = gtl::FindOrNull(connect_map, stats)) {
-            (*parent_event_node)->AddChild(child_event_node);
-            child_event_node->SetParent((*parent_event_node).get());
+          if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {
+            parent_event_node->AddChild(child_event_node.get());
           }
         }
       }
@@ -237,8 +221,7 @@ void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
                  const std::vector<XPlane*>& device_traces,
                  EventGroupNameMap* event_group_name_map) {
   if (!host_trace) return;
-  EventNodeMap event_node_map =
-      CreateEventNodeMap(connect_info_list, root_event_types);
+  EventNodeMap event_node_map;
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_trace);
   ConnectIntraThread(host_plane_visitor, host_trace, &event_node_map);
   std::vector<XPlaneVisitor> device_plane_visitors;

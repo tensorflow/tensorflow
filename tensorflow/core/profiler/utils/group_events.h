@@ -44,12 +44,11 @@ class EventNode {
     DCHECK(event);
   }
 
-  void SetParent(EventNode* parent) { parent_ = parent; }
-
   EventNode* GetParent() const { return parent_; }
 
-  void AddChild(const std::shared_ptr<EventNode>& child) {
+  void AddChild(EventNode* child) {
     children_.push_back(child);
+    child->parent_ = this;
   }
 
   absl::optional<int64> GetGroupId() const { return group_id_; }
@@ -65,23 +64,24 @@ class EventNode {
 
   void AddStepName(absl::string_view step_name);
 
+  bool IsNestedIn(EventNode* parent);
+
  private:
   const XPlaneVisitor* visitor_;
   XEvent* event_;
   EventNode* parent_ = nullptr;
-  std::vector<std::shared_ptr<EventNode>> children_;
+  std::vector<EventNode*> children_;
   absl::optional<int64> group_id_;
 };
 
 using EventNodeMap =
     absl::flat_hash_map<int64 /*event_type*/,
-                        std::vector<std::shared_ptr<EventNode>>>;
+                        std::vector<std::unique_ptr<EventNode>>>;
 
 using EventGroupNameMap = absl::flat_hash_map<int64 /*group_id*/, std::string>;
 
-// Creates an EventNode for each event and connect events according to the
-// nesting relationship within the thread. Also, collect events of EventType in
-// event_node_map.
+// Creates an EventNode for each event in event_node_map and connect events
+// according to the nesting relationship within the thread.
 void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* host_trace,
                         EventNodeMap* event_node_map);
 
