@@ -34,14 +34,13 @@ from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.util import compat
 
-prefix_path = resource_loader.get_path_to_datafile("../../core/lib")
+prefix_path = "tensorflow/core/lib"
 
 # pylint: disable=invalid-name
 TFRecordCompressionType = tf_record.TFRecordCompressionType
