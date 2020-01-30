@@ -563,13 +563,6 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       status = kTfLiteError;
     }
 
-    size_t dims_signature_rank = 0;
-    const int* dims_signature_data = nullptr;
-    if (tensor->shape_signature()) {
-      dims_signature_rank = tensor->shape_signature()->Length();
-      dims_signature_data = tensor->shape_signature()->data();
-    }
-
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
       if (is_variable) {
@@ -597,9 +590,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (subgraph->SetTensorParametersReadWrite(
-              i, type, get_name(tensor), dims, quantization, is_variable,
-              dims_signature_rank, dims_signature_data) != kTfLiteOk) {
+      if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
+                                                 dims, quantization,
+                                                 is_variable) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;

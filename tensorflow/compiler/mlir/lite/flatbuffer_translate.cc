@@ -595,7 +595,6 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   };
 
   std::vector<int32_t> shape;
-  std::vector<int32_t> shape_signature;
   if (type.hasStaticShape()) {
     llvm::ArrayRef<int64_t> shape_ref = type.getShape();
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
@@ -613,17 +612,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
       shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
     }
-  } else if (type.hasRank()) {
-    llvm::ArrayRef<int64_t> shape_ref = type.getShape();
-    if (mlir::failed(check_shape(shape_ref))) return llvm::None;
-
-    shape.reserve(shape_ref.size());
-    for (auto& dim : shape_ref) {
-      shape.push_back(dim == -1 ? 1 : dim);
-    }
-    shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   }
-
   Type element_type = type.getElementType();
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).ValueOrDie();
@@ -660,19 +649,10 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
       break;
     }
   }
-
-  if (shape_signature.empty()) {
-    return tflite::CreateTensor(
-        builder_, builder_.CreateVector(shape), tflite_element_type,
-        (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable);
-  } else {
-    return tflite::CreateTensor(
-        builder_, builder_.CreateVector(shape), tflite_element_type,
-        (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable, /*sparsity=*/0,
-        /*shape_signature=*/builder_.CreateVector(shape_signature));
-  }
+  return tflite::CreateTensor(
+      builder_, builder_.CreateVector(shape), tflite_element_type,
+      (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
+      /*is_variable=*/is_variable);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildIfOperator(

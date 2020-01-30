@@ -3175,7 +3175,6 @@ struct TensorT : public flatbuffers::NativeTable {
   std::unique_ptr<QuantizationParametersT> quantization;
   bool is_variable;
   std::unique_ptr<SparsityParametersT> sparsity;
-  std::vector<int32_t> shape_signature;
   TensorT()
       : type(TensorType_FLOAT32),
         buffer(0),
@@ -3192,8 +3191,7 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_NAME = 10,
     VT_QUANTIZATION = 12,
     VT_IS_VARIABLE = 14,
-    VT_SPARSITY = 16,
-    VT_SHAPE_SIGNATURE = 18
+    VT_SPARSITY = 16
   };
   const flatbuffers::Vector<int32_t> *shape() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SHAPE);
@@ -3216,9 +3214,6 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const SparsityParameters *sparsity() const {
     return GetPointer<const SparsityParameters *>(VT_SPARSITY);
   }
-  const flatbuffers::Vector<int32_t> *shape_signature() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SHAPE_SIGNATURE);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SHAPE) &&
@@ -3232,8 +3227,6 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_IS_VARIABLE) &&
            VerifyOffset(verifier, VT_SPARSITY) &&
            verifier.VerifyTable(sparsity()) &&
-           VerifyOffset(verifier, VT_SHAPE_SIGNATURE) &&
-           verifier.VerifyVector(shape_signature()) &&
            verifier.EndTable();
   }
   TensorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3265,9 +3258,6 @@ struct TensorBuilder {
   void add_sparsity(flatbuffers::Offset<SparsityParameters> sparsity) {
     fbb_.AddOffset(Tensor::VT_SPARSITY, sparsity);
   }
-  void add_shape_signature(flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape_signature) {
-    fbb_.AddOffset(Tensor::VT_SHAPE_SIGNATURE, shape_signature);
-  }
   explicit TensorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3288,10 +3278,8 @@ inline flatbuffers::Offset<Tensor> CreateTensor(
     flatbuffers::Offset<flatbuffers::String> name = 0,
     flatbuffers::Offset<QuantizationParameters> quantization = 0,
     bool is_variable = false,
-    flatbuffers::Offset<SparsityParameters> sparsity = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape_signature = 0) {
+    flatbuffers::Offset<SparsityParameters> sparsity = 0) {
   TensorBuilder builder_(_fbb);
-  builder_.add_shape_signature(shape_signature);
   builder_.add_sparsity(sparsity);
   builder_.add_quantization(quantization);
   builder_.add_name(name);
@@ -3310,11 +3298,9 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
     const char *name = nullptr,
     flatbuffers::Offset<QuantizationParameters> quantization = 0,
     bool is_variable = false,
-    flatbuffers::Offset<SparsityParameters> sparsity = 0,
-    const std::vector<int32_t> *shape_signature = nullptr) {
+    flatbuffers::Offset<SparsityParameters> sparsity = 0) {
   auto shape__ = shape ? _fbb.CreateVector<int32_t>(*shape) : 0;
   auto name__ = name ? _fbb.CreateString(name) : 0;
-  auto shape_signature__ = shape_signature ? _fbb.CreateVector<int32_t>(*shape_signature) : 0;
   return tflite::CreateTensor(
       _fbb,
       shape__,
@@ -3323,8 +3309,7 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
       name__,
       quantization,
       is_variable,
-      sparsity,
-      shape_signature__);
+      sparsity);
 }
 
 flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &_fbb, const TensorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -10290,7 +10275,6 @@ inline void Tensor::UnPackTo(TensorT *_o, const flatbuffers::resolver_function_t
   { auto _e = quantization(); if (_e) _o->quantization = std::unique_ptr<QuantizationParametersT>(_e->UnPack(_resolver)); };
   { auto _e = is_variable(); _o->is_variable = _e; };
   { auto _e = sparsity(); if (_e) _o->sparsity = std::unique_ptr<SparsityParametersT>(_e->UnPack(_resolver)); };
-  { auto _e = shape_signature(); if (_e) { _o->shape_signature.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->shape_signature[_i] = _e->Get(_i); } } };
 }
 
 inline flatbuffers::Offset<Tensor> Tensor::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TensorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -10308,7 +10292,6 @@ inline flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &
   auto _quantization = _o->quantization ? CreateQuantizationParameters(_fbb, _o->quantization.get(), _rehasher) : 0;
   auto _is_variable = _o->is_variable;
   auto _sparsity = _o->sparsity ? CreateSparsityParameters(_fbb, _o->sparsity.get(), _rehasher) : 0;
-  auto _shape_signature = _o->shape_signature.size() ? _fbb.CreateVector(_o->shape_signature) : 0;
   return tflite::CreateTensor(
       _fbb,
       _shape,
@@ -10317,8 +10300,7 @@ inline flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &
       _name,
       _quantization,
       _is_variable,
-      _sparsity,
-      _shape_signature);
+      _sparsity);
 }
 
 inline Conv2DOptionsT *Conv2DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

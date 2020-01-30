@@ -178,10 +178,6 @@ table Tensor {
   // Parameters to encode a sparse tensor. See the example in
   // tensorflow/lite/testdata/sparse_tensor.json.
   sparsity:SparsityParameters;  // Optional.
-
-  // Encodes `shape` with unknown dimensions. Unknown dimensions are
-  // represented with -1.
-  shape_signature:[int]; // Optional.
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom

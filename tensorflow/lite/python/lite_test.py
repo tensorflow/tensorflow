@@ -318,11 +318,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       out_tensor = in_tensor + in_tensor
       sess = session.Session()
 
-    # Test None as shape when dynamic shapes are disabled. Run with TOCO in
-    # order to invoke shape checking code.
+    # Test None as shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.experimental_new_converter = False
     with self.assertRaises(ValueError) as error:
       converter.convert()
     self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
@@ -377,55 +375,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       out_tensor = in_tensor + in_tensor
       sess = session.Session()
 
-    # Test invalid shape. None after 1st dimension. Run with TOCO in order to
-    # invoke shape checking code.
+    # Test invalid shape. None after 1st dimension.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.experimental_new_converter = False
     with self.assertRaises(ValueError) as error:
       converter.convert()
     self.assertEqual(
         'None is only supported in the 1st dimension. Tensor '
         '\'Placeholder\' has invalid shape \'[1, None, 16, 3]\'.',
         str(error.exception))
-
-  def testSizeNone(self):
-    with ops.Graph().as_default():
-      in_tensor = array_ops.placeholder(
-          shape=[1, None, 16, 3], dtype=dtypes.float32)
-      out_tensor = in_tensor + in_tensor
-      sess = session.Session()
-
-    # Test None after 1st dimension.
-    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
-                                                  [out_tensor])
-    converter.experimental_new_converter = True
-    tflite_model = converter.convert()
-
-    # Check values from converted model.
-    interpreter = Interpreter(model_content=tflite_model)
-    input_details = interpreter.get_input_details()
-    self.assertLen(input_details, 1)
-    self.assertEqual('Placeholder', input_details[0]['name'])
-    self.assertEqual(np.float32, input_details[0]['dtype'])
-    self.assertTrue(([1, 1, 16, 3] == input_details[0]['shape']).all())
-    self.assertTrue(([1, -1, 16,
-                      3] == input_details[0]['shape_signature']).all())
-    self.assertEqual((0., 0.), input_details[0]['quantization'])
-
-    # Resize tensor and invoke.
-    interpreter.resize_tensor_input(0, [1, 16, 16, 3])
-    interpreter.allocate_tensors()
-    interpreter.invoke()
-
-    input_details = interpreter.get_input_details()
-    self.assertLen(input_details, 1)
-    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
-    self.assertTrue(([1, -1, 16,
-                      3] == input_details[0]['shape_signature']).all())
-
-    output_details = interpreter.get_output_details()
-    self.assertFalse(output_details[0]['shape_signature'])
 
   def testBatchSizeValid(self):
     with ops.Graph().as_default():

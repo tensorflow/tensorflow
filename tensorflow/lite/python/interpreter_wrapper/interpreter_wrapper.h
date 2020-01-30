@@ -69,7 +69,6 @@ class InterpreterWrapper {
   std::string TensorName(int i) const;
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
-  PyObject* TensorSizeSignature(int i) const;
   // Deprecated in favor of TensorQuantizationScales, below.
   PyObject* TensorQuantization(int i) const;
   PyObject* TensorQuantizationParameters(int i) const;

@@ -35,7 +35,6 @@ from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
@@ -385,16 +384,7 @@ def build_toco_convert_protos(input_tensors,
       shape = input_tensor.shape
     else:
       shape = input_shapes[idx]
-
-    # Create shapes with -1 for unknown dimensions.
-    dims = []
-    for dim in shape:
-      if (dim is None or
-          (isinstance(dim, tensor_shape.Dimension) and dim.value is None)):
-        dims.append(-1)
-      else:
-        dims.append(int(dim))
-    input_array.shape.dims.extend(dims)
+    input_array.shape.dims.extend(list(map(int, shape)))
 
   for output_tensor in output_tensors:
     model.output_arrays.append(util.get_tensor_name(output_tensor))
