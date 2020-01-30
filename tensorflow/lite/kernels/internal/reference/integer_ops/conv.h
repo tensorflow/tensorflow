@@ -188,16 +188,12 @@ inline void ConvPerChannel(
                       filter_data[Offset(filter_shape, out_channel, filter_y,
                                          filter_x, in_channel)];
                   // Accumulate with 64 bits accumulator.
-                  // In the nudging process during model quantization, we force
-                  // real value of 0.0 be represented by a quantized value. This
-                  // guarantees that the input_offset is a int16, even though it
-                  // is represented using int32.
-                  // int64 += int8 * (int16 - int16) so the highest value we can
+                  // int64 += int8 * int16 so the highest value we can
                   // get from each accumulation is [-127, 127] * ([-32768,
                   // 32767] -
                   // [-32768, 32767]), which is [-8322945, 8322945].
                   // log2(8322945) = 22.99.
-                  acc += filter_val * (input_val + input_offset);
+                  acc += filter_val * input_val;
                 }
               }
             }
@@ -207,7 +203,6 @@ inline void ConvPerChannel(
           }
           int32_t scaled_acc = MultiplyByQuantizedMultiplier(
               acc, output_multiplier[out_channel], output_shift[out_channel]);
-          scaled_acc += output_offset;
           scaled_acc = std::max(scaled_acc, output_activation_min);
           scaled_acc = std::min(scaled_acc, output_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =

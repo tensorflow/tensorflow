@@ -48,7 +48,6 @@ void PickOutputMultiplier(
   const int dilation_height_factor = params.dilation_height_factor;
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
-  const int32 input_offset = params.input_offset;
 
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int input_height = input_shape.Dims(1);
@@ -88,7 +87,7 @@ void PickOutputMultiplier(
                       filter_data[Offset(filter_shape, output_channel, filter_y,
                                          filter_x, in_channel)];
                   acc += static_cast<std::int64_t>(filter_val) *
-                         static_cast<std::int64_t>(input_val + input_offset);
+                         static_cast<std::int64_t>(input_val);
                 }
               }
             }
@@ -193,9 +192,6 @@ void TryTestOneConvFilter(int test_num) {
   const int output_activation_min = -32768;
   const int output_activation_max = 32767;
 
-  std::int32_t input_offset;
-  const std::int32_t output_offset = UniformRandomInt(-25, 25);
-
   RuntimeShape input_shape_inference;
   RuntimeShape filter_shape_inference;
   RuntimeShape output_shape_inference;
@@ -227,11 +223,9 @@ void TryTestOneConvFilter(int test_num) {
     // Use high values samples to give large accumulator
     FillRandom(&input_data, (std::int16_t)32700, (std::int16_t)32767);
     FillRandom(&filter_data, (std::int8_t)120, (std::int8_t)127);
-    input_offset = 0;
   } else {
     FillRandom(&input_data);
     FillRandom(&filter_data);
-    input_offset = UniformRandomInt(-25, 25);
   }
   for (int i = 0; i < output_depth; i++) {
     bias_data.data()[i] = 0;
@@ -244,8 +238,6 @@ void TryTestOneConvFilter(int test_num) {
   params.dilation_width_factor = dilation_width_factor;
   params.padding_values.width = pad_width;
   params.padding_values.height = pad_height;
-  params.input_offset = input_offset;
-  params.output_offset = output_offset;
   params.weights_offset = 0;
   params.quantized_activation_min = output_activation_min;
   params.quantized_activation_max = output_activation_max;
@@ -285,7 +277,7 @@ void TryTestOneConvFilter(int test_num) {
   std::vector<float> output_data_float(output_buffer_size);
 
   for (int i = 0; i < input_buffer_size; i++) {
-    input_data_float.data()[i] = (float)(input_data.data()[i] + input_offset);
+    input_data_float.data()[i] = (float)(input_data.data()[i]);
   }
   IntToFloat(&filter_data_float, &filter_data);
   IntToFloat(&bias_data_float, &bias_data);
@@ -310,16 +302,18 @@ void TryTestOneConvFilter(int test_num) {
           float scale = (float)output_mul / (float)(1ULL << 31);
           if (shift > 0) scale = scale * (float)(1 << shift);
           if (shift < 0) scale = scale / (float)(1 << -shift);
-          int ref_res = floor(float_res * scale + 0.5) + output_offset;
+          int ref_res = floor(float_res * scale + 0.5);
           if (ref_res < output_activation_min) ref_res = output_activation_min;
           if (ref_res > output_activation_max) ref_res = output_activation_max;
           int e = (ref_res - int16_res);
           if (e < 0) e = -e;
           if (e > 2) {
-            ADD_FAILURE() << "(" << n << ", " << h << ", " <<  w << ", " << c << ")"
-              << " scale=" << output_mul << " shift=" << shift << " res=" << int16_res
-              << " float=" << float_res * scale + (float)output_offset
-              << " (" << float_res << ", " << scale << ")";
+            ADD_FAILURE() << "(" << n << ", " << h << ", " << w << ", " << c
+                          << ")"
+                          << " scale=" << output_mul << " shift=" << shift
+                          << " res=" << int16_res
+                          << " float=" << float_res * scale << " (" << float_res
+                          << ", " << scale << ")";
             EXPECT_TRUE(false);
           }
         }

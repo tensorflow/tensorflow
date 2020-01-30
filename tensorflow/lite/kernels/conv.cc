@@ -308,10 +308,9 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Check types. (We assume that UINT8 refers to quantized tensors)
   TfLiteType input_type = input->type;
-  TF_LITE_ENSURE(context, input_type == kTfLiteFloat32 ||
-                              input_type == kTfLiteUInt8 ||
-                              input_type == kTfLiteInt8 ||
-                              input_type == kTfLiteInt16);
+  TF_LITE_ENSURE(context,
+                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+                     input_type == kTfLiteInt8 || input_type == kTfLiteInt16);
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
 
   TfLiteTensor* bias = nullptr;
@@ -328,6 +327,8 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     } else if (input_type == kTfLiteInt16) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt64);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       TF_LITE_ENSURE_EQ(context, bias->type, input_type);
     }
