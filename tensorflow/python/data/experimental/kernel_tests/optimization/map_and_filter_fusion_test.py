@@ -111,7 +111,7 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
     def predicate(y):
       return math_ops.less(math_ops.cast(y, dtypes.int64), some_tensor)
 
-    # We are currently not supporting functions with captured inputs.
+    # We currently do not support functions with captured inputs.
     dataset = dataset_ops.Dataset.range(10).apply(
         testing.assert_next(["Map", "Filter"])).map(function).filter(predicate)
     options = dataset_ops.Options()
