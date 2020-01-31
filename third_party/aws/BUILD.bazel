@@ -1,5 +1,5 @@
 # Description:
-#   AWS C++ SDK
+#  AWS C++ SDK
 
 package(default_visibility = ["//visibility:public"])
 
@@ -63,11 +63,6 @@ cc_library(
     ]),
     hdrs = [
         "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
-    ],
-    copts = [
-        "-DAWS_SDK_VERSION_MAJOR=1",
-        "-DAWS_SDK_VERSION_MINOR=7",
-        "-DAWS_SDK_VERSION_PATCH=226",
     ],
     defines = select({
         "@org_tensorflow//tensorflow:linux_aarch64": [
