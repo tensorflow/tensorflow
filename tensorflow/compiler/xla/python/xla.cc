@@ -158,6 +158,8 @@ StatusOr<std::shared_ptr<Device>> LookupDeviceOrdinal(
   return client->local_devices()[device_ordinal];
 }
 
+// PEP 3118 buffer protocol implementation.
+
 // Extra data to be kept alive by the consumer of the buffer protocol.
 struct ExtraBufferInfo {
   std::string format;
@@ -263,6 +265,42 @@ PyBufferProcs PyLocalBufferProcs = []() {
   procs.bf_releasebuffer = &PyLocalBufferReleaseBuffer;
   return procs;
 }();
+
+// Implementation of the CUDA array interface for sharing GPU buffers with other
+// Python libraries.
+StatusOr<py::dict> PyLocalBufferCudaArrayInterface(
+    const PyLocalBuffer& buffer) {
+  if (buffer.device()->local_device_state()->executor()->platform_kind() !=
+      se::PlatformKind::kCuda) {
+    return InvalidArgument(
+        "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
+  }
+  if (!buffer.on_device_shape().IsArray()) {
+    return InvalidArgument(
+        "__cuda_array_interface__ is only defined for array buffers.");
+  }
+  if (buffer.on_host_shape().element_type() == BF16) {
+    return InvalidArgument(
+        "__cuda_array_interface__ is not supported for bfloat16 buffers.");
+  }
+  TF_RET_CHECK(
+      LayoutUtil::IsMonotonicWithDim0Major(buffer.on_host_shape().layout()));
+  TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, buffer.AsShapedBuffer());
+
+  py::dict result;
+  result["shape"] = IntSpanToTuple(shaped_buffer.on_host_shape().dimensions());
+  TF_ASSIGN_OR_RETURN(py::str typestr,
+                      TypeDescriptorForPrimitiveType(
+                          shaped_buffer.on_host_shape().element_type()));
+  result["typestr"] = std::move(typestr);
+  py::tuple data(2);
+  data[0] = py::int_(
+      absl::bit_cast<std::uintptr_t>(shaped_buffer.root_buffer().opaque()));
+  data[1] = py::bool_(true);  // read-only
+  result["data"] = std::move(data);
+  result["version"] = py::int_(2);
+  return result;
+}
 
 }  // namespace
 
@@ -716,7 +754,9 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return absl::bit_cast<std::uintptr_t>(
                  shaped_buffer.root_buffer().opaque());
-           });
+           })
+      .def_property_readonly("__cuda_array_interface__",
+                             &PyLocalBufferCudaArrayInterface);
 
   // pybind11's implementation of the buffer protocol doesn't allow for correct
   // error handling. We bypass it and implement the buffer protocol ourselves.
@@ -734,7 +774,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
-      // TODO: remove when all callers switch to ExecuteOnLocalDevices
+      // TODO(phawkins): remove when all callers switch to ExecuteOnLocalDevices
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecuteOnLocalDevices", &PyLocalExecutable::ExecuteOnLocalDevices,

@@ -57,6 +57,9 @@ StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 // Returns a numpy-style format descriptor string for `type`.
 StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
 
+// Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
+StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
+
 // Returns the strides for `shape`.
 std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
 

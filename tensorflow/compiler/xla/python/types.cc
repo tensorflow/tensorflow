@@ -139,6 +139,46 @@ StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
   }
 }
 
+StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
+  static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
+                "Big endian support not implemented");
+  switch (type) {
+    case PRED:
+      return py::str("|b1");
+    case S8:
+      return py::str("|i1");
+    case S16:
+      return py::str("<i2");
+    case S32:
+      return py::str("<i4");
+    case S64:
+      return py::str("<i8");
+    case U8:
+      return py::str("|u1");
+    case U16:
+      return py::str("<u2");
+    case U32:
+      return py::str("<u4");
+    case U64:
+      return py::str("<u8");
+    case BF16:
+      return py::str("<V2");
+    case F16:
+      return py::str("<f2");
+    case F32:
+      return py::str("<f4");
+    case F64:
+      return py::str("<f8");
+    case C64:
+      return py::str("<c8");
+    case C128:
+      return py::str("<c16");
+    default:
+      return Unimplemented("Unimplemented primitive type %s",
+                           PrimitiveType_Name(type));
+  }
+}
+
 // Returns the strides for `shape`.
 std::vector<ssize_t> ByteStridesForShape(const Shape& shape) {
   std::vector<ssize_t> strides;
