@@ -55,9 +55,8 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
   }
 
   TrtUniquePtrType<nvinfer1::ICudaEngine> CreateTRTEngine() {
-    Logger logger;
     TrtUniquePtrType<nvinfer1::IBuilder> builder(
-        nvinfer1::createInferBuilder(logger));
+        nvinfer1::createInferBuilder(logger_));
     TrtUniquePtrType<nvinfer1::INetworkDefinition> network(
         builder->createNetwork());
 
@@ -87,6 +86,7 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
     EXPECT_NE(nullptr, engine);
     return engine;
   }
+  Logger logger_;
 };
 
 TEST_F(TRTEngineResourceOpsTest, Basic) {
