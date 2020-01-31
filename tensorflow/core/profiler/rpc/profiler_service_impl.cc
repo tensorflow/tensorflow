@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -65,6 +66,7 @@ Status CollectDataToResponse(const ProfileRequest& req,
                              ProfileResponse* response) {
   profiler::XSpace xspace;
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
+  GroupTfEvents(&xspace, /*event_group_name_map=*/nullptr);
   {
     uint64 end_time_ns = EnvTime::NowNanos();
     profiler::Trace trace;

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
+#include "tensorflow/core/profiler/utils/group_events.h"
 #endif
 
 namespace tensorflow {
@@ -106,6 +107,7 @@ Status ProfilerSession::SerializeToString(string* content) {
   profiler::Trace trace;
 #if !defined(IS_MOBILE_PLATFORM)
   uint64 end_time_ns = EnvTime::NowNanos();
+  profiler::GroupTfEvents(&xspace, /*event_group_name_map=*/nullptr);
   profiler::ConvertXSpaceToTraceEvents(start_time_ns_, end_time_ns, xspace,
                                        &trace);
 #endif
