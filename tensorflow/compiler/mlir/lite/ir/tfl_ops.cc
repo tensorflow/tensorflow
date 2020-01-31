@@ -1736,6 +1736,20 @@ static LogicalResult Verify(TransposeOp op) {
   return success();
 }
 
+Region &WhileOp::getLoopBody() { return body(); }
+
+bool WhileOp::isDefinedOutsideOfLoop(Value value) {
+  // TODO(jpienaar): This is to overly conservative and disables anything other
+  // than constant hoisting initially.
+  return false;
+}
+
+LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *>) {
+  // TODO(jpienaar): Fail any hoisting until post test case and refining
+  // isDefinedOutsideOfLoop.
+  return failure();
+}
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//

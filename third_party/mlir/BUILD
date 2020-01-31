@@ -2550,6 +2550,9 @@ exports_files(
 )
 
 exports_files(
-    ["include/mlir/Analysis/InferTypeOpInterface.td"],
+    [
+        "include/mlir/Analysis/InferTypeOpInterface.td",
+        "include/mlir/Transforms/LoopLikeInterface.td",
+    ],
     visibility = ["@llvm-project//mlir:friends"],
 )

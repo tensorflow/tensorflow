@@ -19,6 +19,7 @@ limitations under the License.
 #define TFL_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Transforms/LoopLikeInterface.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 
@@ -3368,6 +3369,48 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [NoSideEffect]> {
     I32Tensor:$segment_ids
   );
   let results = (outs TensorOf<[F32, I32]>:$output);
+}
+
+def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
+  let summary = "Yield operation";
+  let description = [{
+    The "yield" operation represents a return operation within the conditional
+    and body of structured control flow (e.g., while). The operation takes
+    variable number of operands and produces no results. The operand number and
+    types must match the signature of the region that contains the operation.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+}
+
+def TFL_WhileOp : Op<TFL_Dialect, "while", [
+       DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       SingleBlockImplicitTerminator<"YieldOp">,
+       // Make isolated from above to force values through operands to simplify
+       // exporting to subgraphs.
+       IsolatedFromAbove]> {
+  let summary = [{While loop}];
+
+  let description = [{
+    output = input; while (cond(output)) { output = body(output) }
+
+    input: A list of input tensors whose types are T.
+    output: A list of output tensors whose types are T.
+    cond: A region takes 'input' and returns a boolean scalar tensor.
+    body: A region that takes a list of tensors and returns another
+        list of tensors. Both lists have the same types.
+  }];
+
+  let arguments = (ins
+    Variadic<AnyTensor>:$input,
+
+    // Used to map StatelessWhile and While op defined in TensorFlow to a common
+    // op.
+    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
+  );
+  let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
+
+  let results = (outs Variadic<AnyTensor>:$output);
 }
 
 #endif // TFL_OPS
