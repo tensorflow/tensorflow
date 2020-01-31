@@ -78,18 +78,19 @@ const int kDefaultInlineThreshold = 1100;
 // capability.  If we see an unrecognized compute capability, we
 // return the highest one that is known and below the selected device.
 static string GetSmName(std::pair<int, int> compute_capability) {
-  int ccv = compute_capability.first * 10 + compute_capability.second;
+  int compute_capability_version =
+      compute_capability.first * 10 + compute_capability.second;
   int sm_version = 35;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
   for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35}) {
-    if (v <= ccv) {
+    if (v <= compute_capability_version) {
       sm_version = v;
       break;
     }
   }
 
-  if (sm_version != ccv) {
+  if (sm_version != compute_capability_version) {
     LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to telling LLVM that we're compiling for sm_"
