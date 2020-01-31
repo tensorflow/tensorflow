@@ -21,19 +21,52 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
+using ::tensorflow::profiler::CreateTfXPlaneVisitor;
+using ::tensorflow::profiler::GetHostEventTypeStr;
+using ::tensorflow::profiler::GetStatTypeStr;
+using ::tensorflow::profiler::HostEventType;
+using ::tensorflow::profiler::StatType;
+using ::tensorflow::profiler::XLineBuilder;
+using ::tensorflow::profiler::XPlane;
+using ::tensorflow::profiler::XPlaneBuilder;
+using ::tensorflow::profiler::XPlaneVisitor;
+
+void CreateXEvent(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
+  auto event_builder = line_builder->AddEvent(
+      *plane_builder->GetOrCreateEventMetadata(event_name));
+  event_builder.SetOffsetPs(offset_ps);
+  event_builder.SetDurationPs(duration_ps);
+  for (const auto& stat_type_and_value : stats) {
+    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(stat_type_and_value.first)),
+                               stat_type_and_value.second);
+  }
+}
+
+void CreateXEvent(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    HostEventType event_type, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
+  CreateXEvent(plane_builder, line_builder, GetHostEventTypeStr(event_type),
+               offset_ps, duration_ps, stats);
+}
+
 // Test if events on the same thread are connected correctly according to the
 // nesting relationship.
 TEST(GroupEventsTest, ConnectIntraThreadTest) {
+  constexpr int64 kLineId = 0;
   XPlane plane;
   XPlaneBuilder plane_builder(&plane);
   plane_builder.ReserveLines(1);
-  auto line_builder = plane_builder.GetOrCreateLine(0);
+  auto line_builder = plane_builder.GetOrCreateLine(kLineId);
   CreateXEvent(&plane_builder, &line_builder, HostEventType::kTraceContext, 0,
                100, {});
   CreateXEvent(&plane_builder, &line_builder, HostEventType::kFunctionRun, 10,
@@ -108,8 +141,8 @@ TEST(GroupEventsTest, ConnectInterThreadTest) {
 }
 
 TEST(GroupEventsTest, GroupGpuTraceTest) {
-  XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
+  XPlane host_plane;
+  XPlaneBuilder host_plane_builder(&host_plane);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -125,8 +158,8 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
                {{StatType::kCorrelationId, 100}, {StatType::kDeviceId, 1}});
 
-  XPlane* device_plane = space.add_planes();
-  XPlaneBuilder device_plane_builder(device_plane);
+  XPlane device_plane;
+  XPlaneBuilder device_plane_builder(&device_plane);
   device_plane_builder.GetOrCreateStatMetadata(
       GetStatTypeStr(StatType::kGroupId));
   device_plane_builder.ReserveLines(1);
@@ -145,11 +178,11 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   EventGroupNameMap event_group_name_map;
   GroupEvents(connect_info_list,
               {HostEventType::kTraceContext, HostEventType::kFunctionRun},
-              &space, &event_group_name_map);
-  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
-  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 2);
+              &host_plane, {&device_plane}, &event_group_name_map);
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(&device_plane);
+  EXPECT_EQ(device_plane.lines(0).events(0).stats_size(), 2);
   EXPECT_EQ(device_plane_visitor.GetStatType(
-                device_plane->lines(0).events(0).stats(1)),
+                device_plane.lines(0).events(0).stats(1)),
             StatType::kGroupId);
   EXPECT_EQ(event_group_name_map.size(), 1);
   EXPECT_EQ(event_group_name_map[0], "123");
