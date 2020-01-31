@@ -522,6 +522,10 @@ class Converter {
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
 
+  Status SqueezeTensor(nvinfer1::ITensor* input,
+                       const std::vector<int>& trt_axes,
+                       nvinfer1::ITensor** output);
+
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
