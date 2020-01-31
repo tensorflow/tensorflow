@@ -497,11 +497,6 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         ragged_tensor.RaggedTensor.from_row_lengths(values, row_lengths))
     dataset = dataset.batch(32, drop_remainder=True)
-
-    # The map changes the internal representation of the ragged tensor.
-    # This test will fail if we don't normalize the tensor representation.
-    dataset = dataset.map(lambda x: x)
-
     dataset = distribute._RebatchDataset(dataset, num_replicas=8)
     # After rebatching, batch size is now 4.
     expected_output = []

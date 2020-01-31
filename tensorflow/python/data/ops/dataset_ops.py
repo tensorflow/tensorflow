@@ -1954,8 +1954,29 @@ name=None))
       A `Dataset` transformation function, which can be passed to
       `tf.data.Dataset.apply`.
     """
-    normalized_dataset = normalize_to_dense(self)
-    return _UnbatchDataset(normalized_dataset)
+
+    # NOTE(mrry): We must ensure that any non-tensor components in `dataset`
+    # are normalized to their dense tensor representation, so that the
+    # non-tensor oblivious unbatching logic will slice them appropriately.
+    # This leads to a somewhat inefficient re-encoding step for all non-tensor
+    # components.
+    #
+    # TODO(mrry): Consider optimizing this if it turns out to be a bottleneck.
+    def normalize(arg, *rest):
+      # pylint: disable=protected-access
+      if rest:
+        return structure.to_batched_tensor_list(self.element_spec,
+                                                (arg,) + rest)
+      else:
+        return structure.to_batched_tensor_list(self.element_spec, arg)
+
+    normalized_dataset = self.map(normalize)
+
+    # NOTE(mrry): Our `map()` has lost information about the structure of
+    # non-tensor components, so re-apply the structure of the original dataset.
+    restructured_dataset = _RestructuredDataset(normalized_dataset,
+                                                self.element_spec)
+    return _UnbatchDataset(restructured_dataset)
 
   def with_options(self, options):
     """Returns a new `tf.data.Dataset` with the given options set.
@@ -4250,38 +4271,6 @@ class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
         **self._flat_structure)
     super(_PrivateThreadPoolDataset, self).__init__(input_dataset,
                                                     variant_tensor)
-
-
-def normalize_to_dense(dataset):
-  """Normalizes non-tensor components in a dataset to dense representations.
-
-  This is necessary for dataset transformations that slice along the batch
-  dimension and are oblivious to non-tensors, e.g. `unbatch`, `rebatch`.
-
-  Args:
-    dataset: Dataset to normalize.
-
-  Returns:
-    A dataset whose sparse and ragged tensors have been normalized to their
-    dense representations.
-  """
-
-  # NOTE(mrry): This leads to a somewhat inefficient re-encoding step for all
-  # non-tensor components.
-  #
-  # TODO(mrry): Consider optimizing this if it turns out to be a bottleneck.
-  if isinstance(dataset.element_spec, tuple):
-    def normalize(*args):
-      return structure.to_batched_tensor_list(dataset.element_spec, tuple(args))
-  else:
-    def normalize(arg):
-      return structure.to_batched_tensor_list(dataset.element_spec, arg)
-
-  normalized_dataset = dataset.map(normalize)
-
-  # NOTE(mrry): Our `map()` has lost information about the structure of
-  # non-tensor components, so re-apply the structure of the original dataset.
-  return _RestructuredDataset(normalized_dataset, dataset.element_spec)
 
 
 class _RestructuredDataset(UnaryDataset):
