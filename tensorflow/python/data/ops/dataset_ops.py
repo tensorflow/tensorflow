@@ -1951,8 +1951,7 @@ name=None))
     [1, 2, 3, 1, 2, 1, 2, 3, 4]
 
     Returns:
-      A `Dataset` transformation function, which can be passed to
-      `tf.data.Dataset.apply`.
+      A `Dataset`.
     """
 
     # NOTE(mrry): We must ensure that any non-tensor components in `dataset`
