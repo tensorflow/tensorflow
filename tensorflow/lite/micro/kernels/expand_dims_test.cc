@@ -119,12 +119,6 @@ void TestExpandDims(std::initializer_list<int> input_dims_data,
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-#define TEST_EXPAND_DIMS(...)                                          \
-  using tflite::testing::TestExpandDims;                               \
-  tflite::testing::TestExpandDims<float, kTfLiteFloat32>(__VA_ARGS__); \
-  tflite::testing::TestExpandDims<uint8_t, kTfLiteUInt8>(__VA_ARGS__); \
-  tflite::testing::TestExpandDims<int8_t, kTfLiteInt8>(__VA_ARGS__);
-
 TF_LITE_MICRO_TEST(ExpandDimsPositiveAxis) {
   uint8_t output_data_buffer[4 * 4];
   constexpr int num_axis_dims = 1;
@@ -132,21 +126,23 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveAxis) {
   constexpr int num_expected_output_dims = 3;
 
   // expand_axis == 0
-  TEST_EXPAND_DIMS({num_input_dims, 2, 2},               // input_dims
-                   {1, 2, 3, 4},                         // input_data
-                   {num_axis_dims, 1},                   // expand axis dims
-                   {0},                                  // expand axis
-                   {num_expected_output_dims, 1, 2, 2},  // expected_output_dims
-                   {1, 2, 3, 4}, output_data_buffer      // expected_output
+  tflite::testing::TestExpandDims(
+      {num_input_dims, 2, 2},               // input_dims
+      {1, 2, 3, 4},                         // input_data
+      {num_axis_dims, 1},                   // expand axis dims
+      {0},                                  // expand axis
+      {num_expected_output_dims, 1, 2, 2},  // expected_output_dims
+      {1, 2, 3, 4}, output_data_buffer      // expected_output
   );
 
   // expand_axis == 2
-  TEST_EXPAND_DIMS({num_input_dims, 2, 2},               // input_dims
-                   {1, 2, 3, 4},                         // input_data
-                   {num_axis_dims, 1},                   // expand axis dims
-                   {2},                                  // expand axis
-                   {num_expected_output_dims, 2, 2, 1},  // expected_output_dims
-                   {1, 2, 3, 4}, output_data_buffer      // expected_output
+  tflite::testing::TestExpandDims(
+      {num_input_dims, 2, 2},               // input_dims
+      {1, 2, 3, 4},                         // input_data
+      {num_axis_dims, 1},                   // expand axis dims
+      {2},                                  // expand axis
+      {num_expected_output_dims, 2, 2, 1},  // expected_output_dims
+      {1, 2, 3, 4}, output_data_buffer      // expected_output
   );
 }
 
@@ -157,21 +153,23 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxis) {
   constexpr int num_expected_output_dims = 3;
 
   // expand_axis == -1
-  TEST_EXPAND_DIMS({num_input_dims, 2, 2},               // input_dims
-                   {1, 2, 3, 4},                         // input_data
-                   {num_axis_dims, 1},                   // expand axis dims
-                   {-1},                                 // expand axis
-                   {num_expected_output_dims, 2, 2, 1},  // expected_output_dims
-                   {1, 2, 3, 4}, output_data_buffer      // expected_output
+  tflite::testing::TestExpandDims(
+      {num_input_dims, 2, 2},               // input_dims
+      {1, 2, 3, 4},                         // input_data
+      {num_axis_dims, 1},                   // expand axis dims
+      {-1},                                 // expand axis
+      {num_expected_output_dims, 2, 2, 1},  // expected_output_dims
+      {1, 2, 3, 4}, output_data_buffer      // expected_output
   );
 
   // expand_axis == -3
-  TEST_EXPAND_DIMS({num_input_dims, 2, 2},               // input_dims
-                   {1, 2, 3, 4},                         // input_data
-                   {num_axis_dims, 1},                   // expand axis dims
-                   {-3},                                 // expand axis
-                   {num_expected_output_dims, 1, 2, 2},  // expected_output_dims
-                   {1, 2, 3, 4}, output_data_buffer      // expected_output
+  tflite::testing::TestExpandDims(
+      {num_input_dims, 2, 2},               // input_dims
+      {1, 2, 3, 4},                         // input_data
+      {num_axis_dims, 1},                   // expand axis dims
+      {-3},                                 // expand axis
+      {num_expected_output_dims, 1, 2, 2},  // expected_output_dims
+      {1, 2, 3, 4}, output_data_buffer      // expected_output
   );
 }
 
@@ -182,13 +180,14 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveInvalidRangeAxis) {
   constexpr int num_expected_output_dims = 3;
 
   // expand_axis == 3
-  TEST_EXPAND_DIMS({num_input_dims, 2, 2},      // input_dims
-                   {1, 2, 3, 4},                // input_data
-                   {num_axis_dims, 1},          // expand axis dims
-                   {3},                         // expand axis
-                   {num_expected_output_dims},  // expected_output_dims
-                   {}, output_data_buffer,      // expected_output
-                   true                         // expected fail
+  tflite::testing::TestExpandDims(
+      {num_input_dims, 2, 2},      // input_dims
+      {1, 2, 3, 4},                // input_data
+      {num_axis_dims, 1},          // expand axis dims
+      {3},                         // expand axis
+      {num_expected_output_dims},  // expected_output_dims
+      {}, output_data_buffer,      // expected_output
+      true                         // expected fail
   );
 }
 
@@ -199,13 +198,14 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeInvalidRangeAxis) {
   constexpr int num_expected_output_dims = 3;
 
   // expand_axis == -3
-  TEST_EXPAND_DIMS({num_input_dims, 2, 2},      // input_dims
-                   {1, 2, 3, 4},                // input_data
-                   {num_axis_dims, 1},          // expand axis dims
-                   {-4},                        // expand axis
-                   {num_expected_output_dims},  // expected_output_dims
-                   {}, output_data_buffer,      // expected_output
-                   true                         // expected fail
+  tflite::testing::TestExpandDims(
+      {num_input_dims, 2, 2},      // input_dims
+      {1, 2, 3, 4},                // input_data
+      {num_axis_dims, 1},          // expand axis dims
+      {-4},                        // expand axis
+      {num_expected_output_dims},  // expected_output_dims
+      {}, output_data_buffer,      // expected_output
+      true                         // expected fail
   );
 }
 
@@ -216,15 +216,15 @@ TF_LITE_MICRO_TEST(ExpandDimsInvalidNonScalarAxis) {
   constexpr int num_expected_output_dims = 3;
 
   // expand_axis == {0, 1}
-  TEST_EXPAND_DIMS({num_input_dims, 2, 2},      // input_dims
-                   {1, 2, 3, 4},                // input_data
-                   {num_axis_dims, 2},          // expand axis dims
-                   {0, 1},                      // expand axis
-                   {num_expected_output_dims},  // expected_output_dims
-                   {}, output_data_buffer,      // expected_output
-                   true                         // expected fail
+  tflite::testing::TestExpandDims(
+      {num_input_dims, 2, 2},      // input_dims
+      {1, 2, 3, 4},                // input_data
+      {num_axis_dims, 2},          // expand axis dims
+      {0, 1},                      // expand axis
+      {num_expected_output_dims},  // expected_output_dims
+      {}, output_data_buffer,      // expected_output
+      true                         // expected fail
   );
 }
 
-#undef TEST_EXPAND_DIMS
 TF_LITE_MICRO_TESTS_END
