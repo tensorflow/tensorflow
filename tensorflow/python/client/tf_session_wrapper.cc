@@ -796,20 +796,19 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       py::return_value_policy::reference);
 
   // Python needs to own deletion of outputs
-  m.def(
-      "TF_ImportGraphDefResultsReturnOutputs",
-      [](TF_ImportGraphDefResults* results) {
-        int num_outputs;
-        TF_Output* outputs;
-        TF_ImportGraphDefResultsReturnOutputs(results, &num_outputs, &outputs);
-        py::list py_list;
-        for (int i = 0; i < num_outputs; ++i) {
-          TF_Output* tf_output_ptr = new TF_Output(outputs[i]);
-          py_list.append(tf_output_ptr);
-        }
-        return py_list;
-      },
-      py::return_value_policy::move);
+  m.def("TF_ImportGraphDefResultsReturnOutputs",
+        [](TF_ImportGraphDefResults* results) {
+          int num_outputs;
+          TF_Output* outputs;
+          TF_ImportGraphDefResultsReturnOutputs(results, &num_outputs,
+                                                &outputs);
+          py::list py_list;
+          for (int i = 0; i < num_outputs; ++i) {
+            TF_Output tf_output = TF_Output(outputs[i]);
+            py_list.append(tf_output);
+          }
+          return py_list;
+        });
 
   m.def(
       "TF_ImportGraphDefResultsReturnOperations",
