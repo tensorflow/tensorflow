@@ -1,3 +1,0 @@
-review_exceptions {
-  robot_user: "tensorflow-git-owners"
-}
