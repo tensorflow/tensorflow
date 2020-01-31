@@ -72,6 +72,10 @@ class TensorFlowDialect : public Dialect {
   // value with the desired resultant type.
   Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
                                  Location loc) override;
+
+  // Verify an attribute from this dialect on the given operation.
+  LogicalResult verifyOperationAttribute(Operation *op,
+                                         NamedAttribute attribute) override;
 };
 
 // TODO(b/131258166): TensorFlow's mutex.h defines a `mutex_lock` macro, whose

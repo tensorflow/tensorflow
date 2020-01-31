@@ -837,3 +837,11 @@ func @sort_wrong_block_arg_type(%input0: tensor<16x16xf32>, %input1: tensor<16x1
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
   return
 }
+
+// -----
+
+func @custom_call_invalid_sharding(%input0: tensor<16x16xf32>) -> tensor<16x16xf32> {
+  // expected-error @+1 {{Invalid sharding: some-invalid-sharding}}
+  %0 = "xla_hlo.custom_call"(%input0) {backend_config = "", call_target_name = "Sharding", xla_hlo.sharding = "some-invalid-sharding"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  return %0 : tensor<16x16xf32>
+}
