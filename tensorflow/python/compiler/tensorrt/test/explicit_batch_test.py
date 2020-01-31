@@ -44,8 +44,8 @@ class ImplicitBatchTest(trt_test.TfTrtIntegrationTestBase):
     return array_ops.identity(q, name="output_0")
 
   def GetParams(self):
-    """ The input parameters have different first dimension.
-    The dimensions with 1 are removed with squeeze ops in the graph.
+    """ The input has 1 as a first dimension, which is removed by the squeeze
+    op in the graph.
 
     In explicit batch mode, TensorRT can convert the whole graph. In this mode
     it is possible to manipulate the batch dimension using the squeeze op.
@@ -77,7 +77,7 @@ class ImplicitBatchTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build.
-    The first squeeze op is not converted by TensorRT in implicit batch mode.
+    The squeeze op is not converted by TensorRT in implicit batch mode.
     Because of this we have two TRTEngineOp in the graphs: one for the
     subgraph before 'squeeze(q,0)', and another one for the rest of the ops
     after the 'squeeze(q,0)'.
