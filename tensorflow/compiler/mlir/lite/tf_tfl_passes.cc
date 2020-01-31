@@ -39,10 +39,11 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-  bool emit_quant_adaptor_ops =
+  bool input_emit_quant_adaptor_ops =
       quant_specs.inference_type != quant_specs.inference_input_type;
-  pass_manager->addPass(
-      mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  bool output_emit_quant_adaptor_ops = input_emit_quant_adaptor_ops;
+  pass_manager->addPass(mlir::TFL::CreatePostQuantizePass(
+      input_emit_quant_adaptor_ops, output_emit_quant_adaptor_ops));
 
   if (quant_specs.default_ranges.first.hasValue() ||
       quant_specs.default_ranges.second.hasValue()) {
@@ -50,8 +51,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
         quant_specs.default_ranges.first.getValueOr(0.0),
         quant_specs.default_ranges.second.getValueOr(0.0)));
     pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-    pass_manager->addPass(
-        mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+    pass_manager->addPass(mlir::TFL::CreatePostQuantizePass(
+        input_emit_quant_adaptor_ops, output_emit_quant_adaptor_ops));
   }
 }
 

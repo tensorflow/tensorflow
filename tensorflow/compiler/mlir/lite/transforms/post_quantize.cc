@@ -33,11 +33,15 @@ namespace {
 class PostQuantizePass : public FunctionPass<PostQuantizePass> {
  public:
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
-  explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {}
+  explicit PostQuantizePass()
+      : input_emit_quant_adaptor_ops_(false),
+        output_emit_quant_adaptor_ops_(false) {}
 
   // Constructor used by manually creating the pass.
-  explicit PostQuantizePass(bool emit_quant_adaptor_ops)
-      : emit_quant_adaptor_ops_(emit_quant_adaptor_ops) {}
+  explicit PostQuantizePass(bool input_emit_quant_adaptor_ops,
+                            bool output_emit_quant_adaptor_ops)
+      : input_emit_quant_adaptor_ops_(input_emit_quant_adaptor_ops),
+        output_emit_quant_adaptor_ops_(output_emit_quant_adaptor_ops) {}
 
   void runOnFunction() override;
 
@@ -46,10 +50,11 @@ class PostQuantizePass : public FunctionPass<PostQuantizePass> {
   // quant adaptor ops convert them to fixed point values (i.e. quantize) before
   // feeding them to the model and convert them back to floating point
   // (i.e. dequantize) as the output.
-  bool emit_quant_adaptor_ops_;
+  bool input_emit_quant_adaptor_ops_;
+  bool output_emit_quant_adaptor_ops_;
 };
 
-void RemoveQuantizationAdaptorOps(FuncOp func) {
+void RemoveInputQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.getBlocks().front();
   auto* terminator = bb.getTerminator();
@@ -97,6 +102,28 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
     bb.eraseArgument(0);
   }
 
+  int num_return_operands = terminator->getNumOperands();
+  llvm::SmallVector<Type, 4> output_types;
+  output_types.reserve(num_return_operands);
+  for (int i = 0; i != num_return_operands; ++i) {
+    output_types.push_back(terminator->getOperand(i).getType());
+  }
+  auto new_func_type = builder.getFunctionType(input_types, output_types);
+  func.setType(new_func_type);
+}
+
+void RemoveOutputQuantizationAdaptorOps(FuncOp func) {
+  mlir::OpBuilder builder(func.getBody());
+  auto& bb = func.getBlocks().front();
+  auto* terminator = bb.getTerminator();
+
+  int num_args = bb.getNumArguments();
+  llvm::SmallVector<Type, 4> input_types;
+  input_types.reserve(num_args);
+  for (int i = 0; i != num_args; ++i) {
+    input_types.push_back(bb.getArgument(i).getType());
+  }
+
   // Edit the return ops and remove the dequantize ops in place.
   int num_return_operands = terminator->getNumOperands();
   llvm::SmallVector<Type, 4> output_types;
@@ -127,8 +154,11 @@ void PostQuantizePass::runOnFunction() {
   TFL::populateWithGenerated(ctx, &patterns);
   applyPatternsGreedily(func, patterns);
 
-  if (!emit_quant_adaptor_ops_) {
-    RemoveQuantizationAdaptorOps(getFunction());
+  if (!input_emit_quant_adaptor_ops_) {
+    RemoveInputQuantizationAdaptorOps(getFunction());
+  }
+  if (!output_emit_quant_adaptor_ops_) {
+    RemoveOutputQuantizationAdaptorOps(getFunction());
   }
 }
 
@@ -136,8 +166,9 @@ void PostQuantizePass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OpPassBase<FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops) {
-  return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
+    bool input_emit_quant_adaptor_ops, bool output_emit_quant_adaptor_ops) {
+  return std::make_unique<PostQuantizePass>(input_emit_quant_adaptor_ops,
+                                            output_emit_quant_adaptor_ops);
 }
 
 static PassRegistration<PostQuantizePass> pass(

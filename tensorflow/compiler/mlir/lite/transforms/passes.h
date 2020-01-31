@@ -52,7 +52,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareQuantizePass(
 
 // Creates a instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OpPassBase<FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops);
+    bool input_emit_quant_adaptor_ops, bool output_emit_quant_adaptor_ops);
 
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 // pass.

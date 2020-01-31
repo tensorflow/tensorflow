@@ -63,10 +63,13 @@ llvm::cl::list<std::string> custom_opdefs(
 // type data with the quantized model. Set this to `false` if the model input is
 // integer types.
 // NOLINTNEXTLINE
-opt<bool> emit_quant_adaptor_ops(
+opt<bool> input_emit_quant_adaptor_ops(
     "emit-quant-adaptor-ops",
-    llvm::cl::desc(
-        "Emit Quantize/Dequantize before and after the generated TFLite model"),
+    llvm::cl::desc("Emit Quantize before the generated TFLite model"),
+    llvm::cl::init(false));
+opt<bool> output_emit_quant_adaptor_ops(
+    "emit-quant-adaptor-ops",
+    llvm::cl::desc("Emit Dequantize after the generated TFLite model"),
     llvm::cl::init(false));
 
 // The path to a quantization stats file to specify value ranges for some of the

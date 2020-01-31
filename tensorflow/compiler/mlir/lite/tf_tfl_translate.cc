@@ -161,7 +161,7 @@ int main(int argc, char **argv) {
       return kTrFailure;
     }
   }
-  if (!emit_quant_adaptor_ops) {
+  if (!input_emit_quant_adaptor_ops) {
     quant_specs.inference_input_type = quant_specs.inference_type;
   }
 

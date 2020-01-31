@@ -41,13 +41,6 @@ TfLiteStatus QuantizeModel(
     const std::unordered_set<std::string>& operator_names, bool allow_float,
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter) {
-  // TODO(b/142502494): remove this restriction by improving the `emit_adaptor`
-  // flag
-  if (input_type != output_type) {
-    error_reporter->Report("Required same input type and output type.");
-    return kTfLiteError;
-  }
-
   MLIRContext context;
   StatusScopedDiagnosticHandler statusHandler(&context,
                                               /*propagate=*/true);
@@ -77,17 +70,22 @@ TfLiteStatus QuantizeModel(
   quant_specs.inference_type = tensorflow::DT_QINT8;
   quant_specs.post_training_quantization = true;
 
-  bool emit_adaptor = false;
+  bool input_emit_adaptor = false, output_emit_adaptor = false;
   auto input_tf_type = tflite::TflTypeToTfType(input_type);
+  auto output_tf_type = tflite::TflTypeToTfType(output_type);
   if (input_tf_type == tensorflow::DT_FLOAT) {
-    emit_adaptor = true;
+    input_emit_adaptor = true;
   } else if (input_tf_type == tensorflow::DT_UINT8) {
     quant_specs.inference_type = tensorflow::DT_QUINT8;
+  }
+  if (output_tf_type == tensorflow::DT_FLOAT) {
+    output_emit_adaptor = true;
   }
 
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
   pm.addPass(TFL::CreateQuantizePass());
-  pm.addPass(TFL::CreatePostQuantizePass(emit_adaptor));
+  pm.addPass(
+      TFL::CreatePostQuantizePass(input_emit_adaptor, output_emit_adaptor));
 
   if (failed(pm.run(module.get()))) {
     const std::string& err = statusHandler.ConsumeStatus().error_message();
