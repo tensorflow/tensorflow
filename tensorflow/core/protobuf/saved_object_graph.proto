@@ -11,6 +11,8 @@ option cc_enable_arenas = true;
 
 package tensorflow;
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+
 // A SavedObjectGraph is part of object-based SavedModels in TF 2.0. It
 // describes the directed graph of Python objects (or equivalent in other
 // languages) that make up a model, with nodes[0] at the root.

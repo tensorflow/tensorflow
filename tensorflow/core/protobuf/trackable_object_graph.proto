@@ -4,6 +4,8 @@ option cc_enable_arenas = true;
 
 package tensorflow;
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+
 // A TensorBundle addition which saves extra information about the objects which
 // own variables, allowing for more robust checkpoint loading into modified
 // programs.

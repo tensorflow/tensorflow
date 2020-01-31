@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow;
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+
 // Some of the data from AllocatorStats
 message MemAllocatorStats {
   int64 num_allocs = 1;
