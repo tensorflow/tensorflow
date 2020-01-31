@@ -1197,10 +1197,10 @@ def regroup(values, wrap_class=PerReplica):
       assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
       assert set(v.keys()) == v0keys, ("v[0].keys: %s  v[i].keys: %s" %
                                        (v0keys, set(v.keys())))
-    return {
+    return type(v0)(**{
         key: regroup(tuple(v[key] for v in values), wrap_class)
         for key in v0keys
-    }
+    })
 
   # If exactly the same object across all devices, return it unwrapped.
   same_id = True
