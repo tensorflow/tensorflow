@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
 namespace mlir {
-namespace xla_lhlo {
 namespace {
 
 ArrayAttr GetNParallelLoopsAttrs(unsigned nParallelLoops, Builder b) {
@@ -56,7 +55,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto argType = op.getOperand(0).getType().template cast<ShapedType>();
+    auto argType =
+        op.getOperation()->getOperand(0).getType().template cast<ShapedType>();
     if (!argType.hasRank()) {
       emitError(loc, "lhlo to linalg conversion expects ranked args");
       return ConversionPattern::matchFailure();
@@ -125,7 +125,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     }
 
     rewriter.setInsertionPointToEnd(block);
-    Value opResult = MapLhloOpToStdScalarOp<OpTy>(
+    // TODO(ravishankarm) : For now use the method in xla_lhlo namespace. That
+    // method needs to be moved out of there.
+    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<OpTy>(
         llvm::cast<OpTy>(op), bodyResultTypes, bodyArgs, &rewriter);
     if (!opResult) {
       return ConversionPattern::matchFailure();
@@ -155,7 +157,8 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     // Create two loads from the input.
     auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
     auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
-    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
+    // TODO(ravishankarm) : Move this method out of xla_lhlo namespace.
+    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
         llvm::ArrayRef<Value>{lhs, rhs}, &rewriter);
     rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
@@ -164,12 +167,13 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
   }
 };
 
-class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
+class BroadcastInDimConverter
+    : public OpConversionPattern<xla_lhlo::BroadcastInDimOp> {
  public:
-  using OpConversionPattern<BroadcastInDimOp>::OpConversionPattern;
+  using OpConversionPattern<xla_lhlo::BroadcastInDimOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
+      xla_lhlo::BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto operandMemrefType =
         broadcastOp.operand().getType().dyn_cast<MemRefType>();
@@ -188,7 +192,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
 
  private:
   PatternMatchResult emitScalarBroadcast(
-      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
+      xla_lhlo::BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       MemRefType resultMemrefType, ConversionPatternRewriter* rewriter) const {
     unsigned nloops = resultMemrefType.getRank();
     SmallVector<Attribute, 1> indexingMaps{
@@ -216,7 +220,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
   }
 
   PatternMatchResult emitNonScalarBroadcast(
-      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
+      xla_lhlo::BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       MemRefType operandMemrefType, MemRefType resultMemrefType,
       ConversionPatternRewriter* rewriter) const {
     SmallVector<Type, 4> bodyArgTypes{operandMemrefType.getElementType()};
@@ -266,12 +270,12 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
   }
 };
 
-class IotaConverter : public OpConversionPattern<IotaOp> {
+class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
  public:
-  using OpConversionPattern<IotaOp>::OpConversionPattern;
+  using OpConversionPattern<xla_lhlo::IotaOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      IotaOp iotaOp, ArrayRef<Value> args,
+      xla_lhlo::IotaOp iotaOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto resultMemrefType =
         iotaOp.getOperand().getType().dyn_cast<MemRefType>();
@@ -317,12 +321,12 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
   }
 };
 
-class ConstConverter : public OpConversionPattern<ConstOp> {
+class ConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
  public:
-  using OpConversionPattern<ConstOp>::OpConversionPattern;
+  using OpConversionPattern<xla_lhlo::ConstOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      ConstOp constOp, ArrayRef<Value> args,
+      xla_lhlo::ConstOp constOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = constOp.getLoc();
     auto valueAttr = constOp.value().cast<DenseElementsAttr>();
@@ -367,7 +371,16 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 
 void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
-  patterns->insert<PointwiseToLinalgConverter<xla_hlo::AddOp, false>>(context);
+  patterns->insert<PointwiseToLinalgConverter<xla_hlo::AbsOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
 }
 
 // Converts LHLO ops to Linalg generic.
@@ -420,15 +433,21 @@ struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass() {
+namespace xla_lhlo {
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToLinalgPass() {
   return absl::make_unique<LhloLegalizeToLinalg>();
 }
 
 static PassRegistration<LhloLegalizeToLinalg> legalize_lhlo_pass(
     "lhlo-legalize-to-linalg", "Legalize from LHLO dialect to Linalg dialect");
+}  // namespace xla_lhlo
+
+namespace xla_hlo {
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass() {
+  return absl::make_unique<HloLegalizeToLinalg>();
+}
 
 static PassRegistration<HloLegalizeToLinalg> legalize_hlo_pass(
     "hlo-legalize-to-linalg", "Legalize from HLO dialect to Linalg dialect");
-
-}  // namespace xla_lhlo
+}  // namespace xla_hlo
 }  // namespace mlir
