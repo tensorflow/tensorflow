@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util as util_v1
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
@@ -907,6 +908,61 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   @property
   def while_op_needs_rewrite(self):
     return self.extra_inputs
+
+  def _create_op_internal(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
+    # For a reduction op, if op is in in the gradient body graph and its input
+    # is from the forward graph, moving op to the forward graph means we would
+    # store the tensor after the reduction as opposed to the tensor before
+    # reduction, and therefore could significantly reduce memory consumption.
+    # For now, we do this only for a few ops.
+    #
+    # We don't do this if any input tensor has already been accumulated. This
+    # can happen if we output all intermediates in the forward pass.
+    #
+    # If in XLA context, do not move constant ops to forward pass as pushing to
+    # and popping from a TensorList removes the constant property of an op and
+    # breaks XLA compilation, which requires certain inputs to be compile-time
+    # constant for certain ops.
+    if (op_type in {"Shape", "Size", "Rank"} and
+        all(input.graph is self._forward_graph for input in inputs) and
+        all(_get_accumulator(input) is None for input in inputs) and
+        not util_v1.GraphOrParentsInXlaContext(self._forward_graph)):
+      with self._forward_graph.as_default():
+        # `name` was built using name_scope stack of gradient graph and may not
+        # be unique in the forward graph. `Graph.create_op` does not uniquify
+        # names which are name scopes i.e. end in `/`. To ensure that the op
+        # created gets a unique name in the forward graph we get rid of the
+        # trailing slash.
+        name = ops.name_from_scope_name(name)
+        result = self._forward_graph._create_op_internal(
+            op_type,
+            inputs,
+            dtypes=dtypes,
+            input_types=input_types,
+            name=name,
+            attrs=attrs,
+            op_def=op_def,
+            compute_device=compute_device)
+        return result
+
+    return super(_WhileBodyGradFuncGraph, self)._create_op_internal(
+        op_type,
+        inputs,
+        dtypes=dtypes,
+        input_types=input_types,
+        name=name,
+        attrs=attrs,
+        op_def=op_def,
+        compute_device=compute_device)
 
   def capture(self, tensor, name=None, whitelisted=False):
     """Selectively captures external tensors.
