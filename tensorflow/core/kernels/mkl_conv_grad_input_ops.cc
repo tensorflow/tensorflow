@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/mkl_conv_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -523,7 +524,7 @@ class MklConvCustomBackpropInputOp
     // Conv[2D|3D]BackpropInputV2 supports both DT_INT32 and DT_INT64
     // output_shape tensor::MakeShape is able to handle both DT_INT32 and
     // DT_INT64 for input_tensor.
-    CHECK_EQ(this->MakeShape(input_tensor, &input_tf_shape).ok(), true);
+    CHECK_EQ(tensor::MakeShape(input_tensor, &input_tf_shape).ok(), true);
     return input_tf_shape;
   }
 
