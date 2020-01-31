@@ -18,11 +18,11 @@ namespace xcore {
 
 TfLiteRegistration* Register_Conv_SIDO();
 TfLiteRegistration* Register_Conv_DIDO();
-TfLiteRegistration* Register_FullyConnected_AOI();
-TfLiteRegistration* Register_FullyConnected_AOF();
+TfLiteRegistration* Register_FullyConnected_DIAO();
 TfLiteRegistration* Register_ArgMax_16();
 TfLiteRegistration* Register_MaxPool();
 TfLiteRegistration* Register_AvgPool();
+TfLiteRegistration* Register_Requantize_16_to_8();
 
 }  // namespace xcore
 }  // namespace micro
