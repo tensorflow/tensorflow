@@ -44,7 +44,9 @@ cc_library(
         "aws-cpp-sdk-core/source/http/standard/**/*.cpp",
         "aws-cpp-sdk-core/source/utils/*.cpp",
         "aws-cpp-sdk-core/source/utils/base64/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/event/*.cpp",
         "aws-cpp-sdk-core/source/utils/json/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/logging/*.cpp",
         "aws-cpp-sdk-core/source/utils/logging/**/*.cpp",
         "aws-cpp-sdk-core/source/utils/memory/**/*.cpp",
         "aws-cpp-sdk-core/source/utils/stream/**/*.cpp",
@@ -54,35 +56,43 @@ cc_library(
         "aws-cpp-sdk-core/source/utils/crypto/factory/**/*.cpp",
         "aws-cpp-sdk-s3/include/**/*.h",
         "aws-cpp-sdk-s3/source/**/*.cpp",
+        "aws-cpp-sdk-core/source/monitoring/*.cpp",
+        "aws-cpp-sdk-core/source/net/linux-shared/*.cpp",
+        "aws-cpp-sdk-core/source/utils/memory/*.cpp",
+        "aws-cpp-sdk-core/source/utils/crypto/openssl/*.cpp",
     ]),
     hdrs = [
         "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
     ],
     copts = [
         "-DAWS_SDK_VERSION_MAJOR=1",
-        "-DAWS_SDK_VERSION_MINOR=5",
-        "-DAWS_SDK_VERSION_PATCH=8",
+        "-DAWS_SDK_VERSION_MINOR=7",
+        "-DAWS_SDK_VERSION_PATCH=226",
     ],
     defines = select({
         "@org_tensorflow//tensorflow:linux_aarch64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
+            "OPENSSL_IS_BORINGSSL",
         ],
         "@org_tensorflow//tensorflow:linux_x86_64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
+            "OPENSSL_IS_BORINGSSL",
         ],
         "@org_tensorflow//tensorflow:macos": [
             "PLATFORM_APPLE",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
+            "OPENSSL_IS_BORINGSSL",
         ],
         "@org_tensorflow//tensorflow:linux_ppc64le": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
+            "OPENSSL_IS_BORINGSSL",
         ],
         "//conditions:default": [],
     }),
@@ -92,7 +102,18 @@ cc_library(
     ],
     deps = [
         "@curl",
+        "@boringssl//:crypto",
+        "@aws-c-common",
+        "@aws-c-event-stream",
+        "@aws-checksums",
     ],
+    copts = [
+        "-DENABLE_OPENSSL_ENCRYPTION",
+        "-DAWS_SDK_VERSION_MAJOR=1",
+        "-DAWS_SDK_VERSION_MINOR=7",
+        "-DAWS_SDK_VERSION_PATCH=226",
+        "-DOPENSSL_IS_BORINGSSL",
+    ], 
 )
 
 template_rule(

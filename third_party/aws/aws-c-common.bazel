@@ -1,0 +1,67 @@
+# Description:
+# AWS C++ SDK
+
+package(default_visibility = ["//visibility:public"])
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
+
+load("@org_tensorflow//third_party:common.bzl", "template_rule")
+
+cc_library(
+    name = "aws-c-common",
+    srcs = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": glob([
+            "source/posix/*.c",
+        ]),
+        "@org_tensorflow//tensorflow:linux_x86_64": glob([
+            "source/posix/*.c",
+        ]),
+        "@org_tensorflow//tensorflow:macos": glob([
+            "source/posix/*.c",
+        ]),
+        "@org_tensorflow//tensorflow:linux_ppc64le": glob([
+            "source/posix/*.c",
+        ]),
+        "@org_tensorflow//tensorflow:raspberry_pi_armeabi": glob([
+            "source/posix/*.c",
+        ]),
+        "//conditions:default": [],
+    }) + glob([
+        "source/*.c",
+        "include/aws/common/*.h",
+        "include/**/*.h",
+    ]),
+    hdrs = [
+    "include/aws/common/config.h",
+    ],
+    includes = [
+        "include/",
+    ],
+    deps = [
+
+    ],
+    copts = [
+      "-std=c99",
+      "-D_POSIX_C_SOURCE=199309L",
+      "-D_GNU_SOURCE",
+    ],
+    linkopts = [
+      "-lrt",
+      "-pthread",
+    ],
+)
+
+template_rule(
+    name = "config_h",
+    src = "include/aws/common/config.h.in",
+    out = "include/aws/common/config.h",
+    substitutions = {
+        "cmakedefine AWS_HAVE_GCC_OVERFLOW_MATH_EXTENSIONS": "undef AWS_HAVE_GCC_OVERFLOW_MATH_EXTENSIONS",
+        "cmakedefine AWS_HAVE_GCC_INLINE_ASM": "define AWS_HAVE_GCC_INLINE_ASM",
+        "cmakedefine AWS_HAVE_MSVC_MULX": "undef AWS_HAVE_MSVC_MULX",
+        "cmakedefine AWS_HAVE_EXECINFO": "define AWS_HAVE_EXECINFO",
+    },
+)
+

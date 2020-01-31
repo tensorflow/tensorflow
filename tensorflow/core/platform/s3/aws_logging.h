@@ -55,6 +55,9 @@ class AWSLogSystem : public Aws::Utils::Logging::LogSystemInterface {
                          const char* tag,
                          const Aws::OStringStream& messageStream) override;
 
+  // Flushes the buffered messages if the logger supports buffering
+  virtual void Flush() override;
+
  private:
   void LogMessage(Aws::Utils::Logging::LogLevel log_level,
                   const string& message);

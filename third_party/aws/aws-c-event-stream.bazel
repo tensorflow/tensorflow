@@ -1,0 +1,35 @@
+# Description:
+#   AWS C++ SDK
+
+package(default_visibility = ["//visibility:public"])
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
+
+
+cc_library(
+    name = "aws-c-event-stream",
+    srcs = glob([
+        "source/*.c",
+        "include/**/*.h",
+    ]),
+    hdrs = [
+    ],
+    includes = [
+        "include/",
+    ],
+    deps = [
+        "@aws-c-common",
+        "@aws-checksums",
+    ],
+    copts = [
+        "-std=c99",
+        "-D_POSIX_C_SOURCE=199309L",
+        "-D_GNU_SOURCE",
+    ],
+    linkopts = [
+        "-lrt",
+        "-pthread",
+    ],
+)
