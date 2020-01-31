@@ -118,22 +118,17 @@ void TestSqueeze(std::initializer_list<int> input_dims_data,
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-#define TEST_SQUEEZE(...)                                           \
-  using tflite::testing::TestSqueeze;                               \
-  tflite::testing::TestSqueeze<float, kTfLiteFloat32>(__VA_ARGS__); \
-  tflite::testing::TestSqueeze<uint8_t, kTfLiteUInt8>(__VA_ARGS__); \
-  tflite::testing::TestSqueeze<int8_t, kTfLiteInt8>(__VA_ARGS__);
-
 TF_LITE_MICRO_TEST(SqueezeAll) {
   uint8_t output_data_buffer[8 * 4];
   constexpr int num_input_dims = 3;
   constexpr int num_expected_output_dims = 1;
 
-  TEST_SQUEEZE({num_input_dims, 1, 8, 1},      // input_dims
-               {1, 2, 3, 4, 5, 6, 7, 8},       // input_data
-               {},                             // squeeze_dims
-               {num_expected_output_dims, 8},  // expected_output_dims
-               {1, 2, 3, 4, 5, 6, 7, 8}, output_data_buffer  // expected_output
+  tflite::testing::TestSqueeze(
+      {num_input_dims, 1, 8, 1},                    // input_dims
+      {1, 2, 3, 4, 5, 6, 7, 8},                     // input_data
+      {},                                           // squeeze_dims
+      {num_expected_output_dims, 8},                // expected_output_dims
+      {1, 2, 3, 4, 5, 6, 7, 8}, output_data_buffer  // expected_output
   );
 }
 
@@ -142,11 +137,12 @@ TF_LITE_MICRO_TEST(SqueezeSelectedAxis) {
   constexpr int num_input_dims = 3;
   constexpr int num_expected_output_dims = 2;
 
-  TEST_SQUEEZE({num_input_dims, 1, 8, 1},         // input_dims
-               {1, 2, 3, 4, 5, 6, 7, 8},          // input_data
-               {2},                               // squeeze_dims
-               {num_expected_output_dims, 1, 8},  // expected_output_dims
-               {1, 2, 3, 4, 5, 6, 7, 8}, output_data_buffer  // expected_output
+  tflite::testing::TestSqueeze(
+      {num_input_dims, 1, 8, 1},                    // input_dims
+      {1, 2, 3, 4, 5, 6, 7, 8},                     // input_data
+      {2},                                          // squeeze_dims
+      {num_expected_output_dims, 1, 8},             // expected_output_dims
+      {1, 2, 3, 4, 5, 6, 7, 8}, output_data_buffer  // expected_output
   );
 }
 
@@ -155,11 +151,12 @@ TF_LITE_MICRO_TEST(SqueezeNegativeAxis) {
   constexpr int num_input_dims = 3;
   constexpr int num_expected_output_dims = 1;
 
-  TEST_SQUEEZE({num_input_dims, 1, 8, 1},      // input_dims
-               {1, 2, 3, 4, 5, 6, 7, 8},       // input_data
-               {-1, 0},                        // squeeze_dims
-               {num_expected_output_dims, 8},  // expected_output_dims
-               {1, 2, 3, 4, 5, 6, 7, 8}, output_data_buffer  // expected_output
+  tflite::testing::TestSqueeze(
+      {num_input_dims, 1, 8, 1},                    // input_dims
+      {1, 2, 3, 4, 5, 6, 7, 8},                     // input_data
+      {-1, 0},                                      // squeeze_dims
+      {num_expected_output_dims, 8},                // expected_output_dims
+      {1, 2, 3, 4, 5, 6, 7, 8}, output_data_buffer  // expected_output
   );
 }
 
@@ -168,11 +165,12 @@ TF_LITE_MICRO_TEST(SqueezeRepetitiveAxis) {
   constexpr int num_input_dims = 3;
   constexpr int num_expected_output_dims = 1;
 
-  TEST_SQUEEZE({num_input_dims, 1, 8, 1},      // input_dims
-               {1, 2, 3, 4, 5, 6, 7, 8},       // input_data
-               {2, 2, 0, -1, -3},              // squeeze_dims
-               {num_expected_output_dims, 8},  // expected_output_dims
-               {1, 2, 3, 4, 5, 6, 7, 8}, output_data_buffer  // expected_output
+  tflite::testing::TestSqueeze(
+      {num_input_dims, 1, 8, 1},                    // input_dims
+      {1, 2, 3, 4, 5, 6, 7, 8},                     // input_data
+      {2, 2, 0, -1, -3},                            // squeeze_dims
+      {num_expected_output_dims, 8},                // expected_output_dims
+      {1, 2, 3, 4, 5, 6, 7, 8}, output_data_buffer  // expected_output
   );
 }
 
@@ -181,13 +179,13 @@ TF_LITE_MICRO_TEST(SqueezeAllDims) {
   constexpr int num_input_dims = 7;
   constexpr int num_expected_output_dims = 0;
 
-  TEST_SQUEEZE({num_input_dims, 1, 1, 1, 1, 1, 1, 1},  // input_dims
-               {3},                                    // input_data
-               {},                                     // squeeze_dims
-               {num_expected_output_dims},             // expected_output_dims
-               {3}, output_data_buffer                 // expected_output
+  tflite::testing::TestSqueeze(
+      {num_input_dims, 1, 1, 1, 1, 1, 1, 1},  // input_dims
+      {3},                                    // input_data
+      {},                                     // squeeze_dims
+      {num_expected_output_dims},             // expected_output_dims
+      {3}, output_data_buffer                 // expected_output
   );
 }
 
-#undef TEST_SQUEEZE
 TF_LITE_MICRO_TESTS_END
