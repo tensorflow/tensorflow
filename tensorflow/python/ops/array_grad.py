@@ -273,15 +273,6 @@ def _StridedSliceGrad(op, grad):
   # be the same.
   x = array_ops.shape(op.inputs[0], out_type=begin.dtype)
 
-  if tensor_util.constant_value(x) is not None:
-    x = tensor_util.constant_value(x)
-  if tensor_util.constant_value(begin) is not None:
-    begin = tensor_util.constant_value(begin)
-  if tensor_util.constant_value(end) is not None:
-    end = tensor_util.constant_value(end)
-  if tensor_util.constant_value(strides) is not None:
-    strides = tensor_util.constant_value(strides)
-
   return array_ops.strided_slice_grad(
       x,
       begin,
