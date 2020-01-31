@@ -1272,7 +1272,7 @@ class ExecutorState {
    public:
     TaggedNodeReadyQueue() : front_index_(0) {}
 
-    void push_back(TaggedNode node) { ready_.push_back(node); }
+    void push_back(const TaggedNode& node) { ready_.push_back(node); }
     TaggedNode front() const {
       DCHECK_LT(front_index_, ready_.size());
       return ready_[front_index_];
@@ -1332,6 +1332,7 @@ class ExecutorState {
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
+  const bool run_all_kernels_inline_;
 
   // Owned.
 
@@ -1402,14 +1403,17 @@ class ExecutorState {
 
   // Called after each node finishes. Takes ownership of "stats". Returns true
   // if execution has completed.
-  bool NodeDone(const Status& s, const TaggedNodeSeq& ready,
+  //
+  // This method will clear `*ready` before returning.
+  bool NodeDone(const Status& s, TaggedNodeSeq* ready,
                 NodeExecStatsInterface* stats,
                 TaggedNodeReadyQueue* inline_ready);
 
-  // Schedule all the expensive nodes in 'ready', and put all the inexpensive
+  // Schedule all the expensive nodes in '*ready', and put all the inexpensive
   // nodes in 'ready' into 'inline_ready'.
-  void ScheduleReady(const TaggedNodeSeq& ready,
-                     TaggedNodeReadyQueue* inline_ready);
+  //
+  // This method will clear `*ready` before returning.
+  void ScheduleReady(TaggedNodeSeq* ready, TaggedNodeReadyQueue* inline_ready);
 
   // For debugging/logging only.
   inline void MaybeMarkCompleted(FrameState* frame, int64 iter,
@@ -1464,6 +1468,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
+      run_all_kernels_inline_(args.run_all_kernels_inline),
       num_outstanding_ops_(0) {
   if (args.user_intra_op_threadpool != nullptr) {
     Device* device = impl_->params_.device;
@@ -1592,6 +1597,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   }
 
   // Initialize the ready queue.
+  ready.reserve(impl_->root_nodes_.size());
   for (const NodeItem* item : impl_->root_nodes_) {
     DCHECK_EQ(item->num_inputs, 0);
     ready.push_back(TaggedNode{item, root_frame_, 0, false});
@@ -1607,7 +1613,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
     }
     done_cb_ = std::move(done);
     // Schedule to run all the ready ops in thread pool.
-    ScheduleReady(ready, nullptr);
+    ScheduleReady(&ready, nullptr);
   }
 }
 
@@ -1807,7 +1813,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         }
         MaybeMarkCompleted(input_frame, input_iter, item);
         // Continue to process the nodes in 'inline_ready'.
-        completed = NodeDone(s, ready, stats, &inline_ready);
+        completed = NodeDone(s, &ready, stats, &inline_ready);
         continue;
       }
 
@@ -1866,7 +1872,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
             device->ConsumeListOfAccessedTensors(state->ctx.op_device_context(),
                                                  accessed);
           }
-          const bool completed = NodeDone(s, ready, stats, nullptr);
+          const bool completed = NodeDone(s, &ready, stats, nullptr);
           delete state;
           if (completed) ScheduleFinish();
         };
@@ -1956,7 +1962,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         scheduled_nsec = nodestats::NowInNsec();
       }
       // Postprocess.
-      completed = NodeDone(s, ready, stats, &inline_ready);
+      completed = NodeDone(s, &ready, stats, &inline_ready);
     }
   }  // while !inline_ready.empty()
 
@@ -2167,7 +2173,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
 
   // Propagates outputs along out edges, and puts newly ready nodes
   // into the ready queue.
-  ready->clear();
+  DCHECK(ready->empty());
   bool is_frame_done = false;
   FrameState* output_frame = input_frame;
   int64 output_iter = input_iter;
@@ -2258,7 +2264,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
   }
 }
 
-bool ExecutorState::NodeDone(const Status& s, const TaggedNodeSeq& ready,
+bool ExecutorState::NodeDone(const Status& s, TaggedNodeSeq* ready,
                              NodeExecStatsInterface* stats,
                              TaggedNodeReadyQueue* inline_ready) {
   nodestats::SetAllEnd(stats);
@@ -2310,7 +2316,7 @@ bool ExecutorState::NodeDone(const Status& s, const TaggedNodeSeq& ready,
   }
 
   bool completed = false;
-  const size_t ready_size = ready.size();
+  const size_t ready_size = ready->size();
   if (ready_size == 0 || !s.ok()) {
     completed = (num_outstanding_ops_.fetch_sub(1) == 1);
   } else if (ready_size > 1) {
@@ -2324,49 +2330,67 @@ bool ExecutorState::NodeDone(const Status& s, const TaggedNodeSeq& ready,
   return completed;
 }
 
-void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
+void ExecutorState::ScheduleReady(TaggedNodeSeq* ready,
                                   TaggedNodeReadyQueue* inline_ready) {
-  if (ready.empty()) return;
+  if (ready->empty()) return;
 
   int64 scheduled_nsec = 0;
   if (stats_collector_) {
     scheduled_nsec = nodestats::NowInNsec();
   }
 
-  if (inline_ready == nullptr) {
-    // Schedule to run all the ready ops in thread pool.
-    for (auto& tagged_node : ready) {
-      runner_([=]() { Process(tagged_node, scheduled_nsec); });
-    }
-    return;
-  }
-
-  const TaggedNode* curr_expensive_node = nullptr;
-  for (auto& tagged_node : ready) {
-    const NodeItem& item = *tagged_node.node_item;
-    if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
-      // Inline this inexpensive node.
-      inline_ready->push_back(tagged_node);
+  if (run_all_kernels_inline_) {
+    if (inline_ready == nullptr) {
+      // Schedule all ready kernels from a single closure. This ensure that,
+      // regardless of the `runner_` implementation, all kernels will run
+      // sequentially on the same thread, and thread wakeup overhead and
+      // executor mutex contention will be minimized.
+      runner_([this, ready = std::move(*ready), scheduled_nsec]() {
+        for (auto& tagged_node : ready) {
+          Process(tagged_node, scheduled_nsec);
+        }
+      });
     } else {
-      if (curr_expensive_node) {
-        // Dispatch to another thread since there is plenty of work to
-        // do for this thread.
+      for (auto& tagged_node : *ready) {
+        inline_ready->push_back(tagged_node);
+      }
+    }
+  } else {
+    const TaggedNode* curr_expensive_node = nullptr;
+    if (inline_ready == nullptr) {
+      // Schedule to run all the ready ops in thread pool.
+      for (auto& tagged_node : *ready) {
+        runner_([=]() { Process(tagged_node, scheduled_nsec); });
+      }
+    } else {
+      for (auto& tagged_node : *ready) {
+        const NodeItem& item = *tagged_node.node_item;
+        if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
+          // Inline this inexpensive node.
+          inline_ready->push_back(tagged_node);
+        } else {
+          if (curr_expensive_node) {
+            // Dispatch to another thread since there is plenty of work to
+            // do for this thread.
+            runner_(std::bind(&ExecutorState::Process, this,
+                              *curr_expensive_node, scheduled_nsec));
+          }
+          curr_expensive_node = &tagged_node;
+        }
+      }
+    }
+    if (curr_expensive_node) {
+      if (inline_ready->empty()) {
+        inline_ready->push_back(*curr_expensive_node);
+      } else {
+        // There are inline nodes to run already. We dispatch this expensive
+        // node to other thread.
         runner_(std::bind(&ExecutorState::Process, this, *curr_expensive_node,
                           scheduled_nsec));
       }
-      curr_expensive_node = &tagged_node;
     }
   }
-  if (curr_expensive_node) {
-    if (inline_ready->empty()) {
-      inline_ready->push_back(*curr_expensive_node);
-    } else {
-      // There are inline nodes to run already. We dispatch this expensive
-      // node to other thread.
-      runner_(std::bind(&ExecutorState::Process, this, *curr_expensive_node,
-                        scheduled_nsec));
-    }
-  }
+  ready->clear();
 }
 
 inline void ExecutorState::MaybeMarkCompleted(FrameState* frame, int64 iter,
