@@ -127,7 +127,7 @@ inline void DepthwiseConvPerChannel(
     const std::int64_t* bias_data, const RuntimeShape& output_shape,
     int16* output_data) {
   // Get parameters.
-    const int stride_width = params.stride_width;
+  const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
@@ -136,12 +136,13 @@ inline void DepthwiseConvPerChannel(
   const int depth_multiplier = params.depth_multiplier;
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
-    // Check dimensions of the tensors.
+
+  // Check dimensions of the tensors.
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
   const int input_height = input_shape.Dims(1);
@@ -151,11 +152,10 @@ inline void DepthwiseConvPerChannel(
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
-  
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
-  
-    for (int batch = 0; batch < batches; ++batch) {
+
+  for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
@@ -163,9 +163,7 @@ inline void DepthwiseConvPerChannel(
             const int output_channel = m + in_channel * depth_multiplier;
             const int in_x_origin = (out_x * stride_width) - pad_width;
             const int in_y_origin = (out_y * stride_height) - pad_height;
-            
             std::int64_t acc = 0;
-            
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                 const int in_x = in_x_origin + dilation_width_factor * filter_x;
@@ -180,7 +178,6 @@ inline void DepthwiseConvPerChannel(
                                                       in_x, in_channel)];
                   int32 filter_val = filter_data[Offset(
                       filter_shape, 0, filter_y, filter_x, output_channel)];
-                  
                   // Accumulate with 64 bits accumulator.
                   // We assume maximum of 2^16 accumulations as with the 8-bit
                   // case so actually the value in the accumulator should not
@@ -201,22 +198,7 @@ inline void DepthwiseConvPerChannel(
             output_data[Offset(output_shape, batch, out_y, out_x,
                                output_channel)] =
                 static_cast<int16_t>(scaled_acc);
-            
-            acc += filter_val * (input_val - input_offset[batch]);
-                }
-              }
-            }
-            float acc_float = static_cast<float>(acc);
-            acc_float *=
-                per_channel_scale[output_channel] * scaling_factors_ptr[batch];
-            if (bias_data && output_channel < bias_depth) {
-              acc_float += bias_data[output_channel];
-            }
-            output_data[Offset(output_shape, batch, out_y, out_x,
-                               output_channel)] =
-                ActivationFunctionWithMinMax(acc_float, output_activation_min,
-                                             output_activation_max);
-         }
+          }
         }
       }
     }
@@ -230,7 +212,6 @@ inline void DepthwiseConvHybridPerChannel(
     const RuntimeShape& bias_shape, const float* bias_data,
     const RuntimeShape& output_shape, float* output_data,
     const float* per_channel_scale, int32_t* input_offset) {
-
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
