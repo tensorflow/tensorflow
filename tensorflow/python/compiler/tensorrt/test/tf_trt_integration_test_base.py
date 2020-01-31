@@ -213,11 +213,16 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def GetTrtRewriterConfig(self,
                            run_params,
                            conversion_params,
-                           disable_non_trt_optimizers=False):
-    return trt_convert.get_tensorrt_rewriter_config(
+                           disable_non_trt_optimizers=False,
+                           use_implicit_batch=True):
+    rewriter_config = trt_convert.get_tensorrt_rewriter_config(
         conversion_params=conversion_params,
         is_v2=run_params.is_v2,
         disable_non_trt_optimizers=disable_non_trt_optimizers)
+    for optimizer in rewriter_config.custom_optimizers:
+      if optimizer.name == 'TensorRTOptimizer':
+        optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
+    return rewriter_config
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
