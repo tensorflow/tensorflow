@@ -1265,7 +1265,7 @@ Optional<std::string> Translator::TranslateInternal() {
     if (auto fn = dyn_cast<FuncOp>(op)) {
       if (fn != main_fn) {
         subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
-        named_regions.emplace_back(fn.getName(), &fn.getBody());
+        named_regions.emplace_back(fn.getName().str(), &fn.getBody());
       }
     } else if (auto wo = dyn_cast<mlir::TFL::WhileOp>(op)) {
       std::string name = GetWhileCondName(wo);
