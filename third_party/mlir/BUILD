@@ -1346,7 +1346,6 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":TransformUtils",
-        ":VectorAnalysis",
         ":VectorOps",
         "@llvm-project//llvm:support",
     ],
@@ -1529,28 +1528,6 @@ cc_library(
         ":Pass",
         ":StandardOps",
         ":Support",
-        "@llvm-project//llvm:support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "VectorAnalysis",
-    srcs = glob([
-        "lib/Analysis/Vector*.cpp",
-        "lib/Analysis/Vector*.h",
-    ]),
-    hdrs = glob([
-        "include/mlir/Analysis/Vector*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":AffineOps",
-        ":Analysis",
-        ":IR",
-        ":StandardOps",
-        ":Support",
-        ":VectorOps",
         "@llvm-project//llvm:support",
     ],
     alwayslink = 1,
