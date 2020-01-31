@@ -613,50 +613,8 @@ class BatchNormalizationBase(Layer):
 
     return (r, d, out_mean, out_variance)
 
-  def moment_calculation(self,
-                         inputs,
-                         axes,
-                         keep_dims=False,
-                         mask=None):
-
-      with ops.name_scope("moments", values=[inputs, axes]):
-          # The dynamic range of fp16 is too limited to support the collection of
-          # sufficient statistics. As a workaround we simply perform the operations
-          # on 32-bit floats before converting the mean and variance back to fp16
-          casted_inputs = math_ops.cast(inputs, dtypes.float32) if inputs.dtype == dtypes.float16 else inputs
-          # Compute true mean while keeping the dims for proper broadcasting.
-
-          if mask is not None:
-              mask = array_ops.expand_dims(mask, axis=-1)
-              binary_mask = math_ops.cast(mask, casted_inputs.dtype)
-
-              # Count the number of non-padded values by summing the mask
-              axis_counts = math_ops.reduce_sum(binary_mask, axes, keepdims=True, name="mask_sum")
-
-              # Exclude any padded values when calculating the sum
-              masked_inputs = casted_inputs * binary_mask
-              masked_sum = math_ops.reduce_sum(masked_inputs, axes, keepdims=True, name="values_sum")
-
-              mean = math_ops.divide(masked_sum, axis_counts)
-
-              squared_difference = math_ops.squared_difference(casted_inputs, array_ops.stop_gradient(mean))
-              masked_difference = squared_difference * binary_mask
-              squared_sum = math_ops.reduce_sum(masked_difference, axes, keepdims=True, name="squared_sum")
-              variance = math_ops.divide(squared_sum, axis_counts)
-
-              if not keep_dims:
-                  mean = array_ops.squeeze(mean, axes)
-                  variance = array_ops.squeeze(variance, axes)
-              if inputs.dtype == dtypes.float16:
-                  return (math_ops.cast(mean, dtypes.float16),
-                          math_ops.cast(variance, dtypes.float16))
-          else:
-              mean, variance = nn.moments(inputs, axes, keep_dims=keep_dims)
-
-          return (mean, variance)
-
   def _moments(self, inputs, reduction_axes, keep_dims, mask=None):
-    mean, variance = self.moment_calculation(inputs, reduction_axes, keep_dims=keep_dims, mask=mask)
+    mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims, mask=mask)
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
     # TODO(b/130185866): Support zero batch input in graph mode.

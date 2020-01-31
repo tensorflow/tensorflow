@@ -1137,7 +1137,8 @@ def moments(
     shift=None,  # pylint: disable=unused-argument
     name=None,
     keep_dims=None,
-    keepdims=None):
+    keepdims=None,
+    mask=None):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
@@ -1175,16 +1176,30 @@ def moments(
     # on 32-bit floats before converting the mean and variance back to fp16
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
     # Compute true mean while keeping the dims for proper broadcasting.
-    mean = math_ops.reduce_mean(y, axes, keepdims=True, name="mean")
-    # sample variance, not unbiased variance
-    # Note: stop_gradient does not change the gradient that gets
-    #       backpropagated to the mean from the variance calculation,
-    #       because that gradient is zero
-    variance = math_ops.reduce_mean(
-        math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
-        axes,
-        keepdims=True,
-        name="variance")
+    if mask is not None:
+      mask = math_ops.cast(array_ops.expand_dims(mask, axis=-1), y.dtype)
+      # Count the non-padded values by summing the mask and exclude any padded values when calculating the sum
+      axis_counts = math_ops.reduce_sum(mask, axes, keepdims=True, name="mask_sum")
+      masked_inputs = y * mask
+      masked_sum = math_ops.reduce_sum(masked_inputs, axes, keepdims=True, name="values_sum")
+      mean = math_ops.divide(masked_sum, axis_counts, name="mean")
+
+      squared_difference = math_ops.squared_difference(y, array_ops.stop_gradient(mean))
+      masked_difference = squared_difference * mask
+      squared_sum = math_ops.reduce_sum(masked_difference, axes, keepdims=True, name="squared_sum")
+      variance = math_ops.divide(squared_sum, axis_counts, name="variance")
+    else:
+      mean = math_ops.reduce_mean(y, axes, keepdims=True, name="mean")
+      # sample variance, not unbiased variance
+      # Note: stop_gradient does not change the gradient that gets
+      #       backpropagated to the mean from the variance calculation,
+      #       because that gradient is zero
+      variance = math_ops.reduce_mean(
+          math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
+          axes,
+          keepdims=True,
+          name="variance")
+
     if not keep_dims:
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
