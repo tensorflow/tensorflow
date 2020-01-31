@@ -146,9 +146,10 @@ std::array<int64, 3> GetReductionTiling(
           &cc_major, &cc_minor);
     }
     int unroll_x = 8;
-    if (cc_major >= 7 && smallest_input_dtype_bits <= 16) {
-      // TODO: Benchmark with int8 too.
+    if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
       unroll_x = 32;
+    } else if (cc_major >= 6 && smallest_input_dtype_bits == 8) {
+      unroll_x = 64;
     }
     return {tile_z, 1, unroll_x};
   }
