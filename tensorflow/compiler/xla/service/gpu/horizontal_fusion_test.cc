@@ -199,11 +199,9 @@ TEST_F(HorizontalFusionTest, GradientDescentOptimizerLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> var_outs;
-  int64 dim = 1;
-  for (size_t i = 0; i < 128; ++i) {
+  for (int64 i = 0; i < 128; ++i) {
     // For shapes {1, 1024}, {2, 1024}, ..., {128, 1024}
     auto shape = ShapeUtil::MakeShape(F32, {i + 1, 1024});
-    dim *= 2;
     HloInstruction* param_var_in = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 3 + 0, shape, "var.in"));
     HloInstruction* param_alpha =
@@ -291,7 +289,7 @@ TEST_F(HorizontalFusionTest, RMSPropLike) {
   HloComputation::Builder builder(TestName());
 
   std::vector<HloInstruction*> all_outputs;
-  for (size_t i = 0; i < 48; ++i) {
+  for (int64 i = 0; i < 48; ++i) {
     auto shape = ShapeUtil::MakeShape(F32, {2, 1024 + i});
     // ms <- grad**2 (1 - rho) + ms * rho
     HloInstruction* grad = builder.AddInstruction(
