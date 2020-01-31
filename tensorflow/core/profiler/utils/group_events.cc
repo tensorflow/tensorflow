@@ -203,13 +203,11 @@ void CreateEventGroup(const std::vector<int64 /*EventType*/>& root_event_types,
         if (root_event_node->GetGroupId()) continue;
         int64 group_id = next_group_id++;
         root_event_node->PropagateGroupId(group_id);
-        if (event_group_name_map) {
-          (*event_group_name_map)[group_id] = root_event_node->GetGroupName();
-          // Add step_name stat if it is a TraceContext event.
-          // TODO(jihochoi): change event name instead.
-          if (root_event_type == HostEventType::kTraceContext) {
-            root_event_node->AddStepName((*event_group_name_map)[group_id]);
-          }
+        (*event_group_name_map)[group_id] = root_event_node->GetGroupName();
+        // Add step_name stat if it is a TraceContext event.
+        // TODO(jihochoi): change event name instead.
+        if (root_event_type == HostEventType::kTraceContext) {
+          root_event_node->AddStepName((*event_group_name_map)[group_id]);
         }
       }
     }
