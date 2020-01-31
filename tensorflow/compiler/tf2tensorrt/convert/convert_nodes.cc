@@ -1432,7 +1432,6 @@ Status Converter::GetTensorOrWeights(const string& name,
 
 Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
                                   const std::vector<int>& order_with_batch_dim,
-                                  absl::string_view name,
                                   nvinfer1::ITensor** output_tensor) {
   const auto dims = input_tensor->getDimensions();
 
@@ -1447,7 +1446,6 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
 
   nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(*input_tensor);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Transpose");
-  layer->setName(std::basic_string<char>(name).c_str());
   MarkQuantizationRangesAsInferrable(input_tensor, layer->getOutput(0));
 
   nvinfer1::Permutation permutation;
@@ -2072,8 +2070,8 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   // Transpose to NCHW (NCHW is required for IConvLayer).
   const bool need_transpose = (data_format == "NHWC");
   if (need_transpose) {
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 1, 2}, StrCat(node_def.name(), "_to_NCHW"), &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 3, 1, 2}, &tensor));
   }
   // Dimensions of transposed tensor.
   const auto tensor_dim = tensor->getDimensions();
@@ -2198,8 +2196,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 1}, StrCat(node_def.name(), "_to_NHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 1}, &output_tensor));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -2231,8 +2228,8 @@ Status ConvertTranspose(OpConverterParams* params) {
 
   // Start conversion.
   nvinfer1::ITensor* output_tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      input_tensor, perm, params->node_def.name(), &output_tensor));
+  TF_RETURN_IF_ERROR(
+      params->converter->TransposeTensor(input_tensor, perm, &output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -2586,8 +2583,8 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
         input, reshape_dims, /*validation_only=*/false, &tensor));
   }
   if (need_transpose) {
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, transpose_order, StrCat(node_def.name(), "_for_pad"), &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, transpose_order, &tensor));
   }
   // Add padding layer
   nvinfer1::IPaddingLayer* layer = params->converter->network()->addPadding(
@@ -2599,8 +2596,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   // Restore transpose
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, inv_transpose_order, StrCat(node_def.name(), "_after_pad"),
-        &tensor));
+        tensor, inv_transpose_order, &tensor));
   }
   // Reshape for shrink_axis.
   if (final_shape) {
@@ -2920,9 +2916,8 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   // Transpose to NCDHW (NCDHW is required for IConvLayer).
   const bool need_transpose = is_ndhwc;
   if (need_transpose) {
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 4, 1, 2, 3}, StrCat(node_def.name(), "_to_NCDHW"),
-        &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
   }
 
   // group == 0 signifies that this is a depthwise convolution, so set
@@ -2987,8 +2982,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 4, 1}, StrCat(node_def.name(), "_to_NDHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 4, 1}, &output_tensor));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -3056,9 +3050,8 @@ Status ConvertPool3D(OpConverterParams* params) {
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   if (data_format == "NDHWC") {
     // NDHWC => NCDHW
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 4, 1, 2, 3}, StrCat(node_def.name(), "_to_NCDHW"),
-        &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
   }
 
   const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index],
@@ -3085,8 +3078,7 @@ Status ConvertPool3D(OpConverterParams* params) {
   if (data_format == "NDHWC") {
     // NCDHW => NDHWC
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 4, 1}, StrCat(node_def.name(), "_to_NDHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 4, 1}, &output_tensor));
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -3180,8 +3172,8 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   // Transpose to NCHW (NCHW is required for IConvLayer).
   const bool need_transpose = (data_format == "NHWC");
   if (need_transpose) {
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 1, 2}, StrCat(node_def.name(), "_to_NCHW"), &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 3, 1, 2}, &tensor));
   }
 
   nvinfer1::DimsHW kernel_size;
@@ -3253,8 +3245,7 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 1}, StrCat(node_def.name(), "_to_NHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 1}, &output_tensor));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -3290,8 +3281,8 @@ Status ConvertPool(OpConverterParams* params) {
   if (data_format == "NHWC") {
     h_index = 1;
     w_index = 2;
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 1, 2}, StrCat(node_def.name(), "_to_NCHW"), &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 3, 1, 2}, &tensor));
   }
 
   const auto tf_stride = attrs.get<std::vector<int64>>("strides");
@@ -3359,8 +3350,7 @@ Status ConvertPool(OpConverterParams* params) {
 
   if (data_format == "NHWC") {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 1}, StrCat(node_def.name(), "_to_NHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 1}, &output_tensor));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -4385,8 +4375,8 @@ Status ConvertPad(OpConverterParams* params) {
   std::vector<int32_t> permuted_pad_index(pad_index);
   if (pad_index[0] == 1) {
     legit_pad = false;
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 2, 1}, StrCat(node_def.name(), "_to_pad"), &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 3, 2, 1}, &tensor));
     permuted_pad_index[0] = 3;
   }
 
@@ -4409,8 +4399,7 @@ Status ConvertPad(OpConverterParams* params) {
 
   if (!legit_pad) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 3, 2, 1}, StrCat(node_def.name(), "_from_pad"),
-        &output_tensor));
+        output_tensor, {0, 3, 2, 1}, &output_tensor));
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -5500,8 +5489,8 @@ Status ConvertResize(OpConverterParams* params) {
   if (params->validation_only) return Status::OK();
 
   // Transpose tensor from NHWC to NCHW format.
-  TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      tensor, {0, 3, 1, 2}, StrCat(node_def.name(), "_to_NCHW"), &tensor));
+  TF_RETURN_IF_ERROR(
+      params->converter->TransposeTensor(tensor, {0, 3, 1, 2}, &tensor));
 
   // Calculate output dimensions.
   // Given input dimensions [N, C, H, W] and output size [H_out, W_out],
@@ -5527,8 +5516,8 @@ Status ConvertResize(OpConverterParams* params) {
   // Get output tensor. Transpose it from NCHW to NHWC.
   nvinfer1::ITensor* output = layer->getOutput(0);
 
-  TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      output, {0, 2, 3, 1}, StrCat(node_def.name(), "_to_NHWC"), &output));
+  TF_RETURN_IF_ERROR(
+      params->converter->TransposeTensor(output, {0, 2, 3, 1}, &output));
   params->outputs->push_back(TRT_TensorOrWeights(output));
   // Success
   return Status::OK();
