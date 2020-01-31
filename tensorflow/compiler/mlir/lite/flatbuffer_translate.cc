@@ -90,6 +90,7 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NoneType;
 using mlir::Operation;
+using mlir::Region;
 using mlir::StringAttr;
 using mlir::TensorType;
 using mlir::TranslateFromMLIRRegistration;
@@ -309,7 +310,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
   return true;
 }
 
-static std::unique_ptr<::tensorflow::NodeDef> getTensorFlowNodeDef(
+static std::unique_ptr<::tensorflow::NodeDef> GetTensorFlowNodeDef(
     ::mlir::Operation* inst) {
   // We pass empty string for the original node_def name since Flex runtime
   // does not care about this being set correctly on node_def. There is no
@@ -425,6 +426,11 @@ class Translator {
       mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
+  // Build while operator where cond & body are regions.
+  BufferOffset<tflite::Operator> BuildWhileOperator(
+      mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   // Builds custom operators.
   // Templated on a) data type of custom_option to be stored into flatbuffer,
   // and b) TFL custom op type.
@@ -472,7 +478,10 @@ class Translator {
       Operation* inst, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(FuncOp fn);
+  // Build a subgraph with a given name out of the region either corresponding
+  // to a function's body or while op.
+  Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(
+      const std::string& name, Region* region);
 
   // Builds Metadata with the given `name` and buffer `content`.
   BufferOffset<tflite::Metadata> BuildMetadata(StringRef name,
@@ -493,6 +502,12 @@ class Translator {
 
   // Returns a unique name for `val`.
   std::string UniqueName(mlir::Value val);
+
+  // Returns the names of the subgraphs corresponding the regions of the op. The
+  // names are supposed to be unique as the op name is unique and the suffix is
+  // not a valid name.
+  std::string GetWhileBodyName(mlir::TFL::WhileOp while_op);
+  std::string GetWhileCondName(mlir::TFL::WhileOp while_op);
 
   ModuleOp module_;
 
@@ -595,6 +610,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   };
 
   std::vector<int32_t> shape;
+  std::vector<int32_t> shape_signature;
   if (type.hasStaticShape()) {
     llvm::ArrayRef<int64_t> shape_ref = type.getShape();
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
@@ -612,7 +628,17 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
       shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
     }
+  } else if (type.hasRank()) {
+    llvm::ArrayRef<int64_t> shape_ref = type.getShape();
+    if (mlir::failed(check_shape(shape_ref))) return llvm::None;
+
+    shape.reserve(shape_ref.size());
+    for (auto& dim : shape_ref) {
+      shape.push_back(dim == -1 ? 1 : dim);
+    }
+    shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   }
+
   Type element_type = type.getElementType();
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).ValueOrDie();
@@ -649,10 +675,19 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
       break;
     }
   }
-  return tflite::CreateTensor(
-      builder_, builder_.CreateVector(shape), tflite_element_type,
-      (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-      /*is_variable=*/is_variable);
+
+  if (shape_signature.empty()) {
+    return tflite::CreateTensor(
+        builder_, builder_.CreateVector(shape), tflite_element_type,
+        (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
+        /*is_variable=*/is_variable);
+  } else {
+    return tflite::CreateTensor(
+        builder_, builder_.CreateVector(shape), tflite_element_type,
+        (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
+        /*is_variable=*/is_variable, /*sparsity=*/0,
+        /*shape_signature=*/builder_.CreateVector(shape_signature));
+  }
 }
 
 BufferOffset<tflite::Operator> Translator::BuildIfOperator(
@@ -677,6 +712,30 @@ BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
   auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
   int cond_subgraph_index = subgraph_index_map_.at(op.cond().str());
   int body_subgraph_index = subgraph_index_map_.at(op.body().str());
+  auto builtin_options = tflite::CreateWhileOptions(
+                             builder_, cond_subgraph_index, body_subgraph_index)
+                             .Union();
+  auto inputs = builder_.CreateVector(operands);
+  auto outputs = builder_.CreateVector(results);
+  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
+                                tflite::BuiltinOptions_WhileOptions,
+                                builtin_options);
+}
+
+std::string Translator::GetWhileBodyName(mlir::TFL::WhileOp while_op) {
+  return (name_mapper_.GetUniqueName(while_op.getOperation()) + "$body").str();
+}
+
+std::string Translator::GetWhileCondName(mlir::TFL::WhileOp while_op) {
+  return (name_mapper_.GetUniqueName(while_op.getOperation()) + "$cond").str();
+}
+
+BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
+    mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
+  int body_subgraph_index = subgraph_index_map_.at(GetWhileBodyName(op));
+  int cond_subgraph_index = subgraph_index_map_.at(GetWhileCondName(op));
   auto builtin_options = tflite::CreateWhileOptions(
                              builder_, cond_subgraph_index, body_subgraph_index)
                              .Union();
@@ -908,6 +967,10 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         return BuildMaxUnpooling2DOperator(inst, max_unpooling_op, operands,
                                            results);
       }
+      if (auto whileOp = dyn_cast<mlir::TFL::WhileOp>(inst)) {
+        return BuildWhileOperator(whileOp, operands, results);
+      }
+
       inst->emitOpError("is not a supported TFLite op");
       return llvm::None;
     }
@@ -944,7 +1007,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     //     we emit op as flex.
     //   if custom is enabled
     //    we emit the op as custom.
-    auto node_def = getTensorFlowNodeDef(inst);
+    auto node_def = GetTensorFlowNodeDef(inst);
     if (!node_def) {
       return llvm::None;
     }
@@ -1047,9 +1110,12 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }
 
-Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
+Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
+    const std::string& name, Region* region) {
   bool has_input_attr = false;
-  InitializeNamesFromAttribute(fn, &has_input_attr);
+  if (auto fn = dyn_cast<FuncOp>(region->getParentOp())) {
+    InitializeNamesFromAttribute(fn, &has_input_attr);
+  }
   std::vector<BufferOffset<tflite::Tensor>> tensors;
   llvm::DenseMap<Value, int> tensor_index_map;
 
@@ -1081,7 +1147,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   };
 
   std::vector<BufferOffset<tflite::Operator>> operators;
-  auto& bb = fn.getBlocks().front();
+  auto& bb = region->front();
 
   // Main function's arguments are first passed to `input` op so they don't
   // have associated tensor and buffer. Build FlatBuffer tensor and buffer for
@@ -1141,7 +1207,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   return tflite::CreateSubGraph(
       builder_, builder_.CreateVector(tensors), builder_.CreateVector(inputs),
       builder_.CreateVector(outputs), builder_.CreateVector(operators),
-      /*name=*/builder_.CreateString(fn.getName().str()));
+      /*name=*/builder_.CreateString(name));
 }
 
 BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
@@ -1184,35 +1250,45 @@ Optional<std::string> Translator::Translate(
 }
 
 Optional<std::string> Translator::TranslateInternal() {
-  // Create a list of functions in the module with main function being the
-  // first function in the list. This is required as the first subgraph in the
-  // model is entry point for the model.
-  std::vector<FuncOp> functions;
-  functions.reserve(std::distance(module_.begin(), module_.end()));
+  // A list of named regions in the module with main function being the first in
+  // the list. The main function is required as the first subgraph in the model
+  // is entry point for the model.
+  std::vector<std::pair<std::string, Region*>> named_regions;
+  named_regions.reserve(std::distance(module_.begin(), module_.end()));
 
   int subgraph_idx = 0;
   FuncOp main_fn = module_.lookupSymbol<FuncOp>("main");
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
-  functions.push_back(main_fn);
-  for (auto fn : module_.getOps<FuncOp>()) {
-    if (fn == main_fn) continue;
+  named_regions.emplace_back("main", &main_fn.getBody());
+  // Walk over the module collection ops with functions and while ops.
+  module_.walk([&](Operation* op) {
+    if (auto fn = dyn_cast<FuncOp>(op)) {
+      if (fn != main_fn) {
+        subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
+        named_regions.emplace_back(fn.getName().str(), &fn.getBody());
+      }
+    } else if (auto wo = dyn_cast<mlir::TFL::WhileOp>(op)) {
+      std::string name = GetWhileCondName(wo);
+      subgraph_index_map_[name] = subgraph_idx++;
+      named_regions.emplace_back(GetWhileCondName(wo), &wo.cond());
+      name = GetWhileBodyName(wo);
+      subgraph_index_map_[name] = subgraph_idx++;
+      named_regions.emplace_back(name, &wo.body());
+    }
+  });
 
-    subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
-    functions.push_back(fn);
-  }
-
-  // Build subgraph for each of the functions.
+  // Build subgraph for each of the named regions.
   std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
-  subgraphs.reserve(functions.size());
+  subgraphs.reserve(named_regions.size());
   int first_failed_func = -1;
-  for (int i = 0; i < functions.size(); ++i) {
-    auto subgraph_or = BuildSubGraph(functions[i]);
+  for (auto it : llvm::enumerate(named_regions)) {
+    auto subgraph_or = BuildSubGraph(it.value().first, it.value().second);
     if (!subgraph_or) {
       if (first_failed_func == -1)
-        // Record the index of the first function that cannot be converted.
+        // Record the index of the first region that cannot be converted.
         // Keep looping through all subgraphs in the module to make sure that
         // we collect the list of missing ops from the entire module.
-        first_failed_func = i;
+        first_failed_func = it.index();
     } else {
       subgraphs.push_back(*subgraph_or);
     }
@@ -1233,9 +1309,10 @@ Optional<std::string> Translator::TranslateInternal() {
           "-emit-custom-ops flag): " +
           failed_custom_ops_list;
 
-    return functions[first_failed_func].emitError("failed while converting: '")
-               << functions[first_failed_func].getName() << "\'\n"
-               << err,
+    auto& failed_region = named_regions[first_failed_func];
+    return failed_region.second->getParentOp()->emitError()
+               << "failed while converting: '" << failed_region.first
+               << "': " << err,
            llvm::None;
   }
 

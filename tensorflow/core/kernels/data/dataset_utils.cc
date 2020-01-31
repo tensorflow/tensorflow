@@ -308,9 +308,10 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
   // return argument / control return argument or whether we can relax it and
   // hash the index (etc...)
   uint64 ret_hash = func.ret_size();
-  for (const auto& ret : func.ret()) {
+  for (const auto& output_arg : func.signature().output_arg()) {
+    std::string ret_name = func.ret().at(output_arg.name());
     std::pair<std::string, std::string> node_spec =
-        absl::StrSplit(ret.second, absl::MaxSplits(':', 1));
+        absl::StrSplit(ret_name, absl::MaxSplits(':', 1));
     // For every return value, we need to hash the output node (and the subgraph
     // rooted at the output node) to ensure that the computation graph that
     // ends at the output node has not changed.
@@ -321,15 +322,16 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
         HashNodeImpl(node_graph, *node_def, &node_hash, visited, cache));
     uint64 node_port_hash = Hash64(node_spec.second);
 
-    ret_hash = Hash64CombineUnordered(
-        ret_hash, Hash64Combine(Hash64(ret.first),
+    ret_hash = Hash64Combine(
+        ret_hash, Hash64Combine(Hash64(output_arg.name()),
                                 Hash64Combine(node_hash, node_port_hash)));
   }
 
   uint64 control_ret_hash = func.control_ret_size();
-  for (const auto& ret : func.control_ret()) {
+  for (const auto& control_output : func.signature().control_output()) {
+    std::string control_output_name = func.control_ret().at(control_output);
     std::pair<std::string, std::string> node_spec =
-        absl::StrSplit(ret.second, absl::MaxSplits(':', 1));
+        absl::StrSplit(control_output_name, absl::MaxSplits(':', 1));
 
     const NodeDef* node_def;
     TF_RETURN_IF_ERROR(FindNode(node_graph, node_spec.first, &node_def));
@@ -340,7 +342,7 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
 
     control_ret_hash = Hash64CombineUnordered(
         control_ret_hash,
-        Hash64Combine(Hash64(ret.first),
+        Hash64Combine(Hash64(control_output),
                       Hash64Combine(node_hash, node_port_hash)));
   }
 
