@@ -2159,7 +2159,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
-  auto activity_handle = absl::make_unique<profiler::TraceMe>(
+  profiler::TraceMe activity(
       [&]() {
         return strings::StrCat(
             "ExecutorPropagateOutputs:", item->kernel->name_view(),
