@@ -120,6 +120,7 @@ cuda_py_tests(
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",
         "test/dynamic_input_shapes_test.py",
+        "test/explicit_batch_test.py",
         "test/identity_output_test.py",
         "test/int32_test.py",
         "test/lru_cache_test.py",
