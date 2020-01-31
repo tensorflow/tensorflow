@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -361,28 +362,15 @@ class BatchResource : public ResourceBase {
       if (padding_amount > 0) {
         const Tensor& padding_source = batch.task(0).inputs.at(i);
         Tensor padding;
+        if (padding_source.shape().dim_size(0) == 0) {
+          return errors::InvalidArgument(
+              "Cannot use an empty tensor with zero rows as padding when "
+              "batching.");
+        }
         if (padding_source.shape().dim_size(0) == 1) {
           padding = padding_source;
         } else {
-          const std::vector<int64> slice_sizes = {1};
-          const DataType type = padding_source.dtype();
-          Status slice_status;
-          std::vector<Tensor> slices;
-          switch (type) {
-#define CASE(type)                                                     \
-  case DataTypeToEnum<type>::value:                                    \
-    slice_status =                                                     \
-        SplitCPU<type>(context, padding_source, slice_sizes, &slices); \
-    break;
-            TF_CALL_ALL_TYPES(CASE);
-#undef CASE
-            default:
-              slice_status =
-                  errors::InvalidArgument("Unsupported data type: ", type);
-              break;
-          }
-          TF_RETURN_IF_ERROR(slice_status);
-          padding = slices.at(0);
+          padding = padding_source.Slice(0, 1);
         }
         for (int i = 0; i < padding_amount; ++i) {
           to_concatenate.push_back(padding);
