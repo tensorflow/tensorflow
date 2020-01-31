@@ -5010,7 +5010,10 @@ cuda_py_test(
     srcs = ["ops/special_math_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "nomsan",  # b/148630708
+    ],
     deps = [
         ":array_ops",
         ":client",
