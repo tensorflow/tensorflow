@@ -1055,7 +1055,7 @@ class TextVectorizationOutputTest(
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
 
-  def test_split_equals_zero_on_adapt():
+  def test_split_equals_zero_on_adapt(self):
     dummy_data = ["Foo", "bar", "foo foo", "foo bar", "foobar."]
     predict_data = ["foo", "bar", "foobar", "foo foo", "OOV"]
     expected_output = [[0, 0, 0, 0, 1],
