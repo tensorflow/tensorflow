@@ -2285,15 +2285,29 @@ llvm::Value* IrEmitterUnnested::EmitBlockId() {
                                         {}, &b_);
 }
 
-llvm::Value* IrEmitterUnnested::EmitPrintfWithThreadId(
-    absl::string_view fmt, absl::Span<llvm::Value* const> arguments) {
+void IrEmitterUnnested::EmitPrintfWithThreadId(
+    absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
+    absl::optional<int64> thread_id_filter,
+    absl::optional<int64> block_id_filter) {
   llvm::Value* thread_id = EmitThreadId(1024, b_.getInt32Ty());
   llvm::Value* block_id = EmitBlockId();
   std::vector<llvm::Value*> updated_arguments = {thread_id, block_id};
   updated_arguments.insert(updated_arguments.end(), arguments.begin(),
                            arguments.end());
-  return ::xla::gpu::EmitPrintf(absl::StrCat("[TID=%d,BID=%d] ", fmt, "\n"),
-                                updated_arguments, &b_);
+  llvm::Value* constraint = b_.getTrue();
+  if (thread_id_filter) {
+    constraint = b_.CreateAnd(
+        constraint, b_.CreateICmpEQ(thread_id, b_.getInt32(*thread_id_filter)));
+  }
+  if (block_id_filter) {
+    constraint = b_.CreateAnd(
+        constraint, b_.CreateICmpEQ(block_id, b_.getInt32(*block_id_filter)));
+  }
+  KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
+  ksl.If(constraint, [&] {
+    ::xla::gpu::EmitPrintf(absl::StrCat("[TID=%d,BID=%d] ", fmt, "\n"),
+                           updated_arguments, &b_);
+  });
 }
 
 void IrEmitterUnnested::EmitTileElementForReduction(
