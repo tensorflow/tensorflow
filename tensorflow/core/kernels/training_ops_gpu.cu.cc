@@ -129,7 +129,6 @@ struct ApplyGradientDescent<GPUDevice, T> {
 // We also can't cast to hipFloatComplex etc. because (as of 2020-01) HIP does
 // not provide sqrt for complex.
 // We have no choice but to implement sqrt and rsqrt by hand
-#if 1
 template <typename T>
 __device__ T impl_sqrt(T x) {
   return sqrt(x);
@@ -184,7 +183,6 @@ __device__ std::complex<T> impl_rsqrt(std::complex<T> x) {
             root2 * (im >= 0 ? -1. : 1.);
   return *(reinterpret_cast<std::complex<T>*>(&root));
 }
-#endif
 
 template <typename T>
 __global__ void ApplyAdagradKernel(GpuLaunchConfig cfg, T* var, T* accum,
@@ -588,7 +586,7 @@ struct ApplyAdaMax<GPUDevice, T> {
                      (m / (v + epsilon.reshape(single).broadcast(bcast)));
   }
 };
-#if 1
+
 template <typename T>
 struct ApplyRMSProp<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
@@ -647,7 +645,6 @@ struct ApplyCenteredRMSProp<GPUDevice, T> {
 #endif
   }
 };
-#endif
 
 template <typename T>
 struct ApplyAddSign<GPUDevice, T> {

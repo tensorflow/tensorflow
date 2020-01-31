@@ -194,7 +194,6 @@ Status IrEmitter::EmitCallToNestedComputation(
 
   // It is not required to do address space cast because TempBufferBase
   // is always in addrspace 0.
-
   arguments.push_back(bindings_.GetTempBufferBase());
   Call(emitted_function, arguments);
 

@@ -78,7 +78,7 @@ TEST(RefcountingHashMapTest, CustomFactory) {
 
 TEST(RefcountingHashMapTest, ForEachEmpty) {
   RefcountingHashMap<int, int> m;
-  int64_t count = 0;
+  int64 count = 0;
   m.ForEach([&](const int&, std::shared_ptr<int>) { ++count; });
   EXPECT_EQ(count, 0);
 }

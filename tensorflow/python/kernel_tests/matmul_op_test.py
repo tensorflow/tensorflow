@@ -226,7 +226,8 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
 if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
-  dtypes_to_test = [np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64, np.complex128]
+  dtypes_to_test = [np.int32, np.int64, np.float16, np.float32, np.float64, 
+    np.complex64, np.complex128]
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
     for dtype in dtypes_to_test:
