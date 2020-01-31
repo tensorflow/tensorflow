@@ -157,6 +157,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":timespan",
+        ":xplane_builder",
+        ":xplane_schema",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
@@ -227,6 +229,7 @@ tf_cc_test(
         ":tf_xplane_visitor",
         ":xplane_builder",
         ":xplane_schema",
+        ":xplane_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
