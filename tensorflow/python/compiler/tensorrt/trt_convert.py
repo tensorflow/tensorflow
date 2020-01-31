@@ -985,6 +985,7 @@ class TrtGraphConverterV2(object):
                        "with static TensorRT ops. Set is_dynamic_op to True.")
 
     self._converted = False
+    self._build_called_once = False
 
   def _run_conversion(self, meta_graph_def):
     """Run Grappler's OptimizeGraph() tool to convert the graph.
@@ -1094,9 +1095,24 @@ class TrtGraphConverterV2(object):
     Args:
       input_fn: a generator function that yields input data as a list or tuple,
         which will be used to execute the converted signature to generate TRT
-        engines.
-        Example: `def input_fn(): yield input1, input2, input3`
+        engines. Example:
+        `def input_fn():
+             # Let's assume a network with 2 input tensors. We generate 3 sets
+             # of dummy input data:
+             input_shapes = [[(1, 16), (2, 16)], # 1st input list
+                             [(2, 32), (4, 32)], # 2nd list of two tensors
+                             [(4, 32), (8, 32)]] # 3rd input list
+             for shapes in input_shapes:
+                 # return a list of input tensors
+                 yield [np.zeros(x).astype(np.float32) for x in shapes]`
     """
+    if self._build_called_once:
+      raise NotImplementedError("build() is already called. It is not "
+                                "supported to call build() more than once.")
+    if not input_fn:
+      raise RuntimeError("input_fn is None. Method build() needs input_fn "
+                         "to be specified in order to build TensorRT engines")
+
     for inp in input_fn():
       self._converted_func(*map(ops.convert_to_tensor, inp))
 
