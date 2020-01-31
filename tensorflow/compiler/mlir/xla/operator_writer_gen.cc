@@ -131,12 +131,7 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   // Emit a function to generate an XLA operation for the operations with
   // auto-generated builders.
   os << "mlir::LogicalResult ExportXlaOperator(\n"
-        "mlir::Operation* op, OpLoweringContext lowering_context) {\n\n";
-
-  // Create a scoped object to assign sharding to generated XLA ops. Any HLO
-  // can have an attribute of "sharding".
-  os << "  xla::XlaScopedShardingAssignment sharding(lowering_context.builder, "
-        "CreateOpShardingFromAttribute(op));\n\n";
+        "mlir::Operation* op, OpLoweringContext lowering_context) {\n";
 
   // Retrieve all the definitions derived from HLO_Op and sort by record name.
   for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {

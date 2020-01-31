@@ -58,9 +58,7 @@ limitations under the License.
 #include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
@@ -2932,23 +2930,6 @@ Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
   return builder.create<ConstOp>(loc, type, value);
-}
-
-LogicalResult TensorFlowDialect::verifyOperationAttribute(
-    Operation *op, NamedAttribute attribute) {
-  // Check the _XlaSharding attribute is a valid serialized bytes of OpSharding.
-  if (attribute.first.is("tf._XlaSharding")) {
-    auto sharding = attribute.second.dyn_cast<mlir::StringAttr>();
-    if (!sharding) {
-      return op->emitError() << "tf._XlaSharding must be a string attribute";
-    }
-
-    ::xla::OpSharding sharding_proto;
-    if (!sharding_proto.ParseFromString(sharding.getValue().str())) {
-      return op->emitError() << "Invalid sharding: " << sharding.getValue();
-    }
-  }
-  return success();
 }
 
 }  // namespace TF

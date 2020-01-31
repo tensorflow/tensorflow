@@ -49,8 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/xla/ir/hlo_structs.cc.inc"
@@ -69,24 +67,6 @@ Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
 
 template <typename T>
 static LogicalResult Verify(T op) {
-  return success();
-}
-
-LogicalResult XlaHloDialect::verifyOperationAttribute(
-    Operation* op, NamedAttribute attribute) {
-  // Check the sharding attribute is a valid sharding text string.
-  if (attribute.first.is("xla_hlo.sharding")) {
-    auto sharding = attribute.second.dyn_cast<mlir::StringAttr>();
-    if (!sharding) {
-      return op->emitError() << "xla_hlo.sharding must be a string attribute";
-    }
-
-    ::xla::OpSharding sharding_proto;
-    if (sharding && !::tensorflow::protobuf::TextFormat::ParseFromString(
-                        sharding.getValue().str(), &sharding_proto)) {
-      return op->emitError() << "Invalid sharding: " << sharding.getValue();
-    }
-  }
   return success();
 }
 

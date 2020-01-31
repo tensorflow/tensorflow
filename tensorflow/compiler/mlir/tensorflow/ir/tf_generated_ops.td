@@ -7367,25 +7367,6 @@ def TF_XdivyOp : TF_Op<"Xdivy", [NoSideEffect, ResultsBroadcastableShape]>,
   let hasCanonicalizer = 1;
 }
 
-def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
-  let summary = [{
-An op which shards the input based on the given sharding attribute.
-  }];
-
-  let description = [{
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$input
-  );
-
-  let results = (outs
-    TF_Tensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns a tensor of zeros with the same shape and type as x.";
 

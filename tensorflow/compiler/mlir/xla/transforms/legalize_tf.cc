@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
@@ -3404,45 +3403,6 @@ class ConvertVariableShapeOp : public OpRewritePattern<TF::VariableShapeOp> {
   }
 };
 
-// Converts an XlaSharding op to a XLA HLO shard op with sharding attributes.
-class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  PatternMatchResult matchAndRewrite(TF::XlaShardingOp op,
-                                     PatternRewriter &rewriter) const override {
-    // TODO(b/148313088): define sharding attribute struct in MLIR intead of
-    // using a string.
-    auto sharding = op.getAttrOfType<StringAttr>("_XlaSharding");
-    if (!sharding) {
-      return matchFailure();
-    }
-
-    // _XlaSharding attribute in TF is a serialized string of the OpSharding
-    // proto, so convert to a text form here.
-    ::xla::OpSharding sharding_proto;
-    std::string sharding_str;
-    if (!sharding_proto.ParseFromString(sharding.getValue().str())) {
-      return matchFailure();
-    }
-    if (!::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                           &sharding_str)) {
-      return matchFailure();
-    }
-
-    auto custom_call = rewriter.create<xla_hlo::CustomCallOp>(
-        op.getLoc(), op.getType(), op.input(),
-        /*call_target_name=*/rewriter.getStringAttr("Sharding"),
-        /*has_side_effect=*/rewriter.getBoolAttr(false),
-        /*backend_config=*/rewriter.getStringAttr(""));
-    custom_call.setAttr("xla_hlo.sharding",
-                        rewriter.getStringAttr(sharding_str));
-    rewriter.replaceOp(op, custom_call.getResult());
-
-    return matchSuccess();
-  }
-};
-
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -3472,8 +3432,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp>(
-      op->getContext());
+      ConvertRandomShuffleOp, ConvertVariableShapeOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
