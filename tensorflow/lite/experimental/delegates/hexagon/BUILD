@@ -78,6 +78,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/memory",
     ],
 )
 

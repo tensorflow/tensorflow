@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate_kernel.h"
@@ -49,7 +50,7 @@ TfLiteRegistration GetHexagonKernelRegistration() {
                                 size_t length) -> void* {
     const TfLiteDelegateParams* params =
         reinterpret_cast<const TfLiteDelegateParams*>(buffer);
-    auto hexagon_kernel = std::make_unique<HexagonDelegateKernel>();
+    auto hexagon_kernel = absl::make_unique<HexagonDelegateKernel>();
     if (hexagon_kernel->Init(context, params) != kTfLiteOk) {
       return nullptr;
     }
