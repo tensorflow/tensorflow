@@ -1064,7 +1064,7 @@ class TextVectorizationOutputTest(
                        [0, 0, 1, 0, 0],
                        [1, 0, 0, 0, 0]]
 
-    inputs = keras.Input(shape=(1, ), dtype=string, name="text")
+    inputs = keras.Input(shape=(1, ), dtype=tf.string, name="text")
     layers = get_layer_class()(
         max_tokens=5,
         split=None,
