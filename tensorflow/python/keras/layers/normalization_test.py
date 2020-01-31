@@ -221,10 +221,10 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     padded_data = np.array([[[1, 5], [2, 5], [0, 0], [0, 0]] for _ in range(10)], dtype='float32')  # Pad value of 0
     data = np.array([[[1, 5], [2, 5]] for _ in range(10)], dtype='float32')
 
-    input = tf.keras.layers.Input((None, 2))
-    masked = tf.keras.layers.Masking()(input)
-    normed = BatchNormalization(momentum=0.0)(masked)
-    model = tf.keras.models.Model(input, normed)
+    input = keras.layers.Input((None, 2))
+    masked = keras.layers.Masking()(input)
+    normed = keras.layers.BatchNormalization(momentum=0.0)(masked)
+    model = keras.models.Model(input, normed)
     model.compile('rmsprop', 'mse',
                   run_eagerly=testing_utils.should_run_eagerly())
 
