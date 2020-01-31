@@ -187,7 +187,10 @@ class S3RandomAccessFile : public RandomAccessFile {
     auto getObjectOutcome = this->s3_client_->GetObject(getObjectRequest);
     if (!getObjectOutcome.IsSuccess()) {
       auto error = getObjectOutcome.GetError();
-      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE) {
+      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+        return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                          "Unable to access the specified S3 location");
+      } else if (error.GetResponseCode() == Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE) {
         n = 0;
         *result = StringPiece(scratch, n);
         return Status(error::OUT_OF_RANGE, "Read less bytes than requested");
