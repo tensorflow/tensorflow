@@ -221,7 +221,6 @@ inline void DepthwiseConvHybridPerChannel(
   const int depth_multiplier = params.depth_multiplier;
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
-
   // Check dimensions of the tensors.
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
@@ -236,7 +235,6 @@ inline void DepthwiseConvHybridPerChannel(
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
-
   const int bias_depth = bias_shape.FlatSize();
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_depth, output_depth);
@@ -249,9 +247,7 @@ inline void DepthwiseConvHybridPerChannel(
             const int output_channel = m + in_channel * depth_multiplier;
             const int in_x_origin = (out_x * stride_width) - pad_width;
             const int in_y_origin = (out_y * stride_height) - pad_height;
-
             int32 acc = 0;
-
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                 const int in_x = in_x_origin + dilation_width_factor * filter_x;
@@ -266,7 +262,6 @@ inline void DepthwiseConvHybridPerChannel(
                                                       in_x, in_channel)];
                   int32 filter_val = filter_data[Offset(
                       filter_shape, 0, filter_y, filter_x, output_channel)];
-
                   acc += filter_val * (input_val - input_offset[batch]);
                 }
               }
