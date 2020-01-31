@@ -80,7 +80,7 @@ EagerContext::EagerContext(
     : default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
-      host_cpu_device_(device_mgr->ListDevices()[0]),
+      host_cpu_device_(device_mgr->HostCPU()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       custom_kernel_creator_(custom_kernel_creator),
@@ -791,7 +791,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
   local_device_manager_.Reset(device_mgr);
-  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
+  host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   InitPrioritizedDeviceTypeList();
   ClearCachesAndThreadExecutors();
@@ -1027,7 +1027,7 @@ Status EagerContext::SetMasterContextState(
       ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
   local_device_manager_.Reset(local_device_mgr);
-  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
+  host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   if (rendezvous_ != nullptr) rendezvous_->Unref();
   rendezvous_ = r;
