@@ -2473,20 +2473,21 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
     return IrArray::Index(multidim, dims_in_blocks, index_ty);
   }();
 
+  std::vector<llvm::Value*> output_tile_bounds(3);
+  for (int i = KernelMappingScheme::DimY; i < KernelMappingScheme::DimTot;
+       ++i) {
+    int64 tile_size_for_dim = mapping_scheme.GetTileSizeFor(i);
+    // Only last row or column may not have full size.
+    llvm::Value* is_last =
+        b_.CreateICmpEQ(starting_tile[i], constant(dims_in_blocks[i] - 1));
+    int64 partial_row =
+        dims_in_elems[i] - (dims_in_blocks[i] - 1) * tile_size_for_dim;
+    output_tile_bounds[i] =
+        b_.CreateSelect(is_last, constant(partial_row),
+                        constant(tile_size_for_dim), "tile_bound");
+  }
+
   auto emit_tile = [&](const IrArray::Index& tile_index) {
-    std::vector<llvm::Value*> output_tile_bounds(3);
-    for (int i = KernelMappingScheme::DimY; i < KernelMappingScheme::DimTot;
-         ++i) {
-      int64 tile_size_for_dim = mapping_scheme.GetTileSizeFor(i);
-      // Only last row or column may not have full size.
-      llvm::Value* is_last =
-          b_.CreateICmpEQ(tile_index[i], constant(dims_in_blocks[i] - 1));
-      int64 partial_row =
-          dims_in_elems[i] - (dims_in_blocks[i] - 1) * tile_size_for_dim;
-      output_tile_bounds[i] =
-          b_.CreateSelect(is_last, constant(partial_row),
-                          constant(tile_size_for_dim), "tile_bound");
-    }
     IrArray::Index tile_origin =
         GetElementIndexForTileOrigin(tile_index, mapping_scheme, &b_);
     tile_element_generator(thread_id_info.thread_id_y,
@@ -2502,10 +2503,12 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
     llvm::Value* block_size_for_dim = constant(mapping_scheme.GetTileSizeZ());
     llvm::Value* block_id_for_dim =
         b_.CreateUDiv(starting_tile_index_for_dim, block_size_for_dim);
-    llvm::Value* last_block_for_dim = constant(dims_in_blocks[dim_z] - 1);
+    llvm::Value* last_block_for_dim =
+        constant(dims_in_blocks[KernelMappingScheme::DimZ] - 1);
     llvm::Value* last_block_size_for_dim =
-        constant(dims_in_elems[dim_z] -
-                 (dims_in_blocks[dim_z] - 1) * mapping_scheme.GetTileSizeZ());
+        constant(dims_in_elems[KernelMappingScheme::DimZ] -
+                 (dims_in_blocks[KernelMappingScheme::DimZ] - 1) *
+                     mapping_scheme.GetTileSizeZ());
 
     llvm::Value* num_tiles_in_block =
         b_.CreateSelect(b_.CreateICmpEQ(last_block_for_dim, block_id_for_dim),
@@ -2515,7 +2518,7 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
             /*end=*/num_tiles_in_block,
             /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
               IrArray::Index tile_index = starting_tile.AddOffsetToDim(
-                  block_dim_induction_var, dim_z, &b_);
+                  block_dim_induction_var, KernelMappingScheme::DimZ, &b_);
               emit_tile(tile_index);
             });
   }
