@@ -279,7 +279,7 @@ bool MinMaxApproximatelyEqual(const MinMax& minmax1, const MinMax& minmax2) {
 // If multiple of these arrays have MinMax, then these are required
 // to agree with each other.
 bool PropagateMinMaxAmongArrays(Model* model,
-                                const std::vector<string> array_names) {
+                                const std::vector<string> &array_names) {
   string reference_array_name;
   MinMax* reference_minmax = nullptr;
   for (const string& array_name : array_names) {
