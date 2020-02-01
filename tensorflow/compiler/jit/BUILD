@@ -161,6 +161,7 @@ XLA_DEVICE_DEPS = [
     ":xla_tensor",
     "@com_google_absl//absl/base",
     "@com_google_absl//absl/memory",
+    "@com_google_absl//absl/strings",
     "@com_google_absl//absl/synchronization",
     "@com_google_absl//absl/types:optional",
     "//tensorflow/compiler/jit/ops:xla_ops",
