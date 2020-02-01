@@ -311,6 +311,11 @@ public final class Tensor {
       return;
     }
     DataType oType = dataTypeOf(o);
+
+    // INT8 and UINT8 have the same string name, "byte"
+    if (oType.toStringName() == dtype.toStringName()) {
+      return;
+    }
     if (oType != dtype) {
       throw new IllegalArgumentException(
           String.format(
