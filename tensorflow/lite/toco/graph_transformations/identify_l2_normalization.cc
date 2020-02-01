@@ -60,11 +60,9 @@ namespace toco {
   // There may be an Add or a Maximum here, adding or clamping to a "small"
   // constant scalar.
   // Reported bug: b/29395854
-  Operator* add_op = nullptr;
   Operator* op_producing_add_input = nullptr;
   if (op_producing_sqrt_or_rsqrt_input->type == OperatorType::kAdd ||
       op_producing_sqrt_or_rsqrt_input->type == OperatorType::kMaximum) {
-    add_op = op_producing_sqrt_or_rsqrt_input;
     bool add_can_be_removed = false;
     CHECK_EQ(op_producing_sqrt_or_rsqrt_input->inputs.size(), 2);
     for (int i = 0; i < 2; i++) {
@@ -85,7 +83,7 @@ namespace toco {
         continue;
       }
       add_can_be_removed = true;
-      op_producing_add_input = GetOpWithOutput(*model, add_op->inputs[1 - i]);
+      op_producing_add_input = GetOpWithOutput(*model, op_producing_sqrt_or_rsqrt_input->inputs[1 - i]);
       break;
     }
     if (!add_can_be_removed) {
@@ -99,7 +97,7 @@ namespace toco {
   }
 
   Operator* sum_op =
-      add_op ? op_producing_add_input : op_producing_sqrt_or_rsqrt_input;
+      op_producing_add_input ? op_producing_add_input : op_producing_sqrt_or_rsqrt_input;
   if (sum_op->type != OperatorType::kSum) {
     AddMessageF(
         "Giving up trying to identify L2Normalization subgraph: "
