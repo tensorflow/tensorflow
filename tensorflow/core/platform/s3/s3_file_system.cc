@@ -622,8 +622,7 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       Aws::String src_key = object.GetKey();
       Aws::String target_key = src_key;
       target_key.replace(0, src_object.length(), target_object.c_str());
-      Aws::String source = Aws::String(src_bucket.c_str()) + "/" +
-                           Aws::Utils::StringUtils::URLEncode(src_key.c_str());
+      Aws::String source = Aws::String(src_bucket.c_str()) + "/" + src_key.c_str();
 
       copyObjectRequest.SetBucket(target_bucket.c_str());
       copyObjectRequest.SetKey(target_key);

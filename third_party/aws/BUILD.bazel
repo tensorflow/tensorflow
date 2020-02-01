@@ -106,7 +106,7 @@ cc_library(
         "-DENABLE_OPENSSL_ENCRYPTION",
         "-DAWS_SDK_VERSION_MAJOR=1",
         "-DAWS_SDK_VERSION_MINOR=7",
-        "-DAWS_SDK_VERSION_PATCH=226",
+        "-DAWS_SDK_VERSION_PATCH=266",
         "-DOPENSSL_IS_BORINGSSL",
     ], 
 )
