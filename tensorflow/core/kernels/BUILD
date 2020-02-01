@@ -2117,6 +2117,7 @@ tf_cc_test(
     name = "debug_ops_test",
     size = "small",
     srcs = ["debug_ops_test.cc"],
+    tags = ["no_windows"],
     deps = [
         ":debug_ops",
         ":ops_testutil",
