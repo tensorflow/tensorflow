@@ -291,21 +291,46 @@ StatusOr<DeviceAssignment> PyLocalClient::GetDefaultDeviceAssignment(
 }
 
 /* static */
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
-    std::vector<BorrowingLiteral> leaves_literals, const Shape& tuple_shape,
-    std::shared_ptr<void> leaves_reference,
+StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
+    const void* data, const Shape& shape, bool force_copy,
+    std::shared_ptr<void> buffer_reference,
     std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device) {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromLiterals");
-  VLOG(2) << "PyLocalBuffer::FromLiterals: shape: " << tuple_shape.ToString()
+  VLOG(2) << "PyLocalBuffer::FromLiterals: shape: " << shape.ToString()
           << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
+
+  // If we are on the host platform and the input buffer is sufficiently
+  // aligned, we can simply point to the NumPy array's data without any further
+  // copies. We require a 64-byte alignment because XLA may generate AVX512
+  // code which requires it. Unfortunately NumPy's allocator doesn't align
+  // quite as aggressively, so there's a high chance this test will fail.
+  static constexpr int kMinimumAlignment = 64;
+  if (!force_copy &&
+      ((absl::bit_cast<std::uintptr_t>(data) & (kMinimumAlignment - 1)) == 0) &&
+      local_device->executor()->platform_kind() == se::PlatformKind::kHost) {
+    std::function<void()> on_delete_callback =
+        [buffer_reference{std::move(buffer_reference)}]() {
+          // Frees buffer_reference.
+        };
+    se::DeviceMemoryBase buffer(const_cast<void*>(data),
+                                ShapeUtil::ByteSizeOf(shape));
+    auto device_buffer = std::make_shared<SharedDeviceBuffer>(
+        /*allocator=*/nullptr, local_device->device_ordinal(),
+        std::initializer_list<se::DeviceMemoryBase>{buffer},
+        /*children=*/std::vector<std::shared_ptr<SharedDeviceBuffer>>{},
+        /*definition_event=*/nullptr, std::move(on_delete_callback));
+    return absl::make_unique<PyLocalBuffer>(
+        shape, shape, std::move(device_buffer), std::move(client),
+        std::move(device));
+  }
+
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
   se::DeviceMemoryAllocator* allocator = client->allocator();
-  TF_ASSIGN_OR_RETURN(
-      Shape compact_shape,
-      transfer_manager->ChooseCompactLayoutForShape(tuple_shape));
+  TF_ASSIGN_OR_RETURN(Shape compact_shape,
+                      transfer_manager->ChooseCompactLayoutForShape(shape));
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer scoped_buffer,
       transfer_manager->AllocateScopedShapedBuffer(
@@ -330,12 +355,9 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
                                                  definition_event);
   Shape on_device_shape = scoped_buffer.on_device_shape();
 
-  // TODO(makro): Use move capture once C++ 14 features are available.
-  auto leaves = std::make_shared<std::vector<BorrowingLiteral>>(
-      std::move(leaves_literals));
   auto transfer_h2d = [client, transfer_manager, local_device, device_buffer,
-                       compact_shape, on_device_shape, leaves,
-                       leaves_reference]() {
+                       shape, compact_shape, on_device_shape, data,
+                       buffer_reference{std::move(buffer_reference)}]() {
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way to
     // report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
@@ -344,39 +366,27 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
         compact_shape, on_device_shape, client->client()->platform());
     TF_CHECK_OK(transfer_manager->WriteTupleIndexTablesAsync(
         local_device->host_to_device_stream(), buffer));
-    std::vector<std::shared_ptr<void>> staging_buffers;
-    staging_buffers.reserve(leaves->size());
-    auto it = leaves->begin();
-    for (const ShapeUtil::IndexedShape& indexed_shape :
-         ShapeUtil::GetLeafShapes(compact_shape)) {
-      CHECK(it != leaves->end());
-      ShapedBuffer leaf(
-          indexed_shape.shape,
-          transfer_manager->HostShapeToDeviceShape(indexed_shape.shape),
-          client->client()->platform(), local_device->device_ordinal());
-      leaf.buffers().CopySubtreeFrom(buffer.buffers(), indexed_shape.index, {});
+    std::shared_ptr<void> staging_buffer;
 
-      // If applicable on the backend, stage the transfer via host memory
-      // allocated via the host_memory_allocator. On GPU, this is pinned memory.
-      if (client->host_memory_allocator()) {
-        int64 size = it->size_bytes({});
-        void* ptr = client->host_memory_allocator()->AllocateRaw(
-            tensorflow::Allocator::kAllocatorAlignment, size);
-        std::shared_ptr<void> staging_buffer(ptr, [client](void* ptr) {
-          client->host_memory_allocator()->DeallocateRaw(ptr);
-        });
-        std::memcpy(ptr, it->untyped_data({}), size);
-        BorrowingLiteral literal(static_cast<const char*>(staging_buffer.get()),
-                                 it->shape());
-        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-            local_device->host_to_device_stream(), literal, leaf));
-        staging_buffers.push_back(std::move(staging_buffer));
-      } else {
-        // Otherwise, just transfer the literal.
-        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-            local_device->host_to_device_stream(), *it, leaf));
-      }
-      ++it;
+    // If applicable on the backend, stage the transfer via host memory
+    // allocated via the host_memory_allocator. On GPU, this is pinned memory.
+    if (client->host_memory_allocator()) {
+      int64 size = ShapeUtil::ByteSizeOf(shape);
+      void* ptr = client->host_memory_allocator()->AllocateRaw(
+          tensorflow::Allocator::kAllocatorAlignment, size);
+      staging_buffer = std::shared_ptr<void>(ptr, [client](void* ptr) {
+        client->host_memory_allocator()->DeallocateRaw(ptr);
+      });
+      std::memcpy(ptr, data, size);
+      BorrowingLiteral literal(static_cast<const char*>(staging_buffer.get()),
+                               shape);
+      TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+          local_device->host_to_device_stream(), literal, buffer));
+    } else {
+      BorrowingLiteral literal(static_cast<const char*>(data), shape);
+      // Otherwise, just transfer the literal.
+      TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+          local_device->host_to_device_stream(), literal, buffer));
     }
 
     EventPool::Handle event =
@@ -397,7 +407,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
 
     local_device->ThenRelease(
         local_device->host_to_device_stream(),
-        std::make_pair(leaves_reference, std::move(staging_buffers)));
+        std::make_pair(buffer_reference, std::move(staging_buffer)));
   };
   client->h2d_transfer_pool()->Schedule(transfer_h2d);
   return absl::make_unique<PyLocalBuffer>(
