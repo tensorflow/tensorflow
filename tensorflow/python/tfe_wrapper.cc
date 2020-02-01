@@ -583,11 +583,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
             &cancellation_manager, num_outputs);
       });
   m.def("TFE_Py_FastPathExecute", [](const py::args args) {
-    // First argument is a PyObject which is unused.
-    // https://docs.python.org/3/c-api/structures.html#METH_VARARGS
     // TFE_Py_FastPathExecute requires error checking prior to returning.
-    return tensorflow::pyo_or_throw(
-        TFE_Py_FastPathExecute_C(nullptr, args.ptr()));
+    return tensorflow::pyo_or_throw(TFE_Py_FastPathExecute_C(args.ptr()));
   });
   m.def("TFE_Py_RecordGradient",
         [](const py::handle& op_name, const py::handle& inputs,
