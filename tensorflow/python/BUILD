@@ -3185,7 +3185,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras:base_layer_utils",
+        "//tensorflow/python/keras/engine:base_layer_utils",
     ],
 )
 

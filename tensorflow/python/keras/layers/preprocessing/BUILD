@@ -39,7 +39,7 @@ py_library(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras/engine:base_layer",
     ],
 )
 
@@ -61,7 +61,7 @@ py_library(
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -80,7 +80,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_preprocessing_layer",
+        "//tensorflow/python/keras/engine:base_preprocessing_layer",
     ],
 )
 
@@ -105,7 +105,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_preprocessing_layer",
+        "//tensorflow/python/keras/engine:base_preprocessing_layer",
         "//tensorflow/python/ops/ragged",
     ],
 )
@@ -130,7 +130,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_preprocessing_layer",
+        "//tensorflow/python/keras/engine:base_preprocessing_layer",
         "//tensorflow/python/ops/ragged",
     ],
 )
