@@ -2030,6 +2030,9 @@ class ReplicaContext(object):
     This identifies the replica that is part of a sync group. Currently we
     assume that all sync groups contain the same number of replicas. The value
     of the replica id can range from 0 to `num_replica_in_sync` - 1.
+
+    NOTE: This is not guaranteed to be the same ID as the XLA replica ID use
+    for low-level operations such as collective_permute.
     """
     require_replica_context(self)
     return self._replica_id_in_sync_group

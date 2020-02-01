@@ -96,7 +96,7 @@ std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer
 // pointer and shape.
 struct CastToArrayResult {
-  pybind11::array array;  // Holds a reference to the array to keep it alive.
+  pybind11::object array;  // Holds a reference to the array to keep it alive.
   const char* buf_ptr;
   xla::Shape shape;
 };

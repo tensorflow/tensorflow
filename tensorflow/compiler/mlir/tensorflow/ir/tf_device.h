@@ -42,6 +42,9 @@ class TensorFlowDeviceDialect : public Dialect {
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h.inc"
 
+// TODO(b/148642767): Use tablegen to define tf_device.parallel_execute op once
+// variadic regions can be expressed in tablegen.
+//
 // ParallelExecute op concurrently executes variadic number of regions. Regions
 // must represent separate sets of instructions to execute concurrently. In
 // order to represent concurrently executed regions with dependencies, multiple

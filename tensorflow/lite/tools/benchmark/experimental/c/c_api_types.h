@@ -391,6 +391,12 @@ typedef struct TfLiteTensor {
   // This is optional. The field is NULL if a tensor is dense.
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteSparsity* sparsity;
+
+  // Optional. Encodes shapes with unknown dimensions with -1. This field is
+  // only populated when unknown dimensions exist in a read-write tensor (i.e.
+  // an input or output tensor). (e.g.  `dims` contains [1, 1, 1, 3] and
+  // `dims_signature` contains [1, -1, -1, 3]).
+  const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 
 #ifndef TF_LITE_STATIC_MEMORY

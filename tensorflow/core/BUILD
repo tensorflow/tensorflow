@@ -3134,6 +3134,7 @@ tf_cc_tests(
         "common_runtime/buf_rendezvous_test.cc",
         "common_runtime/collective_executor_mgr_test.cc",
         "common_runtime/collective_rma_local_test.cc",
+        "common_runtime/device_mgr_test.cc",
         "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
         "common_runtime/dynamic_device_mgr_test.cc",

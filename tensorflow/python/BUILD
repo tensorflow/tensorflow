@@ -3185,7 +3185,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras:base_layer_utils",
+        "//tensorflow/python/keras/engine:base_layer_utils",
     ],
 )
 
@@ -5010,7 +5010,10 @@ cuda_py_test(
     srcs = ["ops/special_math_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "nomsan",  # b/148630708
+    ],
     deps = [
         ":array_ops",
         ":client",

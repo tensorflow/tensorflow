@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -32,6 +33,8 @@ DeviceSet::~DeviceSet() {}
 
 void DeviceSet::AddDevice(Device* device) {
   devices_.push_back(device);
+  prioritized_devices_.clear();
+  prioritized_device_types_.clear();
   for (const string& name :
        DeviceNameUtils::GetNamesForDeviceMappings(device->parsed_name())) {
     device_by_name_.insert({name, device});
@@ -82,6 +85,74 @@ std::vector<DeviceType> DeviceSet::PrioritizedDeviceTypeList() const {
   }
   std::sort(result.begin(), result.end(), DeviceTypeComparator);
   return result;
+}
+
+void DeviceSet::SortPrioritizedDeviceTypeVector(
+    PrioritizedDeviceTypeVector* vector) {
+  if (vector == nullptr) return;
+
+  auto device_sort = [](const PrioritizedDeviceTypeVector::value_type& a,
+                        const PrioritizedDeviceTypeVector::value_type& b) {
+    // First look at set priorities.
+    if (a.second != b.second) {
+      return a.second > b.second;
+    }
+    // Then fallback to default priorities.
+    return DeviceTypeComparator(a.first, b.first);
+  };
+
+  std::sort(vector->begin(), vector->end(), device_sort);
+}
+
+const PrioritizedDeviceTypeVector& DeviceSet::prioritized_device_types() const {
+  if (prioritized_device_types_.size() == devices_.size()) {
+    return prioritized_device_types_;
+  }
+
+  std::set<DeviceType> seen;
+  for (const std::pair<Device*, int32>& p : prioritized_devices()) {
+    DeviceType t(p.first->device_type());
+    if (seen.insert(t).second) {
+      prioritized_device_types_.emplace_back(t, p.second);
+    }
+  }
+  return prioritized_device_types_;
+}
+
+void DeviceSet::SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector) {
+  auto device_sort = [](const std::pair<Device*, int32>& a,
+                        const std::pair<Device*, int32>& b) {
+    if (a.second != b.second) {
+      return a.second > b.second;
+    }
+
+    auto a_priority =
+        DeviceSet::DeviceTypeOrder(DeviceType(a.first->device_type()));
+    auto b_priority =
+        DeviceSet::DeviceTypeOrder(DeviceType(b.first->device_type()));
+    // First sort by prioritized device type (higher is preferred) and
+    // then by device name (lexicographically).
+    if (a_priority != b_priority) {
+      return a_priority > b_priority;
+    }
+    return StringPiece(a.first->name()) < StringPiece(b.first->name());
+  };
+  std::sort(vector->begin(), vector->end(), device_sort);
+}
+
+const PrioritizedDeviceVector& DeviceSet::prioritized_devices() const {
+  if (prioritized_devices_.size() == devices_.size()) {
+    return prioritized_devices_;
+  }
+
+  for (Device* d : devices_) {
+    prioritized_devices_.emplace_back(
+        d, DeviceSet::DeviceTypeOrder(DeviceType(d->device_type())));
+  }
+
+  DeviceSet::SortPrioritizedDeviceVector(&prioritized_devices_);
+
+  return prioritized_devices_;
 }
 
 }  // namespace tensorflow

@@ -904,10 +904,8 @@ tf_cc_test(
         "//tensorflow/core/platform/testdata:test_noop",
         "//tensorflow/core/platform/testdata:test_stderr",
     ],
-    tags = [
-        "no_windows",
-    ],
     deps = [
+        ":resource_loader",
         ":strcat",
         ":subprocess",
         "//tensorflow/core:test",

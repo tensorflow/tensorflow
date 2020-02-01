@@ -3473,7 +3473,7 @@ bool RunCallbacks(
 
 }  // namespace
 
-PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
+PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   tensorflow::profiler::TraceMe activity(
       "TFE_Py_FastPathExecute_C", tensorflow::profiler::TraceMeLevel::kInfo);
   Py_ssize_t args_size = PyTuple_GET_SIZE(args);

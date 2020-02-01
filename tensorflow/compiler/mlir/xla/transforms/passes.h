@@ -55,6 +55,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
 // buffers if necessary.
 std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass();
 
+// Lowers from HLO dialect to Linalg dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass();
+
 }  // namespace xla_hlo
 
 namespace xla_lhlo {
@@ -63,7 +66,7 @@ namespace xla_lhlo {
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 
 // Lowers from LHLO dialect to Linalg dialect.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToLinalgPass();
 
 // Lowers from LHLO dialect to GPU dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass();

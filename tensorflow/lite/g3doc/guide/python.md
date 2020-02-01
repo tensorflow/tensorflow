@@ -16,10 +16,11 @@ To quickly run TensorFlow Lite models with Python, you can install just the
 TensorFlow Lite interpreter, instead of all TensorFlow packages.
 
 This interpreter-only package is a fraction the size of the full TensorFlow
-package and includes only the code required to run inferences, such as the
+package and includes the bare minimum code required to run inferences with
+TensorFlow Lite—it includes only the
 [`tf.lite.Interpreter`](https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter)
-class. This small package is ideal when all you want to do is execute `.tflite`
-models.
+Python class. This small package is ideal when all you want to do is execute
+`.tflite` models and avoid wasting disk space with the large TensorFlow library.
 
 Note: If you need access to other Python APIs, such as the [TensorFlow Lite
 Converter](../convert/python_api.md), you must install the [full TensorFlow

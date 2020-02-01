@@ -817,6 +817,14 @@ gentbl(
             "-gen-llvmir-conversions",
             "include/mlir/Dialect/LLVMIR/LLVMConversions.inc",
         ),
+        (
+            "-gen-enum-to-llvmir-conversions",
+            "include/mlir/Dialect/LLVMIR/LLVMConversionEnumsToLLVM.inc",
+        ),
+        (
+            "-gen-enum-from-llvmir-conversions",
+            "include/mlir/Dialect/LLVMIR/LLVMConversionEnumsFromLLVM.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/LLVMIR/LLVMOps.td",
@@ -1338,7 +1346,6 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":TransformUtils",
-        ":VectorAnalysis",
         ":VectorOps",
         "@llvm-project//llvm:support",
     ],
@@ -1527,28 +1534,6 @@ cc_library(
 )
 
 cc_library(
-    name = "VectorAnalysis",
-    srcs = glob([
-        "lib/Analysis/Vector*.cpp",
-        "lib/Analysis/Vector*.h",
-    ]),
-    hdrs = glob([
-        "include/mlir/Analysis/Vector*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":AffineOps",
-        ":Analysis",
-        ":IR",
-        ":StandardOps",
-        ":Support",
-        ":VectorOps",
-        "@llvm-project//llvm:support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "Translation",
     srcs = glob([
         "lib/Translation/*.cpp",
@@ -1599,6 +1584,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":LLVMConversionIncGen",
         ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":Support",
@@ -2550,6 +2536,9 @@ exports_files(
 )
 
 exports_files(
-    ["include/mlir/Analysis/InferTypeOpInterface.td"],
+    [
+        "include/mlir/Analysis/InferTypeOpInterface.td",
+        "include/mlir/Transforms/LoopLikeInterface.td",
+    ],
     visibility = ["@llvm-project//mlir:friends"],
 )
