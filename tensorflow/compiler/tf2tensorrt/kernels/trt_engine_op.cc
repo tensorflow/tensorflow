@@ -539,6 +539,31 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 }
 
+// Get the binding index of a tensor in an engine.
+// The binding index is looked up using the tensor's name and the profile idx.
+// Profile idx should be set to zero, if we do not have optimization profiles.
+Status GetTrtBindingIndex(const char* tensor_name, int profile_idx,
+                          const nvinfer1::ICudaEngine* cuda_engine,
+                          int* binding_idx) {
+  *binding_idx = cuda_engine->getBindingIndex(tensor_name);
+  if (*binding_idx == -1) {
+    const string msg = StrCat("Input node ", tensor_name, " not found");
+    LOG(ERROR) << msg;
+    return errors::NotFound(msg);
+  }
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  int n_profiles = cuda_engine->getNbOptimizationProfiles();
+#else
+  int n_profiles = 1;
+#endif
+  // If we have more then one optimization profiles then the binding idx
+  // depends on the profile number
+  const int bindings_per_profile =
+      cuda_engine->getNbBindings() / n_profiles;
+  *binding_idx = *binding_idx + profile_idx * bindings_per_profile;
+  return Status::OK();
+}
+
 bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                    EngineContext* engine_context) {
   VLOG(1) << "Executing TRT engine: " << name();
@@ -564,19 +589,17 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
 
   const bool kRetry = true;
   auto& execution_context = engine_context->execution_context;
-  const int num_binding = ctx->num_inputs() + ctx->num_outputs();
-
+  const int num_binding = cuda_engine->getNbBindings();
   std::vector<void*> buffers(num_binding);
 
   // Setup engine inputs.
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string input_name = StrCat(IONamePrefixes::kInputPHName, i);
-    const int binding_index = cuda_engine->getBindingIndex(input_name.c_str());
-    if (binding_index == -1) {
-      const string msg =
-          StrCat("Input node ", input_name, " not found, at ", name());
-      LOG(ERROR) << msg;
-      ctx->SetStatus(errors::NotFound(msg));
+    int binding_index = -1;
+    auto status = GetTrtBindingIndex(input_name.c_str(), 0,
+                                     cuda_engine.get(), &binding_index);
+    if (!status.ok()) {
+      ctx->SetStatus(status);
       return !kRetry;
     }
 
@@ -618,12 +641,11 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   // Setup engine outputs.
   for (int i = 0; i < ctx->num_outputs(); i++) {
     const string output_name = StrCat(IONamePrefixes::kOutputPHName, i);
-    const int binding_index = cuda_engine->getBindingIndex(output_name.c_str());
-    if (binding_index == -1) {
-      const string msg =
-          StrCat("Output node ", output_name, " not found, at ", name());
-      LOG(ERROR) << msg;
-      ctx->SetStatus(errors::NotFound(msg));
+    int binding_index = -1;
+    auto status = GetTrtBindingIndex(output_name.c_str(), 0,
+                                     cuda_engine.get(), &binding_index);
+    if (!status.ok()) {
+      ctx->SetStatus(status);
       return !kRetry;
     }
     // Get TRT output shapes for allocating output memory.
