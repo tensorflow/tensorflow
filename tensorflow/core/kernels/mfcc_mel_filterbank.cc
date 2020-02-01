@@ -100,8 +100,8 @@ bool MfccMelFilterbank::Initialize(int input_length, double input_sample_rate,
     if ((i < start_index_) || (i > end_index_)) {
       band_mapper_[i] = -2;  // Indicate an unused Fourier coefficient.
     } else {
-      while ((center_frequencies_[channel] < melf) &&
-             (channel < num_channels_)) {
+      while ((channel < num_channels_) && 
+        (center_frequencies_[channel] < melf)) {
         ++channel;
       }
       band_mapper_[i] = channel - 1;  // Can be == -1
