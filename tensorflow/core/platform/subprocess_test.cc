@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -32,29 +33,38 @@ limitations under the License.
 #include <sys/wait.h>
 #endif
 
-const char kEchoProgram[] = "core/platform/testdata/test_echo";
-const char kEchoArgv1Program[] = "core/platform/testdata/test_echo_argv_1";
-const char kNoopProgram[] = "core/platform/testdata/test_noop";
-const char kStdErrProgram[] = "core/platform/testdata/test_stderr";
+const char kEchoProgram[] = "tensorflow/core/platform/testdata/test_echo";
+const char kEchoArgv1Program[] =
+    "tensorflow/core/platform/testdata/test_echo_argv_1";
+const char kNoopProgram[] = "tensorflow/core/platform/testdata/test_noop";
+const char kStdErrProgram[] = "tensorflow/core/platform/testdata/test_stderr";
 
 namespace tensorflow {
+
+namespace {
+static string GetDataFilePath(const string& relative_path) {
+#ifdef PLATFORM_WINDOWS
+  // While CreateProcess on windows is resilient to not having ".exe" suffix,
+  // Bazel_tools has to have the exact file path to return the resource.
+  return GetDataDependencyFilepath(strings::StrCat(relative_path, ".exe"));
+#else
+  return GetDataDependencyFilepath(relative_path);
+#endif
+}
+}  // namespace
 
 class SubProcessTest : public ::testing::Test {};
 
 TEST_F(SubProcessTest, NoOutputNoComm) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kNoopProgram).c_str(),
-      {kNoopProgram});
+  proc.SetProgram(GetDataFilePath(kNoopProgram).c_str(), {kNoopProgram});
   EXPECT_TRUE(proc.Start());
   EXPECT_TRUE(proc.Wait());
 }
 
 TEST_F(SubProcessTest, NoOutput) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kNoopProgram).c_str(),
-      {kNoopProgram});
+  proc.SetProgram(GetDataFilePath(kNoopProgram).c_str(), {kNoopProgram});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -70,10 +80,8 @@ TEST_F(SubProcessTest, NoOutput) {
 TEST_F(SubProcessTest, Stdout) {
   tensorflow::SubProcess proc;
   const char test_string[] = "hello_world";
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kEchoArgv1Program)
-          .c_str(),
-      {kEchoArgv1Program, test_string});
+  proc.SetProgram(GetDataFilePath(kEchoArgv1Program).c_str(),
+                  {kEchoArgv1Program, test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -89,10 +97,8 @@ TEST_F(SubProcessTest, Stdout) {
 TEST_F(SubProcessTest, StdoutIgnored) {
   tensorflow::SubProcess proc;
   const char test_string[] = "hello_world";
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kEchoArgv1Program)
-          .c_str(),
-      {kEchoArgv1Program, test_string});
+  proc.SetProgram(GetDataFilePath(kEchoArgv1Program).c_str(),
+                  {kEchoArgv1Program, test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -105,10 +111,8 @@ TEST_F(SubProcessTest, StdoutIgnored) {
 TEST_F(SubProcessTest, Stderr) {
   tensorflow::SubProcess proc;
   const char test_string[] = "muh_failure!";
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kStdErrProgram)
-          .c_str(),
-      {kStdErrProgram, test_string});
+  proc.SetProgram(GetDataFilePath(kStdErrProgram).c_str(),
+                  {kStdErrProgram, test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -116,7 +120,7 @@ TEST_F(SubProcessTest, Stderr) {
   string out, err;
   int status = proc.Communicate(nullptr, &out, &err);
   EXPECT_TRUE(WIFEXITED(status));
-  EXPECT_EQ(1, WEXITSTATUS(status));
+  EXPECT_NE(0, WEXITSTATUS(status));
   EXPECT_EQ("", out);
   EXPECT_EQ(test_string, err);
 }
@@ -124,24 +128,20 @@ TEST_F(SubProcessTest, Stderr) {
 TEST_F(SubProcessTest, StderrIgnored) {
   tensorflow::SubProcess proc;
   const char test_string[] = "muh_failure!";
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kStdErrProgram)
-          .c_str(),
-      {kStdErrProgram, test_string});
+  proc.SetProgram(GetDataFilePath(kStdErrProgram).c_str(),
+                  {kStdErrProgram, test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
   int status = proc.Communicate(nullptr, nullptr, nullptr);
   EXPECT_TRUE(WIFEXITED(status));
-  EXPECT_EQ(1, WEXITSTATUS(status));
+  EXPECT_NE(0, WEXITSTATUS(status));
 }
 
 TEST_F(SubProcessTest, Stdin) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kEchoProgram).c_str(),
-      {kEchoProgram});
+  proc.SetProgram(GetDataFilePath(kEchoProgram).c_str(), {kEchoProgram});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
@@ -153,9 +153,7 @@ TEST_F(SubProcessTest, Stdin) {
 
 TEST_F(SubProcessTest, StdinStdout) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kEchoProgram).c_str(),
-      {kEchoProgram});
+  proc.SetProgram(GetDataFilePath(kEchoProgram).c_str(), {kEchoProgram});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -172,9 +170,7 @@ TEST_F(SubProcessTest, StdinStdout) {
 
 TEST_F(SubProcessTest, StdinChildExit) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kNoopProgram).c_str(),
-      {kNoopProgram});
+  proc.SetProgram(GetDataFilePath(kNoopProgram).c_str(), {kNoopProgram});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
@@ -193,9 +189,7 @@ TEST_F(SubProcessTest, StdinChildExit) {
 
 TEST_F(SubProcessTest, StdinStdoutOverlap) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kEchoProgram).c_str(),
-      {kEchoProgram});
+  proc.SetProgram(GetDataFilePath(kEchoProgram).c_str(), {kEchoProgram});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -219,9 +213,7 @@ TEST_F(SubProcessTest, StdinStdoutOverlap) {
 
 TEST_F(SubProcessTest, KillProc) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(
-      strings::StrCat(testing::TensorFlowSrcRoot(), "/", kEchoProgram).c_str(),
-      {kEchoProgram});
+  proc.SetProgram(GetDataFilePath(kEchoProgram).c_str(), {kEchoProgram});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
