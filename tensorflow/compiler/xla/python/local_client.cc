@@ -693,9 +693,12 @@ PyLocalExecutable::PyLocalExecutable(
   const int num_replicas = device_assignment_->replica_count();
   const int num_partitions = device_assignment_->computation_count();
 
-  CHECK_EQ(num_partitions, executables_.size())
-      << "Number of executables " << executables_.size()
-      << " did not match number of partitions " << num_partitions;
+  // SPMD sharding produces a single executable for multiple partitions.
+  if (executables_.size() > 1) {
+    CHECK_EQ(num_partitions, executables_.size())
+        << "Number of executables " << executables_.size()
+        << " did not match number of partitions " << num_partitions;
+  }
 
   for (int replica = 0; replica < num_replicas; ++replica) {
     for (int partition = 0; partition < num_partitions; ++partition) {
@@ -789,8 +792,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
       device_state->compute_semaphore().ScopedAcquire(1));
 
+  // SPMD sharding produces a single executable for multiple partitions.
+  int executable_idx = executables_.size() > 1 ? partition : 0;
+
   StatusOr<ScopedShapedBuffer> result_buffer_or_status =
-      executables_[partition]->RunAsync(argument_buffer_ptrs, options);
+      executables_[executable_idx]->RunAsync(argument_buffer_ptrs, options);
 
   VLOG(1) << "Replica " << replica << " partition " << partition
           << " completed; ok=" << result_buffer_or_status.ok();
@@ -820,7 +826,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
 
   device_state->ThenRelease(
       device_state->compute_stream(),
-      std::make_tuple(executables_[partition], compute_reservation,
+      std::make_tuple(executables_[executable_idx], compute_reservation,
                       device_assignment_));
   return absl::make_unique<PyLocalBuffer>(
       result_buffer.on_host_shape(), result_buffer.on_device_shape(),
