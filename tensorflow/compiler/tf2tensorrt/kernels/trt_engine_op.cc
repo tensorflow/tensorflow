@@ -615,6 +615,19 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
         return kRetry;
       }
     }
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    // Set known input dimensions. This is necessary because TRT network
+    // could be made with dynamic dimensions.
+    if (!use_implicit_batch_) {
+      nvinfer1::Dims trt_dims;
+      trt_dims.nbDims = input_shape.dims();
+      for (int k = 0; k < input_shape.dims(); k++) {
+        trt_dims.d[k] = input_shape.dim_size(k);
+      }
+      execution_context->setBindingDimensions(binding_index, trt_dims);
+    }
+#endif
+    // Setup input bindings.
     auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
@@ -637,6 +650,18 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
         return kRetry;
     }
   }
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  // Ensure all network dynamic dimensions (if any) are set in execution context.
+  if (!execution_context->allInputDimensionsSpecified()) {
+    LOG(WARNING) << "Failed to set dimensions for all dynamic input tensors.";
+    return kRetry;
+  }
+  if (!execution_context->allInputShapesSpecified()) {
+    LOG(WARNING) << "Failed to set dimensions for all shape input tensors.";
+    return kRetry;
+  }
+#endif
 
   // Setup engine outputs.
   for (int i = 0; i < ctx->num_outputs(); i++) {
@@ -675,7 +700,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     // Allocate output tensor of TRTEngineOp
     Tensor* output_tensor = nullptr;
     TensorShape output_shape;
-    auto status = TensorShapeUtils::MakeShape(
+    status = TensorShapeUtils::MakeShape(
         trt_shape.data(), trt_shape.size(), &output_shape);
     if (!status.ok()) {
       LOG(ERROR) << "Failed to get output shape: " << status;
