@@ -841,15 +841,15 @@ class UnknownShapes(TestModels):
         expected_value.numpy(), actual_value[0], decimal=6)
 
   def testBatchMatMul(self):
-    self.skipTest('BatchMatMulV2 ranked tensor check fails.')
+    self.skipTest('BatchMatMulV2 does not support unknown batch size.')
     input_data_1 = constant_op.constant(
         np.array(np.random.random_sample((1, 256, 256)), dtype=np.float32))
     input_data_2 = constant_op.constant(
-        np.array(np.random.random_sample((1, 2, 256)), dtype=np.float32))
+        np.array(np.random.random_sample((1, 256, 256)), dtype=np.float32))
 
     @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[1, 256, 256], dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=[1, None, 256], dtype=dtypes.float32)
+        tensor_spec.TensorSpec(shape=[None, 256, 256], dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=[None, 256, 256], dtype=dtypes.float32)
     ])
     def model(in_tensor_1, in_tensor_2):
       return math_ops.matmul(in_tensor_1, in_tensor_2)
@@ -864,7 +864,7 @@ class UnknownShapes(TestModels):
     expected_value = concrete_func(input_data_1, input_data_2)
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data_1, input_data_2],
-        input_shapes={1: [1, 2, 256]})
+        input_shapes=[([-1, 256, 256], [1, 256, 256])])
     np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
 
