@@ -538,12 +538,13 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, c_shape, &c_t));
 
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-    bool shortcut_ok = (b_outer_dim == 1);
+    bool use_matrix_vector_multiply = (b_outer_dim == 1);
 #if TENSORFLOW_USE_ROCM
     // ROCm hipsparse does not implement csrmv with transposed input a
-    shortcut_ok = shortcut_ok && !this->transpose_a_;
+    use_matrix_vector_multiply = use_matrix_vector_multiply &&
+      !this->transpose_a_;
 #endif      
-    if (shortcut_ok) {
+    if (use_matrix_vector_multiply) {
       // Call matrix-vector multiply if b is a vector.
       TTypes<int64>::ConstVec a_dense_shape_comp(a_dense_shape.data() + row_dim,
                                                  2);
