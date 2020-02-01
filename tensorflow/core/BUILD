@@ -511,13 +511,9 @@ tf_cuda_library(
         "//tensorflow/core/framework:variant_tensor_data.h",
         "//tensorflow/core/util/sparse:framework_group",
         "//tensorflow/core/util:framework_srcs",
+        "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/public:version.h",
-    ] + select({
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "//tensorflow/core/util:memmapped_file_system_hdrs",
-        ],
-    }) + if_mkl([
+    ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
     visibility = ["//visibility:public"],
@@ -2155,13 +2151,9 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
     "//tensorflow/core/framework:framework_internal_private_hdrs",
     "//tensorflow/core/util:framework_internal_private_hdrs",
+    "//tensorflow/core/util:memmapped_file_system_hdrs",
     "//tensorflow/core/example:feature_util.h",
-] + select({
-    "//tensorflow:windows": [],
-    "//conditions:default": [
-        "//tensorflow/core/util:memmapped_file_system_hdrs",
-    ],
-})
+]
 
 FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/framework:model.h",  # only needed for tests
@@ -2229,6 +2221,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:framework_internal_impl_srcs",
         "//tensorflow/core/graph:framework_internal_impl_srcs",
         "//tensorflow/core/util:framework_internal_impl_srcs",
+        "//tensorflow/core/util:memmapped_file_system_srcs",
         "//tensorflow/core/util/sparse:framework_internal_impl_group",
     ] + glob(
         [
@@ -2237,12 +2230,7 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
         ],
-    ) + select({
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "//tensorflow/core/util:memmapped_file_system_srcs",
-        ],
-    }),
+    ),
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
