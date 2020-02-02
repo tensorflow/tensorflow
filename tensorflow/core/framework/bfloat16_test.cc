@@ -13,10 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/framework/bfloat16.h"
 
 #include "absl/base/casts.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -139,6 +143,62 @@ TEST(Bfloat16Test, Conversion) {
   }
 }
 
+TEST(Bfloat16Test, ParallelConversion) {
+  thread::ThreadPool pool(Env::Default(), "test", 16);
+  Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
+                                       pool.NumThreads());
+  float a[100];
+  for (int i = 0; i < 100; ++i) {
+    a[i] = i + 1.25;
+  }
+  bfloat16 b[100];
+  float c[100];
+  FloatToBFloat16(eigen_device, a, b, 100);
+  BFloat16ToFloat(eigen_device, b, c, 100);
+  for (int i = 0; i < 100; ++i) {
+    // The relative error should be less than 1/(2^7) since bfloat16
+    // has 7 bits mantissa.
+    EXPECT_LE(fabs(c[i] - a[i]) / a[i], 1.0 / 128);
+  }
+}
+
+TEST(Bfloat16Test, ParallelFloatToBFloat16Conversion) {
+  thread::ThreadPool pool(Env::Default(), "test", 16);
+  Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
+                                       pool.NumThreads());
+  float a[100];
+  for (int i = 0; i < 100; ++i) {
+    a[i] = i + 1.25;
+  }
+  bfloat16 b[100];
+  bfloat16 c[100];
+  FloatToBFloat16(eigen_device, a, b, 100);
+  FloatToBFloat16(a, c, 100);
+  for (int i = 0; i < 100; ++i) {
+    EXPECT_EQ(static_cast<bfloat16>(a[i]), b[i]);
+    EXPECT_EQ(b[i], c[i]);
+  }
+}
+
+TEST(Bfloat16Test, ParallelBFloat16ToFloatConversion) {
+  thread::ThreadPool pool(Env::Default(), "test", 16);
+  Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
+                                       pool.NumThreads());
+  float a[100];
+  for (int i = 0; i < 100; ++i) {
+    a[i] = i + 1.25;
+  }
+  bfloat16 b[100];
+  FloatToBFloat16(a, b, 100);
+  float c[100];
+  float d[100];
+  BFloat16ToFloat(eigen_device, b, c, 100);
+  BFloat16ToFloat(eigen_device, b, d, 100);
+  for (int i = 0; i < 100; ++i) {
+    EXPECT_EQ(c[i], d[i]);
+  }
+}
+
 TEST(Bfloat16Test, Epsilon) {
   EXPECT_LT(1.0f, static_cast<float>(bfloat16::epsilon() + bfloat16(1.0f)));
   EXPECT_EQ(1.0f, static_cast<float>((bfloat16::epsilon() / bfloat16(2.0f)) +
@@ -168,6 +228,28 @@ static void BM_FloatToBFloat16(int iters) {
   delete[] out;
 }
 BENCHMARK(BM_FloatToBFloat16);
+
+static void BM_ParallelFloatToBFloat16(int iters) {
+  testing::StopTiming();
+  static const int N = 32 << 20;
+  const int64 tot = static_cast<int64>(iters) * N;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
+
+  float* inp = new float[N];
+  bfloat16* out = new bfloat16[N];
+
+  thread::ThreadPool pool(Env::Default(), "test", 16);
+  Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
+                                       pool.NumThreads());
+  testing::StartTiming();
+  while (iters--) {
+    FloatToBFloat16(eigen_device, inp, out, N);
+  }
+  delete[] inp;
+  delete[] out;
+}
+BENCHMARK(BM_ParallelFloatToBFloat16);
 
 void RoundFloatToBFloat16(const float* src, bfloat16* dst, int64 size) {
   for (; size != 0; size--) {
@@ -214,6 +296,29 @@ static void BM_BFloat16ToFloat(int iters) {
   delete[] out;
 }
 BENCHMARK(BM_BFloat16ToFloat);
+
+static void BM_ParallelBFloat16ToFloat(int iters) {
+  testing::StopTiming();
+  static const int N = 32 << 20;
+  const int64 tot = static_cast<int64>(iters) * N;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
+
+  bfloat16* inp = new bfloat16[N];
+  float* out = new float[N];
+
+  thread::ThreadPool pool(Env::Default(), "test", 16);
+  Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
+                                       pool.NumThreads());
+
+  testing::StartTiming();
+  while (iters--) {
+    BFloat16ToFloat(eigen_device, inp, out, N);
+  }
+  delete[] inp;
+  delete[] out;
+}
+BENCHMARK(BM_ParallelBFloat16ToFloat);
 
 }  // namespace
 }  // namespace tensorflow
