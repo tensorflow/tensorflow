@@ -999,39 +999,28 @@ class SparseMatMulOp : public OpKernel {
       auto left = &a;
       auto right = &b;
       // TODO(agarwal): multi-thread the conversions from bfloat16 to float.
-      CPUDevice d = ctx->eigen_device<CPUDevice>();
       if (std::is_same<TL, bfloat16>::value) {
         a_float.reset(new Tensor(DT_FLOAT, a.shape()));
-        auto a_ParallelBFloat16ToFloat = [&](Eigen::Index start,
-                                             Eigen::Index end) {
-          BFloat16ToFloat(a.flat<bfloat16>().data() + start,
-                          a_float->flat<float>().data() + start, end - start);
-        };
-        Eigen::Index a_N = a.NumElements();
-        const int a_input_bytes = a_N * sizeof(bfloat16);
-        const int a_output_bytes = a_N * sizeof(float);
-        const int a_compute_cycles =
-            (Eigen::TensorOpCost::AddCost<uint16_t>() * 3);
-        const Eigen::TensorOpCost a_cost(a_input_bytes, a_output_bytes,
-                                         a_compute_cycles);
-        d.parallelFor(a_N, a_cost, a_ParallelBFloat16ToFloat);
+#ifdef PLATFORM_GOOGLE
+        BFloat16ToFloat(a.flat<bfloat16>().data(),
+                        a_float->flat<float>().data(), a.NumElements());
+#else
+        BFloat16ToFloat(ctx->eigen_device<CPUDevice>(),
+                        a.flat<bfloat16>().data(),
+                        a_float->flat<float>().data(), a.NumElements());
+#endif  // PLATFORM_GOOGLE
         left = a_float.get();
       }
       if (std::is_same<TR, bfloat16>::value) {
         b_float.reset(new Tensor(DT_FLOAT, b.shape()));
-        auto b_ParallelBFloat16ToFloat = [&](Eigen::Index start,
-                                             Eigen::Index end) {
-          BFloat16ToFloat(b.flat<bfloat16>().data() + start,
-                          b_float->flat<float>().data() + start, end - start);
-        };
-        Eigen::Index b_N = b.NumElements();
-        const int b_input_bytes = b_N * sizeof(bfloat16);
-        const int b_output_bytes = b_N * sizeof(float);
-        const int b_compute_cycles =
-            (Eigen::TensorOpCost::AddCost<uint16_t>() * 3);
-        const Eigen::TensorOpCost b_cost(b_input_bytes, b_output_bytes,
-                                         b_compute_cycles);
-        d.parallelFor(b_N, b_cost, b_ParallelBFloat16ToFloat);
+#ifdef PLATFORM_GOOGLE
+        BFloat16ToFloat(b.flat<bfloat16>().data(),
+                        b_float->flat<float>().data(), b.NumElements());
+#else
+        BFloat16ToFloat(ctx->eigen_device<CPUDevice>(),
+                        b.flat<bfloat16>().data(),
+                        b_float->flat<float>().data(), b.NumElements());
+#endif  // PLATFORM_GOOGLE
         right = b_float.get();
       }
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;

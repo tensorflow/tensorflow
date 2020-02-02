@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
 #define TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
@@ -53,7 +54,10 @@ namespace tensorflow {
 // "size".
 void FloatToBFloat16(const float* src, bfloat16* dst, int64 size);
 void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size);
-
+void FloatToBFloat16(const Eigen::ThreadPoolDevice& d, const float* src,
+                     bfloat16* dst, int64 size);
+void BFloat16ToFloat(const Eigen::ThreadPoolDevice& d, const bfloat16* src,
+                     float* dst, int64 size);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_

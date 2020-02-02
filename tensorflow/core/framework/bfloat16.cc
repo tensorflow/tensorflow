@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
 #include "tensorflow/core/framework/bfloat16.h"
 
 namespace tensorflow {
@@ -31,6 +32,18 @@ void FloatToBFloat16(const float* src, bfloat16* dst, int64 size) {
 #endif
 }
 
+void FloatToBFloat16(const Eigen::ThreadPoolDevice& d, const float* src,
+                     bfloat16* dst, int64 size) {
+  auto ParallelFloatToBFloat16 = [&](Eigen::Index start, Eigen::Index end) {
+    FloatToBFloat16(src + start, dst + start, end - start);
+  };
+  const int input_bytes = size * sizeof(float);
+  const int output_bytes = size * sizeof(bfloat16);
+  const int compute_cycles = (Eigen::TensorOpCost::AddCost<uint16_t>() * 3);
+  const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
+  d.parallelFor(size, cost, ParallelFloatToBFloat16);
+}
+
 void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size) {
   const uint16_t* p = reinterpret_cast<const uint16_t*>(src);
   uint16_t* q = reinterpret_cast<uint16_t*>(dst);
@@ -45,6 +58,18 @@ void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size) {
     q[1] = *p;
   }
 #endif
+}
+
+void BFloat16ToFloat(const Eigen::ThreadPoolDevice& d, const bfloat16* src,
+                     float* dst, int64 size) {
+  auto ParallelBFloat16ToFloat = [&](Eigen::Index start, Eigen::Index end) {
+    BFloat16ToFloat(src + start, dst + start, end - start);
+  };
+  const int input_bytes = size * sizeof(bfloat16);
+  const int output_bytes = size * sizeof(float);
+  const int compute_cycles = (Eigen::TensorOpCost::AddCost<uint16_t>() * 3);
+  const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
+  d.parallelFor(size, cost, ParallelBFloat16ToFloat);
 }
 
 }  // end namespace tensorflow
