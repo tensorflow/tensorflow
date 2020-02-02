@@ -157,8 +157,24 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     super(TfTrtIntegrationTestBase, self).setUp()
     warnings.simplefilter("always")
 
-  def BuildParams(self, graph_fn, dtype, input_shapes, output_shapes):
-    """Build test parameters when not considering dynamic shapes."""
+  def _GetTensorSpec(self, shape, mask, dtype, name):
+    if mask is None:
+      # Unset the batch dim of the specs to make sure TRT can tolerate changes
+      # on that.
+      new_shape = [None] + shape[1:]
+    else:
+      # Unset shape where mask[i] == None
+      assert len(shape) == len(mask)
+      new_shape = [None if m is None else s for s, m in zip(shape, mask)]
+
+    return tensor_spec.TensorSpec(new_shape, dtype, name)
+
+  def BuildParams(self, graph_fn, dtype, input_shapes, output_shapes,
+                  input_mask=None, output_mask=None):
+    """Build test parameters with static shapes (input_mask==None) or with
+       dynamic shapes. To define the first two dimension with dynamic shapes
+       use e.g. input_shapes=[[1,2,1,8]], input_mask=[[None, None, 1, 8]]
+    """
 
     def _Validate(shapes):
       # Make sure all the shapes are fully specified.
@@ -168,17 +184,25 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     _Validate(input_shapes)
     _Validate(output_shapes)
 
+    if input_mask is None:
+      input_mask = [None]*len(input_shapes)
+    else:
+      assert len(input_mask) == len(input_shapes)
+
+    if output_mask is None:
+      output_mask = [None]*len(output_shapes)
+    else:
+      assert len(output_mask) == len(output_shapes)
+
     return TfTrtIntegrationTestParams(
         graph_fn=graph_fn,
-        # Unset the batch dim of the specs to make sure TRT can tolerate changes
-        # on that.
         input_specs=[
-            tensor_spec.TensorSpec([None] + shape[1:], dtype, "input_%d" % i)
-            for i, shape in enumerate(input_shapes)
+            self._GetTensorSpec(shape, mask, dtype, "input_%d" % i)
+            for i, (shape, mask) in enumerate(zip(input_shapes, input_mask))
         ],
         output_specs=[
-            tensor_spec.TensorSpec([None] + shape[1:], dtype, "output_%d" % i)
-            for i, shape in enumerate(output_shapes)
+            self._GetTensorSpec(shape, mask, dtype, "output_%d" % i)
+            for i, (shape, mask) in enumerate(zip(output_shapes, output_mask))
         ],
         input_dims=[input_shapes],
         expected_output_dims=[output_shapes])
