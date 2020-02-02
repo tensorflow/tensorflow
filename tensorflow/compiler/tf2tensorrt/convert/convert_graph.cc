@@ -328,6 +328,7 @@ Status CreateTRTNode(const ConversionParams& params,
                      nvinfer1::IGpuAllocator* alloc,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
+  std::vector<tensorflow::TensorShapeProto> input_shape_protos;
   std::vector<PartialTensorShape> input_shapes;
   std::vector<NodeDefBuilder::NodeOut> inputs;
   std::vector<Node*> input_nodes;
@@ -368,9 +369,13 @@ Status CreateTRTNode(const ConversionParams& params,
         out_types.at(conn.port_number) = conn.connection_type;
       } else {
         // Set the shapes and data types of input edge.
+        tensorflow::TensorShapeProto in_shape;
+        conn.outside_shape.AsProto(&in_shape);
         if (input_shapes.size() <= conn.port_number) {
+          input_shape_protos.resize(conn.port_number + 1);
           input_shapes.resize(conn.port_number + 1);
         }
+        input_shape_protos.at(conn.port_number) = in_shape;
         input_shapes.at(conn.port_number) = conn.outside_shape;
         // Shape must be fully defined (excluding batch dimension) for static
         // mode.
@@ -455,6 +460,7 @@ Status CreateTRTNode(const ConversionParams& params,
   function.set_name(StrCat(info.engine_name, "_native_segment"));
   Status status =
       node_builder
+          .Attr("input_shapes", input_shape_protos)
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
           .Attr("segment_func", function)
