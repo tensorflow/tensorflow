@@ -144,7 +144,7 @@ TEST(Bfloat16Test, Conversion) {
 }
 
 TEST(Bfloat16Test, ParallelConversion) {
-  thread::ThreadPool pool(Env::Default(), "test", 16);
+  thread::ThreadPool pool(Env::Default(), "test", 4);
   Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
                                        pool.NumThreads());
   float a[100];
@@ -163,7 +163,7 @@ TEST(Bfloat16Test, ParallelConversion) {
 }
 
 TEST(Bfloat16Test, ParallelFloatToBFloat16Conversion) {
-  thread::ThreadPool pool(Env::Default(), "test", 16);
+  thread::ThreadPool pool(Env::Default(), "test", 4);
   Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
                                        pool.NumThreads());
   float a[100];
@@ -181,7 +181,7 @@ TEST(Bfloat16Test, ParallelFloatToBFloat16Conversion) {
 }
 
 TEST(Bfloat16Test, ParallelBFloat16ToFloatConversion) {
-  thread::ThreadPool pool(Env::Default(), "test", 16);
+  thread::ThreadPool pool(Env::Default(), "test", 4);
   Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
                                        pool.NumThreads());
   float a[100];
@@ -239,7 +239,7 @@ static void BM_ParallelFloatToBFloat16(int iters) {
   float* inp = new float[N];
   bfloat16* out = new bfloat16[N];
 
-  thread::ThreadPool pool(Env::Default(), "test", 16);
+  thread::ThreadPool pool(Env::Default(), "test", 4);
   Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
                                        pool.NumThreads());
   testing::StartTiming();
@@ -307,7 +307,7 @@ static void BM_ParallelBFloat16ToFloat(int iters) {
   bfloat16* inp = new bfloat16[N];
   float* out = new float[N];
 
-  thread::ThreadPool pool(Env::Default(), "test", 16);
+  thread::ThreadPool pool(Env::Default(), "test", 4);
   Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
                                        pool.NumThreads());
 
