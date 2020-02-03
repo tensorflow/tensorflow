@@ -50,7 +50,6 @@ exports_files([
         "no_gpu",  # Executing with TF GPU configurations is redundant.
         "no_oss",
         "tflite_not_portable_intentional",
-        "noasan",  # b/148160116
     ],
     test_name = test_name,
     deps = [
