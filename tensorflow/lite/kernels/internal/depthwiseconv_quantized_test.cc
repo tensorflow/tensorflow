@@ -27,6 +27,9 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -42,6 +45,8 @@ namespace tflite {
 namespace {
 
 using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
+using optimized_ops::depthwise_conv::QuantizationType;
+using optimized_ops::depthwise_conv::QuantizationTypeImpl;
 using ::testing::Bool;
 using ::testing::Values;
 
@@ -108,12 +113,39 @@ struct TestParam {
   bool loose_tolerance = false;
 };
 
-inline void DispatchDepthwiseConv(
-    const TestParam& test_param, const DepthwiseParams& params,
-    const RuntimeShape& input_shape, const uint8* input_data,
-    const RuntimeShape& filter_shape, const uint8* filter_data,
+template <QuantizationType quantization_type>
+inline void DispatchDepthwiseConvGeneral(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        input_data,
+    const RuntimeShape& filter_shape,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        filter_data,
     const RuntimeShape& bias_shape, const int32* bias_data,
-    const RuntimeShape& output_shape, uint8* output_data) {
+    const std::int32_t* output_shift_adjust,
+    const std::int32_t* output_multiplier_adjust,
+    const RuntimeShape& output_shape,
+    typename QuantizationTypeImpl<quantization_type>::ExternalType* output_data,
+    int thread_start, int thread_end, int thread_dim) {
+  optimized_ops::depthwise_conv::DepthwiseConvGeneral(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data, thread_start, thread_end,
+      thread_dim);
+}
+
+template <QuantizationType quantization_type>
+inline void DispatchDepthwiseConvImpl(
+    const TestParam& test_param, const DepthwiseParams& params,
+    const RuntimeShape& input_shape,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        input_data,
+    const RuntimeShape& filter_shape,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        filter_data,
+    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& output_shape,
+    typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        output_data) {
   switch (test_param.forced_invocation) {
     case DepthwiseConvImplementation::kUseNeon3x3: {
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
@@ -179,8 +211,9 @@ inline void DispatchDepthwiseConv(
       ASSERT_NE(kernel_type, DotProduct3x3KernelType::kNone)
           << "Kernel type = " << static_cast<int>(kernel_type);
 
-      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
-          DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3Impl<
+          DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+          quantization_type>(
           params, input_shape, input_data, filter_shape, filter_data,
           bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
           /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
@@ -214,8 +247,9 @@ inline void DispatchDepthwiseConv(
           << " buffer need = " << input_shape.Dims(3) * input_shape.Dims(2) * 6
           << " input_offset = " << params.input_offset;
 
-      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
-          DepthwiseConvImplementation::kUseCModel3x3DotProduct>(
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3Impl<
+          DepthwiseConvImplementation::kUseCModel3x3DotProduct,
+          quantization_type>(
           params, input_shape, input_data, filter_shape, filter_data,
           bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
           /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
@@ -232,8 +266,9 @@ inline void DispatchDepthwiseConv(
               DotProduct3x3KernelType::kWithDepthMultiplicationStride1 ||
           kernel_type ==
               DotProduct3x3KernelType::kWithDepthMultiplicationStride2);
-      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
-          DepthwiseConvImplementation::kUseUnwound3x3DotProduct>(
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3Impl<
+          DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+          quantization_type>(
           params, input_shape, input_data, filter_shape, filter_data,
           bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
           /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
@@ -252,8 +287,9 @@ inline void DispatchDepthwiseConv(
               DotProduct3x3KernelType::kWithDepthMultiplicationStride1 ||
           kernel_type ==
               DotProduct3x3KernelType::kWithDepthMultiplicationStride2);
-      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
-          DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct>(
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3Impl<
+          DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+          quantization_type>(
           params, input_shape, input_data, filter_shape, filter_data,
           bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
           /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
@@ -263,9 +299,10 @@ inline void DispatchDepthwiseConv(
 #endif
     }
     case DepthwiseConvImplementation::kUseGenericKernel: {
-      optimized_ops::depthwise_conv::DepthwiseConvGeneral(
+      DispatchDepthwiseConvGeneral<quantization_type>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          bias_shape, bias_data, nullptr, nullptr, output_shape, output_data,
+          /*thread_start=*/0,
           /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
     }
@@ -293,25 +330,86 @@ inline void DispatchDepthwiseConv(
 
   CpuBackendContext backend_context;
   backend_context.SetMaxNumThreads(test_param.num_threads);
-  optimized_ops::DepthwiseConv<uint8, int32>(
+  optimized_ops::DepthwiseConv<
+      typename QuantizationTypeImpl<quantization_type>::ExternalType, int32>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
       bias_data, output_shape, output_data, &backend_context);
 }
 
+template <QuantizationType quantization_type>
+inline void DispatchDepthwiseConv(
+    const TestParam& test_param, const DepthwiseParams& params,
+    const RuntimeShape& input_shape,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        input_data,
+    const RuntimeShape& filter_shape,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        filter_data,
+    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& output_shape,
+    typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        output_data) {
+  DispatchDepthwiseConvImpl<quantization_type>(
+      test_param, params, input_shape, input_data, filter_shape, filter_data,
+      bias_shape, bias_data, output_shape, output_data);
+}
+
+template <QuantizationType quantization_type>
+struct ReferenceRunner {};
+
+template <>
+struct ReferenceRunner<QuantizationType::kNonPerChannelUint8> {
+  static inline void Run(
+      const TestParam& test_param, const tflite::DepthwiseParams& op_params,
+      const uint8* input_data, const RuntimeShape& input_shape,
+      const uint8* filter_data, const RuntimeShape& filter_shape,
+      const std::int32_t* bias_data, const RuntimeShape& bias_shape,
+      const RuntimeShape& output_shape, uint8* reference_output_data) {
+    switch (test_param.output_rounding) {
+      case DepthwiseConvOutputRounding::kUpward:
+        reference_ops::depthwise_conv::DepthwiseConvBasicKernel<
+            DepthwiseConvOutputRounding::kUpward>::Run(op_params, input_shape,
+                                                       input_data, filter_shape,
+                                                       filter_data, bias_shape,
+                                                       bias_data, output_shape,
+                                                       reference_output_data);
+        break;
+      case DepthwiseConvOutputRounding::kAwayFromZero:
+        reference_ops::DepthwiseConv(
+            op_params, input_shape, input_data, filter_shape, filter_data,
+            bias_shape, bias_data, output_shape, reference_output_data);
+        break;
+      case DepthwiseConvOutputRounding::kNone:
+      default:
+        EXPECT_NE(test_param.output_rounding,
+                  DepthwiseConvOutputRounding::kNone);
+        break;
+    }
+  }
+};
+
+template <QuantizationType quantization_type>
 // Runs the DepthwiseConv and compares against the reference implementation.
 int TestOneDepthwiseConvWithGivenOutputShift(
-    const TestParam& test_param, const std::uint8_t* input_data,
+    const TestParam& test_param,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        input_data,
     const RuntimeShape& input_shape, std::int32_t input_offset,
-    const std::uint8_t* filter_data, const RuntimeShape& filter_shape,
-    std::int32_t filter_offset, const std::int32_t* bias_data,
-    const RuntimeShape& bias_shape, int stride, PaddingType padding_type,
-    int pad_width, int pad_height, int depth_multiplier,
-    std::int32_t output_offset, std::int32_t output_multiplier,
-    int output_shift, std::int32_t output_activation_min,
-    std::int32_t output_activation_max, const RuntimeShape& output_shape) {
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        filter_data,
+    const RuntimeShape& filter_shape, std::int32_t filter_offset,
+    const std::int32_t* bias_data, const RuntimeShape& bias_shape, int stride,
+    PaddingType padding_type, int pad_width, int pad_height,
+    int depth_multiplier, std::int32_t output_offset,
+    std::int32_t output_multiplier, const std::int32_t* output_shift_adjust,
+    const std::int32_t* output_multiplier_adjust, int output_shift,
+    std::int32_t output_activation_min, std::int32_t output_activation_max,
+    const RuntimeShape& output_shape) {
   const int output_buffer_size = output_shape.FlatSize();
-  std::vector<std::uint8_t> output_data(output_buffer_size);
-  std::vector<std::uint8_t> reference_output_data(output_buffer_size);
+  std::vector<typename QuantizationTypeImpl<quantization_type>::ExternalType>
+      output_data(output_buffer_size, 42);
+  std::vector<typename QuantizationTypeImpl<quantization_type>::ExternalType>
+      reference_output_data(output_buffer_size);
 
   tflite::DepthwiseParams op_params;
   op_params.padding_type = padding_type;
@@ -329,27 +427,29 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
   op_params.output_shift = -output_shift;
-  switch (test_param.output_rounding) {
-    case DepthwiseConvOutputRounding::kUpward:
-      reference_ops::depthwise_conv::
-          DepthwiseConvBasicKernel<DepthwiseConvOutputRounding::kUpward>::Run(
-              op_params, input_shape, input_data, filter_shape, filter_data,
-              bias_shape, bias_data, output_shape,
-              reference_output_data.data());
-      break;
-    case DepthwiseConvOutputRounding::kAwayFromZero:
-      reference_ops::DepthwiseConv(
-          op_params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, reference_output_data.data());
-      break;
-    case DepthwiseConvOutputRounding::kNone:
-    default:
-      EXPECT_NE(test_param.output_rounding, DepthwiseConvOutputRounding::kNone);
-      break;
+
+  const int depth = output_shape.Dims(3);
+  std::vector<int32> output_multiplier_per_channel(depth, output_multiplier);
+  std::vector<int32> output_shift_per_channel(depth, -output_shift);
+  if (output_multiplier_adjust != nullptr) {
+    for (int i = 0; i < depth; ++i) {
+      output_multiplier_per_channel[i] += output_multiplier_adjust[i];
+      output_shift_per_channel[i] += output_shift_adjust[i];
+      output_shift_per_channel[i] = std::max(-31, output_shift_per_channel[i]);
+    }
   }
-  DispatchDepthwiseConv(test_param, op_params, input_shape, input_data,
-                        filter_shape, filter_data, bias_shape, bias_data,
-                        output_shape, output_data.data());
+  op_params.output_multiplier_per_channel =
+      output_multiplier_per_channel.data();
+  op_params.output_shift_per_channel =
+      output_shift_per_channel.data();  // Negated wrt output_shift.
+
+  ReferenceRunner<quantization_type>::Run(
+      test_param, op_params, input_data, input_shape, filter_data, filter_shape,
+      bias_data, bias_shape, output_shape, reference_output_data.data());
+
+  DispatchDepthwiseConv<quantization_type>(
+      test_param, op_params, input_shape, input_data, filter_shape, filter_data,
+      bias_shape, bias_data, output_shape, output_data.data());
   int saturated_min = 0;
   int saturated_max = 0;
   std::vector<int> diff(output_buffer_size);
@@ -426,14 +526,20 @@ int TestOneDepthwiseConvWithGivenOutputShift(
 // sizes), and guessing wrong would mean that all the values get saturated so
 // the test becomes vacuous. So we just bisect our way to reasonable
 // output_shift values.
+template <QuantizationType quantization_type>
 void TestOneDepthwiseConvBisectOutputShift(
-    const TestParam& test_param, const std::uint8_t* input_data,
+    const TestParam& test_param,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        input_data,
     const RuntimeShape& input_shape, std::int32_t input_offset,
-    const std::uint8_t* filter_data, const RuntimeShape& filter_shape,
-    std::int32_t filter_offset, const std::int32_t* bias_data,
-    const RuntimeShape& bias_shape, int stride, PaddingType padding_type,
-    int pad_width, int pad_height, int depth_multiplier,
-    std::int32_t output_offset, std::int32_t output_multiplier,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        filter_data,
+    const RuntimeShape& filter_shape, std::int32_t filter_offset,
+    const std::int32_t* bias_data, const RuntimeShape& bias_shape, int stride,
+    PaddingType padding_type, int pad_width, int pad_height,
+    int depth_multiplier, std::int32_t output_offset,
+    std::int32_t output_multiplier, const std::int32_t* output_shift_adjust,
+    const std::int32_t* output_multiplier_adjust,
     int output_activation_bisect_start, int output_activation_bisect_end,
     std::int32_t output_activation_min, std::int32_t output_activation_max,
     const RuntimeShape& output_shape) {
@@ -441,12 +547,14 @@ void TestOneDepthwiseConvBisectOutputShift(
       << "Bisection failed ?!?!";
   int output_shift_bisect_midpoint =
       (output_activation_bisect_start + output_activation_bisect_end) / 2;
-  int bisect_result = TestOneDepthwiseConvWithGivenOutputShift(
-      test_param, input_data, input_shape, input_offset, filter_data,
-      filter_shape, filter_offset, bias_data, bias_shape, stride, padding_type,
-      pad_width, pad_height, depth_multiplier, output_offset, output_multiplier,
-      output_shift_bisect_midpoint, output_activation_min,
-      output_activation_max, output_shape);
+  int bisect_result =
+      TestOneDepthwiseConvWithGivenOutputShift<quantization_type>(
+          test_param, input_data, input_shape, input_offset, filter_data,
+          filter_shape, filter_offset, bias_data, bias_shape, stride,
+          padding_type, pad_width, pad_height, depth_multiplier, output_offset,
+          output_multiplier, output_shift_adjust, output_multiplier_adjust,
+          output_shift_bisect_midpoint, output_activation_min,
+          output_activation_max, output_shape);
   // At this point we know that the test succeeded (otherwise it would have
   // aborted).
   if (bisect_result == 0) {
@@ -468,29 +576,37 @@ void TestOneDepthwiseConvBisectOutputShift(
   int new_output_activation_bisect_end = bisect_result == 1
                                              ? output_activation_bisect_end
                                              : output_shift_bisect_midpoint;
-  TestOneDepthwiseConvBisectOutputShift(
+  TestOneDepthwiseConvBisectOutputShift<quantization_type>(
       test_param, input_data, input_shape, input_offset, filter_data,
       filter_shape, filter_offset, bias_data, bias_shape, stride, padding_type,
       pad_width, pad_height, depth_multiplier, output_offset, output_multiplier,
+      output_shift_adjust, output_multiplier_adjust,
       new_output_activation_bisect_start, new_output_activation_bisect_end,
       output_activation_min, output_activation_max, output_shape);
 }
 
+template <QuantizationType quantization_type>
 void TestOneDepthwiseConv(
-    const TestParam& test_param, const std::uint8_t* input_data,
+    const TestParam& test_param,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        input_data,
     const RuntimeShape& input_shape, std::int32_t input_offset,
-    const std::uint8_t* filter_data, const RuntimeShape& filter_shape,
-    std::int32_t filter_offset, const std::int32_t* bias_data,
-    const RuntimeShape& bias_shape, int stride, PaddingType padding_type,
-    int pad_width, int pad_height, int depth_multiplier,
-    std::int32_t output_offset, std::int32_t output_multiplier,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        filter_data,
+    const RuntimeShape& filter_shape, std::int32_t filter_offset,
+    const std::int32_t* bias_data, const RuntimeShape& bias_shape, int stride,
+    PaddingType padding_type, int pad_width, int pad_height,
+    int depth_multiplier, std::int32_t output_offset,
+    std::int32_t output_multiplier, const std::int32_t* output_shift_adjust,
+    const std::int32_t* output_multiplier_adjust,
     std::int32_t output_activation_min, std::int32_t output_activation_max,
     const RuntimeShape& output_shape) {
-  TestOneDepthwiseConvBisectOutputShift(
+  TestOneDepthwiseConvBisectOutputShift<quantization_type>(
       test_param, input_data, input_shape, input_offset, filter_data,
       filter_shape, filter_offset, bias_data, bias_shape, stride, padding_type,
       pad_width, pad_height, depth_multiplier, output_offset, output_multiplier,
-      0, 32, output_activation_min, output_activation_max, output_shape);
+      output_shift_adjust, output_multiplier_adjust, 0, 32,
+      output_activation_min, output_activation_max, output_shape);
 }
 
 bool TryTestDepthwiseConv(const TestParam& test_param,
@@ -511,20 +627,24 @@ bool TryTestDepthwiseConv(const TestParam& test_param,
   if (output_depth > kMaxSupportedOutputDepth) {
     return false;
   }
-  int output_activation_min = 0;
-  int output_activation_max = 255;
+
+  int output_activation_min;
+  int output_activation_max;
+  std::int32_t output_multiplier;
+  std::int32_t input_offset;
+  std::int32_t output_offset;
+
+  output_activation_min = 0;
+  output_activation_max = 255;
   if (UniformRandomInt(0, 1)) {
     output_activation_min = UniformRandomInt(0, 50);
     output_activation_max = UniformRandomInt(200, 255);
   }
-  const std::int32_t output_multiplier =
+  output_multiplier =
       UniformRandomInt(1 << 29, std::numeric_limits<std::int32_t>::max());
-  std::int32_t filter_offset = -kSymmetricZeroPoint;
-  if (params_specialization != ParamsSpecialization::kSymmetric) {
-    filter_offset = UniformRandomInt(-255, 0);
-  }
-  const std::int32_t input_offset = UniformRandomInt(-255, 0);
-  const std::int32_t output_offset = UniformRandomInt(0, 255);
+  input_offset = UniformRandomInt(-255, 0);
+  output_offset = UniformRandomInt(0, 255);
+
   RuntimeShape input_shape_inference(
       {batch, input_height, input_width, input_depth});
   RuntimeShape output_shape_inference;
@@ -540,18 +660,27 @@ bool TryTestDepthwiseConv(const TestParam& test_param,
   RuntimeShape bias_shape_inference({1, 1, 1, output_depth});
   const int input_buffer_size = input_shape_inference.FlatSize();
   const int filter_buffer_size = filter_shape_inference.FlatSize();
+  std::vector<std::int32_t> bias_data(output_depth);
+  FillRandom(&bias_data, -10000, 10000);
+
   std::vector<std::uint8_t> input_data(input_buffer_size);
   std::vector<std::uint8_t> filter_data(filter_buffer_size);
-  std::vector<std::int32_t> bias_data(output_depth);
   FillRandom(&input_data);
   FillRandom(&filter_data);
-  FillRandom(&bias_data, -10000, 10000);
-  TestOneDepthwiseConv(
+
+  std::int32_t filter_offset = -kSymmetricZeroPoint;
+  if (params_specialization != ParamsSpecialization::kSymmetric) {
+    filter_offset = UniformRandomInt(-255, 0);
+  }
+
+  TestOneDepthwiseConv<QuantizationType::kNonPerChannelUint8>(
       test_param, input_data.data(), input_shape_inference, input_offset,
       filter_data.data(), filter_shape_inference, filter_offset,
       bias_data.data(), bias_shape_inference, stride, padding_type, pad_width,
       pad_height, depth_multiplier, output_offset, output_multiplier,
+      nullptr /*=output_shift_adjust*/, nullptr /*=output_multiplier_adjust*/,
       output_activation_min, output_activation_max, output_shape_inference);
+
   return true;
 }
 
