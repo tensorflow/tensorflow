@@ -2393,24 +2393,6 @@ void IrEmitterUnnested::EmitTileElementForReduction(
       /*use_linear_index=*/num_partial_results == 1, extra_output_gens));
 }
 
-// Returns the index for the first element in the tile with the given tile
-// index.
-static IrArray::Index GetElementIndexForTileOrigin(
-    const IrArray::Index& tile_index, const KernelMappingScheme& mapping_scheme,
-    llvm::IRBuilder<>* b_) {
-  std::vector<llvm::Value*> elem_multi_index = tile_index.multidim();
-  for (int i = KernelMappingScheme::DimY; i < KernelMappingScheme::DimTot;
-       ++i) {
-    elem_multi_index[i] =
-        b_->CreateMul(tile_index[i],
-                      llvm::ConstantInt::get(tile_index[i]->getType(),
-                                             mapping_scheme.GetTileSizeFor(i)),
-                      "tile_origin." + std::to_string(i));
-  }
-  return IrArray::Index(elem_multi_index, mapping_scheme.GetDimsInElems(),
-                        tile_index.GetType());
-}
-
 llvm::Value* IrEmitterUnnested::EmitThreadId(int64 threads_per_block,
                                              llvm::Type* index_ty) {
   // Calculate (y, x) coordinates respectively in the 2D view of thread block,
@@ -2454,8 +2436,7 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
-  // Calculate the starting tile.
-  const IrArray::Index starting_tile = [&] {
+  const IrArray::Index block_coords = [&] {
     llvm::Value* block_id = EmitBlockId();
     llvm_ir::AddRangeMetadata(0, mapping_scheme.GetNumberOfBlocks(),
                               llvm::cast<llvm::Instruction>(block_id));
@@ -2479,7 +2460,7 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
     int64 tile_size_for_dim = mapping_scheme.GetTileSizeFor(i);
     // Only last row or column may not have full size.
     llvm::Value* is_last =
-        b_.CreateICmpEQ(starting_tile[i], constant(dims_in_blocks[i] - 1));
+        b_.CreateICmpEQ(block_coords[i], constant(dims_in_blocks[i] - 1));
     int64 partial_row =
         dims_in_elems[i] - (dims_in_blocks[i] - 1) * tile_size_for_dim;
     output_tile_bounds[i] =
@@ -2487,19 +2468,31 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
                         constant(tile_size_for_dim), "tile_bound");
   }
 
-  auto emit_tile = [&](const IrArray::Index& tile_index) {
-    IrArray::Index tile_origin =
-        GetElementIndexForTileOrigin(tile_index, mapping_scheme, &b_);
+  IrArray::Index tile_origin = [&] {
+    std::vector<llvm::Value*> elem_multi_index = block_coords.multidim();
+    llvm::Type* index_ty = block_coords.GetType();
+    for (int i = KernelMappingScheme::DimY; i < KernelMappingScheme::DimTot;
+         ++i) {
+      elem_multi_index[i] = b_.CreateMul(
+          block_coords[i],
+          llvm::ConstantInt::get(index_ty, mapping_scheme.GetTileSizeFor(i)),
+          "tile_origin." + std::to_string(i));
+    }
+    return IrArray::Index(elem_multi_index, mapping_scheme.GetDimsInElems(),
+                          index_ty);
+  }();
+
+  auto emit_tile = [&](const IrArray::Index& tile) {
     tile_element_generator(thread_id_info.thread_id_y,
-                           thread_id_info.thread_id_x, tile_origin, "output",
+                           thread_id_info.thread_id_x, tile, "output",
                            output_tile_bounds[1], output_tile_bounds[2], &ksl);
   };
 
   int dim_z = KernelMappingScheme::DimZ;
   if (mapping_scheme.GetTileSizeZ() == 1) {
-    emit_tile(starting_tile);
+    emit_tile(tile_origin);
   } else {
-    llvm::Value* starting_tile_index_for_dim = starting_tile[dim_z];
+    llvm::Value* starting_tile_index_for_dim = tile_origin[dim_z];
     llvm::Value* block_size_for_dim = constant(mapping_scheme.GetTileSizeZ());
     llvm::Value* block_id_for_dim =
         b_.CreateUDiv(starting_tile_index_for_dim, block_size_for_dim);
@@ -2517,13 +2510,13 @@ IrArray::Index IrEmitterUnnested::EmitTilingKernel(
             /*start=*/constant(0),
             /*end=*/num_tiles_in_block,
             /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
-              IrArray::Index tile_index = starting_tile.AddOffsetToDim(
+              IrArray::Index tile_index = tile_origin.AddOffsetToDim(
                   block_dim_induction_var, KernelMappingScheme::DimZ, &b_);
               emit_tile(tile_index);
             });
   }
 
-  return GetElementIndexForTileOrigin(starting_tile, mapping_scheme, &b_);
+  return tile_origin;
 }
 
 llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
