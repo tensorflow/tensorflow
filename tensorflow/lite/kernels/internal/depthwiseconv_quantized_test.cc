@@ -136,6 +136,21 @@ inline void DispatchDepthwiseConvGeneral(
       thread_dim);
 }
 
+template <>
+inline void DispatchDepthwiseConvGeneral<QuantizationType::kPerChannelInt8>(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const int8* input_data, const RuntimeShape& filter_shape,
+    const int8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const std::int32_t* output_shift_adjust,
+    const std::int32_t* output_multiplier_adjust,
+    const RuntimeShape& output_shape, int8* output_data, int thread_start,
+    int thread_end, int thread_dim) {
+  optimized_integer_ops::depthwise_conv::DepthwiseConvGeneral(
+      params, output_multiplier_adjust, output_shift_adjust, input_shape,
+      input_data, filter_shape, filter_data, bias_shape, bias_data,
+      output_shape, output_data, thread_start, thread_end, thread_dim);
+}
+
 template <QuantizationType quantization_type>
 inline void DispatchDepthwiseConvImpl(
     const TestParam& test_param, const DepthwiseParams& params,
@@ -339,6 +354,134 @@ inline void DispatchDepthwiseConvImpl(
       bias_data, output_shape, output_data, &backend_context);
 }
 
+template <>
+inline void DispatchDepthwiseConvImpl<QuantizationType::kPerChannelInt8>(
+    const TestParam& test_param, const DepthwiseParams& params,
+    const RuntimeShape& input_shape,
+    const typename QuantizationTypeImpl<
+        QuantizationType::kPerChannelInt8>::ExternalType* input_data,
+    const RuntimeShape& filter_shape,
+    const typename QuantizationTypeImpl<
+        QuantizationType::kPerChannelInt8>::ExternalType* filter_data,
+    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& output_shape,
+    typename QuantizationTypeImpl<
+        QuantizationType::kPerChannelInt8>::ExternalType* output_data) {
+  static constexpr QuantizationType quantization_type =
+      QuantizationType::kPerChannelInt8;
+
+  switch (test_param.forced_invocation) {
+    case DepthwiseConvImplementation::kUseNeon3x3: {
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+      const int stride_width = params.stride_width;
+      const int stride_height = params.stride_height;
+      const int pad_width = params.padding_values.width;
+      const int pad_height = params.padding_values.height;
+      const int output_shift = params.output_shift;
+      const int depth_multiplier = params.depth_multiplier;
+      const int dilation_width_factor = params.dilation_width_factor;
+      const int dilation_height_factor = params.dilation_height_factor;
+
+      // Check that parameter combination is supported.
+      const bool basic_3x3_kernel_supported =
+          optimized_ops::depthwise_conv::Fast3x3FilterKernelSupported(
+              input_shape, filter_shape, stride_width, stride_height,
+              dilation_width_factor, dilation_height_factor, pad_width,
+              pad_height, depth_multiplier, output_shape, output_shift);
+      ASSERT_TRUE(basic_3x3_kernel_supported)
+          << "pad_width = " << params.padding_values.width
+          << " pad_height = " << params.padding_values.height
+          << " input_width = " << input_shape.Dims(2)
+          << " input_height = " << input_shape.Dims(1)
+          << " output_width = " << output_shape.Dims(2)
+          << " output_height = " << output_shape.Dims(1);
+
+#endif
+      break;
+    }
+    case DepthwiseConvImplementation::kUseNeon3x3DotProduct: {
+      // This is compiled-in even if dot-product instructions are unavailable.
+      // However, tests should skip dot-product testing in that case and not
+      // call this code.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
+      // TODO(b/148145875): Implement ASM code for int8 per-channel.
+#endif
+      break;
+    }
+    case DepthwiseConvImplementation::kUseCModel3x3DotProduct:
+    case DepthwiseConvImplementation::kUseUnwound3x3DotProduct:
+      break;
+    case DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct: {
+#if defined(USE_NEON)
+      DotProduct3x3KernelType kernel_type =
+          optimized_ops::depthwise_conv::CategorizeDotProductKernel<
+              QuantizationType::kPerChannelInt8>(
+              input_shape, filter_shape, output_shape, params,
+              params.output_shift_per_channel);
+
+      ASSERT_TRUE(
+          kernel_type == DotProduct3x3KernelType::kPlain ||
+          kernel_type == DotProduct3x3KernelType::kStride2 ||
+          kernel_type ==
+              DotProduct3x3KernelType::kWithDepthMultiplicationStride1 ||
+          kernel_type ==
+              DotProduct3x3KernelType::kWithDepthMultiplicationStride2);
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3Impl<
+          DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+          quantization_type>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data,
+          /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
+      return;
+#else
+      break;
+#endif
+    }
+    case DepthwiseConvImplementation::kUseGenericKernel: {
+      DispatchDepthwiseConvGeneral<quantization_type>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, nullptr, nullptr, output_shape, output_data,
+          /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
+      return;
+    }
+    case DepthwiseConvImplementation::kNone:
+    default:
+      break;
+  }
+
+  EXPECT_EQ(test_param.forced_invocation, DepthwiseConvImplementation::kNone)
+      << "Requested kernel was not invoked / available yet: "
+      << " forced_invocation = "
+      << static_cast<int>(test_param.forced_invocation)
+      << " depth_multiplier = " << params.depth_multiplier
+      << " pad_width = " << params.padding_values.width
+      << " pad_height = " << params.padding_values.height
+      << " stride_width = " << params.stride_width
+      << " stride_height = " << params.stride_height
+      << " input_width = " << input_shape.Dims(2)
+      << " input_height = " << input_shape.Dims(1)
+      << " output_width = " << output_shape.Dims(2)
+      << " output_height = " << output_shape.Dims(1)
+      << " depth = " << input_shape.Dims(3)
+      << " buffer need = " << input_shape.Dims(3) * input_shape.Dims(2) * 6
+      << " input_offset = " << params.input_offset;
+
+#if 0
+  // TODO(b/148145875): Implement dispatch to per-channel.
+  CpuBackendContext backend_context;
+  backend_context.SetMaxNumThreads(test_param.num_threads);
+  optimized_ops::DepthwiseConv<
+      typename QuantizationTypeImpl<quantization_type>::ExternalType, int32>(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data, &backend_context);
+#endif
+}
+
 template <QuantizationType quantization_type>
 inline void DispatchDepthwiseConv(
     const TestParam& test_param, const DepthwiseParams& params,
@@ -381,6 +524,38 @@ struct ReferenceRunner<QuantizationType::kNonPerChannelUint8> {
         reference_ops::DepthwiseConv(
             op_params, input_shape, input_data, filter_shape, filter_data,
             bias_shape, bias_data, output_shape, reference_output_data);
+        break;
+      case DepthwiseConvOutputRounding::kNone:
+      default:
+        EXPECT_NE(test_param.output_rounding,
+                  DepthwiseConvOutputRounding::kNone);
+        break;
+    }
+  }
+};
+
+template <>
+struct ReferenceRunner<QuantizationType::kPerChannelInt8> {
+  static inline void Run(
+      const TestParam& test_param, const tflite::DepthwiseParams& op_params,
+      const int8* input_data, const RuntimeShape& input_shape,
+      const int8* filter_data, const RuntimeShape& filter_shape,
+      const std::int32_t* bias_data, const RuntimeShape& bias_shape,
+      const RuntimeShape& output_shape, int8* reference_output_data) {
+    switch (test_param.output_rounding) {
+      case DepthwiseConvOutputRounding::kUpward:
+        reference_ops::depthwise_conv::DepthwiseConvBasicKernel<
+            DepthwiseConvOutputRounding::kUpward>::
+            RunPerChannel(op_params, input_shape, input_data, filter_shape,
+                          filter_data, bias_shape, bias_data, output_shape,
+                          reference_output_data);
+        break;
+      case DepthwiseConvOutputRounding::kAwayFromZero:
+        reference_integer_ops::DepthwiseConvPerChannel(
+            op_params, op_params.output_multiplier_per_channel,
+            op_params.output_shift_per_channel, input_shape, input_data,
+            filter_shape, filter_data, bias_shape, bias_data, output_shape,
+            reference_output_data);
         break;
       case DepthwiseConvOutputRounding::kNone:
       default:
@@ -637,16 +812,29 @@ bool TryTestDepthwiseConv(const TestParam& test_param,
   std::int32_t input_offset;
   std::int32_t output_offset;
 
-  output_activation_min = 0;
-  output_activation_max = 255;
-  if (UniformRandomInt(0, 1)) {
-    output_activation_min = UniformRandomInt(0, 50);
-    output_activation_max = UniformRandomInt(200, 255);
+  if (test_param.quantization_type == QuantizationType::kNonPerChannelUint8) {
+    output_activation_min = 0;
+    output_activation_max = 255;
+    if (UniformRandomInt(0, 1)) {
+      output_activation_min = UniformRandomInt(0, 50);
+      output_activation_max = UniformRandomInt(200, 255);
+    }
+    output_multiplier =
+        UniformRandomInt(1 << 29, std::numeric_limits<std::int32_t>::max());
+    input_offset = UniformRandomInt(-255, 0);
+    output_offset = UniformRandomInt(0, 255);
+  } else {
+    output_activation_min = -127;
+    output_activation_max = 127;
+    if (UniformRandomInt(0, 1)) {
+      output_activation_min = UniformRandomInt(-127, -75);
+      output_activation_max = UniformRandomInt(75, 127);
+    }
+    output_multiplier =
+        UniformRandomInt(1 << 29, std::numeric_limits<std::int32_t>::max());
+    input_offset = UniformRandomInt(-127, 127);
+    output_offset = UniformRandomInt(-127, 127);
   }
-  output_multiplier =
-      UniformRandomInt(1 << 29, std::numeric_limits<std::int32_t>::max());
-  input_offset = UniformRandomInt(-255, 0);
-  output_offset = UniformRandomInt(0, 255);
 
   RuntimeShape input_shape_inference(
       {batch, input_height, input_width, input_depth});
@@ -658,6 +846,8 @@ bool TryTestDepthwiseConv(const TestParam& test_param,
                         &output_shape_inference, &pad_width, &pad_height)) {
     return false;
   }
+  TFLITE_DCHECK_EQ(output_depth, output_shape_inference.Dims(3));
+
   RuntimeShape filter_shape_inference(
       {1, filter_height, filter_width, output_depth});
   RuntimeShape bias_shape_inference({1, 1, 1, output_depth});
@@ -666,23 +856,50 @@ bool TryTestDepthwiseConv(const TestParam& test_param,
   std::vector<std::int32_t> bias_data(output_depth);
   FillRandom(&bias_data, -10000, 10000);
 
-  std::vector<std::uint8_t> input_data(input_buffer_size);
-  std::vector<std::uint8_t> filter_data(filter_buffer_size);
-  FillRandom(&input_data);
-  FillRandom(&filter_data);
+  if (test_param.quantization_type == QuantizationType::kPerChannelInt8) {
+    std::vector<std::int8_t> input_data(input_buffer_size);
+    std::vector<std::int8_t> filter_data(filter_buffer_size);
+    FillRandom(&input_data, static_cast<int8>(-127), static_cast<int8>(127));
+    FillRandom(&filter_data, static_cast<int8>(-127), static_cast<int8>(127));
 
-  std::int32_t filter_offset = -kSymmetricZeroPoint;
-  if (params_specialization != ParamsSpecialization::kSymmetric) {
-    filter_offset = UniformRandomInt(-255, 0);
+    std::int32_t filter_offset = 0;
+    EXPECT_TRUE(params_specialization == ParamsSpecialization::kSymmetric);
+
+    std::vector<std::int32_t> output_multiplier_adjust(output_depth, 0);
+    std::vector<std::int32_t> output_shift_adjust(output_depth, 0);
+    for (int i = 0; i < output_depth; ++i) {
+      // Thus a good way to randomize multipliers is to subtract from them
+      // a random value smaller than 2^30 but still significant compared to
+      // it.
+      FillRandom(&output_multiplier_adjust, -(1 << 26), 0);
+      FillRandom(&output_shift_adjust, -4, 0);
+    }
+    TestOneDepthwiseConv<QuantizationType::kPerChannelInt8>(
+        test_param, input_data.data(), input_shape_inference, input_offset,
+        filter_data.data(), filter_shape_inference, filter_offset,
+        bias_data.data(), bias_shape_inference, stride, padding_type, pad_width,
+        pad_height, depth_multiplier, output_offset, output_multiplier,
+        output_shift_adjust.data(), output_multiplier_adjust.data(),
+        output_activation_min, output_activation_max, output_shape_inference);
+  } else {
+    std::vector<std::uint8_t> input_data(input_buffer_size);
+    std::vector<std::uint8_t> filter_data(filter_buffer_size);
+    FillRandom(&input_data);
+    FillRandom(&filter_data);
+
+    std::int32_t filter_offset = -kSymmetricZeroPoint;
+    if (params_specialization != ParamsSpecialization::kSymmetric) {
+      filter_offset = UniformRandomInt(-255, 0);
+    }
+
+    TestOneDepthwiseConv<QuantizationType::kNonPerChannelUint8>(
+        test_param, input_data.data(), input_shape_inference, input_offset,
+        filter_data.data(), filter_shape_inference, filter_offset,
+        bias_data.data(), bias_shape_inference, stride, padding_type, pad_width,
+        pad_height, depth_multiplier, output_offset, output_multiplier,
+        nullptr /*=output_shift_adjust*/, nullptr /*=output_multiplier_adjust*/,
+        output_activation_min, output_activation_max, output_shape_inference);
   }
-
-  TestOneDepthwiseConv<QuantizationType::kNonPerChannelUint8>(
-      test_param, input_data.data(), input_shape_inference, input_offset,
-      filter_data.data(), filter_shape_inference, filter_offset,
-      bias_data.data(), bias_shape_inference, stride, padding_type, pad_width,
-      pad_height, depth_multiplier, output_offset, output_multiplier,
-      nullptr /*=output_shift_adjust*/, nullptr /*=output_multiplier_adjust*/,
-      output_activation_min, output_activation_max, output_shape_inference);
 
   return true;
 }
@@ -992,6 +1209,28 @@ INSTANTIATE_TEST_SUITE_P(
         Values(kLooseIntrinsicsTolerance)               // loose_tolerance
         ),
     TestParam::TestNameSuffix);
+
+// TODO(b/148145875): Remove this extra guard after checking that code runs
+// without lax vector conversions.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
+INSTANTIATE_TEST_SUITE_P(
+    IntrinsicsPerChannel, DepthwiseConvTest,
+    testing::Combine(
+        Values(DepthwiseConvImplementation::
+                   kUseIntrinsics3x3DotProduct),       // forced_invocation
+        Values(1000),                                  // tests_to_run
+        Values(QuantizationType::kPerChannelInt8),     // quantization_type
+        Bool(),                                        // test_stride
+        Bool(),                                        // test_pad
+        Bool(),                                        // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(1),                                     // num_threads
+        Values(kLooseIntrinsicsTolerance)              // loose_tolerance
+        ),
+    TestParam::TestNameSuffix);
+#endif
+
 #endif
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
