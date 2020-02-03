@@ -32,8 +32,16 @@ namespace {
 class DatasetHashUtilsTest : public ::testing::Test {
  protected:
   uint64 GetHash(const FunctionDefLibrary& library, const FunctionDef& fn) {
+    // Construct a node with a function as an attr.
+    GraphDef graph_def;
+    *graph_def.mutable_library() = library;
+    NodeDef* node = graph_def.add_node();
+    node->set_op("RemoteCall");
+    NameAttrList func;
+    func.set_name(fn.signature().name());
+    AddNodeAttr("f", func, node);
     uint64 hash = 0;
-    TF_CHECK_OK(HashFunction(library, fn, &hash));
+    TF_CHECK_OK(HashNode(graph_def, *node, &hash));
     return hash;
   }
 
@@ -285,7 +293,7 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
   *f1 = FunctionDefHelper::Create(
       "AddAndMul", {"i: float", "j: float", "k: float"}, {"o: float"}, {},
       {{{"add"}, "Add", {"i", "j"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"add", "k"}, {{"T", DT_FLOAT}}}},
+       {{"ret"}, "Mul", {"add:z:0", "k"}, {{"T", DT_FLOAT}}}},
       /*ret_def=*/{{"o", "ret:z:0"}},
       /*control_ret_def=*/{{"must_execute", "ret"}});
 
@@ -293,27 +301,39 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
   *f2 = FunctionDefHelper::Create(
       "AddAndMul", {"a: float", "b: float", "c: float"}, {"o: float"}, {},
       {{{"add"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
-       {{"mul"}, "Mul", {"add", "c"}, {{"T", DT_FLOAT}}}},
+       {{"mul"}, "Mul", {"add:z:0", "c"}, {{"T", DT_FLOAT}}}},
       /*ret_def=*/{{"o", "mul:z:0"}},
       /*control_ret_def=*/{{"must_execute", "mul"}});
 
   EXPECT_EQ(GetHash(fl, *f1), GetHash(fl, *f2));
 }
 
-TEST_F(DatasetHashUtilsTest, HashFunctionWithMultipleCycles) {
+TEST_F(DatasetHashUtilsTest, HashGraphWithMultipleCycles) {
   uint64 hash = 0;
   for (int i = 0; i < 1000; ++i) {
-    FunctionDefLibrary fl;
-    FunctionDef* f1 = fl.add_function();
-    *f1 = FunctionDefHelper::Create("TwoCyleGraph", {},
-                                    {"p: float", "q: float"}, {},
-                                    {{{"A"}, "Abs", {"B"}},
-                                     {{"B"}, "Add", {"C", "D"}},
-                                     {{"C"}, "Ceil", {"A"}},
-                                     {{"D"}, "Cos", {"E"}},
-                                     {{"E"}, "Floor", {"B"}}},
-                                    {{"p", "A:0"}, {"q", "D:0"}}, {});
-    uint64 t = GetHash(fl, *f1);
+    GraphDef g;
+    NodeDef* output_node = g.add_node();
+    TF_CHECK_OK(NodeDefBuilder("O", "Add")
+                    .Input("A", 0, DT_FLOAT)
+                    .Input("D", 0, DT_FLOAT)
+                    .Finalize(output_node));
+    TF_CHECK_OK(NodeDefBuilder("A", "Abs")
+                    .Input("B", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    TF_CHECK_OK(NodeDefBuilder("B", "Add")
+                    .Input("C", 0, DT_FLOAT)
+                    .Input("D", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    TF_CHECK_OK(NodeDefBuilder("C", "Ceil")
+                    .Input("A", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    TF_CHECK_OK(NodeDefBuilder("D", "Cos")
+                    .Input("E", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    TF_CHECK_OK(NodeDefBuilder("E", "Floor")
+                    .Input("B", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    uint64 t = GetHash(g, *output_node);
     if (hash == 0) {
       hash = t;
     } else {
@@ -880,15 +900,15 @@ TEST_F(DatasetHashUtilsTest, HashFunctionsWithControlDependencyLoop) {
 
   FunctionDef func = FunctionDefHelper::Create(
       /*function_name=*/"AddAndMul",
-      /*in_def=*/{"i: float"},
+      /*in_def=*/{"i: float", "j: int32"},
       /*out_def=*/{"o: float"},
       /*attr_def=*/{},
       /*node_def=*/
       {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}, {"ret"}},
        // This creates a dependency on the same function.
-       {{"for"}, "For", {"i", "i", "i"}, {func_attr}, {"ret"}},
+       {{"for"}, "For", {"j", "j", "j"}, {func_attr, {"T", DT_FLOAT}}, {"ret"}},
        {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "for:z:0"}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
       /*control_ret_def=*/{{"must_execute", "add"}});
   *f1 = func;
 

@@ -130,20 +130,6 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
-// Returns a stable hash of the given attribute key-value pair.
-//
-// NOTE: There is currently no guarantee that the hash of a function will stay
-// the same between TensorFlow builds.
-Status HashAttr(const FunctionDefLibrary& library, const std::string& attr_key,
-                const AttrValue& attr_value, uint64* hash);
-
-// Returns a stable hash of the given function.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashFunction(const FunctionDefLibrary& library, const FunctionDef& func,
-                    uint64* hash);
-
 // Returns a stable hash of the subgraph rooted at the given node.
 //
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
