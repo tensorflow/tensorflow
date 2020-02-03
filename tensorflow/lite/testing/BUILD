@@ -541,6 +541,7 @@ edgetpu_ops = [
     "conv_relu1",
     "conv_relu6",
     "depthwiseconv",  # high error
+    "expand_dims",
     "fully_connected",
     "l2norm",  # high error
     "maximum",
