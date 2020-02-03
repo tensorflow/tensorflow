@@ -9891,7 +9891,8 @@ inline void DepthwiseConvDotProduct3x3Impl(
   constexpr int filter_size = 3;
   constexpr int kMaxStride = 2;
   constexpr int kMaxPadding = 1;
-  constexpr int kSymmetricZeroPoint = 128;
+  constexpr int kSymmetricZeroPoint =
+      QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
   TFLITE_DCHECK_EQ(params.weights_offset, -kSymmetricZeroPoint);
   TFLITE_DCHECK_LE(params.stride_width, kMaxStride);
   TFLITE_DCHECK_EQ(params.stride_height, params.stride_width);
@@ -10317,6 +10318,15 @@ inline void DepthwiseConvDotProduct3x3Impl(
               : function_params.output_width_micro_repeats + 1;
 
       for (int j_depth = 0; j_depth < depth_overall_macro_count; ++j_depth) {
+        if (quantization_type == QuantizationType::kPerChannelInt8) {
+          // Each macro block handles depth of 64 (8 micro). The kernel
+          // functions receive pointers to quantization data for the block being
+          // processed.
+          function_params.output_multiplier_per_channel =
+              params.output_multiplier_per_channel + 64 * j_depth;
+          function_params.output_shift_per_channel =
+              params.output_shift_per_channel + 64 * j_depth;
+        }
         // Process filter and bias data.
         //
         function_params.depth_micro_repeats =
@@ -10326,17 +10336,18 @@ inline void DepthwiseConvDotProduct3x3Impl(
             bias_data + 8 * 2 * bias_increment * j_depth,
             filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
 
-        const uint8* input_data_block =
-            input_data + b * input_batch_stride +
-            j_depth * input_depth_macro_stride +
-            k_width * input_width_macro_stride -
-            function_params.padding_left * input_depth +
-            row_start * stride * input_height_stride -
-            full_padding_top * input_height_stride;
-        uint8* output_data_block = output_data + b * output_batch_stride +
-                                   row_start * output_height_stride +
-                                   j_depth * 64 +
-                                   k_width * output_width_macro_stride;
+        const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            input_data_block = input_data + b * input_batch_stride +
+                               j_depth * input_depth_macro_stride +
+                               k_width * input_width_macro_stride -
+                               function_params.padding_left * input_depth +
+                               row_start * stride * input_height_stride -
+                               full_padding_top * input_height_stride;
+        typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            output_data_block =
+                output_data + b * output_batch_stride +
+                row_start * output_height_stride + j_depth * 64 +
+                k_width * output_width_macro_stride;
 
         // Under depth multiplication the workspace_height_stride does not have
         // to depend on input_width_overall_micro_repeats, but this improves the
