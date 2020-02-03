@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -691,6 +691,23 @@ def _XLogyGrad(op, grad):
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
 
 
+@ops.RegisterGradient("Xlog1py")
+def _XLog1pyGrad(op, grad):
+  """Returns gradient of xlog1py(x, y) with respect to x and y."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  with ops.control_dependencies([grad]):
+    not_zero_x = math_ops.cast(
+        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
+    partial_x = gen_math_ops.xlog1py(not_zero_x, y)
+    partial_y = gen_math_ops.xdivy(x, y + 1.)
+    return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
+            array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
+
+
 @ops.RegisterGradient("Xdivy")
 def _XDivyGrad(op, grad):
   """Returns gradient of xdivy(x, y) with respect to x and y."""
@@ -840,6 +857,50 @@ def _DigammaGrad(op, grad):
       return grad * partial_x
 
 
+@ops.RegisterGradient("Dawsn")
+def _DawsnGrad(op, grad):
+  """Compute gradient of dawsn(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * (1. - 2 * x * y)
+
+
+@ops.RegisterGradient("Expint")
+def _ExpintGrad(op, grad):
+  """Compute gradient of expint(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.exp(x) / x
+
+
+@ops.RegisterGradient("FresnelCos")
+def _FresnelCosGrad(op, grad):
+  """Compute gradient of fresnel_cos(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.cos((np.pi  / 2.) * math_ops.square(x))
+
+
+@ops.RegisterGradient("FresnelSin")
+def _FresnelSinGrad(op, grad):
+  """Compute gradient of fresnel_sin(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.sin((np.pi  / 2.) * math_ops.square(x))
+
+
+@ops.RegisterGradient("Spence")
+def _SpenceGrad(op, grad):
+  """Compute gradient of spence(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    partial_x = math_ops.log(x) / (1 - x)
+    partial_x = array_ops.where(
+        math_ops.equal(x, 1.), -array_ops.ones_like(x), partial_x)
+    return grad * partial_x
+
+
 @ops.RegisterGradient("BesselI0e")
 def _BesselI0eGrad(op, grad):
   """Compute gradient of bessel_i0e(x) with respect to its argument."""
@@ -927,8 +988,10 @@ def _BetaincGrad(op, grad):
   log_beta = (
       gen_math_ops.lgamma(a) + gen_math_ops.lgamma(b) -
       gen_math_ops.lgamma(a + b))
-  partial_x = math_ops.exp((b - 1) * math_ops.log(1 - x) +
-                           (a - 1) * math_ops.log(x) - log_beta)
+  # We use xlog1py and xlogy since the derivatives should tend to
+  # zero one one of the tails when a is 1. or b is 1.
+  partial_x = math_ops.exp(math_ops.xlog1py(b - 1, -x) +
+                           math_ops.xlogy(a - 1, x) - log_beta)
 
   # TODO(b/36815900): Mark None return values as NotImplemented
   if compat.forward_compatible(2020, 3, 14):

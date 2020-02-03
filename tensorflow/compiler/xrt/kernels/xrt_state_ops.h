@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
 #include "tensorflow/compiler/xrt/xrt_memory_manager.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
 #include "tensorflow/compiler/xrt/xrt_state.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,6 +47,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
+#include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -170,6 +173,7 @@ class XRTAllocateOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTAllocateOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetAllocateCell());
 
     const Tensor& allocation_info = ctx->input(0);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(allocation_info.shape()),
@@ -223,6 +227,8 @@ class XRTAllocateUninitializedOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTAllocateUninitializedOp::Compute";
+    auto timed =
+        monitoring::MakeTimed(xrt_metrics::GetAllocateUninitializedCell());
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
@@ -294,6 +300,8 @@ class XRTAllocateFromTensorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTAllocateFromTensorOp::Compute";
+    auto timed =
+        monitoring::MakeTimed(xrt_metrics::GetAllocateFromTensorCell());
 
     OpInputList values;
     OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &values));
@@ -362,6 +370,7 @@ class XRTSubTupleOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTSubTupleOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetSubTupleCell());
 
     const Tensor& handle_tensor = ctx->input(0);
     OP_REQUIRES(
@@ -412,6 +421,7 @@ class XRTMakeTupleOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTMakeTupleOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetMakeTupleCell());
 
     const Tensor& tuple_info = ctx->input(0);
     OP_REQUIRES(
@@ -482,6 +492,7 @@ class XRTReadLiteralOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReadLiteralOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetReadLiteralCell());
 
     const Tensor& handle_tensor = ctx->input(0);
     OP_REQUIRES(
@@ -532,6 +543,7 @@ class XRTReadToTensorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReadToTensorOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetReadToTensorCell());
 
     const Tensor& handle_tensor = ctx->input(0);
     // TODO(phawkins,dlibenzi): accept multiple handles (i.e., vectors, not
@@ -615,6 +627,7 @@ class XRTWriteLiteralOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTWriteLiteralOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetWriteLiteralCell());
 
     const Tensor& handle_tensor = ctx->input(0);
     OP_REQUIRES(
@@ -665,6 +678,7 @@ class XRTReleaseAllocationOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReleaseAllocationOp::Compute";
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetReleaseAllocationCell());
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
@@ -693,6 +707,8 @@ class XRTReleaseAllAllocationsOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTReleaseAllAllocationsOp::Compute";
+    auto timed =
+        monitoring::MakeTimed(xrt_metrics::GetReleaseAllAllocationsCell());
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
@@ -710,6 +726,8 @@ class XRTCompactAllocationsOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "XRTCompactAllocationsOp::Compute";
+    auto timed =
+        monitoring::MakeTimed(xrt_metrics::GetCompactAllocationsCell());
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));

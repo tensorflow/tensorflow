@@ -300,6 +300,28 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
   EXPECT_EQ(GetHash(fl, *f1), GetHash(fl, *f2));
 }
 
+TEST_F(DatasetHashUtilsTest, HashFunctionWithMultipleCycles) {
+  uint64 hash = 0;
+  for (int i = 0; i < 1000; ++i) {
+    FunctionDefLibrary fl;
+    FunctionDef* f1 = fl.add_function();
+    *f1 = FunctionDefHelper::Create("TwoCyleGraph", {},
+                                    {"p: float", "q: float"}, {},
+                                    {{{"A"}, "Abs", {"B"}},
+                                     {{"B"}, "Add", {"C", "D"}},
+                                     {{"C"}, "Ceil", {"A"}},
+                                     {{"D"}, "Cos", {"E"}},
+                                     {{"E"}, "Floor", {"B"}}},
+                                    {{"p", "A:0"}, {"q", "D:0"}}, {});
+    uint64 t = GetHash(fl, *f1);
+    if (hash == 0) {
+      hash = t;
+    } else {
+      EXPECT_EQ(t, hash);
+    }
+  }
+}
+
 TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentNames) {
   GraphDef gd;
 
@@ -438,6 +460,56 @@ TEST_F(DatasetHashUtilsTest, HashSameGraphDifferentSeeds) {
                   .Finalize(seed2));
 
   uint64 hash2 = GetHash(gd, *shuffle_ds);
+
+  EXPECT_EQ(hash1, hash2);
+}
+
+TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentColocationNames) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Attr("_class", {"graph_1/node_2"})
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash1 = GetHash(gd, *n3);
+
+  n1->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_3/node_7", "Const")
+                  .Attr("value", 1)
+                  .Attr("_class", {"graph_3/node_9"})
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  n2->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_4/node_9", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  n3->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_5/node_11", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash2 = GetHash(gd, *n3);
 
   EXPECT_EQ(hash1, hash2);
 }

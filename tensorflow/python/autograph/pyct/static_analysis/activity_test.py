@@ -541,6 +541,8 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('global_b', 'c'), ('global_a',))
+    self.assertSetEqual(body_scope.globals, set(
+        (QN('global_a'), QN('global_b'))))
 
   def test_class_definition_basic(self):
 

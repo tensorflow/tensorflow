@@ -103,7 +103,7 @@ static int PrintFunctionResultMapping(const std::string &result,
     i = 0;
     for (auto output : *subgraph->outputs()) {
       print_buffer(*subgraph, i, output, [&](int i) {
-        return terminator ? terminator->getOperand(i)->getLoc() : unknown_loc;
+        return terminator ? terminator->getOperand(i).getLoc() : unknown_loc;
       });
     }
   }

@@ -372,6 +372,16 @@ class StreamExecutor {
   bool GetConvolveAlgorithms(bool with_winograd_nonfused,
                              std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
+  // Returns the list of supported algorithms for the forward convolution
+  // operation.
+  bool GetMIOpenConvolveAlgorithms(
+      dnn::ConvolutionKind kind, Stream *stream, dnn::DataType element_type,
+      const dnn::BatchDescriptor &input_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      std::vector<dnn::ProfileResult> *out_algorithms);
+
   // Returns the list of supported algorithms for rnn operation.
   bool GetRnnAlgorithms(std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
@@ -675,7 +685,7 @@ class StreamExecutor {
   std::unique_ptr<rng::RngSupport> rng_ GUARDED_BY(mu_);
 
   // Slot to cache the owned DeviceDescription for the underlying device
-  // once it has been quieried from DeviceDescription().
+  // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
       GUARDED_BY(mu_);
 

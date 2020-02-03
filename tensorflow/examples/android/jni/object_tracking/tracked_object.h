@@ -37,7 +37,7 @@ class TrackedObject {
   ~TrackedObject();
 
   void UpdatePosition(const BoundingBox& new_position, const int64_t timestamp,
-                      const ImageData& image_data, const bool authoratative);
+                      const ImageData& image_data, const bool authoritative);
 
   // This method is called when the tracked object is detected at a
   // given position, and allows the associated Model to grow and/or prune

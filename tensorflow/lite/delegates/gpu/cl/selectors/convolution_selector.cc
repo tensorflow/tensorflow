@@ -48,6 +48,22 @@ Status SelectConvolutionAdreno(const Convolution2DAttributes& attr,
   return OkStatus();
 }
 
+Status SelectConvolutionNVidia(const Convolution2DAttributes& attr,
+                               const CreationContext& creation_context,
+                               const OperationDef& op_def,
+                               std::unique_ptr<GPUOperation>* ptr) {
+  if (IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
+    ConvConstants conv;
+    RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvConstants>(std::move(conv));
+  } else {
+    ConvPowerVR conv;
+    RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+  }
+  return OkStatus();
+}
+
 Status SelectConvolutionPowerVR(const Convolution2DAttributes& attr,
                                 const CreationContext& creation_context,
                                 const OperationDef& op_def,
@@ -91,6 +107,8 @@ Status SelectConvolution(const Convolution2DAttributes& attr,
                                      hints, ptr);
     case Vendor::POWERVR:
       return SelectConvolutionPowerVR(attr, creation_context, op_def, ptr);
+    case Vendor::NVIDIA:
+      return SelectConvolutionNVidia(attr, creation_context, op_def, ptr);
     case Vendor::MALI:
       return SelectConvolutionMali(attr, creation_context, op_def, ptr);
     default:

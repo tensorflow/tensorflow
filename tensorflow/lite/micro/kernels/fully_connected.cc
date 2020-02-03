@@ -201,9 +201,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {fully_connected::Init, fully_connected::Free,
-                                 fully_connected::Prepare,
-                                 fully_connected::Eval};
+  static TfLiteRegistration r = {};
+  r.init = fully_connected::Init;
+  r.free = fully_connected::Free;
+  r.prepare = fully_connected::Prepare;
+  r.invoke = fully_connected::Eval;
   return &r;
 }
 

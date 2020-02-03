@@ -20,9 +20,11 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.conv_utils import convert_kernel
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
@@ -67,6 +69,29 @@ def get_source_inputs(tensor, layer=None, node_index=None):
       return source_tensors
 
 
+def validate_string_arg(input_data,
+                        allowable_strings,
+                        layer_name,
+                        arg_name,
+                        allow_none=False,
+                        allow_callables=False):
+  """Validates the correctness of a string-based arg."""
+  if allow_none and input_data is None:
+    return
+  elif allow_callables and callable(input_data):
+    return
+  elif isinstance(input_data,
+                  six.string_types) and input_data in allowable_strings:
+    return
+  else:
+    allowed_args = '`None`, ' if allow_none else ''
+    allowed_args += 'a `Callable`, ' if allow_callables else ''
+    allowed_args += 'or one of the following values: %s' % allowable_strings
+    raise ValueError(("%s's %s arg received an invalid value %s. " +
+                      'Allowed values are %s.') %
+                     (layer_name, arg_name, input_data, allowed_args))
+
+
 def count_params(weights):
   """Count the total number of scalars composing the weights.
 
@@ -76,10 +101,12 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  return int(
-      sum(
-          np.prod(p.shape.as_list())
-          for p in object_identity.ObjectIdentitySet(weights)))
+  unique_weights = object_identity.ObjectIdentitySet(weights)
+  weight_shapes = [w.shape.as_list() for w in unique_weights]
+  standardized_weight_shapes = [
+      [0 if w_i is None else w_i for w_i in w] for w in weight_shapes
+  ]
+  return int(sum(np.prod(p) for p in standardized_weight_shapes))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):
@@ -300,11 +327,16 @@ def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
   return weights + non_trainable_extra_variables
 
 
+@deprecation.deprecated('2020-06-23',
+                        'The Theano kernel format is legacy; '
+                        'this utility will be removed.')
 @keras_export('keras.utils.convert_all_kernels_in_model')
 def convert_all_kernels_in_model(model):
   """Converts all convolution kernels in a model from Theano to TensorFlow.
 
   Also works from TensorFlow to Theano.
+
+  This is used for converting legacy Theano-saved model files.
 
   Arguments:
       model: target model for the conversion.

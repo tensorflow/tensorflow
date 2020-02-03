@@ -22,6 +22,7 @@ cc_library(
         "//tensorflow/compiler/xla/python:local_client",
         "//tensorflow/compiler/xla/python:semaphore",
         "//tensorflow/compiler/xla/python/tpu_driver",
+        "//tensorflow/compiler/xla/python/tpu_driver:direct_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:grpc_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
@@ -76,7 +77,16 @@ py_library(
     ],
 )
 
+filegroup(
+    name = "header_and_client",
+    srcs = glob([
+        "c_api*",
+        "libtpu*",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
-    name = "c_api",
-    hdrs = ["c_api.h"],
+    name = "libtpu",
+    hdrs = ["libtpu.h"],
 )

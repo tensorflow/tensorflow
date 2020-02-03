@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unroll_batch_matmul.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -69,11 +70,19 @@ namespace TFL {
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
+class PrepareTFPass : public FunctionPass<PrepareTFPass> {
+ public:
+  explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
+  explicit PrepareTFPass(bool unfold_batch_matmul)
+      : unfold_batch_matmul_(unfold_batch_matmul) {}
   void runOnFunction() override;
+
+ private:
+  bool unfold_batch_matmul_;
 };
 
 // TODO(fengliuai): move this rule to PreparePatterns.td
+// TODO(fengliuai): reuse the quantization/tensorflow/tf_to_quant pass.
 // TODO(b/140968741): propagate the sign from the command line. Currently all
 // the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
 // actually INT8.
@@ -115,7 +124,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
                                      PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
-    if (!res->hasOneUse() || isa<QuantizeOp>(*res->user_begin()))
+    if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin()))
       return this->matchFailure();
 
     // Extract the min/max constant values from the operands. We also consider
@@ -123,9 +132,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     // constants and the tf.FakeQuantWithMinMaxVarsOp.
     Value min = tf_op.min(), max = tf_op.max();
     DenseFPElementsAttr min_value, max_value;
-    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min->getDefiningOp()))
+    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
       min = id1.input();
-    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max->getDefiningOp()))
+    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
       max = id2.input();
     if (!matchPattern(min, m_Constant(&min_value))) return this->matchFailure();
     if (!matchPattern(max, m_Constant(&max_value))) return this->matchFailure();
@@ -133,7 +142,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     int quant_dim = -1;
     if (PerAxis) {
       // This is a special case that the quant_dim is the last dimensions.
-      quant_dim = res->getType().template cast<ShapedType>().getRank() - 1;
+      quant_dim = res.getType().template cast<ShapedType>().getRank() - 1;
     }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
@@ -142,9 +151,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
         rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
-    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_value,
-                                          max_value, quant_dim, num_bits,
-                                          narrow_range, /*is_signed=*/false);
+    TypeAttr qtype = quant::GetQuantizedTypeAttr(
+        rewriter, res_type, min_value, max_value, quant_dim, num_bits,
+        narrow_range, /*is_signed=*/false);
     if (!qtype) this->matchFailure();
 
     // Finally, use the quantization parameter to create the quantize and
@@ -155,7 +164,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
         tf_op.getLoc(), qtype.getValue(), value, qtype);
     auto dequantize = rewriter.create<TFL::DequantizeOp>(
         tf_op.getLoc(), res_type, quantize.output());
-    value->replaceAllUsesWith(dequantize);
+    value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 
     return this->matchSuccess();
@@ -240,7 +249,7 @@ struct ConvertTFConvOp : public RewritePattern {
     // that we can extract info from the shape (e.g., for constructing bias
     // tensor, for setting depth_multiplier attribute, etc.).
     auto filter_type =
-        tf_op.filter()->getType().template dyn_cast<RankedTensorType>();
+        tf_op.filter().getType().template dyn_cast<RankedTensorType>();
     if (filter_type && filter_type.getRank() == 4)
       return matchSuccess(std::move(state));
 
@@ -262,7 +271,7 @@ struct ConvertTFConvOp : public RewritePattern {
 
     // Get a splat zero tensor with the expected dimension for the bias tensor
     auto filter = tf_op.filter();
-    auto filter_type = filter->getType().template cast<RankedTensorType>();
+    auto filter_type = filter.getType().template cast<RankedTensorType>();
     auto elem_type = filter_type.getElementType();
     auto bias_dim = static_cast<const ConcreteType *>(this)->getBiasDim(
         filter_type.getShape());
@@ -323,7 +332,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
 
     // Create tensor type for the transpose result.
-    auto filter_type = filter->getType().cast<RankedTensorType>();
+    auto filter_type = filter.getType().cast<RankedTensorType>();
     auto result_shape = functional::map(
         [filter_type](int64_t dim) { return filter_type.getDimSize(dim); },
         perm);
@@ -356,7 +365,7 @@ class ConvertTFDepthwiseConv2dNative
     // have a corresponding 'depth_multiplier' attribute; the multiplier is the
     // fourth dimension in the 4-D filter tensor. We query the multiplier from
     // tf.DepthwiseConv2dNative and set it as the attribute value accordingly.
-    auto multiplier = filter->getType().cast<RankedTensorType>().getDimSize(3);
+    auto multiplier = filter.getType().cast<RankedTensorType>().getDimSize(3);
 
     filter = legalizeFilter(rewriter, loc, filter);
     return rewriter.create<TFL::DepthwiseConv2DOp>(
@@ -380,7 +389,7 @@ class ConvertTFDepthwiseConv2dNative
   /// RankedTensorType.
   Value legalizeFilter(PatternRewriter &rewriter, Location loc,
                        Value filter) const {
-    auto filter_type = filter->getType().cast<RankedTensorType>();
+    auto filter_type = filter.getType().cast<RankedTensorType>();
     auto filterShape = filter_type.getShape();
     SmallVector<int64_t, 4> result_shape = {1, filterShape[0], filterShape[1],
                                             filterShape[2] * filterShape[3]};
@@ -425,32 +434,27 @@ struct ConvertTFStridedSlice : public RewritePattern {
     // TODO(renjieliu): Consider expand the transformation for ellipsis & shrink
     // mask as well.
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
-    const uint64_t new_axis_mask =
-        strided_slice_op.new_axis_mask().getZExtValue();
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();
     if (new_axis_mask == 0) return matchFailure();
 
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
     RankedTensorType original_input_type =
-        original_input->getType().cast<RankedTensorType>();
+        original_input.getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> &original_input_shape =
         original_input_type.getShape();
-    RankedTensorType begin_type =
-        strided_slice_op.begin()->getType().cast<RankedTensorType>();
-    const int dim_size = begin_type.getShape()[0];
     SmallVector<int64_t, 4> new_shape;
-    int mask = 1;
     int index = 0;
-    for (int i = 0; i < dim_size; ++i) {
-      if (mask & new_axis_mask) {
+    while (index < original_input_shape.size() || new_axis_mask) {
+      if (new_axis_mask & 1) {
         new_shape.emplace_back(1);
       } else {
-        new_shape.emplace_back(original_input_shape[index]);
-        ++index;
+        new_shape.emplace_back(original_input_shape[index++]);
       }
-      mask = mask << 1;
+      new_axis_mask >>= 1;
     }
 
+    const int dim_size = new_shape.size();
     Location loc = strided_slice_op.getLoc();
     auto shape_type =
         RankedTensorType::get({dim_size}, rewriter.getIntegerType(32));
@@ -501,6 +505,12 @@ void PrepareTFPass::runOnFunction() {
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+
+  // This pattern will try to identify and optimize for dilated convolution.
+  // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
+  // replaced with a single Conv op with dilation parameter.
+  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
+                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
   TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
@@ -513,17 +523,21 @@ void PrepareTFPass::runOnFunction() {
   // will be applied.
   patterns.clear();
   TFL::populateWithGenerated(ctx, &patterns);
-  patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
+  if (unfold_batch_matmul_) {
+    patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+                    ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
+  }
+  patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
+                  ConvertTFStridedSlice>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass() {
-  return std::make_unique<PrepareTFPass>();
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass(
+    bool unfold_batch_matmul) {
+  return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
 }
 
 static PassRegistration<PrepareTFPass> pass(

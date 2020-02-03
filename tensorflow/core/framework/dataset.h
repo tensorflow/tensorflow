@@ -70,7 +70,7 @@ class DatasetBase;
 class SerializationContext;
 
 // Interface for reading values from a key-value store.
-// Used for restoring iterator state.
+// Used for restoring iterator state. This class is thread safe.
 // Please see comment on IteratorStateWriter for guidance around using the
 // Read*(key, val) vs Read*(name, key, val).
 class IteratorStateReader {
@@ -91,7 +91,7 @@ class IteratorStateReader {
 };
 
 // Interface for writing values to a key-value store.
-// Used for saving iterator state.
+// Used for saving iterator state. Not thread safe.
 // The IteratorStateWriter creates a tensor for each unique iterator name it
 // sees. For the Write*(key, val) API's the key is expected to encode this
 // name as keys are required to be produced using the full_name() method.
@@ -154,9 +154,6 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-#ifdef USE_TSTRING
-  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
-  // migration.
   Status AddVector(const std::vector<string>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(),
                           TensorShape({static_cast<int64>(val.size())}));
@@ -169,7 +166,6 @@ class GraphDefBuilderWrapper {
     }
     return Status::OK();
   }
-#endif  // USE_TSTRING
 
   // Adds a `Const` node for the given tensor value to the graph.
   //

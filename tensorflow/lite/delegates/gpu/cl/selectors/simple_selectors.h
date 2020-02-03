@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -52,9 +52,8 @@ void SelectMaxUnpooling(const MaxUnpooling2DAttributes& attr,
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
                int dst_channels, std::unique_ptr<GPUOperation>* ptr);
 
-Status SelectUpsampling(const Upsample2DAttributes& attr,
-                        const OperationDef& op_def,
-                        std::unique_ptr<GPUOperation>* ptr);
+Status SelectResize(const Resize2DAttributes& attr, const OperationDef& op_def,
+                    std::unique_ptr<GPUOperation>* ptr);
 
 Status SelectConcat(const ConcatAttributes& attr,
                     const std::vector<int>& channels,
@@ -71,7 +70,10 @@ void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
 void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
+                  std::unique_ptr<GPUOperation>* ptr);
+
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr);

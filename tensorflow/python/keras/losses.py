@@ -100,7 +100,9 @@ class Loss(object):
     """Invokes the `Loss` instance.
 
     Args:
-      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`
+      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`, except
+        sparse loss functions such as sparse categorical crossentropy where
+        shape = `[batch_size, d0, .. dN-1]`
       y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
       sample_weight: Optional `sample_weight` acts as a
         coefficient for the loss. If a scalar is provided, then the loss is
@@ -151,7 +153,9 @@ class Loss(object):
     """Invokes the `Loss` instance.
 
     Args:
-      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`
+      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`, except
+        sparse loss functions such as sparse categorical crossentropy where
+        shape = `[batch_size, d0, .. dN-1]`
       y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
 
     Returns:
@@ -819,7 +823,10 @@ class Huber(LossFunctionWrapper):
 def mean_squared_error(y_true, y_pred):
   """Computes the mean squared error between labels and predictions.
 
-  `loss = square(y_true - y_pred)`
+  After computing the squared distance between the inputs, the mean value over
+  the last dimension is returned.
+
+  `loss = mean(square(y_true - y_pred), axis=-1)`
 
   Args:
     y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`.

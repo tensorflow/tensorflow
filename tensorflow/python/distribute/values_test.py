@@ -212,6 +212,16 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     with self.assertRaises(TypeError):
       values.select_replica_mirrored(1, result)
 
+  def testRegroupKeepsDictBasedClass(self):
+    class DictBasedClass(dict):
+      """Dummy class inherited from a dict."""
+
+    result = values.regroup(
+        (DictBasedClass(a="a1", b="b1"), DictBasedClass(a="a2", b="b2")))
+    self.assertIsInstance(result, DictBasedClass)
+    self._is_per_replica(result["a"], ["a1", "a2"])
+    self._is_per_replica(result["b"], ["b1", "b2"])
+
   def testWrapClass(self):
     # Normally a mirrored value would be the same across devices, but
     # for a test it is convenient to be able to tell the values apart.
@@ -534,8 +544,6 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   def testAssignOutOfScope_mirrored(self, distribution):
     with distribution.scope():
       mirrored = variables_lib.Variable(1.)
-    if not isinstance(mirrored, values.MirroredVariable):
-      self.assertIsInstance(mirrored, values.TPUMirroredVariable)
     self.evaluate(mirrored.assign(3.))
     self.assertEqual(self.evaluate(mirrored.read_value()), 3.)
     for component in mirrored.values:
@@ -554,6 +562,64 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.evaluate(aggregating.assign(3.))
     self.assertEqual(self.evaluate(aggregating.read_value()), 3.)
     self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testAssignAggregationMeanDTypeNonFloat(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          1,
+          aggregation=variable_scope.VariableAggregation.MEAN,
+          dtype=dtypes.int32)
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def assign():
+      ctx = distribution_strategy_context.get_replica_context()
+      return v.assign(ctx.replica_id_in_sync_group)
+
+    # disallow assign() with distributed value in replica context.
+    with self.assertRaisesRegexp(ValueError,
+                                 "Cannot update non-float variables"):
+      self.evaluate(
+          distribution.experimental_local_results(
+              distribution.experimental_run_v2(assign)))
+
+    # allow assign() with same value in replica context.
+    @def_function.function
+    def assign_same():
+      return v.assign(2)
+
+    self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(assign_same)))
+    self.assertEqual(self.evaluate(v.read_value()), 2)
+
+    # allow assign() with mirrored variable in replica context.
+    with distribution.scope():
+      v2 = variables_lib.Variable(
+          3,
+          aggregation=variable_scope.VariableAggregation.SUM,
+          dtype=dtypes.int32)
+    self.evaluate(v2.initializer)
+
+    @def_function.function
+    def assign_mirrored():
+      return v.assign(v2)
+
+    self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(assign_mirrored)))
+    self.assertEqual(self.evaluate(v.read_value()), 3)
+
+    # allow assign() in cross replica context.
+    with distribution.scope():
+      self.evaluate(v.assign(4))
+      self.assertEqual(self.evaluate(v.read_value()), 4)
 
   @combinations.generate(
       combinations.combine(
@@ -708,6 +774,30 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         array_ops.zeros(distribution.num_replicas_in_sync, dtypes.float32),
         per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testAssignAdd(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          1, aggregation=variables_lib.VariableAggregation.MEAN)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    @def_function.function
+    def assign():
+      return v.assign_add(2)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(assign)))
+    # The per-replica values should always match the first replicas value.
+    self.assertAllEqual([3, 3], per_replica_results)
 
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)

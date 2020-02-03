@@ -51,10 +51,6 @@ class Wrapper(Layer):
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
-    # Tracks mapping of Wrapper inputs to inner layer inputs. Useful when
-    # the inner layer has update ops that depend on its inputs (as opposed
-    # to the inputs to the Wrapper layer).
-    self._input_map = {}
     super(Wrapper, self).__init__(**kwargs)
 
   def build(self, input_shape=None):
@@ -82,6 +78,8 @@ class Wrapper(Layer):
   @classmethod
   def from_config(cls, config, custom_objects=None):
     from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+    # Avoid mutating the input dict
+    config = config.copy()
     layer = deserialize_layer(
         config.pop('layer'), custom_objects=custom_objects)
     return cls(layer, **config)
@@ -256,9 +254,7 @@ class TimeDistributed(Wrapper):
         inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
         # Shape: (num_samples * timesteps, ...). And track the
         # transformation in self._input_map.
-        input_uid = generic_utils.object_list_uid(inputs)
         inputs = array_ops.reshape(inputs, inner_input_shape)
-        self._input_map[input_uid] = inputs
         # (num_samples * timesteps, ...)
         if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
           inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
@@ -312,15 +308,17 @@ class TimeDistributed(Wrapper):
     # cases need to call the layer.compute_mask when input_mask is None:
     # Masking layer and Embedding layer with mask_zero
     input_shape = K.int_shape(inputs)
-    if input_shape[0]:
-      # batch size matters, we currently do not handle mask explicitly
+    if input_shape[0] and not self._always_use_reshape or isinstance(
+        inputs, ragged_tensor.RaggedTensor):
+      # batch size matters, we currently do not handle mask explicitly, or if
+      # the layer always uses reshape approach, or the input is a ragged tensor.
       return mask
     inner_mask = mask
     if inner_mask is not None:
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
-    input_uid = generic_utils.object_list_uid(inputs)
-    inner_inputs = self._input_map.get(input_uid, inputs)
+    inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
+    inner_inputs = array_ops.reshape(inputs, inner_input_shape)
     output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
       if mask is None:

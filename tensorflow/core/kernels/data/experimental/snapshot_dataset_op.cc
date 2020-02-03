@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <random>
 
+#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -449,7 +451,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
 
     uint64 hash;
-    OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
+    OP_REQUIRES_OK(ctx, ComputeDatasetHash(graph_def, path, &hash));
 
     Status dump_status = DumpDatasetGraph(path, hash, graph_def);
     if (!dump_status.ok()) {
@@ -749,7 +751,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           // Get all the files in the run_dir.
           std::vector<std::string> filenames_str;
           TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
-              absl::StrCat(run_dir_, "/*"), &filenames_str));
+              absl::StrCat(absl::string_view(run_dir_), "/*"), &filenames_str));
           filenames_.resize(filenames_str.size());
           std::copy(filenames_str.begin(), filenames_str.end(),
                     filenames_.begin());
@@ -973,7 +975,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
             }
 #if !defined(PLATFORM_GOOGLE)
-            string record_bytes;
+            tstring record_bytes;
             Status s = reader->ReadRecord(&record_bytes);
 #else
             absl::Cord record_cord;
@@ -1420,9 +1422,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         string GetSnapshotFilename() {
           mutex_lock l(mu_);
           string snapshot_data_filename = io::JoinPath(
-              run_dir_,
-              absl::StrCat(strings::Printf("%08llu", next_file_index_),
-                           ".snapshot"));
+              run_dir_, absl::StrFormat("%08u.snapshot", next_file_index_));
           next_file_index_++;
           return snapshot_data_filename;
         }
@@ -1699,6 +1699,19 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     const std::string mode_;
     const std::string snapshot_name_;
   };
+
+  Status ComputeDatasetHash(const GraphDef& graph_def, const std::string& path,
+                            uint64* hash) {
+    TF_RETURN_IF_ERROR(HashGraph(graph_def, hash));
+    // Adding path, compression, reader / writer path prefix, shard size
+    // bytes to the fp as they effect the data written on disk.
+    *hash = Hash64Combine(*hash, Hash64(path));
+    *hash = Hash64Combine(*hash, Hash64(compression_));
+    *hash = Hash64Combine(*hash, Hash64(reader_path_prefix_));
+    *hash = Hash64Combine(*hash, Hash64(writer_path_prefix_));
+    *hash = Hash64Combine(*hash, shard_size_bytes_);
+    return Status::OK();
+  }
 
   const int graph_def_version_;
   DataTypeVector output_types_;

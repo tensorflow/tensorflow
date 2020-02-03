@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -135,7 +136,7 @@ Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
 }
 
 Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
-  value->mutable_func()->set_name(attr.getValue());
+  value->mutable_func()->set_name(std::string(attr.getValue()));
   return Status::OK();
 }
 
@@ -212,22 +213,28 @@ void UpdateCompositeWhileOp(NodeDef* node_def) {
   }
 }
 
-// Returns true if the control dialect op should map to Ref node in TensorFlow
-// Graph. For NextIteration it uses the 1st operand type. For all others
-// (Enter/Exit/Merge/Switch), if the output type is ref,
-// they correspond to the Ref equivalent op in TF Graph.
+// Returns true if the executor/control dialect op should map to Ref node in
+// TensorFlow Graph. For control dialect NextIteration it uses the 1st operand
+// type. For executor dialect NextIteration it uses the 2nd operand type. For
+// all others (Enter/Exit/Merge/Switch), if the output type is ref, they
+// correspond to the Ref equivalent op in TF Graph.
 static bool IsRefTypeControlOp(mlir::Operation* op) {
+  if (auto next_iter_sink =
+          llvm::dyn_cast<mlir::tf_executor::NextIterationSinkOp>(op))
+    return mlir::getElementTypeOrSelf(next_iter_sink.input().getType())
+        .isa<mlir::TF::TensorFlowRefType>();
+
   auto op_name_or_status = GetTensorFlowOpName(op->getName().getStringRef());
   if (!op_name_or_status.ok()) return false;
 
   auto op_name = op_name_or_status.ConsumeValueOrDie();
   if (op_name.equals("NextIteration"))
-    return mlir::getElementTypeOrSelf(op->getOperand(0)->getType())
+    return mlir::getElementTypeOrSelf(op->getOperand(0).getType())
         .isa<mlir::TF::TensorFlowRefType>();
 
   if (op_name.equals("Enter") || op_name.equals("Exit") ||
       op_name.equals("Switch") || op_name.equals("Merge")) {
-    return getElementTypeOrSelf(op->getResult(0)->getType())
+    return getElementTypeOrSelf(op->getResult(0).getType())
         .isa<mlir::TF::TensorFlowRefType>();
   }
   return false;
@@ -239,15 +246,18 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   // When being converted to MLIR, some prefixes and suffixes are added to the
   // operation types, and we have to remove them when converting the
   // operations back to a graph:
-  // - "_tf." or "tf.": every operation type has this prefix.
-  // - ".sink": only the NextIteration operation has this suffix. We don't
-  // need to consider ".source" because the nodes with this suffix are skipped
-  // by the caller and will not be added to the graph.
-  if (!op_name.consume_front("_tf.") && !op_name.consume_front("tf.")) {
+  // - "_tf.", "tf." or "tf_executor." : every operation type has this prefix.
+  // - ".sink" or ".Sink": only the NextIteration operation has this suffix. We
+  // don't need to consider ".source"/".Source" because the nodes with this
+  // suffix are skipped by the caller and will not be added to the graph.
+  if (!op_name.consume_front("_tf.") && !op_name.consume_front("tf.") &&
+      !op_name.consume_front("tf_executor.")) {
     return errors::FailedPrecondition("op node '", op_name.str(),
                                       "' was not a TF op!");
   }
-  op_name.consume_back(".sink");
+  // Control dialect NextIteration sink ends with ".sink" and Executor dialect
+  // NextIteration sink ends with ".Sink".
+  if (!op_name.consume_back(".sink")) op_name.consume_back(".Sink");
   return op_name;
 }
 
@@ -281,7 +291,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   }
 
   node_def->set_name(name.str());
-  node_def->set_op(op_name.str());
+  node_def->set_op(std::string(op_name.str()));
 
   // Add inputs to the NodeDef based on the number of operands. This is required
   // as later when edges are added to the Node using Graph::AddEdge the
@@ -290,7 +300,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     node_def->add_input();
   }
   if (auto attr = inst->getAttrOfType<mlir::StringAttr>("device")) {
-    node_def->set_device(attr.getValue());
+    node_def->set_device(std::string(attr.getValue()));
   }
 
   // Add the node attributes.
@@ -333,7 +343,7 @@ Status ConvertAttributes(
     switch (attr.getKind()) {
       case mlir::StandardAttributes::SymbolRef: {
         auto func_attr = attr.cast<mlir::FlatSymbolRefAttr>();
-        value.mutable_func()->set_name(func_attr.getValue());
+        value.mutable_func()->set_name(std::string(func_attr.getValue()));
         func_call_attrs[string(name)] = value;
         continue;
       }

@@ -82,10 +82,10 @@ class StackedRNNCells(Layer):
 
   def __init__(self, cells, **kwargs):
     for cell in cells:
-      if not hasattr(cell, 'call'):
+      if not 'call' in dir(cell):
         raise ValueError('All cells must have a `call` method. '
                          'received cells:', cells)
-      if not hasattr(cell, 'state_size'):
+      if not 'state_size' in dir(cell):
         raise ValueError('All cells must have a '
                          '`state_size` attribute. '
                          'received cells:', cells)
@@ -391,10 +391,10 @@ class RNN(Layer):
                **kwargs):
     if isinstance(cell, (list, tuple)):
       cell = StackedRNNCells(cell)
-    if not hasattr(cell, 'call'):
+    if not 'call' in dir(cell):
       raise ValueError('`cell` should have a `call` method. '
                        'The RNN was passed:', cell)
-    if not hasattr(cell, 'state_size'):
+    if not 'state_size' in dir(cell):
       raise ValueError('The RNN cell should have '
                        'an attribute `state_size` '
                        '(tuple of integers, '
@@ -1270,7 +1270,11 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
+    # By default use cached variable under v2 mode, see b/143699808.
+    if ops.executing_eagerly_outside_functions():
+      self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    else:
+      self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(SimpleRNNCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -1323,7 +1327,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    prev_output = states[0]
+    prev_output = states[0] if nest.is_sequence(states) else states
     dp_mask = self.get_dropout_mask_for_cell(inputs, training)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
         prev_output, training)
@@ -1377,6 +1381,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
         'recurrent_dropout':
             self.recurrent_dropout
     }
+    config.update(_config_for_enable_caching_device(self))
     base_config = super(SimpleRNNCell, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1494,6 +1499,11 @@ class SimpleRNN(RNN):
       logging.warning('The `implementation` argument '
                       'in `SimpleRNN` has been deprecated. '
                       'Please remove it from your layer call.')
+    if 'enable_caching_device' in kwargs:
+      cell_kwargs = {'enable_caching_device':
+                     kwargs.pop('enable_caching_device')}
+    else:
+      cell_kwargs = {}
     cell = SimpleRNNCell(
         units,
         activation=activation,
@@ -1510,7 +1520,8 @@ class SimpleRNN(RNN):
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
         dtype=kwargs.get('dtype'),
-        trainable=kwargs.get('trainable', True))
+        trainable=kwargs.get('trainable', True),
+        **cell_kwargs)
     super(SimpleRNN, self).__init__(
         cell,
         return_sequences=return_sequences,
@@ -1617,6 +1628,7 @@ class SimpleRNN(RNN):
             self.recurrent_dropout
     }
     base_config = super(SimpleRNN, self).get_config()
+    config.update(_config_for_enable_caching_device(self.cell))
     del base_config['cell']
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1701,7 +1713,11 @@ class GRUCell(DropoutRNNCellMixin, Layer):
                implementation=1,
                reset_after=False,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
+    # By default use cached variable under v2 mode, see b/143699808.
+    if ops.executing_eagerly_outside_functions():
+      self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    else:
+      self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(GRUCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -1770,7 +1786,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    h_tm1 = states[0]  # previous memory
+    h_tm1 = states[0] if nest.is_sequence(states) else states  # previous memory
 
     dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
@@ -1894,6 +1910,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
         'implementation': self.implementation,
         'reset_after': self.reset_after
     }
+    config.update(_config_for_enable_caching_device(self))
     base_config = super(GRUCell, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -2024,6 +2041,11 @@ class GRU(RNN):
       logging.warning('`implementation=0` has been deprecated, '
                       'and now defaults to `implementation=1`.'
                       'Please update your layer call.')
+    if 'enable_caching_device' in kwargs:
+      cell_kwargs = {'enable_caching_device':
+                     kwargs.pop('enable_caching_device')}
+    else:
+      cell_kwargs = {}
     cell = GRUCell(
         units,
         activation=activation,
@@ -2043,7 +2065,8 @@ class GRU(RNN):
         implementation=implementation,
         reset_after=reset_after,
         dtype=kwargs.get('dtype'),
-        trainable=kwargs.get('trainable', True))
+        trainable=kwargs.get('trainable', True),
+        **cell_kwargs)
     super(GRU, self).__init__(
         cell,
         return_sequences=return_sequences,
@@ -2167,6 +2190,7 @@ class GRU(RNN):
         'reset_after':
             self.reset_after
     }
+    config.update(_config_for_enable_caching_device(self.cell))
     base_config = super(GRU, self).get_config()
     del base_config['cell']
     return dict(list(base_config.items()) + list(config.items()))
@@ -2255,7 +2279,11 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
                recurrent_dropout=0.,
                implementation=1,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
+    # By default use cached variable under v2 mode, see b/143699808.
+    if ops.executing_eagerly_outside_functions():
+      self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    else:
+      self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(LSTMCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -2452,6 +2480,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         'implementation':
             self.implementation
     }
+    config.update(_config_for_enable_caching_device(self))
     base_config = super(LSTMCell, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -2658,6 +2687,11 @@ class LSTM(RNN):
       logging.warning('`implementation=0` has been deprecated, '
                       'and now defaults to `implementation=1`.'
                       'Please update your layer call.')
+    if 'enable_caching_device' in kwargs:
+      cell_kwargs = {'enable_caching_device':
+                     kwargs.pop('enable_caching_device')}
+    else:
+      cell_kwargs = {}
     cell = LSTMCell(
         units,
         activation=activation,
@@ -2677,7 +2711,8 @@ class LSTM(RNN):
         recurrent_dropout=recurrent_dropout,
         implementation=implementation,
         dtype=kwargs.get('dtype'),
-        trainable=kwargs.get('trainable', True))
+        trainable=kwargs.get('trainable', True),
+        **cell_kwargs)
     super(LSTM, self).__init__(
         cell,
         return_sequences=return_sequences,
@@ -2801,6 +2836,7 @@ class LSTM(RNN):
         'implementation':
             self.implementation
     }
+    config.update(_config_for_enable_caching_device(self.cell))
     base_config = super(LSTM, self).get_config()
     del base_config['cell']
     return dict(list(base_config.items()) + list(config.items()))
@@ -2961,3 +2997,23 @@ def _caching_device(rnn_cell):
     return None
   # Cache the value on the device that access the variable.
   return lambda op: op.device
+
+
+def _config_for_enable_caching_device(rnn_cell):
+  """Return the dict config for RNN cell wrt to enable_caching_device field.
+
+  Since enable_caching_device is a internal implementation detail for speed up
+  the RNN variable read when running on the multi remote worker setting, we
+  don't want this config to be serialized constantly in the JSON. We will only
+  serialize this field when a none default value is used to create the cell.
+  Args:
+    rnn_cell: the RNN cell for serialize.
+
+  Returns:
+    A dict which contains the JSON config for enable_caching_device value or
+    empty dict if the enable_caching_device value is same as the default value.
+  """
+  default_enable_caching_device = ops.executing_eagerly_outside_functions()
+  if rnn_cell._enable_caching_device != default_enable_caching_device:
+    return {'enable_caching_device': rnn_cell._enable_caching_device}
+  return {}

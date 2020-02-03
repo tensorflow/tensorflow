@@ -330,21 +330,20 @@ def random_flip_up_down(image, seed=None):
 
   Example usage:
 
-    Randomly flip a single image.
-    >>> import numpy as np
+  >>> import numpy as np
 
-    >>> image = np.array([[[1], [2]], [[3], [4]]])
-    >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
-    [[[3], [4]], [[1], [2]]]
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
+  [[[3], [4]], [[1], [2]]]
 
-    Randomly flip multiple images.
-    >>> images = np.array(
-    ... [
-    ...     [[[1], [2]], [[3], [4]]],
-    ...     [[[5], [6]], [[7], [8]]]
-    ... ])
-    >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
-    [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
+  Randomly flip multiple images.
+  >>> images = np.array(
+  ... [
+  ...     [[[1], [2]], [[3], [4]]],
+  ...     [[[5], [6]], [[7], [8]]]
+  ... ])
+  >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
+  [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -370,21 +369,21 @@ def random_flip_left_right(image, seed=None):
   independent of other images.
 
   Example usage:
-    Randomly flip a single image.
-    >>> import numpy as np
 
-    >>> image = np.array([[[1], [2]], [[3], [4]]])
-    >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
-    [[[2], [1]], [[4], [3]]]
+  >>> import numpy as np
 
-    Randomly flip multiple images.
-    >>> images = np.array(
-    ... [
-    ...     [[[1], [2]], [[3], [4]]],
-    ...     [[[5], [6]], [[7], [8]]]
-    ... ])
-    >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
-    [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
+  [[[2], [1]], [[4], [3]]]
+
+  Randomly flip multiple images.
+  >>> images = np.array(
+  ... [
+  ...     [[[1], [2]], [[3], [4]]],
+  ...     [[[5], [6]], [[7], [8]]]
+  ... ])
+  >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
+  [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -455,6 +454,19 @@ def flip_left_right(image):
 
   See also `reverse()`.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.flip_left_right(x)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 4.,  5.,  6.],
+          [ 1.,  2.,  3.]],
+         [[10., 11., 12.],
+          [ 7.,  8.,  9.]]], dtype=float32)>
+
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -475,6 +487,19 @@ def flip_up_down(image):
   Outputs the contents of `image` flipped along the height dimension.
 
   See also `reverse()`.
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.flip_up_down(x)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 7.,  8.,  9.],
+          [10., 11., 12.]],
+         [[ 1.,  2.,  3.],
+          [ 4.,  5.,  6.]]], dtype=float32)>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -627,6 +652,19 @@ def _rot90_4D(images, k, name_scope):
 def transpose(image, name=None):
   """Transpose image(s) by swapping the height and width dimension.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.transpose(x)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 1.,  2.,  3.],
+          [ 7.,  8.,  9.]],
+         [[ 4.,  5.,  6.],
+          [10., 11., 12.]]], dtype=float32)>
+
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -640,6 +678,21 @@ def transpose(image, name=None):
 
   Raises:
     ValueError: if the shape of `image` not supported.
+
+  Usage Example:
+
+  >>> image = [[[1, 2], [3, 4]],
+  ...         [[5, 6], [7, 8]],
+  ...         [[9, 10], [11, 12]]]
+  >>> image = tf.constant(image)
+  >>> tf.image.transpose(image)
+  <tf.Tensor: shape=(2, 3, 2), dtype=int32, numpy=
+  array([[[ 1,  2],
+         [ 5,  6],
+         [ 9, 10]],
+        [[ 3,  4],
+         [ 7,  8],
+         [11, 12]]], dtype=int32)>
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -671,12 +724,35 @@ def central_crop(image, central_fraction):
   This function works on either a single image (`image` is a 3-D Tensor), or a
   batch of images (`image` is a 4-D Tensor).
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0],
+  ...       [7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]],
+  ...     [[13.0, 14.0, 15.0],
+  ...       [16.0, 17.0, 18.0],
+  ...       [19.0, 20.0, 21.0],
+  ...       [22.0, 23.0, 24.0]],
+  ...     [[25.0, 26.0, 27.0],
+  ...       [28.0, 29.0, 30.0],
+  ...       [31.0, 32.0, 33.0],
+  ...       [34.0, 35.0, 36.0]],
+  ...     [[37.0, 38.0, 39.0],
+  ...       [40.0, 41.0, 42.0],
+  ...       [43.0, 44.0, 45.0],
+  ...       [46.0, 47.0, 48.0]]]
+  >>> tf.image.central_crop(x, 0.5)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[16., 17., 18.],
+          [19., 20., 21.]],
+         [[28., 29., 30.],
+          [31., 32., 33.]]], dtype=float32)>
+
   Args:
     image: Either a 3-D float Tensor of shape [height, width, depth], or a 4-D
       Tensor of shape [batch_size, height, width, depth].
     central_fraction: float (0, 1], fraction of size to crop
-  Usage Example: ```python >> import tensorflow as tf >> x =
-    tf.random.normal(shape=(256, 256, 3)) >> tf.image.central_crop(x, 0.5) ```
 
   Raises:
     ValueError: if central_crop_fraction is not within (0, 1].
@@ -773,6 +849,32 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
+
+  Usage Example:
+
+  >>> x = [[[1., 2., 3.],
+  ...       [4., 5., 6.]],
+  ...       [[7., 8., 9.],
+  ...       [10., 11., 12.]]]
+  >>> padded_image = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4)
+  >>> padded_image
+  <tf.Tensor: shape=(4, 4, 3), dtype=float32, numpy=
+  array([[[ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 1.,  2.,  3.],
+  [ 4.,  5.,  6.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 7.,  8.,  9.],
+  [10., 11., 12.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.]]], dtype=float32)>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1571,6 +1673,15 @@ def random_brightness(image, max_delta, seed=None):
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...      [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.random_brightness(x, 0.2)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
+
   Returns:
     The brightness-adjusted image(s).
 
@@ -1597,6 +1708,15 @@ def random_contrast(image, lower, upper, seed=None):
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.random_contrast(x, 0.2, 0.5)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
 
   Returns:
     The contrast-adjusted image(s).
@@ -1630,19 +1750,25 @@ def adjust_brightness(image, delta):
   images, `delta` should be in the range `[0,1)`, as it is added to the image in
   floating point representation, where pixel values are in the `[0,1)` range.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.adjust_brightness(x, delta=0.1)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 1.1,  2.1,  3.1],
+          [ 4.1,  5.1,  6.1]],
+         [[ 7.1,  8.1,  9.1],
+          [10.1, 11.1, 12.1]]], dtype=float32)>
+
   Args:
     image: RGB image or images to adjust.
     delta: A scalar. Amount to add to the pixel values.
 
   Returns:
     A brightness-adjusted tensor of the same shape and type as `image`.
-
-  Usage Example:
-    ```python
-    import tensorflow as tf
-    x = tf.random.normal(shape=(256, 256, 3))
-    tf.image.adjust_brightness(x, delta=0.1)
-    ```
   """
   with ops.name_scope(None, 'adjust_brightness', [image, delta]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -1679,19 +1805,25 @@ def adjust_contrast(images, contrast_factor):
   channel and then adjusts each component `x` of each pixel to
   `(x - mean) * contrast_factor + mean`.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.adjust_contrast(x, 2)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[-3.5, -2.5, -1.5],
+          [ 2.5,  3.5,  4.5]],
+         [[ 8.5,  9.5, 10.5],
+          [14.5, 15.5, 16.5]]], dtype=float32)>
+
   Args:
     images: Images to adjust.  At least 3-D.
     contrast_factor: A float multiplier for adjusting contrast.
 
   Returns:
     The contrast-adjusted image or images.
-
-  Usage Example:
-    ```python
-    import tensorflow as tf
-    x = tf.random.normal(shape=(256, 256, 3))
-    tf.image.adjust_contrast(x,2)
-    ```
   """
   with ops.name_scope(None, 'adjust_contrast',
                       [images, contrast_factor]) as name:
@@ -1721,6 +1853,19 @@ def adjust_gamma(image, gamma=1, gain=1):
   pixelwise according to the equation `Out = gain * In**gamma`,
   and then converts the back to the original data type.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.adjust_gamma(x, 0.2)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[1.       , 1.1486983, 1.2457309],
+          [1.319508 , 1.3797297, 1.4309691]],
+         [[1.4757731, 1.5157166, 1.5518456],
+          [1.5848932, 1.6153942, 1.6437519]]], dtype=float32)>
+
   Args:
     image : RGB image or images to adjust.
     gamma : A scalar or tensor. Non-negative real number.
@@ -1728,12 +1873,7 @@ def adjust_gamma(image, gamma=1, gain=1):
 
   Returns:
     A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.adjust_gamma(x, 0.2)
-    ```
+
   Raises:
     ValueError: If gamma is negative.
   Notes:
@@ -1786,6 +1926,19 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   type, and when casting from a signed to an unsigned type; `saturate` has no
   effect on casts between floats, or on casts that increase the type's range).
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float16, numpy=
+  array([[[ 1.,  2.,  3.],
+          [ 4.,  5.,  6.]],
+         [[ 7.,  8.,  9.],
+          [10., 11., 12.]]], dtype=float16)>
+
   Args:
     image: An image.
     dtype: A `DType` to convert `image` to.
@@ -1794,13 +1947,6 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Returns:
     `image`, converted to `dtype`.
-
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3), dtype=tf.float32)
-    >> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
-    ```
 
   Raises:
     AttributeError: Raises an attribute error when dtype is neither
@@ -1866,15 +2012,12 @@ def rgb_to_grayscale(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 1, containing the Grayscale value of the
   pixels.
-  
-  ```python
+
   >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
   >>> converted = tf.image.rgb_to_grayscale(original)
   >>> print(converted.numpy())
   [[[1.81...]]]
 
-  ```
-  
   Args:
     images: The RGB tensor to convert. The last dimension must have size 3 and
       should contain RGB values.
@@ -1904,8 +2047,7 @@ def grayscale_to_rgb(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 3, containing the RGB value of the pixels.
   The input images' last dimension must be size 1.
- 
-  ```python
+
   >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
   >>> converted = tf.image.grayscale_to_rgb(original)
   >>> print(converted.numpy())
@@ -1913,8 +2055,6 @@ def grayscale_to_rgb(images, name=None):
     [2. 2. 2.]
     [3. 3. 3.]]]
 
-  ```
-  
   Args:
     images: The Grayscale tensor to convert. The last dimension must be size 1.
     name: A name for the operation (optional).
@@ -1944,6 +2084,15 @@ def random_hue(image, max_delta, seed=None):
   picked in the interval `[-max_delta, max_delta]`.
 
   `max_delta` must be in the interval `[0, 0.5]`.
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.random_hue(x, 0.2)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
 
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
@@ -1985,6 +2134,19 @@ def adjust_hue(image, delta, name=None):
 
   `delta` must be in the interval `[-1, 1]`.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.adjust_hue(x, 0.2)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 2.3999996,  1.       ,  3.       ],
+          [ 5.3999996,  4.       ,  6.       ]],
+        [[ 8.4      ,  7.       ,  9.       ],
+          [11.4      , 10.       , 12.       ]]], dtype=float32)>
+
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
     delta: float.  How much to add to the hue channel.
@@ -1994,11 +2156,19 @@ def adjust_hue(image, delta, name=None):
     Adjusted image(s), same shape and DType as `image`.
 
   Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.adjust_hue(x, 0.2)
-    ```
+
+  >>> image = [[[1, 2, 3], [4, 5, 6]],
+  ...          [[7, 8, 9], [10, 11, 12]],
+  ...          [[13, 14, 15], [16, 17, 18]]]
+  >>> image = tf.constant(image)
+  >>> tf.image.adjust_hue(image, 0.2)
+  <tf.Tensor: shape=(3, 2, 3), dtype=int32, numpy=
+  array([[[ 2,  1,  3],
+        [ 5,  4,  6]],
+       [[ 8,  7,  9],
+        [11, 10, 12]],
+       [[14, 13, 15],
+        [17, 16, 18]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -2022,6 +2192,15 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   `min_jpeg_quality` must be in the interval `[0, 100]` and less than
   `max_jpeg_quality`.
   `max_jpeg_quality` must be in the interval `[0, 100]`.
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.random_jpeg_quality(x, 75, 95)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
 
   Args:
     image: 3D image. Size of the last dimension must be 1 or 3.
@@ -2063,6 +2242,19 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
   `jpeg_quality` must be in the interval `[0, 100]`.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.adjust_jpeg_quality(x, 75)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[1.        , 1.        , 1.        ],
+          [0.9960785 , 0.9960785 , 0.9960785 ]],
+         [[0.98823535, 0.98823535, 0.98823535],
+          [0.98823535, 0.98823535, 0.98823535]]], dtype=float32)>
+
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
     jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
@@ -2071,12 +2263,6 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   Returns:
     Adjusted image, same shape and DType as `image`.
 
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.adjust_jpeg_quality(x, 75)
-    ```
   Raises:
     InvalidArgumentError: quality must be in [0,100]
     InvalidArgumentError: image must have 1 or 3 channels
@@ -2102,6 +2288,19 @@ def random_saturation(image, lower, upper, seed=None):
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
   picked in the interval `[lower, upper]`.
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.random_saturation(x, 5, 10)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 0. ,  1.5,  3. ],
+          [ 0. ,  3. ,  6. ]],
+         [[ 0. ,  4.5,  9. ],
+          [ 0. ,  6. , 12. ]]], dtype=float32)>
 
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
@@ -2143,6 +2342,19 @@ def adjust_saturation(image, saturation_factor, name=None):
   converting the images to HSV and multiplying the saturation (S) channel by
   `saturation_factor` and clipping. The images are then converted back to RGB.
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.adjust_saturation(x, 0.5)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 2. ,  2.5,  3. ],
+          [ 5. ,  5.5,  6. ]],
+         [[ 8. ,  8.5,  9. ],
+          [11. , 11.5, 12. ]]], dtype=float32)>
+
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
     saturation_factor: float. Factor to multiply the saturation by.
@@ -2150,13 +2362,6 @@ def adjust_saturation(image, saturation_factor, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
-
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.adjust_saturation(x, 0.5)
-    ```
 
   Raises:
     InvalidArgumentError: input must have 3 channels
@@ -2931,7 +3136,7 @@ def rgb_to_yiq(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YIQ
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
-  
+
   Usage Example:
 
   >>> x = tf.constant([[[1.0, 2.0, 3.0]]])
@@ -2993,20 +3198,25 @@ def rgb_to_yuv(images):
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
 
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> tf.image.rgb_to_yuv(x)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 1.815    ,  0.5831516, -0.7149856],
+          [ 4.815    ,  0.5831516, -0.7149855]],
+         [[ 7.815    ,  0.5831516, -0.7149856],
+          [10.815001 ,  0.5831518, -0.7149852]]], dtype=float32)>
+
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
       size 3.
 
   Returns:
     images: tensor with the same shape as `images`.
-    
-  Usage Example:
-  ```python
-  >> import tensorflow as tf
-  >> x = tf.random.normal(shape=(256, 256, 3))
-  >> tf.image.rgb_to_yuv(x)
-  ```
-    
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3513,13 +3723,6 @@ def image_gradients(image):
   location (x, y). That means that dy will always have zeros in the last row,
   and dx will always have zeros in the last column.
 
-  Arguments:
-    image: Tensor with shape [batch_size, h, w, d].
-
-  Returns:
-    Pair of tensors (dy, dx) holding the vertical and horizontal image
-    gradients (1-step finite difference).
-
   Usage Example:
     ```python
     BATCH_SIZE = 1
@@ -3552,6 +3755,13 @@ def image_gradients(image):
       [1. 1. 1. 1. 0.]
       [1. 1. 1. 1. 0.]], shape=(5, 5), dtype=float32)
     ```
+
+  Arguments:
+    image: Tensor with shape [batch_size, h, w, d].
+
+  Returns:
+    Pair of tensors (dy, dx) holding the vertical and horizontal image
+    gradients (1-step finite difference).
 
   Raises:
     ValueError: If `image` is not a 4D tensor.
@@ -3826,6 +4036,25 @@ def extract_glimpse(
   * If the coordinates are not normalized they are interpreted as
     numbers of pixels.
 
+  Usage Example:
+
+  >>> x = [[[[0.0],
+  ...           [1.0],
+  ...           [2.0]],
+  ...          [[3.0],
+  ...           [4.0],
+  ...           [5.0]],
+  ...          [[6.0],
+  ...           [7.0],
+  ...           [8.0]]]]
+  >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
+  ...                         centered=False, normalized=False)
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
+  array([[[[0.],
+           [1.]],
+          [[3.],
+           [4.]]]], dtype=float32)>
+
   Args:
     input: A `Tensor` of type `float32`. A 4-D float tensor of shape
       `[batch_size, height, width, channels]`.
@@ -3848,19 +4077,6 @@ def extract_glimpse(
 
   Returns:
     A `Tensor` of type `float32`.
-
-  Usage Example:
-    ```python
-    BATCH_SIZE = 1
-    IMAGE_HEIGHT = 3
-    IMAGE_WIDTH = 3
-    CHANNELS = 1
-    GLIMPSE_SIZE = (2, 2)
-    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32),
-      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
-    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE,
-      offsets=[[1, 1]], centered=False, normalized=False)
-     ```
   """
   return gen_image_ops.extract_glimpse(
       input=input,
@@ -3905,6 +4121,25 @@ def extract_glimpse_v2(
   * If the coordinates are not normalized they are interpreted as
     numbers of pixels.
 
+  Usage Example:
+
+  >>> x = [[[[0.0],
+  ...           [1.0],
+  ...           [2.0]],
+  ...          [[3.0],
+  ...           [4.0],
+  ...           [5.0]],
+  ...          [[6.0],
+  ...           [7.0],
+  ...           [8.0]]]]
+  >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
+  ...                         centered=False, normalized=False)
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
+  array([[[[0.],
+           [1.]],
+          [[3.],
+           [4.]]]], dtype=float32)>
+
   Args:
     input: A `Tensor` of type `float32`. A 4-D float tensor of shape
       `[batch_size, height, width, channels]`.
@@ -3927,19 +4162,6 @@ def extract_glimpse_v2(
 
   Returns:
     A `Tensor` of type `float32`.
-
-  Usage Example:
-    ```python
-    BATCH_SIZE = 1
-    IMAGE_HEIGHT = 3
-    IMAGE_WIDTH = 3
-    CHANNELS = 1
-    GLIMPSE_SIZE = (2, 2)
-    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32),
-      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
-    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE,
-      offsets=[[1, 1]], centered=False, normalized=False)
-     ```
   """
   return gen_image_ops.extract_glimpse(
       input=input,
@@ -4051,6 +4273,27 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
 
   Returns:
     A `Tensor`. Has the same type as `images`.
+
+  Usage Example:
+
+  >>> # create an empty image
+  >>> img = tf.zeros([1, 3, 3, 3])
+  >>> # draw a box around the image
+  >>> box = np.array([0, 0, 1, 1])
+  >>> boxes = box.reshape([1, 1, 4])
+  >>> # alternate between red and blue
+  >>> colors = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+  >>> tf.image.draw_bounding_boxes(img, boxes, colors)
+  <tf.Tensor: shape=(1, 3, 3, 3), dtype=float32, numpy=
+  array([[[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [0., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]]]], dtype=float32)>
   """
   if colors is None:
     return gen_image_ops.draw_bounding_boxes(images, boxes, name)
@@ -4082,6 +4325,27 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
 
   Returns:
     A `Tensor`. Has the same type as `images`.
+
+  Usage Example:
+
+  >>> # create an empty image
+  >>> img = tf.zeros([1, 3, 3, 3])
+  >>> # draw a box around the image
+  >>> box = np.array([0, 0, 1, 1])
+  >>> boxes = box.reshape([1, 1, 4])
+  >>> # alternate between red and blue
+  >>> colors = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+  >>> tf.image.draw_bounding_boxes(img, boxes, colors)
+  <tf.Tensor: shape=(1, 3, 3, 3), dtype=float32, numpy=
+  array([[[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [0., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]]]], dtype=float32)>
   """
   return draw_bounding_boxes_v2(images, boxes, colors, name)
 

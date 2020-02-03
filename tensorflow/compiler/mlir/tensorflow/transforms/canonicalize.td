@@ -23,7 +23,7 @@ def SingleResultAndOperandHaveSameElementType : Constraint<
   CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;
 
 def SingleResultAndOperandHaveSameType : Constraint<
-  CPred<"$0->getType() == $1->getType()">>;
+  CPred<"$0.getType() == $1.getType()">>;
 
 def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
 
@@ -71,14 +71,6 @@ def BitcastSameType : Pat<(TF_BitcastOp:$res $arg), (replaceWithValue $arg),
 
 def BitcastNested : Pat<(TF_BitcastOp (TF_BitcastOp $arg)),
                         (TF_BitcastOp $arg)>;
-
-//===----------------------------------------------------------------------===//
-// Cast op patterns.
-//===----------------------------------------------------------------------===//
-
-def CastSameType : Pat<(TF_CastOp:$res $arg, $truncate),
-                       (replaceWithValue $arg),
-                       [(SingleResultAndOperandHaveSameType $res, $arg)]>;
 
 //===----------------------------------------------------------------------===//
 // Conj op patterns.

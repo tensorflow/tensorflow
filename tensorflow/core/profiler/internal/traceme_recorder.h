@@ -18,9 +18,9 @@ limitations under the License.
 #include <stddef.h>
 
 #include <atomic>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -44,10 +44,10 @@ extern std::atomic<int> g_trace_level;
 // since the previous Start().
 //
 // This is the backend for TraceMe instrumentation.
-// The profiler starts the recorder, the TraceMe constructor records begin
-// events, and the destructor records end events.
-// The profiler then stops the recorder and finds start/end pairs. (Unpaired
-// start/end events are discarded at that point).
+// The profiler starts the recorder, the TraceMe destructor records complete
+// events. TraceMe::ActivityStart records begin events, and TraceMe::ActivityEnd
+// records end events. The profiler then stops the recorder and finds start/end
+// pairs. (Unpaired start/end events are discarded at that point).
 class TraceMeRecorder {
  public:
   // An Event is either the start of a TraceMe, the end of a TraceMe, or both.
@@ -113,7 +113,7 @@ class TraceMeRecorder {
   mutex mutex_;
   // Map of the static container instances (thread_local storage) for each
   // thread. While active, a ThreadLocalRecorder stores trace events.
-  std::unordered_map<int32, ThreadLocalRecorder*> threads_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<int32, ThreadLocalRecorder*> threads_ GUARDED_BY(mutex_);
   // Events from threads that died during recording.
   TraceMeRecorder::Events orphaned_events_ GUARDED_BY(mutex_);
 };

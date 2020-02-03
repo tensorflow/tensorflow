@@ -2525,7 +2525,9 @@ REGISTER_OP("ExtractImagePatches")
     .Attr("ksizes: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr("rates: list(int) >= 4")
-    .Attr("T: realnumbertype")
+    .Attr(
+        "T: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "uint8, uint16, uint32, uint64, complex64, complex128, bool}")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input_shape;
@@ -2871,11 +2873,12 @@ REGISTER_OP("Dequantize")
     .Input("input: T")
     .Input("min_range: float")
     .Input("max_range: float")
-    .Output("output: float")
+    .Output("output: dtype")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .Attr("narrow_range: bool = false")
     .Attr("axis: int = -1")
+    .Attr("dtype: {bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       int axis = -1;
       Status s = c->GetAttr("axis", &axis);

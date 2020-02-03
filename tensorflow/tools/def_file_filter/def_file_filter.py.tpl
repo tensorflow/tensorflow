@@ -71,7 +71,8 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"tensorflow::|"
                         r"toco::|"
                         r"functor::|"
-                        r"perftools::gputools")
+                        r"perftools::gputools|"
+                        r"grpc::")
 
 # We want to identify data members explicitly in the DEF file, so that no one
 # can implicitly link against the DLL if they use one of the variables exported
@@ -133,15 +134,25 @@ def get_symbols(path_to_lib, re_filter):
 
   # Example symbol line:
   # 954 00000000 SECT2BD notype ()    External    | ?IsSequence@swig@tensorflow@@YA_NPEAU_object@@@Z (bool __cdecl tensorflow::swig::IsSequence(struct _object *))
+  # Anomaly symbol line:
+  # 00B 00000000 SECT4  notype       External     | _tensorflow_numpy_api.
   sym_filtered = []
   re_filter_comp = re.compile(r"{}".format(re_filter))
 
   # Filter out symbol from the split line (`sym_split` in the for loop below).
   sym_line_filter = r".*\s+\| (.*) \(.*"
+  sym_line_filter_anomaly = r".*\s+\| (.*)"
 
   for sym_line in sym_split:
     if re_filter_comp.search(sym_line):
-      sym = re.match(sym_line_filter, sym_line).groups()[0]
+      try:
+        sym = re.match(sym_line_filter, sym_line).groups()[0]
+      except AttributeError:
+        try:
+          sym = re.match(sym_line_filter_anomaly, sym_line).groups()[0]
+        except:
+          raise RuntimeError("Unable to find the following symbol:[%s]" % sym_line)
+
       sym_filtered.append(sym)
 
   return sym_filtered
@@ -186,7 +197,16 @@ def get_pybind_export_symbols(symbols_file, lib_paths_file):
   for lib in lib_paths:
     if lib:
       for cc_lib in symbols:  # keys in symbols = cc_library target name
-        if cc_lib in lib:
+        path_to_lib = cc_lib.split("/")
+        cc_lib = path_to_lib[-1]
+        # if `len(path_to_lib)` is larger than 1, that means, we are given one
+        # or more parent directory of the target. e.g. `[foo/bar]` instead of
+        # just the target name `[bar]`.
+        if len(path_to_lib) > 1:
+          parent_dir = path_to_lib[0]
+        else:
+          parent_dir = ""
+        if cc_lib in lib and parent_dir in lib:
           symbols_all.extend(
             get_symbols(lib, "|".join(symbols[cc_lib])))
 

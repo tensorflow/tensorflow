@@ -174,6 +174,22 @@ class WindowsWritableFile : public WritableFile {
     return Status::OK();
   }
 
+  Status Tell(int64* position) override {
+    Status result = Flush();
+    if (!result.ok()) {
+      return result;
+    }
+
+    *position = SetFilePointer(hfile_, 0, NULL, FILE_CURRENT);
+
+    if (*position == INVALID_SET_FILE_POINTER) {
+      return IOErrorFromWindowsError(
+          "Tell(SetFilePointer) failed for: " + filename_, ::GetLastError());
+    }
+
+    return Status::OK();
+  }
+
   Status Close() override {
     assert(INVALID_HANDLE_VALUE != hfile_);
 
@@ -490,6 +506,15 @@ Status WindowsFileSystem::GetFileSize(const string& fname, uint64* size) {
   return result;
 }
 
+Status WindowsFileSystem::IsDirectory(const string& fname) {
+  TF_RETURN_IF_ERROR(FileExists(fname));
+  std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
+  if (PathIsDirectoryW(ws_translated_fname.c_str())) {
+    return Status::OK();
+  }
+  return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
+}
+
 Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
   Status result;
   // rename() is not capable of replacing the existing file as on Linux
@@ -531,7 +556,7 @@ Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   } else {
     stat->mtime_nsec = sbuf.st_mtime * 1e9;
     stat->length = sbuf.st_size;
-    stat->is_directory = PathIsDirectoryW(ws_translated_fname.c_str());
+    stat->is_directory = IsDirectory(fname).ok();
   }
   return result;
 }

@@ -108,10 +108,10 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         pooling_prop_kind = prop_kind::forward_inference;
       else
         pooling_prop_kind = prop_kind::forward_training;
-      MklPoolingParams fwdParams(src_dims, output_dims_mkl_order, filter_dims,
-                                 strides, padding_left, padding_right,
-                                 algorithm::pooling_avg_exclude_padding,
-                                 pooling_prop_kind);
+      MklPoolingParams fwdParams(
+          src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
+          padding_right, algorithm::pooling_avg_exclude_padding,
+          pooling_prop_kind, static_cast<memory::format>(input_md.data.format));
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // allocate output tensor
@@ -122,18 +122,7 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
 
       OP_REQUIRES_OK(context, context->status());
 
-      // check whether we need to reorder src
       const T* src_data = input_tensor.flat<T>().data();
-      if (input_md.data.format != pooling_fwd->GetSrcMemoryFormat()) {
-        dnn_data_input.SetUsrMem(input_md, &input_tensor);
-        auto src_target_primitive_desc = memory::primitive_desc(
-            {{src_dims}, MklDnnType<T>(), pooling_fwd->GetSrcMemoryFormat()},
-            cpu_engine_);
-        dnn_data_input.CheckReorderToOpMem(src_target_primitive_desc);
-        src_data = const_cast<T*>(
-            reinterpret_cast<T*>(dnn_data_input.GetOpMem().get_data_handle()));
-      }
-
       T* dst_data = output_tensor->flat<T>().data();
 
       // execute pooling
@@ -225,12 +214,20 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
+      // get src memory::desc
+      memory::desc src_md =
+          orig_input_mkl_shape.IsMklTensor()
+              ? orig_input_mkl_shape.GetMklLayout()
+              : memory::desc(orig_input_dims_mkl_order, MklDnnType<T>(),
+                             this->data_format_mkldnn_);
+
       // Pass prop_kind::forward_training to create a forward primitive
       // that is used in the backward pass
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right,
-          algorithm::pooling_avg_exclude_padding, prop_kind::forward_training);
+          algorithm::pooling_avg_exclude_padding, prop_kind::forward_training,
+          static_cast<memory::format>(src_md.data.format));
       MklPoolingBwdPrimitive<T>* pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 

@@ -39,26 +39,6 @@ const int32_t kInt16Max = std::numeric_limits<int16_t>::max();
 const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
 }  // namespace
 
-template <typename T>
-bool PortableIsZeroVectorImpl(const T* vector, int v_size, T zero_value) {
-  for (int i = 0; i < v_size; ++i) {
-    if (*vector++ != zero_value) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool PortableIsZeroVector(const float* vector, int v_size) {
-  static const float zero = 0.0f;
-  return PortableIsZeroVectorImpl(vector, v_size, zero);
-}
-
-bool PortableIsZeroVector(const int8_t* vector, int v_size) {
-  static const int8_t zero = 0;
-  return PortableIsZeroVectorImpl(vector, v_size, zero);
-}
-
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor) {
@@ -325,7 +305,9 @@ void PortableApplyLayerNorm(const int16_t* input,
                             const int32_t* bias, int32_t layer_norm_scale_a,
                             int32_t layer_norm_scale_b, int32_t variance_limit,
                             int n_batch, int n_input, int16_t* output) {
-  static const int kOverflowGuard = 1 << 20;
+  // The square of std::pow(2, 10), which is the extra factor that makes sure
+  // normalized values has enough resolution.
+  static const int kTwoToPower20 = 1 << 20;
   for (int i = 0; i < n_batch; ++i) {
     int64_t sum = 0;
     int64_t sum_sq = 0;
@@ -338,10 +320,10 @@ void PortableApplyLayerNorm(const int16_t* input,
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
     // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
-    int32 temp = kOverflowGuard / n_input;
+    int32 temp = kTwoToPower20 / n_input;
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
-    int32_t variance2 = static_cast<int32>(variance / kOverflowGuard);
+    int32_t variance2 = static_cast<int32>(variance / kTwoToPower20);
     if (variance2 < 1) {
       variance2 = variance_limit;
     }

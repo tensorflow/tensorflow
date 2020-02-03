@@ -202,6 +202,7 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     YieldOp GetYield();
+    bool WrapsSingleOp();
   }];
 
   let hasCanonicalizer = 1;
@@ -460,7 +461,7 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
 
   let extraClassDeclaration = [{
     NextIterationSinkOp GetSink() {
-      return cast<NextIterationSinkOp>(*token()->user_begin());
+      return cast<NextIterationSinkOp>(*token().user_begin());
     }
   }];
 

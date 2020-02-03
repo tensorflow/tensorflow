@@ -23,6 +23,16 @@ limitations under the License.
 
 namespace tflite {
 
+// Namespace used for unittests.
+namespace internal {
+// Sets up all of the data structure members for a runtime tensor
+// based on the contents of a serialized tensor.
+TfLiteStatus InitializeRuntimeTensor(
+    SimpleMemoryAllocator* allocator, const tflite::Tensor& flatbuffer_tensor,
+    const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
+    ErrorReporter* error_reporter, TfLiteTensor* result);
+}  // namespace internal
+
 typedef struct {
   TfLiteNode node;
   const TfLiteRegistration* registration;
@@ -35,16 +45,12 @@ class MicroAllocator {
   // The lifetime of the model, tensor allocator and error reporter must be at
   // least as long as that of the allocator object, since the allocator needs
   // them to be accessible during its entire lifetime.
+
+  // Note: Please use __declspec(align(16)) to make sure tensor_arena is 16
+  // bytes aligned, otherwise some head room will be wasted.
   MicroAllocator(TfLiteContext* context, const Model* model,
                  uint8_t* tensor_arena, size_t arena_size,
                  ErrorReporter* error_reporter);
-
-  // Sets up all of the data structure members for a runtime tensor based on the
-  // contents of a serialized tensor.
-  TfLiteStatus InitializeRuntimeTensor(
-      const tflite::Tensor& flatbuffer_tensor,
-      const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
-      ErrorReporter* error_reporter, TfLiteTensor* result);
 
   // Runs through the model and allocates all necessary input, output and
   // intermediate tensors.
@@ -61,12 +67,12 @@ class MicroAllocator {
       NodeAndRegistration** node_and_registrations);
 
  private:
+  TfLiteStatus Init();
+
   const Model* model_;
-  SimpleMemoryAllocator memory_allocator_;
+  SimpleMemoryAllocator* memory_allocator_;
   ErrorReporter* error_reporter_;
   TfLiteContext* context_;
-  uint8_t* arena_;
-  size_t arena_size_;
   // Indicating if the allocator is ready for allocation.
   bool active_ = false;
 

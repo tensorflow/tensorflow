@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -55,7 +55,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     // Only support 1d reductions for now.
     int64_t size = 0;
     for (auto result : reduce_op.out()) {
-      auto shaped_type = result->getType().dyn_cast<ShapedType>();
+      auto shaped_type = result.getType().dyn_cast<ShapedType>();
       if (!shaped_type || shaped_type.getRank() != 1) {
         return matchFailure();
       }
@@ -71,7 +71,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     // Require all inputs to have the same shape.
     int64_t reduce_dim_size = 0;
     for (auto input : reduce_op.operands()) {
-      auto shaped_type = input->getType().dyn_cast<ShapedType>();
+      auto shaped_type = input.getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasStaticShape()) {
         return matchFailure();
       }
@@ -128,7 +128,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto output = mapping.lookup(*reduce_op.out().begin());
       // TODO(herhut) Move this to the SliceOp builder.
       auto resType = MemRefType::get(
-          llvm::None, output->getType().cast<MemRefType>().getElementType(),
+          llvm::None, output.getType().cast<MemRefType>().getElementType(),
           makeStridedLinearLayoutMap(llvm::None,
                                      MemRefType::getDynamicStrideOrOffset(),
                                      rewriter.getContext()));
@@ -136,7 +136,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
           loc, resType, output, ArrayRef<Value>{launch_op.getThreadIds().x});
       llvm::SmallVector<Value, 4> indexings;
       auto input_buffer = *reduce_op.operands().begin();
-      auto input_type = input_buffer->getType().cast<MemRefType>();
+      auto input_type = input_buffer.getType().cast<MemRefType>();
       for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
         indexings.push_back(dim == reducing_dimension
                                 ? loop.getInductionVar()
@@ -167,7 +167,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Finally, insert the terminator for the launchOp.
       rewriter.setInsertionPointToEnd(&launch_op.body().front());
-      rewriter.create<mlir::gpu::ReturnOp>(loc);
+      rewriter.create<mlir::gpu::TerminatorOp>(loc);
     }
 
     rewriter.eraseOp(reduce_op);

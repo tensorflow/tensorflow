@@ -77,7 +77,7 @@ static RankedTensorType GetRankedTensorTypeForOperand(Value operand) {
   if (matchPattern(operand, m_Constant(&attr))) {
     return attr.getType().dyn_cast<RankedTensorType>();
   }
-  return operand->getType().dyn_cast<RankedTensorType>();
+  return operand.getType().dyn_cast<RankedTensorType>();
 }
 
 // Returns true if the given `value` is of ranked float tensor type with the
@@ -161,7 +161,7 @@ static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
 static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value x,
                                  Value y, BoolAttr incompatible_shape_error) {
   auto result_type =
-      OpTrait::util::getBroadcastedType(x->getType(), y->getType());
+      OpTrait::util::getBroadcastedType(x.getType(), y.getType());
   if (!result_type) {
     if (incompatible_shape_error.getValue()) {
       mlir::emitError(loc, "non-broadcastable operands");
@@ -187,7 +187,7 @@ static int64_t GetDimForAxis(int64_t axis, int64_t rank) {
 // inference functions.
 static Type InferReductionOpType(Value input, Value reduction_indices,
                                  BoolAttr keep_dims, Builder *builder) {
-  Type input_ty = input->getType();
+  Type input_ty = input.getType();
   Type element_ty = getElementTypeOrSelf(input_ty);
 
   // Output type is unranked if input type is not ranked.
@@ -330,12 +330,12 @@ void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // Verifies an reduction op's `input` and reduction `dims`.
 static LogicalResult VerifyReductionInputAndDims(Value input, Value dims,
                                                  Location loc) {
-  auto dims_type = dims->getType().dyn_cast<RankedTensorType>();
+  auto dims_type = dims.getType().dyn_cast<RankedTensorType>();
   if (!dims_type) return success();
   if (dims_type.getRank() > 1)
     return emitError(loc, "dimensions can only be 0D or 1D tensor");
 
-  auto input_type = input->getType().dyn_cast<RankedTensorType>();
+  auto input_type = input.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return success();
   int64_t rank = input_type.getRank();
 
@@ -441,9 +441,8 @@ static LogicalResult Verify(BiasAddOp op) {
   if (!IsOfRankOrUnranked(op.bias(), 1))
     return op.emitOpError("requires bias operand to have rank exactly one");
 
-  RankedTensorType value_ty =
-      op.value()->getType().dyn_cast<RankedTensorType>();
-  RankedTensorType bias_ty = op.bias()->getType().dyn_cast<RankedTensorType>();
+  RankedTensorType value_ty = op.value().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType bias_ty = op.bias().getType().dyn_cast<RankedTensorType>();
   if (!bias_ty || !value_ty) return success();
 
   // TODO(hinsu): Leverage tensor_format.h utility in TensorFlow to compute
@@ -511,9 +510,15 @@ static LogicalResult Verify(BroadcastToOp op) {
 // CastOp
 //===----------------------------------------------------------------------===//
 
-void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.insert<CastSameType>(context);
+//===----------------------------------------------------------------------===//
+// LeakyReluOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  // Cast with the same type is a no-op.
+  Value operand = getOperand();
+  if (getType() == operand.getType()) return operand;
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -552,7 +557,7 @@ static LogicalResult Verify(ConcatOffsetOp op) {
            << "requires sizes of shapes and offsets to be the same, got sizes "
            << op.shape().size() << " and " << op.offset().size();
 
-  auto ranked_dim = op.concat_dim()->getType().dyn_cast<RankedTensorType>();
+  auto ranked_dim = op.concat_dim().getType().dyn_cast<RankedTensorType>();
   if (ranked_dim && ranked_dim.getRank() != 0)
     return op.emitOpError()
            << "requires concat_dim to be a scalar, got tensor of rank "
@@ -565,11 +570,11 @@ static LogicalResult Verify(ConcatOffsetOp op) {
     Value offset = std::get<1>(shape_offset_idx.value());
     const size_t idx = shape_offset_idx.index();
 
-    if (failed(verifyCompatibleShape(shape->getType(), offset->getType())))
+    if (failed(verifyCompatibleShape(shape.getType(), offset.getType())))
       return op.emitOpError() << "requires operand and result " << idx
                               << " to have compatible shapes";
 
-    auto ranked_shape = shape->getType().dyn_cast<RankedTensorType>();
+    auto ranked_shape = shape.getType().dyn_cast<RankedTensorType>();
     if (!ranked_shape) continue;
 
     if (ranked_shape.getRank() != 1)
@@ -786,7 +791,7 @@ static LogicalResult Verify(OpT op) {
   }
 
   int64_t input_channels = -1;
-  if (auto ty = op.input()->getType().template dyn_cast<RankedTensorType>()) {
+  if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
     std::string data_format = op.data_format().str();
     tensorflow::TensorFormat format;
     auto is_valid = FormatFromString(data_format, &format);
@@ -796,7 +801,7 @@ static LogicalResult Verify(OpT op) {
   }
 
   int64_t filter_channels = -1;
-  if (auto ty = op.filter()->getType().template dyn_cast<RankedTensorType>()) {
+  if (auto ty = op.filter().getType().template dyn_cast<RankedTensorType>()) {
     int idx = tensorflow::GetFilterTensorInputChannelsDimIndex(
         num_dims, tensorflow::FORMAT_HWIO);
     filter_channels = ty.getDimSize(idx);
@@ -876,8 +881,8 @@ static LogicalResult Verify(DynamicStitchOp op) {
     }
 
     Value data = std::get<1>(it);
-    RankedTensorType index_ty = index->getType().dyn_cast<RankedTensorType>();
-    RankedTensorType data_ty = data->getType().dyn_cast<RankedTensorType>();
+    RankedTensorType index_ty = index.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType data_ty = data.getType().dyn_cast<RankedTensorType>();
     if (!index_ty || !data_ty) continue;
 
     int64_t index_rank = index_ty.getRank();
@@ -993,10 +998,10 @@ void EqualOp::build(Builder *builder, OperationState &result, Value x, Value y,
 //===----------------------------------------------------------------------===//
 
 Type InferExpandDimsOpType(Value input, Value dim) {
-  Type element_ty = input->getType().cast<TensorType>().getElementType();
+  Type element_ty = input.getType().cast<TensorType>().getElementType();
   auto unranked_ty = UnrankedTensorType::get(element_ty);
 
-  auto input_ty = input->getType().dyn_cast<RankedTensorType>();
+  auto input_ty = input.getType().dyn_cast<RankedTensorType>();
   if (!input_ty) return unranked_ty;
 
   DenseIntElementsAttr dim_attr;
@@ -1076,14 +1081,14 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
 
   Value inputs = op.inputs();
   if (!HasRankAtLeast(inputs, 1) ||
-      inputs->getType().isa<UnrankedTensorType>()) {
+      inputs.getType().isa<UnrankedTensorType>()) {
     return op.emitError("requires inputs to be at least 1d float tensor");
   }
 
-  auto inputsType = inputs->getType().cast<ShapedType>();
+  auto inputsType = inputs.getType().cast<ShapedType>();
   int depth = inputsType.getDimSize(inputsType.getRank() - 1);
-  if (op.min()->getType().cast<ShapedType>().getDimSize(0) != depth ||
-      op.max()->getType().cast<ShapedType>().getDimSize(0) != depth) {
+  if (op.min().getType().cast<ShapedType>().getDimSize(0) != depth ||
+      op.max().getType().cast<ShapedType>().getDimSize(0) != depth) {
     return op.emitOpError(
         "requires min and max to have same size as last dimension of inputs");
   }
@@ -1139,7 +1144,7 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 
 static LogicalResult Verify(GatherV2Op op) {
   int64_t batch_dims = op.batch_dims().getSExtValue();
-  if (auto ty = op.indices()->getType().dyn_cast<RankedTensorType>()) {
+  if (auto ty = op.indices().getType().dyn_cast<RankedTensorType>()) {
     int64_t rank = ty.getRank();
     if (batch_dims > rank || batch_dims < -rank)
       return op.emitOpError()
@@ -1154,7 +1159,7 @@ static LogicalResult Verify(GatherV2Op op) {
   DenseIntElementsAttr axis_attr;
   if (matchPattern(op.axis(), m_Constant(&axis_attr))) {
     int64_t axis = (*axis_attr.begin()).getSExtValue();
-    if (auto ty = op.params()->getType().dyn_cast<RankedTensorType>()) {
+    if (auto ty = op.params().getType().dyn_cast<RankedTensorType>()) {
       int64_t rank = ty.getRank();
       if (axis >= rank || axis < -rank)
         return op.emitOpError() << "axis (" << axis << ") must be in range ["
@@ -1197,7 +1202,7 @@ static LogicalResult Verify(IfOp op) {
                         " inputs");
 
   for (unsigned i = 0; i < expectedNumInputs; ++i) {
-    auto operandType = op.getOperand(i + 1)->getType().cast<TensorType>();
+    auto operandType = op.getOperand(i + 1).getType().cast<TensorType>();
     auto thenInputType = thenFuncType.getInput(i).cast<TensorType>();
     if (!AreCastCompatible(operandType, thenInputType))
       return op.emitError(
@@ -1228,7 +1233,7 @@ static LogicalResult Verify(IfOp op) {
                         " results");
 
   for (unsigned i = 0; i < expectedNumResults; ++i) {
-    auto resultType = op.getResult(i)->getType().cast<TensorType>();
+    auto resultType = op.getResult(i).getType().cast<TensorType>();
     auto thenResultType = thenFuncType.getResult(i).cast<TensorType>();
     if (!AreCastCompatible(thenResultType, resultType))
       return op.emitError(
@@ -1253,6 +1258,20 @@ static LogicalResult Verify(IfOp op) {
 void InvertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
   results.insert<InvertNested>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// InvertPermutationOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that the input is 1D.
+static LogicalResult Verify(InvertPermutationOp op) {
+  auto x_type = op.x().getType().cast<TensorType>();
+  if (!x_type.hasRank()) return success();
+  if (x_type.getShape().size() != 1)
+    return op.emitOpError() << "requires input x to be 1-dimensional";
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1364,7 +1383,7 @@ void NotEqualOp::build(Builder *builder, OperationState &result, Value x,
 static LogicalResult Verify(OneHotOp op) {
   int64_t axis = op.axis().getSExtValue();
 
-  auto indices_ty = op.indices()->getType().dyn_cast<RankedTensorType>();
+  auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
   if (indices_ty &&
       !(axis == -1 || (axis >= 0 && axis <= indices_ty.getShape().size()))) {
     return op.emitOpError()
@@ -1403,11 +1422,11 @@ static LogicalResult Verify(OneHotOp op) {
 static TensorType InferOneHotOpType(Value indices, Value depth, Value on_value,
                                     Value off_value, IntegerAttr axis) {
   int64_t axis_val = axis.getInt();
-  Type element_ty = on_value->getType().cast<TensorType>().getElementType();
+  Type element_ty = on_value.getType().cast<TensorType>().getElementType();
   auto unranked_ty = UnrankedTensorType::get(element_ty);
   if (axis_val < -1) return unranked_ty;
 
-  auto indices_ty = indices->getType().dyn_cast<RankedTensorType>();
+  auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
   if (!indices_ty) return unranked_ty;
 
   auto shape = llvm::to_vector<2>(indices_ty.getShape());
@@ -1446,7 +1465,7 @@ static LogicalResult Verify(PackOp op) {
 
   int64_t inputs_rank = -1;
   for (Value value : values) {
-    if (auto ty = value->getType().dyn_cast<RankedTensorType>()) {
+    if (auto ty = value.getType().dyn_cast<RankedTensorType>()) {
       // Exit early as input types are verified to be compatible so all ranked
       // tensors have the same rank.
       inputs_rank = ty.getRank();
@@ -1548,8 +1567,8 @@ static LogicalResult Verify(RandomUniformOp op) {
 
 void RangeOp::build(Builder *builder, OperationState &result, Value start,
                     Value limit, Value delta) {
-  assert(start->getType() == limit->getType());
-  assert(start->getType() == delta->getType());
+  assert(start.getType() == limit.getType());
+  assert(start.getType() == delta.getType());
   DenseIntElementsAttr start_val;
   DenseIntElementsAttr limit_val;
   DenseIntElementsAttr delta_val;
@@ -1563,13 +1582,13 @@ void RangeOp::build(Builder *builder, OperationState &result, Value start,
         builder, result,
         RankedTensorType::get(
             size.getSExtValue(),
-            start->getType().cast<TensorType>().getElementType()),
+            start.getType().cast<TensorType>().getElementType()),
         start, limit, delta);
   }
   return RangeOp::build(
       builder, result,
       RankedTensorType::get(
-          {-1}, start->getType().cast<TensorType>().getElementType()),
+          {-1}, start.getType().cast<TensorType>().getElementType()),
       start, limit, delta);
 }
 //===----------------------------------------------------------------------===//
@@ -1595,65 +1614,69 @@ void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/128020684): Verify the rank of the output and change to use
-// m_Constant.
+// TODO(b/128020684): Verify the output type.
 static LogicalResult Verify(ReshapeOp op) {
-  auto shapeType = op.shape()->getType().cast<TensorType>();
-  if (!shapeType.hasRank()) return success();
-  if (shapeType.getRank() != 1)
+  auto shape_type = op.shape().getType().cast<TensorType>();
+  if (!shape_type.hasRank()) return success();
+  if (shape_type.getRank() != 1)
     return op.emitOpError("shape must be 1D tensor");
-  auto rankByShape = shapeType.getShape()[0];
-  auto typeOfTensor = op.tensor()->getType().cast<TensorType>();
+  auto rank_by_shape = shape_type.getShape()[0];
+  auto type_of_tensor = op.tensor().getType().cast<TensorType>();
   // No compile time verification for unknown sized shape.
-  if (rankByShape == -1 || !typeOfTensor.hasStaticShape()) return success();
+  if (rank_by_shape == -1 || !type_of_tensor.hasStaticShape()) return success();
+  int64_t num_by_tensor = type_of_tensor.getNumElements();
+
+  auto out_ty = op.getType().cast<RankedTensorType>();
+  if (out_ty && out_ty.hasStaticShape()) {
+    int64_t num_output_elements = out_ty.getNumElements();
+    if (num_by_tensor != num_output_elements)
+      return op.emitOpError()
+             << "number of output elements (" << num_output_elements
+             << ") does not match expected number of elements ("
+             << num_by_tensor << ")";
+  }
+
   // Check values if constant shape. No compiling time verification for
   // non-constant shape.
-  auto *shapeOp = op.shape()->getDefiningOp();
-  if (!shapeOp) return success();
-  Attribute shapeCst;
-  if (auto shapeStdOp = dyn_cast<ConstantOp>(shapeOp)) {
-    shapeCst = shapeStdOp.getValue();
-  } else if (auto shapeTFOp = dyn_cast<ConstOp>(shapeOp)) {
-    shapeCst = shapeTFOp.value();
-  } else {
-    return success();
-  }
-  auto shapeCstAttr = shapeCst.dyn_cast<ElementsAttr>();
-  if (!shapeCstAttr) return op.emitOpError("shape must be a valid tensor");
+  auto *shape_op = op.shape().getDefiningOp();
+  if (!shape_op) return success();
+  Attribute shape_cst;
+  if (!matchPattern(shape_op, m_Constant(&shape_cst))) return success();
+  auto shape_cst_attr = shape_cst.dyn_cast<ElementsAttr>();
+  if (!shape_cst_attr) return op.emitOpError("shape must be a valid tensor");
 
-  if (auto opaqueAttr = shapeCstAttr.dyn_cast<OpaqueElementsAttr>()) {
-    opaqueAttr.decode(shapeCstAttr);
+  if (auto opaque_attr = shape_cst_attr.dyn_cast<OpaqueElementsAttr>()) {
+    opaque_attr.decode(shape_cst_attr);
   }
 
   // We know the shape is a 1-D Tensor, then let us get the number of
   // elements it implies.
-  unsigned numByShape = 1;
-  unsigned unknownDimCount = 0;
-  for (int i = 0, e = rankByShape; i != e; ++i) {
-    auto num = shapeCstAttr.getValue<IntegerAttr>(i).getInt();
+  unsigned num_by_shape = 1;
+  unsigned unknown_dim_count = 0;
+  for (int i = 0, e = rank_by_shape; i != e; ++i) {
+    auto num = shape_cst_attr.getValue<IntegerAttr>(i).getInt();
     // The dimension size value can be -1, and that the real size needs to
     // be computed so that the total size remains constant. At most one
     // component of shape can be -1.
     if (num == -1) {
-      if (++unknownDimCount > 1) {
+      if (++unknown_dim_count > 1) {
         return op.emitOpError("more than one component of shape are -1");
       }
     } else {
-      numByShape *= num;
+      num_by_shape *= num;
     }
   }
-  auto numByTensor = typeOfTensor.getNumElements();
   // If there is one component of shape is -1, the dimension should be
   // computed so that the total size remains constant.
-  if (unknownDimCount == 1) {
-    if (numByTensor % numByShape != 0)
+  if (unknown_dim_count == 1) {
+    if (num_by_tensor % num_by_shape != 0)
       return op.emitOpError(
           "one component of shape is -1 but couldn't infer the dimension");
     return success();
   }
   // If the elements by the tensor and implies by the shape don't match,
   // fail this static check.
-  if (numByTensor != numByShape) {
+  if (num_by_tensor != num_by_shape) {
     return op.emitOpError(
         "mismatch in tensor elements and shape implied elements");
   }
@@ -1662,7 +1685,7 @@ static LogicalResult Verify(ReshapeOp op) {
 
 void ReshapeOp::build(Builder *builder, OperationState &result, Value tensor,
                       Value shape) {
-  auto ttype = tensor->getType().cast<ShapedType>();
+  auto ttype = tensor.getType().cast<ShapedType>();
   auto etype = ttype.getElementType();
 
   auto unranked = [builder, etype, &result, shape, tensor]() {
@@ -1723,14 +1746,14 @@ void ReshapeOp::build(Builder *builder, OperationState &result, Value tensor,
 //===----------------------------------------------------------------------===//
 
 static Type InferSelectV2OpType(Value condition, Value e, Value t) {
-  Type element_ty = e->getType().cast<TensorType>().getElementType();
+  Type element_ty = e.getType().cast<TensorType>().getElementType();
   auto unranked_ty = UnrankedTensorType::get(element_ty);
 
   Type broadcasted_ty =
-      OpTrait::util::getBroadcastedType(e->getType(), t->getType());
+      OpTrait::util::getBroadcastedType(e.getType(), t.getType());
   if (!broadcasted_ty) return unranked_ty;
 
-  auto cond_ranked_ty = condition->getType().dyn_cast<RankedTensorType>();
+  auto cond_ranked_ty = condition.getType().dyn_cast<RankedTensorType>();
   auto broadcasted_ranked_ty = broadcasted_ty.dyn_cast<RankedTensorType>();
   if (!cond_ranked_ty || !broadcasted_ranked_ty) return unranked_ty;
 
@@ -1791,7 +1814,7 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
 }  // anonymous namespace
 
 static LogicalResult Verify(ShapeOp op) {
-  return VerifyShapeOperandAndResult(op, op.input()->getType(), op.getType());
+  return VerifyShapeOperandAndResult(op, op.input().getType(), op.getType());
 }
 
 // Converts shape of the given type to attribute if it is of ranked tensor type.
@@ -1816,12 +1839,12 @@ static Attribute ConvertShapeToAttr(Type input_ty, int out_width) {
 OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
   int width =
       getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
-  return ConvertShapeToAttr(getOperand()->getType(), width);
+  return ConvertShapeToAttr(getOperand().getType(), width);
 }
 
 void ShapeOp::build(Builder *builder, OperationState &result, Value input,
                     BoolAttr use32Bit) {
-  auto rankedTensorType = input->getType().dyn_cast<RankedTensorType>();
+  auto rankedTensorType = input.getType().dyn_cast<RankedTensorType>();
   int64_t rank = rankedTensorType ? rankedTensorType.getRank() : -1;
   auto out_type = use32Bit.getValue() ? builder->getIntegerType(32)
                                       : builder->getIntegerType(64);
@@ -1846,7 +1869,7 @@ static LogicalResult Verify(ShapeNOp op) {
 
   for (auto i : llvm::seq<uint64_t>(0, num_tensors)) {
     auto verification = VerifyShapeOperandAndResult(
-        op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
+        op, op.getOperand(i).getType(), op.getResult(i).getType(), i);
     if (failed(verification)) return verification;
   }
 
@@ -1919,7 +1942,7 @@ static LogicalResult Verify(SliceOp op) {
                                " same number of elements";
   }
 
-  auto input_ty = op.input()->getType().dyn_cast<RankedTensorType>();
+  auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
   if (input_ty && begin_ty.getNumElements() != input_ty.getRank()) {
     return op.emitOpError() << "requires number of elements in begin and size"
                                "are equal to input rank";
@@ -1973,7 +1996,7 @@ static LogicalResult Verify(SoftmaxOp op) {
 //
 static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
   auto broadcasted_ty = OpTrait::util::getBroadcastedType(
-                            op.features()->getType(), op.labels()->getType())
+                            op.features().getType(), op.labels().getType())
                             .dyn_cast_or_null<ShapedType>();
   if (!broadcasted_ty ||
       (broadcasted_ty.hasRank() && broadcasted_ty.getRank() != 2))
@@ -1994,8 +2017,8 @@ static LogicalResult Verify(SparseSoftmaxCrossEntropyWithLogitsOp op) {
   if (!IsOfRankOrUnranked(op.labels(), 1)) {
     return op.emitOpError("requires labels operand of rank one");
   }
-  auto features_ty = op.features()->getType().dyn_cast<RankedTensorType>();
-  auto labels_ty = op.labels()->getType().dyn_cast<RankedTensorType>();
+  auto features_ty = op.features().getType().dyn_cast<RankedTensorType>();
+  auto labels_ty = op.labels().getType().dyn_cast<RankedTensorType>();
   if (features_ty && labels_ty) {
     int64_t features_batches = features_ty.getDimSize(0);
     int64_t labels_batches = labels_ty.getDimSize(0);
@@ -2020,7 +2043,7 @@ LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
   *dim_index = llvm::None;
 
   Value split_dim = op.split_dim();
-  if (auto split_dim_type = split_dim->getType().dyn_cast<RankedTensorType>())
+  if (auto split_dim_type = split_dim.getType().dyn_cast<RankedTensorType>())
     if (split_dim_type.getRank() != 0)
       return op.emitOpError(
           "split dimension should be an integer scalar tensor");
@@ -2028,7 +2051,7 @@ LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
   // We can perform further verification if the input tensor to be split has
   // known rank and the split dimension tensor is a constant.
 
-  auto input_type = op.value()->getType().template dyn_cast<RankedTensorType>();
+  auto input_type = op.value().getType().template dyn_cast<RankedTensorType>();
   if (!input_type) return success();
 
   int64_t input_rank = input_type.getRank();
@@ -2057,7 +2080,7 @@ static LogicalResult Verify(SplitOp op) {
   if (!dim_index) return success();
 
   int64_t input_dim_size =
-      op.value()->getType().cast<RankedTensorType>().getDimSize(*dim_index);
+      op.value().getType().cast<RankedTensorType>().getDimSize(*dim_index);
   if (input_dim_size == ShapedType::kDynamicSize) return success();
 
   if (input_dim_size % op.getNumResults() != 0)
@@ -2073,7 +2096,7 @@ static LogicalResult Verify(SplitOp op) {
 
 static LogicalResult Verify(SplitVOp op) {
   auto split_sizes_type =
-      op.size_splits()->getType().dyn_cast<RankedTensorType>();
+      op.size_splits().getType().dyn_cast<RankedTensorType>();
   if (!split_sizes_type) return success();
 
   if (split_sizes_type.getRank() != 1 ||
@@ -2086,7 +2109,7 @@ static LogicalResult Verify(SplitVOp op) {
   if (!dim_index) return success();
 
   int64_t input_dim_size =
-      op.value()->getType().cast<RankedTensorType>().getDimSize(*dim_index);
+      op.value().getType().cast<RankedTensorType>().getDimSize(*dim_index);
   if (input_dim_size == ShapedType::kDynamicSize) return success();
 
   // If split sizes come from a constant, they must sum to the dimension size
@@ -2178,7 +2201,7 @@ static LogicalResult VerifyStridedSliceBase(OpTy op) {
   int64_t expected_size = -1;
 
   for (Value val : {op.begin(), op.end(), op.strides()}) {
-    auto operand_ty = val->getType().dyn_cast<ShapedType>();
+    auto operand_ty = val.getType().dyn_cast<ShapedType>();
     if (!operand_ty || !operand_ty.hasStaticShape()) {
       // TensorFlow constant ops may have non-static shape because the shape is
       // not propagated during constant folding. If the defining op for this
@@ -2235,14 +2258,16 @@ constexpr const T &Clamp(const T &val, const T &low, const T &high) {
 }
 
 // For the given `input_shape`, calculates the sliced shape using the given
-// `begin`, `end`, and `stride` ranges and `begin_mask` and `end_mask` masks.
-// Updates the result back to `input_shape`. At the same time, canonicalizes
-// `begin`, `end`, and `strides. The calculation follows tf.StridedSlice op
-// semantics.
+// `begin`, `end`, and `stride` ranges and `begin_mask`, `end_mask`, and
+// `shrink_axis_mask` masks. Updates the result back to `input_shape`. If
+// `shrink_axis_mask` is not zero, this function will not drop the corresponding
+// dimensions in `input_shape`; it will turn them into 1s. At the same time,
+// canonicalizes `begin`, `end`, and `strides. The calculation follows
+// tf.StridedSlice op semantics.
 static void CalculateSlicedShapeAndBoundRanges(
     MutableArrayRef<int64_t> input_shape, int32_t begin_mask, int32_t end_mask,
-    MutableArrayRef<int64_t> begin, MutableArrayRef<int64_t> end,
-    MutableArrayRef<int64_t> stride) {
+    int32_t shrink_axis_mask, MutableArrayRef<int64_t> begin,
+    MutableArrayRef<int64_t> end, MutableArrayRef<int64_t> stride) {
   assert(input_shape.size() <= 32);  // Only 32-bit masks are supported.
 
   // Make sure ranges' ranks are consistent with the input.
@@ -2285,20 +2310,26 @@ static void CalculateSlicedShapeAndBoundRanges(
     if (interval_len != 0 && (interval_len < 0) == (stride_i < 0))
       size_i = (interval_len / stride_i) + (interval_len % stride_i != 0);
 
-    input_shape[i] = size_i;
     begin[i] = begin_i;
-    end[i] = end_i;
-    stride[i] = stride_i;
+    if ((1 << i) & shrink_axis_mask) {
+      // Shrink this dimension. It means we only take the element at begin_i.
+      input_shape[i] = 1;
+      end[i] = begin_i + 1;
+      stride[i] = 1;
+    } else {
+      input_shape[i] = size_i;
+      end[i] = end_i;
+      stride[i] = stride_i;
+    }
   }
 }
 
 bool StridedSliceOp::GetSlicedBoundRanges(
-    ArrayRef<int64_t> shape, SmallVectorImpl<int64_t> *begin_indices,
+    SmallVectorImpl<int64_t> *begin_indices,
     SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
   if (this->ellipsis_mask().getZExtValue() ||
-      this->new_axis_mask().getZExtValue() ||
-      this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(antiagainst): support these masks
+      this->new_axis_mask().getZExtValue())
+    return false;  // TODO(b/146512589): support these masks
 
   // TODO(hinsu): Support lowering for ops with dynamic begin and end values
   // when it is possible to derive indices based on mask attributes.
@@ -2308,7 +2339,9 @@ bool StridedSliceOp::GetSlicedBoundRanges(
       !matchPattern(this->strides(), m_Constant(&strides_attr)))
     return false;
 
-  auto input_shape = llvm::to_vector<4>(shape);
+  auto input_ty = this->input().getType().dyn_cast<RankedTensorType>();
+  if (!input_ty || !input_ty.hasStaticShape()) return false;
+  auto input_shape = llvm::to_vector<4>(input_ty.getShape());
   int rank = input_shape.size();
 
   begin_indices->clear();
@@ -2327,7 +2360,8 @@ bool StridedSliceOp::GetSlicedBoundRanges(
 
   CalculateSlicedShapeAndBoundRanges(
       input_shape, this->begin_mask().getZExtValue(),
-      this->end_mask().getZExtValue(), *begin_indices, *end_indices, *strides);
+      this->end_mask().getZExtValue(), this->shrink_axis_mask().getZExtValue(),
+      *begin_indices, *end_indices, *strides);
   return true;
 }
 
@@ -2336,7 +2370,7 @@ bool StridedSliceOp::GetSlicedBoundRanges(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(StridedSliceGradOp op) {
-  auto shape_type = op.shape()->getType().dyn_cast<RankedTensorType>();
+  auto shape_type = op.shape().getType().dyn_cast<RankedTensorType>();
   if (shape_type && shape_type.getRank() != 1)
     return op.emitOpError("'shape' operand must be 1D tensor, but got ")
            << shape_type.getRank() << "D tensor";
@@ -2355,7 +2389,7 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
   if (this->ellipsis_mask().getZExtValue() ||
       this->new_axis_mask().getZExtValue() ||
       this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(antiagainst): support these masks
+    return false;  // TODO(b/146512589): support these masks
 
   DenseIntElementsAttr shape_attr;
   DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
@@ -2386,6 +2420,7 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
 
   CalculateSlicedShapeAndBoundRanges(*shape, this->begin_mask().getZExtValue(),
                                      this->end_mask().getZExtValue(),
+                                     this->shrink_axis_mask().getZExtValue(),
                                      *begin_indices, *end_indices, *strides);
   return true;
 }
@@ -2433,8 +2468,8 @@ static LogicalResult Verify(TensorScatterUpdateOp op) {
     return op.emitOpError(
         "requires updates operand to have at least 1 dimension");
 
-  auto tensor_ty = op.tensor()->getType().dyn_cast<RankedTensorType>();
-  auto indices_ty = op.indices()->getType().dyn_cast<RankedTensorType>();
+  auto tensor_ty = op.tensor().getType().dyn_cast<RankedTensorType>();
+  auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
   if (!tensor_ty || !indices_ty) return success();
 
   int64_t num_index_dims = indices_ty.getShape().back();
@@ -2478,7 +2513,7 @@ static LogicalResult Verify(TransposeOp op) {
 // TODO(jpienaar): perm could be optional too.
 void TransposeOp::build(Builder *builder, OperationState &result, Value x,
                         Value perm) {
-  auto x_type = x->getType().cast<TensorType>();
+  auto x_type = x.getType().cast<TensorType>();
   // If value is unranked, then so is results.
   if (!x_type.hasRank())
     return TransposeOp::build(builder, result,
@@ -2509,7 +2544,7 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value x,
 }
 
 OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
-  auto const_perm = dyn_cast_or_null<TF::ConstOp>(perm()->getDefiningOp());
+  auto const_perm = dyn_cast_or_null<TF::ConstOp>(perm().getDefiningOp());
 
   if (!const_perm) {
     return {};
@@ -2541,7 +2576,7 @@ void TruncateDivOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(UnpackOp op) {
-  auto value_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  auto value_type = op.value().getType().dyn_cast<RankedTensorType>();
   if (!value_type) return success();
 
   int64_t value_rank = value_type.getRank();
@@ -2569,9 +2604,9 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
   if (!HasRankAtMost(op.num_segments(), 0))
     return op.emitOpError("number of segments should be a 0-D tensor");
 
-  auto data_type = op.data()->getType().template dyn_cast<RankedTensorType>();
+  auto data_type = op.data().getType().template dyn_cast<RankedTensorType>();
   auto segment_ids_type =
-      op.segment_ids()->getType().template dyn_cast<RankedTensorType>();
+      op.segment_ids().getType().template dyn_cast<RankedTensorType>();
   if (data_type && segment_ids_type) {
     if (data_type.getRank() < segment_ids_type.getRank())
       return op.emitOpError(
@@ -2608,16 +2643,16 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(VariableShapeOp op) {
-  auto resource_operand_type = op.input()
-                                   ->getType()
-                                   .cast<TensorType>()
-                                   .getElementType()
-                                   .cast<TF::ResourceType>();
-  auto subtypes = resource_operand_type.getSubtypes();
+  auto input_type = op.input().getType().cast<TensorType>();
+  if (input_type.hasStaticShape() && input_type.getNumElements() != 1)
+    return op.emitOpError("requires input to have one resource");
+
+  auto resource_type = input_type.getElementType().cast<TF::ResourceType>();
+  auto subtypes = resource_type.getSubtypes();
   switch (subtypes.size()) {
     case 1:
       return VerifyShapeOperandAndResult(
-          op, resource_operand_type.getSubtypes().front(), op.getType());
+          op, resource_type.getSubtypes().front(), op.getType());
     case 0:
       return VerifyShapeOperandAndResult(op, Type(), op.getType());
     default:
@@ -2651,7 +2686,6 @@ static LogicalResult Verify(WhileOp op) {
     return op.emitOpError("requires cond function to have exactly one result");
 
   SmallVector<Type, 4> operands(op.getOperandTypes());
-  SmallVector<Type, 4> results(op.getResultTypes());
 
   // Collect all the type lists for the op so that different pairs of type lists
   // can be compared for the compatibility.
@@ -2659,7 +2693,7 @@ static LogicalResult Verify(WhileOp op) {
   std::pair<std::string, ArrayRef<Type>> typeLists[] = {
       {"operand", operands},
       {"body function result", bodyFuncType.getResults()},
-      {"result", results},
+      {"result", op.getResultTypes()},
       {"cond function input", condFuncType.getInputs()},
       {"body function input", bodyFuncType.getInputs()},
   };
@@ -2763,7 +2797,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   Operation *materializeCallConversion(OpBuilder &builder, Value input,
                                        Type result_type,
                                        Location conversion_loc) const final {
-    if (!result_type.isa<TensorType>() || !input->getType().isa<TensorType>())
+    if (!result_type.isa<TensorType>() || !input.getType().isa<TensorType>())
       return nullptr;
     return builder.create<TF::CastOp>(conversion_loc, result_type, input,
                                       /*truncate=*/builder.getBoolAttr(false));

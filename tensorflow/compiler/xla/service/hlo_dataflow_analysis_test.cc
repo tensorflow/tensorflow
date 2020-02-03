@@ -1177,8 +1177,8 @@ TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeTupleShape(
-          {constant->shape(), ShapeUtil::MakeShape(U32, {})}),
+      ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
+                                 ShapeUtil::MakeShape(U32, {})}),
       HloOpcode::kCopyStart, constant));
   auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kCopyDone, copy_start));
@@ -1192,7 +1192,8 @@ TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(copy_start, /*index=*/{}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(copy_start, /*index=*/{0}));
-  EXPECT_TRUE(analysis.ValueIsDefinedAt(copy_start, /*index=*/{1}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(copy_start, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(copy_start, /*index=*/{2}));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(copy_done, /*index=*/{}));
   EXPECT_THAT(
       HloValuesAt(copy_done, /*index=*/{}),

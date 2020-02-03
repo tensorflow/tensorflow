@@ -26,8 +26,8 @@ tf_cuda_library(
         "c_api.cc",
         "c_api_debug.cc",
         "c_api_experimental.h",
-        "c_api_internal.cc",
         "c_api_internal.h",
+        "tensor_handle_interface.h",
     ],
     hdrs = ["c_api.h"],
     copts = tf_copts() + tfe_xla_copts(),
@@ -89,10 +89,11 @@ tf_cuda_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
+        "tensor_handle_interface.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -102,7 +103,10 @@ filegroup(
 
 tf_cuda_library(
     name = "c_api_internal",
-    srcs = ["c_api_experimental.h"],
+    srcs = [
+        "c_api_experimental.h",
+        "tensor_handle_interface.h",
+    ],
     hdrs = ["c_api_internal.h"],
     visibility = [
         "//learning/deepmind/courier:__subpackages__",
@@ -125,18 +129,6 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
-        "//tensorflow/core/distributed_runtime:remote_device",
-        "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/distributed_runtime/eager:eager_client",
-        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
-        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
-        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
-        "//tensorflow/core/profiler/lib:profiler_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )

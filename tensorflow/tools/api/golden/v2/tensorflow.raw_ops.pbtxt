@@ -637,6 +637,10 @@ tf_module {
     argspec: "args=[\'inputs\', \'labels_indices\', \'labels_values\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'None\'], "
   }
   member_method {
+    name: "CTCLossV2"
+    argspec: "args=[\'inputs\', \'labels_indices\', \'labels_values\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "CacheDataset"
     argspec: "args=[\'input_dataset\', \'filename\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -945,6 +949,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'filename\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Dawsn"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "DebugGradientIdentity"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1082,7 +1090,7 @@ tf_module {
   }
   member_method {
     name: "Dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'False\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'narrow_range\', \'axis\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'False\', \'-1\', \"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "DeserializeIterator"
@@ -1413,6 +1421,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Expint"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Expm1"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1563,6 +1575,14 @@ tf_module {
   member_method {
     name: "FractionalMaxPoolGrad"
     argspec: "args=[\'orig_input\', \'orig_output\', \'out_backprop\', \'row_pooling_sequence\', \'col_pooling_sequence\', \'overlapping\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "FresnelCos"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "FresnelSin"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "FusedBatchNorm"
@@ -1743,6 +1763,10 @@ tf_module {
   member_method {
     name: "Imag"
     argspec: "args=[\'input\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "ImageProjectiveTransformV2"
+    argspec: "args=[\'images\', \'transforms\', \'output_shape\', \'interpolation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "ImageSummary"
@@ -3842,7 +3866,7 @@ tf_module {
   }
   member_method {
     name: "SobolSample"
-    argspec: "args=[\'dim\', \'num_results\', \'skip\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float64\'>\", \'None\'], "
+    argspec: "args=[\'dim\', \'num_results\', \'skip\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "Softmax"
@@ -4127,6 +4151,10 @@ tf_module {
   member_method {
     name: "SparseToSparseSetOperation"
     argspec: "args=[\'set1_indices\', \'set1_values\', \'set1_shape\', \'set2_indices\', \'set2_values\', \'set2_shape\', \'set_operation\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "Spence"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Split"
@@ -4942,6 +4970,10 @@ tf_module {
   }
   member_method {
     name: "Xdivy"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "Xlog1py"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

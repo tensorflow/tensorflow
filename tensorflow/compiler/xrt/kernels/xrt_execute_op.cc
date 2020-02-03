@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
 #include "tensorflow/compiler/xrt/xrt_memory_manager.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
 #include "tensorflow/compiler/xrt/xrt_state.h"
 #include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
@@ -248,6 +250,7 @@ void XRTExecuteOp::ComputeAsync(OpKernelContext* context, DoneCallback done) {
 
 Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   VLOG(1) << "XRTExecuteOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetExecuteCell());
   ResourceMgr* rm;
   TF_RETURN_IF_ERROR(
       XRTGenericDeviceAccessor::GetResourceManager(context, &rm));
@@ -333,6 +336,7 @@ void XRTExecuteChainedOp::ComputeAsync(OpKernelContext* context,
 
 Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   VLOG(1) << "XRTExecuteChainedOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetExecuteChainedCell());
   ResourceMgr* rm;
   TF_RETURN_IF_ERROR(
       XRTGenericDeviceAccessor::GetResourceManager(context, &rm));

@@ -31,6 +31,49 @@ limitations under the License.
 namespace ruy {
 
 #if RUY_PLATFORM(X86)
+// TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+// Optimization is not finished. In particular the dimensions of the kernel
+// blocks can be changed as desired.
+//
+void Kernel8bitSse42(const KernelParams8bit<8, 8>& params);
+
+template <typename DstScalar>
+struct Kernel<Path::kSse42, std::int8_t, std::int8_t, DstScalar,
+              BasicSpec<std::int32_t, DstScalar>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kColMajor, 4, 8>;
+  using RhsLayout = FixedKernelLayout<Order::kColMajor, 4, 8>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<std::int8_t>& lhs,
+           const PackedMatrix<std::int8_t>& rhs,
+           const BasicSpec<std::int32_t, DstScalar>& spec, int start_row,
+           int start_col, int end_row, int end_col,
+           Matrix<DstScalar>* dst) const {
+    KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
+                         dst, &params);
+    Kernel8bitSse42(params);
+  }
+};
+
+void KernelFloatSse42(const KernelParamsFloat<8, 8>& params);
+
+template <>
+struct Kernel<Path::kSse42, float, float, float, BasicSpec<float, float>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
+  using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
+           const BasicSpec<float, float>& spec, int start_row, int start_col,
+           int end_row, int end_col, Matrix<float>* dst) const {
+    KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
+                          end_col, dst, &params);
+    KernelFloatSse42(params);
+  }
+};
+
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params);
 void Kernel8bitAvx512SingleCol(const KernelParams8bit<16, 16>& params);
 
@@ -128,6 +171,50 @@ struct Kernel<Path::kAvx2, float, float, float, BasicSpec<float, float>> {
     }
   }
 };
+
+// TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+// Optimization is not finished. In particular the dimensions of the kernel
+// blocks can be changed as desired.
+//
+void Kernel8bitAvxVnni(const KernelParams8bit<16, 16>& params);
+
+template <typename DstScalar>
+struct Kernel<Path::kAvxVnni, std::int8_t, std::int8_t, DstScalar,
+              BasicSpec<std::int32_t, DstScalar>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kColMajor, 4, 16>;
+  using RhsLayout = FixedKernelLayout<Order::kColMajor, 4, 16>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<std::int8_t>& lhs,
+           const PackedMatrix<std::int8_t>& rhs,
+           const BasicSpec<std::int32_t, DstScalar>& spec, int start_row,
+           int start_col, int end_row, int end_col,
+           Matrix<DstScalar>* dst) const {
+    KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
+                         dst, &params);
+    Kernel8bitAvxVnni(params);
+  }
+};
+
+void KernelFloatAvxVnni(const KernelParamsFloat<16, 16>& params);
+
+template <>
+struct Kernel<Path::kAvxVnni, float, float, float, BasicSpec<float, float>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 16>;
+  using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 16>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
+           const BasicSpec<float, float>& spec, int start_row, int start_col,
+           int end_row, int end_col, Matrix<float>* dst) const {
+    KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
+                          end_col, dst, &params);
+    KernelFloatAvxVnni(params);
+  }
+};
+
 #endif  // RUY_PLATFORM(X86)
 
 }  // namespace ruy

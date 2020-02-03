@@ -62,9 +62,13 @@ class WindowsFileSystem : public FileSystem {
 
   Status GetFileSize(const string& fname, uint64* size) override;
 
+  Status IsDirectory(const string& fname) override;
+
   Status RenameFile(const string& src, const string& target) override;
 
   string TranslateName(const string& name) const override { return name; }
+
+  char Separator() const override { return '\\'; };
 };
 
 class LocalWinFileSystem : public WindowsFileSystem {

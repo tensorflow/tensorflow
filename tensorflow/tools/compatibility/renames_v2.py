@@ -849,7 +849,7 @@ renames = {
     'tf.nn.ctc_beam_search_decoder_v2':
         'tf.nn.ctc_beam_search_decoder',
     'tf.nn.ctc_loss_v2':
-        'tf.nn.ctc_loss',
+        'tf.compat.v1.nn.ctc_loss_v2',
     'tf.nn.depthwise_conv2d_native':
         'tf.compat.v1.nn.depthwise_conv2d_native',
     'tf.nn.depthwise_conv2d_native_backprop_filter':
@@ -1082,6 +1082,8 @@ renames = {
         'tf.saved_model.REGRESS_METHOD_NAME',
     'tf.saved_model.signature_constants.REGRESS_OUTPUTS':
         'tf.saved_model.REGRESS_OUTPUTS',
+    'tf.saved_model.signature_def_utils.MethodNameUpdater':
+        'tf.compat.v1.saved_model.signature_def_utils.MethodNameUpdater',
     'tf.saved_model.signature_def_utils.build_signature_def':
         'tf.compat.v1.saved_model.signature_def_utils.build_signature_def',
     'tf.saved_model.signature_def_utils.classification_signature_def':

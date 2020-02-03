@@ -25,6 +25,7 @@ import os
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -161,11 +162,11 @@ class KerasSumTest(test.TestCase):
     self.assertEqual(600., self.evaluate(restore_sum.result()))
 
 
-@keras_parameterized.run_all_keras_modes
-class KerasMeanTest(keras_parameterized.TestCase):
+class MeanTest(keras_parameterized.TestCase):
 
   # TODO(b/120949004): Re-enable garbage collection check
   # @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @keras_parameterized.run_all_keras_modes
   def test_mean(self):
     m = metrics.Mean(name='my_mean')
 
@@ -204,6 +205,21 @@ class KerasMeanTest(keras_parameterized.TestCase):
     self.assertEqual(m2.dtype, dtypes.float32)
     self.assertEqual(len(m2.variables), 2)
 
+  @test_util.run_v2_only
+  def test_function_wrapped_reset_state(self):
+    m = metrics.Mean(name='my_mean')
+
+    # check reset_states in function.
+    @def_function.function
+    def reset_in_fn():
+      m.reset_states()
+      return m.update_state(100)
+
+    for _ in range(5):
+      self.evaluate(reset_in_fn())
+    self.assertEqual(self.evaluate(m.count), 1)
+
+  @keras_parameterized.run_all_keras_modes
   def test_mean_with_sample_weight(self):
     m = metrics.Mean(dtype=dtypes.float64)
     self.assertEqual(m.dtype, dtypes.float64)
@@ -247,6 +263,7 @@ class KerasMeanTest(keras_parameterized.TestCase):
     self.assertEqual(np.round(self.evaluate(m.total), decimals=2), 58.54)
     self.assertEqual(np.round(self.evaluate(m.count), decimals=2), 5.6)
 
+  @keras_parameterized.run_all_keras_modes
   def test_mean_graph_with_placeholder(self):
     with context.graph_mode(), self.cached_session() as sess:
       m = metrics.Mean()
@@ -267,6 +284,7 @@ class KerasMeanTest(keras_parameterized.TestCase):
       self.assertAlmostEqual(self.evaluate(m.count), 1.7, 2)  # 0.5 + 1.2
       self.assertAlmostEqual(result, 52 / 1.7, 2)
 
+  @keras_parameterized.run_all_keras_modes
   def test_save_restore(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
@@ -297,6 +315,7 @@ class KerasMeanTest(keras_parameterized.TestCase):
     self.assertEqual(200., self.evaluate(restore_mean.result()))
     self.assertEqual(3, self.evaluate(restore_mean.count))
 
+  @keras_parameterized.run_all_keras_modes
   def test_multiple_instances(self):
     m = metrics.Mean()
     m2 = metrics.Mean()

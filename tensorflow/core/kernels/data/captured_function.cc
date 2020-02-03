@@ -110,6 +110,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
+  rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       rets->push_back(args[info.indices[i]]);
@@ -125,6 +126,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
+  rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       if (info.can_move[i]) {

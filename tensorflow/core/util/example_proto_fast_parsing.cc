@@ -135,9 +135,10 @@ class Feature {
       // parse string
       uint32 bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
-      string bytes;
-      if (!stream.ReadString(&bytes, bytes_length)) return false;
-      bytes_list->push_back(std::move(bytes));
+      bytes_list->push_back({});
+      tstring& bytes = bytes_list->back();
+      bytes.resize_uninitialized(bytes_length);
+      if (!stream.ReadRaw(bytes.data(), bytes_length)) return false;
     }
     stream.PopLimit(limit);
     return true;
@@ -400,12 +401,11 @@ bool TestFastParse(const string& serialized, Example* example) {
       case DT_INVALID:
         break;
       case DT_STRING: {
-        SmallVector<string> list;
+        SmallVector<tstring> list;
         if (!name_and_feature.second.ParseBytesList(&list)) return false;
         auto* result_list = value.mutable_bytes_list();
         for (auto& bytes : list) {
-          auto* new_value = result_list->add_value();
-          new_value->swap(bytes);
+          result_list->add_value(bytes.data(), bytes.size());
         }
         break;
       }
@@ -505,6 +505,10 @@ class LimitedArraySlice {
     ++current_;
   }
 
+  // Returns a mutable reference to the last element in the slice.
+  // REQUIRES: size() > 0.
+  T& back() { return *(current_ - 1); }
+
   // Returns the number of elements in the slice.
   size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
 
@@ -546,7 +550,7 @@ void LogSparseFeatureDataLoss(StringPiece feature_name) {
 }
 
 Status FastParseSerializedExample(
-    const string& serialized_example, const string& example_name,
+    const tstring& serialized_example, const tstring& example_name,
     const size_t example_index, const Config& config,
     const PresizedCuckooMap<std::pair<size_t, Type>>& config_index,
     SeededHasher hasher, std::vector<Tensor>* output_dense,
@@ -596,7 +600,7 @@ Status FastParseSerializedExample(
     {
       // Testing for PresizedCuckooMap collision.
       // TODO(lew): Use dense_hash_map and avoid this and hasher creation.
-      const string& config_feature_name =
+      const tstring& config_feature_name =
           is_dense ? config.dense[d].feature_name
                    : (is_ragged ? config.ragged[d].feature_name
                                 : config.sparse[d].feature_name);
@@ -1213,6 +1217,13 @@ Status FastParseExample(const Config& config,
     TF_RETURN_IF_ERROR(status);
   }
 
+  result->sparse_indices.reserve(config.sparse.size());
+  result->sparse_values.reserve(config.sparse.size());
+  result->sparse_shapes.reserve(config.sparse.size());
+  result->dense_values.reserve(config.dense.size());
+  result->ragged_values.reserve(config.ragged.size());
+  result->ragged_splits.reserve(config.ragged.size());
+
   for (size_t d = 0; d < config.dense.size(); ++d) {
     result->dense_values.push_back(std::move(fixed_dense_values[d]));
   }
@@ -1392,8 +1403,8 @@ Status FastParseExample(const Config& config,
   return Status::OK();
 }
 
-Status FastParseSingleExample(const Config& config,
-                              absl::string_view serialized, Result* result) {
+Status FastParseSingleExample(const Config& config, StringPiece serialized,
+                              Result* result) {
   DCHECK(result != nullptr);
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
   TF_RETURN_IF_ERROR(CheckConfigDataTypes(config));
@@ -1435,6 +1446,13 @@ Status FastParseSingleExample(const Config& config,
     return errors::Internal(
         "Could not avoid collision. This should not happen.");
   }
+
+  result->sparse_indices.reserve(config.sparse.size());
+  result->sparse_values.reserve(config.sparse.size());
+  result->sparse_shapes.reserve(config.sparse.size());
+  result->dense_values.reserve(config.dense.size());
+  result->ragged_values.reserve(config.ragged.size());
+  result->ragged_splits.reserve(config.ragged.size());
 
   // Allocate dense output tensors.
   for (size_t d = 0; d < config.dense.size(); ++d) {
@@ -1507,7 +1525,7 @@ Status FastParseSingleExample(const Config& config,
     {
       // Testing for PresizedCuckooMap collision.
       // TODO(lew): Use dense_hash_map and avoid this and hasher creation.
-      const string& config_feature_name =
+      const tstring& config_feature_name =
           is_dense ? config.dense[d].feature_name
                    : (is_sparse ? config.sparse[d].feature_name
                                 : config.ragged[d].feature_name);
@@ -1821,16 +1839,10 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
       if (out == nullptr) {
         stream->Skip(bytes_length);
       } else {
-#ifdef USE_TSTRING
         out->resize_uninitialized(bytes_length);
         if (!stream->ReadRaw(out->data(), bytes_length)) {
           return -1;
         }
-#else   // USE_TSTRING
-        if (!stream->ReadString(out, bytes_length)) {
-          return -1;
-        }
-#endif  // USE_TSTRING
         out++;
       }
       num_elements++;

@@ -25,10 +25,11 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -204,6 +205,35 @@ def _enclosing_tpu_device_assignment():
   return strategy.extended._device_assignment  # pylint: disable=protected-access
 
 
+@auto_control_deps.register_acd_resource_resolver
+def tpu_replicated_input_resolver(op, resource_inputs):
+  """Replaces TPUReplicatedInput outputs with its inputs in resource_inputs."""
+  # Ignore TPUReplicatedInput for ACD purposes since we will be directly adding
+  # control deps on the replicated inputs.
+  if op.type == "TPUReplicatedInput":
+    if resource_inputs:
+      resource_inputs.clear()
+      return True
+    else:
+      return False
+  # Replace tensors in `resource_inputs` which are outputs of TPUReplicatedInput
+  # with the actual replicated inputs. This allows ACD to correct add control
+  # deps when there are multiple calls to `experimental_run_v2` in a
+  # `tf.function`.
+  to_remove = []
+  to_add = []
+  for resource in resource_inputs:
+    if resource.op.type == "TPUReplicatedInput":
+      to_remove.append(resource)
+      to_add.extend(resource.op.inputs)
+  if not to_add and not to_remove:
+    return False
+  for t in to_remove:
+    resource_inputs.discard(t)
+  resource_inputs.update(to_add)
+  return True
+
+
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU computation.
 
@@ -223,11 +253,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     """An internal class to help manage the TF_Buffer lifetime."""
 
     def __init__(self, buf_string):
-      self._buffer = pywrap_tensorflow.TF_NewBufferFromString(
+      self._buffer = pywrap_tf_session.TF_NewBufferFromString(
           compat.as_bytes(buf_string))
 
     def __del__(self):
-      pywrap_tensorflow.TF_DeleteBuffer(self._buffer)
+      pywrap_tf_session.TF_DeleteBuffer(self._buffer)
 
   def __init__(self, name, num_replicas, pivot):
     """Builds a new TPUReplicateContext.

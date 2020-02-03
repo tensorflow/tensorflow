@@ -73,7 +73,7 @@ namespace xla {
 //     - EqualTo
 //     - CompatibleTo
 //     - IsScalar/IsEffectiveScalar/IsArray/IsTuple
-//     - IsDenseArray/IsSparseArray
+//     - IsDenseArray
 //     - WithLayout: layout shape's layout matches the given pattern (e.g.
 //       Layout().WithDenseFormat())
 //     - WithLayoutEqualTo: shape's layout equals the argument (i.e. another
@@ -87,7 +87,7 @@ namespace xla {
 //
 //  Layout():
 //     - EqualTo
-//     - WithDenseFormat/WithSparseFormat
+//     - WithDenseFormat
 //
 // Op(), Shape(), and Layout() may be passed an argument of type
 // HloInstruction**, Shape**, or Layout**, respectively, or const versions of
@@ -504,12 +504,6 @@ class LayoutPattern {
   constexpr auto WithDenseFormat() const
       -> decltype(this->AppendImpl(LayoutPatternFormatImpl(DENSE))) {
     return AppendImpl(LayoutPatternFormatImpl(DENSE));
-  }
-
-  // Modifies the pattern to match only if the layout has a sparse format.
-  constexpr auto WithSparseFormat() const
-      -> decltype(this->AppendImpl(LayoutPatternFormatImpl(SPARSE))) {
-    return AppendImpl(LayoutPatternFormatImpl(SPARSE));
   }
 
  private:
@@ -1058,11 +1052,6 @@ class ShapePattern {
   constexpr auto IsDenseArray() const
       -> decltype(this->WithLayout(Layout().WithDenseFormat())) {
     return WithLayout(Layout().WithDenseFormat());
-  }
-
-  constexpr auto IsSparseArray() const
-      -> decltype(this->WithLayout(Layout().WithSparseFormat())) {
-    return WithLayout(Layout().WithSparseFormat());
   }
 
   // Modifies the pattern to match only if the shape has a subshape that matches

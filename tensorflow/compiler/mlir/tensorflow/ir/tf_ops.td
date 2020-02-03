@@ -57,7 +57,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
     // Returns data type of the result handle. Returned type contains type of
     // the TensorList element as a subtype.
     VariantType handle_dtype() {
-      return getElementTypeOrSelf(handle()->getType()).cast<TF::VariantType>();
+      return getElementTypeOrSelf(handle().getType()).cast<TF::VariantType>();
     }
   }];
 }

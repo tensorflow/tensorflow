@@ -304,7 +304,8 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.removeTFRecords()
 
     dataset2 = core_readers._TFRecordDataset(filenames)
-    dataset2 = dataset2.apply(snapshot.snapshot(tmpdir, shuffle_on_read=True))
+    dataset2 = dataset2.apply(snapshot.snapshot(tmpdir, shard_size_bytes=10,
+                                                shuffle_on_read=True))
     next2 = self.getNext(dataset2)
 
     res1 = self.evaluate(next2())
@@ -318,8 +319,46 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     # make sure all the elements are still there
     dataset3 = core_readers._TFRecordDataset(filenames)
-    dataset3 = dataset3.apply(snapshot.snapshot(tmpdir, shuffle_on_read=True))
+    dataset3 = dataset3.apply(snapshot.snapshot(tmpdir, shard_size_bytes=10,
+                                                shuffle_on_read=True))
     self.assertDatasetProduces(dataset3, expected, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadShuffledSnapshotWithSeedAfterWrite(self):
+    self.setUpTFRecord(num_files=10, num_records=50)
+    filenames = self.test_filenames
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 50)
+    ]
+
+    tmpdir = self.makeSnapshotDirectory()
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, shard_size_bytes=10))
+    self.assertDatasetProduces(dataset, expected)
+
+    # remove the original files and try to read the data back only from snapshot
+    self.removeTFRecords()
+
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(tmpdir, shard_size_bytes=10, shuffle_on_read=True,
+                          shuffle_seed=123456))
+    next2 = self.getNext(dataset2)
+
+    dataset3 = core_readers._TFRecordDataset(filenames)
+    dataset3 = dataset3.apply(
+        snapshot.snapshot(tmpdir, shard_size_bytes=10,
+                          shuffle_on_read=True, shuffle_seed=123456))
+    next3 = self.getNext(dataset3)
+
+    # make sure that the items are read back in the same order for both datasets
+    for _ in range(500):
+      res2 = self.evaluate(next2())
+      res3 = self.evaluate(next3())
+      self.assertEqual(res2, res3)
 
   @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotParallelAfterWrite(self):
@@ -446,6 +485,29 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     for _ in range(500):
       self.evaluate(next2())
     self.assertSnapshotDirectoryContains(tmpdir, 1, 2, 1)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSnapshotArgsCreateNewSnapshot(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(
+        snapshot.snapshot(tmpdir, shard_size_bytes=10000))
+    next1 = self.getNext(dataset1)
+
+    for _ in range(1000):
+      self.evaluate(next1())
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
+    # Create second snapshot with a different shard_size_bytes
+    dataset2 = dataset_ops.Dataset.range(1000)
+    dataset2 = dataset1.apply(
+        snapshot.snapshot(tmpdir, shard_size_bytes=20000))
+    next2 = self.getNext(dataset2)
+
+    for _ in range(1000):
+      self.evaluate(next2())
+    self.assertSnapshotDirectoryContains(tmpdir, 2, 1, 1)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSpecifyShardSize(self):

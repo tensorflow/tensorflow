@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -63,6 +64,10 @@ struct QuantizationSpecs {
   // and the model is required to have quantization parameters, either from
   // quantization aware training or calibration, for the remaining tensors.
   std::vector<std::pair<double, double>> input_ranges;
+
+  // The default ranges can be used when a tensor doesn't have quantization
+  // parameters and couldn't be quantized. Used only for latency tests.
+  std::pair<llvm::Optional<double>, llvm::Optional<double>> default_ranges;
 
   // A serialized "QuantizationInfo" object to specify value ranges for some of
   // the tensors with known names.

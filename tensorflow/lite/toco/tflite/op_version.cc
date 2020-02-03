@@ -89,6 +89,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kGatherNd, 1}, "1.14.0"},
           {{OperatorType::kSvdf, 1}, "1.5.0"},
           {{OperatorType::kSvdf, 2}, "1.14.0"},
+          {{OperatorType::kSvdf, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kL2Normalization, 1}, "1.5.0"},
           {{OperatorType::kL2Normalization, 2}, "1.14.0"},
           {{OperatorType::kL2Pool, 1}, "1.5.0"},
@@ -136,6 +137,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kRelu6, 2}, "1.14.0"},
           {{OperatorType::kResizeBilinear, 1}, "1.7.0"},
           {{OperatorType::kResizeBilinear, 2}, "1.14.0"},
+          {{OperatorType::kResizeBilinear, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kResizeNearestNeighbor, 1}, "1.13.1"},
           {{OperatorType::kResizeNearestNeighbor, 2}, "1.14.0"},
           {{OperatorType::kSqueeze, 1}, "1.6.0"},
@@ -196,6 +198,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kLess, 2}, "1.14.0"},
           {{OperatorType::kLessEqual, 1}, "1.14.0"},
           {{OperatorType::kLessEqual, 2}, "1.14.0"},
+          {{OperatorType::kSegmentSum, 1}, kPendingReleaseOpVersion},
           {{OperatorType::kSelect, 1}, "1.14.0"},
           {{OperatorType::kSelect, 2}, "1.14.0"},
           {{OperatorType::kSelectV2, 1}, kPendingReleaseOpVersion},
@@ -229,6 +232,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kHardSwish, 1}, "1.15.0"},
           {{OperatorType::kFill, 1}, "1.13.0"},
           {{OperatorType::kReverseV2, 1}, "1.14.0"},
+          {{OperatorType::kReverseV2, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kRank, 1}, "1.14.0"},
       });
 

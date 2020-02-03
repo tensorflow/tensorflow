@@ -271,9 +271,8 @@ def _create_variable(*args, **kwargs):
     raise ValueError(
         "Creating a generator within a strategy scope is disallowed, because "
         "there is ambiguity on how to replicate a generator (e.g. should it be "
-        "copied so such each replica will get the same random numbers, or "
-        "should it be 'split' into different generators that generate "
-        "different random numbers).")
+        "copied so that each replica gets the same random numbers, or 'split' "
+        "so that each replica gets different random numbers).")
     # TODO(wangpeng): Link to the RNG guide for solutions in such cases.
   var = variables.Variable(*args, **kwargs)
   return var

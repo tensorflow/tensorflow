@@ -23,6 +23,7 @@ public class HexagonDelegate implements Delegate, Closeable {
 
   private static final long INVALID_DELEGATE_HANDLE = 0;
   private static final String TFLITE_HEXAGON_LIB = "tensorflowlite_hexagon_jni";
+  private static volatile boolean nativeLibraryLoaded = false;
 
   private long delegateHandle;
 
@@ -32,6 +33,7 @@ public class HexagonDelegate implements Delegate, Closeable {
    * on this device.
    */
   public HexagonDelegate(Context context) throws UnsupportedOperationException {
+    ensureNativeLibraryLoaded();
     setAdspLibraryPath(context.getApplicationInfo().nativeLibraryDir);
     delegateHandle = createDelegate();
     if (delegateHandle == INVALID_DELEGATE_HANDLE) {
@@ -57,8 +59,16 @@ public class HexagonDelegate implements Delegate, Closeable {
     }
   }
 
-  static {
-    System.loadLibrary(TFLITE_HEXAGON_LIB);
+  private static void ensureNativeLibraryLoaded() {
+    if (nativeLibraryLoaded) {
+      return;
+    }
+    try {
+      System.loadLibrary(TFLITE_HEXAGON_LIB);
+      nativeLibraryLoaded = true;
+    } catch (Exception e) {
+      throw new UnsupportedOperationException("Failed to load native Hexagon shared library: " + e);
+    }
   }
 
   private static native long createDelegate();

@@ -110,7 +110,7 @@ class _NumpyFunctionCallback(object):
         if compat.as_bytes(op_type) in (
             _ENTER_OP, _EXIT_OP, _IF_OP, _MERGE_OP, _NEXT_ITERATION_OP,
             _STATELESS_IF_OP, _SWTICH_OP, _WHILE_OP, _IDENTITY_OP,
-            _VAR_HANDLE_OP):
+            _VAR_HANDLE_OP, _PLACEHOLDER_OP):
           # TODO(cais): Overriding the output of StatelessIf, If and While ops
           # currently fails with error. Investigate (b/139668453).
           # Avoid instrumenting Identity ops as well, as they are inserted
@@ -218,6 +218,7 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
 
     # Assert that there is no cross-talk between the main thread
     # and the created thread.
+    self.assertIn(_PLACEHOLDER_OP, instrument_1.graph_op_types)
     self.assertIn(_LOG_OP, instrument_1.graph_op_types)
     self.assertIn(_SQRT_OP, instrument_1.graph_op_types)
     self.assertNotIn(_SIN_OP, instrument_1.graph_op_types)
@@ -739,8 +740,11 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testOverrideDTypeInFuncGraph(self):
     def to_float64(op_type, inputs, attrs, outputs, op_name=None, graph=None):
-      del op_type, inputs, attrs, op_name, graph  # Unused.
-      return [math_ops.cast(output, dtypes.float64) for output in outputs]
+      del inputs, attrs, op_name, graph  # Unused.
+      if op_type == "Placeholder":
+        return outputs
+      else:
+        return [math_ops.cast(output, dtypes.float64) for output in outputs]
 
     op_callbacks.add_op_callback(to_float64)
 

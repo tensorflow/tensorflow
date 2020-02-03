@@ -91,7 +91,11 @@ absl::string_view OpOrArgNameMapper::GetUniqueNameView(OpOrVal op_or_val) {
 
 int OpOrArgNameMapper::InitOpName(OpOrVal op_or_val, llvm::StringRef name) {
   auto it = name_to_count_.try_emplace(name, 0);
-  op_or_val_to_name_[op_or_val] = StringRefToView(it.first->first());
+  auto inserted = op_or_val_to_name_.try_emplace(
+      op_or_val, StringRefToView(it.first->first()));
+  (void)inserted;
+  // TODO(jpienaar): Debug cases where we expect this behavior.
+  // assert(inserted.second && "op_or_val already initialized");
   return it.first->second++;
 }
 
@@ -109,16 +113,19 @@ std::string GetNameFromLoc(mlir::Location loc) {
     mlir::Location curr_loc = locs.pop_back_val();
 
     if (auto name_loc = curr_loc.dyn_cast<mlir::NameLoc>()) {
-      // Add name in NameLoc.
-      loc_names.push_back(name_loc.getName().strref());
-      if (!name_loc.getName().strref().empty()) names_is_nonempty = true;
+      // Add name in NameLoc. For NameLoc we also account for names due to ops
+      // in functions where the op's name is first.
+      auto name = name_loc.getName().strref().split('@').first;
+      loc_names.push_back(name);
+      if (!name.empty()) names_is_nonempty = true;
       continue;
     } else if (auto call_loc = curr_loc.dyn_cast<mlir::CallSiteLoc>()) {
       // Add name if CallSiteLoc's callee has a NameLoc (as should be the
       // case if imported with DebugInfo).
       if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>()) {
-        loc_names.push_back(name_loc.getName().strref());
-        if (!name_loc.getName().strref().empty()) names_is_nonempty = true;
+        auto name = name_loc.getName().strref().split('@').first;
+        loc_names.push_back(name);
+        if (!name.empty()) names_is_nonempty = true;
         continue;
       }
     } else if (auto fused_loc = curr_loc.dyn_cast<mlir::FusedLoc>()) {
@@ -146,20 +153,20 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
     if (!name_from_loc.empty()) return name_from_loc;
     // If the location is none of the expected types, then simply use name
     // generated using the op type.
-    return op->getName().getStringRef();
+    return std::string(op->getName().getStringRef());
   }
   auto val = op_or_val.dyn_cast<mlir::Value>();
-  auto name_from_loc = GetNameFromLoc(val->getLoc());
+  auto name_from_loc = GetNameFromLoc(val.getLoc());
   if (!name_from_loc.empty()) return name_from_loc;
   // If the location is none of the expected types, then simply use name
   // generated using the op type. Follow TF convention and append the result
   // index unless 0.
-  if (auto result = val->dyn_cast<mlir::OpResult>()) {
-    if (result->getResultNumber() > 0)
+  if (auto result = val.dyn_cast<mlir::OpResult>()) {
+    if (result.getResultNumber() > 0)
       return llvm::formatv("{0}:{1}",
-                           result->getOwner()->getName().getStringRef(),
-                           result->getResultNumber());
-    return result->getOwner()->getName().getStringRef();
+                           result.getOwner()->getName().getStringRef(),
+                           result.getResultNumber());
+    return std::string(result.getOwner()->getName().getStringRef());
   }
   return "";
 }

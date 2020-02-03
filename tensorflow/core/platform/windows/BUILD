@@ -1,7 +1,12 @@
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_windows",
     "tf_copts",
+)
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 package(
@@ -111,6 +116,7 @@ cc_library(
     name = "net",
     srcs = ["net.cc"],
     hdrs = ["//tensorflow/core/platform:net.h"],
+    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     tags = [
         "manual",
         "no_oss",
@@ -184,6 +190,7 @@ cc_library(
 
 cc_library(
     name = "subprocess",
+    srcs = ["subprocess.cc"],
     hdrs = ["//tensorflow/core/platform:subprocess.h"],
     tags = [
         "manual",
@@ -195,6 +202,8 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:types",
     ],
 )

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
@@ -67,11 +68,6 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
         return OkStatus();
       }
     }
-    case OperationType::APPLY_MASK: {
-      SelectApplyMask(op_def, inputs[0]->tensor.shape, inputs[1]->tensor.shape,
-                      gpu_op);
-      return OkStatus();
-    }
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
       std::vector<int> channels(inputs.size());
@@ -114,10 +110,21 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       SelectMaxUnpooling(attr, op_def, gpu_op);
       return OkStatus();
     }
-    case OperationType::MULTIPLY_SCALAR: {
-      auto attr =
-          absl::any_cast<MultiplyScalarAttributes>(node.operation.attributes);
-      return SelectMultiplyScalar(attr, creation_context, op_def, gpu_op);
+    case OperationType::MEAN: {
+      auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
+      return SelectMean(attr, op_def, gpu_op);
+    }
+    case OperationType::MUL: {
+      if (node.operation.attributes.has_value()) {
+        auto attr =
+            absl::any_cast<MultiplyAttributes>(node.operation.attributes);
+
+        return SelectMultiplyScalar(attr, creation_context, op_def, gpu_op);
+      } else {
+        SelectApplyMask(op_def, inputs[0]->tensor.shape,
+                        inputs[1]->tensor.shape, gpu_op);
+        return OkStatus();
+      }
     }
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
@@ -160,10 +167,9 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       SelectTranspose(attr, op_def, gpu_op);
       return OkStatus();
     }
-    case OperationType::UPSAMPLE_2D: {
-      auto attr =
-          absl::any_cast<Upsample2DAttributes>(node.operation.attributes);
-      return SelectUpsampling(attr, op_def, gpu_op);
+    case OperationType::RESIZE: {
+      auto attr = absl::any_cast<Resize2DAttributes>(node.operation.attributes);
+      return SelectResize(attr, op_def, gpu_op);
     }
     case OperationType::ABS:
     case OperationType::COS:

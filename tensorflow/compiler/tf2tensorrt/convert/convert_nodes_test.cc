@@ -830,18 +830,20 @@ TEST_F(ConverterTest, TransposeTensor) {
 
   // Rank doesn't match.
   ExpectStatus(
-      converter_->TransposeTensor(input_tensor, {0, 1}, &output_tensor),
+      converter_->TransposeTensor(input_tensor, {0, 1}, "Bad perm",
+                                  &output_tensor),
       error::INVALID_ARGUMENT,
       "Rank of perm for transpose does not match with that of the input");
 
   // Transpose at batch dimension.
-  ExpectStatus(
-      converter_->TransposeTensor(input_tensor, {1, 0, 2, 3}, &output_tensor),
-      error::UNIMPLEMENTED, "Transpose at batch dimension is not supported.");
+  ExpectStatus(converter_->TransposeTensor(input_tensor, {1, 0, 2, 3},
+                                           "Batch perm", &output_tensor),
+               error::UNIMPLEMENTED,
+               "Transpose at batch dimension is not supported.");
 
   // OK.
-  TF_EXPECT_OK(
-      converter_->TransposeTensor(input_tensor, {0, 3, 1, 2}, &output_tensor));
+  TF_EXPECT_OK(converter_->TransposeTensor(input_tensor, {0, 3, 1, 2}, "OK",
+                                           &output_tensor));
   ExpectTrtDimsEqualsArray({5, 2, 3}, output_tensor->getDimensions());
 }
 

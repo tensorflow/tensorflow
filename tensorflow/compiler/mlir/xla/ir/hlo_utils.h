@@ -35,8 +35,8 @@ mlir::DenseIntElementsAttr getBroadcastDimensionsAttr(mlir::Builder* b,
 /// Get a constant splat for the given value type.
 template <typename T>
 static ElementsAttr getSplat(Builder* b, Value val, T constant) {
-  auto valType = val->getType().cast<TensorType>();
-  auto valElementType = getElementTypeOrSelf(val->getType());
+  auto valType = val.getType().cast<TensorType>();
+  auto valElementType = getElementTypeOrSelf(val.getType());
 
   // Handle integer elements.
   Attribute elementAttr;

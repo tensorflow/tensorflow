@@ -74,7 +74,7 @@ _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                         'keras api usage', 'method')
 
 
-@keras_export('keras.models.Model', 'keras.Model')
+@keras_export('keras.Model', 'keras.models.Model')
 class Model(network.Network, version_utils.VersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
@@ -137,6 +137,13 @@ class Model(network.Network, version_utils.VersionSelector):
 
   model = MyModel()
   ```
+
+  Once the model is created, you can config the model with losses and metrics
+  with `model.compile()`, train the model with `model.fit()`, or use the model
+  to do prediction with `model.predict()`.
+
+  Checkout [guide](https://www.tensorflow.org/guide/keras/overview) for
+  additional details.
   """
 
   def __init__(self, *args, **kwargs):
@@ -228,15 +235,27 @@ class Model(network.Network, version_utils.VersionSelector):
         optimizer: String (name of optimizer) or optimizer instance.
             See `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
-            `tf.keras.losses.Loss` instance. See `tf.keras.losses`. An objective
-            function is any callable with the signature
-            `scalar_loss = fn(y_true, y_pred)`. If the model has multiple
-            outputs, you can use a different loss on each output by passing a
-            dictionary or a list of losses. The loss value that will be
-            minimized by the model will then be the sum of all individual
-            losses.
+            `tf.keras.losses.Loss` instance. See `tf.keras.losses`.
+            An objective function is any callable with the signature
+            `loss = fn(y_true, y_pred)`, where
+            y_true = ground truth values with shape = `[batch_size, d0, .. dN]`,
+            except sparse loss functions such as sparse categorical crossentropy
+            where shape = `[batch_size, d0, .. dN-1]`.
+            y_pred = predicted values with shape = `[batch_size, d0, .. dN]`.
+            It returns a weighted loss float tensor.
+            If a custom `Loss` instance is used and reduction is set to NONE,
+            return value has the shape [batch_size, d0, .. dN-1] ie. per-sample
+            or per-timestep loss values; otherwise, it is a scalar.
+            If the model has multiple outputs, you can use a different loss on
+            each output by passing a dictionary or a list of losses. The loss
+            value that will be minimized by the model will then be the sum of
+            all individual losses.
         metrics: List of metrics to be evaluated by the model during training
-            and testing. Typically you will use `metrics=['accuracy']`.
+            and testing.
+            Each of this can be a string (name of a built-in function), function
+            or a `tf.keras.metrics.Metric` instance. See `tf.keras.metrics`.
+            Typically you will use `metrics=['accuracy']`. A function is any
+            callable with the signature `result = fn(y_true, y_pred)`.
             To specify different metrics for different outputs of a
             multi-output model, you could also pass a dictionary, such as
             `metrics={'output_a': 'accuracy', 'output_b': ['accuracy', 'mse']}`.
@@ -266,7 +285,8 @@ class Model(network.Network, version_utils.VersionSelector):
             dictionary or a list of modes.
         weighted_metrics: List of metrics to be evaluated and weighted
             by sample_weight or class_weight during training and testing.
-        **kwargs: Any additional arguments.
+        **kwargs: Any additional arguments. For eager execution, pass 
+            `run_eagerly=True`.
 
     Raises:
         ValueError: In case of invalid arguments for
@@ -590,17 +610,19 @@ class Model(network.Network, version_utils.VersionSelector):
             the batch size, or 1 if that cannot be determined. If x is a
             `tf.data` dataset, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
-            This argument is not supported with array inputs.
+            When passing an infinitely repeating dataset, you must specify the
+            `steps_per_epoch` argument. This argument is not supported with
+            array inputs.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
             at the end of every epoch. If 'validation_steps' is None, validation
             will run until the `validation_data` dataset is exhausted. In the
-            case of a infinite dataset, it will run into a infinite loop.
-            If 'validation_steps' is specified and only part of the dataset
-            will be consumed, the evaluation will start from the beginning of
-            the dataset at each epoch. This ensures that the same validation
-            samples are used every time.
+            case of an infinitely repeated dataset, it will run into an
+            infinite loop. If 'validation_steps' is specified and only part of
+            the dataset will be consumed, the evaluation will start from the
+            beginning of the dataset at each epoch. This ensures that the same
+            validation samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections_abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
@@ -817,7 +839,12 @@ class Model(network.Network, version_utils.VersionSelector):
               use_multiprocessing=False):
     """Generates output predictions for the input samples.
 
-    Computation is done in batches.
+    Computation is done in batches. This method is designed for performance in
+    large scale inputs. For small amount of inputs that fit in one batch,
+    directly using `__call__` is recommended for faster execution, e.g.,
+    `model(x)`, or `model(x, training=False)` if you have layers such as
+    `tf.keras.layers.BatchNormalization` that behaves differently during
+    inference.
 
     Arguments:
         x: Input samples. It could be:

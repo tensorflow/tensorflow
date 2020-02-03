@@ -235,7 +235,12 @@ class Exhaustive32BitOrMoreBinaryTest
 };
 
 using ExhaustiveF32BinaryTest = Exhaustive32BitOrMoreBinaryTest<F32>;
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
+    ExhaustiveF32BinaryTest);  // TODO(b/139702016) go/are-your-tests-running
+
 using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
+    ExhaustiveF64BinaryTest);  // TODO(b/139702016) go/are-your-tests-running
 
 #if defined(BINARY_TEST_TARGET_F32)
 #define BINARY_TEST_FLOAT_32(test_name, ...)     \

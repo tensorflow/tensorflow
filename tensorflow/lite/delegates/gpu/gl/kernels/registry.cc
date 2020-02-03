@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,16 +35,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/lstm.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/mul.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/pad.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/prelu.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/reshape.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/transpose_conv.h"
-#include "tensorflow/lite/delegates/gpu/gl/kernels/upsampling_bilinear.h"
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
 #include "tensorflow/lite/delegates/gpu/gl/kernels/max_unpooling.h"
@@ -70,7 +71,6 @@ class Registry : public NodeShader {
     };
 
     insert_op(Type::ADD, NewAddNodeShader);
-    insert_op(Type::APPLY_MASK, NewApplyMaskNodeShader);
     insert_op(Type::CONCAT, NewAlignedConcatNodeShader);
     insert_op(Type::CONCAT, NewFlatConcatNodeShader);
     insert_op(Type::CONCAT, NewConcatNodeShader);
@@ -80,15 +80,16 @@ class Registry : public NodeShader {
     insert_op(Type::DEPTHWISE_CONVOLUTION, NewDepthwiseConvolutionNodeShader);
     insert_op(Type::FULLY_CONNECTED, NewFullyConnectedNodeShader);
     insert_op(Type::LSTM, NewLstmNodeShader);
-    insert_op(Type::MULTIPLY_SCALAR, NewMultiplyScalarNodeShader);
+    insert_op(Type::MEAN, NewMeanNodeShader);
+    insert_op(Type::MUL, NewMultiplyNodeShader);
     insert_op(Type::PAD, NewPadNodeShader);
     insert_op(Type::POOLING_2D, NewPoolingNodeShader);
     insert_op(Type::PRELU, NewPReLUNodeShader);
     insert_op(Type::RELU, NewReLUNodeShader);
+    insert_op(Type::RESIZE, NewResizeNodeShader);
     insert_op(Type::RESHAPE, NewReshapeNodeShader);
     insert_op(Type::SLICE, NewSliceNodeShader);
     insert_op(Type::SOFTMAX, NewSoftmaxNodeShader);
-    insert_op(Type::UPSAMPLE_2D, NewUpsamplingNodeShader);
 
     insert_elementwise_op(Type::ABS);
     insert_elementwise_op(Type::COS);

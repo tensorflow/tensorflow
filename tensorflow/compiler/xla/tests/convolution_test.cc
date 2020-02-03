@@ -2008,5 +2008,17 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
+XLA_TEST_F(ConvolutionHloTest, TestConv0D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %parameter.1 = f32[10,5]{1,0} parameter(0)
+  %parameter.2 = f32[5,7]{1,0} parameter(1)
+  ROOT %convolution.3 = f32[10,7]{1,0} convolution(f32[10,5]{1,0} %parameter.1, f32[5,7]{1,0} %parameter.2), dim_labels=bf_io->bf
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
 }  // namespace
 }  // namespace xla

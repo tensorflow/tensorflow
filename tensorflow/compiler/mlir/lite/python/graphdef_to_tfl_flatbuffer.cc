@@ -107,9 +107,6 @@ void WarningUnusedFlags(const toco::ModelFlags& model_flags,
   if (toco_flags.output_format()) {
     LOG(WARNING) << "Ignored output_format.";
   }
-  if (toco_flags.default_ranges_min() || toco_flags.default_ranges_max()) {
-    LOG(WARNING) << "Ignored default_ranges_stats.";
-  }
   if (toco_flags.drop_control_dependency()) {
     LOG(WARNING) << "Ignored drop_control_dependency.";
   }
@@ -242,6 +239,13 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
       tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
 
   // Other flags.
+  if (toco_flags.has_default_ranges_min()) {
+    quant_specs.default_ranges.first = toco_flags.default_ranges_min();
+  }
+  if (toco_flags.has_default_ranges_max()) {
+    quant_specs.default_ranges.second = toco_flags.default_ranges_max();
+  }
+
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
   bool emit_custom_ops = toco_flags.allow_custom_ops();

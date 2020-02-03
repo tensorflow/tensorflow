@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <iomanip>
+#include <memory>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/logging.h"
@@ -38,13 +39,14 @@ ResultsWriter::ResultsWriter(int top_k, const std::string& output_file_path)
     return;
   }
 
-  output_stream_.reset(new std::ofstream(output_file_path, std::ios::out));
-  if (!output_stream_) {
+  std::unique_ptr<std::ofstream> output_stream(
+      new std::ofstream(output_file_path, std::ios::out));
+  if (!output_stream) {
     LOG(ERROR) << "Unable to open output file path: '" << output_file_path
                << "'";
   }
 
-  (*output_stream_) << std::setprecision(3) << std::fixed;
+  (*output_stream) << std::setprecision(3) << std::fixed;
   std::vector<string> columns;
   columns.reserve(top_k);
   for (int i = 0; i < top_k; i++) {
@@ -53,7 +55,7 @@ ResultsWriter::ResultsWriter(int top_k, const std::string& output_file_path)
     columns.push_back(column_name);
   }
 
-  writer_.reset(new CSVWriter(columns, output_stream_.get()));
+  writer_.reset(new CSVWriter(columns, std::move(output_stream)));
 }
 
 void ResultsWriter::AggregateAccuraciesAndNumImages(

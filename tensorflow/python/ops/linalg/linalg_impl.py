@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,7 +32,6 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
-from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -276,16 +274,16 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
         math_ops.reduce_sum(
             math_ops.abs(matrix),
             axis=array_ops.size(array_ops.shape(matrix)) - 2),
-        axis=-1)
+        axis=-1)[..., array_ops.newaxis, array_ops.newaxis]
     const = lambda x: constant_op.constant(x, l1_norm.dtype)
 
     def _nest_where(vals, cases):
       assert len(vals) == len(cases) - 1
       if len(vals) == 1:
-        return array_ops.where(
+        return array_ops.where_v2(
             math_ops.less(l1_norm, const(vals[0])), cases[0], cases[1])
       else:
-        return array_ops.where(
+        return array_ops.where_v2(
             math_ops.less(l1_norm, const(vals[0])), cases[0],
             _nest_where(vals[1:], cases[1:]))
 
@@ -296,9 +294,9 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
       u3, v3 = _matrix_exp_pade3(matrix)
       u5, v5 = _matrix_exp_pade5(matrix)
-      u7, v7 = _matrix_exp_pade7(matrix / math_ops.cast(
-          math_ops.pow(const(2.0), squarings),
-          matrix.dtype)[..., array_ops.newaxis, array_ops.newaxis])
+      u7, v7 = _matrix_exp_pade7(
+          matrix /
+          math_ops.cast(math_ops.pow(const(2.0), squarings), matrix.dtype))
       conds = (4.258730016922831e-001, 1.880152677804762e+000)
       u = _nest_where(conds, (u3, u5, u7))
       v = _nest_where(conds, (v3, v5, v7))
@@ -311,9 +309,9 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       u5, v5 = _matrix_exp_pade5(matrix)
       u7, v7 = _matrix_exp_pade7(matrix)
       u9, v9 = _matrix_exp_pade9(matrix)
-      u13, v13 = _matrix_exp_pade13(matrix / math_ops.cast(
-          math_ops.pow(const(2.0), squarings),
-          matrix.dtype)[..., array_ops.newaxis, array_ops.newaxis])
+      u13, v13 = _matrix_exp_pade13(
+          matrix /
+          math_ops.cast(math_ops.pow(const(2.0), squarings), matrix.dtype))
       conds = (1.495585217958292e-002, 2.539398330063230e-001,
                9.504178996162932e-001, 2.097847961257068e+000)
       u = _nest_where(conds, (u3, u5, u7, u9, u13))
@@ -330,7 +328,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     c = lambda i, r: math_ops.less(i, max_squarings)
 
     def b(i, r):
-      return i + 1, array_ops.where(
+      return i + 1, array_ops.where_v2(
           math_ops.less(i, squarings), math_ops.matmul(r, r), r)
 
     _, result = control_flow_ops.while_loop(c, b, [i, result])
@@ -537,10 +535,7 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
     rhs = math_ops.conj(rhs)
 
   check_num_lhs_matches_num_rhs()
-  result = linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
-  if transpose_rhs and not compat.forward_compatible(2019, 10, 18):
-    return array_ops.matrix_transpose(result)
-  return result
+  return linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
 
 
 @tf_export('linalg.tridiagonal_matmul')
@@ -898,10 +893,9 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
         band_part(lower_upper, num_lower=-1, num_upper=0),
         array_ops.ones(
             array_ops.shape(lower_upper)[:-1], dtype=lower_upper.dtype))
-    return linear_operator_util.matrix_triangular_solve_with_broadcast(
+    return triangular_solve(
         lower_upper,  # Only upper is accessed.
-        linear_operator_util.matrix_triangular_solve_with_broadcast(
-            lower, permuted_rhs),
+        triangular_solve(lower, permuted_rhs),
         lower=False)
 
 

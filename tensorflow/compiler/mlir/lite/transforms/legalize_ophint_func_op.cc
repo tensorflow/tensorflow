@@ -103,7 +103,7 @@ LogicalResult BuildUnidirectionalSequenceRnnOp(FuncOp composite_func_op,
   Value hidden_state = call_op.getOperand(4);
 
   // Build Output.
-  auto output_type = call_op.getResult(0)->getType();
+  auto output_type = call_op.getResult(0).getType();
 
   // Currently, ophinted RNN only supports time_major = True.
   const bool time_major = true;
@@ -170,11 +170,11 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
     for (int i = 0; i < call_op.getNumResults() - 1; ++i) {
       // This one should not be used.
       Value unused_output = call_op.getResult(i);
-      if (!unused_output->use_empty()) return failure();
+      if (!unused_output.use_empty()) return failure();
     }
   }
   output_types.push_back(
-      call_op.getResult(call_op.getNumResults() - 1)->getType());
+      call_op.getResult(call_op.getNumResults() - 1).getType());
 
   // Prepare attributes.
   SmallVector<NamedAttribute, 4> attributes;
@@ -207,10 +207,10 @@ LogicalResult ConvertTfLiteFusedOpIfAvailable(StringRef func_name,
         composite_func_op, call_op, builder, &fused_op);
     if (failed(build_fused_op_result)) return build_fused_op_result;
     Value call_output = call_op.getResult(call_op.getNumResults() - 1);
-    if (call_output->getType() != fused_op->getResult(0)->getType()) {
+    if (call_output.getType() != fused_op->getResult(0).getType()) {
       return failure();
     }
-    call_output->replaceAllUsesWith(fused_op->getResult(0));
+    call_output.replaceAllUsesWith(fused_op->getResult(0));
   } else {  // If we support more fused op, we should add the conversion here.
     return failure();
   }

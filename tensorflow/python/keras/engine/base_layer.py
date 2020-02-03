@@ -24,6 +24,7 @@ import itertools
 import threading
 
 import numpy as np
+import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from google.protobuf import json_format
@@ -55,6 +56,7 @@ from tensorflow.python.keras.mixed_precision.experimental import autocast_variab
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
@@ -124,7 +126,7 @@ class Layer(module.Module):
       using Python control flow. If `False`, we assume that the layer can
       safely be used to generate a static computation graph.
 
-  Attributes (read-only properties):
+  Attributes:
     name: The name of the layer (string).
     dtype: The dtype of the layer's computations and weights. If mixed
       precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
@@ -137,13 +139,10 @@ class Layer(module.Module):
       included in backprop.
     weights: The concatenation of the lists trainable_weights and
       non_trainable_weights (in this order).
-
-  Mutable properties:
     trainable: Whether the layer should be trained (boolean).
     input_spec: Optional (list of) `InputSpec` object(s) specifying the
       constraints on inputs that can be accepted by the layer.
 
-  ### Dtypes and casting
   Each layer has a dtype, which is typically the dtype of the layer's
   computations and variables. A layer's dtype can be queried via the
   `Layer.dtype` property. The dtype is specified with the `dtype` constructor
@@ -196,7 +195,7 @@ class Layer(module.Module):
     # the layer's weights.
     self.built = False
     # Provides information about which inputs are compatible with the layer.
-    self.input_spec = None
+    self._input_spec = None
     self.supports_masking = False
     self._supports_ragged_inputs = False
 
@@ -217,6 +216,10 @@ class Layer(module.Module):
     # added using the `add_metric` API.
     self._metrics = []
 
+    # Both graph and subclassed networks have a dtype policy. For graph
+    # networks, the policy's compute and variable dtypes are ignored, but other
+    # fields, like the loss scale, are used by Models. For subclassed networks,
+    # the compute and variable dtypes are used as like any ordinary layer.
     self._set_dtype_policy(dtype)
     # Boolean indicating whether the layer automatically casts its inputs to the
     # layer's compute_dtype.
@@ -224,16 +227,21 @@ class Layer(module.Module):
                                 base_layer_utils.v2_dtype_behavior_enabled())
 
     # Dependencies tracked via attribute assignment.
+    # All layers in order of horizontal graph traversal.
+    # Entries are unique. For models includes input and output layers.
     self._maybe_create_attribute('_layers', [])
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
+    # Used in symbolic mode only, only in conjunction with graph-networks
     self._inbound_nodes = []
     self._outbound_nodes = []
 
     self._init_call_fn_args()
 
     # Whether the `call` method can be used to build a TF graph without issues.
+    # This attribute has no effect if the model is created using the Functional
+    # API. Instead, `model.dynamic` is determined based on the internal layers.
     self._dynamic = dynamic
 
     # Manage input shape information if passed.
@@ -251,10 +259,7 @@ class Layer(module.Module):
       self._batch_input_shape = batch_input_shape
 
     # Manage initial weight values if passed.
-    if 'weights' in kwargs:
-      self._initial_weights = kwargs['weights']
-    else:
-      self._initial_weights = None
+    self._initial_weights = kwargs.get('weights', None)
 
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
@@ -296,15 +301,14 @@ class Layer(module.Module):
         "non_trainable_variables" (e.g. BatchNorm mean and variance).
 
     Returns:
-      The tf.tracking.Trackable object.
+      The TrackableWeightHandler used to track this object.
     """
+    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
-      self._trainable_weights.append(
-          base_layer_utils.TrackableWeightHandler(trackable_object))
+      self._trainable_weights.append(handler)
     else:
-      self._non_trainable_weights.append(
-          base_layer_utils.TrackableWeightHandler(trackable_object))
-    return trackable_object
+      self._non_trainable_weights.append(handler)
+    return handler
 
   @doc_controls.for_subclass_implementers
   def add_weight(self,
@@ -487,10 +491,7 @@ class Layer(module.Module):
     config = {'name': self.name, 'trainable': self.trainable}
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
-    # TODO(reedwm): Remove the hasattr(self, 'dtype') check. All layers have a
-    # dtype.
-    if hasattr(self, 'dtype'):
-      config['dtype'] = policy.serialize(self._dtype_policy)
+    config['dtype'] = policy.serialize(self._dtype_policy)
     if hasattr(self, 'dynamic'):
       # Only include `dynamic` in the `config` if it is `True`
       if self.dynamic:
@@ -557,16 +558,14 @@ class Layer(module.Module):
           inputs = nest.map_structure(
               base_layer_utils.generate_placeholders_from_shape, input_shape)
           try:
-            if self._expects_training_arg:
-              outputs = self(inputs, training=False)
-            else:
-              outputs = self(inputs)
-          except TypeError:
-            raise NotImplementedError('We could not automatically infer '
-                                      'the static shape of the layer\'s output.'
-                                      ' Please implement the '
-                                      '`compute_output_shape` method on your '
-                                      'layer (%s).' % self.__class__.__name__)
+            outputs = self(inputs, training=False)
+          except TypeError as e:
+            six.raise_from(
+                NotImplementedError(
+                    'We could not automatically infer the static shape of the '
+                    'layer\'s output. Please implement the '
+                    '`compute_output_shape` method on your layer (%s).' %
+                    self.__class__.__name__), e)
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
@@ -632,13 +631,12 @@ class Layer(module.Module):
     # carry over the input mask
     return mask
 
-  def __call__(self, inputs, *args, **kwargs):
+  def __call__(self, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
     Arguments:
-      inputs: input tensor(s).
-      *args: additional positional arguments to be passed to `self.call`.
-      **kwargs: additional keyword arguments to be passed to `self.call`.
+      *args: Positional arguments to be passed to `self.call`.
+      **kwargs: Keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
@@ -656,7 +654,22 @@ class Layer(module.Module):
 
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
+      RuntimeError: if `super().__init__()` was not called in the constructor.
     """
+    if not hasattr(self, '_thread_local'):
+      raise RuntimeError(
+          'You must call `super().__init__()` in the layer constructor.')
+
+    # Grab the first positional or keyword argument.
+    if args:
+      inputs = args[0]
+      args = args[1:]
+    elif self._call_fn_args[0] in kwargs:
+      inputs = kwargs.pop(self._call_fn_args[0])
+    else:
+      raise ValueError(
+          'The first argument to `Layer.call` must always be passed.')
+
     call_context = base_layer_utils.call_context()
     input_list = nest.flatten(inputs)
 
@@ -895,24 +908,24 @@ class Layer(module.Module):
 
   @property
   def trainable_weights(self):
-    collected_weights = []
-    all_layers = self._gather_unique_layers()
-    for layer in all_layers:
-      if layer.trainable:
-        collected_weights.extend(layer._trainable_weights)
-    return self._dedup_weights(collected_weights)
+    if self.trainable:
+      children_weights = self._gather_children_attribute('trainable_weights')
+      return self._dedup_weights(self._trainable_weights + children_weights)
+    else:
+      return []
 
   @property
   def non_trainable_weights(self):
-    collected_weights = []
-    all_layers = self._gather_unique_layers()
-    for layer in all_layers:
-      if layer.trainable:
-        collected_weights.extend(layer._non_trainable_weights)
-      else:
-        collected_weights.extend(layer._trainable_weights +
-                                 layer._non_trainable_weights)
-    return self._dedup_weights(collected_weights)
+    if self.trainable:
+      children_weights = self._gather_children_attribute(
+          'non_trainable_weights')
+      non_trainable_weights = self._non_trainable_weights + children_weights
+    else:
+      children_weights = self._gather_children_attribute('weights')
+      non_trainable_weights = (
+          self._trainable_weights + self._non_trainable_weights +
+          children_weights)
+    return self._dedup_weights(non_trainable_weights)
 
   @property
   def weights(self):
@@ -961,7 +974,11 @@ class Layer(module.Module):
       # eager training loop (either a custom one or the one used when
       # `run_eagerly=True`) and so we always return just the eager losses.
       if layer._eager_losses:
-        collected_losses.extend(layer._eager_losses)
+        # Filter placeholder losses that may have been added by revived layers.
+        # (see base_layer_utils for details).
+        if (layer._eager_losses[0] is
+            not base_layer_utils.REVIVED_LOSS_PLACEHOLDER):
+          collected_losses.extend(layer._eager_losses)
       else:
         collected_losses.extend(layer._losses)
       for regularizer in layer._callable_losses:
@@ -1217,14 +1234,6 @@ class Layer(module.Module):
         # ignored, following the default path for adding updates.
         not call_context.saving):
       # Updates don't need to be run in a cross-replica context.
-      # TODO(b/142574744): Relax this restriction so that metrics/variables
-      # created outside of a strategy scope can be updated in the cross-replica
-      # context.
-      if (ops.executing_eagerly_outside_functions() and
-          not base_layer_utils.is_in_keras_graph()):
-        raise RuntimeError(  # pylint: disable=g-doc-exception
-            '`add_update` was called in a cross-replica context. This is not '
-            'expected. If you require this feature, please file an issue.')
       return
 
     updates = generic_utils.to_list(updates)
@@ -1681,7 +1690,7 @@ class Layer(module.Module):
                          ', but the layer isn\'t built. '
                          'You can build it manually via: `' + self.name +
                          '.build(batch_input_shape)`.')
-    return int(sum(np.prod(w.shape.as_list()) for w in self.weights))
+    return layer_utils.count_params(self.weights)
 
   @property
   def output_shape(self):
@@ -2196,8 +2205,14 @@ class Layer(module.Module):
       self.built = True
 
     # Optionally load weight values specified at layer instantiation.
-    if getattr(self, '_initial_weights', None) is not None:
-      self.set_weights(self._initial_weights)
+    if self._initial_weights is not None:
+      if ops.executing_eagerly_outside_functions():
+        with ops.init_scope():
+          # Using `init_scope` since we want variable assignment in
+          # `set_weights` to be treated like variable initialization.
+          self.set_weights(self._initial_weights)
+      else:
+        self.set_weights(self._initial_weights)
       self._initial_weights = None
 
   def _symbolic_call(self, inputs):
@@ -2385,6 +2400,18 @@ class Layer(module.Module):
     # at __delattr__.
     super(tracking.AutoTrackable, self).__setattr__(name, value)
 
+  def _gather_children_attribute(self, attribute):
+    assert attribute in {
+        'weights', 'trainable_weights', 'non_trainable_weights'
+    }
+    if hasattr(self, '_layers'):
+      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+          self._layers)
+      return list(
+          itertools.chain.from_iterable(
+              getattr(layer, attribute) for layer in nested_layers))
+    return []
+
   def _gather_unique_layers(self):
     """Returns the current layer and all its children depth first deduped.
 
@@ -2553,6 +2580,7 @@ class TensorFlowOpLayer(Layer):
       effect on this class, however is used in `get_config`.
   """
 
+  @trackable.no_automatic_dependency_tracking
   def __init__(self,
                node_def,
                name,

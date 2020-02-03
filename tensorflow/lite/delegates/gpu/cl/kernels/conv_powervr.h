@@ -40,7 +40,7 @@ class ConvPowerVR : public GPUOperation {
  public:
   ConvPowerVR() = default;
   Status AddToQueue(CLCommandQueue* queue) override;
-
+  Status Tune(const TuningParameters& params) override;
   Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -50,12 +50,18 @@ class ConvPowerVR : public GPUOperation {
   ConvPowerVR& operator=(const ConvPowerVR&) = delete;
 
  private:
+  enum class WeightsUploadType {
+    LOCAL_MEM_ASYNC_SUBGROUP,  // we use it for PowerVR with workgroup size = 32
+    LOCAL_MEM_BY_THREADS,
+    GLOBAL_MEM,
+  };
+
   struct ConvParams {
     int3 block_size;
     int3 work_group_size;
     int3 work_group_launch_order;
     int src_depth_loop_size;
-    bool explicit_sync;
+    WeightsUploadType weights_upload_type;
     bool x_kernel_is_1;
     bool y_kernel_is_1;
   };

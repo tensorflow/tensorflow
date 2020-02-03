@@ -29,9 +29,11 @@ namespace xla {
 // TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
-  ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
+  ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
+                std::function<int64(const Shape&)> shape_size_function)
       : layout_sensitive_(layout_sensitive),
-        allow_mixed_precision_(allow_mixed_precision) {}
+        allow_mixed_precision_(allow_mixed_precision),
+        shape_size_function_(shape_size_function) {}
 
   // Verifies that entry computation layout matches parameters and root shape of
   // the module's entry computation.
@@ -193,6 +195,9 @@ class ShapeVerifier : public DfsHloVisitor {
   // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
   // this flag.
   bool allow_mixed_precision_;
+
+  // Returns a target-specific shape size.
+  std::function<int64(const Shape&)> shape_size_function_;
 };
 
 // An interface used to encapsulate target-specific verification quirks.
@@ -214,7 +219,7 @@ class TargetVerifierMetadata {
   TargetVerifierMetadata(const TargetVerifierMetadata&) = delete;
   TargetVerifierMetadata& operator=(const TargetVerifierMetadata&) = delete;
 
- private:
+ protected:
   // Returns a target-specific shape size.
   std::function<int64(const Shape&)> shape_size_function_;
 };
@@ -235,8 +240,8 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
   // being a DfsHloVisitor, is stateful. We want a clean object for each run of
   // the verifier.
   std::unique_ptr<ShapeVerifier> GetVerifier() const override {
-    return absl::make_unique<ShapeVerifier>(layout_sensitive_,
-                                            allow_mixed_precision_);
+    return absl::make_unique<ShapeVerifier>(
+        layout_sensitive_, allow_mixed_precision_, shape_size_function_);
   }
 
  private:

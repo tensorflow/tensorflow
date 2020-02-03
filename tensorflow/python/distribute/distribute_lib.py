@@ -128,6 +128,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -405,6 +406,10 @@ class InputContext(object):
                        (global_batch_size, self._num_replicas_in_sync))
     return global_batch_size // self._num_replicas_in_sync
 
+  def __str__(self):
+    return "tf.distribute.InputContext(input pipeline id {}, total: {})".format(
+        self.input_pipeline_id, self.num_input_pipelines)
+
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
@@ -655,8 +660,8 @@ class Strategy(object):
     worker, and each worker will do redundant work. We will print a warning
     if this method of sharding is selected.
 
-    You can disable dataset sharding across workers using the `auto_shard`
-    option in `tf.data.experimental.DistributeOptions`.
+    You can disable dataset sharding across workers using the
+    `auto_shard_policy` option in `tf.data.experimental.DistributeOptions`.
 
     Within each worker, we will also split the data among all the worker
     devices (if more than one a present), and this will happen even if
@@ -671,7 +676,7 @@ class Strategy(object):
     by the iterator. This can be used to set the `input_signature` property
     of a `tf.function`.
 
-     ```python
+    ```python
     strategy = tf.distribute.MirroredStrategy()
 
     # Create a dataset
@@ -1364,7 +1369,8 @@ class StrategyExtendedV2(object):
 
   def _scope(self, strategy):
     """Implementation of tf.distribute.Strategy.scope()."""
-    def creator_with_resource_vars(*args, **kwargs):
+
+    def creator_with_resource_vars(next_creator, **kwargs):
       """Variable creator to use in `_CurrentDistributionContext`."""
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
@@ -1377,7 +1383,7 @@ class StrategyExtendedV2(object):
       if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
         kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
 
-      return self._create_variable(*args, **kwargs)
+      return self._create_variable(next_creator, **kwargs)
 
     def distributed_getter(getter, *args, **kwargs):
       if not self._allow_variable_partition():
@@ -1397,7 +1403,7 @@ class StrategyExtendedV2(object):
   def _allow_variable_partition(self):
     return False
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     # Note: should support "colocate_with" argument.
     raise NotImplementedError("must be implemented in descendants")
 
@@ -1466,11 +1472,12 @@ class StrategyExtendedV2(object):
     Returns:
       A context manager.
     """
-    def create_colocated_variable(next_creator, *args, **kwargs):
+
+    def create_colocated_variable(next_creator, **kwargs):
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
       kwargs["colocate_with"] = colocate_with_variable
-      return next_creator(*args, **kwargs)
+      return next_creator(**kwargs)
 
     _require_strategy_scope_extended(self)
     self._validate_colocate_with_variable(colocate_with_variable)
@@ -2025,6 +2032,9 @@ class ReplicaContext(object):
     This identifies the replica that is part of a sync group. Currently we
     assume that all sync groups contain the same number of replicas. The value
     of the replica id can range from 0 to `num_replica_in_sync` - 1.
+
+    NOTE: This is not guaranteed to be the same ID as the XLA replica ID use
+    for low-level operations such as collective_permute.
     """
     require_replica_context(self)
     return self._replica_id_in_sync_group
@@ -2131,9 +2141,9 @@ class _DefaultDistributionContext(object):
 
   def __init__(self, strategy):
 
-    def creator(next_creator, *args, **kwargs):
+    def creator(next_creator, **kwargs):
       _require_strategy_scope_strategy(strategy)
-      return next_creator(*args, **kwargs)
+      return next_creator(**kwargs)
 
     self._var_creator_scope = variable_scope.variable_creator_scope(creator)
     self._strategy = strategy
@@ -2285,12 +2295,23 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
     def get_next(self):
       return self._iterator.get_next()
 
+    @deprecated(None, "Use the iterator's `initializer` property instead.")
     def initialize(self):
+      """Initialize underlying iterators.
+
+      Returns:
+        A list of any initializer ops that should be run.
+      """
       if eager_context.executing_eagerly():
         self._iterator = self._dataset.make_one_shot_iterator()
         return []
       else:
         return [self._iterator.initializer]
+
+    @property
+    def initializer(self):
+      """Returns a list of ops that initialize the iterator."""
+      return self.initialize()
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property

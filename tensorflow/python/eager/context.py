@@ -32,9 +32,10 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
-from tensorflow.python.eager import eager_util as c_api_util
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
@@ -590,6 +591,10 @@ class Context(object):
 
     if self._context_handle:
       server_def_str = server_def.SerializeToString()
+      # Current executor might have pending nodes that involves updated remote
+      # devices. Wait for them to finish before updating.
+      self.executor.wait()
+      self.executor.clear_error()
       pywrap_tfe.TFE_ContextUpdateServerDef(self._context_handle,
                                             keep_alive_secs, server_def_str)
       self._initialize_logical_devices()
@@ -780,6 +785,13 @@ class Context(object):
   def devices(self):
     """List of the names of devices available to execute operations."""
     return self._devices
+
+  def host_address_space(self):
+    self.ensure_initialized()
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tfe.TFE_HostAddressSpace(self._context_handle, buffer_)
+      address_space = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
+    return address_space
 
   # TODO(fishx): remove this property.
   @property
@@ -1526,7 +1538,7 @@ class Context(object):
       return None
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_ContextExportRunMetadata(self._context_handle, buffer_)
-      proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     run_metadata = config_pb2.RunMetadata()
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
     return run_metadata
@@ -1626,8 +1638,10 @@ def _reset_context():
   global _context
   with _context_lock:
     if _context is not None:
+      _context._clear_caches()
       _context = None
   _create_context()
+  pywrap_tfe.TFE_ClearScalarCache()
 
 
 def context():
@@ -2028,8 +2042,8 @@ def export_run_metadata():
 
 
 @contextlib.contextmanager
-def collect_optimized_graphs():
-  """Collects a flat list of post-optimization graphs.
+def collect_graphs(optimized=True):
+  """Collects a flat list of pre- or post-optimization graphs.
 
   The collected graphs include device placements, which can be useful for
   testing.
@@ -2041,13 +2055,15 @@ def collect_optimized_graphs():
   def f(x):
     return x + constant_op.constant(1.)
 
-  with context.collect_optimized_graphs() as graphs:
+  with context.collect_graphs() as graphs:
     with ops.device("CPU:0"):
       f(constant_op.constant(1.))
 
   graph, = graphs  # `graph` contains a single GraphDef for inspection
   ```
 
+  Args:
+    optimized: whether to collect optimized graphs or non-optimized graphs
   Yields:
     A list of GraphDefs, populated when the context manager exits.
   """
@@ -2060,7 +2076,10 @@ def collect_optimized_graphs():
   finally:
     ctx.disable_graph_collection()
   for graph in metadata.function_graphs:
-    graphs.append(graph.post_optimization_graph)
+    if optimized:
+      graphs.append(graph.post_optimization_graph)
+    else:
+      graphs.append(graph.pre_optimization_graph)
 
 
 def get_server_def():

@@ -80,6 +80,10 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateNegOpBuilder(this, OP_QuantizedNeg_8);
     case kTfLiteBuiltinTranspose:
       return CreateTransposeBuilder(this, OP_Transpose_8);
+    case kTfLiteBuiltinSpaceToDepth:
+      return CreateSpaceToDepthBuilder(this, OP_SpaceToDepth_8);
+    case kTfLiteBuiltinDepthToSpace:
+      return CreateSpaceToDepthBuilder(this, OP_DepthToSpace_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;

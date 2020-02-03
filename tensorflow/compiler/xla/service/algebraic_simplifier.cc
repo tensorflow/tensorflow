@@ -3353,6 +3353,25 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     return Status::OK();
   }
 
+  HloInstruction* pad;
+  HloInstruction* pad_operand;
+  if (Match(slice, m::Slice(m::Pad(&pad, m::Op(&pad_operand), m::Op())))) {
+    bool slice_undoes_pad = true;
+    for (int64 i = 0; i < slice->shape().rank(); ++i) {
+      if (slice->slice_starts(i) !=
+          pad->padding_config().dimensions(i).edge_padding_low()) {
+        slice_undoes_pad = false;
+      }
+      if (slice->slice_strides(i) - 1 !=
+          pad->padding_config().dimensions(i).interior_padding()) {
+        slice_undoes_pad = false;
+      }
+    }
+    if (slice_undoes_pad && ReplaceInstructionIfSameShape(slice, pad_operand)) {
+      return Status::OK();
+    }
+  }
+
   if (slice->operand(0)->opcode() == HloOpcode::kSlice &&
       IsUnstridedSlice(slice) && IsUnstridedSlice(slice->operand(0))) {
     HloInstruction* operand_slice = slice->mutable_operand(0);
@@ -3392,6 +3411,29 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   TF_ASSIGN_OR_RETURN(bool replaced, TrySimplifyScalarSlice(slice));
   if (replaced) {
     return Status::OK();
+  }
+
+  HloInstruction* broadcast;
+  HloInstruction* broadcast_operand;
+  if (Match(slice,
+            m::Slice(m::Broadcast(&broadcast, m::Op(&broadcast_operand))))) {
+    std::vector<int64> new_slice_starts;
+    std::vector<int64> new_slice_strides;
+    std::vector<int64> new_slice_limits;
+    new_slice_starts.reserve(broadcast_operand->shape().rank());
+    new_slice_strides.reserve(broadcast_operand->shape().rank());
+    new_slice_limits.reserve(broadcast_operand->shape().rank());
+    for (int64 dim : broadcast->dimensions()) {
+      new_slice_starts.push_back(slice->slice_starts(dim));
+      new_slice_strides.push_back(slice->slice_strides(dim));
+      new_slice_limits.push_back(slice->slice_limits(dim));
+    }
+    TF_ASSIGN_OR_RETURN(auto new_slice,
+                        MakeSliceHlo(broadcast_operand, new_slice_starts,
+                                     new_slice_limits, new_slice_strides));
+    return ReplaceInstruction(
+        slice,
+        MakeBroadcastHlo(new_slice, broadcast->dimensions(), slice->shape()));
   }
 
   // Try to simplify concat -> slice to an operand of concat.
@@ -3458,6 +3500,29 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   // to operand.
   if (SameShape(operand, dynamic_slice)) {
     return ReplaceInstruction(dynamic_slice, operand);
+  }
+
+  HloInstruction* broadcast_operand;
+  if (Match(operand, m::Broadcast(m::Op(&broadcast_operand)))) {
+    std::vector<HloInstruction*> new_indices;
+    new_indices.reserve(broadcast_operand->shape().rank());
+    std::vector<int64> new_slice_sizes;
+    new_slice_sizes.reserve(broadcast_operand->shape().rank());
+
+    for (int64 dim : operand->dimensions()) {
+      new_indices.push_back(dynamic_slice->mutable_operand(1 + dim));
+      new_slice_sizes.push_back(dynamic_slice->slice_sizes(dim));
+    }
+    HloInstruction* new_dynamic_slice = broadcast_operand;
+    if (!new_slice_sizes.empty()) {
+      TF_ASSIGN_OR_RETURN(
+          new_dynamic_slice,
+          MakeDynamicSliceHlo(broadcast_operand, new_indices, new_slice_sizes));
+    }
+    return ReplaceInstruction(
+        dynamic_slice,
+        MakeBroadcastHlo(new_dynamic_slice, operand->dimensions(),
+                         dynamic_slice->shape()));
   }
   return Status::OK();
 }

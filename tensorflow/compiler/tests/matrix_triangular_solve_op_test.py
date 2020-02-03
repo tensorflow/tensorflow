@@ -50,7 +50,9 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
                                  atol):
     feed_dict = {placeholder_a: a, placeholder_ca: clean_a, placeholder_b: b}
     verification_np = sess.run(verification, feed_dict)
-    self.assertAllClose(b, verification_np, atol=atol)
+    broadcasted_shape = a.shape[:-2] + (b.shape[-2], b.shape[-1])
+    broadcasted_b = b + np.zeros(shape=broadcasted_shape, dtype=b.dtype)
+    self.assertAllClose(broadcasted_b, verification_np, atol=atol)
 
   def _VerifyTriangularSolve(self, a, b, lower, adjoint, atol):
     clean_a = np.tril(a) if lower else np.triu(a)
@@ -87,6 +89,12 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
       self._VerifyTriangularSolveCombo(a.astype(dtype), b.astype(dtype))
 
   def testBasicComplexDtypes(self):
+
+    if xla_test.test.is_built_with_rocm():
+      # The folowing subtest invokes the call to "BlasTrsm"
+      # That operation is currently not supported on the ROCm platform
+      self.skipTest("BlasTrsm op for complex types is not supported in ROCm")
+
     rng = np.random.RandomState(0)
     a = np.tril(rng.randn(5, 5) + rng.randn(5, 5) * 1j)
     b = rng.randn(5, 7) + rng.randn(5, 7) * 1j
@@ -97,6 +105,18 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
     rng = np.random.RandomState(0)
     shapes = [((4, 3, 3), (4, 3, 5)), ((1, 2, 2), (1, 2, 1)),
               ((1, 1, 1), (1, 1, 2)), ((2, 3, 4, 4), (2, 3, 4, 1))]
+    tuples = itertools.product(self.float_types, shapes)
+    for dtype, (a_shape, b_shape) in tuples:
+      n = a_shape[-1]
+      a = np.tril(rng.rand(*a_shape) - 0.5) / (2.0 * n) + np.eye(n)
+      b = rng.randn(*b_shape)
+      self._VerifyTriangularSolveCombo(
+          a.astype(dtype), b.astype(dtype), atol=1e-3)
+
+  def testBatchBroadcast(self):
+    rng = np.random.RandomState(0)
+    shapes = [((3, 3), (4, 3, 5)), ((1, 2, 2), (3, 2, 1)), ((1, 1), (1, 1, 2)),
+              ((1, 3, 4, 4), (2, 1, 4, 1))]
     tuples = itertools.product(self.float_types, shapes)
     for dtype, (a_shape, b_shape) in tuples:
       n = a_shape[-1]

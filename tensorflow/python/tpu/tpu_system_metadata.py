@@ -210,6 +210,4 @@ def master_job(master, cluster_def):
       job_names.remove(_DEFAULT_COORDINATOR_JOB_NAME)
       return job_names.pop()
     # TODO(b/67716447): Include more sophisticated heuristics.
-  raise ValueError(
-      'Could not infer TPU job name. Please specify a tpu_job_name as part '
-      'of your TPUConfig.')
+  raise ValueError('Could not infer TPU job name.')

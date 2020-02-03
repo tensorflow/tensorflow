@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
 
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -827,8 +828,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-// TODO(b/147010663): Fix the incorrect result on CPU.
-XLA_TEST_F(ExecutionTest, DISABLED_ON_CPU(DynamicSort)) {
+XLA_TEST_F(ExecutionTest, DynamicSort) {
   const string hlo_text = R"(
 HloModule TEST
 
@@ -865,7 +865,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DISABLED_ON_CPU(DynamicTupleSort)) {
+XLA_TEST_F(ExecutionTest, DynamicTupleSort) {
   const string hlo_text = R"(
 HloModule TEST
 

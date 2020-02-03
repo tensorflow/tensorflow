@@ -21,20 +21,7 @@ limitations under the License.
 
 namespace tflite {
 // Prints a dump of what tensors and what nodes are in the interpreter.
-class MicroInterpreter;
 void PrintInterpreterState(MicroInterpreter* interpreter);
-
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-struct pairTfLiteNodeAndRegistration {
-  TfLiteNode node;
-  const TfLiteRegistration* registration;
-};
-#ifdef __cplusplus
-}  // extern "C"
-#endif  // __cplusplus
-
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_MICRO_OPTIONAL_DEBUG_TOOLS_H_

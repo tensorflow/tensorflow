@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
@@ -178,8 +178,10 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -333,6 +335,7 @@ cc_library(
         # cpu_backend_gemm.h about why ruy is the generic path.
         "//tensorflow/lite/experimental/ruy",
         "//tensorflow/lite/experimental/ruy:path",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
@@ -372,7 +375,7 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:quantization_util",
@@ -481,6 +484,7 @@ cc_library(
         "reverse_sequence.cc",
         "round.cc",
         "scatter_nd.cc",
+        "segment_sum.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -522,6 +526,7 @@ cc_library(
         ":op_macros",
         ":padding",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:audio_utils",
@@ -539,6 +544,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
@@ -588,11 +594,12 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
-        "@gemmlowp//:profiler",
     ],
 )
 
@@ -605,8 +612,10 @@ cc_library(
         ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
+        "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "@gemmlowp",
@@ -873,8 +882,26 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "depthwise_conv_hybrid_test",
+    size = "small",
+    srcs = ["depthwise_conv_hybrid_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:test_util",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
@@ -1064,7 +1091,8 @@ cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
-    tags = ["tflite_nnapi"],
+    # TODO(b/143912164): Enable NNAPI test when fix nnapi.
+    # tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -2051,6 +2079,18 @@ cc_test(
     deps = [
         ":builtin_ops",
         ":kernel_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "segment_sum_test",
+    srcs = ["segment_sum_test.cc"],
+    deps = [
+        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",

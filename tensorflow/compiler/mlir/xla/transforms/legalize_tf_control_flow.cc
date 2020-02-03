@@ -68,8 +68,8 @@ void Detuple(Value tuple, Operation::result_range replace, OpBuilder* builder) {
   // De-tuple the results of the xla hlo conditional result.
   for (auto result_it : llvm::enumerate(replace)) {
     auto get_tuple_value = builder->create<xla_hlo::GetTupleElementOp>(
-        result_it.value()->getLoc(), tuple, result_it.index());
-    result_it.value()->replaceAllUsesWith(get_tuple_value);
+        result_it.value().getLoc(), tuple, result_it.index());
+    result_it.value().replaceAllUsesWith(get_tuple_value);
   }
 }
 
@@ -115,8 +115,7 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
 
   // Create the new conditional op with tuple inputs.
   SmallVector<Value, 3> operands(op.getOperands());
-  SmallVector<Type, 4> types(op.getResultTypes());
-  auto result_type = builder.getTupleType(types);
+  auto result_type = builder.getTupleType(op.getResultTypes());
   auto conditional = builder.create<xla_hlo::ConditionalOp>(
       loc, result_type, op.cond(), tuple_input, tuple_input);
 
@@ -147,9 +146,8 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 
   // Create the new while op with tuple inputs.
   SmallVector<Value, 3> operands(op.getOperands());
-  SmallVector<Type, 4> types(op.getResultTypes());
   auto while_op = builder.create<xla_hlo::WhileOp>(
-      loc, builder.getTupleType(types), tuple_input);
+      loc, builder.getTupleType(op.getResultTypes()), tuple_input);
 
   // Import the regions for both the cond and body. These regions must be
   // updated to tuple the return results together and use the xla hlo return op.

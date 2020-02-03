@@ -47,8 +47,8 @@ struct CompareIConvert : public RewritePattern {
 
     auto lhs = compare_op.lhs();
     auto rhs = compare_op.rhs();
-    auto lhs_type = lhs->getType().cast<TensorType>();
-    auto rhs_type = rhs->getType().cast<TensorType>();
+    auto lhs_type = lhs.getType().cast<TensorType>();
+    auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
     if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
@@ -86,8 +86,8 @@ struct CompareFConvert : public RewritePattern {
 
     auto lhs = compare_op.lhs();
     auto rhs = compare_op.rhs();
-    auto lhs_type = lhs->getType().cast<TensorType>();
-    auto rhs_type = rhs->getType().cast<TensorType>();
+    auto lhs_type = lhs.getType().cast<TensorType>();
+    auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
     if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();

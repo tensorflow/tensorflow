@@ -573,7 +573,6 @@ tf_py_test(
     srcs = ["rejection_resample_test.py"],
     shard_count = 5,
     tags = [
-        "noasan",
         "optonly",
     ],
     deps = [

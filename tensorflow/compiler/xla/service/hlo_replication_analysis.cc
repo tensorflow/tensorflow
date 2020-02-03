@@ -51,18 +51,26 @@ bool DetermineHloInstructionIsReplicated(
         return true;
       };
 
-  if (hlo->IsCrossReplicaAllReduce()) {
-    if (cross_partition_spmd) {
-      // Cross-replica all-reduce returns same values across partitions as long
-      // as its operands are replicated.
-      return all_operands_replicated(hlo);
+  if (hlo->opcode() == HloOpcode::kAllReduce) {
+    // All-reduce returns same values across partitions/replicas as long as its
+    // operands are replicated.
+    if (all_operands_replicated(hlo)) {
+      return true;
     }
-    // Only all-reduce across all cores are replicated, which means there
-    // is only one subgroup.
-    return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
-  }
-  if (hlo->IsCrossModuleAllReduce()) {
-    return cross_partition_spmd;
+    if (hlo->IsCrossReplicaAllReduce()) {
+      if (cross_partition_spmd) {
+        return false;
+      }
+      // Only all-reduce across all cores are replicated, which means there
+      // is only one subgroup.
+      return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
+    } else {
+      CHECK(hlo->IsCrossModuleAllReduce());
+      if (cross_partition_spmd) {
+        return true;
+      }
+      return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
+    }
   }
   if (hlo->HasSideEffectNoRecurse()) {
     return false;

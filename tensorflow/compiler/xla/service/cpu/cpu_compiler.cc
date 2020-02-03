@@ -19,7 +19,6 @@ limitations under the License.
 #include <string.h>
 
 #include <map>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -27,6 +26,7 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -167,7 +166,7 @@ namespace {
 // multiple invocations of the LLVM compilation pipeline with a different set of
 // flags. Therefore, we only pass command-line flags to LLVM once, before the
 // first module is compiled.
-std::once_flag llvm_command_line_options_initialized;
+absl::once_flag llvm_command_line_options_initialized;
 
 // This visitor records which HLO instructions should have profiling information
 // recorded.
@@ -248,7 +247,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ZeroSizedHloElimination>();
 
   pipeline.AddPass<DynamicIndexSplitter>();
-  pipeline.AddPass<CpuHloSupportChecker>();
 
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
@@ -256,9 +254,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
 
-  // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
-  // pass.
-  pipeline.AddPass<CallInliner>();
+  // Inline computations with a single call site.
+  pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
   // After canonicalization, there may be more batch dots that can be
@@ -568,8 +565,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   auto slow_compile_alarm = SlowCompilationAlarm();
 
   TF_RET_CHECK(stream_exec != nullptr);
-  std::call_once(llvm_command_line_options_initialized,
-                 &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
+  absl::call_once(llvm_command_line_options_initialized,
+                  &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
 
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
@@ -705,9 +702,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
 
-  std::call_once(llvm_command_line_options_initialized,
-                 &llvm_ir::InitializeLLVMCommandLineOptions,
-                 modules[0]->config());
+  absl::call_once(llvm_command_line_options_initialized,
+                  &llvm_ir::InitializeLLVMCommandLineOptions,
+                  modules[0]->config());
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only

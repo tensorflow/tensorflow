@@ -835,7 +835,6 @@ Status InsertSliceToDynamicBeforeModuleOutputs(
           }
         }
       });
-  int64 dynamic_index = 0;
   if (!dynamic_outputs.empty()) {
     if (root->shape().IsTuple()) {
       std::vector<HloInstruction*> new_root_operands;
@@ -874,18 +873,8 @@ Status InsertSliceToDynamicBeforeModuleOutputs(
             }
           }
           // This is a dynamic output, add slice operation.
-          //
-          // Write the backend config in the format of
-          // 'dynamic_index'-'output_index'.
-          //
-          // dynamic_index indicates the position of this output in all dynamic
-          // outputs.
-          //
-          // output_index indicates the position of this output in all outputs
-          // (including static inputs).
           auto slice = HloInstruction::CreateCustomCall(
-              dynamic_subshape, slice_operands, "SliceToDynamic",
-              absl::StrFormat("%d-%d", dynamic_index++, index[0]));
+              dynamic_subshape, slice_operands, "SliceToDynamic");
           new_root_operands.push_back(
               module->entry_computation()->AddInstruction(std::move(slice)));
         } else {

@@ -14,7 +14,7 @@ binary executed via `adb shell ...`. This tailored behavior is most evident when
 enabling multi-threaded CPU execution with TensorFlow Lite.
 
 To that end, this app offers perhaps a more faithful view of runtime performance
-that developers can expected when deploying TensorFlow Lite with their
+that developers can expect when deploying TensorFlow Lite with their
 application.
 
 ## To build/install/run

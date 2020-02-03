@@ -394,10 +394,10 @@ class LayoutAssignment : public HloModulePass {
     return Status::OK();
   }
 
-  // Construct contraints and assign layouts to all instructions in the
+  // Construct constraints and assign layouts to all instructions in the
   // computation satisfying the given ComputationLayout, if not nullptr.
   // Otherwise the ComputationLayout will be calculated by propagating the
-  // computation instruction contraints.
+  // computation instruction constraints.
   // Layouts constraints are added, then propagated until all LogicalBuffers in
   // the computation are constrained.
   Status RunOnComputation(ComputationLayout* computation_layout,

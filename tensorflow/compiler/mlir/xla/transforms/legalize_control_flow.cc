@@ -99,8 +99,8 @@ LogicalResult LowerConditionalOp(mlir::xla_hlo::ConditionalOp conditional_op) {
                                 mapper, &builder)))
     return failure();
 
-  tail_block->addArguments(conditional_op.getResult()->getType());
-  conditional_op.getResult()->replaceAllUsesWith(tail_block->getArgument(0));
+  tail_block->addArguments(conditional_op.getResult().getType());
+  conditional_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
 
   op_inst->erase();
   return success();
@@ -201,7 +201,7 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
 
   // Erase the original while loop.
   tail_block->addArgument(while_op.getType());
-  while_op.getResult()->replaceAllUsesWith(tail_block->getArgument(0));
+  while_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
   op_inst->erase();
 
   return success();

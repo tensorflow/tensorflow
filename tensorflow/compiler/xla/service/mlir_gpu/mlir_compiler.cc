@@ -197,19 +197,19 @@ static absl::optional<int64> getLaunchBound(const mlir::gpu::KernelDim3& dim) {
     op->emitError() << "bound " << name << " is not constant";
     return absl::nullopt;
   };
-  auto y_op = dim.y->getDefiningOp();
+  auto y_op = dim.y.getDefiningOp();
   auto dim_y = get_constant(y_op, "y");
   if (!dim_y.has_value() || dim_y.value() != 1) {
     y_op->emitError() << "bound 'y' is not constant 1";
     return absl::nullopt;
   }
-  auto z_op = dim.z->getDefiningOp();
+  auto z_op = dim.z.getDefiningOp();
   auto dim_z = get_constant(z_op, "z");
   if (!dim_z.has_value() || dim_z.value() != 1) {
     z_op->emitError() << "bound 'z' is not constant 1";
     return absl::nullopt;
   }
-  return get_constant(dim.x->getDefiningOp(), "x");
+  return get_constant(dim.x.getDefiningOp(), "x");
 }
 
 using OperandToValueMap =
@@ -224,7 +224,7 @@ static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
   for (int kernel_index = 0; kernel_index < launchOp.getNumKernelOperands();
        ++kernel_index) {
     auto launchop_operand =
-        launchOp.getKernelOperand(kernel_index)->dyn_cast<BlockArgument>();
+        launchOp.getKernelOperand(kernel_index).dyn_cast<BlockArgument>();
     if (!launchop_operand) {
       launchOp.emitError("argument to kernel is not a function input");
       has_failed = true;
@@ -233,7 +233,7 @@ static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
     // host_index is the argument position to the surrounding function that
     // contains the launch. This index corresponds to HLO operand indices
     // by construction.
-    auto host_index = launchop_operand->getArgNumber();
+    auto host_index = launchop_operand.getArgNumber();
     // The trailing argument to the outer function are the results.
     auto operand =
         (host_index < operands.size()) ? operands[host_index] : instr;
@@ -304,7 +304,7 @@ Status InsertBufferLoadPreduleIntoKernel(
       //   { baseptr, dataptr, offset, shape_vect, stride_vect }
       // where shape_vect and stride_vect are integer vectors with length
       // matching the rank of the tensor.
-      auto target_type = value->getType().cast<LLVMType>();
+      auto target_type = value.getType().cast<LLVMType>();
       auto struct_type = target_type.getPointerElementTy();
       auto descPtr =
           builder.create<mlir::LLVM::AllocaOp>(loc, target_type, one, 0);
@@ -367,7 +367,7 @@ Status InsertBufferLoadPreduleIntoKernel(
         }
       }
       // Now we can use the descriptor instead of the original argument.
-      value->replaceAllUsesWith(descPtr);
+      value.replaceAllUsesWith(descPtr);
     }
   }
 

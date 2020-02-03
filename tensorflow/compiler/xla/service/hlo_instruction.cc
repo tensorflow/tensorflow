@@ -496,9 +496,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             proto.convolution_dimension_numbers());
       }
       custom_call_instr->set_feature_group_count(
-          std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
+          std::max(static_cast<int64>(proto.feature_group_count()), int64{1}));
       custom_call_instr->set_batch_group_count(
-          std::max(static_cast<int64>(proto.batch_group_count()), 1LL));
+          std::max(static_cast<int64>(proto.batch_group_count()), int64{1}));
       custom_call_instr->set_custom_call_has_side_effect(
           proto.custom_call_has_side_effect());
       break;

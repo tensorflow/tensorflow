@@ -344,6 +344,7 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &estimated_variance,
     const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
     DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
     DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
@@ -358,10 +359,11 @@ Stream &Stream::ThenBatchNormalizationForward(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationForward(
           this, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, x_desc, scale_offset_desc, epsilon, activation_mode, y,
-          batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
-          reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)));
+          side_input, x_desc, scale_offset_desc, epsilon,
+          exponential_average_factor, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -401,6 +403,7 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &estimated_variance,
     const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
     DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
     DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
@@ -415,10 +418,11 @@ Stream &Stream::ThenBatchNormalizationForward(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationForward(
           this, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, x_desc, scale_offset_desc, epsilon, activation_mode, y,
-          batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
-          reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)));
+          side_input, x_desc, scale_offset_desc, epsilon,
+          exponential_average_factor, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -5225,6 +5229,39 @@ Stream &Stream::ThenRnnBackward(
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnBackward without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
+                            const DeviceMemory<float> &probs_data,
+                            absl::Span<const int> labels_data,
+                            absl::Span<const int> labels_lengths_data,
+                            absl::Span<const int> input_lengths_data,
+                            DeviceMemory<float> *costs_data,
+                            const dnn::RnnStateTensorDescriptor &grads_desc,
+                            DeviceMemory<float> *grads_data,
+                            ScratchAllocator *workspace_allocator) {
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      DeviceMemory<uint8> scratch_memory;
+      auto status = dnn->PrepareForCtcLoss(
+                           this, probs_desc, probs_data, grads_desc,
+                           labels_data, labels_lengths_data, input_lengths_data,
+                           workspace_allocator, &scratch_memory)
+                        .ok();
+      if (status) {
+        status =
+            dnn->DoCtcLoss(this, probs_desc, probs_data, labels_data,
+                           labels_lengths_data, input_lengths_data, costs_data,
+                           grads_desc, grads_data, &scratch_memory);
+      }
+      if (!status) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;

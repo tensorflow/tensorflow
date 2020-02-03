@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -62,6 +63,7 @@ using ::tensorflow::uint8;
 constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
+constexpr char kRepicationAttr[] = "tf_device.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -122,27 +124,37 @@ static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
   xla::FftType fft_type_enum;
   // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
   // call below should never return false.
-  if (!FftType_Parse(fft_type_str, &fft_type_enum)) return xla::FftType::FFT;
+  if (!FftType_Parse(std::string(fft_type_str), &fft_type_enum))
+    return xla::FftType::FFT;
   return fft_type_enum;
 }
 
-// Convert a nx2 dense attribute to a list of tuples. This is the way padding
-// is defined in hlo.
-static std::vector<std::pair<int64, int64>> Convert_padding(
-    llvm::Optional<mlir::DenseIntElementsAttr> padding_optional) {
-  if (!padding_optional.hasValue()) return {};
-  mlir::DenseIntElementsAttr padding = *padding_optional;
-  auto it = padding.getValues<int64>().begin();
-  std::vector<std::pair<int64, int64>> out(padding.getNumElements() / 2);
+// Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
+// and source-target pairs are defined in HLO.
+static std::vector<std::pair<int64, int64>> Convert_Nx2_attribute(
+    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
+  if (!optional_attr.hasValue()) return {};
+  mlir::DenseIntElementsAttr attr = *optional_attr;
+  auto it = attr.getValues<int64>().begin();
+  std::vector<std::pair<int64, int64>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
-    int64 left_pad = *it;
+    int64 first = *it;
     ++it;
-    int64 right_pad = *it;
+    int64 second = *it;
     ++it;
-    item = {left_pad, right_pad};
+    item = {first, second};
   }
-
   return out;
+}
+
+static std::vector<std::pair<int64, int64>> Convert_padding(
+    llvm::Optional<mlir::DenseIntElementsAttr> padding) {
+  return Convert_Nx2_attribute(padding);
+}
+
+static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
+    llvm::Optional<mlir::DenseIntElementsAttr> source_target_pairs) {
+  return Convert_Nx2_attribute(source_target_pairs);
 }
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
@@ -160,6 +172,18 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     result.push_back(group);
   }
   return result;
+}
+
+// Converts StringRef to xla Transpose enum.
+static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
+    llvm::StringRef transpose_str) {
+  xla::TriangularSolveOptions::Transpose transpose_enum;
+  // Illegal tanspose string would be caught by the verifier, so
+  // 'Transpose_Parse' call below should never return false.
+  if (!xla::TriangularSolveOptions::Transpose_Parse(std::string(transpose_str),
+                                                    &transpose_enum))
+    return xla::TriangularSolveOptions::NO_TRANSPOSE;
+  return transpose_enum;
 }
 
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
@@ -387,10 +411,10 @@ class ConvertToHloModule {
                                          xla::XlaComputation* func);
 
   // Lower a single `Block` to a `XlaComputation`
-  LogicalResult LowerBasicBlockAsFunction(Block* block,
-                                          xla::XlaBuilder* builder,
-                                          bool is_entry_function,
-                                          xla::XlaComputation* result);
+  LogicalResult LowerBasicBlockAsFunction(
+      Block* block, xla::XlaBuilder* builder, bool is_entry_function,
+      const std::vector<bool>& entry_args_same_across_replicas,
+      xla::XlaComputation* result);
 
   ::xla::HloModuleProto ConsumeMainProto() {
     return lowered_computation_[module_.lookupSymbol<mlir::FuncOp>("main")]
@@ -521,13 +545,25 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
+  // XLA client builder API does not support generating custom call instructions
+  // with side effect.
+  if (op.has_side_effect()) return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::CustomCall(
+      ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
+      xla::TypeToShape(op.getType()), std::string(op.backend_config()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   // The shape argument expected by the xla client API is the type of the first
   // element in the result tuple.
   auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
-  value_map[op] = xla::InfeedWithToken(
-      value_map[op.token()], xla::TypeToShape(result_type), op.infeed_config());
+  value_map[op] =
+      xla::InfeedWithToken(value_map[op.token()], xla::TypeToShape(result_type),
+                           std::string(op.infeed_config()));
   return success();
 }
 
@@ -538,11 +574,24 @@ LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
+                                                     &computation))) {
+    return failure();
+  }
+  value_map[op] = xla::Map(ctx.builder, GetTuple(op.operands(), ctx),
+                           computation, Convert_dimensions(op.dimensions()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] = xla::OutfeedWithToken(
-      value_map[op.operand()], value_map[op.token()],
-      xla::TypeToShape(op.operand()->getType()), op.outfeed_config());
+  value_map[op] =
+      xla::OutfeedWithToken(value_map[op.operand()], value_map[op.token()],
+                            xla::TypeToShape(op.operand().getType()),
+                            std::string(op.outfeed_config()));
   return success();
 }
 
@@ -560,6 +609,21 @@ LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
   }
   value_map[op] = xla::Pad(value_map[op.getOperand(0)],
                            value_map[op.getOperand(1)], padding_config);
+  return success();
+}
+
+LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
+  if (op.is_host_transfer()) {
+    value_map[op] =
+        xla::RecvFromHost(value_map[op.token()], xla::TypeToShape(result_type),
+                          Convert_channel_handle(op.channel_id()));
+    return success();
+  }
+  value_map[op] =
+      xla::RecvWithToken(value_map[op.token()], xla::TypeToShape(result_type),
+                         Convert_channel_handle(op.channel_id()));
   return success();
 }
 
@@ -688,6 +752,12 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
                             op.dimension().getSExtValue(), op.is_stable());
+  return success();
+}
+
+LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::Trace(std::string(op.tag()), value_map[op.operand()]);
   return success();
 }
 
@@ -861,7 +931,30 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   auto& builder = entry_function ? module_builder_ : *builder_up;
 
   xla::XlaComputation computation;
+  std::vector<bool> entry_args_same_across_replicas;
+  if (entry_function) {
+    bool any_arg_replicated = false;
+    entry_args_same_across_replicas.reserve(f.getNumArguments());
+    for (int64_t i = 0; i < f.getNumArguments(); ++i) {
+      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kRepicationAttr);
+      entry_args_same_across_replicas.push_back(attr && attr.getValue());
+      any_arg_replicated |= entry_args_same_across_replicas.back();
+      // Pass the alias info to the builder so that it will build the alias info
+      // into the resulting HloModule.
+      auto aliasing_output =
+          f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
+      if (aliasing_output) {
+        builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
+                           /*param_number=*/i, /*param_index=*/{});
+      }
+    }
+    // Do not populate this field when nothing is replicated, since empty field
+    // means no replication. This avoids the need for unrelated tests to handle
+    // this field.
+    if (!any_arg_replicated) entry_args_same_across_replicas.clear();
+  }
   if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
+                                       entry_args_same_across_replicas,
                                        &computation))) {
     return failure();
   }
@@ -871,6 +964,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
 
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     Block* block, xla::XlaBuilder* builder, bool is_entry_function,
+    const std::vector<bool>& entry_args_same_across_replicas,
     xla::XlaComputation* result) {
   auto& bb = *block;
   // Mapping from the Value to lowered XlaOp. The code below lowers in
@@ -882,10 +976,20 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   if (is_entry_function && use_tuple_args_) {
     std::vector<xla::Shape> arg_shapes;
     arg_shapes.reserve(bb.getNumArguments());
-    for (auto& arg : bb.getArguments())
-      arg_shapes.push_back(xla::TypeToShape(arg->getType()));
+    std::vector<bool> leaf_replication;
+    for (auto& arg : bb.getArguments()) {
+      arg_shapes.push_back(xla::TypeToShape(arg.getType()));
+      if (!entry_args_same_across_replicas.empty()) {
+        for (int i = 0; i < xla::ShapeUtil::GetLeafCount(arg_shapes.back());
+             ++i) {
+          leaf_replication.push_back(
+              entry_args_same_across_replicas[arg.getArgNumber()]);
+        }
+      }
+    }
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
-    auto tuple = xla::Parameter(builder, 0, input_shape, "arg_tuple");
+    auto tuple =
+        xla::Parameter(builder, 0, input_shape, "arg_tuple", leaf_replication);
     for (auto& it : llvm::enumerate(bb.getArguments())) {
       lowering[it.value()] = xla::GetTupleElement(tuple, it.index());
     }
@@ -893,9 +997,16 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     for (auto& it : llvm::enumerate(bb.getArguments())) {
       auto arg = it.value();
       auto num = it.index();
-      xla::Shape shape = xla::TypeToShape(arg->getType());
-      lowering[arg] =
-          xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
+      xla::Shape shape = xla::TypeToShape(arg.getType());
+      if (entry_args_same_across_replicas.empty()) {
+        lowering[arg] =
+            xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
+      } else {
+        lowering[arg] = xla::Parameter(
+            builder, num, shape, absl::StrCat("Arg_", num),
+            std::vector<bool>(entry_args_same_across_replicas[num],
+                              xla::ShapeUtil::GetLeafCount(shape)));
+      }
     }
   }
 
@@ -911,7 +1022,7 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
   std::unique_ptr<xla::XlaBuilder> builder =
       module_builder_.CreateSubBuilder(absl::StrCat("region_", region_id_++));
   return LowerBasicBlockAsFunction(&region->front(), builder.get(),
-                                   /*is_entry_function=*/false, func);
+                                   /*is_entry_function=*/false, {}, func);
 }
 
 std::string PaddingMapBadArrayAttrMsg(llvm::StringRef attr_name, int index) {
@@ -1024,7 +1135,7 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
 
     llvm::SmallDenseSet<int32_t, 4> used_shape_indices;
     auto arg_type =
-        entry_func.getArgument(i)->getType().dyn_cast<RankedTensorType>();
+        entry_func.getArgument(i).getType().dyn_cast<RankedTensorType>();
     for (auto shape_and_padding : llvm::enumerate(llvm::zip(
              shape_indices.getValue(), padding_arg_indices.getValue()))) {
       const int element_index = shape_and_padding.index();
@@ -1059,7 +1170,7 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
             kPaddingArgIndicesAttr, i, element_index, e, padding_arg_index));
 
       Type padding_arg_type =
-          entry_func.getArgument(padding_arg_index)->getType();
+          entry_func.getArgument(padding_arg_index).getType();
       if (auto tensor_type = padding_arg_type.dyn_cast<RankedTensorType>())
         if (tensor_type.getRank() != 0)
           return entry_func.emitError()

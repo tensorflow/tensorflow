@@ -81,7 +81,9 @@ def set_inter_op_parallelism_threads(num_threads):
 def get_optimizer_jit():
   """Get if JIT compilation is enabled.
 
-  Note that optimizations are only applied in graph mode, (within tf.function).
+  Note that optimizations are only applied to code that is compiled into a
+  graph. In eager mode, which is the TF2 API default, that means only code that
+  is defined under a tf.function decorator.
 
   Returns:
     If JIT compilation is enabled.
@@ -92,6 +94,10 @@ def get_optimizer_jit():
 @tf_export('config.optimizer.set_jit')
 def set_optimizer_jit(enabled):
   """Set if JIT compilation is enabled.
+
+  Note that optimizations are only applied to code that is compiled into a
+  graph. In eager mode, which is the TF2 API default, that means only code that
+  is defined under a tf.function decorator.
 
   Args:
     enabled: Whether to enable JIT compilation.

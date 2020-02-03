@@ -250,7 +250,7 @@ def set_seed(seed):
   ```
 
   The reason we get 'A2' instead 'A1' on the second call of `tf.random.uniform`
-  above is because the secand call uses a different operation seed.
+  above is because the second call uses a different operation seed.
 
   Note that `tf.function` acts like a re-run of a program in this case. When
   the global seed is set but operation seeds are not set, the sequence of random

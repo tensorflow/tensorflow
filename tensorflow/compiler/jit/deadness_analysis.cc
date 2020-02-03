@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
@@ -1583,7 +1584,6 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
 absl::flat_hash_map<TensorId, string, TensorId::Hasher>
 DeadnessAnalysisImpl::PredicateMapAsString() const {
   absl::flat_hash_map<TensorId, string, TensorId::Hasher> result;
-  std::vector<TensorId> tensor_ids;
   for (const auto& kv_pair : predicate_map_) {
     CHECK(result.insert({kv_pair.first, kv_pair.second->ToString()}).second);
   }

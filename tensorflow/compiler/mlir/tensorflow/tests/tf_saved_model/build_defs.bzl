@@ -2,8 +2,10 @@
 
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "lit_test")
 
-def tf_saved_model_test(name, data):
+def tf_saved_model_test(name, data, tags = None):
     """Create a SavedModel test."""
+    if tags == None:
+        tags = ["no_rocm"]
     native.py_binary(
         name = name,
         testonly = 1,
@@ -11,6 +13,7 @@ def tf_saved_model_test(name, data):
         srcs = [name + ".py"],
         deps = [
             "//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:common",
+            "//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:common_v1",
         ],
     )
 
@@ -23,4 +26,5 @@ def tf_saved_model_test(name, data):
         name = name + ".py",
         data = [name] + data,
         driver = "@llvm-project//mlir:run_lit.sh",
+        tags = tags,
     )

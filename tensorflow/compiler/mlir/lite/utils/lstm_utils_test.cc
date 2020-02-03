@@ -128,22 +128,20 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 
   auto transpose_op = fused_lstm_func_.getBody().front().begin();
   transpose_op++;
-  EXPECT_EQ(transpose_op->getOperand(0)
-                ->getType()
-                .cast<RankedTensorType>()
-                .getDimSize(0),
-            3);
-  EXPECT_EQ(transpose_op->getOperand(0)
-                ->getType()
-                .cast<RankedTensorType>()
-                .getDimSize(1),
-            12);
   EXPECT_EQ(
-      transpose_op->getResult(0)->getType().cast<RankedTensorType>().getDimSize(
+      transpose_op->getOperand(0).getType().cast<RankedTensorType>().getDimSize(
+          0),
+      3);
+  EXPECT_EQ(
+      transpose_op->getOperand(0).getType().cast<RankedTensorType>().getDimSize(
+          1),
+      12);
+  EXPECT_EQ(
+      transpose_op->getResult(0).getType().cast<RankedTensorType>().getDimSize(
           0),
       12);
   EXPECT_EQ(
-      transpose_op->getResult(0)->getType().cast<RankedTensorType>().getDimSize(
+      transpose_op->getResult(0).getType().cast<RankedTensorType>().getDimSize(
           1),
       3);
 
@@ -156,12 +154,12 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
   EXPECT_EQ(it->getNumOperands(), 24);
   EXPECT_EQ(it->getNumResults(), 1);
   // cifg = false, so input2input is not None.
-  EXPECT_FALSE(it->getOperand(1)->getType().isa<NoneType>());
+  EXPECT_FALSE(it->getOperand(1).getType().isa<NoneType>());
   // input layer norm is None
-  EXPECT_TRUE(it->getOperand(20)->getType().isa<NoneType>());
+  EXPECT_TRUE(it->getOperand(20).getType().isa<NoneType>());
   // proj_bias is F32
   EXPECT_TRUE(it->getOperand(17)
-                  ->getType()
+                  .getType()
                   .cast<RankedTensorType>()
                   .getElementType()
                   .isF32());
@@ -169,7 +167,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
   // output gate bias is 0 since it is out of bounds of the bias tensor, so
   // we set its value as a const tensor of specified size and value 0.
   EXPECT_TRUE(
-      mlir::cast<mlir::ConstantOp>(it->getOpOperand(15).get()->getDefiningOp())
+      mlir::cast<mlir::ConstantOp>(it->getOpOperand(15).get().getDefiningOp())
           .getValue()
           .cast<ElementsAttr>()
           .getValue<FloatAttr>(0)
@@ -209,7 +207,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
   EXPECT_EQ(it->getNumOperands(), 24);
   EXPECT_EQ(it->getNumResults(), 1);
   // cifg = true, so input2input is None.
-  EXPECT_TRUE(it->getOperand(1)->getType().isa<NoneType>());
+  EXPECT_TRUE(it->getOperand(1).getType().isa<NoneType>());
 }
 
 TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
@@ -235,15 +233,15 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
   EXPECT_EQ(it->getNumOperands(), 24);
   EXPECT_EQ(it->getNumResults(), 1);
   // cifg = false, so input2input is not None.
-  EXPECT_FALSE(it->getOperand(1)->getType().isa<NoneType>());
+  EXPECT_FALSE(it->getOperand(1).getType().isa<NoneType>());
 
   // input layer norm
-  EXPECT_FALSE(it->getOperand(20)->getType().isa<NoneType>());
+  EXPECT_FALSE(it->getOperand(20).getType().isa<NoneType>());
   EXPECT_EQ(
-      it->getOperand(20)->getType().cast<RankedTensorType>().getShape().size(),
+      it->getOperand(20).getType().cast<RankedTensorType>().getShape().size(),
       1);
-  EXPECT_EQ(
-      it->getOperand(20)->getType().cast<RankedTensorType>().getDimSize(0), 3);
+  EXPECT_EQ(it->getOperand(20).getType().cast<RankedTensorType>().getDimSize(0),
+            3);
 
   EXPECT_EQ(fused_ln_lstm_func_.getType().getNumResults(), 1);
   auto output_types = fused_ln_lstm_func_.getType().getResults();

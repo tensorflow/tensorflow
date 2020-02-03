@@ -97,6 +97,7 @@ class ParameterServerStrategy(distribute_lib.Strategy):
       experimental_distribute.train_distribute=strategy)
   estimator = tf.estimator.Estimator(config=run_config)
   tf.estimator.train_and_evaluate(estimator,...)
+  ```
   """
 
   def __init__(self, cluster_resolver=None):
@@ -387,7 +388,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   # TODO(yuefengz): Not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     if self._num_replicas_in_sync > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
@@ -399,7 +400,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         raise ValueError("Invalid variable aggregation mode: " + aggregation +
                          " for variable: " + kwargs["name"])
 
-      def var_creator(*args, **kwargs):
+      def var_creator(**kwargs):
         """Create an AggregatingVariable and fix up collections."""
         # Record what collections this variable should be added to.
         collections = kwargs.pop("collections", None)
@@ -408,7 +409,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         kwargs["collections"] = []
 
         # Create and wrap the variable.
-        v = next_creator(*args, **kwargs)
+        v = next_creator(**kwargs)
         wrapped = values.AggregatingVariable(
             self._container_strategy(), v, aggregation)
 
@@ -439,14 +440,14 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       colocate_with = kwargs["colocate_with"]
       if isinstance(colocate_with, numpy_dataset.SingleDevice):
         with ops.device(colocate_with.device):
-          return var_creator(*args, **kwargs)
+          return var_creator(**kwargs)
       with ops.device(None):
         with ops.colocate_with(colocate_with):
-          return var_creator(*args, **kwargs)
+          return var_creator(**kwargs)
 
     with ops.colocate_with(None, ignore_existing=True):
       with ops.device(self._variable_device):
-        return var_creator(*args, **kwargs)
+        return var_creator(**kwargs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
     # pylint: disable=protected-access

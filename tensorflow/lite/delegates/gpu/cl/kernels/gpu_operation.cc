@@ -27,12 +27,12 @@ namespace {
 std::string GetElementWiseCode(
     const OperationDef& op_def, const ElementwiseOperation& op,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -51,11 +51,11 @@ std::string GetElementWiseCode(
   c += "    return; \n";
   c += "  } \n";
   c += "  FLT4 src = " +
-       src_tensor.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
+       src_tensor.ReadWHS("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
   const LinkingContext context{"src", "X", "Y", "Z"};
   c += "  " + op.GetCoreCode(context);
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("src", "X", "Y", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("src", "X", "Y", "Z") + "\n";
   c += "} \n";
   return c;
 }
@@ -85,6 +85,20 @@ bool OperationDef::HasAllTensorsOfType(TensorStorageType storage_type) const {
     }
   }
   return true;
+}
+
+bool OperationDef::IsBatchSupported() const {
+  for (const auto& src : src_tensors) {
+    if (HasAxis(src.layout, Axis::BATCH)) {
+      return true;
+    }
+  }
+  for (const auto& dst : dst_tensors) {
+    if (HasAxis(dst.layout, Axis::BATCH)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 GPUOperation::GPUOperation(const OperationDef& definition)
@@ -146,15 +160,15 @@ Status ElementwiseOperation::BindArguments() {
   RETURN_IF_ERROR(BindArguments(&kernel_));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 
 int3 ElementwiseOperation::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

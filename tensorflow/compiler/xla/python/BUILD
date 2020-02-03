@@ -11,7 +11,7 @@ package(
 py_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [":xla_extension"],
 )
@@ -26,13 +26,15 @@ py_test(
     name = "xla_client_test",
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
-    srcs_version = "PY2AND3",
+    python_version = "PY3",
+    srcs_version = "PY3",
     tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":custom_call_for_test",
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ] + xla_py_test_deps(),
 )
 
@@ -94,6 +96,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -119,6 +122,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -149,6 +153,7 @@ cc_library(
         ":worker_thread",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
         "@com_google_absl//absl/memory",
@@ -203,6 +208,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -246,6 +252,34 @@ py_test(
     ] + xla_py_test_deps(),
 )
 
+cc_library(
+    name = "dlpack",
+    srcs = ["dlpack.cc"],
+    hdrs = ["dlpack.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":local_client",
+        ":shared_device_buffer",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:platform",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor/host:host_platform_id",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@dlpack",
+        "@pybind11",
+    ],
+)
+
 config_setting(
     name = "enable_gpu",
     values = {"define": "xla_python_enable_gpu=true"},
@@ -264,6 +298,7 @@ pybind_extension(
     module_name = "xla_extension",
     deps = [
         ":bfloat16",
+        ":dlpack",
         ":local_client",
         ":shared_device_buffer",
         ":python_ref_manager",
@@ -312,6 +347,7 @@ pybind_extension(
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:platform",
     ] + select({
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
         "//conditions:default": [],

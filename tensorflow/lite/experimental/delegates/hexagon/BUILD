@@ -76,7 +76,9 @@ cc_library(
         ":hexagon_implementation",
         ":utils",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -107,4 +109,7 @@ cc_test(
     ],
 )
 
-exports_files(["version_script.lds"])
+exports_files([
+    "hexagon_delegate.h",
+    "version_script.lds",
+])

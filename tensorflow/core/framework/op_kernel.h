@@ -152,6 +152,9 @@ class OpKernel {
                           kOpIsExpensiveThresholdCycles);
   }
 
+  // Returns a pointer to the tensor stored inside constant ops.
+  virtual const Tensor* const_tensor() const { return nullptr; }
+
   // Updates the dynamic cost estimate, which is used to determine whether this
   // op is expensive. The new cost estimate is a weighted average of the old
   // cost estimate and the latest cost.
@@ -169,7 +172,9 @@ class OpKernel {
   // Accessors.
   const NodeDef& def() const { return *def_; }
   const string& name() const;              // Same as def().name()
+  absl::string_view name_view() const { return name_view_; }
   const string& type_string() const;       // Same as def().op()
+  absl::string_view type_string_view() const { return type_string_view_; }
   const string& requested_device() const;  // Same as def().device()
 
   int num_inputs() const { return input_types_.size(); }
@@ -190,35 +195,15 @@ class OpKernel {
   Status InputRange(StringPiece input_name, int* start, int* stop) const;
   Status OutputRange(StringPiece output_name, int* start, int* stop) const;
 
-  // We allow legacy scalars within Google up until GraphDef version 6.
-  // TODO(irving): Remove when we can drop support for GraphDef version 5.
-  bool allow_legacy_scalars() const {
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-    return graph_def_version_ < 6;
-#else
-    return false;
-#endif
-  }
-
-  // Allow either scalars or (if allowing legacy scalars) shape (1,).
-  bool IsLegacyScalar(const TensorShape& shape) const {
-    return shape.dims() == 0 || (allow_legacy_scalars() && shape.dims() == 1 &&
-                                 shape.dim_size(0) == 1);
-  }
-
-  // Allow rank 1 or (if allowing legacy scalars) rank 0.
-  bool IsLegacyVector(const TensorShape& shape) const {
-    return shape.dims() == 1 || (allow_legacy_scalars() && shape.dims() == 0);
-  }
-
-  // Turn a shape Tensor into a TensorShape
-  // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
-  Status MakeShape(const Tensor& shape, TensorShape* out) const;
-
-  static int DeviceNumaNode(const DeviceBase* device);
-
   // Returns `true` if and only if this kernel uses deferred execution.
   bool is_deferred() const { return is_deferred_; }
+
+  // Returns a trace string for current computation, op name/type and input
+  // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
+  // should use the default implementation.
+  // Override this function to add OpKernel specific attributes that are
+  // necessary for cost analysis.
+  virtual string TraceString(OpKernelContext* ctx, bool verbose);
 
  private:
   const std::unique_ptr<const NodeDef> def_;
@@ -228,6 +213,8 @@ class OpKernel {
   const MemoryTypeVector output_memory_types_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+  const absl::string_view name_view_;
+  const absl::string_view type_string_view_;
   const int graph_def_version_;
   const bool is_deferred_;
   bool expensive_;
@@ -296,6 +283,7 @@ class OpKernelConstruction {
   OpKernelConstruction(DeviceType device_type, DeviceBase* device,
                        Allocator* allocator, const NodeDef* node_def,
                        const OpDef* op_def, FunctionLibraryRuntime* flib,
+                       ResourceMgr* resource_mgr,
                        const DataTypeSlice& input_types,
                        const MemoryTypeSlice& input_memory_types,
                        const DataTypeSlice& output_types,
@@ -323,6 +311,8 @@ class OpKernelConstruction {
   // complete. See comment above.
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp);
+  Status allocate_temp(DataType type, const TensorShape& shape,
+                       Tensor* out_temp, AllocatorAttributes allocator_attr);
 
   // Allocates a Tensor of the specified type and shape which the Op
   // plans to maintain as persistent state. out_persistent holds the
@@ -382,6 +372,9 @@ class OpKernelConstruction {
   // CHECK_NOTNULL(function_library())->Instantiate("Foo", ...).
   FunctionLibraryRuntime* function_library() const { return flib_; }
 
+  // Shared resources accessible to this kernel.
+  ResourceMgr* resource_manager() const { return resource_mgr_; }
+
   // The GraphDef version whose behavior we should follow.
   int graph_def_version() const { return graph_def_version_; }
 
@@ -410,6 +403,7 @@ class OpKernelConstruction {
   const NodeDef* def_;
   const OpDef* op_def_;
   FunctionLibraryRuntime* flib_;
+  ResourceMgr* const resource_mgr_;
   DataTypeSlice input_types_;
   MemoryTypeSlice input_memory_types_;
   DataTypeSlice output_types_;
@@ -1413,6 +1407,10 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
                       const NodeDef& def, int graph_def_version,
                       OpKernel** kernel);
+Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
+                      Allocator* allocator, FunctionLibraryRuntime* flib,
+                      ResourceMgr* resource_mgr, const NodeDef& def,
+                      int graph_def_version, OpKernel** kernel);
 
 // Returns into 'device_types' the subset of prioritized_types that this
 // binary has registered for the given NodeDef.

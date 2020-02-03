@@ -931,8 +931,31 @@ cc_library(
     ],
 )
 
+# This flag enables experimental MLIR GPU support.
+config_setting(
+    name = "with_mlir_gpu_support",
+    values = {"define": "with_mlir_gpu_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+# Lets us choose the right GPU plugin depending on whether the experimental MLIR
+# GPU plugin should be used or not.
 cc_library(
     name = "gpu_plugin",
+    deps = select(
+        {
+            ":with_mlir_gpu_support": [
+                ":gpu_plugin_mlir",
+            ],
+            "//conditions:default": [
+                ":gpu_plugin_no_mlir",
+            ],
+        },
+    ),
+)
+
+cc_library(
+    name = "gpu_plugin_no_mlir",
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -948,7 +971,7 @@ cc_library(
 )
 
 cc_library(
-    name = "mlir_gpu_plugin",
+    name = "gpu_plugin_mlir",
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
@@ -1357,6 +1380,8 @@ cc_library(
 tf_cc_test(
     name = "hlo_module_group_test",
     srcs = ["hlo_module_group_test.cc"],
+    # TODO(b/148211710) Test fails in OSS.
+    tags = ["no_oss"],
     deps = [
         ":hlo",
         ":hlo_matchers",
@@ -1742,6 +1767,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "convolution_4d_expander",
+    srcs = ["convolution_4d_expander.cc"],
+    hdrs = ["convolution_4d_expander.h"],
+    deps = [
+        ":hlo",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "convolution_4d_expander_test",
+    srcs = ["convolution_4d_expander_test.cc"],
+    deps = [
+        "convolution_4d_expander",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "batchnorm_expander_test",
     size = "small",
@@ -1994,6 +2049,7 @@ cc_library(
     hdrs = ["convolution_group_converter.h"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -2332,6 +2388,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4181,6 +4238,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -4415,6 +4473,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",

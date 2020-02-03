@@ -761,17 +761,12 @@ input feature dimension, and the filter would be reshaped from
 `[filter_height, filter_width, 1, in_channels * channel_multiplier]`. For more
 details, see `tf.nn.depthwise_conv2d`.
 
-The `batch_group_count` (default value 1) argument can be used for depthwise
+The `batch_group_count` (default value 1) argument can be used for grouped
 filters during backpropagation. `batch_group_count` needs to be a divisor of the
 size of the `lhs` (input) batch dimension. If `batch_group_count` is greater
-than 1, it means that the output batch dimension should be of size
-`batch_group_size` where `batch_group_size = input batch / batch_group_count`.
-For convolutions with `batch_group_count` greater than 1, the input batch size
-must evenly divide into batch_group_size and output feature size, which implies
-that the output feature size must be equal to batch_group_count. Conceptually,
-this can be achieved by performing the usual convolution, and then scraping
-`batch_group_size` number of elements on the diagonal of the matrix formed by
-output batch and output feature.
+than 1, it means that the output batch dimension should be of size `input batch
+/ batch_group_count`. The `batch_group_count` must be a divisor of the output
+feature size.
 
 The output shape has these dimensions, in this order:
 
@@ -971,7 +966,7 @@ DotGeneral performs the sum of products over contracting dimensions specified
 in 'dimension_numbers'.
 
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
-to be the same and but must have the same dimension sizes.
+to be the same but must have the same dimension sizes.
 
 Example with contracting dimension numbers:
 

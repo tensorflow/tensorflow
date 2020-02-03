@@ -97,7 +97,7 @@ mlir::LogicalResult EvaluateOperation(
   // Builds TF operation and sets all the attributes.
   std::string node_name = "unnamed";
   if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    node_name = attr.getValue();
+    node_name = std::string(attr.getValue());
   }
   auto node_def_or = ConvertTFDialectOpToNodeDef(
       inst, node_name.c_str(), /*ignore_unregistered_attrs=*/true);
@@ -122,7 +122,7 @@ mlir::LogicalResult EvaluateOperation(
   for (const auto operand : operands) {
     Tensor tensor;
     RETURN_FAILURE_IF_ERROR(ConvertToTensor(operand, &tensor));
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, status);
+    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, &status->status);
     RETURN_FAILURE_IF_ERROR(status);
     auto clean_tensor =
         MakeCleanup([tf_tensor] { TF_DeleteTensor(tf_tensor); });

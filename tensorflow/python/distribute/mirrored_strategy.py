@@ -569,18 +569,18 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
       return initial_value_fn
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       devices = self._devices
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
     else:
       devices = colocate_with.devices
 
-    def _real_mirrored_creator(*args, **kwargs):  # pylint: disable=g-missing-docstring
+    def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       value_list = []
       for i, d in enumerate(devices):
         with ops.device(d):
@@ -600,14 +600,15 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
             with tape.stop_recording():
-              v = next_creator(*args, **kwargs)
+              v = next_creator(**kwargs)
           assert not isinstance(v, values.DistributedVariable)
           value_list.append(v)
       return value_list
 
-    return values.create_mirrored_variable(
-        self._container_strategy(), _real_mirrored_creator,
-        values.MirroredVariable, values.SyncOnReadVariable, *args, **kwargs)
+    return values.create_mirrored_variable(self._container_strategy(),
+                                           _real_mirrored_creator,
+                                           values.MirroredVariable,
+                                           values.SyncOnReadVariable, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_distributed_variable(colocate_with_variable, self)
@@ -754,7 +755,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # When a tf.function is wrapped to trigger _call_for_each_replica (see
       # the other branch above), AutoGraph stops conversion at
       # _call_for_each_replica itself (TF library functions are whitelisted).
-      # This makes suresure that the Python function that originally passed to
+      # This makes sure that the Python function that originally passed to
       # the tf.function is still converted.
       fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
 

@@ -1,5 +1,9 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_ios_per_kernel_test", "tflite_portable_test_suite")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -71,7 +75,7 @@ ios_unit_test(
     name = "common_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
     ],
@@ -107,7 +111,7 @@ ios_unit_test(
     name = "compiled_model_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
     ],
@@ -175,7 +179,7 @@ ios_unit_test(
     name = "environment_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
     ],
@@ -215,7 +219,7 @@ ios_unit_test(
     name = "inference_context_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
     ],
@@ -245,7 +249,7 @@ ios_application(
     infoplists = ["Info.plist"],
     minimum_os_version = "10.0",
     provisioning_profile = "//tensorflow/lite/delegates/gpu/metal:provisioning_profile.mobileprovision",
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "local",
         "notap",
     ],
@@ -269,10 +273,10 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal/kernels:prelu_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:relu_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:reshape_test.mm",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:resize_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:slice_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:softmax_test.mm",
         "//tensorflow/lite/delegates/gpu/metal/kernels:transpose_conv_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:upsample_test.mm",
     ],
     hdrs = [
     ],
@@ -313,7 +317,7 @@ objc_library(
 ios_unit_test(
     name = "ComponentsTests",
     minimum_os_version = "10.0",
-    tags = ["notap"],
+    tags = tf_gpu_tests_tags() + ["notap"],
     test_host = ":TestApplication",
     deps = [
         ":common_tests_lib",
