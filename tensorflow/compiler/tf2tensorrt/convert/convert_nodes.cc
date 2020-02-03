@@ -2402,8 +2402,27 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
   const bool is_dynamic =
       std::count(input_dims.begin(), input_dims.end(), -1) > 0;
   if (is_dynamic) {
-       return errors::Unimplemented(
-        "Squeeze is not implemented for dynamic input shapes");
+    nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
+    std::vector<nvinfer1::ITensor const*> concat_inputs;
+    for (int i = 0; i < input_dims.size(); i++) {
+      // If input dim wasn't set to 0 earlier, we include it in new shape.
+      if (input_dims[i] != 0) {
+        concat_inputs.push_back(
+            network()
+                ->addSlice(*shape, {1, {i}}, {1, {1}}, {1, {1}})
+                ->getOutput(0));
+      }
+    }
+    nvinfer1::IConcatenationLayer* concat_layer = network()->addConcatenation(
+        const_cast<nvinfer1::ITensor* const*>(concat_inputs.data()),
+        concat_inputs.size());
+    concat_layer->setAxis(0);
+    nvinfer1::ITensor* new_shape = concat_layer->getOutput(0);
+    // Reshape input using new shape
+    nvinfer1::IShuffleLayer* shuffle = network()->addShuffle(*input);
+    shuffle->setInput(1, *new_shape);
+    *output = shuffle->getOutput(0);
+    return Status::OK();
   }
 #endif
   // Remove all dims which are equal to 0.
