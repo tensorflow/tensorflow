@@ -28,7 +28,7 @@ namespace neg {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-struct OpDataInt8 {
+struct OpData {
   // sum of input and output zero points, accumulated on int16
   // highest possible value: 127 + 127 = 254
   // lowest possible value: -128 + - 128 = -256
@@ -38,7 +38,7 @@ struct OpDataInt8 {
 
 TfLiteStatus CalculateOpDataInt8(TfLiteContext* context,
                                  const TfLiteTensor* input,
-                                 const TfLiteTensor* output, OpDataInt8* data) {
+                                 const TfLiteTensor* output, OpData* data) {
   constexpr auto kI8Min =
       static_cast<int16_t>(std::numeric_limits<int8_t>::min());
   constexpr auto kI8Max =
@@ -81,7 +81,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   switch (input->type) {
     case kTfLiteInt8: {
-      OpDataInt8 op_data;
+      OpData op_data;
       TF_LITE_ENSURE_STATUS(
           CalculateOpDataInt8(context, input, output, &op_data));
       reference_integer_ops::Negate(

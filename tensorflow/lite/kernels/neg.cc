@@ -29,7 +29,7 @@ namespace neg {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-struct OpDataInt8 {
+struct OpData {
   // sum of input and output zero points, accumulated on int16
   // highest possible value: 127 + 127 = 254
   // lowest possible value: -128 + - 128 = -256
@@ -40,12 +40,12 @@ struct OpDataInt8 {
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // allocate a new object to carry information from Prepare() to
   // Eval().
-  auto* op_data = new OpDataInt8;
+  auto* op_data = new OpData;
   return static_cast<void*>(op_data);
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  delete static_cast<OpDataInt8*>(buffer);
+  delete static_cast<OpData*>(buffer);
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -62,7 +62,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   output->type = input->type;
 
   if (input->type == kTfLiteInt8) {
-    auto op_data = static_cast<OpDataInt8*>(node->user_data);
+    auto op_data = static_cast<OpData*>(node->user_data);
 
     // using EQ attempts to cast to int via the %d format specifier and gives
     // incorrect value and since some hardware platforms do not support float
@@ -105,7 +105,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorData<float>(output));
       break;
     case kTfLiteInt8: {
-      auto op_data = static_cast<OpDataInt8*>(node->user_data);
+      auto op_data = static_cast<OpData*>(node->user_data);
       reference_integer_ops::Negate(
           GetTensorShape(input), GetTensorData<int8_t>(input),
           GetTensorShape(output), GetTensorData<int8_t>(output),
