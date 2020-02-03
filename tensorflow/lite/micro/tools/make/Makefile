@@ -241,6 +241,7 @@ AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
 include $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
+include $(wildcard tensorflow/lite/micro/examples/experimental/*/Makefile.inc)
 
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=

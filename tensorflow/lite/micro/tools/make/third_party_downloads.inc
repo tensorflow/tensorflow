@@ -54,8 +54,8 @@ PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"
 CIFAR10_DATASET_URL="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
 CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"
 
-IMAGE_RECOGNITION_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/models/tflite/cifar_image_recognition_model_2019_12_11.zip"
-IMAGE_RECOGNITION_MODEL_MD5 := "40fedbd2219bdd324f6cbd40e9dbf314"
+IMAGE_RECOGNITION_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/models/tflite/cifar_image_recognition_model_2020_02_07.zip"
+IMAGE_RECOGNITION_MODEL_MD5 := "9b7b47a72ed590a76112469e6a59e244"
 
 PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_01_13.zip"
 PERSON_MODEL_INT8_MD5 := "8a7d2c70325f53136faea6dde517b8cc"

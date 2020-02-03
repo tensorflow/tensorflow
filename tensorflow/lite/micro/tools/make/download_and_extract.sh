@@ -81,7 +81,7 @@ patch_kissfft() {
 # Create a header file containing an array with the first 10 images from the
 # CIFAR10 test dataset.
 patch_cifar10_dataset() {
-  xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition/first_10_cifar_images.h
+  xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/experimental/image_recognition/first_10_cifar_images.h
 }
 
 build_embarc_mli() {

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/examples/image_recognition/image_recognition_model.h"
-#include "tensorflow/lite/micro/examples/image_recognition/util.h"
+#include "tensorflow/lite/micro/examples/experimental/image_recognition/image_recognition_model.h"
+#include "tensorflow/lite/micro/examples/experimental/image_recognition/util.h"
 #include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-#include "tensorflow/lite/micro/examples/image_recognition/first_10_cifar_images.h"
+#include "tensorflow/lite/micro/examples/experimental/image_recognition/first_10_cifar_images.h"
 
 #define IMAGE_BYTES 3072
 #define LABEL_BYTES 1
