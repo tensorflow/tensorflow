@@ -87,15 +87,16 @@ void TestNegQuantizedInt8(float* input, int8_t* quantized_input_data,
 
   // quantize input
   std::transform(input, input + element_count, quantized_input_data,
-                 std::bind(tflite::testing::F2QS, std::placeholders::_1,
-                           input_min, input_max));
+                 [=](float value) -> float {
+                   return tflite::testing::F2QS(value, input_min, input_max);
+                 });
 
   // quantize expected_output since there'll be loss of precision and
   // comparision in floating point will be inaccurate
   std::transform(expected_output, expected_output + element_count,
-                 quantized_expected_output_data,
-                 std::bind(tflite::testing::F2QS, std::placeholders::_1,
-                           output_min, output_max));
+                 quantized_expected_output_data, [=](float value) -> float {
+                   return tflite::testing::F2QS(value, output_min, output_max);
+                 });
 
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(quantized_input_data, tensor_dims,
