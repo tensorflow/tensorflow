@@ -36,6 +36,20 @@ namespace optimized_ops {
 namespace depthwise_conv {
 
 #ifdef USE_NEON
+
+inline int8x16_t util_vld1q_x8(const uint8* data_addr) {
+  return vreinterpretq_s8_u8(vld1q_u8(data_addr));
+}
+inline int8x16_t util_vld1q_x8(const int8* data_addr) {
+  return vld1q_s8(data_addr);
+}
+inline int8x8_t util_vld1_x8(const uint8* data_addr) {
+  return vreinterpret_s8_u8(vld1_u8(data_addr));
+}
+inline int8x8_t util_vld1_x8(const int8* data_addr) {
+  return vld1_s8(data_addr);
+}
+
 // Lane operations are for clarity and convenience. We want to load and store
 // 4 8-bit lanes together. So these are treated much like 32-bit loads and
 // 32-bit stores. Stores require 32-bit alignment.
@@ -57,6 +71,7 @@ namespace depthwise_conv {
 #define vld1q_lane_8x4(src, reg, lane_num) \
   vld1q_lane_s32(reinterpret_cast<const int32*>(src), reg, lane_num)
 #define vld1q_dup_s8x4(src) vld1q_dup_s32(reinterpret_cast<const int32*>(src))
+
 #endif  // USE_NEON
 
 template <QuantizationType quantization_type>
@@ -70,7 +85,8 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
   // filling the workspace, and optimized versions will be similar.
   static inline void FillFilterBank(int depth, const uint8* filter_block,
                                     int8 filter_bank[3][2][4][4]) {
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
     // Load filter data in, 8-bytes down depth / sub-block at a time.
     //
     // loaded_filter has dimensions height 3, width 4, sub-block 0 or 1,
@@ -116,7 +132,8 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
                                 const int8 filter_bank[3][2][4][4],
                                 const int32* bias_data,
                                 int32 adjusted_bias_block[2][4]) {
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
     TFLITE_DCHECK_GE(input_offset, -255);
     TFLITE_DCHECK_LE(input_offset, 0);
     // For instance, if input_offset == 128, no adjustment is needed.
@@ -187,7 +204,8 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
     uint8 loaded_filter_1[4][2][4];
     uint8 loaded_filter_2[4][2][4];
 
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
     const int32 input_offset = function_params->input_offset;
     TFLITE_DCHECK_GE(input_offset, -255);
     TFLITE_DCHECK_LE(input_offset, 0);
@@ -279,18 +297,24 @@ template <QuantizationType quantization_type>
 struct ProcessPerDepth<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                        quantization_type> {
   static void ProcessPerDepthIntrinsics(
-      const uint8* filter_data, const int32* bias_data,
-      int8* shuffled_filter_data, int32* adjusted_bias_data,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          filter_data,
+      const int32* bias_data, int8* shuffled_filter_data,
+      int32* adjusted_bias_data,
       const DepthwiseConvDotProdParams* function_params) {
     const int depth = function_params->output_depth;
     const int depth_micro_repeats = function_params->depth_micro_repeats;
     const int bias_increment = function_params->bias_increment;
 
-    constexpr int kSymmetricZeroPoint = 128;
-    constexpr uint8 kSignBit = 0x80;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
+    constexpr uint8 kSignBit =
+        QuantizationTypeImpl<quantization_type>::kUint8SignBit;
     const int32 input_offset = function_params->input_offset;
-    TFLITE_DCHECK_GE(input_offset, -255);
-    TFLITE_DCHECK_LE(input_offset, 0);
+    if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+      TFLITE_DCHECK_GE(input_offset, -255);
+      TFLITE_DCHECK_LE(input_offset, 0);
+    }
     const int32 input_offset_difference = input_offset + kSymmetricZeroPoint;
     const int8x16_t ones_vector = vdupq_n_s8(1);
 
@@ -312,17 +336,18 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     int8x16_t filter_2_a;
     int8x16_t filter_2_b;
 
-    // Register pairs for each height.
-    // Effect subtraction of zero-point = 128 by XOR of sign bit.
+    // For uint8, effect subtraction of zero-point = 128 by XOR of sign bit.
     const uint8x16_t sign_bit = vdupq_n_u8(kSignBit);
 
-    const uint8* filter_block = filter_data;
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        filter_block = filter_data;
     for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
       // Filter data is provided as filter_block[3][3][depth/8][2][4].
       // height 3, width 3, micro-blocks, sub-block 0 or 1, depth 4.
       // filter_bank[3][2][4][4]; Sub-block, height 3, depth 4, width 4.
 
-      const uint8* filter_block_ptr = filter_block;
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          filter_block_ptr = filter_block;
       input_0_a = vld1q_lane_s8x8(filter_block_ptr, input_0_a, 0);
       filter_block_ptr += depth;
       input_0_b = vld1q_lane_s8x8(filter_block_ptr, input_0_b, 0);
@@ -347,12 +372,14 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
       filter_1_b = vzip1q_s8(input_1_c, sign_bit);
       filter_2_a = vzip1q_s8(input_2_a, input_2_b);
       filter_2_b = vzip1q_s8(input_2_c, sign_bit);
-      filter_0_a = veorq_s8(filter_0_a, sign_bit);
-      filter_0_b = veorq_s8(filter_0_b, sign_bit);
-      filter_1_a = veorq_s8(filter_1_a, sign_bit);
-      filter_1_b = veorq_s8(filter_1_b, sign_bit);
-      filter_2_a = veorq_s8(filter_2_a, sign_bit);
-      filter_2_b = veorq_s8(filter_2_b, sign_bit);
+      if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+        filter_0_a = veorq_s8(filter_0_a, sign_bit);
+        filter_0_b = veorq_s8(filter_0_b, sign_bit);
+        filter_1_a = veorq_s8(filter_1_a, sign_bit);
+        filter_1_b = veorq_s8(filter_1_b, sign_bit);
+        filter_2_a = veorq_s8(filter_2_a, sign_bit);
+        filter_2_b = veorq_s8(filter_2_b, sign_bit);
+      }
       vzipq_s8x2_in_place(&filter_0_a, &filter_0_b);
       vzipq_s8x2_in_place(&filter_1_a, &filter_1_b);
       vzipq_s8x2_in_place(&filter_2_a, &filter_2_b);
@@ -374,7 +401,8 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
       bias_data += bias_increment;
       int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
       bias_data += bias_increment;
-      // For instance, if input_offset == 128, no adjustment is needed.
+      // For instance, if input_offset is kIntSymmetricZeroPoint, no adjustment
+      // is needed.
 
       int32x4_t filter_sum_a = vdupq_n_s32(0);
       filter_sum_a = vdotq_s32(filter_sum_a, filter_0_a, ones_vector);
@@ -420,7 +448,9 @@ struct PackMacroBlock<
   static inline void CopyMacroBlock(
       int32 height_block_number, int32 width_block_number,
       const DepthwiseConvDotProdParams& function_params,
-      const uint8* input_block_data, int8* scratch_block_data) {
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data) {
     TFLITE_DCHECK_LE(max_padding, 1);
 
     // Strides.
@@ -466,7 +496,8 @@ struct PackMacroBlock<
       input_width_micro_repeats = width_overall_micro_repeats - 1;
     }
 
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
     const int32 input_offset_difference =
         function_params.input_offset + kSymmetricZeroPoint;
 
@@ -513,9 +544,9 @@ struct PackMacroBlock<
           int8* scratch_data =
               scratch_block_data + k_height * workspace_height_stride +
               j_width * 4 * 8 + i_depth * 4 * 8 * width_overall_micro_repeats;
-          const uint8* input_data = input_block_data +
-                                    k_height * input_height_stride +
-                                    j_width * 4 * input_depth + i_depth * 8;
+          const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              input_data = input_block_data + k_height * input_height_stride +
+                           j_width * 4 * input_depth + i_depth * 8;
           // Full-size macro blocks are 2*4*4 = 32 bytes.
           for (int x = start_width; x < adjusted_residual_width; ++x) {
             for (int s = 0; s < 2; ++s) {
@@ -655,7 +686,8 @@ struct PackMacroBlock<
         padding_bottom > 0 &&
         height_block_number == (function_params->height_macro_count - 1);
 
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
     const int32 input_offset_difference =
         function_params->input_offset + kSymmetricZeroPoint;
 
@@ -696,8 +728,8 @@ struct PackMacroBlock<
     // When there is unit input depth, the micro-block iteration need only be
     // through the height. The micro blocks are contiguous across the width.
     for (int k_height = 0; k_height < copy_block_height; ++k_height) {
-      const uint8* input_data =
-          input_block_data + k_height * input_height_stride;
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_data = input_block_data + k_height * input_height_stride;
       int8* scratch_data =
           scratch_block_data + k_height * workspace_height_stride;
 
@@ -750,7 +782,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
     const int input_depth = function_params->input_depth;
 
     TFLITE_DCHECK_GE(depth_micro_repeats, 0);
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
     const int micro_block_size = 4 * 8;
     const int depth_advance = width_overall_micro_repeats * micro_block_size;
     const int width_advance =
@@ -770,7 +803,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
     // Work through one slice, by row, at a time.
     int8* scratch_data = scratch_block_data;
     for (int k_height = 0; k_height < block_height; ++k_height) {
-      const uint8* input_data = input_block_data;
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_data = input_block_data;
       input_block_data += input_height_stride;
 
       // Traverse the width one point at a time, but the depth in (micro) blocks
@@ -926,7 +960,8 @@ struct PackMacroBlock<
     const int padding_top = function_params->padding_top;
     const int padding_bottom = function_params->padding_bottom;
 
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
 
     TFLITE_DCHECK_GE(workspace_height_stride, 4 * width_overall_micro_repeats);
 
@@ -1221,7 +1256,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
                       /*max_padding=*/0> {
   static inline void PackMacroBlockIntrinsics(
-      const uint8* input_block_data, int8* scratch_block_data,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
       const DepthwiseConvDotProdParams* function_params) {
     TFLITE_DCHECK_EQ(function_params->padding_bottom, 0);
     TFLITE_DCHECK_EQ(function_params->padding_top, 0);
@@ -1240,7 +1277,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     const int input_depth = function_params->input_depth;
 
     TFLITE_DCHECK_GE(depth_micro_repeats, 0);
-    constexpr uint8 kSignBit = 0x80;
+    constexpr uint8 kSignBit =
+        QuantizationTypeImpl<quantization_type>::kUint8SignBit;
     const int micro_block_size = 4 * 8;
     const int depth_advance = width_overall_micro_repeats * micro_block_size;
     const int width_advance =
@@ -1262,7 +1300,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     int8* scratch_data_0 = scratch_block_data;
 
     for (int k_height = 0; k_height < block_height; ++k_height) {
-      const uint8* input_data_0 = input_block_data;
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_data_0 = input_block_data;
       int8x16_t input_data_a;
       int8x16_t input_data_b;
       int8x16_t input_data_c;
@@ -1283,65 +1322,65 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         if (depth_micro_repeats >= 2) {
           i_depth += 2;
 
-          //
-
-          input_data_a = vld1q_u8(input_data_0);
-          input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
-          input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
-          input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+          input_data_a = util_vld1q_x8(input_data_0);
+          input_data_b = util_vld1q_x8(input_data_0 + 1 * input_depth);
+          input_data_c = util_vld1q_x8(input_data_0 + 2 * input_depth);
+          input_data_d = util_vld1q_x8(input_data_0 + 3 * input_depth);
           input_data_0 += 16;
-
-          //
 
           for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
             work_reg_a = vzip1q_s8(input_data_a, input_data_b);
             work_reg_b = vzip1q_s8(input_data_c, input_data_d);
             vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-            work_reg_a = veorq_s8(work_reg_a, sign_bit);
-            work_reg_b = veorq_s8(work_reg_b, sign_bit);
+            if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+              work_reg_a = veorq_s8(work_reg_a, sign_bit);
+              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+            }
 
             work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
             work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
             vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
 
-            input_data_a = vld1q_u8(input_data_0);
-            input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+            input_data_a = util_vld1q_x8(input_data_0);
+            input_data_b = util_vld1q_x8(input_data_0 + 1 * input_depth);
             vst1q_s8(scratch_data_0, work_reg_a);
             vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
             scratch_data_0 += depth_advance;
 
-            work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
-            work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+            if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+              work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+              work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+            }
 
-            input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
-            input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+            input_data_c = util_vld1q_x8(input_data_0 + 2 * input_depth);
+            input_data_d = util_vld1q_x8(input_data_0 + 3 * input_depth);
             vst1q_s8(scratch_data_0, work_reg_a_sp);
             vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
             scratch_data_0 += depth_advance;
-
-            //
-
             input_data_0 += 16;
           }
 
           work_reg_a = vzip1q_s8(input_data_a, input_data_b);
           work_reg_b = vzip1q_s8(input_data_c, input_data_d);
           vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-          work_reg_a = veorq_s8(work_reg_a, sign_bit);
-          work_reg_b = veorq_s8(work_reg_b, sign_bit);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            work_reg_a = veorq_s8(work_reg_a, sign_bit);
+            work_reg_b = veorq_s8(work_reg_b, sign_bit);
+          }
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
           scratch_data_0 += depth_advance;
-          //
 
           work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
           work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
           vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
-          work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
-          work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+            work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+          }
 
           vst1q_s8(scratch_data_0, work_reg_a_sp);
           vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
@@ -1362,8 +1401,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           input_data_0 += 8;
 
           vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-          work_reg_a = veorq_s8(work_reg_a, sign_bit);
-          work_reg_b = veorq_s8(work_reg_b, sign_bit);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            work_reg_a = veorq_s8(work_reg_a, sign_bit);
+            work_reg_b = veorq_s8(work_reg_b, sign_bit);
+          }
 
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
@@ -1393,8 +1434,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           work_reg_a = vzip1q_s8(input_data_a, input_data_b);
           work_reg_b = vzip1q_s8(input_data_c, input_data_d);
 
-          work_reg_a = veorq_s8(work_reg_a, sign_bit);
-          work_reg_b = veorq_s8(work_reg_b, sign_bit);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            work_reg_a = veorq_s8(work_reg_a, sign_bit);
+            work_reg_b = veorq_s8(work_reg_b, sign_bit);
+          }
           vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
           vst1q_s8(scratch_data_0, work_reg_a);
@@ -1436,9 +1479,12 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                       /*max_padding=*/1> {
   static inline void PackMacroBlockIntrinsics(
       int32 height_block_number, int32 width_block_number,
-      const uint8* input_block_data, int8* scratch_block_data,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
       const DepthwiseConvDotProdParams* function_params) {
-    constexpr uint8 kSignBit = 0x80;
+    constexpr uint8 kSignBit =
+        QuantizationTypeImpl<quantization_type>::kUint8SignBit;
 
     const int workspace_height_stride =
         function_params->workspace_height_stride;
@@ -1458,7 +1504,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     const int padding_bottom = function_params->padding_bottom;
 
     TFLITE_DCHECK_GT(depth_micro_repeats, 0);
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
 
     const int micro_block_size = 4 * 8;
     const int depth_advance = width_overall_micro_repeats * micro_block_size;
@@ -1506,7 +1553,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     }
 
     for (int k_height = 0; k_height < copy_block_height; ++k_height) {
-      const uint8* input_data_0 = input_block_data;
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_data_0 = input_block_data;
       int8x16_t input_data_a;
       int8x16_t input_data_b;
       int8x16_t input_data_c;
@@ -1541,65 +1589,67 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
             if (depth_micro_repeats >= 2) {
               i_depth += 2;
 
-              //
-
-              input_data_a = vld1q_u8(input_data_0);
-              input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
-              input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
-              input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+              input_data_a = util_vld1q_x8(input_data_0);
+              input_data_b = util_vld1q_x8(input_data_0 + 1 * input_depth);
+              input_data_c = util_vld1q_x8(input_data_0 + 2 * input_depth);
+              input_data_d = util_vld1q_x8(input_data_0 + 3 * input_depth);
               input_data_0 += 16;
-
-              //
 
               for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
                 work_reg_a = vzip1q_s8(input_data_a, input_data_b);
                 work_reg_b = vzip1q_s8(input_data_c, input_data_d);
                 vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-                work_reg_a = veorq_s8(work_reg_a, sign_bit);
-                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+                if (quantization_type ==
+                    QuantizationType::kNonPerChannelUint8) {
+                  work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                  work_reg_b = veorq_s8(work_reg_b, sign_bit);
+                }
 
                 work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
                 work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
                 vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
 
-                input_data_a = vld1q_u8(input_data_0);
-                input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+                input_data_a = util_vld1q_x8(input_data_0);
+                input_data_b = util_vld1q_x8(input_data_0 + 1 * input_depth);
                 vst1q_s8(scratch_data_0, work_reg_a);
                 vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
                 scratch_data_0 += depth_advance;
 
-                work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
-                work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+                if (quantization_type ==
+                    QuantizationType::kNonPerChannelUint8) {
+                  work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+                  work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+                }
 
-                input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
-                input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+                input_data_c = util_vld1q_x8(input_data_0 + 2 * input_depth);
+                input_data_d = util_vld1q_x8(input_data_0 + 3 * input_depth);
                 vst1q_s8(scratch_data_0, work_reg_a_sp);
                 vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
                 scratch_data_0 += depth_advance;
-
-                //
-
                 input_data_0 += 16;
               }
 
               work_reg_a = vzip1q_s8(input_data_a, input_data_b);
               work_reg_b = vzip1q_s8(input_data_c, input_data_d);
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-              work_reg_a = veorq_s8(work_reg_a, sign_bit);
-              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              }
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
               scratch_data_0 += depth_advance;
-              //
 
               work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
               work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
               vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
-              work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
-              work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+              if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+                work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+                work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+              }
 
               vst1q_s8(scratch_data_0, work_reg_a_sp);
               vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
@@ -1620,8 +1670,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
               input_data_0 += 8;
 
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-              work_reg_a = veorq_s8(work_reg_a, sign_bit);
-              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              }
 
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
@@ -1651,8 +1703,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
               work_reg_a = vzip1q_s8(input_data_a, input_data_b);
               work_reg_b = vzip1q_s8(input_data_c, input_data_d);
 
-              work_reg_a = veorq_s8(work_reg_a, sign_bit);
-              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              }
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
               vst1q_s8(scratch_data_0, work_reg_a);
@@ -1674,65 +1728,67 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
             if (depth_micro_repeats >= 2) {
               i_depth += 2;
 
-              //
-
               input_data_a = vdupq_n_u8(-input_offset);
-              input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
-              input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
-              input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+              input_data_b = util_vld1q_x8(input_data_0 + 1 * input_depth);
+              input_data_c = util_vld1q_x8(input_data_0 + 2 * input_depth);
+              input_data_d = util_vld1q_x8(input_data_0 + 3 * input_depth);
               input_data_0 += 16;
-
-              //
 
               for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
                 work_reg_a = vzip1q_s8(input_data_a, input_data_b);
                 work_reg_b = vzip1q_s8(input_data_c, input_data_d);
                 vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-                work_reg_a = veorq_s8(work_reg_a, sign_bit);
-                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+                if (quantization_type ==
+                    QuantizationType::kNonPerChannelUint8) {
+                  work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                  work_reg_b = veorq_s8(work_reg_b, sign_bit);
+                }
 
                 work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
                 work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
                 vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
 
                 input_data_a = vdupq_n_u8(-input_offset);
-                input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+                input_data_b = util_vld1q_x8(input_data_0 + 1 * input_depth);
                 vst1q_s8(scratch_data_0, work_reg_a);
                 vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
                 scratch_data_0 += depth_advance;
 
-                work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
-                work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+                if (quantization_type ==
+                    QuantizationType::kNonPerChannelUint8) {
+                  work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+                  work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+                }
 
-                input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
-                input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+                input_data_c = util_vld1q_x8(input_data_0 + 2 * input_depth);
+                input_data_d = util_vld1q_x8(input_data_0 + 3 * input_depth);
                 vst1q_s8(scratch_data_0, work_reg_a_sp);
                 vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
                 scratch_data_0 += depth_advance;
-
-                //
-
                 input_data_0 += 16;
               }
 
               work_reg_a = vzip1q_s8(input_data_a, input_data_b);
               work_reg_b = vzip1q_s8(input_data_c, input_data_d);
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-              work_reg_a = veorq_s8(work_reg_a, sign_bit);
-              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              }
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
               scratch_data_0 += depth_advance;
-              //
 
               work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
               work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
               vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
-              work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
-              work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+              if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+                work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+                work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+              }
 
               vst1q_s8(scratch_data_0, work_reg_a_sp);
               vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
@@ -1753,8 +1809,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
               input_data_0 += 8;
 
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-              work_reg_a = veorq_s8(work_reg_a, sign_bit);
-              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              }
 
               vst1q_s8(scratch_data_0, work_reg_a);
               vst1q_s8(scratch_data_0 + 16, work_reg_b);
@@ -1783,8 +1841,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
               work_reg_a = vzip1q_s8(input_data_a, input_data_b);
               work_reg_b = vzip1q_s8(input_data_c, input_data_d);
 
-              work_reg_a = veorq_s8(work_reg_a, sign_bit);
-              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              }
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
               vst1q_s8(scratch_data_0, work_reg_a);
@@ -1835,7 +1895,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                       /*max_padding=*/1> {
   static inline void PackMacroBlockIntrinsics(
       int32 height_block_number, int32 width_block_number,
-      const uint8* input_block_data, int8* scratch_block_data,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
       const DepthwiseConvDotProdParams* function_params) {
     const int workspace_height_stride =
         function_params->workspace_height_stride;
@@ -1852,7 +1914,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     const int padding_top = function_params->padding_top;
     const int padding_bottom = function_params->padding_bottom;
 
-    constexpr int kSymmetricZeroPoint = 128;
+    constexpr int kSymmetricZeroPoint =
+        QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
 
     TFLITE_DCHECK_GE(workspace_height_stride, 4 * width_overall_micro_repeats);
 
@@ -1913,7 +1976,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     int scratch_data_offset = 0;
     int input_block_offset = 0;
 
-    constexpr uint8 kSignBit = 0x80;
+    constexpr uint8 kSignBit =
+        QuantizationTypeImpl<quantization_type>::kUint8SignBit;
 
     // Transpositions are 4x4, but doing 2 at a time is more efficient in NEON
     // code. Note the blocks of 4x4 are still interleaved down the depth.
@@ -1941,9 +2005,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         // iteration of the main copy loop. In the case of leading width
         // padding, we unroll this specially.
         if (leading_width_padding) {
-          work_reg = vld1q_u8(input_block_data + input_block_offset);
+          work_reg = util_vld1q_x8(input_block_data + input_block_offset);
           work_reg = vextq_s8(padding_reg, work_reg, 15);
-          work_reg = veorq_s8(work_reg, sign_bit);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            work_reg = veorq_s8(work_reg, sign_bit);
+          }
           vst1q_s8(scratch_data, work_reg);
           copy_done += 15;
         }
@@ -1951,16 +2017,20 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         // Main copy loop.
         for (; (copy_done + 16) <= copy_size; copy_done += 16) {
           work_reg =
-              vld1q_u8(input_block_data + input_block_offset + copy_done);
-          work_reg = veorq_s8(work_reg, sign_bit);
+              util_vld1q_x8(input_block_data + input_block_offset + copy_done);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            work_reg = veorq_s8(work_reg, sign_bit);
+          }
           TFLITE_DCHECK_EQ((start_width + copy_done) % 16, 0);
           vst1q_s8(scratch_data + start_width + copy_done, work_reg);
         }
 
         if (copy_done + 8 <= copy_size) {
           half_work_reg =
-              vld1_u8(input_block_data + input_block_offset + copy_done);
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+              util_vld1_x8(input_block_data + input_block_offset + copy_done);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           TFLITE_DCHECK_EQ((start_width + copy_done) % 8, 0);
           vst1_s8(scratch_data + start_width + copy_done, half_work_reg);
           copy_done += 8;
@@ -1978,15 +2048,17 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           // Employ overlapping-load strategy in order to load full register,
           // but use only part.
           // This has the advantage of resulting in zeros after shifting.
-          half_work_reg =
-              vld1_u8(input_block_data + input_block_offset + copy_size - 8);
+          half_work_reg = util_vld1_x8(input_block_data + input_block_offset +
+                                       copy_size - 8);
 
           half_work_reg =
               vshl_u64(half_work_reg, vdup_n_s64(-8 * (8 - copy_remaining)));
           half_work_reg =
               vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
 
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           TFLITE_DCHECK_EQ((start_width + copy_done) % 8, 0);
           vst1_s8(scratch_data + start_width + copy_done, half_work_reg);
         }
@@ -2015,7 +2087,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           half_work_reg = vld1_lane_8x4(input_block_data + input_block_offset,
                                         half_work_reg, 0);
           half_work_reg = vext_s8(vget_low_s8(padding_reg), half_work_reg, 7);
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           vst1_lane_8x4(scratch_data, half_work_reg, 0);
           copy_done += 3;
         }
@@ -2025,7 +2099,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           TFLITE_DCHECK_EQ((start_width + copy_done) % 4, 0);
           vst1_lane_8x4(scratch_data + start_width + copy_done, half_work_reg,
                         0);
@@ -2053,7 +2129,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           half_work_reg =
               vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
 
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           TFLITE_DCHECK_EQ((start_width + copy_done) % 4, 0);
           vst1_lane_8x4(scratch_data + start_width + copy_done, half_work_reg,
                         0);
@@ -2093,7 +2171,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                                                        input_block_offset + 2),
                          half_work_reg, 3);
 
-        half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+        if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+        }
         TFLITE_DCHECK_EQ(scratch_data_offset % 8, 0);
         vst1_s8(scratch_data_base + scratch_data_offset, half_work_reg);
 
@@ -2132,7 +2212,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         half_work_reg =
             vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
 
-        half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+        if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+        }
         TFLITE_DCHECK_EQ(scratch_data_offset % 4, 0);
         vst1_lane_8x4(scratch_data_base + scratch_data_offset, half_work_reg,
                       0);
@@ -2188,7 +2270,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                       /*max_padding=*/0> {
   static inline void PackMacroBlockIntrinsics(
       int32 height_block_number, int32 width_block_number,
-      const uint8* input_block_data, int8* scratch_block_data,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
       const DepthwiseConvDotProdParams* function_params) {
     const int workspace_height_stride =
         function_params->workspace_height_stride;
@@ -2228,7 +2312,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     int scratch_data_offset = 0;
     int input_block_offset = 0;
 
-    constexpr uint8 kSignBit = 0x80;
+    constexpr uint8 kSignBit =
+        QuantizationTypeImpl<quantization_type>::kUint8SignBit;
 
     // Transpositions are 4x4, but doing 2 at a time is more efficient in NEON
     // code. Note the blocks of 4x4 are still interleaved down the depth.
@@ -2251,16 +2336,20 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         // Main copy loop.
         for (; (copy_done + 16) <= copy_size; copy_done += 16) {
           work_reg =
-              vld1q_u8(input_block_data + input_block_offset + copy_done);
-          work_reg = veorq_s8(work_reg, sign_bit);
+              util_vld1q_x8(input_block_data + input_block_offset + copy_done);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            work_reg = veorq_s8(work_reg, sign_bit);
+          }
           TFLITE_DCHECK_EQ(copy_done % 16, 0);
           vst1q_s8(scratch_data + copy_done, work_reg);
         }
 
         if (copy_done + 8 <= copy_size) {
           half_work_reg =
-              vld1_u8(input_block_data + input_block_offset + copy_done);
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+              util_vld1_x8(input_block_data + input_block_offset + copy_done);
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           TFLITE_DCHECK_EQ(copy_done % 8, 0);
           vst1_s8(scratch_data + copy_done, half_work_reg);
           copy_done += 8;
@@ -2278,13 +2367,15 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           // Employ overlapping-load strategy in order to load full register,
           // but use only part.
           // This has the advantage of resulting in zeros after shifting.
-          half_work_reg =
-              vld1_u8(input_block_data + input_block_offset + copy_size - 8);
+          half_work_reg = util_vld1_x8(input_block_data + input_block_offset +
+                                       copy_size - 8);
 
           half_work_reg =
               vshl_u64(half_work_reg, vdup_n_s64(-8 * (8 - copy_remaining)));
 
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           TFLITE_DCHECK_EQ(copy_done % 8, 0);
           vst1_s8(scratch_data + copy_done, half_work_reg);
           copy_done += 8;
@@ -2311,7 +2402,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           half_work_reg =
               vld1_lane_8x4(input_block_data + input_block_offset + copy_done,
                             half_work_reg, 0);
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           TFLITE_DCHECK_EQ(copy_done % 4, 0);
           vst1_lane_8x4(scratch_data + copy_done, half_work_reg, 0);
         }
@@ -2336,7 +2429,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           half_work_reg =
               vshl_u64(half_work_reg, vdup_n_s64(-8 * (4 - copy_remaining)));
 
-          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+            half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          }
           TFLITE_DCHECK_EQ(copy_done % 4, 0);
           vst1_lane_8x4(scratch_data + copy_done, half_work_reg, 0);
           copy_done += 4;
