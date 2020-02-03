@@ -221,12 +221,17 @@ class IrEmitterUnnested : public IrEmitter,
                       absl::Span<const int64> reduced_output_dims,
                       absl::Span<const int64> tiled_param_ids);
 
+  struct TilingKernelInfo {
+    // Tiling bounds.
+    std::array<llvm::Value*, 3> output_tile_bounds;
+
+    // Starting tile, as calculated from block id only.
+    llvm_ir::IrArray::Index tile_origin;
+  };
+
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
-  //
-  // Returns index of the output as calculated from the block only, offset due
-  // to thread id still should be applied to get the final offset.
-  llvm_ir::IrArray::Index EmitTilingKernel(
+  TilingKernelInfo EmitTilingKernel(
       const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
@@ -275,7 +280,7 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<const HloInstruction* const> reduce_instructions,
       absl::Span<const ShapeIndex> reduction_output_shape_indices,
       absl::Span<HloComputation* const> reducers,
-      const llvm_ir::IrArray::Index& starting_tile);
+      const TilingKernelInfo& tiling_kernel_info);
 
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
