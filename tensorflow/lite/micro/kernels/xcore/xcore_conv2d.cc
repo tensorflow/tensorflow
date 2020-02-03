@@ -6,7 +6,7 @@ namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
-namespace conv {
+namespace conv2d {
 
     typedef union ParamsPtrUnion {
         nn_conv2d_sido_params_t *sido;
@@ -247,25 +247,25 @@ namespace conv {
         return kTfLiteOk;
     }
 
-}  // conv
+}  // conv2d
 
 
-TfLiteRegistration* Register_Conv_DIDO() {
+TfLiteRegistration* Register_Conv2D_DIDO() {
     static TfLiteRegistration r = {
-        conv::Init_DIDO,
-        conv::Free_DIDO,
-        conv::Prepare_DIDO,
-        conv::Eval_DIDO
+        conv2d::Init_DIDO,
+        conv2d::Free_DIDO,
+        conv2d::Prepare_DIDO,
+        conv2d::Eval_DIDO
     };
     return &r;
 }
 
-TfLiteRegistration* Register_Conv_SIDO() {
+TfLiteRegistration* Register_Conv2D_SIDO() {
     static TfLiteRegistration r = {
-        conv::Init_SIDO,
-        conv::Free_SIDO,
-        conv::Prepare_SIDO,
-        conv::Eval_SIDO
+        conv2d::Init_SIDO,
+        conv2d::Free_SIDO,
+        conv2d::Prepare_SIDO,
+        conv2d::Eval_SIDO
     };
     return &r;
 }

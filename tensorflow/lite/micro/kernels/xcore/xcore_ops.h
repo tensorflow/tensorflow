@@ -16,8 +16,8 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-TfLiteRegistration* Register_Conv_SIDO();
-TfLiteRegistration* Register_Conv_DIDO();
+TfLiteRegistration* Register_Conv2D_SIDO();
+TfLiteRegistration* Register_Conv2D_DIDO();
 TfLiteRegistration* Register_FullyConnected_DIAO();
 TfLiteRegistration* Register_ArgMax_16();
 TfLiteRegistration* Register_MaxPool();

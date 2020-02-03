@@ -65,8 +65,8 @@ XcoreOpsResolver::XcoreOpsResolver() {
     AddCustom("XC_maxpool2d_deep", Register_MaxPool());
     AddCustom("XC_avgpool2d_deep", Register_AvgPool());
     AddCustom("XC_fc_deepin_anyout", Register_FullyConnected_DIAO());
-    AddCustom("XC_conv2d_shallowin_deepout_relu", Register_Conv_SIDO());
-    AddCustom("XC_conv2d_deepin_deepout_relu", Register_Conv_DIDO());
+    AddCustom("XC_conv2d_shallowin_deepout_relu", Register_Conv2D_SIDO());
+    AddCustom("XC_conv2d_deepin_deepout_relu", Register_Conv2D_DIDO());
     AddCustom("XC_requantize_16_to_8", Register_Requantize_16_to_8());
 }
 
