@@ -38,9 +38,9 @@ inline void Negate(const RuntimeShape& input_shape, const int8_t* input_data,
   // = 382
   // thus, accumulate on int16 [-383, 382]
 
-  constexpr auto kI8Min =
+  constexpr int16_t kI8Min =
       static_cast<int16_t>(std::numeric_limits<int8_t>::min());
-  constexpr auto kI8Max =
+  constexpr int16_t kI8Max =
       static_cast<int16_t>(std::numeric_limits<int8_t>::max());
 
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
