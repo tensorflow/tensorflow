@@ -478,7 +478,8 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
                           /*allocate_buffers_for_constants=*/true,
                           /*colorer=*/BufferAssigner::DefaultColorer(),
                           /*must_not_live_out=*/{}, &CanShareBufferHint));
-  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "",
+                         "after_optimizations");
 
   EmissionContext emission_context(std::move(module));
   if (error_handler_) {
@@ -545,8 +546,8 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
       hlo_schedule->ThunkLaunchOrder());
 
   if (DumpingEnabledForHloModule(*emission_context.getHloModule())) {
-    DumpToFileInDirOrStdout(*emission_context.getHloModule(), "thunk_schedule",
-                            thunk_schedule->ToString());
+    DumpToFileInDirOrStdout(*emission_context.getHloModule(), "",
+                            "thunk_schedule", thunk_schedule->ToString());
   }
 
   // TODO(b/137624192): Add profiling support.

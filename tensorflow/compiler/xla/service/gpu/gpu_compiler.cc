@@ -374,7 +374,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*allocate_buffers_for_constants=*/true,
           /*colorer=*/BufferAssigner::DefaultColorer(),
           /*must_not_live_out=*/{}, GetCanShareBuffer()));
-  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "",
+                         "after_optimizations");
 
   IrEmitterContext ir_emitter_context(
       module.get(), buffer_assignment.get(), stream_exec->platform(),
@@ -428,7 +429,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "thunk_schedule",
+    DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule->ToString());
   }
 
