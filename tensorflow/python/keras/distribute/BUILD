@@ -377,6 +377,10 @@ cuda_py_test(
 cuda_py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
+    tags = [
+        "manual",  # TODO(b/148795660): Reenable once the flakiness is fixed.
+        "notap",
+    ],
     deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
