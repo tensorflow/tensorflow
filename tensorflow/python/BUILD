@@ -4127,7 +4127,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/stateful_random_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":client_testlib",
