@@ -501,7 +501,8 @@ inline bool Fast3x3FilterKernelSupported(
 // kUseCModel3x3DotProduct version.
 //
 // See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
-template <DepthwiseConvImplementation implementation>
+template <DepthwiseConvImplementation implementation,
+          QuantizationType quantization_type>
 struct ProcessPerDepth {
   // Routine is contained in a static Run() method. No default template version
   // is supplied, so that all implementations are deliberate choices of template
@@ -520,6 +521,7 @@ struct ProcessPerDepth {
 //
 // See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
 template <DepthwiseConvImplementation implementation,
+          QuantizationType quantization_type,
           DepthwiseConvDepthMultiplication depth_multiplication,
           int32 max_padding>
 struct PackMacroBlock {
@@ -538,6 +540,7 @@ struct PackMacroBlock {
 //
 // See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
 template <DepthwiseConvImplementation implementation,
+          QuantizationType quantization_type,
           DepthwiseConvDepthMultiplication depth_multiplication, int32 stride>
 struct KernelMacroBlock {
   // Routine is contained in a static Run() method. No default template version

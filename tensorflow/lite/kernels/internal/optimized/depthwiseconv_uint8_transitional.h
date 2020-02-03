@@ -59,8 +59,9 @@ namespace depthwise_conv {
 #define vld1q_dup_s8x4(src) vld1q_dup_s32(reinterpret_cast<const int32*>(src))
 #endif  // USE_NEON
 
-template <>
-struct ProcessPerDepth<DepthwiseConvImplementation::kUseCModel3x3DotProduct> {
+template <QuantizationType quantization_type>
+struct ProcessPerDepth<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
+                       quantization_type> {
   // Filter data is provided as filter_block[3][3][depth/8][2][4]: height 3,
   // width 3,  sub-block 0 or 1, depth 4. Filter data is written as
   // filter_bank[3][2][4][4]; height 3, sub-block, depth 4, width 4.
@@ -159,8 +160,9 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseCModel3x3DotProduct> {
   }
 };
 
-template <>
-struct ProcessPerDepth<DepthwiseConvImplementation::kUseUnwound3x3DotProduct> {
+template <QuantizationType quantization_type>
+struct ProcessPerDepth<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+                       quantization_type> {
   static inline void Run(const uint8* filter_data, const int32* bias_data,
                          int8* shuffled_filter_data, int32* adjusted_bias_data,
                          const DepthwiseConvDotProdParams* function_params) {
@@ -273,9 +275,9 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseUnwound3x3DotProduct> {
 };
 
 #ifdef USE_NEON
-template <>
-struct ProcessPerDepth<
-    DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct> {
+template <QuantizationType quantization_type>
+struct ProcessPerDepth<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+                       quantization_type> {
   static void ProcessPerDepthIntrinsics(
       const uint8* filter_data, const int32* bias_data,
       int8* shuffled_filter_data, int32* adjusted_bias_data,
@@ -397,8 +399,10 @@ struct ProcessPerDepth<
     }
   }
 
-  static inline void Run(const uint8* filter_data, const int32* bias_data,
-                         int8* shuffled_filter_data, int32* adjusted_bias_data,
+  static inline void Run(const typename QuantizationTypeImpl<
+                             quantization_type>::ExternalType* filter_data,
+                         const int32* bias_data, int8* shuffled_filter_data,
+                         int32* adjusted_bias_data,
                          const DepthwiseConvDotProdParams* function_params) {
     ProcessPerDepthIntrinsics(filter_data, bias_data, shuffled_filter_data,
                               adjusted_bias_data, function_params);
@@ -406,10 +410,10 @@ struct ProcessPerDepth<
 };
 #endif
 
-template <int32 max_padding>
-struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
-                      DepthwiseConvDepthMultiplication::kNoMultiplication,
-                      max_padding> {
+template <QuantizationType quantization_type, int32 max_padding>
+struct PackMacroBlock<
+    DepthwiseConvImplementation::kUseCModel3x3DotProduct, quantization_type,
+    DepthwiseConvDepthMultiplication::kNoMultiplication, max_padding> {
   // A straight copy of a macro block of input data into a scratch buffer.
   //
   // Requirement: depth_micro_repeats > 0.
@@ -592,24 +596,28 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
     }
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     CopyMacroBlock(height_block_number, width_block_number, *function_params,
                    input_block_data, scratch_block_data);
     MicroTransposeBlocks(*function_params, scratch_block_data);
   }
 };
 
-template <int32 max_padding>
-struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
-                      DepthwiseConvDepthMultiplication::kUnitInputDepth,
-                      max_padding> {
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+template <QuantizationType quantization_type, int32 max_padding>
+struct PackMacroBlock<
+    DepthwiseConvImplementation::kUseCModel3x3DotProduct, quantization_type,
+    DepthwiseConvDepthMultiplication::kUnitInputDepth, max_padding> {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     // Currently support for padding is limited to 1 on any side.
     TFLITE_DCHECK_LE(max_padding, 1);
 
@@ -718,14 +726,17 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
 //
 // This section is only compiled when kUseUnwound3x3DotProduct versions of
 // templated functions are selected.
-template <>
+template <QuantizationType quantization_type>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+                      quantization_type,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
                       /*max_padding=*/0> {
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     const int workspace_height_stride =
         function_params->workspace_height_stride;
     const int width_overall_micro_repeats =
@@ -868,17 +879,21 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
   }
 };
 
-template <>
+template <QuantizationType quantization_type>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+                      quantization_type,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
                       /*max_padding=*/1> {
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     // Just use C model code for case of padding. Optimized versions merge the
     // modifications therein to handle padding.
     PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
+                   quantization_type,
                    DepthwiseConvDepthMultiplication::kNoMultiplication,
                    /*max_padding=*/1>::Run(height_block_number,
                                            width_block_number, input_block_data,
@@ -886,14 +901,16 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
   }
 };
 
-template <int32 max_padding>
-struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
-                      DepthwiseConvDepthMultiplication::kUnitInputDepth,
-                      max_padding> {
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+template <QuantizationType quantization_type, int32 max_padding>
+struct PackMacroBlock<
+    DepthwiseConvImplementation::kUseUnwound3x3DotProduct, quantization_type,
+    DepthwiseConvDepthMultiplication::kUnitInputDepth, max_padding> {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
     const int workspace_height_stride =
         function_params->workspace_height_stride;
     const int width_overall_micro_repeats =
@@ -1198,8 +1215,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
 // End of code section containing intermediate code transformation.
 
 #ifdef USE_NEON
-template <>
+template <QuantizationType quantization_type>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+                      quantization_type,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
                       /*max_padding=*/0> {
   static inline void PackMacroBlockIntrinsics(
@@ -1397,10 +1415,12 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
 #ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
@@ -1409,8 +1429,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
   }
 };
 
-template <>
+template <QuantizationType quantization_type>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+                      quantization_type,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
                       /*max_padding=*/1> {
   static inline void PackMacroBlockIntrinsics(
@@ -1791,10 +1812,12 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
 #ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
@@ -1805,8 +1828,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
   }
 };
 
-template <>
+template <QuantizationType quantization_type>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+                      quantization_type,
                       DepthwiseConvDepthMultiplication::kUnitInputDepth,
                       /*max_padding=*/1> {
   static inline void PackMacroBlockIntrinsics(
@@ -2141,10 +2165,12 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
 #ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
@@ -2155,8 +2181,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
   }
 };
 
-template <>
+template <QuantizationType quantization_type>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+                      quantization_type,
                       DepthwiseConvDepthMultiplication::kUnitInputDepth,
                       /*max_padding=*/0> {
   static inline void PackMacroBlockIntrinsics(
@@ -2362,10 +2389,12 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
         scratch_block_data + block_height * workspace_height_stride);
   }
 
-  static inline void Run(int32 height_block_number, int32 width_block_number,
-                         const uint8* input_block_data,
-                         int8* scratch_block_data,
-                         const DepthwiseConvDotProdParams* function_params) {
+  static inline void Run(
+      int32 height_block_number, int32 width_block_number,
+      const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+          input_block_data,
+      int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
 #ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
@@ -2381,10 +2410,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 // Apply filter to macro block of input data and store results.
 //
 // Requirement: depth_micro_repeats > 0 || residual_depth > 0.
-template <int32 stride>
-struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
-                        DepthwiseConvDepthMultiplication::kNoMultiplication,
-                        stride> {
+template <int32 stride, QuantizationType quantization_type>
+struct KernelMacroBlock<
+    DepthwiseConvImplementation::kUseCModel3x3DotProduct, quantization_type,
+    DepthwiseConvDepthMultiplication::kNoMultiplication, stride> {
   // Construct a width-shifted combination of two input sub-blocks, effectively
   // concatenating them.
   //
@@ -2558,10 +2587,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
 // Parameters for repeats and residual sizes are in terms of outputs.
 //
 // Requirement: depth_micro_repeats > 0 || residual_depth > 0.
-template <int32 stride>
-struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
-                        DepthwiseConvDepthMultiplication::kUnitInputDepth,
-                        stride> {
+template <int32 stride, QuantizationType quantization_type>
+struct KernelMacroBlock<
+    DepthwiseConvImplementation::kUseCModel3x3DotProduct, quantization_type,
+    DepthwiseConvDepthMultiplication::kUnitInputDepth, stride> {
   // Construct a width-shifted combination of two input sub-blocks, effectively
   // concatenating them.
   //
@@ -2717,10 +2746,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
 //
 // This section is only compiled when kUseUnwound3x3DotProduct versions of
 // templated functions are selected.
-template <int32 stride>
-struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
-                        DepthwiseConvDepthMultiplication::kNoMultiplication,
-                        stride> {
+template <int32 stride, QuantizationType quantization_type>
+struct KernelMacroBlock<
+    DepthwiseConvImplementation::kUseUnwound3x3DotProduct, quantization_type,
+    DepthwiseConvDepthMultiplication::kNoMultiplication, stride> {
   static inline void Run(const int8* scratch_block_data,
                          const int8* filter_workspace, const int32* bias_data,
                          uint8* output_block_data,
@@ -2931,10 +2960,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
   }
 };
 
-template <int32 stride>
-struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
-                        DepthwiseConvDepthMultiplication::kUnitInputDepth,
-                        stride> {
+template <int32 stride, QuantizationType quantization_type>
+struct KernelMacroBlock<
+    DepthwiseConvImplementation::kUseUnwound3x3DotProduct, quantization_type,
+    DepthwiseConvDepthMultiplication::kUnitInputDepth, stride> {
   static inline void Run(const int8* scratch_block_data,
                          const int8* filter_workspace, const int32* bias_data,
                          uint8* output_block_data,
@@ -3104,6 +3133,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
 template <>
 struct KernelMacroBlock<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+    QuantizationType::kNonPerChannelUint8,
     DepthwiseConvDepthMultiplication::kNoMultiplication,
     /*stride=*/1> {
   static inline void KernelMacroBlockIntrinsics(
@@ -3726,6 +3756,7 @@ struct KernelMacroBlock<
 template <>
 struct KernelMacroBlock<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+    QuantizationType::kNonPerChannelUint8,
     DepthwiseConvDepthMultiplication::kNoMultiplication,
     /*stride=*/2> {
   static inline void KernelMacroBlockIntrinsics(
@@ -4154,6 +4185,7 @@ struct KernelMacroBlock<
 template <>
 struct KernelMacroBlock<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+    QuantizationType::kNonPerChannelUint8,
     DepthwiseConvDepthMultiplication::kUnitInputDepth,
     /*stride=*/1> {
   static inline void KernelMacroBlockIntrinsics(
@@ -4798,6 +4830,7 @@ struct KernelMacroBlock<
 template <>
 struct KernelMacroBlock<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
+    QuantizationType::kNonPerChannelUint8,
     DepthwiseConvDepthMultiplication::kUnitInputDepth,
     /*stride=*/2> {
   static inline void KernelMacroBlockIntrinsics(
