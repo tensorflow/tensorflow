@@ -85,9 +85,39 @@ class ImplicitBatchTest(trt_test.TfTrtIntegrationTestBase):
     return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
 class ExplicitBatchTest(ImplicitBatchTest):
+  def GetParams(self):
+    """ We specify input/output mask with static (known) shapes """
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
+                            [[12, 5]], input_mask=[[1, 12, 5]],
+                            output_mask=[[12, 5]])
+
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch """
     return super(ExplicitBatchTest, self).GetConversionParams(run_params,
+                                                              False)
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build.
+    In explicit batch mode the whole graph is converted using a single engine.
+    """
+    return ["TRTEngineOp_0"]
+
+class DynamicShapesTest(ImplicitBatchTest):
+  """ Test with dynamic input shape. The difference compered to
+  ExplicitBatchTest is that we can specify an input/output mask with unknown
+  shapes. Since shape optimization profiles are note yet used in TRTEngineOp,
+  the engine creation will fail and the inference is done using the native
+  segment. The trt_engine_op_test (C++) is more relevant to test the dynamic
+  shapes in its current status. """
+  def GetParams(self):
+    """ We specify input/output mask with static (known) shapes """
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
+                            [[12, 5]], input_mask=[[None, None, None]],
+                            output_mask=[[None, None]])
+
+  def GetConversionParams(self, run_params):
+    """Return a TrtConversionParams for test that enables explicit batch """
+    return super(DynamicShapesTest, self).GetConversionParams(run_params,
                                                               False)
 
   def ExpectedEnginesToBuild(self, run_params):
