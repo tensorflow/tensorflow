@@ -32,12 +32,13 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
 from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
 from tensorflow.python.keras.layers.preprocessing import categorical_encoding
-from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat
@@ -218,7 +219,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     # 'standardize' must be one of (None, LOWER_AND_STRIP_PUNCTUATION, callable)
     layer_utils.validate_string_arg(
         standardize,
-        allowable_strings=(LOWER_AND_STRIP_PUNCTUATION),
+        allowable_strings=[LOWER_AND_STRIP_PUNCTUATION],
         layer_name="TextVectorization",
         arg_name="standardize",
         allow_none=True,
@@ -227,7 +228,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     # 'split' must be one of (None, SPLIT_ON_WHITESPACE, callable)
     layer_utils.validate_string_arg(
         split,
-        allowable_strings=(SPLIT_ON_WHITESPACE),
+        allowable_strings=[SPLIT_ON_WHITESPACE],
         layer_name="TextVectorization",
         arg_name="split",
         allow_none=True,
@@ -236,7 +237,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     # 'output_mode' must be one of (None, INT, COUNT, BINARY, TFIDF)
     layer_utils.validate_string_arg(
         output_mode,
-        allowable_strings=(INT, COUNT, BINARY, TFIDF),
+        allowable_strings=[INT, COUNT, BINARY, TFIDF],
         layer_name="TextVectorization",
         arg_name="output_mode",
         allow_none=True)
@@ -302,9 +303,24 @@ class TextVectorization(CombinerPreprocessingLayer):
             self._max_vocab_size, compute_idf=output_mode == TFIDF),
         **kwargs)
 
-    reserve_zero = output_mode in [None, INT]
-    self._index_lookup_layer = self._get_index_lookup_class()(
-        max_tokens=max_tokens, reserve_zero=reserve_zero, dtype=dtypes.string)
+    self._table = lookup_ops.MutableHashTable(
+        key_dtype=dtypes.string,
+        value_dtype=dtypes.int64,
+        default_value=self._oov_value,
+        name=(self._name + "_index_table"))
+
+    def fail(_):
+      raise NotImplementedError(
+          "Saving is not yet supported for TextVectorization layers.")
+    self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
+
+    tracked_table = self._add_trackable(self._table, trainable=False)
+
+    # This is a workaround for summary() on this layer. Because the table is
+    # not mutable during training, the effective number of parameters (and so
+    # the weight shape) is 0; we add this as an attr so that the parameter
+    # counting code in the Model object doesn't throw an attribute error.
+    tracked_table.shape = tensor_shape.TensorShape((0,))
 
     # If this layer is configured for string or integer output, we do not
     # create a vectorization layer (as the output is not vectorized).
@@ -312,11 +328,11 @@ class TextVectorization(CombinerPreprocessingLayer):
       return
 
     if max_tokens is not None and self._pad_to_max:
-      max_elements = max_tokens
+      vectorize_max_tokens = max_tokens
     else:
-      max_elements = None
+      vectorize_max_tokens = None
     self._vectorize_layer = self._get_vectorization_class()(
-        max_tokens=max_elements, output_mode=self._output_mode)
+        max_tokens=vectorize_max_tokens, output_mode=self._output_mode)
 
   # These are V1/V2 shim points. There are V1 implementations in the V1 class.
   def _get_vectorization_class(self):
@@ -326,8 +342,31 @@ class TextVectorization(CombinerPreprocessingLayer):
     keys, values = self._table.export()
     return (keys.numpy(), values.numpy())
 
-  def _get_index_lookup_class(self):
-    return index_lookup.IndexLookup
+  def _get_table_size(self):
+    return self._table.size().numpy()
+
+  def _clear_table(self):
+    if (self._output_mode in [BINARY, COUNT, TFIDF] and self._called and
+        not self._pad_to_max):
+      raise RuntimeError(("When using TextVectorization in {mode} mode, the "
+                          "vocabulary cannot be changed after the layer is "
+                          "called.").format(mode=self._output_mode))
+    keys, _ = self._table.export()
+    self._table.remove(keys)
+    self._vocab_size = 0
+
+  def _insert_table_data(self, keys, values):
+    if (self._output_mode in [BINARY, COUNT, TFIDF] and self._called and
+        not self._pad_to_max):
+      raise RuntimeError(("When using TextVectorization in {mode} mode, the "
+                          "vocabulary cannot be changed after the layer is "
+                          "called.").format(mode=self._output_mode))
+    if len(values) != len(keys):
+      raise RuntimeError("Size mismatch between values and key arrays. "
+                         "Keys had size %s, values had size %s." %
+                         (len(keys), len(values)))
+    self._table.insert(keys, values)
+    self._vocab_size += len(keys)
 
   def _to_numpy(self, preprocessed_data):
     """Converts preprocessed inputs into numpy arrays."""
@@ -402,7 +441,13 @@ class TextVectorization(CombinerPreprocessingLayer):
     super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
   def get_vocabulary(self):
-    return self._index_lookup_layer.get_vocabulary()
+    if self._vocab_size == 0:
+      return []
+
+    keys, values = self._get_table_data()
+    # This is required because the MutableHashTable doesn't preserve insertion
+    # order, but we rely on the order of the array to assign indices.
+    return [x for _, x in sorted(zip(values, keys))]
 
   def get_config(self):
     config = {
@@ -451,33 +496,15 @@ class TextVectorization(CombinerPreprocessingLayer):
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or
         input data is missing.
-      RuntimeError: If the vocabulary cannot be set when this function is
-        called. This happens when "binary", "count", and "tfidf" modes,
-        if "pad_to_max_tokens" is False and the layer itself has already been
-        called.
     """
-    if self._output_mode != TFIDF and df_data is not None:
-      raise ValueError("df_data should only be set if output_mode is TFIDF. "
-                       "output_mode is %s." % self._output_mode)
-
-    if (self._output_mode in [BINARY, COUNT, TFIDF] and self._called and
-        not self._pad_to_max):
-      raise RuntimeError(("When using TextVectorization in {mode} mode and "
-                          "pad_to_max_tokens is False, the vocabulary cannot "
-                          "be changed after the layer is "
-                          "called.").format(mode=self._output_mode))
-
-    current_table_size = self._index_lookup_layer.vocab_size()
-    self._index_lookup_layer.set_vocabulary(vocab, append)
-
-    # When doing raw or integer output, we don't have a Vectorize layer to
-    # manage. In this case, we can return directly.
-    if self._output_mode in [None, INT]:
-      return
-
-    if not self._pad_to_max or self._max_tokens is None:
-      num_tokens = self._index_lookup_layer.vocab_size() + self._reserved_values
-      self._vectorize_layer.set_num_elements(num_tokens)
+    current_table_size = self._get_table_size()
+    total_vocab_size = len(vocab) + (current_table_size if append else 0)
+    if self._max_tokens is not None and total_vocab_size > self._max_vocab_size:
+      raise ValueError(
+          "Attempted to set a vocabulary larger than the maximum vocab size. "
+          "Passed vocab size is %s, max vocab size is %s. Note that the OOV "
+          "token is automatically added to the number of tokens." %
+          (total_vocab_size, self._max_vocab_size))
 
     # We're only _really_ appending if the table_size is nonzero. This is
     # important for some sanity checks in tfidf mode (specifically, checking if
@@ -495,7 +522,35 @@ class TextVectorization(CombinerPreprocessingLayer):
         raise ValueError("You must pass an oov_df_value the first time "
                          "'set_vocabulary' is called when output_mode is "
                          "TFIDF.")
+    else:
+      if df_data is not None:
+        raise ValueError("df_data should only be set if output_mode is TFIDF. "
+                         "output_mode is %s." % self._output_mode)
 
+    start_index = self._reserved_values + (
+        self._get_table_size() if append else 0)
+    values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
+
+    vocab = self._convert_to_ndarray(vocab)
+    self._assert_same_type(dtypes.string, vocab, "vocab")
+
+    values = self._convert_to_ndarray(values)
+    self._assert_same_type(dtypes.int64, values, "values")
+
+    if not append and self._vocab_size > 0:
+      self._clear_table()
+    self._insert_table_data(vocab, values)
+
+    # When doing raw or integer output, we don't have a Vectorize layer to
+    # manage. In this case, we can return directly.
+    if self._output_mode in [None, INT]:
+      return
+
+    if not self._pad_to_max or self._max_tokens is None:
+      num_tokens = total_vocab_size + self._reserved_values
+      self._vectorize_layer.set_num_elements(num_tokens)
+
+    if self._output_mode == TFIDF:
       df_data = self._convert_to_ndarray(df_data)
       if append:
         # The existing IDF data is stored in a Keras weight, so we can get it
@@ -529,6 +584,9 @@ class TextVectorization(CombinerPreprocessingLayer):
           "dimension of the input array must be 1, got shape "
           "{}".format(input_shape))
 
+    # This handles a corner case where, if restored from weights or SavedModel,
+    # the layer might not have accurate vocab size information.
+    self._vocab_size = self._get_table_size()
     super(TextVectorization, self).build(input_shape)
 
   def _set_state_variables(self, updates):
@@ -588,7 +646,13 @@ class TextVectorization(CombinerPreprocessingLayer):
     if self._output_mode is None:
       return inputs
 
-    indexed_data = self._index_lookup_layer(inputs)
+    # The table lookup ops don't natively support ragged tensors, so if we have
+    # a RT we need to use map_flat_values to look up every element.
+    if ragged_tensor.is_ragged(inputs):
+      indexed_data = ragged_functional_ops.map_flat_values(
+          self._table.lookup, inputs)
+    else:
+      indexed_data = self._table.lookup(inputs)
 
     if self._output_mode == INT:
       # Once we have the dense tensor, we can return it if we weren't given a
@@ -623,7 +687,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
 
 # A note on this combiner: This contains functionality that will be extracted
-# into the Vectorization and IndexLookup combiner objects. At that point,
+# into the Vectorization and Lookup combiner objects. At that point,
 # TextVectorization can become a PreprocessingStage instead of a Layer and
 # this combiner can be retired. Until then, we leave this as is instead of
 # attempting a refactor of what will soon be deleted.
