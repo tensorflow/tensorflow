@@ -760,5 +760,43 @@ std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
       std::move(runner), std::placeholders::_1);
 }
 
+Status DeterminismPolicy::FromString(const std::string& s,
+                                     DeterminismPolicy* out) {
+  DeterminismPolicy::Type type;
+  if (s == DeterminismPolicy::kDeterministic) {
+    type = DeterminismPolicy::Type::kDeterministic;
+  } else if (s == DeterminismPolicy::kNondeterministic) {
+    type = DeterminismPolicy::Type::kNondeterministic;
+  } else if (s == DeterminismPolicy::kDefault) {
+    type = DeterminismPolicy::Type::kDefault;
+  } else {
+    return errors::InvalidArgument("Unrecognized determinism policy: ", s);
+  }
+  *out = DeterminismPolicy(type);
+  return Status::OK();
+}
+
+DeterminismPolicy::DeterminismPolicy(bool is_deterministic) {
+  if (is_deterministic) {
+    determinism_ = DeterminismPolicy::Type::kDeterministic;
+  } else {
+    determinism_ = DeterminismPolicy::Type::kNondeterministic;
+  }
+}
+
+std::string DeterminismPolicy::String() const {
+  switch (determinism_) {
+    case DeterminismPolicy::Type::kDeterministic:
+      return DeterminismPolicy::kDeterministic;
+    case DeterminismPolicy::Type::kNondeterministic:
+      return DeterminismPolicy::kNondeterministic;
+    case DeterminismPolicy::Type::kDefault:
+      return DeterminismPolicy::kDefault;
+    default:
+      LOG(ERROR) << "Unrecognized determinism value";
+      return "Unrecognized";
+  }
+}
+
 }  // namespace data
 }  // namespace tensorflow

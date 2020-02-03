@@ -241,6 +241,34 @@ TEST(DatasetUtilsTest, RunnerWithMaxParallelism) {
   runner(fn);
 }
 
+TEST(DatasetUtilsTest, ParseDeterminismPolicy) {
+  DeterminismPolicy determinism;
+  TF_ASSERT_OK(DeterminismPolicy::FromString("true", &determinism));
+  EXPECT_TRUE(determinism.IsDeterministic());
+  TF_ASSERT_OK(DeterminismPolicy::FromString("false", &determinism));
+  EXPECT_TRUE(determinism.IsNondeterministic());
+  TF_ASSERT_OK(DeterminismPolicy::FromString("default", &determinism));
+  EXPECT_TRUE(determinism.IsDefault());
+}
+
+TEST(DatasetUtilsTest, DeterminismString) {
+  for (auto s : {"true", "false", "default"}) {
+    DeterminismPolicy determinism;
+    TF_ASSERT_OK(DeterminismPolicy::FromString(s, &determinism));
+    EXPECT_TRUE(s == determinism.String());
+  }
+}
+
+TEST(DatasetUtilsTest, BoolConstructor) {
+  EXPECT_TRUE(DeterminismPolicy(true).IsDeterministic());
+  EXPECT_FALSE(DeterminismPolicy(true).IsNondeterministic());
+  EXPECT_FALSE(DeterminismPolicy(true).IsDefault());
+
+  EXPECT_TRUE(DeterminismPolicy(false).IsNondeterministic());
+  EXPECT_FALSE(DeterminismPolicy(false).IsDeterministic());
+  EXPECT_FALSE(DeterminismPolicy(false).IsDefault());
+}
+
 TEST_F(DatasetHashUtilsTest, HashFunctionSameFunctionDifferentNames) {
   FunctionDefLibrary fl;
 

@@ -148,6 +148,46 @@ Status HashTensor(const Tensor& tensor, uint64* hash);
 // the same between TensorFlow builds.
 Status HashGraph(const GraphDef& graph, uint64* hash);
 
+// Dataset op level determinism policy.
+class DeterminismPolicy {
+ public:
+  enum class Type : int {
+    // The op must produce elements deterministically.
+    kDeterministic,
+    // The op may relax determinism to improve performance.
+    kNondeterministic,
+    // The determinism policy is not specified at the op level. In this case we
+    // use the experimental_deterministic dataset option to determine the
+    // determinism policy.
+    kDefault,
+  };
+  static constexpr const char* const kDeterministic = "true";
+  static constexpr const char* const kNondeterministic = "false";
+  static constexpr const char* const kDefault = "default";
+
+  DeterminismPolicy() : determinism_(Type::kDefault) {}
+  explicit DeterminismPolicy(Type determinism) : determinism_(determinism) {}
+  // Creates a DeterminismPolicy with Type kDeterministic or
+  // kNondeterministic, depending on the values of `is_deterministic`.
+  explicit DeterminismPolicy(bool is_deterministic);
+
+  static Status FromString(const std::string& s, DeterminismPolicy* out);
+
+  // Returns the string representing the determinism policy. This will be one of
+  // the string constants defined above.
+  std::string String() const;
+
+  /// Convenience methods for checking the DeterminismPolicy::Type.
+  bool IsDeterministic() const { return determinism_ == Type::kDeterministic; }
+  bool IsNondeterministic() const {
+    return determinism_ == Type::kNondeterministic;
+  }
+  bool IsDefault() const { return determinism_ == Type::kDefault; }
+
+ private:
+  Type determinism_;
+};
+
 // Helper class for reading data from a vector of VariantTensorData objects.
 class VariantTensorDataReader : public IteratorStateReader {
  public:
