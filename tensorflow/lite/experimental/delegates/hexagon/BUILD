@@ -108,4 +108,7 @@ cc_test(
     ],
 )
 
-exports_files(["version_script.lds"])
+exports_files([
+    "hexagon_delegate.h",
+    "version_script.lds",
+])

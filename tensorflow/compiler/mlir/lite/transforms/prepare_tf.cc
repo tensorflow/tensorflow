@@ -82,6 +82,7 @@ class PrepareTFPass : public FunctionPass<PrepareTFPass> {
 };
 
 // TODO(fengliuai): move this rule to PreparePatterns.td
+// TODO(fengliuai): reuse the quantization/tensorflow/tf_to_quant pass.
 // TODO(b/140968741): propagate the sign from the command line. Currently all
 // the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
 // actually INT8.
@@ -150,9 +151,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
         rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
-    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_value,
-                                          max_value, quant_dim, num_bits,
-                                          narrow_range, /*is_signed=*/false);
+    TypeAttr qtype = quant::GetQuantizedTypeAttr(
+        rewriter, res_type, min_value, max_value, quant_dim, num_bits,
+        narrow_range, /*is_signed=*/false);
     if (!qtype) this->matchFailure();
 
     // Finally, use the quantization parameter to create the quantize and

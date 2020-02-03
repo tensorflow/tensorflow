@@ -190,9 +190,9 @@ void DumpToFileInDirOrStdoutImpl(string_view filename, string_view contents,
 
 void DumpHloModuleImpl(const HloModule& module,
                        const BufferAssignment* buffer_assn,
-                       const HloExecutionProfile* profile, string_view suffix,
-                       const CanonicalDebugOptions& opts) {
-  string filename = FilenameFor(module, suffix);
+                       const HloExecutionProfile* profile, string_view prefix,
+                       string_view suffix, const CanonicalDebugOptions& opts) {
+  string filename = FilenameFor(module, prefix, suffix);
 
   if (opts.dump_as_text) {
     DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"), module.ToString(),
@@ -247,33 +247,44 @@ void DumpHloModuleImpl(const HloModule& module,
 
 static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
 
-// Maps a module's unique ID to a counter indicating how many times we've dumped
-// this module during the compilation pipeline.  This lets us keep the filenames
-// ordered nicely.
+// Maps a module's unique ID to a {counter, timestamp} indicating how many times
+// we've dumped this module during the compilation pipeline and when we first
+// started compiling this module.  This lets us keep the filenames ordered
+// nicely.
 //
 // Entries added here leak forever; we have no way to GC them when a module
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
 static auto& module_id_to_step_number GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64, int64>();
+    *new absl::flat_hash_map<int64, std::pair<int64, uint64>>();
 
+std::pair<int64, uint64> StepNumberAndTimestampForModule(
+    const HloModule& module) {
+  tensorflow::mutex_lock lock(mu);
+  auto result = module_id_to_step_number.try_emplace(
+      module.unique_id(), 0, tensorflow::Env::Default()->NowMicros());
+  return std::make_pair(result.first->second.first++,
+                        result.first->second.second);
+}
 }  // namespace
 
-string FilenameFor(const HloModule& module, string_view suffix) {
-  return StrFormat("module_%04d.%s", module.unique_id(), suffix);
+string FilenameFor(const HloModule& module, string_view prefix,
+                   string_view suffix) {
+  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
+                   module.unique_id(), suffix);
 }
 
-void DumpToFileInDir(const HloModule& module, string_view suffix,
-                     string_view contents) {
-  DumpToFileInDirImpl(FilenameFor(module, suffix), contents,
+void DumpToFileInDir(const HloModule& module, string_view file_prefix,
+                     string_view file_suffix, string_view contents) {
+  DumpToFileInDirImpl(FilenameFor(module, file_prefix, file_suffix), contents,
                       CanonicalDebugOptions(module.config().debug_options()));
 }
 
-void DumpToFileInDirOrStdout(const HloModule& module, string_view suffix,
-                             string_view contents) {
+void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
+                             string_view file_suffix, string_view contents) {
   DumpToFileInDirOrStdoutImpl(
-      FilenameFor(module, suffix), contents,
+      FilenameFor(module, file_prefix, file_suffix), contents,
       CanonicalDebugOptions(module.config().debug_options()));
 }
 
@@ -302,16 +313,17 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
+    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr, "",
                       name, opts);
   }
 }
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const BufferAssignment& buffer_assn,
-                            string_view name) {
+                            string_view prefix, string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, &buffer_assn, /*profile=*/nullptr, name, opts);
+    DumpHloModuleImpl(module, &buffer_assn, /*profile=*/nullptr, prefix, name,
+                      opts);
   }
 }
 
@@ -320,7 +332,8 @@ void DumpHloModuleIfEnabled(const HloModule& module,
                             string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, &profile, name, opts);
+    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, &profile, "", name,
+                      opts);
   }
 }
 
@@ -348,16 +361,15 @@ void DumpHloModuleBetweenPassesIfEnabled(string_view pipeline_name,
   }
 
   int64 step_number;
-  {
-    tensorflow::mutex_lock lock(mu);
-    step_number = module_id_to_step_number[module.unique_id()]++;
-  }
+  uint64 timestamp;
+  std::tie(step_number, timestamp) = StepNumberAndTimestampForModule(module);
 
+  string filename_prefix = std::to_string(timestamp);
   string filename_suffix =
       StrFormat("%04d.%s.after_%s.before_%s", step_number, pipeline_name,
                 after_pass_name, before_pass_name);
   DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                    filename_suffix, opts);
+                    filename_prefix, filename_suffix, opts);
 }
 
 void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
@@ -370,15 +382,14 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
   }
 
   int64 step_number;
-  {
-    tensorflow::mutex_lock lock(mu);
-    step_number = module_id_to_step_number[module.unique_id()]++;
-  }
+  uint64 timestamp;
+  std::tie(step_number, timestamp) = StepNumberAndTimestampForModule(module);
 
+  string filename_prefix = std::to_string(timestamp);
   string filename_suffix =
       StrFormat("%04d.%s.%s", step_number, pass_name, step_name);
   DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                    filename_suffix, opts);
+                    filename_prefix, filename_suffix, opts);
 }
 
 void DumpHloSnapshotIfEnabled(const HloModule& module,
@@ -388,14 +399,19 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
     return;
   }
   int64 execution_count;
+  uint64 timestamp;
   {
     static auto& module_id_to_execution_count GUARDED_BY(mu) =
-        *new absl::flat_hash_map<int64, int64>();
+        *new absl::flat_hash_map<int64, std::pair<int64, uint64>>();
     tensorflow::mutex_lock lock(mu);
-    execution_count = module_id_to_execution_count[module.unique_id()]++;
+    auto result = module_id_to_execution_count.try_emplace(
+        module.unique_id(), 0, tensorflow::Env::Default()->NowMicros());
+    execution_count = result.first->second.first++;
+    timestamp = result.first->second.second;
   }
   string filename =
-      StrCat(FilenameFor(module, StrFormat("execution_%04d", execution_count)),
+      StrCat(FilenameFor(module, std::to_string(timestamp),
+                         StrFormat("execution_%04d", execution_count)),
              ".hlo_snapshot.pb");
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write HLO snapshot proto for " << filename

@@ -40,9 +40,8 @@ tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 echo "Running bluepill tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
 
-# TODO(b/148282694): enable once this script passes again.
-#echo "Running mbed tests at `date`"
-#tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
+echo "Running mbed tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
 
 echo "Running Sparkfun tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh

@@ -15,6 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/random_op_cpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
@@ -113,7 +114,7 @@ void StatefulRandomCompute(OpKernelContext* ctx, Distribution dist,
   using T = typename Distribution::ResultElementType;
   const Tensor& shape_t = ctx->input(shape_input_idx);
   TensorShape shape;
-  OP_REQUIRES_OK(ctx, ctx->op_kernel().MakeShape(shape_t, &shape));
+  OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
   auto output_flat = output->flat<T>();
@@ -265,7 +266,7 @@ class NonDeterministicIntsOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& shape_t = ctx->input(0);
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->op_kernel().MakeShape(shape_t, &shape));
+    OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
     if (shape.num_elements() == 0) return;

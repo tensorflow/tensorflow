@@ -31,7 +31,6 @@ class Mean : public GPUOperation {
   Mean() = default;
   explicit Mean(const OperationDef& definition) : GPUOperation(definition) {}
   Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
 
   Status Compile(const CreationContext& creation_context) override;
 
@@ -45,7 +44,10 @@ class Mean : public GPUOperation {
   Status BindArguments();
   int3 GetGridSize() const;
   CLKernel kernel_;
-  int3 work_group_size_ = int3(1, 1, 1);
+
+  // must be: (x * y) % 4 = 0;
+  // must be: z = 1;
+  int3 work_group_size_ = int3(16, 16, 1);
 };
 
 Mean CreateMean(const OperationDef& definition);

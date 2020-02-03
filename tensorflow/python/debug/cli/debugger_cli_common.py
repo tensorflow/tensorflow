@@ -26,7 +26,7 @@ import traceback
 import numpy as np
 import six
 
-from tensorflow.python import pywrap_tensorflow_internal
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.platform import gfile
 
 HELP_INDENT = "  "
@@ -142,7 +142,7 @@ def get_tensorflow_version_lines(include_dependency_versions=False):
   Returns:
     A formatted, multi-line `RichTextLines` object.
   """
-  lines = ["TensorFlow version: %s" % pywrap_tensorflow_internal.__version__]
+  lines = ["TensorFlow version: %s" % pywrap_tf_session.__version__]
   lines.append("")
   if include_dependency_versions:
     lines.append("Dependency version(s):")

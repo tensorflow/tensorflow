@@ -293,8 +293,8 @@ class MirroredStrategyVariableCreatorStackTest(
     def model_fn():
       replica_id_str = str(self.evaluate(_replica_id()))
 
-      def thread_creator_fn(next_creator, *args, **kwargs):
-        return next_creator(*args, **kwargs) + ":thread_" + replica_id_str
+      def thread_creator_fn(next_creator, **kwargs):
+        return next_creator(**kwargs) + ":thread_" + replica_id_str
 
       with variable_scope.variable_creator_scope(thread_creator_fn):
         # Create a variable in this scope.
@@ -304,9 +304,9 @@ class MirroredStrategyVariableCreatorStackTest(
         ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
-    def main_thread_creator(next_creator, *args, **kwargs):
+    def main_thread_creator(next_creator, **kwargs):
       # We are not using the underlying next_creator for test purposes.
-      del next_creator, args, kwargs
+      del next_creator, kwargs
       return "main_thread"
 
     with context.graph_mode(), \

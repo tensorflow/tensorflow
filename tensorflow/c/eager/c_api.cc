@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -265,9 +266,9 @@ tensorflow::Status GetReplacedFromExistingWorkers(
 }
 
 tensorflow::Status CreateRemoteContexts(
-    const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
-    tensorflow::uint64 context_view_id, int keep_alive_secs,
-    const tensorflow::ServerDef& server_def,
+    TFE_Context* ctx, const std::vector<string>& remote_workers,
+    tensorflow::uint64 context_id, tensorflow::uint64 context_view_id,
+    int keep_alive_secs, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
     const bool lazy_copy_remote_function_inputs,
     const tensorflow::eager::CreateContextRequest& base_request) {
@@ -296,7 +297,7 @@ tensorflow::Status CreateRemoteContexts(
       continue;
     }
 
-    tensorflow::eager::CreateContextRequest request(base_request);
+    tensorflow::eager::CreateContextRequest request;
     tensorflow::eager::CreateContextResponse* response =
         new tensorflow::eager::CreateContextResponse();
     request.set_context_id(context_id);
@@ -304,6 +305,21 @@ tensorflow::Status CreateRemoteContexts(
     *request.mutable_server_def() = server_def;
     request.mutable_server_def()->set_job_name(parsed_name.job);
     request.mutable_server_def()->set_task_index(parsed_name.task);
+    request.mutable_server_def()->mutable_default_session_config()->MergeFrom(
+        server_def.default_session_config());
+
+    std::vector<bool> filtered_device_mask;
+    ctx->context->FilterDevicesForRemoteWorkers(
+        remote_worker, base_request.cluster_device_attributes(),
+        &filtered_device_mask);
+    DCHECK_EQ(filtered_device_mask.size(),
+              base_request.cluster_device_attributes_size());
+    for (int i = 0; i < filtered_device_mask.size(); i++) {
+      if (filtered_device_mask[i]) {
+        const auto& da = base_request.cluster_device_attributes(i);
+        *request.add_cluster_device_attributes() = da;
+      }
+    }
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
     request.set_lazy_copy_remote_function_inputs(
@@ -325,13 +341,34 @@ tensorflow::Status CreateRemoteContexts(
 }
 
 tensorflow::Status UpdateRemoteContexts(
-    const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
+    TFE_Context* ctx, const std::vector<string>& remote_workers,
+    const std::vector<string>& added_workers,
+    const std::vector<string>& removed_workers, tensorflow::uint64 context_id,
     tensorflow::uint64 context_view_id, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
   std::vector<tensorflow::Status> statuses(num_remote_workers);
+
+  int cluster_device_count = base_request.cluster_device_attributes_size();
+  std::unordered_set<string> added_or_removed(added_workers.begin(),
+                                              added_workers.end());
+  std::copy(removed_workers.begin(), removed_workers.end(),
+            std::inserter(added_or_removed, added_or_removed.end()));
+  // Whether each device is in the updated (added or removed) workers
+  std::vector<bool> device_added_or_removed(cluster_device_count);
+  for (int i = 0; i < base_request.cluster_device_attributes_size(); i++) {
+    const auto& da = base_request.cluster_device_attributes().at(i);
+    tensorflow::DeviceNameUtils::ParsedName pn;
+    tensorflow::DeviceNameUtils::ParseFullName(da.name(), &pn);
+    string task_name;
+    tensorflow::DeviceNameUtils::GetTaskName(pn, &task_name);
+    if (added_or_removed.find(task_name) != added_or_removed.end()) {
+      device_added_or_removed[i] = true;
+    }
+  }
+
   for (int i = 0; i < num_remote_workers; i++) {
     const string& remote_worker = remote_workers[i];
     tensorflow::DeviceNameUtils::ParsedName parsed_name;
@@ -354,17 +391,42 @@ tensorflow::Status UpdateRemoteContexts(
       continue;
     }
 
+    std::vector<bool> filtered_device_mask;
+    ctx->context->FilterDevicesForRemoteWorkers(
+        remote_worker, base_request.cluster_device_attributes(),
+        &filtered_device_mask);
+    DCHECK_EQ(filtered_device_mask.size(), cluster_device_count);
+
+    // If any of the devices that match the device filters are in the set of
+    // added or removed workers, we must send a complete UpdateContextRequest.
+    // Otherwise, only send a simple request to increment context view ID.
+    std::vector<bool> added_or_removed_filtered_devices(cluster_device_count);
+    std::transform(device_added_or_removed.begin(),
+                   device_added_or_removed.end(), filtered_device_mask.begin(),
+                   added_or_removed_filtered_devices.begin(),
+                   std::logical_and<bool>());
+    const bool full_update_request =
+        std::accumulate(added_or_removed_filtered_devices.begin(),
+                        added_or_removed_filtered_devices.end(), false,
+                        std::logical_or<bool>());
+
     tensorflow::eager::UpdateContextRequest request;
     auto* response = new tensorflow::eager::UpdateContextResponse();
-
-    *request.mutable_server_def() = server_def;
-    request.mutable_server_def()->set_job_name(parsed_name.job);
-    request.mutable_server_def()->set_task_index(parsed_name.task);
-    for (const auto& da : base_request.cluster_device_attributes()) {
-      *request.add_cluster_device_attributes() = da;
-    }
     request.set_context_id(context_id);
     request.set_context_view_id(context_view_id);
+    if (full_update_request) {
+      *request.mutable_server_def() = server_def;
+      request.mutable_server_def()->set_job_name(parsed_name.job);
+      request.mutable_server_def()->set_task_index(parsed_name.task);
+      request.mutable_server_def()->mutable_default_session_config()->MergeFrom(
+          server_def.default_session_config());
+      for (int i = 0; i < cluster_device_count; i++) {
+        if (filtered_device_mask[i]) {
+          const auto& da = base_request.cluster_device_attributes(i);
+          *request.add_cluster_device_attributes() = da;
+        }
+      }
+    }
 
     eager_client->UpdateContextAsync(
         &request, response,
@@ -525,15 +587,12 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   for (const auto& da : local_device_attributes) {
     *base_request.add_cluster_device_attributes() = da;
   }
-  base_request.mutable_server_def()
-      ->mutable_default_session_config()
-      ->MergeFrom(server_def.default_session_config());
 
   // Initialize remote eager workers.
   // TODO(b/138847548) Create remote eager contexts in async mode by default.
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
-        remote_workers, context_id, context_view_id, keep_alive_secs,
+        ctx, remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
         context->LazyCopyFunctionRemoteInputs(), base_request));
   } else {
@@ -543,7 +602,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     // we must set their context_view_id to the existing master's
     // context_view_id + 1.
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
-        added_workers, context_id, context_view_id + 1, keep_alive_secs,
+        ctx, added_workers, context_id, context_view_id + 1, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
         context->LazyCopyFunctionRemoteInputs(), base_request));
     if (!existing_workers.empty()) {
@@ -553,8 +612,9 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         }
       }
       LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
-          existing_workers, context_id, context_view_id + 1, server_def,
-          remote_eager_workers.get(), base_request));
+          ctx, existing_workers, added_workers, removed_workers, context_id,
+          context_view_id + 1, server_def, remote_eager_workers.get(),
+          base_request));
     }
   }
 
@@ -709,6 +769,22 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }
+  if (server_def.has_cluster_device_filters()) {
+    const auto& cdf = server_def.cluster_device_filters();
+    for (const auto& jdf : cdf.jobs()) {
+      const string& remote_prefix = "/job:" + jdf.name() + "/task:";
+      for (const auto& tdf : jdf.tasks()) {
+        const int32_t task_index = tdf.first;
+        std::vector<string> device_filters(tdf.second.device_filters_size());
+        for (int i = 0; i < tdf.second.device_filters_size(); i++) {
+          device_filters[i] = tdf.second.device_filters(i);
+        }
+        const string remote_worker = remote_prefix + std::to_string(task_index);
+        status->status =
+            ctx->context->SetRemoteDeviceFilters(remote_worker, device_filters);
+      }
+    }
+  }
   status->status = UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def,
                                                   ctx, /*reset_context=*/true);
 #endif  // !IS_MOBILE_PLATFORM
@@ -732,6 +808,11 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
              tensorflow::EagerContext::kInvalidContextId) {
     status->status = tensorflow::errors::InvalidArgument(
         "Trying to update a context with invalid context id.");
+  }
+  if (server_def.has_cluster_device_filters()) {
+    LOG(WARNING) << "Device filters can only be specified when initializing "
+                    "the cluster. Any changes in device filters are ignored "
+                    "when updating the server def.";
   }
   // TODO(haoyuzhang): Check server_def compatibility before the update
   status->status = UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def,

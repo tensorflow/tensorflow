@@ -221,12 +221,17 @@ class IrEmitterUnnested : public IrEmitter,
                       absl::Span<const int64> reduced_output_dims,
                       absl::Span<const int64> tiled_param_ids);
 
+  struct TilingKernelInfo {
+    // Tiling bounds.
+    std::array<llvm::Value*, 3> output_tile_bounds;
+
+    // Starting tile, as calculated from block id only.
+    llvm_ir::IrArray::Index tile_origin;
+  };
+
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
-  //
-  // Returns index of the output as calculated from the block only, offset due
-  // to thread id still should be applied to get the final offset.
-  llvm_ir::IrArray::Index EmitTilingKernel(
+  TilingKernelInfo EmitTilingKernel(
       const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
@@ -255,7 +260,7 @@ class IrEmitterUnnested : public IrEmitter,
       HloInstruction* unnested_hlo, const Shape& reduction_operand_shape,
       absl::Span<HloInstruction* const> output_instructions,
       const llvm_ir::IrArray::Index& index,
-      const ReductionCodegenInfo& kernel_info,
+      const ReductionCodegenInfo& reduction_info,
       absl::Span<HloComputation* const> reducers, int64 x_iter_num);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
@@ -275,7 +280,7 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<const HloInstruction* const> reduce_instructions,
       absl::Span<const ShapeIndex> reduction_output_shape_indices,
       absl::Span<HloComputation* const> reducers,
-      const llvm_ir::IrArray::Index& starting_tile);
+      const TilingKernelInfo& tiling_kernel_info);
 
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
@@ -351,8 +356,13 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Prints a given format string with the given arguments, prefixed with thread
   // id and block id, and postfixed with a newline.
-  llvm::Value* EmitPrintfWithThreadId(absl::string_view fmt,
-                                      absl::Span<llvm::Value* const> arguments);
+  //
+  // `thread_id_filter` and `block_id_filter`: if provided, restrict printing to
+  // only given thread and/or block id.
+  void EmitPrintfWithThreadId(
+      absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
+      absl::optional<int64> thread_id_filter = absl::nullopt,
+      absl::optional<int64> block_id_filter = absl::nullopt);
 
   Status Postprocess(HloInstruction* hlo) override;
 

@@ -36,6 +36,9 @@ OverviewPageRecommendation ComputeGenericRecommendation(
 
 OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats);
 
+OverviewPageRunEnvironment ComputeRunEnvironment(
+    const RunEnvironment& run_environment);
+
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type);
 

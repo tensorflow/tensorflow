@@ -19,6 +19,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "absl/base/call_once.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
@@ -114,6 +115,10 @@ struct NcclManager::Communicator {
 };
 
 namespace {
+
+static constexpr DataTypeSet kValidDataTypes =
+    ToSet(DT_HALF) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) |
+    ToSet(DT_INT64);
 
 ncclDataType_t ToNcclType(DataType t) {
   switch (t) {
@@ -547,6 +552,13 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
           "Collective ", collective->collective_key, " already has root_rank ",
           collective->root_rank, " but new participant has root_rank ",
           context.source_rank);
+    }
+    if (collective->status.ok() &&
+        !kValidDataTypes.Contains(collective->data_type)) {
+      collective->status = errors::Internal(
+          "Collective ", collective->collective_key,
+          " expected data types compatible with NCCL but instead got ",
+          DataTypeString(collective->data_type));
     }
 
     if (context.source_rank >= 0) {

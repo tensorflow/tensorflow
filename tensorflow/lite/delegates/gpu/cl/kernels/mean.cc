@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -28,7 +29,8 @@ namespace {
 
 std::string GetMeanKernelCode(
     const OperationDef& op_def,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
+    const std::vector<ElementwiseOperation*>& linked_operations,
+    const int3& work_group_size) {
   TensorCodeGenerator src_tensor(
       "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
       op_def.src_tensors[0]);
@@ -36,24 +38,50 @@ std::string GetMeanKernelCode(
                                  op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
+  const std::string wg_x = std::to_string(work_group_size.x);
+  const std::string wg_y = std::to_string(work_group_size.y);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size \n";
+  c += "    int4 src_size,           \n";
+  c += "    float2 inv_multipliers   \n";
   c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
-  c += "  int Y = get_global_id(1);\n";
+  c += "  __local float4 accum[" +
+       std::to_string(work_group_size.x * work_group_size.y) + "];\n";
+  c += "  int local_x = get_local_id(0);\n";
+  c += "  int local_y = get_local_id(1);\n";
+  c += "  int local_id = local_y * " + wg_x + " + local_x;\n";
   c += "  int S = get_global_id(2);\n";
-  c += "  if (X >= 1 || Y >= 1 || S >= src_size.z) return;\n";
-  c += "  float4 sum = (float4)(0.0f);\n";
-  c += "  for (int y = 0; y < src_size.y; ++y) {\n";
-  c += "    for (int x = 0; x < src_size.x; ++x) {\n";
-  c += "      sum += " + src_tensor.ReadAsFloatWHS("x", "y", "S") + ";\n";
+  c += "  if (S >= src_size.z) return;\n";
+  c += "  accum[local_id] = (float4)(0.0f);\n";
+  c += "  for (int s_y = local_y; s_y < src_size.y; s_y += " + wg_y + ") {\n";
+  c += "    for (int s_x = local_x; s_x < src_size.x; s_x += " + wg_x + ") {\n";
+  c += "        accum[local_id] += " +
+       src_tensor.ReadAsFloatWHS("s_x", "s_y", "S") + ";\n";
   c += "    }\n";
   c += "  }\n";
-  c += "  sum /= (float)(src_size.x * src_size.y);\n";
-  c += "  FLT4 result = TO_FLT4(sum);\n";
+  c += "  accum[local_id] *= inv_multipliers.x;\n";
+  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+  const int total_size = work_group_size.x * work_group_size.y;
+  int offset = 1;
+  int reminder = total_size / 4;
+  for (; reminder >= 8; reminder /= 4, offset *= 4) {
+    c += "  if (local_id < " + std::to_string(reminder) + ") {\n";
+    c += "    int t = local_id * " + std::to_string(offset * 4) + ";\n";
+    c += "    float4 sum = accum[t + " + std::to_string(offset) + "];\n";
+    c += "    sum += accum[t + " + std::to_string(offset * 2) + "];\n";
+    c += "    sum += accum[t + " + std::to_string(offset * 3) + "];\n";
+    c += "    accum[t] += sum;\n";
+    c += "  }\n";
+    c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+  }
+  c += "  float4 sum = accum[0];\n";
+  reminder *= 4;
+  for (int i = 1; i < reminder; ++i) {
+    c += "  sum += accum[" + std::to_string(offset * i) + "];\n";
+  }
+  c += "  FLT4 result = TO_FLT4(sum * inv_multipliers.y);\n";
   c += PostProcess(linked_operations, {"result", "0", "0", "S"});
   c += "  " + dst_tensor.WriteWHS("result", "0", "0", "S");
   c += "}\n";
@@ -76,7 +104,8 @@ Mean& Mean::operator=(Mean&& operation) {
 }
 
 Status Mean::Compile(const CreationContext& creation_context) {
-  const auto code = GetMeanKernelCode(definition_, linked_operations_);
+  const auto code =
+      GetMeanKernelCode(definition_, linked_operations_, work_group_size_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -88,19 +117,18 @@ Status Mean::BindArguments() {
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  const double total_size = src_[0]->Width() * src_[0]->Height();
+  const double size_0 = work_group_size_.x * work_group_size_.y;
+  const double size_1 = total_size / size_0;
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(float2(1.0 / size_1, 1.0 / size_0)));
   return OkStatus();
 }
 
 int3 Mean::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
+  const int grid_x = work_group_size_.x * dst_[0]->Batch();
+  const int grid_y = work_group_size_.y;
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-Status Mean::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
 Status Mean::AddToQueue(CLCommandQueue* queue) {

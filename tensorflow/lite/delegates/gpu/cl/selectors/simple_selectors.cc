@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
@@ -43,13 +42,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
-                     const BHWC& mask_shape,
-                     std::unique_ptr<GPUOperation>* ptr) {
-  ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
-  *ptr = absl::make_unique<ApplyMask>(std::move(operation));
-}
 
 void SelectLSTM(const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr) {
@@ -155,7 +147,7 @@ Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
   return OkStatus();
 }
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr) {

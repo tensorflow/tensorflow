@@ -29,11 +29,12 @@ namespace TFTPU {
 void CreateTPUBridge(OpPassManager &pm) {
   // Run island coarsening before shape inference to allow more exact shape
   // inference using constant folding within islands.
-  OpPassManager &func_pm = pm.nest<FuncOp>();
-  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  pm.nest<FuncOp>().addPass(
+      tf_executor::CreateTFExecutorIslandCoarseningPass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
+  OpPassManager &func_pm = pm.nest<FuncOp>();
   func_pm.addPass(CreateTPUClusterFormationPass());
   func_pm.addPass(createCanonicalizerPass());
   // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
@@ -54,6 +55,7 @@ void CreateTPUBridge(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addPass(CreateTPURewritePass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
+  pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   // TODO(b/147020076): Enable this pass.
   // pm.addPass(CreateTPUVariableReformattingPass());

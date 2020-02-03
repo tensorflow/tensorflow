@@ -80,7 +80,7 @@ EagerContext::EagerContext(
     : default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
-      host_cpu_device_(device_mgr->ListDevices()[0]),
+      host_cpu_device_(device_mgr->HostCPU()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       custom_kernel_creator_(custom_kernel_creator),
@@ -168,11 +168,16 @@ std::vector<string> DevicesToString(const std::vector<Device*>& devices) {
 }
 }  // namespace
 
-Status EagerContext::SelectDevice(const DeviceNameUtils::ParsedName& preferred,
+Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
                                   const PrioritizedDeviceTypeVector& supported,
-                                  Device** device) const {
+                                  const DataType dtype, Device** device) const {
   std::vector<Device*> selected;
   const DeviceSet& pflr_devices = *pflr()->device_set();
+
+  // We always place string tensors on the CPU device if we're allowed to.
+  if (dtype == DT_STRING && AllowSoftPlacement()) {
+    preferred = HostCPU()->parsed_name();
+  }
 
   // If there are no preferred devices, select the first registered device from
   // the supported device list.
@@ -778,6 +783,11 @@ uint64 EagerContext::GetContextViewId() {
   return context_view_id_;
 }
 
+void EagerContext::IncrementContextViewId() {
+  mutex_lock l(remote_state_mu_);
+  context_view_id_ += 1;
+}
+
 // Set collective ops related state in the context. Passing nullptr to
 // `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(
@@ -786,7 +796,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
   local_device_manager_.Reset(device_mgr);
-  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
+  host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   InitPrioritizedDeviceTypeList();
   ClearCachesAndThreadExecutors();
@@ -818,6 +828,86 @@ Status EagerContext::StoreCollectiveOpsServer(
   DCHECK(server_ != nullptr);
 
   return Status::OK();
+}
+
+Status EagerContext::SetRemoteDeviceFilters(
+    const string& remote_worker, const std::vector<string>& device_filters) {
+  // Get fully specified task name for remote worker
+  string remote_worker_task_name;
+  DeviceNameUtils::ParsedName pw;
+  if (!DeviceNameUtils::ParseFullName(remote_worker, &pw)) {
+    return tensorflow::errors::InvalidArgument(
+        "Remote worker task name is invalid ", remote_worker);
+  }
+  // Force set a replica as the key in cluster device filters map. I.e., if the
+  // remote worker is `/job:worker/task:0` it then becomes
+  // `/job:worker/replica:0/task:0`.
+  pw.has_replica = true;
+  if (!DeviceNameUtils::GetTaskName(pw, &remote_worker_task_name)) {
+    return tensorflow::errors::InvalidArgument(
+        "Job name and task index must be specified for worker ", remote_worker);
+  }
+
+  std::vector<DeviceNameUtils::ParsedName> parsed_filters;
+  for (auto& filter : device_filters) {
+    DeviceNameUtils::ParsedName parsed_filter;
+    if (DeviceNameUtils::ParseFullName(filter, &parsed_filter)) {
+      parsed_filters.emplace_back(parsed_filter);
+    } else {
+      return tensorflow::errors::InvalidArgument("Invalid filter: ", filter);
+    }
+  }
+
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << "Setting device filters for " << remote_worker << ":";
+    for (auto& filter : device_filters) {
+      VLOG(1) << "  " << filter;
+    }
+  }
+  mutex_lock l(remote_state_mu_);
+  cluster_device_filters_.emplace(remote_worker_task_name, parsed_filters);
+  return Status::OK();
+}
+
+void EagerContext::FilterDevicesForRemoteWorkers(
+    const string& remote_worker,
+    const protobuf::RepeatedPtrField<DeviceAttributes>& device_attrs,
+    std::vector<bool>* filtered_device_mask) {
+  filtered_device_mask->resize(device_attrs.size());
+  std::fill(filtered_device_mask->begin(), filtered_device_mask->end(), false);
+
+  tf_shared_lock l(remote_state_mu_);
+  auto it = cluster_device_filters_.find(remote_worker);
+  // If no filters were specified, all devices should be visible to the worker
+  if (it == cluster_device_filters_.end() || it->second.empty()) {
+    std::fill(filtered_device_mask->begin(), filtered_device_mask->end(), true);
+    return;
+  }
+
+  const std::vector<DeviceNameUtils::ParsedName>& parsed_filters = it->second;
+  DeviceNameUtils::ParsedName parsed_remote_worker;
+  DeviceNameUtils::ParseFullName(remote_worker, &parsed_remote_worker);
+  for (int i = 0; i < device_attrs.size(); i++) {
+    DeviceNameUtils::ParsedName pn;
+    DeviceNameUtils::ParseFullName(device_attrs[i].name(), &pn);
+    if (DeviceNameUtils::IsSameAddressSpace(parsed_remote_worker, pn)) {
+      // If this device is on the remote worker itself, it should be visible
+      // regardless of device filters
+      filtered_device_mask->at(i) = true;
+      continue;
+    }
+    for (const auto& pf : parsed_filters) {
+      if ((!pn.has_job || !pf.has_job || pn.job == pf.job) &&
+          (!pn.has_replica || !pf.has_replica || pn.replica == pf.replica) &&
+          (!pn.has_task || !pf.has_task || pn.task == pf.task) &&
+          (!pn.has_type || !pf.has_type || pn.type == pf.type) &&
+          (!pn.has_id || !pf.has_id || pn.id == pf.id)) {
+        // Found a match, make it visible, stop processing more device filters
+        filtered_device_mask->at(i) = true;
+        break;
+      }
+    }
+  }
 }
 
 Status EagerContext::InitializeRemoteMaster(
@@ -942,7 +1032,7 @@ Status EagerContext::SetMasterContextState(
       ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
   local_device_manager_.Reset(local_device_mgr);
-  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
+  host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   if (rendezvous_ != nullptr) rendezvous_->Unref();
   rendezvous_ = r;

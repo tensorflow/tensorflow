@@ -331,7 +331,7 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
       return input->emitOpError() << "requires " << num_replicas << " operands";
 
     replicated_inputs.push_back(
-        {input->getOperands(), *input->result_type_begin()});
+        {input->getOperands(), input->getOperand(0).getType()});
     if (llvm::cast<TF::TPUReplicatedInputOp>(input).is_mirrored_variable())
       mirrored_variable_indices.push_back(pos_and_input.index());
   }

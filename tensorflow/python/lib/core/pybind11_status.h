@@ -88,6 +88,20 @@ inline void MaybeRaiseRegisteredFromTFStatus(TF_Status* status) {
   }
 }
 
+inline void MaybeRaiseRegisteredFromTFStatusWithGIL(TF_Status* status) {
+  TF_Code code = TF_GetCode(status);
+  if (code != TF_OK) {
+    // Acquire GIL for throwing exception.
+    pybind11::gil_scoped_acquire acquire;
+
+    PyErr_SetObject(PyExceptionRegistry::Lookup(code),
+                    pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                         TF_Message(status))
+                        .ptr());
+    throw pybind11::error_already_set();
+  }
+}
+
 }  // namespace tensorflow
 
 namespace pybind11 {

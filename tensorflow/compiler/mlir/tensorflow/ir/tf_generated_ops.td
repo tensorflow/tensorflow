@@ -702,7 +702,7 @@ def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
   TF_DerivedOperandTypeAttr SrcT = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr DstT = TF_DerivedResultTypeAttr<0>;
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def TF_CeilOp : TF_Op<"Ceil", [NoSideEffect, SameOperandsAndResultType]> {
@@ -6386,6 +6386,25 @@ occurred during compilation.
   );
 }
 
+def TF_TPUCopyWithLayoutOp : TF_Op<"TPUCopyWithLayout", [NoSideEffect]> {
+  let summary = "Op that copies host tensor to device with specified layout.";
+
+  let description = [{
+For internal use only.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    I64Tensor:$layout
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TPUExecuteOp : TF_Op<"TPUExecute", []> {
   let summary = "Op that loads and executes a TPU program on a TPU device.";
 
@@ -6435,6 +6454,27 @@ output. For the internal use of the distributed TPU compiler.
 
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_TPUGetLayoutOp : TF_Op<"TPUGetLayoutOp", [NoSideEffect]> {
+  let summary = [{
+Op that retrieves the layout of an input or output determined by TPUCompile.
+  }];
+
+  let description = [{
+For internal use only.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$cache_key,
+
+    I64Attr:$index,
+    BoolAttr:$is_output
+  );
+
+  let results = (outs
+    I64Tensor:$layout
+  );
 }
 
 def TF_TPUReplicatedInputOp : TF_Op<"TPUReplicatedInput", [NoSideEffect]> {

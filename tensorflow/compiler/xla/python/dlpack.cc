@@ -53,8 +53,6 @@ void DLPackTensorDeleter(DLManagedTensor* t) {
 
 StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
   switch (type) {
-    case PRED:
-      return DLDataType{kDLInt, 1, 1};
     case S8:
       return DLDataType{kDLInt, 8, 1};
     case S16:
@@ -79,6 +77,7 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
       return DLDataType{kDLFloat, 64, 1};
     case BF16:
       return DLDataType{kDLBfloat, 16, 1};
+    case PRED:
     case C64:
     case C128:
     default:
@@ -95,8 +94,6 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
   switch (type.code) {
     case kDLInt:
       switch (type.bits) {
-        case 1:
-          return PRED;
         case 8:
           return S8;
         case 16:
@@ -112,8 +109,6 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
       }
     case kDLUInt:
       switch (type.bits) {
-        case 1:
-          return PRED;
         case 8:
           return U8;
         case 16:
@@ -159,7 +154,7 @@ std::vector<int64> StridesForShape(const Shape& shape) {
   CHECK(shape.has_layout());
 
   strides.resize(shape.dimensions_size());
-  int64 stride = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
+  int64 stride = 1;
   for (int i : shape.layout().minor_to_major()) {
     strides.at(i) = stride;
     stride *= shape.dimensions(i);
@@ -172,8 +167,15 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
   CHECK_EQ(dims.size(), strides.size());
   std::vector<int64> minor_to_major(dims.size());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
-  absl::c_sort(minor_to_major,
-               [&](int a, int b) { return strides[a] < strides[b]; });
+  absl::c_sort(minor_to_major, [&](int a, int b) {
+    if (strides[a] < strides[b]) {
+      return true;
+    }
+    if (strides[a] > strides[b]) {
+      return false;
+    }
+    return dims[a] == 1 && dims[b] != 1;
+  });
   int64 stride = 1;
   for (int64 d : minor_to_major) {
     if (strides[d] != stride) {
@@ -267,13 +269,19 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
   pack->strides = StridesForShape(buffer->on_host_shape());
   dt.shape = reinterpret_cast<std::int64_t*>(pack->shape.data());
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
-  dt.strides = nullptr;
   dt.byte_offset = 0;
 
   py::capsule capsule(&pack.release()->tensor, kDlTensorCapsuleName,
                       [](PyObject* obj) {
-                        DLPackTensorDeleter(static_cast<DLManagedTensor*>(
-                            PyCapsule_GetPointer(obj, kDlTensorCapsuleName)));
+                        DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(
+                            PyCapsule_GetPointer(obj, kDlTensorCapsuleName));
+                        if (dlmt) {
+                          DLPackTensorDeleter(dlmt);
+                        } else {
+                          // The tensor has been deleted. Clear any error from
+                          // PyCapsule_GetPointer.
+                          PyErr_Clear();
+                        }
                       });
 
   TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
@@ -302,7 +310,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
                       DLDataTypeToPrimitiveType(dlmt->dl_tensor.dtype));
 
   std::vector<int64> minor_to_major;
-  if (dlmt->dl_tensor.strides) {
+  if (dlmt->dl_tensor.strides && !absl::c_find(dimensions, 0)) {
     absl::Span<int64 const> strides(
         reinterpret_cast<int64*>(dlmt->dl_tensor.strides),
         dlmt->dl_tensor.ndim);

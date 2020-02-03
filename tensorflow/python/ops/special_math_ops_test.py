@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 import numpy as np
 import opt_einsum
 import six
@@ -177,6 +179,228 @@ class LBetaTest(test.TestCase):
         self.assertAllEqual(self.evaluate(expected_result),
                             self.evaluate(lbeta_x))
         self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class DawsnTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_dawsn_boundary(self):
+    self.assertAllClose(0., special_math_ops.dawsn(0.))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.dawsn(np.nan))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_dawsn_odd(self, dtype):
+    x = np.random.uniform(-100., 100., size=int(1e4)).astype(dtype)
+    self.assertAllClose(
+        self.evaluate(special_math_ops.dawsn(x)),
+        self.evaluate(-special_math_ops.dawsn(-x)))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_dawsn_small(self, dtype):
+    x = np.random.uniform(-1., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.dawsn(x), self.evaluate(special_math_ops.dawsn(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_dawsn_larger(self, dtype):
+    x = np.random.uniform(1., 100., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.dawsn(x), self.evaluate(special_math_ops.dawsn(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_dawsn_gradient(self):
+    inputs = [np.random.uniform(-50., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.dawsn, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ExpintTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_expint_boundary(self):
+    self.assertAllClose(-np.inf, special_math_ops.expint(0.))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.expint(np.nan))))
+    # Check that the domain of definition is [0, inf)
+    self.assertTrue(
+        np.all(
+            np.isnan(
+                self.evaluate(
+                    special_math_ops.expint(
+                        np.random.uniform(-20., -1., size=int(1e3)))))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_expint_small(self, dtype):
+    x = np.random.uniform(0., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.expi(x), self.evaluate(special_math_ops.expint(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_expint_larger(self, dtype):
+    x = np.random.uniform(1., 50., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.expi(x), self.evaluate(special_math_ops.expint(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_expint_gradient(self):
+    inputs = [np.random.uniform(1., 10., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.expint, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 5e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class FresnelCosTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_fresnel_cos_boundary(self):
+    self.assertAllClose(0., special_math_ops.fresnel_cos(0.))
+    self.assertTrue(
+        np.isnan(self.evaluate(special_math_ops.fresnel_cos(np.nan))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_cos_odd(self, dtype):
+    x = np.random.uniform(-100., 100., size=int(1e4)).astype(dtype)
+    self.assertAllClose(
+        self.evaluate(special_math_ops.fresnel_cos(x)),
+        self.evaluate(-special_math_ops.fresnel_cos(-x)))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_cos_small(self, dtype):
+    x = np.random.uniform(0., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.fresnel(x)[1], self.evaluate(special_math_ops.fresnel_cos(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_cos_larger(self, dtype):
+    x = np.random.uniform(1., 100., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.fresnel(x)[1],
+          self.evaluate(special_math_ops.fresnel_cos(x)),
+          rtol=1e-5)
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_fresnel_cos_gradient(self):
+    inputs = [np.random.uniform(1., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.fresnel_cos, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 5e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class FresnelSinTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_fresnel_sin_boundary(self):
+    self.assertAllClose(0., special_math_ops.fresnel_sin(0.))
+    self.assertTrue(
+        np.isnan(self.evaluate(special_math_ops.fresnel_sin(np.nan))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_sin_odd(self, dtype):
+    x = np.random.uniform(-100., 100., size=int(1e4)).astype(dtype)
+    self.assertAllClose(
+        self.evaluate(special_math_ops.fresnel_sin(x)),
+        self.evaluate(-special_math_ops.fresnel_sin(-x)))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_sin_small(self, dtype):
+    x = np.random.uniform(0., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.fresnel(x)[0], self.evaluate(special_math_ops.fresnel_sin(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_fresnel_sin_larger(self, dtype):
+    x = np.random.uniform(1., 100., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.fresnel(x)[0],
+          self.evaluate(special_math_ops.fresnel_sin(x)),
+          rtol=1e-5)
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_fresnel_sin_gradient(self):
+    inputs = [np.random.uniform(1., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.fresnel_sin, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 5e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class SpenceTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_spence_boundary(self):
+    self.assertAllClose(np.pi**2 / 6., special_math_ops.spence(0.))
+    self.assertAllClose(0., special_math_ops.spence(1.))
+    self.assertTrue(np.isnan(self.evaluate(special_math_ops.spence(np.nan))))
+    # Check that the domain of definition is [0, inf)
+    self.assertTrue(
+        np.all(
+            np.isnan(
+                self.evaluate(
+                    special_math_ops.spence(
+                        np.random.uniform(-20., -1., size=int(1e3)))))))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_spence_small(self, dtype):
+    x = np.random.uniform(0., 1., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.spence(x), self.evaluate(special_math_ops.spence(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @parameterized.parameters(np.float32, np.float64)
+  def test_spence_larger(self, dtype):
+    x = np.random.uniform(1., 100., size=int(1e4)).astype(dtype)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(
+          special.spence(x), self.evaluate(special_math_ops.spence(x)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_spence_gradient(self):
+    inputs = [np.random.uniform(1., 50., size=int(1e2))]
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        special_math_ops.spence, inputs)
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+  def test_spence_gradient_at_one(self):
+    analytical, _ = gradient_checker_v2.compute_gradient(
+        special_math_ops.spence, [1.])
+    self.assertAllClose([[[-1.]]], analytical)
 
 
 class BesselTest(test.TestCase):
