@@ -49,6 +49,12 @@ inline int8x8_t util_vld1_x8(const uint8* data_addr) {
 inline int8x8_t util_vld1_x8(const int8* data_addr) {
   return vld1_s8(data_addr);
 }
+inline void util_vst1_x8(uint8* data_addr, int8x8_t reg) {
+  return vst1_u8(data_addr, vreinterpret_u8_s8(reg));
+}
+inline void util_vst1_x8(int8* data_addr, int8x8_t reg) {
+  return vst1_s8(data_addr, reg);
+}
 
 // Lane operations are for clarity and convenience. We want to load and store
 // 4 8-bit lanes together. So these are treated much like 32-bit loads and
@@ -3231,10 +3237,27 @@ struct KernelMacroBlock<
     QuantizationType::kNonPerChannelUint8,
     DepthwiseConvDepthMultiplication::kNoMultiplication,
     /*stride=*/1> {
+  static inline uint8x8_t vqmovxn_s16(int16x8_t x) { return vqmovun_s16(x); }
+  static inline uint8x8_t util_vmin_x8(uint8x8_t a, uint8x8_t b) {
+    return vmin_u8(a, b);
+  }
+  static inline uint8x8_t util_vmax_x8(uint8x8_t a, uint8x8_t b) {
+    return vmax_u8(a, b);
+  }
+  static inline uint8x16_t util_vminq_x8(uint8x16_t a, uint8x16_t b) {
+    return vminq_u8(a, b);
+  }
+  static inline uint8x16_t util_vmaxq_x8(uint8x16_t a, uint8x16_t b) {
+    return vmaxq_u8(a, b);
+  }
+
   static inline void KernelMacroBlockIntrinsics(
       const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
       const DepthwiseConvDotProdParams* function_params) {
+    static constexpr QuantizationType quantization_type =
+        QuantizationType::kNonPerChannelUint8;
+
     const int workspace_height_stride =
         function_params->workspace_height_stride;
     const int input_width_overall_micro_repeats =
@@ -3263,10 +3286,17 @@ struct KernelMacroBlock<
     const int32 output_multiplier = function_params->output_multiplier;
     const int32 output_shift = function_params->output_shift;
     const int32 output_offset = function_params->output_offset;
-    TFLITE_DCHECK_GE(output_activation_min, 0);
-    TFLITE_DCHECK_LT(output_activation_min, 256);
-    TFLITE_DCHECK_GE(output_activation_max, 0);
-    TFLITE_DCHECK_LT(output_activation_max, 256);
+    if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+      TFLITE_DCHECK_GE(output_activation_min, 0);
+      TFLITE_DCHECK_LT(output_activation_min, 256);
+      TFLITE_DCHECK_GE(output_activation_max, 0);
+      TFLITE_DCHECK_LT(output_activation_max, 256);
+    } else {
+      TFLITE_DCHECK_GE(output_activation_min, -128);
+      TFLITE_DCHECK_LT(output_activation_min, 128);
+      TFLITE_DCHECK_GE(output_activation_max, -128);
+      TFLITE_DCHECK_LT(output_activation_max, 128);
+    }
     TFLITE_DCHECK_GE(output_offset, -32878);
     TFLITE_DCHECK_LT(output_offset, 32768);
 
@@ -3278,7 +3308,8 @@ struct KernelMacroBlock<
         vdupq_n_u8(static_cast<uint8>(output_activation_max));
 
     const int8* input_data_depthwise = scratch_block_data;
-    uint8* output_data_depthwise = output_block_data;
+    typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        output_data_depthwise = output_block_data;
     for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
       // Simulate NEON-register transposition of subset of filter.
       int8x16_t filter_reg_0_a;
@@ -3312,10 +3343,12 @@ struct KernelMacroBlock<
         for (int s = 0; s < 2; ++s) {
           // Work through one slice, by row, at a time.
           const int8* input_data_base = input_data_depthwise + 2 * 8 * s;
-          uint8* output_data_base = output_data_depthwise + 4 * s;
+          typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              output_data_base = output_data_depthwise + 4 * s;
 
           const int8* next_input_data = input_data_base;
-          uint8* output_data = output_data_base;
+          typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              output_data = output_data_base;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
           bias_data += kBiasIncrement;
@@ -3384,10 +3417,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -3460,10 +3493,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -3528,10 +3561,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -3583,10 +3616,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -3683,10 +3716,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -3729,7 +3762,8 @@ struct KernelMacroBlock<
         }
       } else {
         const int8* input_data_base = input_data_depthwise;
-        uint8* output_data_base = output_data_depthwise;
+        typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            output_data_base = output_data_depthwise;
 
         const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
         bias_data += kBiasIncrement;
@@ -3738,7 +3772,8 @@ struct KernelMacroBlock<
 
         for (int k_height = 0; k_height < block_height; ++k_height) {
           const int8* next_input_data = input_data_base;
-          uint8* output_data = output_data_base;
+          typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              output_data = output_data_base;
 
           // Load first sub-micro block of data into operational banks.
           int8x16_t left_bank_0_reg_a = vld1q_s8(next_input_data);
@@ -3812,13 +3847,13 @@ struct KernelMacroBlock<
                   vcombine_s16(vqmovn_s32(acc_a), vqmovn_s32(acc_b));
               acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
               // Apply the activation function.
-              uint8x8_t acc_u8_0_0 = vqmovun_s16(acc_s16_0_0);
-              acc_u8_0_0 =
-                  vmax_u8(acc_u8_0_0, vget_low_u8(output_activation_min_vec));
-              acc_u8_0_0 =
-                  vmin_u8(acc_u8_0_0, vget_low_u8(output_activation_max_vec));
+              uint8x8_t acc_u8_0_0 = vqmovxn_s16(acc_s16_0_0);
+              acc_u8_0_0 = util_vmax_x8(acc_u8_0_0,
+                                        vget_low_u8(output_activation_min_vec));
+              acc_u8_0_0 = util_vmin_x8(acc_u8_0_0,
+                                        vget_low_u8(output_activation_max_vec));
 
-              vst1_u8(output_data, acc_u8_0_0);
+              util_vst1_x8(output_data, acc_u8_0_0);
 
               biregister_rotate_8(&left_bank_0_reg_a, &right_bank_0_reg_a);
               biregister_rotate_8(&left_bank_1_reg_a, &right_bank_1_reg_a);
@@ -3854,10 +3889,21 @@ struct KernelMacroBlock<
     QuantizationType::kNonPerChannelUint8,
     DepthwiseConvDepthMultiplication::kNoMultiplication,
     /*stride=*/2> {
+  static inline uint8x8_t vqmovxn_s16(int16x8_t x) { return vqmovun_s16(x); }
+  static inline uint8x8_t util_vmin_x8(uint8x8_t a, uint8x8_t b) {
+    return vmin_u8(a, b);
+  }
+  static inline uint8x8_t util_vmax_x8(uint8x8_t a, uint8x8_t b) {
+    return vmax_u8(a, b);
+  }
+
   static inline void KernelMacroBlockIntrinsics(
       const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
       const DepthwiseConvDotProdParams* function_params) {
+    static constexpr QuantizationType quantization_type =
+        QuantizationType::kNonPerChannelUint8;
+
     const int workspace_height_stride =
         function_params->workspace_height_stride;
     const int input_width_overall_micro_repeats =
@@ -3892,10 +3938,17 @@ struct KernelMacroBlock<
     const int32 output_multiplier = function_params->output_multiplier;
     const int32 output_shift = function_params->output_shift;
     const int32 output_offset = function_params->output_offset;
-    TFLITE_DCHECK_GE(output_activation_min, 0);
-    TFLITE_DCHECK_LT(output_activation_min, 256);
-    TFLITE_DCHECK_GE(output_activation_max, 0);
-    TFLITE_DCHECK_LT(output_activation_max, 256);
+    if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+      TFLITE_DCHECK_GE(output_activation_min, 0);
+      TFLITE_DCHECK_LT(output_activation_min, 256);
+      TFLITE_DCHECK_GE(output_activation_max, 0);
+      TFLITE_DCHECK_LT(output_activation_max, 256);
+    } else {
+      TFLITE_DCHECK_GE(output_activation_min, -128);
+      TFLITE_DCHECK_LT(output_activation_min, 128);
+      TFLITE_DCHECK_GE(output_activation_max, -128);
+      TFLITE_DCHECK_LT(output_activation_max, 128);
+    }
     TFLITE_DCHECK_GE(output_offset, -32878);
     TFLITE_DCHECK_LT(output_offset, 32768);
 
@@ -3928,7 +3981,8 @@ struct KernelMacroBlock<
 
           const int8* scratch_data =
               scratch_block_data + depth_micro_stride * j_depth;
-          uint8* output_data = output_block_data + 8 * j_depth;
+          typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              output_data = output_block_data + 8 * j_depth;
           const int8* input_data_0 = scratch_data + s * 2 * 8;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
@@ -3980,7 +4034,8 @@ struct KernelMacroBlock<
 
             acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
             acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
-            uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
+            typename QuantizationTypeImpl<quantization_type>::ExternalType*
+                output_data_base = output_data + depth * 2 * i_width + 4 * s;
 
             right_bank_2_reg = vld1q_s8(input_data + width_micro_stride +
                                         2 * workspace_height_stride);
@@ -4004,9 +4059,9 @@ struct KernelMacroBlock<
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            acc_u8 = vqmovun_s16(acc_s16_0_1);
-            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+            acc_u8 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8 = util_vmax_x8(acc_u8, output_activation_min_vec);
+            acc_u8 = util_vmin_x8(acc_u8, output_activation_max_vec);
 
             left_bank_0_reg = vrev32q_u16(left_bank_0_reg);
             left_bank_1_reg = vrev32q_u16(left_bank_1_reg);
@@ -4042,9 +4097,9 @@ struct KernelMacroBlock<
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            acc_u8 = vqmovun_s16(acc_s16_0_1);
-            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+            acc_u8 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8 = util_vmax_x8(acc_u8, output_activation_min_vec);
+            acc_u8 = util_vmin_x8(acc_u8, output_activation_max_vec);
 
             vst1_lane_8x4(output_data_base + depth, acc_u8, 0);
             vst1_lane_8x4(output_data_base + depth + output_height_stride,
@@ -4061,7 +4116,8 @@ struct KernelMacroBlock<
 
             // No need to load next ("right") block of data.
 
-            uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
+            typename QuantizationTypeImpl<quantization_type>::ExternalType*
+                output_data_base = output_data + depth * 2 * i_width + 4 * s;
 
             // Iterate over input width shifts within 4x4 blocks.
             {
@@ -4087,9 +4143,9 @@ struct KernelMacroBlock<
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               // Apply the activation function.
-              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
-              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+              uint8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
+              acc_u8 = util_vmax_x8(acc_u8, output_activation_min_vec);
+              acc_u8 = util_vmin_x8(acc_u8, output_activation_max_vec);
 
               vst1_lane_8x4(output_data_base, acc_u8, 0);
               vst1_lane_8x4(output_data_base + output_height_stride, acc_u8, 1);
@@ -4126,7 +4182,8 @@ struct KernelMacroBlock<
 
         const int8* scratch_data =
             scratch_block_data + depth_micro_stride * j_depth;
-        uint8* output_data = output_block_data + 8 * j_depth;
+        typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            output_data = output_block_data + 8 * j_depth;
         const int8* input_data_0 = scratch_data;
 
         const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
@@ -4181,7 +4238,8 @@ struct KernelMacroBlock<
                                           2 * workspace_height_stride + 16);
           }
 
-          uint8* output_data_base = output_data + depth * 2 * i_width;
+          typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              output_data_base = output_data + depth * 2 * i_width;
 
           // Iterate over input width shifts within 4x4 blocks.
           {
@@ -4207,11 +4265,11 @@ struct KernelMacroBlock<
                 vcombine_s16(vqmovn_s32(acc0_a), vqmovn_s32(acc0_b));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
-            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+            uint8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8 = util_vmax_x8(acc_u8, output_activation_min_vec);
+            acc_u8 = util_vmin_x8(acc_u8, output_activation_max_vec);
 
-            vst1_u8(output_data_base, acc_u8);
+            util_vst1_x8(output_data_base, acc_u8);
 
             left_bank_0_reg_a = vrev32q_u16(left_bank_0_reg_a);
             left_bank_1_reg_a = vrev32q_u16(left_bank_1_reg_a);
@@ -4250,11 +4308,11 @@ struct KernelMacroBlock<
                 vcombine_s16(vqmovn_s32(acc0_a), vqmovn_s32(acc0_b));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
-            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+            uint8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8 = util_vmax_x8(acc_u8, output_activation_min_vec);
+            acc_u8 = util_vmin_x8(acc_u8, output_activation_max_vec);
 
-            vst1_u8(output_data_base + depth, acc_u8);
+            util_vst1_x8(output_data_base + depth, acc_u8);
 
             left_bank_0_reg_a = right_bank_0_reg_a;
             left_bank_1_reg_a = right_bank_1_reg_a;
@@ -4283,10 +4341,27 @@ struct KernelMacroBlock<
     QuantizationType::kNonPerChannelUint8,
     DepthwiseConvDepthMultiplication::kUnitInputDepth,
     /*stride=*/1> {
+  static inline uint8x8_t vqmovxn_s16(int16x8_t x) { return vqmovun_s16(x); }
+  static inline uint8x8_t util_vmin_x8(uint8x8_t a, uint8x8_t b) {
+    return vmin_u8(a, b);
+  }
+  static inline uint8x8_t util_vmax_x8(uint8x8_t a, uint8x8_t b) {
+    return vmax_u8(a, b);
+  }
+  static inline uint8x16_t util_vminq_x8(uint8x16_t a, uint8x16_t b) {
+    return vminq_u8(a, b);
+  }
+  static inline uint8x16_t util_vmaxq_x8(uint8x16_t a, uint8x16_t b) {
+    return vmaxq_u8(a, b);
+  }
+
   static inline void KernelMacroBlockIntrinsics(
       const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
       const DepthwiseConvDotProdParams* function_params) {
+    static constexpr QuantizationType quantization_type =
+        QuantizationType::kNonPerChannelUint8;
+
     TFLITE_DCHECK_EQ(function_params->stride, 1);
     const int workspace_height_stride =
         function_params->workspace_height_stride;
@@ -4311,10 +4386,17 @@ struct KernelMacroBlock<
     const int32 output_multiplier = function_params->output_multiplier;
     const int32 output_shift = function_params->output_shift;
     const int32 output_offset = function_params->output_offset;
-    TFLITE_DCHECK_GE(output_activation_min, 0);
-    TFLITE_DCHECK_LT(output_activation_min, 256);
-    TFLITE_DCHECK_GE(output_activation_max, 0);
-    TFLITE_DCHECK_LT(output_activation_max, 256);
+    if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+      TFLITE_DCHECK_GE(output_activation_min, 0);
+      TFLITE_DCHECK_LT(output_activation_min, 256);
+      TFLITE_DCHECK_GE(output_activation_max, 0);
+      TFLITE_DCHECK_LT(output_activation_max, 256);
+    } else {
+      TFLITE_DCHECK_GE(output_activation_min, -128);
+      TFLITE_DCHECK_LT(output_activation_min, 128);
+      TFLITE_DCHECK_GE(output_activation_max, -128);
+      TFLITE_DCHECK_LT(output_activation_max, 128);
+    }
     TFLITE_DCHECK_GE(output_offset, -32878);
     TFLITE_DCHECK_LT(output_offset, 32768);
 
@@ -4325,7 +4407,8 @@ struct KernelMacroBlock<
     const uint8x16_t output_activation_max_vec =
         vdupq_n_u8(static_cast<uint8>(output_activation_max));
 
-    uint8* output_data_depthwise = output_block_data;
+    typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        output_data_depthwise = output_block_data;
     for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
       // Simulate NEON-register transposition of subset of filter.
       int8x16_t filter_reg_0_a;
@@ -4367,10 +4450,12 @@ struct KernelMacroBlock<
       if (block_height == 4) {
         for (int s = 0; s < 2; ++s) {
           // Work through one slice, by row, at a time.
-          uint8* output_data_base = output_data_depthwise + 4 * s;
+          typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              output_data_base = output_data_depthwise + 4 * s;
 
           const int8* next_input_data = scratch_block_data;
-          uint8* output_data = output_data_base;
+          typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              output_data = output_data_base;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
           bias_data += kBiasIncrement;
@@ -4459,10 +4544,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -4543,10 +4628,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -4614,10 +4699,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -4681,10 +4766,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -4776,10 +4861,10 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
-                                                  vqmovun_s16(acc_s16_2_3));
-              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
-              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                  vqmovxn_s16(acc_s16_2_3));
+              acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
               vst1q_lane_8x4(output_data, acc_u8_all, 0);
               vst1q_lane_8x4(output_data + output_height_stride, acc_u8_all, 1);
@@ -4823,7 +4908,8 @@ struct KernelMacroBlock<
         }
       } else {
         // Block height < 4.
-        uint8* output_data_base = output_data_depthwise;
+        typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            output_data_base = output_data_depthwise;
 
         const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
         bias_data += kBiasIncrement;
@@ -4833,7 +4919,8 @@ struct KernelMacroBlock<
         for (int k_height = 0; k_height < block_height; ++k_height) {
           const int8* next_input_data =
               scratch_block_data + k_height * workspace_height_stride;
-          uint8* output_data = output_data_base;
+          typename QuantizationTypeImpl<quantization_type>::ExternalType*
+              output_data = output_data_base;
 
           int8x16_t input_bank_p_reg;  //  left 0, right 0, left 1, right 1.
           int8x16_t input_bank_q_reg;  //  left 2, right 2, left 3, right 3.
@@ -4892,13 +4979,13 @@ struct KernelMacroBlock<
                   vcombine_s16(vqmovn_s32(acc_a), vqmovn_s32(acc_b));
               acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
               // Apply the activation function.
-              uint8x8_t acc_u8_0_0 = vqmovun_s16(acc_s16_0_0);
-              acc_u8_0_0 =
-                  vmax_u8(acc_u8_0_0, vget_low_u8(output_activation_min_vec));
-              acc_u8_0_0 =
-                  vmin_u8(acc_u8_0_0, vget_low_u8(output_activation_max_vec));
+              uint8x8_t acc_u8_0_0 = vqmovxn_s16(acc_s16_0_0);
+              acc_u8_0_0 = util_vmax_x8(acc_u8_0_0,
+                                        vget_low_u8(output_activation_min_vec));
+              acc_u8_0_0 = util_vmin_x8(acc_u8_0_0,
+                                        vget_low_u8(output_activation_max_vec));
 
-              vst1_u8(output_data, acc_u8_0_0);
+              util_vst1_x8(output_data, acc_u8_0_0);
 
               input_bank_p_reg = vshrq_n_u64(input_bank_p_reg, 8);
               input_bank_q_reg = vshrq_n_u64(input_bank_q_reg, 8);
@@ -4928,10 +5015,21 @@ struct KernelMacroBlock<
     QuantizationType::kNonPerChannelUint8,
     DepthwiseConvDepthMultiplication::kUnitInputDepth,
     /*stride=*/2> {
+  static inline uint8x8_t vqmovxn_s16(int16x8_t x) { return vqmovun_s16(x); }
+  static inline uint8x8_t util_vmin_x8(uint8x8_t a, uint8x8_t b) {
+    return vmin_u8(a, b);
+  }
+  static inline uint8x8_t util_vmax_x8(uint8x8_t a, uint8x8_t b) {
+    return vmax_u8(a, b);
+  }
+
   static inline void KernelMacroBlockIntrinsics(
       const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
       const DepthwiseConvDotProdParams* function_params) {
+    static constexpr QuantizationType quantization_type =
+        QuantizationType::kNonPerChannelUint8;
+
     const int workspace_height_stride =
         function_params->workspace_height_stride;
     const int output_width_micro_repeats =
@@ -4955,10 +5053,17 @@ struct KernelMacroBlock<
     const int32 output_multiplier = function_params->output_multiplier;
     const int32 output_shift = function_params->output_shift;
     const int32 output_offset = function_params->output_offset;
-    TFLITE_DCHECK_GE(output_activation_min, 0);
-    TFLITE_DCHECK_LT(output_activation_min, 256);
-    TFLITE_DCHECK_GE(output_activation_max, 0);
-    TFLITE_DCHECK_LT(output_activation_max, 256);
+    if (quantization_type == QuantizationType::kNonPerChannelUint8) {
+      TFLITE_DCHECK_GE(output_activation_min, 0);
+      TFLITE_DCHECK_LT(output_activation_min, 256);
+      TFLITE_DCHECK_GE(output_activation_max, 0);
+      TFLITE_DCHECK_LT(output_activation_max, 256);
+    } else {
+      TFLITE_DCHECK_GE(output_activation_min, -128);
+      TFLITE_DCHECK_LT(output_activation_min, 128);
+      TFLITE_DCHECK_GE(output_activation_max, -128);
+      TFLITE_DCHECK_LT(output_activation_max, 128);
+    }
     TFLITE_DCHECK_GE(output_offset, -32878);
     TFLITE_DCHECK_LT(output_offset, 32768);
 
@@ -4999,7 +5104,8 @@ struct KernelMacroBlock<
 
       if (block_height == 2) {
         const int8* scratch_data = scratch_block_data;
-        uint8* output_data = output_block_data + 8 * j_depth;
+        typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            output_data = output_block_data + 8 * j_depth;
 
         int8x16_t input_bank_a_reg;  //  left 0, right 0, left 1, right 1.
         int8x16_t input_bank_b_reg;  //  left 2, right 2, left 3, right 3.
@@ -5080,11 +5186,11 @@ struct KernelMacroBlock<
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            acc_u8_0_1 = vqmovun_s16(acc_s16_0_1);
-            acc_u8_0_1 =
-                vmax_u8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
-            acc_u8_0_1 =
-                vmin_u8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+            acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_min_vec));
+            acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_max_vec));
 
             vst1_lane_8x4(output_data, acc_u8_0_1, 0);
             vst1_lane_8x4(output_data + output_height_stride, acc_u8_0_1, 1);
@@ -5116,11 +5222,11 @@ struct KernelMacroBlock<
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            acc_u8_0_1 = vqmovun_s16(acc_s16_0_1);
-            acc_u8_0_1 =
-                vmax_u8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
-            acc_u8_0_1 =
-                vmin_u8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+            acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_min_vec));
+            acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_max_vec));
 
             vst1_lane_8x4(output_data + 4, acc_u8_0_1, 0);
             vst1_lane_8x4(output_data + 4 + output_height_stride, acc_u8_0_1,
@@ -5155,11 +5261,11 @@ struct KernelMacroBlock<
           acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
           acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
           // Apply the activation function.
-          acc_u8_0_1 = vqmovun_s16(acc_s16_0_1);
+          acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
           acc_u8_0_1 =
-              vmax_u8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
+              util_vmax_x8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
           acc_u8_0_1 =
-              vmin_u8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+              util_vmin_x8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
 
           vst1_lane_8x4(output_data, acc_u8_0_1, 0);
           vst1_lane_8x4(output_data + output_height_stride, acc_u8_0_1, 1);
@@ -5185,11 +5291,11 @@ struct KernelMacroBlock<
           acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
           acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
           // Apply the activation function.
-          acc_u8_0_1 = vqmovun_s16(acc_s16_0_1);
+          acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
           acc_u8_0_1 =
-              vmax_u8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
+              util_vmax_x8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
           acc_u8_0_1 =
-              vmin_u8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+              util_vmin_x8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
 
           vst1_lane_8x4(output_data + 4, acc_u8_0_1, 0);
           vst1_lane_8x4(output_data + 4 + output_height_stride, acc_u8_0_1, 1);
@@ -5246,11 +5352,11 @@ struct KernelMacroBlock<
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            acc_u8_0_1 = vqmovun_s16(acc_s16_0_1);
-            acc_u8_0_1 =
-                vmax_u8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
-            acc_u8_0_1 =
-                vmin_u8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+            acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_min_vec));
+            acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_max_vec));
 
             vst1_lane_8x4(output_data, acc_u8_0_1, 0);
             vst1_lane_8x4(output_data + output_height_stride, acc_u8_0_1, 1);
@@ -5282,11 +5388,11 @@ struct KernelMacroBlock<
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            acc_u8_0_1 = vqmovun_s16(acc_s16_0_1);
-            acc_u8_0_1 =
-                vmax_u8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
-            acc_u8_0_1 =
-                vmin_u8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+            acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_min_vec));
+            acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_max_vec));
 
             vst1_lane_8x4(output_data + 4, acc_u8_0_1, 0);
             vst1_lane_8x4(output_data + 4 + output_height_stride, acc_u8_0_1,
@@ -5303,9 +5409,9 @@ struct KernelMacroBlock<
         TFLITE_DCHECK_EQ(block_height, 1);
         // Work through one slice, by row, at a time.
         const int8* scratch_data = scratch_block_data;
-        uint8* output_data = output_block_data + 8 * j_depth;
+        typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            output_data = output_block_data + 8 * j_depth;
 
-        //
         int8x16_t input_bank_a_reg;  //  left 0, right 0, left 1, right 1.
         int8x16_t input_bank_b_reg;  //  left 2, right 2, xxx, xxx.
 
@@ -5376,14 +5482,14 @@ struct KernelMacroBlock<
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            acc_u8_0_1 = vqmovun_s16(acc_s16_0_1);
-            acc_u8_0_1 =
-                vmax_u8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
-            acc_u8_0_1 =
-                vmin_u8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+            acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_min_vec));
+            acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_max_vec));
 
             // This stores the results for both sub-blocks together.
-            vst1_u8(output_data, acc_u8_0_1);
+            util_vst1_x8(output_data, acc_u8_0_1);
 
             input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 16);
             input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 16);
@@ -5422,14 +5528,14 @@ struct KernelMacroBlock<
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            acc_u8_0_1 = vqmovun_s16(acc_s16_0_1);
-            acc_u8_0_1 =
-                vmax_u8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
-            acc_u8_0_1 =
-                vmin_u8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+            acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
+            acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_min_vec));
+            acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
+                                      vget_low_u8(output_activation_max_vec));
 
             // This stores the results for both sub-blocks together.
-            vst1_u8(output_data, acc_u8_0_1);
+            util_vst1_x8(output_data, acc_u8_0_1);
 
             input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 16);
             input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 16);
