@@ -174,7 +174,7 @@ inline void DispatchDepthwiseConv(
     defined(__clang__)
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
-              input_shape, filter_shape, params);
+              input_shape, filter_shape, output_shape, params);
 
       ASSERT_NE(kernel_type, DotProduct3x3KernelType::kNone)
           << "Kernel type = " << static_cast<int>(kernel_type);
@@ -191,7 +191,7 @@ inline void DispatchDepthwiseConv(
     case DepthwiseConvImplementation::kUseCModel3x3DotProduct: {
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
-              input_shape, filter_shape, params);
+              input_shape, filter_shape, output_shape, params);
 
       ASSERT_TRUE(
           kernel_type == DotProduct3x3KernelType::kPlain ||
@@ -224,7 +224,7 @@ inline void DispatchDepthwiseConv(
     case DepthwiseConvImplementation::kUseUnwound3x3DotProduct: {
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
-              input_shape, filter_shape, params);
+              input_shape, filter_shape, output_shape, params);
       ASSERT_TRUE(
           kernel_type == DotProduct3x3KernelType::kPlain ||
           kernel_type == DotProduct3x3KernelType::kStride2 ||
@@ -243,7 +243,7 @@ inline void DispatchDepthwiseConv(
 #if defined(USE_NEON)
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
-              input_shape, filter_shape, params);
+              input_shape, filter_shape, output_shape, params);
 
       ASSERT_TRUE(
           kernel_type == DotProduct3x3KernelType::kPlain ||
