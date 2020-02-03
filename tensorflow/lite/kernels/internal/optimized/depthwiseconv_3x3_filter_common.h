@@ -176,6 +176,8 @@ inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
 #endif  // !__ARM_FEATURE_DOTPROD
 #endif  // ARM NEON
 
+//  This structure is typically used for reducing the magnitude of outputs, and
+//  the historical name reflects that.
 template <DepthwiseConvOutputRounding output_rounding>
 struct DivideByPOT {};
 
@@ -185,6 +187,11 @@ struct DivideByPOT<DepthwiseConvOutputRounding::kAwayFromZero> {
   static inline IntegerType Run(IntegerType x, int exponent) {
     return RoundingDivideByPOT(x, exponent);
   }
+  // Mult versions use the exponents directly, rather than negated.
+  template <typename IntegerType>
+  static inline IntegerType RunMult(IntegerType x, int exponent) {
+    return RoundingDivideByPOT(x, -exponent);
+  }
 };
 
 #ifdef USE_NEON
@@ -193,6 +200,14 @@ struct DivideByPOT<DepthwiseConvOutputRounding::kUpward> {
   template <typename IntegerType>
   static inline IntegerType Run(IntegerType x, int exponent) {
     return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(-exponent)));
+  }
+  template <typename IntegerType>
+  static inline IntegerType RunMult(IntegerType x, IntegerType exponent) {
+    return vqrshlq_s32(x, exponent);
+  }
+  template <typename IntegerType>
+  static inline IntegerType RunMult(IntegerType x, int exponent) {
+    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(exponent)));
   }
 };
 #endif  // ARM NEON

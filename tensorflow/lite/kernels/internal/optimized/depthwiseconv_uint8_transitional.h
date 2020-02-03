@@ -5562,18 +5562,18 @@ struct KernelMacroBlock<
     QuantizationType::kPerChannelInt8,
     DepthwiseConvDepthMultiplication::kNoMultiplication,
     /*stride=*/1> {
-  static inline uint8x8_t vqmovxn_s16(int16x8_t x) { return vqmovun_s16(x); }
-  static inline uint8x8_t util_vmin_x8(uint8x8_t a, uint8x8_t b) {
-    return vmin_u8(a, b);
+  static inline int8x8_t vqmovxn_s16(int16x8_t x) { return vqmovn_s16(x); }
+  static inline int8x8_t util_vmin_x8(int8x8_t a, int8x8_t b) {
+    return vmin_s8(a, b);
   }
-  static inline uint8x8_t util_vmax_x8(uint8x8_t a, uint8x8_t b) {
-    return vmax_u8(a, b);
+  static inline int8x8_t util_vmax_x8(int8x8_t a, int8x8_t b) {
+    return vmax_s8(a, b);
   }
-  static inline uint8x16_t util_vminq_x8(uint8x16_t a, uint8x16_t b) {
-    return vminq_u8(a, b);
+  static inline int8x16_t util_vminq_x8(int8x16_t a, int8x16_t b) {
+    return vminq_s8(a, b);
   }
-  static inline uint8x16_t util_vmaxq_x8(uint8x16_t a, uint8x16_t b) {
-    return vmaxq_u8(a, b);
+  static inline int8x16_t util_vmaxq_x8(int8x16_t a, int8x16_t b) {
+    return vmaxq_s8(a, b);
   }
 
   static inline void KernelMacroBlockIntrinsics(
@@ -5608,9 +5608,11 @@ struct KernelMacroBlock<
         function_params->quantized_activation_min;
     const int32 output_activation_max =
         function_params->quantized_activation_max;
-    const int32 output_multiplier = function_params->output_multiplier;
-    const int32 output_shift = function_params->output_shift;
     const int32 output_offset = function_params->output_offset;
+    const int32* output_shift_per_channel =
+        function_params->output_shift_per_channel;
+    const int32* output_multiplier_per_channel =
+        function_params->output_multiplier_per_channel;
     if (quantization_type == QuantizationType::kNonPerChannelUint8) {
       TFLITE_DCHECK_GE(output_activation_min, 0);
       TFLITE_DCHECK_LT(output_activation_min, 256);
@@ -5621,16 +5623,18 @@ struct KernelMacroBlock<
       TFLITE_DCHECK_LT(output_activation_min, 128);
       TFLITE_DCHECK_GE(output_activation_max, -128);
       TFLITE_DCHECK_LT(output_activation_max, 128);
+      TFLITE_DCHECK_NE(output_shift_per_channel, nullptr);
+      TFLITE_DCHECK_NE(output_multiplier_per_channel, nullptr);
     }
     TFLITE_DCHECK_GE(output_offset, -32878);
     TFLITE_DCHECK_LT(output_offset, 32768);
 
     const int16x8_t output_offset_vec =
         vdupq_n_s16(static_cast<int16>(output_offset));
-    const uint8x16_t output_activation_min_vec =
-        vdupq_n_u8(static_cast<uint8>(output_activation_min));
-    const uint8x16_t output_activation_max_vec =
-        vdupq_n_u8(static_cast<uint8>(output_activation_max));
+    const int8x16_t output_activation_min_vec =
+        vdupq_n_s8(static_cast<int8>(output_activation_min));
+    const int8x16_t output_activation_max_vec =
+        vdupq_n_s8(static_cast<int8>(output_activation_max));
 
     const int8* input_data_depthwise = scratch_block_data;
     typename QuantizationTypeImpl<quantization_type>::ExternalType*
@@ -5678,6 +5682,11 @@ struct KernelMacroBlock<
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
           bias_data += kBiasIncrement;
 
+          const int32x4_t output_shift =
+              vld1q_s32(output_shift_per_channel + j_depth * 8 + 4 * s);
+          const int32x4_t output_multiplier =
+              vld1q_s32(output_multiplier_per_channel + j_depth * 8 + 4 * s);
+
           // Load first sub-micro block of data into operational banks.
           int8x16_t left_bank_0_reg = vld1q_s8(next_input_data);
           int8x16_t left_bank_1_reg =
@@ -5722,18 +5731,18 @@ struct KernelMacroBlock<
               acc3 = vdotq_s32(acc3, filter_reg_2_a, left_bank_5_reg);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -5742,8 +5751,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -5798,18 +5807,18 @@ struct KernelMacroBlock<
               acc3 = vdotq_s32(acc3, filter_reg_2_a_shifted, left_bank_5_reg);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -5818,8 +5827,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -5866,18 +5875,18 @@ struct KernelMacroBlock<
               acc3 = vdotq_s32(acc3, filter_reg_2_a, left_bank_5_reg);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -5886,8 +5895,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -5921,18 +5930,18 @@ struct KernelMacroBlock<
               acc3 = vdotq_s32(acc3, filter_reg_2_a_shifted, left_bank_5_reg);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -5941,8 +5950,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -6021,18 +6030,18 @@ struct KernelMacroBlock<
               acc3 = vdotq_s32(acc3, filter_reg_2_a, left_bank_5_reg);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -6041,8 +6050,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -6094,6 +6103,15 @@ struct KernelMacroBlock<
         bias_data += kBiasIncrement;
         const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
         bias_data += kBiasIncrement;
+
+        const int32x4_t output_shift_a =
+            vld1q_s32(output_shift_per_channel + j_depth * 8);
+        const int32x4_t output_multiplier_a =
+            vld1q_s32(output_multiplier_per_channel + j_depth * 8);
+        const int32x4_t output_shift_b =
+            vld1q_s32(output_shift_per_channel + j_depth * 8 + 4);
+        const int32x4_t output_multiplier_b =
+            vld1q_s32(output_multiplier_per_channel + j_depth * 8 + 4);
 
         for (int k_height = 0; k_height < block_height; ++k_height) {
           const int8* next_input_data = input_data_base;
@@ -6161,24 +6179,26 @@ struct KernelMacroBlock<
               acc_b = vdotq_s32(acc_b, filter_reg_2_b, left_bank_2_reg_b);
 
               // Fixed-point multiplication.
-              acc_a = vqrdmulhq_n_s32(acc_a, output_multiplier);
-              acc_b = vqrdmulhq_n_s32(acc_b, output_multiplier);
-              acc_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc_a, -output_shift);
-              acc_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc_b, -output_shift);
+              acc_a = vqrdmulhq_s32(acc_a, output_multiplier_a);
+              acc_b = vqrdmulhq_s32(acc_b, output_multiplier_b);
+              acc_a =
+                  DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                      acc_a, output_shift_a);
+              acc_b =
+                  DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                      acc_b, output_shift_b);
               // Add the output offset.
               int16x8_t acc_s16_0_0 =
                   vcombine_s16(vqmovn_s32(acc_a), vqmovn_s32(acc_b));
               acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
               // Apply the activation function.
-              uint8x8_t acc_u8_0_0 = vqmovxn_s16(acc_s16_0_0);
+              int8x8_t acc_u8_0_0 = vqmovxn_s16(acc_s16_0_0);
               acc_u8_0_0 = util_vmax_x8(acc_u8_0_0,
-                                        vget_low_u8(output_activation_min_vec));
+                                        vget_low_s8(output_activation_min_vec));
               acc_u8_0_0 = util_vmin_x8(acc_u8_0_0,
-                                        vget_low_u8(output_activation_max_vec));
+                                        vget_low_s8(output_activation_max_vec));
 
-              util_vst1_x8(output_data, acc_u8_0_0);
+              vst1_s8(output_data, acc_u8_0_0);
 
               biregister_rotate_8(&left_bank_0_reg_a, &right_bank_0_reg_a);
               biregister_rotate_8(&left_bank_1_reg_a, &right_bank_1_reg_a);
@@ -6214,12 +6234,12 @@ struct KernelMacroBlock<
     QuantizationType::kPerChannelInt8,
     DepthwiseConvDepthMultiplication::kNoMultiplication,
     /*stride=*/2> {
-  static inline uint8x8_t vqmovxn_s16(int16x8_t x) { return vqmovun_s16(x); }
-  static inline uint8x8_t util_vmin_x8(uint8x8_t a, uint8x8_t b) {
-    return vmin_u8(a, b);
+  static inline int8x8_t vqmovxn_s16(int16x8_t x) { return vqmovn_s16(x); }
+  static inline int8x8_t util_vmin_x8(int8x8_t a, int8x8_t b) {
+    return vmin_s8(a, b);
   }
-  static inline uint8x8_t util_vmax_x8(uint8x8_t a, uint8x8_t b) {
-    return vmax_u8(a, b);
+  static inline int8x8_t util_vmax_x8(int8x8_t a, int8x8_t b) {
+    return vmax_s8(a, b);
   }
 
   static inline void KernelMacroBlockIntrinsics(
@@ -6260,9 +6280,11 @@ struct KernelMacroBlock<
         function_params->quantized_activation_min;
     const int32 output_activation_max =
         function_params->quantized_activation_max;
-    const int32 output_multiplier = function_params->output_multiplier;
-    const int32 output_shift = function_params->output_shift;
     const int32 output_offset = function_params->output_offset;
+    const int32* output_shift_per_channel =
+        function_params->output_shift_per_channel;
+    const int32* output_multiplier_per_channel =
+        function_params->output_multiplier_per_channel;
     if (quantization_type == QuantizationType::kNonPerChannelUint8) {
       TFLITE_DCHECK_GE(output_activation_min, 0);
       TFLITE_DCHECK_LT(output_activation_min, 256);
@@ -6273,6 +6295,8 @@ struct KernelMacroBlock<
       TFLITE_DCHECK_LT(output_activation_min, 128);
       TFLITE_DCHECK_GE(output_activation_max, -128);
       TFLITE_DCHECK_LT(output_activation_max, 128);
+      TFLITE_DCHECK_NE(output_shift_per_channel, nullptr);
+      TFLITE_DCHECK_NE(output_multiplier_per_channel, nullptr);
     }
     TFLITE_DCHECK_GE(output_offset, -32878);
     TFLITE_DCHECK_LT(output_offset, 32768);
@@ -6280,10 +6304,10 @@ struct KernelMacroBlock<
     // This version only does min/max on 64 bits.
     const int16x8_t output_offset_vec =
         vdupq_n_s16(static_cast<int16>(output_offset));
-    const uint8x8_t output_activation_min_vec =
-        vdup_n_u8(static_cast<uint8>(output_activation_min));
-    const uint8x8_t output_activation_max_vec =
-        vdup_n_u8(static_cast<uint8>(output_activation_max));
+    const int8x8_t output_activation_min_vec =
+        vdup_n_s8(static_cast<int8>(output_activation_min));
+    const int8x8_t output_activation_max_vec =
+        vdup_n_s8(static_cast<int8>(output_activation_max));
 
     constexpr int shuffled_filter_increment = 2 * 3 * 4 * 4;
 
@@ -6312,6 +6336,11 @@ struct KernelMacroBlock<
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
 
+          const int32x4_t output_shift =
+              vld1q_s32(output_shift_per_channel + j_depth * 8 + 4 * s);
+          const int32x4_t output_multiplier =
+              vld1q_s32(output_multiplier_per_channel + j_depth * 8 + 4 * s);
+
           // Load first sub-micro block of data into operational banks.
           int8x16_t left_bank_0_reg = vld1q_s8(input_data_0);
           int8x16_t left_bank_1_reg =
@@ -6332,7 +6361,7 @@ struct KernelMacroBlock<
           int32x4_t acc0;
           int32x4_t acc1;
           int16x8_t acc_s16_0_1;
-          uint8x8_t acc_u8;
+          int8x8_t acc_u8;
 
           int i_width = 0;
 
@@ -6374,12 +6403,12 @@ struct KernelMacroBlock<
                                         4 * workspace_height_stride);
 
             // Fixed-point multiplication.
-            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0, -output_shift);
-            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc1, -output_shift);
+            acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0, output_shift);
+            acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc1, output_shift);
             // Add the output offset.
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
@@ -6412,12 +6441,12 @@ struct KernelMacroBlock<
             acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
 
             // Fixed-point multiplication.
-            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0, -output_shift);
-            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc1, -output_shift);
+            acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0, output_shift);
+            acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc1, output_shift);
             // Add the output offset.
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
@@ -6457,18 +6486,18 @@ struct KernelMacroBlock<
               acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               // Apply the activation function.
-              uint8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
+              int8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
               acc_u8 = util_vmax_x8(acc_u8, output_activation_min_vec);
               acc_u8 = util_vmin_x8(acc_u8, output_activation_max_vec);
 
@@ -6515,6 +6544,15 @@ struct KernelMacroBlock<
         bias_data += kBiasIncrement;
         const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
         bias_data += kBiasIncrement;
+
+        const int32x4_t output_shift_a =
+            vld1q_s32(output_shift_per_channel + j_depth * 8);
+        const int32x4_t output_multiplier_a =
+            vld1q_s32(output_multiplier_per_channel + j_depth * 8);
+        const int32x4_t output_shift_b =
+            vld1q_s32(output_shift_per_channel + j_depth * 8 + 4);
+        const int32x4_t output_multiplier_b =
+            vld1q_s32(output_multiplier_per_channel + j_depth * 8 + 4);
 
         // Load first sub-micro block of data into operational banks.
         int8x16_t left_bank_0_reg_a = vld1q_s8(input_data_0);
@@ -6579,22 +6617,22 @@ struct KernelMacroBlock<
             acc0_b = vdotq_s32(acc0_b, filter_reg_2_b, left_bank_2_reg_b);
 
             // Fixed-point multiplication.
-            acc0_a = vqrdmulhq_n_s32(acc0_a, output_multiplier);
-            acc0_b = vqrdmulhq_n_s32(acc0_b, output_multiplier);
-            acc0_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0_a, -output_shift);
-            acc0_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0_b, -output_shift);
+            acc0_a = vqrdmulhq_s32(acc0_a, output_multiplier_a);
+            acc0_b = vqrdmulhq_s32(acc0_b, output_multiplier_b);
+            acc0_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0_a, output_shift_a);
+            acc0_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0_b, output_shift_b);
             // Add the output offset.
             int16x8_t acc_s16_0_1 =
                 vcombine_s16(vqmovn_s32(acc0_a), vqmovn_s32(acc0_b));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            uint8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
+            int8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
             acc_u8 = util_vmax_x8(acc_u8, output_activation_min_vec);
             acc_u8 = util_vmin_x8(acc_u8, output_activation_max_vec);
 
-            util_vst1_x8(output_data_base, acc_u8);
+            vst1_s8(output_data_base, acc_u8);
 
             left_bank_0_reg_a = vrev32q_u16(left_bank_0_reg_a);
             left_bank_1_reg_a = vrev32q_u16(left_bank_1_reg_a);
@@ -6622,22 +6660,22 @@ struct KernelMacroBlock<
             acc0_b = vdotq_s32(acc0_b, filter_reg_2_b, left_bank_2_reg_b);
 
             // Fixed-point multiplication.
-            acc0_a = vqrdmulhq_n_s32(acc0_a, output_multiplier);
-            acc0_b = vqrdmulhq_n_s32(acc0_b, output_multiplier);
-            acc0_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0_a, -output_shift);
-            acc0_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0_b, -output_shift);
+            acc0_a = vqrdmulhq_s32(acc0_a, output_multiplier_a);
+            acc0_b = vqrdmulhq_s32(acc0_b, output_multiplier_b);
+            acc0_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0_a, output_shift_a);
+            acc0_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0_b, output_shift_b);
             // Add the output offset.
             int16x8_t acc_s16_0_1 =
                 vcombine_s16(vqmovn_s32(acc0_a), vqmovn_s32(acc0_b));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
-            uint8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
+            int8x8_t acc_u8 = vqmovxn_s16(acc_s16_0_1);
             acc_u8 = util_vmax_x8(acc_u8, output_activation_min_vec);
             acc_u8 = util_vmin_x8(acc_u8, output_activation_max_vec);
 
-            util_vst1_x8(output_data_base + depth, acc_u8);
+            vst1_s8(output_data_base + depth, acc_u8);
 
             left_bank_0_reg_a = right_bank_0_reg_a;
             left_bank_1_reg_a = right_bank_1_reg_a;
@@ -6666,18 +6704,18 @@ struct KernelMacroBlock<
     QuantizationType::kPerChannelInt8,
     DepthwiseConvDepthMultiplication::kUnitInputDepth,
     /*stride=*/1> {
-  static inline uint8x8_t vqmovxn_s16(int16x8_t x) { return vqmovun_s16(x); }
-  static inline uint8x8_t util_vmin_x8(uint8x8_t a, uint8x8_t b) {
-    return vmin_u8(a, b);
+  static inline int8x8_t vqmovxn_s16(int16x8_t x) { return vqmovn_s16(x); }
+  static inline int8x8_t util_vmin_x8(int8x8_t a, int8x8_t b) {
+    return vmin_s8(a, b);
   }
-  static inline uint8x8_t util_vmax_x8(uint8x8_t a, uint8x8_t b) {
-    return vmax_u8(a, b);
+  static inline int8x8_t util_vmax_x8(int8x8_t a, int8x8_t b) {
+    return vmax_s8(a, b);
   }
-  static inline uint8x16_t util_vminq_x8(uint8x16_t a, uint8x16_t b) {
-    return vminq_u8(a, b);
+  static inline int8x16_t util_vminq_x8(int8x16_t a, int8x16_t b) {
+    return vminq_s8(a, b);
   }
-  static inline uint8x16_t util_vmaxq_x8(uint8x16_t a, uint8x16_t b) {
-    return vmaxq_u8(a, b);
+  static inline int8x16_t util_vmaxq_x8(int8x16_t a, int8x16_t b) {
+    return vmaxq_s8(a, b);
   }
 
   static inline void KernelMacroBlockIntrinsics(
@@ -6708,9 +6746,11 @@ struct KernelMacroBlock<
         function_params->quantized_activation_min;
     const int32 output_activation_max =
         function_params->quantized_activation_max;
-    const int32 output_multiplier = function_params->output_multiplier;
-    const int32 output_shift = function_params->output_shift;
     const int32 output_offset = function_params->output_offset;
+    const int32* output_shift_per_channel =
+        function_params->output_shift_per_channel;
+    const int32* output_multiplier_per_channel =
+        function_params->output_multiplier_per_channel;
     if (quantization_type == QuantizationType::kNonPerChannelUint8) {
       TFLITE_DCHECK_GE(output_activation_min, 0);
       TFLITE_DCHECK_LT(output_activation_min, 256);
@@ -6721,16 +6761,18 @@ struct KernelMacroBlock<
       TFLITE_DCHECK_LT(output_activation_min, 128);
       TFLITE_DCHECK_GE(output_activation_max, -128);
       TFLITE_DCHECK_LT(output_activation_max, 128);
+      TFLITE_DCHECK_NE(output_shift_per_channel, nullptr);
+      TFLITE_DCHECK_NE(output_multiplier_per_channel, nullptr);
     }
     TFLITE_DCHECK_GE(output_offset, -32878);
     TFLITE_DCHECK_LT(output_offset, 32768);
 
     const int16x8_t output_offset_vec =
         vdupq_n_s16(static_cast<int16>(output_offset));
-    const uint8x16_t output_activation_min_vec =
-        vdupq_n_u8(static_cast<uint8>(output_activation_min));
-    const uint8x16_t output_activation_max_vec =
-        vdupq_n_u8(static_cast<uint8>(output_activation_max));
+    const int8x16_t output_activation_min_vec =
+        vdupq_n_s8(static_cast<int8>(output_activation_min));
+    const int8x16_t output_activation_max_vec =
+        vdupq_n_s8(static_cast<int8>(output_activation_max));
 
     typename QuantizationTypeImpl<quantization_type>::ExternalType*
         output_data_depthwise = output_block_data;
@@ -6784,6 +6826,11 @@ struct KernelMacroBlock<
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
           bias_data += kBiasIncrement;
+
+          const int32x4_t output_shift =
+              vld1q_s32(output_shift_per_channel + j_depth * 8 + 4 * s);
+          const int32x4_t output_multiplier =
+              vld1q_s32(output_multiplier_per_channel + j_depth * 8 + 4 * s);
 
           int8x16_t input_bank_a_reg;  //  left 0, right 0, left 1, right 1.
           int8x16_t input_bank_b_reg;  //  left 2, right 2, left 3, right 3.
@@ -6849,18 +6896,18 @@ struct KernelMacroBlock<
                                          2);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -6869,8 +6916,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -6933,18 +6980,18 @@ struct KernelMacroBlock<
                                          input_bank_c_reg, 2);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -6953,8 +7000,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -7004,18 +7051,18 @@ struct KernelMacroBlock<
                                          2);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -7024,8 +7071,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -7071,18 +7118,18 @@ struct KernelMacroBlock<
                                          input_bank_c_reg, 2);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -7091,8 +7138,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -7166,18 +7213,18 @@ struct KernelMacroBlock<
                                          2);
 
               // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
-              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc2, -output_shift);
-              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
-              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc3, -output_shift);
+              acc0 = vqrdmulhq_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc0, output_shift);
+              acc1 = vqrdmulhq_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc1, output_shift);
+              acc2 = vqrdmulhq_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc2, output_shift);
+              acc3 = vqrdmulhq_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                  acc3, output_shift);
               // Add the output offset.
               int16x8_t acc_s16_0_1 =
                   vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -7186,8 +7233,8 @@ struct KernelMacroBlock<
               acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
               acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
               // Apply the activation function.
-              uint8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
-                                                  vqmovxn_s16(acc_s16_2_3));
+              int8x16_t acc_u8_all = vcombine_u8(vqmovxn_s16(acc_s16_0_1),
+                                                 vqmovxn_s16(acc_s16_2_3));
               acc_u8_all = util_vmaxq_x8(acc_u8_all, output_activation_min_vec);
               acc_u8_all = util_vminq_x8(acc_u8_all, output_activation_max_vec);
 
@@ -7241,6 +7288,15 @@ struct KernelMacroBlock<
         const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
         bias_data += kBiasIncrement;
 
+        const int32x4_t output_shift_a =
+            vld1q_s32(output_shift_per_channel + j_depth * 8);
+        const int32x4_t output_multiplier_a =
+            vld1q_s32(output_multiplier_per_channel + j_depth * 8);
+        const int32x4_t output_shift_b =
+            vld1q_s32(output_shift_per_channel + j_depth * 8 + 4);
+        const int32x4_t output_multiplier_b =
+            vld1q_s32(output_multiplier_per_channel + j_depth * 8 + 4);
+
         for (int k_height = 0; k_height < block_height; ++k_height) {
           const int8* next_input_data =
               scratch_block_data + k_height * workspace_height_stride;
@@ -7293,24 +7349,26 @@ struct KernelMacroBlock<
                                           input_bank_q_reg, 0);
 
               // Fixed-point multiplication.
-              acc_a = vqrdmulhq_n_s32(acc_a, output_multiplier);
-              acc_b = vqrdmulhq_n_s32(acc_b, output_multiplier);
-              acc_a = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc_a, -output_shift);
-              acc_b = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc_b, -output_shift);
+              acc_a = vqrdmulhq_s32(acc_a, output_multiplier_a);
+              acc_b = vqrdmulhq_s32(acc_b, output_multiplier_b);
+              acc_a =
+                  DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                      acc_a, output_shift_a);
+              acc_b =
+                  DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                      acc_b, output_shift_b);
               // Add the output offset.
               int16x8_t acc_s16_0_0 =
                   vcombine_s16(vqmovn_s32(acc_a), vqmovn_s32(acc_b));
               acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
               // Apply the activation function.
-              uint8x8_t acc_u8_0_0 = vqmovxn_s16(acc_s16_0_0);
+              int8x8_t acc_u8_0_0 = vqmovxn_s16(acc_s16_0_0);
               acc_u8_0_0 = util_vmax_x8(acc_u8_0_0,
-                                        vget_low_u8(output_activation_min_vec));
+                                        vget_low_s8(output_activation_min_vec));
               acc_u8_0_0 = util_vmin_x8(acc_u8_0_0,
-                                        vget_low_u8(output_activation_max_vec));
+                                        vget_low_s8(output_activation_max_vec));
 
-              util_vst1_x8(output_data, acc_u8_0_0);
+              vst1_s8(output_data, acc_u8_0_0);
 
               input_bank_p_reg = vshrq_n_u64(input_bank_p_reg, 8);
               input_bank_q_reg = vshrq_n_u64(input_bank_q_reg, 8);
@@ -7340,12 +7398,12 @@ struct KernelMacroBlock<
     QuantizationType::kPerChannelInt8,
     DepthwiseConvDepthMultiplication::kUnitInputDepth,
     /*stride=*/2> {
-  static inline uint8x8_t vqmovxn_s16(int16x8_t x) { return vqmovun_s16(x); }
-  static inline uint8x8_t util_vmin_x8(uint8x8_t a, uint8x8_t b) {
-    return vmin_u8(a, b);
+  static inline int8x8_t vqmovxn_s16(int16x8_t x) { return vqmovn_s16(x); }
+  static inline int8x8_t util_vmin_x8(int8x8_t a, int8x8_t b) {
+    return vmin_s8(a, b);
   }
-  static inline uint8x8_t util_vmax_x8(uint8x8_t a, uint8x8_t b) {
-    return vmax_u8(a, b);
+  static inline int8x8_t util_vmax_x8(int8x8_t a, int8x8_t b) {
+    return vmax_s8(a, b);
   }
 
   static inline void KernelMacroBlockIntrinsics(
@@ -7375,9 +7433,11 @@ struct KernelMacroBlock<
         function_params->quantized_activation_min;
     const int32 output_activation_max =
         function_params->quantized_activation_max;
-    const int32 output_multiplier = function_params->output_multiplier;
-    const int32 output_shift = function_params->output_shift;
     const int32 output_offset = function_params->output_offset;
+    const int32* output_shift_per_channel =
+        function_params->output_shift_per_channel;
+    const int32* output_multiplier_per_channel =
+        function_params->output_multiplier_per_channel;
     if (quantization_type == QuantizationType::kNonPerChannelUint8) {
       TFLITE_DCHECK_GE(output_activation_min, 0);
       TFLITE_DCHECK_LT(output_activation_min, 256);
@@ -7388,6 +7448,8 @@ struct KernelMacroBlock<
       TFLITE_DCHECK_LT(output_activation_min, 128);
       TFLITE_DCHECK_GE(output_activation_max, -128);
       TFLITE_DCHECK_LT(output_activation_max, 128);
+      TFLITE_DCHECK_NE(output_shift_per_channel, nullptr);
+      TFLITE_DCHECK_NE(output_multiplier_per_channel, nullptr);
     }
     TFLITE_DCHECK_GE(output_offset, -32878);
     TFLITE_DCHECK_LT(output_offset, 32768);
@@ -7396,10 +7458,10 @@ struct KernelMacroBlock<
 
     const int16x8_t output_offset_vec =
         vdupq_n_s16(static_cast<int16>(output_offset));
-    const uint8x16_t output_activation_min_vec =
-        vdupq_n_u8(static_cast<uint8>(output_activation_min));
-    const uint8x16_t output_activation_max_vec =
-        vdupq_n_u8(static_cast<uint8>(output_activation_max));
+    const int8x16_t output_activation_min_vec =
+        vdupq_n_s8(static_cast<int8>(output_activation_min));
+    const int8x16_t output_activation_max_vec =
+        vdupq_n_s8(static_cast<int8>(output_activation_max));
 
     for (int j_depth = 0; j_depth < (depth_micro_repeats * 1 + 0); ++j_depth) {
       int8x16_t filter_reg_0_a;
@@ -7426,6 +7488,15 @@ struct KernelMacroBlock<
       bias_data += kBiasIncrement;
       const int32x4_t adjusted_bias_data_s_1 = vld1q_s32(bias_data);
       bias_data += kBiasIncrement;
+
+      const int32x4_t output_shift_s_0 =
+          vld1q_s32(output_shift_per_channel + j_depth * 8);
+      const int32x4_t output_multiplier_s_0 =
+          vld1q_s32(output_multiplier_per_channel + j_depth * 8);
+      const int32x4_t output_shift_s_1 =
+          vld1q_s32(output_shift_per_channel + j_depth * 8 + 4);
+      const int32x4_t output_multiplier_s_1 =
+          vld1q_s32(output_multiplier_per_channel + j_depth * 8 + 4);
 
       if (block_height == 2) {
         const int8* scratch_data = scratch_block_data;
@@ -7481,7 +7552,7 @@ struct KernelMacroBlock<
               input_data + 4 * workspace_height_stride, input_bank_c_reg, 1);
 
           int16x8_t acc_s16_0_1;
-          uint8x8_t acc_u8_0_1;
+          int8x8_t acc_u8_0_1;
           // Iterate over input width shifts within 4x4 blocks.
           {
             acc0 = adjusted_bias_data_s_0;
@@ -7501,21 +7572,21 @@ struct KernelMacroBlock<
                 vdotq_four_lane_s32(acc1, filter_reg_2_a, input_bank_c_reg, 0);
 
             // Fixed-point multiplication.
-            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0, -output_shift);
-            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc1, -output_shift);
+            acc0 = vqrdmulhq_s32(acc0, output_multiplier_s_0);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0, output_shift_s_0);
+            acc1 = vqrdmulhq_s32(acc1, output_multiplier_s_0);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc1, output_shift_s_0);
             // Add the output offset.
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
             acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
             acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_min_vec));
+                                      vget_low_s8(output_activation_min_vec));
             acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_max_vec));
+                                      vget_low_s8(output_activation_max_vec));
 
             vst1_lane_8x4(output_data, acc_u8_0_1, 0);
             vst1_lane_8x4(output_data + output_height_stride, acc_u8_0_1, 1);
@@ -7537,21 +7608,21 @@ struct KernelMacroBlock<
                 vdotq_four_lane_s32(acc1, filter_reg_2_b, input_bank_c_reg, 0);
 
             // Fixed-point multiplication.
-            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0, -output_shift);
-            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc1, -output_shift);
+            acc0 = vqrdmulhq_s32(acc0, output_multiplier_s_1);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0, output_shift_s_1);
+            acc1 = vqrdmulhq_s32(acc1, output_multiplier_s_1);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc1, output_shift_s_1);
             // Add the output offset.
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
             acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
             acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_min_vec));
+                                      vget_low_s8(output_activation_min_vec));
             acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_max_vec));
+                                      vget_low_s8(output_activation_max_vec));
 
             vst1_lane_8x4(output_data + 4, acc_u8_0_1, 0);
             vst1_lane_8x4(output_data + 4 + output_height_stride, acc_u8_0_1,
@@ -7576,21 +7647,21 @@ struct KernelMacroBlock<
           acc1 = vdotq_four_lane_s32(acc1, filter_reg_2_a, input_bank_c_reg, 0);
 
           // Fixed-point multiplication.
-          acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-          acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-              acc0, -output_shift);
-          acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-          acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-              acc1, -output_shift);
+          acc0 = vqrdmulhq_s32(acc0, output_multiplier_s_0);
+          acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+              acc0, output_shift_s_0);
+          acc1 = vqrdmulhq_s32(acc1, output_multiplier_s_0);
+          acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+              acc1, output_shift_s_0);
           // Add the output offset.
           acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
           acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
           // Apply the activation function.
           acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
           acc_u8_0_1 =
-              util_vmax_x8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
+              util_vmax_x8(acc_u8_0_1, vget_low_s8(output_activation_min_vec));
           acc_u8_0_1 =
-              util_vmin_x8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+              util_vmin_x8(acc_u8_0_1, vget_low_s8(output_activation_max_vec));
 
           vst1_lane_8x4(output_data, acc_u8_0_1, 0);
           vst1_lane_8x4(output_data + output_height_stride, acc_u8_0_1, 1);
@@ -7606,21 +7677,21 @@ struct KernelMacroBlock<
           acc1 = vdotq_four_lane_s32(acc1, filter_reg_2_b, input_bank_c_reg, 0);
 
           // Fixed-point multiplication.
-          acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-          acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-              acc0, -output_shift);
-          acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-          acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-              acc1, -output_shift);
+          acc0 = vqrdmulhq_s32(acc0, output_multiplier_s_1);
+          acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+              acc0, output_shift_s_1);
+          acc1 = vqrdmulhq_s32(acc1, output_multiplier_s_1);
+          acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+              acc1, output_shift_s_1);
           // Add the output offset.
           acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
           acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
           // Apply the activation function.
           acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
           acc_u8_0_1 =
-              util_vmax_x8(acc_u8_0_1, vget_low_u8(output_activation_min_vec));
+              util_vmax_x8(acc_u8_0_1, vget_low_s8(output_activation_min_vec));
           acc_u8_0_1 =
-              util_vmin_x8(acc_u8_0_1, vget_low_u8(output_activation_max_vec));
+              util_vmin_x8(acc_u8_0_1, vget_low_s8(output_activation_max_vec));
 
           vst1_lane_8x4(output_data + 4, acc_u8_0_1, 0);
           vst1_lane_8x4(output_data + 4 + output_height_stride, acc_u8_0_1, 1);
@@ -7647,7 +7718,7 @@ struct KernelMacroBlock<
               input_data + 4 * workspace_height_stride, input_bank_c_reg, 1);
 
           int16x8_t acc_s16_0_1;
-          uint8x8_t acc_u8_0_1;
+          int8x8_t acc_u8_0_1;
           // Iterate over input width shifts within 4x4 blocks.
           {
             acc0 = adjusted_bias_data_s_0;
@@ -7667,21 +7738,21 @@ struct KernelMacroBlock<
                 vdotq_four_lane_s32(acc1, filter_reg_2_a, input_bank_c_reg, 0);
 
             // Fixed-point multiplication.
-            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0, -output_shift);
-            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc1, -output_shift);
+            acc0 = vqrdmulhq_s32(acc0, output_multiplier_s_0);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0, output_shift_s_0);
+            acc1 = vqrdmulhq_s32(acc1, output_multiplier_s_0);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc1, output_shift_s_0);
             // Add the output offset.
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
             acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
             acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_min_vec));
+                                      vget_low_s8(output_activation_min_vec));
             acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_max_vec));
+                                      vget_low_s8(output_activation_max_vec));
 
             vst1_lane_8x4(output_data, acc_u8_0_1, 0);
             vst1_lane_8x4(output_data + output_height_stride, acc_u8_0_1, 1);
@@ -7703,21 +7774,21 @@ struct KernelMacroBlock<
                 vdotq_four_lane_s32(acc1, filter_reg_2_b, input_bank_c_reg, 0);
 
             // Fixed-point multiplication.
-            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0, -output_shift);
-            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc1, -output_shift);
+            acc0 = vqrdmulhq_s32(acc0, output_multiplier_s_1);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0, output_shift_s_1);
+            acc1 = vqrdmulhq_s32(acc1, output_multiplier_s_1);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc1, output_shift_s_1);
             // Add the output offset.
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
             acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
             // Apply the activation function.
             acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
             acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_min_vec));
+                                      vget_low_s8(output_activation_min_vec));
             acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_max_vec));
+                                      vget_low_s8(output_activation_max_vec));
 
             vst1_lane_8x4(output_data + 4, acc_u8_0_1, 0);
             vst1_lane_8x4(output_data + 4 + output_height_stride, acc_u8_0_1,
@@ -7772,7 +7843,7 @@ struct KernelMacroBlock<
               input_data + 2 * workspace_height_stride, input_bank_b_reg, 1);
 
           int16x8_t acc_s16_0_1;
-          uint8x8_t acc_u8_0_1;
+          int8x8_t acc_u8_0_1;
 
           // Iterate over input width shifts within 4x4 blocks.
           {
@@ -7785,9 +7856,9 @@ struct KernelMacroBlock<
             acc0 =
                 vdotq_four_lane_s32(acc0, filter_reg_1_a, input_bank_a_reg, 2);
 
-            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0, -output_shift);
+            acc0 = vqrdmulhq_s32(acc0, output_multiplier_s_0);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0, output_shift_s_0);
 
             // Second sub-block accumulation.
             acc1 = adjusted_bias_data_s_1;
@@ -7799,9 +7870,9 @@ struct KernelMacroBlock<
             acc1 =
                 vdotq_four_lane_s32(acc1, filter_reg_1_b, input_bank_a_reg, 2);
 
-            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc1, -output_shift);
+            acc1 = vqrdmulhq_s32(acc1, output_multiplier_s_1);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc1, output_shift_s_1);
 
             // Add the output offset.
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -7809,12 +7880,12 @@ struct KernelMacroBlock<
             // Apply the activation function.
             acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
             acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_min_vec));
+                                      vget_low_s8(output_activation_min_vec));
             acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_max_vec));
+                                      vget_low_s8(output_activation_max_vec));
 
             // This stores the results for both sub-blocks together.
-            util_vst1_x8(output_data, acc_u8_0_1);
+            vst1_s8(output_data, acc_u8_0_1);
 
             input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 16);
             input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 16);
@@ -7831,9 +7902,9 @@ struct KernelMacroBlock<
             acc0 =
                 vdotq_four_lane_s32(acc0, filter_reg_1_a, input_bank_a_reg, 2);
 
-            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc0, -output_shift);
+            acc0 = vqrdmulhq_s32(acc0, output_multiplier_s_0);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc0, output_shift_s_0);
 
             // Second sub-block accumulation.
             acc1 = adjusted_bias_data_s_1;
@@ -7845,9 +7916,9 @@ struct KernelMacroBlock<
             acc1 =
                 vdotq_four_lane_s32(acc1, filter_reg_1_b, input_bank_a_reg, 2);
 
-            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                acc1, -output_shift);
+            acc1 = vqrdmulhq_s32(acc1, output_multiplier_s_1);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::RunMult(
+                acc1, output_shift_s_1);
 
             // Add the output offset.
             acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
@@ -7855,12 +7926,12 @@ struct KernelMacroBlock<
             // Apply the activation function.
             acc_u8_0_1 = vqmovxn_s16(acc_s16_0_1);
             acc_u8_0_1 = util_vmax_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_min_vec));
+                                      vget_low_s8(output_activation_min_vec));
             acc_u8_0_1 = util_vmin_x8(acc_u8_0_1,
-                                      vget_low_u8(output_activation_max_vec));
+                                      vget_low_s8(output_activation_max_vec));
 
             // This stores the results for both sub-blocks together.
-            util_vst1_x8(output_data, acc_u8_0_1);
+            vst1_s8(output_data, acc_u8_0_1);
 
             input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 16);
             input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 16);
