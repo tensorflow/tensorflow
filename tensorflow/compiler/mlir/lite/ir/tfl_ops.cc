@@ -1736,6 +1736,49 @@ static LogicalResult Verify(TransposeOp op) {
   return success();
 }
 
+namespace {
+struct WhileResultOperandsMatch : public OpRewritePattern<WhileOp> {
+  using OpRewritePattern<WhileOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(WhileOp while_op,
+                                     PatternRewriter &rewriter) const override {
+    auto size = while_op.body().front().getArguments().size();
+    Operation *op = while_op.getOperation();
+    auto old_size = op->getNumResults();
+    // No change needed as the number of operands match the number of results.
+    if (size == old_size) return matchFailure();
+
+    // Collect the new types by combining results of old op with additional
+    // operand results.
+    llvm::SmallVector<Type, 4> types;
+    types.reserve(size);
+    for (auto type : while_op.getResultTypes()) types.push_back(type);
+    for (auto arg : while_op.body().front().getArguments().drop_front(old_size))
+      types.push_back(arg.getType());
+    // Collect operands.
+    llvm::SmallVector<Value, 8> operands;
+    operands.reserve(while_op.getNumOperands());
+    for (auto operand : while_op.getOperands()) operands.push_back(operand);
+
+    // Replace with new While with matching operands and results.
+    Operation *new_op = rewriter.insert(
+        Operation::create(op->getLoc(), op->getName(), types, operands,
+                          op->getAttrs(), {}, /*numRegions=*/2,
+                          /*resizableOperandList=*/true));
+    for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
+    rewriter.replaceOp(op,
+                       new_op->getResults().take_front(op->getNumResults()));
+
+    return matchSuccess();
+  }
+};
+}  // namespace
+
+void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<WhileResultOperandsMatch>(context);
+}
+
 Region &WhileOp::getLoopBody() { return body(); }
 
 bool WhileOp::isDefinedOutsideOfLoop(Value value) {
@@ -1744,10 +1787,39 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   return false;
 }
 
-LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *>) {
-  // TODO(jpienaar): Fail any hoisting until post test case and refining
-  // isDefinedOutsideOfLoop.
-  return failure();
+LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
+  // TODO(jpienaar): This can be removed post the resizable trait is added.
+  Operation &while_op = *this->getOperation();
+  if (!while_op.hasResizableOperandsList()) return failure();
+  if (ops.empty()) return success();
+
+  // Operands to the while op.
+  llvm::SmallVector<Value, 4> operands(getOperands());
+  // Results that have to be returned by the body.
+  llvm::SmallVector<Value, 4> results(
+      body().front().getTerminator()->getOperands());
+  for (auto op : ops) {
+    // Move the hoisted value to just before the while.
+    op->moveBefore(&while_op);
+
+    // Each result of the hoisted op becomes an input to while, cond and body.
+    for (auto result : op->getResults()) {
+      operands.push_back(result);
+      auto type = result.getType();
+      auto arg = body().front().addArgument(type);
+      // Loop invariant value passes through the body function unchanged.
+      result.replaceAllUsesWith(arg);
+      results.push_back(arg);
+      // Operand types match for body and cond. The value is hoisted out of the
+      // body and so not necessarily used in cond. This could be expanded to
+      // consider common usage across cond and body.
+      cond().front().addArgument(type);
+    }
+  }
+
+  body().front().getTerminator()->setOperands(results);
+  while_op.setOperands(operands);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
