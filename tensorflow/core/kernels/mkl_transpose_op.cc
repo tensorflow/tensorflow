@@ -23,11 +23,6 @@ limitations under the License.
 #include "mkl_trans.h"
 #endif
 
-#ifdef ENABLE_MKLDNN_V1
-// MKL-DNN 1.0 renames TENSOR_MAX_DIMS (0.x) as MKLDNN_MAX_NDIMS
-#define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
-#endif
-
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
@@ -158,7 +153,7 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
 #else
     net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
     transpose_stream->submit(net).wait();
-#endif
+#endif //ENABLE_MKLDNN_V1
 
     return Status::OK();
   } catch (mkldnn::error& e) {

@@ -109,6 +109,7 @@ namespace tensorflow {
 #define SUMMAND_MD summand_md
 #define TENSOR_FORMAT MKL_TENSOR_FORMAT
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
+#define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
 
 #else
 
