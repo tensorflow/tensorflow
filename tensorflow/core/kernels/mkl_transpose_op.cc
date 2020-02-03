@@ -153,7 +153,7 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
 #else
     net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
     transpose_stream->submit(net).wait();
-#endif //ENABLE_MKLDNN_V1
+#endif  // ENABLE_MKLDNN_V1
 
     return Status::OK();
   } catch (mkldnn::error& e) {
