@@ -268,7 +268,6 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
         absl::c_min_element(filtered_results_no_scratch, compare_run_times);
   }
 
-<<<<<<< HEAD
   const auto best_result = absl::c_min_element(
       filtered_results,
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
@@ -290,11 +289,6 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
   algo->set_scratch_size(best_result->scratch_bytes());
   if (best_result_no_scratch != filtered_results.end() &&
       best_result_no_scratch->scratch_bytes() == 0) {
-=======
-  algo->set_algorithm({selected_result->conv().algorithm(),
-                       selected_result->conv().tensor_ops_enabled()});
-  if (selected_result_no_scratch != filtered_results_no_scratch.end()) {
->>>>>>> master
     algo->set_algorithm_no_scratch(
         {selected_result_no_scratch->conv().algorithm(),
          selected_result_no_scratch->conv().tensor_ops_enabled()});

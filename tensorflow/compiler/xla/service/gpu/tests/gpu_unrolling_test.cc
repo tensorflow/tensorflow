@@ -154,12 +154,6 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
 
-<<<<<<< HEAD
-  auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK: __ocml_sin_f32
-; CHECK-NOT: load float
-)"                                       : R"(
-=======
   // Note: On ROCm side, we do bare minimal to make the test pass.
   // "sine" function is in different code generation path from nvptx: on
   // ROCm platform, it get pulled in from ROCm-Device-Libs, whereas in
@@ -169,7 +163,6 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
 ; CHECK-NOT: load float
 )"
                                          : R"(
->>>>>>> master
 ; CHECK: load float
 ; CHECK-NOT: load float
 }
@@ -195,13 +188,6 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
 
-<<<<<<< HEAD
-  auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK: __ocml_cos_f32
-; CHECK-NOT: load float
-)"                                       : R"(
-                     R"(
-=======
   // Note: On ROCm side, we do bare minimal to make the test pass.
   // "cosine" function is in different code generation path from nvptx: on
   // ROCm platform, it get pulled in from ROCm-Device-Libs, whereas in
@@ -211,7 +197,6 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
 ; CHECK-NOT: load float
 )"
                                          : R"(
->>>>>>> master
 ; CHECK: load float
 ; CHECK-NOT: load float
 }

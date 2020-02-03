@@ -7,13 +7,8 @@ load(
     "register_extension_info",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
-<<<<<<< HEAD
-=======
     "tf_exec_properties",
->>>>>>> master
     "tf_gpu_tests_tags",
-    "tf_cuda_tests_tags",
-    "tf_exec_compatible_with",
     "tf_sycl_tests_tags",
 )
 load(

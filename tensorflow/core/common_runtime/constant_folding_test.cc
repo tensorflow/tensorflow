@@ -662,11 +662,7 @@ TEST_F(ConstantFoldingTest, NoReplacePartialOutput) {
       &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
 }
-<<<<<<< HEAD
-#endif // TENSORFLOW_USE_ROCM
-=======
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> master
 
 namespace {
 
