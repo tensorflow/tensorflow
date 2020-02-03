@@ -68,8 +68,7 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
   } else if (RE2::FullMatch(parts[1], *kTfOpTypeRegEx) &&
              RE2::FullMatch(parts[0], *kTfOpNameRegEx)) {  // TensorFlow
     tf_op = {parts[0], parts[1]};
-  } else if (absl::StrContains(parts[0], " = ") &&
-             RE2::FullMatch(parts[1], *kJaxOpTypeRegEx)) {  // JAX
+  } else if (RE2::FullMatch(parts[1], *kJaxOpTypeRegEx)) {  // JAX
     tf_op = {parts[0], parts[1]};
   }
   return tf_op;

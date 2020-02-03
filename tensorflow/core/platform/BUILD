@@ -85,6 +85,7 @@ exports_files(
         "mutex.h",
         "net.h",
         "numa.h",
+        "resource_loader.h",
         "snappy.h",
         "stacktrace_handler.h",
         "subprocess.h",
@@ -164,6 +165,7 @@ cc_library(
         ":byte_order",
         ":logging",
         ":platform_port",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -510,6 +512,13 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
+)
+
+cc_library(
+    name = "resource_loader",
+    testonly = 1,
+    textual_hdrs = ["resource_loader.h"],
+    deps = tf_platform_deps("resource_loader"),
 )
 
 cc_library(
@@ -889,11 +898,32 @@ tf_cc_test(
     name = "subprocess_test",
     size = "small",
     srcs = ["subprocess_test.cc"],
-    tags = [
-        "no_windows",
+    data = [
+        "//tensorflow/core/platform/testdata:test_echo",
+        "//tensorflow/core/platform/testdata:test_echo_argv_1",
+        "//tensorflow/core/platform/testdata:test_noop",
+        "//tensorflow/core/platform/testdata:test_stderr",
     ],
     deps = [
+        ":resource_loader",
+        ":strcat",
         ":subprocess",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "resource_loader_test",
+    size = "small",
+    srcs = ["resource_loader_test.cc"],
+    data = [
+        ":resource_loader.h",
+    ],
+    deps = [
+        ":resource_loader",
+        ":status",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

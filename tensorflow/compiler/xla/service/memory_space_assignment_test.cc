@@ -268,7 +268,7 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
 
   // Make sure the preset assignments is sane.
   EXPECT_EQ(preset_assignments->chunks().size(), 3);
-  EXPECT_EQ(preset_assignments->sizes().size(), 1);
+  EXPECT_EQ(preset_assignments->assignment_informations().size(), 1);
   // Ensure the offset assigned to add and sub are different.
   EXPECT_NE(preset_assignments->chunks()[0].second.offset,
             preset_assignments->chunks()[1].second.offset);
@@ -2823,6 +2823,21 @@ TEST_P(MemorySpaceAssignmentTest,
     const HloPosition& position = position_and_chunk.first;
     EXPECT_NE(position.instruction, p1);
     EXPECT_NE(position.instruction, add);
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, Determinism) {
+  // Run memory space assignment a few times to make sure every time it compiles
+  // to the same thing.
+  std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
+
+  AssignMemorySpace(module.get());
+  std::string module_str = module->ToString();
+
+  for (int i = 0; i < 10; ++i) {
+    std::unique_ptr<HloModule> other_module = CreateEvictAndPrefetchModule();
+    AssignMemorySpace(other_module.get());
+    EXPECT_EQ(module_str, other_module->ToString());
   }
 }
 

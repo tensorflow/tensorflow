@@ -289,6 +289,30 @@ class AutoCastVariable(variables.Variable):
   def from_proto(self, variable_def, import_scope=None):
     return self._variable.from_proto(variable_def, import_scope)
 
+  # Delegate the private attributes _handle_name and _initializer_op to
+  # self._variable. SavedModel sets these attributes when loading a model. For
+  # example, it sets _handle_name here:
+  # https://github.com/tensorflow/tensorflow/blob/db26bd574fa95b5bdd53c08463dd19407cc0297e/tensorflow/python/keras/saving/saved_model/load.py#L211
+  # We need to expose these attributes on AutoCastVariable as well for
+  # SavedModel to work properly.
+  # TODO(reedwm/kathywu): Find a better way to support SavedModel. Exposing
+  # private attributes is hacky and difficult to maintain.
+  @property
+  def _handle_name(self):
+    return self._variable._handle_name  # pylint: disable=protected-access
+
+  @_handle_name.setter
+  def _handle_name(self, handle_name):
+    self._variable._handle_name = handle_name  # pylint: disable=protected-access
+
+  @property
+  def _initializer_op(self):
+    return self._variable._initializer_op  # pylint: disable=protected-access
+
+  @_initializer_op.setter
+  def _initializer_op(self, initializer_op):
+    self._variable._initializer_op = initializer_op  # pylint: disable=protected-access
+
   # Operator overloads:
   # Note we only overload operators that support floating-point types, as
   # non-float variables cannot be wrapped with an AutoCastVariable.

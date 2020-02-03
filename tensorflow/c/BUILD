@@ -57,6 +57,7 @@ filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
         "c_api_internal.h",
+        "python_api.h",
         "tf_status_helper.h",
         "tf_status_internal.h",
         "tf_tensor_internal.h",
@@ -95,6 +96,17 @@ tf_cuda_library(
     }) + [
         ":tf_status_internal",
         ":tf_tensor_internal",
+    ],
+)
+
+filegroup(
+    name = "pywrap_tf_session_hdrs",
+    srcs = [
+        "python_api.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )
 

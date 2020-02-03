@@ -1726,20 +1726,14 @@ def batch_dot(x, y, axes=None):
     If the final rank is 1, we reshape it to `(batch_size, 1)`.
 
   Examples:
-    Assume `x = [[1, 2], [3, 4]]` and `y = [[5, 6], [7, 8]]`
-    `batch_dot(x, y, axes=1) = [[17], [53]]` which is the main diagonal
-    of `x.dot(y.T)`, although we never have to calculate the off-diagonal
-    elements.
 
-    Pseudocode:
-    ```
-    inner_products = []
-    for xi, yi in zip(x, y):
-        inner_products.append(xi.dot(yi))
-    result = stack(inner_products)
-    ```
+  >>> x_batch = tf.keras.backend.ones(shape=(32, 20, 1))
+  >>> y_batch = tf.keras.backend.ones(shape=(32, 30, 20))
+  >>> xy_batch_dot = tf.keras.backend.batch_dot(x_batch, y_batch, axes=(1, 2))
+  >>> tf.keras.backend.int_shape(xy_batch_dot)
+  (32, 1, 30)
 
-    Shape inference:
+  Shape inference:
     Let `x`'s shape be `(100, 20)` and `y`'s shape be `(100, 30, 20)`.
     If `axes` is (1, 2), to find the output shape of resultant tensor,
         loop through each dimension in `x`'s shape and `y`'s shape:
@@ -1752,12 +1746,6 @@ def batch_dot(x, y, axes=None):
     * `y.shape[2]` : 20 : do not append to output shape,
         dimension 2 of `y` has been summed over. (`dot_axes[1]` = 2)
     `output_shape` = `(100, 30)`
-
-  >>> x_batch = tf.keras.backend.ones(shape=(32, 20, 1))
-  >>> y_batch = tf.keras.backend.ones(shape=(32, 30, 20))
-  >>> xy_batch_dot = tf.keras.backend.batch_dot(x_batch, y_batch, axes=(1, 2))
-  >>> tf.keras.backend.int_shape(xy_batch_dot)
-  (32, 1, 30)
   """
   x_shape = int_shape(x)
   y_shape = int_shape(y)
@@ -1929,8 +1917,6 @@ def transpose(x):
   >>> input_transposed = tf.keras.backend.transpose(input)
   >>> input_transposed
   <tf.Tensor 'Transpose_...' shape=(3, 2) dtype=float32>
-
-
   """
   return array_ops.transpose(x)
 
@@ -3364,8 +3350,7 @@ def set_value(x, value):
   """
   value = np.asarray(value, dtype=dtype(x))
   if ops.executing_eagerly_outside_functions():
-    with ops.init_scope():
-      x.assign(value)
+    x.assign(value)
   else:
     with get_graph().as_default():
       tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
@@ -3395,9 +3380,8 @@ def batch_set_value(tuples):
           `value` should be a Numpy array.
   """
   if ops.executing_eagerly_outside_functions():
-    with ops.init_scope():
-      for x, value in tuples:
-        x.assign(np.asarray(value, dtype=dtype(x)))
+    for x, value in tuples:
+      x.assign(np.asarray(value, dtype=dtype(x)))
   else:
     with get_graph().as_default():
       if tuples:
@@ -4571,6 +4555,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   dtype=float32)
 
   """
+  target.shape.assert_is_compatible_with(output.shape)
   if from_logits:
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)

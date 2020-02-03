@@ -797,8 +797,7 @@ struct RemoveAdjacentReshape : public RewritePattern {
     // With
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
-        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand(0),
-        thisOp.getOperand(1));
+        op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
   }
 };
 
@@ -1303,6 +1302,19 @@ OpFoldResult AbsOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// NegOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult NegOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat { return llvm::neg(value); };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
 // SinOp
 //===----------------------------------------------------------------------===//
 
@@ -1722,6 +1734,20 @@ static LogicalResult Verify(TransposeOp op) {
   }
 
   return success();
+}
+
+Region &WhileOp::getLoopBody() { return body(); }
+
+bool WhileOp::isDefinedOutsideOfLoop(Value value) {
+  // TODO(jpienaar): This is to overly conservative and disables anything other
+  // than constant hoisting initially.
+  return false;
+}
+
+LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *>) {
+  // TODO(jpienaar): Fail any hoisting until post test case and refining
+  // isDefinedOutsideOfLoop.
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//

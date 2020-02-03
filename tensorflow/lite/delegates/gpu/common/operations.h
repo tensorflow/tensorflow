@@ -34,8 +34,6 @@ enum class OperationType {
   UNKNOWN = 0,
   ABS,
   ADD,
-  // TODO(eignasheva): remove APPLY_MASK operation, is should be just MUL
-  APPLY_MASK,
   BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
   CONCAT,
@@ -52,7 +50,6 @@ enum class OperationType {
   MAX_UNPOOLING_2D,
   MEAN,
   MUL,
-  MULTIPLY_SCALAR,
   PAD,
   POOLING_2D,
   POW,
@@ -354,7 +351,7 @@ struct LstmAttributes {
   LstmKernelType kernel_type = LstmKernelType::BASIC;
 };
 
-struct MultiplyScalarAttributes {
+struct MultiplyAttributes {
   absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
       param;
 };
@@ -448,6 +445,9 @@ struct FullyConnectedAttributes {
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const FullyConnectedAttributes& attr);
+
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 
 struct ReshapeAttributes {
   BHWC new_shape;

@@ -26,7 +26,7 @@ import weakref
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import _pywrap_utils
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -56,7 +56,7 @@ from tensorflow.python.util.deprecation import deprecated_args
 def get_resource_handle_data(graph_op):
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
-  handle_data = pywrap_tensorflow.GetHandleShapeAndType(
+  handle_data = pywrap_tf_session.GetHandleShapeAndType(
       graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
 
   return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
@@ -91,10 +91,12 @@ def _set_handle_shapes_and_types(tensor, handle_data, graph_mode):
   ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
   shapes = [[d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
             if not s.unknown_rank else None for s in shapes]
-  pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+  pywrap_tf_session.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
       tensor._op._graph._c_graph,  # pylint: disable=protected-access
       tensor._as_tf_output(),  # pylint: disable=protected-access
-      shapes, ranks, types)
+      shapes,
+      ranks,
+      types)
 
 
 def _combine_handle_data(handle, initial_value):

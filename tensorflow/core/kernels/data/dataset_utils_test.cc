@@ -300,6 +300,28 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
   EXPECT_EQ(GetHash(fl, *f1), GetHash(fl, *f2));
 }
 
+TEST_F(DatasetHashUtilsTest, HashFunctionWithMultipleCycles) {
+  uint64 hash = 0;
+  for (int i = 0; i < 1000; ++i) {
+    FunctionDefLibrary fl;
+    FunctionDef* f1 = fl.add_function();
+    *f1 = FunctionDefHelper::Create("TwoCyleGraph", {},
+                                    {"p: float", "q: float"}, {},
+                                    {{{"A"}, "Abs", {"B"}},
+                                     {{"B"}, "Add", {"C", "D"}},
+                                     {{"C"}, "Ceil", {"A"}},
+                                     {{"D"}, "Cos", {"E"}},
+                                     {{"E"}, "Floor", {"B"}}},
+                                    {{"p", "A:0"}, {"q", "D:0"}}, {});
+    uint64 t = GetHash(fl, *f1);
+    if (hash == 0) {
+      hash = t;
+    } else {
+      EXPECT_EQ(t, hash);
+    }
+  }
+}
+
 TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentNames) {
   GraphDef gd;
 

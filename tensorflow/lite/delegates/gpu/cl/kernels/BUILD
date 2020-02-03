@@ -40,39 +40,6 @@ cc_test(
 )
 
 cc_library(
-    name = "apply_mask",
-    srcs = ["apply_mask.cc"],
-    hdrs = ["apply_mask.h"],
-    deps = [
-        ":gpu_operation",
-        ":util",
-        ":work_group_picking",
-        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "apply_mask_test",
-    srcs = ["apply_mask_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":apply_mask",
-        ":cl_test",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "cl_test",
     testonly = 1,
     srcs = ["cl_test.cc"],
@@ -846,6 +813,41 @@ cc_test(
 )
 
 cc_library(
+    name = "mean",
+    srcs = ["mean.cc"],
+    hdrs = ["mean.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+    ],
+)
+
+cc_test(
+    name = "mean_test",
+    srcs = ["mean_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":mean",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "multiply_add",
     srcs = ["multiply_add.cc"],
     hdrs = ["multiply_add.h"],
@@ -1293,7 +1295,6 @@ test_suite(
     name = "all_tests",
     tests = [
         "add_test",
-        "apply_mask_test",
         "concat_test",
         "conv_buffer_1x1_test",
         "conv_buffer_test",

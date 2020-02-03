@@ -190,6 +190,7 @@ COMMON_PROTO_SRCS = [
     "protobuf/config.proto",
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
+    "protobuf/device_filters.proto",
     "protobuf/device_properties.proto",
     "protobuf/graph_debug_info.proto",
     "protobuf/queue_runner.proto",
@@ -514,13 +515,9 @@ tf_cuda_library(
         "//tensorflow/core/framework:variant_tensor_data.h",
         "//tensorflow/core/util/sparse:framework_group",
         "//tensorflow/core/util:framework_srcs",
+        "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/public:version.h",
-    ] + select({
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "//tensorflow/core/util:memmapped_file_system_hdrs",
-        ],
-    }) + if_mkl([
+    ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
     visibility = ["//visibility:public"],
@@ -646,6 +643,7 @@ tf_gen_op_libs(
         "parsing_ops",
         "random_grad",
         "random_ops",
+        "special_math_ops",
         "stateful_random_ops",
         "remote_fused_graph_ops",
         "rnn_ops",
@@ -873,6 +871,7 @@ cc_library(
         ":ragged_ops",
         ":random_ops_op_lib",
         ":rnn_ops_op_lib",
+        ":special_math_ops_op_lib",
         ":stateful_random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
         ":resource_variable_ops_op_lib",
@@ -2158,13 +2157,9 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
     "//tensorflow/core/framework:framework_internal_private_hdrs",
     "//tensorflow/core/util:framework_internal_private_hdrs",
+    "//tensorflow/core/util:memmapped_file_system_hdrs",
     "//tensorflow/core/example:feature_util.h",
-] + select({
-    "//tensorflow:windows": [],
-    "//conditions:default": [
-        "//tensorflow/core/util:memmapped_file_system_hdrs",
-    ],
-})
+]
 
 FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/framework:model.h",  # only needed for tests
@@ -2232,6 +2227,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:framework_internal_impl_srcs",
         "//tensorflow/core/graph:framework_internal_impl_srcs",
         "//tensorflow/core/util:framework_internal_impl_srcs",
+        "//tensorflow/core/util:memmapped_file_system_srcs",
         "//tensorflow/core/util/sparse:framework_internal_impl_group",
     ] + glob(
         [
@@ -2240,12 +2236,7 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
         ],
-    ) + select({
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "//tensorflow/core/util:memmapped_file_system_srcs",
-        ],
-    }),
+    ),
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
@@ -2584,6 +2575,7 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -3136,6 +3128,7 @@ tf_cc_tests(
         "common_runtime/buf_rendezvous_test.cc",
         "common_runtime/collective_executor_mgr_test.cc",
         "common_runtime/collective_rma_local_test.cc",
+        "common_runtime/device_mgr_test.cc",
         "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
         "common_runtime/dynamic_device_mgr_test.cc",

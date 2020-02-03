@@ -84,7 +84,6 @@ and the following optional parameters:
 ```
 bazel build -c opt \
   --config=android_arm \
-  --cxxopt='--std=c++11' \
   tensorflow/lite/tools/benchmark:benchmark_model
 ```
 

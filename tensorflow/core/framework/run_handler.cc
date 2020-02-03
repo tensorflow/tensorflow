@@ -36,7 +36,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+// LINT.IfChange
 static constexpr int32 kMaxConcurrentHandlers = 128;
+// LINT.ThenChange(//tensorflow/core/framework/run_handler_test.cc)
 
 // TODO(azaks): Refactor with thread:ThreadPool
 class RunHandlerEnvironment {
@@ -948,16 +950,18 @@ class RunHandlerPool::Impl {
     RunHandler::Impl* handler_impl;
     {
       mutex_lock l(mu_);
-      if (free_handlers_.empty()) {
+      if (!has_free_handler()) {
         profiler::TraceMe activity(
             [&] {
               return strings::StrCat("WaitingForHandler#step_id=", step_id,
                                      "#");
             },
             profiler::TraceMeLevel::kInfo);
-        if (!mu_.AwaitWithDeadline(
-                Condition(this, &Impl::has_free_handler),
-                EnvTime::NowNanos() + timeout_in_ms * 1000 * 1000)) {
+        if (timeout_in_ms == 0) {
+          mu_.Await(Condition(this, &Impl::has_free_handler));
+        } else if (!mu_.AwaitWithDeadline(
+                       Condition(this, &Impl::has_free_handler),
+                       EnvTime::NowNanos() + timeout_in_ms * 1000 * 1000)) {
           return nullptr;
         }
       }

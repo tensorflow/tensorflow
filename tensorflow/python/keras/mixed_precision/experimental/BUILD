@@ -94,7 +94,7 @@ py_library(
     srcs = ["get_layer_policy.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras/engine:base_layer",
     ],
 )
 

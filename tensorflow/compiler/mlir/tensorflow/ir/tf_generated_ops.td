@@ -702,7 +702,7 @@ def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
   TF_DerivedOperandTypeAttr SrcT = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr DstT = TF_DerivedResultTypeAttr<0>;
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def TF_CeilOp : TF_Op<"Ceil", [NoSideEffect, SameOperandsAndResultType]> {

@@ -52,7 +52,7 @@ static std::string GetDefaultAttrExport(
   return "Convert_" + named_attr.name.str();
 }
 
-static std::string GetClientBuilder(const Operator& op) {
+static StringRef GetClientBuilder(const Operator& op) {
   static const auto* kOpToXLABuilderMap =
       new llvm::StringMap<StringRef>{{"ReverseOp", "Rev"},
                                      {"ConcatenateOp", "ConcatInDim"},

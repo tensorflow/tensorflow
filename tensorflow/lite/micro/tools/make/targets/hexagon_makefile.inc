@@ -13,8 +13,6 @@ ifeq ($(TARGET), hexagon)
   PLATFORM_ARGS = \
     -DHEXAGON_ASM \
     -DMALLOC_IN_STDLIB \
-    -DMICRO_NN_ENABLED=1 \
-    -DMICRO_TFLITE_ENABLED=0 \
     -DNDEBUG \
     -DPTHREAD_STUBS \
     -DTF_LITE_STATIC_MEMORY \
@@ -29,12 +27,9 @@ ifeq ($(TARGET), hexagon)
     -Wno-unused-parameter \
     -Wno-write-strings \
     -Wvla \
-    -fdata-sections -ffunction-sections \
     -fdata-sections \
     -ffunction-sections \
     -fmessage-length=0 \
-    -fno-builtin \
-    -fno-builtin \
     -fno-builtin \
     -fno-delete-null-pointer-checks \
     -fno-exceptions \
@@ -57,10 +52,11 @@ ifeq ($(TARGET), hexagon)
   CXXFLAGS = $(PLATFORM_ARGS) -std=c++11
   CCFLAGS = $(PLATFORM_ARGS) -std=c11
   LDFLAGS += \
-    -Wl,--gc-sections -lhexagon
+    -Wl,--gc-sections -lhexagon \
+    $(HEXAGON_SDK_PREFIX)/tools/HEXAGON_Tools/8.3.07/Tools/target/hexagon/lib/v66/libstdc++.a
 
   ifndef HEXAGON_SDK_PREFIX
-	  $(error HEXAGON_SDK_PREFIX is undefined)
+    $(error HEXAGON_SDK_PREFIX is undefined)
   endif
 
   INCLUDES += \

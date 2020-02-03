@@ -153,11 +153,12 @@ def shared_sequential():
   return ModelFn(model, [(None, 5, 5, 3), (None, 5, 5, 3)], (None, 4))
 
 
-class _MySubclassModel(keras.Model):
+class MySubclassModel(keras.Model):
   """A subclass model."""
 
-  def __init__(self):
-    super(_MySubclassModel, self).__init__(name='my_subclass_model')
+  def __init__(self, input_dim=3):
+    super(MySubclassModel, self).__init__(name='my_subclass_model')
+    self._config = {'input_dim': input_dim}
     self.dense1 = keras.layers.Dense(8, activation='relu')
     self.dense2 = keras.layers.Dense(2, activation='softmax')
     self.bn = keras.layers.BatchNormalization()
@@ -168,6 +169,13 @@ class _MySubclassModel(keras.Model):
     x = self.dp(x)
     x = self.bn(x)
     return self.dense2(x)
+
+  def get_config(self):
+    return self._config
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(**config)
 
 
 def nested_subclassed_model():
@@ -181,7 +189,7 @@ def nested_subclassed_model():
       self.dense1 = keras.layers.Dense(4, activation='relu')
       self.dense2 = keras.layers.Dense(2, activation='relu')
       self.bn = keras.layers.BatchNormalization()
-      self.inner_subclass_model = _MySubclassModel()
+      self.inner_subclass_model = MySubclassModel()
 
     def call(self, inputs):
       x = self.dense1(inputs)
@@ -194,7 +202,7 @@ def nested_subclassed_model():
 
 def nested_subclassed_in_functional_model():
   """A subclass model nested in a functional model."""
-  inner_subclass_model = _MySubclassModel()
+  inner_subclass_model = MySubclassModel()
   inputs = keras.Input(shape=(3,))
   x = inner_subclass_model(inputs)
   x = keras.layers.BatchNormalization()(x)

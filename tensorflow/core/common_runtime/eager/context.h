@@ -292,6 +292,7 @@ class EagerContext : public core::RefCounted {
 
   uint64 GetContextId();
   uint64 GetContextViewId();
+  void IncrementContextViewId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
@@ -357,6 +358,24 @@ class EagerContext : public core::RefCounted {
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
+
+  // For the specified remote worker, preprocess and set its device filters.
+  Status SetRemoteDeviceFilters(const string& remote_worker,
+                                const std::vector<string>& device_filters);
+
+  // For the specified remote worker, apply the stored device filters to the
+  // list of device attributes following these rules:
+  // (1) if the remote worker does not have device filters, all devices are
+  //     visible to the worker;
+  // (2) if the device is on the remote worker, then it is visible;
+  // (3) if the device matches at least one device filter, then it is visible.
+  // The result is saved as a boolean vector of the same length (i.e.,
+  // filtered_device_mask) indicating whether each of the devices is visible to
+  // the remote worker.
+  void FilterDevicesForRemoteWorkers(
+      const string& remote_worker,
+      const protobuf::RepeatedPtrField<DeviceAttributes>& device_attrs,
+      std::vector<bool>* filtered_device_mask);
 
   // TODO(fishx): Remove the custom deleter once we remove forward declaration.
   const std::unique_ptr<eager::RemoteMgr,
@@ -568,6 +587,11 @@ class EagerContext : public core::RefCounted {
   std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
       remote_mgr_;
   bool is_master_ GUARDED_BY(remote_state_mu_);
+
+  // Maps from a remote worker to a list of parsed device filters.
+  std::unordered_map<string, std::vector<DeviceNameUtils::ParsedName>>
+      cluster_device_filters_ GUARDED_BY(remote_state_mu_);
+
 #endif  // IS_MOBILE_PLATFORM
 
   // For a multi device function, the target device of each input is unknown

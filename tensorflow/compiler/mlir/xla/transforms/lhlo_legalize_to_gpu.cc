@@ -167,7 +167,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Finally, insert the terminator for the launchOp.
       rewriter.setInsertionPointToEnd(&launch_op.body().front());
-      rewriter.create<mlir::gpu::ReturnOp>(loc);
+      rewriter.create<mlir::gpu::TerminatorOp>(loc);
     }
 
     rewriter.eraseOp(reduce_op);

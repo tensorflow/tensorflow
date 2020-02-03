@@ -1070,12 +1070,20 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
       # Regression test for b/31472796.
       if dtype != np.float16 and hasattr(np, "matmul"):
+<<<<<<< HEAD
         # ROCM doesn't support bfloat16 GEMM yet. Fix the data type be tested
         # as float32.
         if test_lib.is_built_with_rocm():
           x = np.arange(0, 3 * 5 * 2 * 7, dtype=np.float32).reshape((3, 5, 2, 7))
         else:
           x = np.arange(0, 3 * 5 * 2 * 7, dtype=dtype).reshape((3, 5, 2, 7))
+=======
+        # Skipping bfloat16 as ROCM doesn't support bfloat16 GEMM yet.
+        if (test_lib.is_built_with_rocm() and
+            dtype == dtypes.bfloat16.as_numpy_dtype):
+          return
+        x = np.arange(0, 3 * 5 * 2 * 7, dtype=dtype).reshape((3, 5, 2, 7))
+>>>>>>> master
         self._testBinary(
             lambda x, y: math_ops.matmul(x, y, adjoint_b=True),
             x,

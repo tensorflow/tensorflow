@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
@@ -1616,8 +1617,8 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
 
   if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
       device_type.type_string() == DEVICE_CPU) {
-    static std::once_flag once;
-    std::call_once(once, [] {
+    static absl::once_flag once;
+    absl::call_once(once, [] {
       LOG(WARNING)
           << "(One-time warning): Not using XLA:CPU for cluster because envvar "
              "TF_XLA_FLAGS=--tf_xla_cpu_global_jit was not set.  If you want "

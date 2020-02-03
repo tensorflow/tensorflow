@@ -65,8 +65,8 @@ namespace {
 
 // Full integer quantization rewrite pattern for TFLite.
 struct TFLFullQuantization
-    : public QuantizationPattern<TFLFullQuantization, QuantizeOp, DequantizeOp,
-                                 NumericVerifyOp> {
+    : public quant::QuantizationPattern<TFLFullQuantization, QuantizeOp,
+                                        DequantizeOp, NumericVerifyOp> {
   explicit TFLFullQuantization(MLIRContext* ctx, bool verify_numeric,
                                float tolerance, bool verify_single_layer)
       : BaseType(ctx, verify_numeric, tolerance, verify_single_layer) {}

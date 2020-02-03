@@ -1569,7 +1569,7 @@ TEST_P(ModularFileSystemTest, TestRoundTrip) {
   if (!status.ok())
     GTEST_SKIP() << "NewRandomAccessFile() not supported: " << status;
 
-  char scratch[64 /* big enough to accomodate test_data */] = {0};
+  char scratch[64 /* big enough to accommodate test_data */] = {0};
   StringPiece result;
   status = read_file->Read(0, test_data.size(), &result, scratch);
   EXPECT_PRED2(UnimplementedOrReturnsCode, status, Code::OK);

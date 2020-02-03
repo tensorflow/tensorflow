@@ -70,7 +70,7 @@ function run_build () {
     --copt=-mavx \
     --linkopt=-lrt \
     --distinct_host_configuration=false \
-    --remote_default_platform_properties="properties:{name:\"build\" value:\"${CACHE_SILO_VAL}\"}" \
+    --remote_default_exec_properties=build=${CACHE_SILO_VAL} \
     --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain \
     --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8 \
     --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8 \

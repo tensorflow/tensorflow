@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
+#include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
+#include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -74,18 +77,16 @@ void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
 }  // namespace
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  std::vector<const XPlane*> device_planes =
+      FindPlanesWithPrefix(space, kGpuPlanePrefix);
   OpStats op_stats;
-  // Hosts.
-  if (const XPlane* host_trace = FindPlaneWithName(space, kHostThreads)) {
-    *op_stats.mutable_host_op_metrics_db() =
-        ConvertHostThreadsXPlaneToOpMetricsDb(*host_trace);
-  }
-  // Device.
+  StepEvents step_events;
+  // Convert device planes.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
-  const auto& gpu_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
-  SetRunEnvironment(gpu_planes.size(), op_stats.mutable_run_environment());
-  for (const XPlane* device_trace : gpu_planes) {
+  SetRunEnvironment(device_planes.size(), op_stats.mutable_run_environment());
+  for (const XPlane* device_trace : device_planes) {
     if (!op_stats.has_perf_env()) {
       *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
     }
@@ -94,7 +95,21 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
         *device_trace, perf_env.peak_tera_flops_per_second(),
         perf_env.peak_hbm_bw_giga_bytes_per_second());
     op_metrics_db_combiner.Combine(device_op_metrics_db);
+    CombineStepEvents(ConvertDeviceTraceXPlaneToStepEvents(*device_trace),
+                      &step_events);
   }
+  // Convert a host plane.
+  bool has_device = !device_planes.empty();
+  if (host_plane) {
+    *op_stats.mutable_host_op_metrics_db() =
+        ConvertHostThreadsXPlaneToOpMetricsDb(*host_plane);
+    CombineStepEvents(
+        ConvertHostThreadsXPlaneToStepEvents(
+            *host_plane, /*use_device_step_events=*/has_device, step_events),
+        &step_events);
+  }
+  *op_stats.mutable_step_db() =
+      ConvertStepEventsToStepDb(has_device, step_events);
   return op_stats;
 }
 
