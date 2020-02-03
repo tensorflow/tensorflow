@@ -100,7 +100,10 @@ using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 
-namespace m = match;
+const auto kDimX = KernelMappingScheme::DimX;
+const auto kDimY = KernelMappingScheme::DimY;
+const auto kDimZ = KernelMappingScheme::DimZ;
+const auto kDimTot = KernelMappingScheme::DimTot;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
@@ -1953,8 +1956,8 @@ static void EmitTile(
   // number of steps which can be made.
   int64 step_x = mapping_scheme.DilatedX() ? num_threads_x : 1;
 
-  IrArray::Index source_idx = tile_origin_index.AddOffsetToDim(
-      start_offset_x, KernelMappingScheme::DimX, b);
+  IrArray::Index source_idx =
+      tile_origin_index.AddOffsetToDim(start_offset_x, kDimX, b);
 
   ksl->For(
       loop_name + "_y_in_tile",
@@ -1962,12 +1965,12 @@ static void EmitTile(
       /*end=*/tile_height,
       /*step=*/constant(num_threads_y), [&](llvm::Value* y_loc) {
         IrArray::Index source_idx_y =
-            source_idx.AddOffsetToDim(y_loc, KernelMappingScheme::DimY, b);
+            source_idx.AddOffsetToDim(y_loc, kDimY, b);
         for (int64 j = 0; j < x_num_steps; j++) {
           llvm::Value* x_loc =
               b->CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
-          IrArray::Index source_idx_x = source_idx_y.AddOffsetToDim(
-              constant(j * step_x), KernelMappingScheme::DimX, b);
+          IrArray::Index source_idx_x =
+              source_idx_y.AddOffsetToDim(constant(j * step_x), kDimX, b);
           // The if-statement below always evaluates to true for the blocks
           // where the entire processed tile fits within the input buffer.
           ksl->If(loop_name + "_x_in_tile", b->CreateICmpULT(x_loc, tile_width),
@@ -2173,14 +2176,12 @@ static llvm::Value* GetUntransposedOutputLinearAddress(
   const KernelMappingScheme& kernel_mapping_scheme =
       reduction_info.GetKernelMappingScheme();
   if (reduction_info.IsRowReduction()) {
-    return index[KernelMappingScheme::DimY];
+    return index[kDimY];
   }
   absl::Span<const int64> dims_in_elem = kernel_mapping_scheme.GetDimsInElems();
-  llvm::Value* x_dim_size =
-      index.GetConstantWithIndexType(dims_in_elem[KernelMappingScheme::DimX]);
-  llvm::Value* x_block_offset =
-      b->CreateMul(index[KernelMappingScheme::DimZ], x_dim_size);
-  return b->CreateAdd(x_block_offset, index[KernelMappingScheme::DimX]);
+  llvm::Value* x_dim_size = index.GetConstantWithIndexType(dims_in_elem[kDimX]);
+  llvm::Value* x_block_offset = b->CreateMul(index[kDimZ], x_dim_size);
+  return b->CreateAdd(x_block_offset, index[kDimX]);
 }
 
 void IrEmitterUnnested::EmitEpilogueForReduction(
@@ -2204,9 +2205,8 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
 
   IrArray::Index start_offset =
       tiling_kernel_info.tile_origin
-          .AddOffsetToDim(thread_id_info.thread_id_y, KernelMappingScheme::DimY,
-                          &b_)
-          .AddOffsetToDim(start_offset_x, KernelMappingScheme::DimX, &b_);
+          .AddOffsetToDim(thread_id_info.thread_id_y, kDimY, &b_)
+          .AddOffsetToDim(start_offset_x, kDimX, &b_);
 
   int num_reduces = reducers.size();
   absl::Span<llvm::AllocaInst* const> partial_result_addresses =
@@ -2221,12 +2221,10 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
     // Some threads in the block are completely outside of the bound of the
     // tensor, so they should not do anything at all.
     llvm::Value* has_output = b_.CreateAnd(
-        b_.CreateICmpULT(
-            start_offset_x,
-            tiling_kernel_info.output_tile_bounds[KernelMappingScheme::DimX]),
-        b_.CreateICmpULT(
-            thread_id_info.thread_id_y,
-            tiling_kernel_info.output_tile_bounds[KernelMappingScheme::DimY]));
+        b_.CreateICmpULT(start_offset_x,
+                         tiling_kernel_info.output_tile_bounds[kDimX]),
+        b_.CreateICmpULT(thread_id_info.thread_id_y,
+                         tiling_kernel_info.output_tile_bounds[kDimY]));
     llvm_ir::LlvmIfData if_has_output =
         llvm_ir::EmitIfThenElse(has_output, "output_inbound", &b_);
     llvm_ir::SetToFirstInsertPoint(if_has_output.true_block, &b_);
@@ -2247,9 +2245,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
     for (int j = 0; j < num_partial_results; ++j) {
       llvm::Value* untransposed_output_linear_address =
           GetUntransposedOutputLinearAddress(
-              &b_,
-              start_offset.AddOffsetToDim(constant(j),
-                                          KernelMappingScheme::DimX, &b_),
+              &b_, start_offset.AddOffsetToDim(constant(j), kDimX, &b_),
               reduction_info);
 
       // A reduction is allowed to transpose its output.  For example, suppose
@@ -2445,8 +2441,7 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
   }();
 
   std::array<llvm::Value*, 3> output_tile_bounds;
-  for (int i = KernelMappingScheme::DimY; i < KernelMappingScheme::DimTot;
-       ++i) {
+  for (int i = kDimY; i < kDimTot; ++i) {
     int64 tile_size_for_dim = mapping_scheme.GetTileSizeFor(i);
     // Only last row or column may not have full size.
     llvm::Value* is_last =
@@ -2461,8 +2456,7 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
   IrArray::Index tile_origin = [&] {
     std::vector<llvm::Value*> elem_multi_index = block_coords.multidim();
     llvm::Type* index_ty = block_coords.GetType();
-    for (int i = KernelMappingScheme::DimY; i < KernelMappingScheme::DimTot;
-         ++i) {
+    for (int i = kDimY; i < kDimTot; ++i) {
       elem_multi_index[i] = b_.CreateMul(
           block_coords[i],
           llvm::ConstantInt::get(index_ty, mapping_scheme.GetTileSizeFor(i)),
@@ -2478,20 +2472,17 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
                            output_tile_bounds[1], output_tile_bounds[2], &ksl);
   };
 
-  int dim_z = KernelMappingScheme::DimZ;
   if (mapping_scheme.GetTileSizeZ() == 1) {
     emit_tile(tile_origin);
   } else {
-    llvm::Value* starting_tile_index_for_dim = tile_origin[dim_z];
+    llvm::Value* starting_tile_index_for_dim = tile_origin[kDimZ];
     llvm::Value* block_size_for_dim = constant(mapping_scheme.GetTileSizeZ());
     llvm::Value* block_id_for_dim =
         b_.CreateUDiv(starting_tile_index_for_dim, block_size_for_dim);
-    llvm::Value* last_block_for_dim =
-        constant(dims_in_blocks[KernelMappingScheme::DimZ] - 1);
+    llvm::Value* last_block_for_dim = constant(dims_in_blocks[kDimZ] - 1);
     llvm::Value* last_block_size_for_dim =
-        constant(dims_in_elems[KernelMappingScheme::DimZ] -
-                 (dims_in_blocks[KernelMappingScheme::DimZ] - 1) *
-                     mapping_scheme.GetTileSizeZ());
+        constant(dims_in_elems[kDimZ] -
+                 (dims_in_blocks[kDimZ] - 1) * mapping_scheme.GetTileSizeZ());
 
     llvm::Value* num_tiles_in_block =
         b_.CreateSelect(b_.CreateICmpEQ(last_block_for_dim, block_id_for_dim),
@@ -2501,7 +2492,7 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
             /*end=*/num_tiles_in_block,
             /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
               IrArray::Index tile_index = tile_origin.AddOffsetToDim(
-                  block_dim_induction_var, KernelMappingScheme::DimZ, &b_);
+                  block_dim_induction_var, kDimZ, &b_);
               emit_tile(tile_index);
             });
   }
