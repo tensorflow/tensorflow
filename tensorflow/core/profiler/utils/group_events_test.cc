@@ -127,8 +127,6 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
-  device_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
   device_plane_builder.ReserveLines(1);
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
