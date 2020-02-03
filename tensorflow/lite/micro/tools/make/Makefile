@@ -4,7 +4,7 @@ ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
 endif
 
 # root directory of tensorflow
-TENSORFLOW_ROOT := 
+TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 
 
@@ -79,8 +79,8 @@ LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
-TARGET_TOOLCHAIN_PREFIX := 
-TARGET_TOOLCHAIN_ROOT := 
+TARGET_TOOLCHAIN_PREFIX :=
+TARGET_TOOLCHAIN_ROOT :=
 
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.

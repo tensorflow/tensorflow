@@ -63,6 +63,7 @@ specialize = $(call specialize_on_tags,$(1),$(strip $(call reverse,$(ALL_TAGS)))
 # 7 - C++ compilation flags needed.
 # 8 - C compilation flags needed.
 # 9 - Target Toolchian root directory
+# 10 - Target Toolchain prefix
 # Calling eval on the output will create a <Name>_makefile target that you
 # can invoke to create the standalone project.
 define generate_project
@@ -101,8 +102,6 @@ list_$(3)_$(1)_files:
 
 ALL_PROJECT_TARGETS += generate_$(3)_$(1)_project
 endef
-
-
 
 # Creates a set of rules to build a standalone makefile project for the ARC platform
 # including all of the source and header files required in a

@@ -21,6 +21,8 @@ SRCS := \
 OBJS := \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(SRCS)))
 
+LIBRARY_OBJS := $(filter-out tensorflow/lite/micro/examples/%, $(OBJS))
+
 CXXFLAGS += %{CXX_FLAGS}%
 CCFLAGS += %{CC_FLAGS}%
 
@@ -40,10 +42,10 @@ MICROLITE_LIB = libtensorflow-microlite.a
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
 
-# Gathers together all the objects we've compiled into a single '.a' archive.
-$(MICROLITE_LIB): tensorflow/lite/schema/schema_generated.h $(OBJS)
+# Creates a tensorflow-litemicro.a which excludes any example code.
+$(MICROLITE_LIB): tensorflow/lite/schema/schema_generated.h $(LIBRARY_OBJS)
 	@mkdir -p $(dir $@)
-	$(AR) $(ARFLAGS) $(MICROLITE_LIB) $(OBJS)
+	$(AR) $(ARFLAGS) $(MICROLITE_LIB) $(LIBRARY_OBJS)
 
 all: %{EXECUTABLE}%
 
@@ -52,4 +54,4 @@ lib: $(MICROLITE_LIB)
 clean:
 	-$(RM) $(OBJS)
 	-$(RM) %{EXECUTABLE}%
-	-$(RM) MICROLITE_LIB_PATH
+	-$(RM) ${MICROLITE_LIB}
