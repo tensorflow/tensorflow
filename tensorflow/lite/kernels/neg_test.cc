@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <gtest/gtest.h>
+
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -83,7 +84,7 @@ class QuantizedNegOpModel : public NegOpModel {
   }
 };
 
-constexpr float GetToleranceInt8(int min, int max) {
+constexpr float GetToleranceInt8(float min, float max) {
   float kQuantizedStep = (max - min) / 255.0;
   return kQuantizedStep;
 }
