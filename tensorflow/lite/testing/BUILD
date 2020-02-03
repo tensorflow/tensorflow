@@ -550,6 +550,7 @@ edgetpu_ops = [
     "minimum",
     "mul",
     "pad",  # high error
+    "pack",
     "relu",
     "relu1",
     "relu6",
