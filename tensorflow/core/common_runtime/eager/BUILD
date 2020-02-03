@@ -81,6 +81,17 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "context_test",
+    srcs = ["context_test.cc"],
+    deps = [
+        ":context",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_cuda_library(
     name = "eager_operation",
     srcs = [

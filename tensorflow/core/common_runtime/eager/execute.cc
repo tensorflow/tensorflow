@@ -458,8 +458,8 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                                 "\nAll kernels registered for op ", ndef.op(),
                                 " :\n", KernelsRegisteredForOp(ndef.op()));
       }
-      TF_RETURN_IF_ERROR(
-          ctx.SelectDevice(op->GetDeviceParsedName(), supported_devs, &device));
+      TF_RETURN_IF_ERROR(ctx.SelectDevice(op->GetDeviceParsedName(),
+                                          supported_devs, DT_INVALID, &device));
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();
