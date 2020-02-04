@@ -33,7 +33,7 @@ DriverRegistryMap* GetDriverRegistryMap() {
   return driver_registry;
 }
 
-uint64_t ByteSizeOfPrimitiveType(xla::PrimitiveType primitive_type) {
+int64_t ByteSizeOfPrimitiveType(xla::PrimitiveType primitive_type) {
   switch (primitive_type) {
     case xla::PrimitiveType::PRED:
       return sizeof(int8_t);
@@ -96,12 +96,12 @@ uint64_t ByteSizeOfPrimitiveType(xla::PrimitiveType primitive_type) {
                        config.worker());
 }
 
-uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {
+int64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {
   if (shape.tuple_shapes_size() > 0) {
     LOG(FATAL) << "Tuples are not supported at the moment.";
   }
 
-  uint64_t num_elems = 1;
+  int64_t num_elems = 1;
   for (auto dim : shape.dimensions()) {
     num_elems *= dim;
   }

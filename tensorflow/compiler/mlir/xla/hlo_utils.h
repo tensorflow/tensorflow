@@ -61,11 +61,19 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
   }
 }
 
+StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
+    const Shape& shape, mlir::Builder builder);
+
+template <>
+inline StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
+    const Shape& shape, mlir::Builder builder) {
+  return ConvertTensorShapeToMemRefType(shape, builder);
+}
+
 template <typename TypeT>
 static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
                                                mlir::Builder builder) {
   if (shape.IsTuple()) {
-    mlir::Type mlir_type;
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes_size());
     for (const auto& subtype : shape.tuple_shapes()) {
@@ -77,6 +85,7 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_

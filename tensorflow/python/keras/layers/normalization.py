@@ -196,13 +196,13 @@ class BatchNormalizationBase(Layer):
                **kwargs):
     super(BatchNormalizationBase, self).__init__(
         name=name, **kwargs)
-    if isinstance(axis, list):
+    if isinstance(axis, (list, tuple)):
       self.axis = axis[:]
     elif isinstance(axis, int):
       self.axis = axis
     else:
-      raise TypeError('axis must be int or list, type given: %s'
-                      % type(axis))
+      raise TypeError('Expected an int or a list/tuple of ints for the '
+                      'argument \'axis\', but received: %r' % axis)
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -652,8 +652,12 @@ class BatchNormalizationBase(Layer):
 
     return (r, d, out_mean, out_variance)
 
+  def _calculate_mean_and_var(self, inputs, reduction_axes, keep_dims):
+    return nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+
   def _moments(self, inputs, reduction_axes, keep_dims):
-    mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+    mean, variance = self._calculate_mean_and_var(inputs, reduction_axes,
+                                                  keep_dims)
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
     if self._support_zero_size_input():
@@ -967,8 +971,8 @@ class LayerNormalization(Layer):
     elif isinstance(axis, int):
       self.axis = axis
     else:
-      raise ValueError('Expected an int or a list/tuple of ints for the '
-                       'argument \'axis\', but received instead: %s' % axis)
+      raise TypeError('Expected an int or a list/tuple of ints for the '
+                      'argument \'axis\', but received: %r' % axis)
 
     self.epsilon = epsilon
     self.center = center
@@ -1112,9 +1116,9 @@ class LayerNormalization(Layer):
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
-      # later contuct a separate calculation on the scale and offset.
-      scale = _set_const_tensor(1.0, inputs.dtype, [pre_dim])
-      offset = _set_const_tensor(0.0, inputs.dtype, [pre_dim])
+      # later constuct a separate calculation on the scale and offset.
+      scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
+      offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
 
       # Compute layer normalization using the fused_batch_norm function.
       outputs, _, _ = nn.fused_batch_norm(
@@ -1129,9 +1133,9 @@ class LayerNormalization(Layer):
       scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
 
       if scale is not None:
-        outputs = outputs * scale
+        outputs = outputs * math_ops.cast(scale, outputs.dtype)
       if offset is not None:
-        outputs = outputs + offset
+        outputs = outputs + math_ops.cast(offset, outputs.dtype)
 
     # If some components of the shape got lost due to adjustments, fix that.
     outputs.set_shape(input_shape)

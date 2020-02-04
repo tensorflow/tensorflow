@@ -219,6 +219,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %tuple.6 = (f32[256,30,30,16]{3,2,1,0}) tuple(%reshape.5), metadata={op_name="HLO_Retvals"}
 }
 
+// Test for padding attribute shape in convolution
+// CHECK-LABEL:  func @test_convolve1D_padding
+%test_convolve1D_padding (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,5,1] {
+  %input = f32[1,2,1] parameter(0)
+  %filter = f32[1,1,1] parameter(1)
+  // CHECK:  "xla_hlo.conv"
+  // CHECK-SAME:  padding = dense<{{\[\[}}1, 2]]> : tensor<1x2xi64>
+  ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1}
+}
+
 // CHECK-LABEL:  func @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf64> {
 %test_convert (Arg_0.1: f32[4], Arg_1.2: f32[]) -> f64[4] {
   %Arg_0.1 = f32[4] parameter(0)
@@ -428,6 +438,28 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK:  "xla_hlo.log_plus_one"(%arg0) {name = "{{.*}}"} : (tensor<16xf32>) -> tensor<16xf32>
   ROOT %log1p.2 = f32[16] log-plus-one(f32[16] %arg0.1)
 }
+
+// Test xla_hlo.map
+%map_computation {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL:  func @test_map
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<4xf32>, [[ARG_1:%.*]]: tensor<4xf32>) -> tensor<4xf32>
+%test_map {
+  param0 = f32[4]{0} parameter(0)
+  param1 = f32[4]{0} parameter(1)
+// CHECK:  "xla_hlo.map"([[ARG_0]], [[ARG_1]]) ( {
+// CHECK:    ^bb0([[ARG_2:%.*]]: tensor<f32>, [[ARG_3:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = xla_hlo.add [[ARG_2]], [[ARG_3]]
+// CHECK:    "xla_hlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  ROOT map = f32[4]{0} map(param0, param1), dimensions={0}, to_apply=%map_computation
+}
+
+
 
 // CHECK-LABEL:  func @test_maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 %test_maximum (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
@@ -710,6 +742,19 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK:  "xla_hlo.transpose"(%arg0) {name = "{{.*}}", permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   ROOT %transpose.2 = s32[2,1,4,3] transpose(s32[1,2,3,4] %Arg_0.1), dimensions={1,0,3,2}
+}
+
+// CHECK-LABEL:  func @test_triangular_solve
+// CHECK-SAME:  ([[ARG_A:%.*]]: tensor<4x4xf32>, [[ARG_B:%.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
+%test_triangular_solve (Arg_0.1: f32[4,4], Arg_1.2: f32[4,3]) -> f32[4,3] {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %Arg_1.2 = f32[4,3] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.triangular_solve"([[ARG_A]], [[ARG_B]])
+  // CHECK-SAME:  left_side = true
+  // CHECK-SAME:  lower = true
+  // CHECK-SAME:  transpose_a = "NO_TRANSPOSE"
+  // CHECK-SAME:  unit_diagonal = true
+  ROOT %triangular-solve.3 = f32[4,3] triangular-solve(f32[4,4] %Arg_0.1, f32[4,3] %Arg_1.2), left_side=true, lower=true, transpose_a=NO_TRANSPOSE, unit_diagonal=true
 }
 
 // CHECK-LABEL:  func @test_tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>> {

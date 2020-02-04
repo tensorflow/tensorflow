@@ -24,7 +24,6 @@ import copy
 import itertools
 import json
 import os
-import threading
 
 import numpy as np
 import six
@@ -198,56 +197,23 @@ class Network(base_layer.Layer):
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
                                            'autocast'})
 
-    # Object to store all thread local layer properties.
-    self._thread_local = threading.local()
+    super(Network, self).__init__(name=name, **kwargs)
 
-    self._init_set_name(name, zero_based=True)
-    self._activity_regularizer = None
-    # This acts just like the `trainable` attribute of any layer instance.
-    self._trainable = kwargs.get('trainable', True)
-    # This attribute has no effect if the model is created using the Functional
-    # API. Instead, `model.dynamic` is determined based on the internal layers.
-    self._dynamic = kwargs.get('dynamic', False)
     self._is_compiled = False
-    self._layers = []
 
     # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
 
-    self.supports_masking = False
     if not hasattr(self, 'optimizer'):
       # Don't reset optimizer if already set.
       self.optimizer = None
 
-    # Private attributes to implement compatibility with Layer.
-    self._maybe_create_attribute('_trainable_weights', [])
-    self._maybe_create_attribute('_non_trainable_weights', [])
-    self._updates = []  # Used in symbolic mode only.
-    self._losses = []
-    self._callable_losses = []
-    # A list of metric instances corresponding to the symbolic metric tensors
-    # added using the `add_metric` API.
-    self._metrics = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     if context.executing_eagerly():
       self._graph = None
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
-
-    # Both graph and subclassed networks have a dtype policy. For graph
-    # networks, the policy's compute and variable dtypes are ignored, but other
-    # fields, like the loss scale, are used by Models. For subclassed networks,
-    # the compute and variable dtypes are used as like any ordinary layer.
-    self._set_dtype_policy(kwargs.get('dtype', None))
-
-    # All layers in order of horizontal graph traversal.
-    # Entries are unique. Includes input and output layers.
-    self._maybe_create_attribute('_layers', [])
-
-    # Used in symbolic mode only, only in conjunction with graph-networks
-    self._outbound_nodes = []
-    self._inbound_nodes = []
 
     self._trackable_saver = (
         trackable_utils.saver_with_op_caching(self))
@@ -357,6 +323,8 @@ class Network(base_layer.Layer):
         self._feed_input_shapes.append(layer._batch_input_shape)
         self._feed_inputs.append(layer.input)
 
+    self._compute_tensor_usage_count()
+
   def _set_output_names(self):
     """Assigns unique names to the Network's outputs.
 
@@ -398,7 +366,7 @@ class Network(base_layer.Layer):
   @property
   def _layer_checkpoint_dependencies(self):
     """Dictionary of layer dependencies to be included in the checkpoint."""
-    # Use getattr becuase this function can be called from __setattr__, at which
+    # Use getattr because this function can be called from __setattr__, at which
     # point the _is_graph_network attribute has not been created.
     if (not getattr(self, '_is_graph_network', False) and
         base_layer_utils.is_subclassed(self)):
@@ -863,7 +831,8 @@ class Network(base_layer.Layer):
     tensor_dict = {}
 
     for x, y in zip(self.inputs, inputs):
-      tensor_dict[str(id(x))] = y
+      x_id = str(id(x))
+      tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
       if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
         try:
           y.set_shape(y.shape.merge_with(x.shape))
@@ -890,7 +859,7 @@ class Network(base_layer.Layer):
 
           # Call layer (reapplying ops to new inputs).
           computed_tensors = nest.map_structure(
-              lambda t: tensor_dict[str(id(t))], node.input_tensors)
+              lambda t: tensor_dict[str(id(t))].pop(), node.input_tensors)
 
           # Ensure `training` arg propagation if applicable.
           kwargs = copy.copy(node.arguments) if node.arguments else {}
@@ -909,7 +878,7 @@ class Network(base_layer.Layer):
           def _map_tensor_if_from_keras_layer(t):
             if isinstance(t, ops.Tensor) and hasattr(t, '_keras_history'):
               t_id = str(id(t))
-              return tensor_dict[t_id]
+              return tensor_dict[t_id].pop()
             return t
 
           kwargs = nest.map_structure(_map_tensor_if_from_keras_layer, kwargs)
@@ -920,13 +889,14 @@ class Network(base_layer.Layer):
           # Update tensor_dict.
           for x, y in zip(
               nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
-            tensor_dict[str(id(x))] = y
+            x_id = str(id(x))
+            tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
 
     output_tensors = []
     output_shapes = []
     for x in self.outputs:
       assert str(id(x)) in tensor_dict, 'Could not compute output ' + str(x)
-      tensor = tensor_dict[str(id(x))]
+      tensor = tensor_dict[str(id(x))].pop()
       output_shapes.append(x.shape)
       output_tensors.append(tensor)
 
@@ -964,18 +934,7 @@ class Network(base_layer.Layer):
         config, custom_objects)
     model = cls(inputs=input_tensors, outputs=output_tensors,
                 name=config.get('name'))
-
-    # Layers not connected to outputs, such as those added in `add_loss`.
-    ancillary_layers = [
-        layer for layer in created_layers.values() if layer not in model.layers
-    ]
-    if ancillary_layers:
-      relevant_nodes = nest.flatten([
-          layer.inbound_nodes[1:]
-          if _should_skip_first_node(layer) else layer.inbound_nodes
-          for layer in created_layers.values()
-      ])
-      model._insert_layers(ancillary_layers, relevant_nodes)
+    connect_ancillary_layers(model, created_layers)
     return model
 
   def save(self,
@@ -1003,6 +962,11 @@ class Network(base_layer.Layer):
     Models built with the Sequential and Functional API can be saved to both the
     HDF5 and SavedModel formats. Subclassed models can only be saved with the
     SavedModel format.
+
+    Note that the model weights may have different scoped names after being
+    loaded. Scoped names include the model/layer names, such as
+    "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+     access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
         filepath: String, path to SavedModel or H5 file to save the model.
@@ -1477,6 +1441,46 @@ class Network(base_layer.Layer):
         layer_set.add(layer)
     self._handle_deferred_layer_dependencies(deferred_layers)
 
+    self._compute_tensor_usage_count()
+
+  def _compute_tensor_usage_count(self):
+    """Compute the #. of tensor usages for all the output tensors of layers.
+
+    The computed tensor usage count is saved as `self._tensor_usage_count`. This
+    is later used for saving memory in eager computation by releasing
+    no-longer-needed tensors as early as possible.
+    """
+    tensor_usage_count = collections.Counter()
+    available_tensors = set(str(id(tensor)) for tensor in self.inputs)
+
+    depth_keys = list(self._nodes_by_depth.keys())
+    depth_keys.sort(reverse=True)
+    depth_keys = depth_keys[1:]
+
+    for depth in depth_keys:
+      for node in self._nodes_by_depth[depth]:
+        input_tensors = {
+            str(id(tensor)) for tensor in nest.flatten(node.input_tensors)
+        }
+        if input_tensors.issubset(available_tensors):
+          kwargs = copy.copy(node.arguments) if node.arguments else {}
+
+          for tensor in nest.flatten(kwargs):
+            if isinstance(tensor, ops.Tensor) and hasattr(tensor,
+                                                          '_keras_history'):
+              tensor_usage_count[str(id(tensor))] += 1
+
+          for tensor in nest.flatten(node.input_tensors):
+            tensor_usage_count[str(id(tensor))] += 1
+
+          for output_tensor in nest.flatten(node.output_tensors):
+            available_tensors.add(str(id(output_tensor)))
+
+    for tensor in self.outputs:
+      tensor_usage_count[str(id(tensor))] += 1
+
+    self._tensor_usage_count = tensor_usage_count
+
   def _assert_weights_created(self):
     """Asserts that all the weights for the network have been created.
 
@@ -1507,7 +1511,8 @@ class Network(base_layer.Layer):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [symbolic_loss])
     # Losses must be keyed on inputs no matter what in order to be supported in
     # DistributionStrategy.
-    add_loss_layer = base_layer.AddLoss(unconditional=False)
+    add_loss_layer = base_layer.AddLoss(
+        unconditional=False, dtype=symbolic_loss.dtype)
     add_loss_layer(symbolic_loss)
     new_nodes.extend(add_loss_layer.inbound_nodes)
     new_layers.append(add_loss_layer)
@@ -1515,7 +1520,8 @@ class Network(base_layer.Layer):
 
   def _graph_network_add_metric(self, value, aggregation, name):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [value])
-    add_metric_layer = base_layer.AddMetric(aggregation, name)
+    add_metric_layer = base_layer.AddMetric(
+        aggregation, name, dtype=value.dtype)
     add_metric_layer(value)
     new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
@@ -1730,7 +1736,7 @@ def _map_subgraph_network(inputs, outputs):
     A tuple of List{Node] and List[Layer].
   """
   base_layer_utils.create_keras_history(outputs)
-  # Keep only nodes and layers in the topology betweeen inputs and outputs.
+  # Keep only nodes and layers in the topology between inputs and outputs.
   _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
   return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers
 
@@ -1789,6 +1795,22 @@ def _deserialize_keras_tensors(kwargs, layer_map):
 
   kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
   return nest.map_structure(_deserialize_keras_tensor, kwargs)
+
+
+def connect_ancillary_layers(model, created_layers):
+  """Adds layers that are not connected to the outputs to the model."""
+  # Layers not connected to outputs, such as those added in `add_loss`.
+  ancillary_layers = [
+      layer for layer in created_layers.values() if layer not in model.layers
+  ]
+  if ancillary_layers:
+    relevant_nodes = nest.flatten([
+        layer.inbound_nodes[1:]
+        if _should_skip_first_node(layer) else layer.inbound_nodes
+        for layer in created_layers.values()
+    ])
+    model._insert_layers(ancillary_layers, relevant_nodes)
+  return model
 
 
 def reconstruct_from_config(config, custom_objects=None, created_layers=None):

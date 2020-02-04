@@ -197,7 +197,7 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
     auto device_state = absl::make_unique<LocalDeviceState>(
-        executor, synchronous_deallocation, asynchronous,
+        executor, client, synchronous_deallocation, asynchronous,
         /*allow_event_reuse=*/gpu_platform);
     devices.push_back(MakeDevice(platform_name, i, std::move(device_state)));
   }
@@ -268,58 +268,53 @@ PyLocalClient::PyLocalClient(
   }
 }
 
-StatusOr<std::string> PyLocalClient::SerializeExecutable(
-    const PyLocalExecutable& executable) const {
-  return Unimplemented("Cannot serialize executables on platform '%s'",
-                       platform_name());
-}
-
-StatusOr<std::unique_ptr<PyLocalExecutable>>
-PyLocalClient::DeserializeExecutable(
-    const std::string& serialized,
-    std::shared_ptr<PyLocalClient> this_shared) const {
-  return Unimplemented("Cannot deserialize executables on platform '%s'",
-                       platform_name());
-}
-
-Status PyLocalClient::TransferToInfeed(const LiteralSlice& literal,
-                                       std::shared_ptr<Device> device) {
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
-  return client_->TransferToInfeedLocal(literal,
-                                        local_device->device_ordinal());
-}
-
-StatusOr<Literal> PyLocalClient::TransferFromOutfeed(
-    const Shape& shape, std::shared_ptr<Device> device) {
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
-  return client_->TransferFromOutfeedLocal(shape,
-                                           local_device->device_ordinal());
-}
-
 StatusOr<DeviceAssignment> PyLocalClient::GetDefaultDeviceAssignment(
-    int num_replicas) const {
-  return client_->backend().computation_placer()->AssignDevices(
-      num_replicas, /*computation_count=*/1);
+    int num_replicas, int num_partitions) const {
+  return client_->backend().computation_placer()->AssignDevices(num_replicas,
+                                                                num_partitions);
 }
 
 /* static */
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
-    std::vector<BorrowingLiteral> leaves_literals, const Shape& tuple_shape,
-    std::shared_ptr<void> leaves_reference,
+StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
+    const void* data, const Shape& shape, bool force_copy,
+    std::shared_ptr<void> buffer_reference,
     std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device) {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromLiterals");
-  VLOG(1) << "PyLocalBuffer::FromLiterals: shape: " << tuple_shape.ToString()
+  VLOG(2) << "PyLocalBuffer::FromLiterals: shape: " << shape.ToString()
           << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
+
+  // If we are on the host platform and the input buffer is sufficiently
+  // aligned, we can simply point to the NumPy array's data without any further
+  // copies. We require a 64-byte alignment because XLA may generate AVX512
+  // code which requires it. Unfortunately NumPy's allocator doesn't align
+  // quite as aggressively, so there's a high chance this test will fail.
+  static constexpr int kMinimumAlignment = 64;
+  if (!force_copy &&
+      ((absl::bit_cast<std::uintptr_t>(data) & (kMinimumAlignment - 1)) == 0) &&
+      local_device->executor()->platform_kind() == se::PlatformKind::kHost) {
+    std::function<void()> on_delete_callback =
+        [buffer_reference{std::move(buffer_reference)}]() {
+          // Frees buffer_reference.
+        };
+    se::DeviceMemoryBase buffer(const_cast<void*>(data),
+                                ShapeUtil::ByteSizeOf(shape));
+    auto device_buffer = std::make_shared<SharedDeviceBuffer>(
+        /*allocator=*/nullptr, local_device->device_ordinal(),
+        std::initializer_list<se::DeviceMemoryBase>{buffer},
+        /*children=*/std::vector<std::shared_ptr<SharedDeviceBuffer>>{},
+        /*definition_event=*/nullptr, std::move(on_delete_callback));
+    return absl::make_unique<PyLocalBuffer>(
+        shape, shape, std::move(device_buffer), std::move(client),
+        std::move(device));
+  }
+
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
   se::DeviceMemoryAllocator* allocator = client->allocator();
-  TF_ASSIGN_OR_RETURN(
-      Shape compact_shape,
-      transfer_manager->ChooseCompactLayoutForShape(tuple_shape));
+  TF_ASSIGN_OR_RETURN(Shape compact_shape,
+                      transfer_manager->ChooseCompactLayoutForShape(shape));
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer scoped_buffer,
       transfer_manager->AllocateScopedShapedBuffer(
@@ -340,54 +335,42 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
   std::shared_ptr<BufferDefinitionEvent> definition_event =
       std::make_shared<BufferDefinitionEvent>();
   std::shared_ptr<SharedDeviceBuffer> device_buffer =
-      SharedDeviceBuffer::FromScopedShapedBuffer(std::move(scoped_buffer),
+      SharedDeviceBuffer::FromScopedShapedBuffer(&scoped_buffer,
                                                  definition_event);
+  Shape on_device_shape = scoped_buffer.on_device_shape();
 
-  // TODO(makro): Use move capture once C++ 14 features are available.
-  auto leaves = std::make_shared<std::vector<BorrowingLiteral>>(
-      std::move(leaves_literals));
   auto transfer_h2d = [client, transfer_manager, local_device, device_buffer,
-                       compact_shape, leaves, leaves_reference]() {
+                       shape, compact_shape, on_device_shape, data,
+                       buffer_reference{std::move(buffer_reference)}]() {
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way to
     // report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
     // memory that has already been allocated, and a possible Event allocation.
-    ShapedBuffer buffer = device_buffer->AsShapedBuffer(compact_shape);
+    ShapedBuffer buffer = device_buffer->AsShapedBuffer(
+        compact_shape, on_device_shape, client->client()->platform());
     TF_CHECK_OK(transfer_manager->WriteTupleIndexTablesAsync(
         local_device->host_to_device_stream(), buffer));
-    std::vector<std::shared_ptr<void>> staging_buffers;
-    staging_buffers.reserve(leaves->size());
-    auto it = leaves->begin();
-    for (const ShapeUtil::IndexedShape& indexed_shape :
-         ShapeUtil::GetLeafShapes(compact_shape)) {
-      CHECK(it != leaves->end());
-      ShapedBuffer leaf(
-          indexed_shape.shape,
-          transfer_manager->HostShapeToDeviceShape(indexed_shape.shape),
-          client->client()->platform(), local_device->device_ordinal());
-      leaf.buffers().CopySubtreeFrom(buffer.buffers(), indexed_shape.index, {});
+    std::shared_ptr<void> staging_buffer;
 
-      // If applicable on the backend, stage the transfer via host memory
-      // allocated via the host_memory_allocator. On GPU, this is pinned memory.
-      if (client->host_memory_allocator()) {
-        int64 size = it->size_bytes({});
-        void* ptr = client->host_memory_allocator()->AllocateRaw(
-            tensorflow::Allocator::kAllocatorAlignment, size);
-        std::shared_ptr<void> staging_buffer(ptr, [client](void* ptr) {
-          client->host_memory_allocator()->DeallocateRaw(ptr);
-        });
-        std::memcpy(ptr, it->untyped_data({}), size);
-        BorrowingLiteral literal(static_cast<const char*>(staging_buffer.get()),
-                                 it->shape());
-        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-            local_device->host_to_device_stream(), literal, leaf));
-        staging_buffers.push_back(std::move(staging_buffer));
-      } else {
-        // Otherwise, just transfer the literal.
-        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-            local_device->host_to_device_stream(), *it, leaf));
-      }
-      ++it;
+    // If applicable on the backend, stage the transfer via host memory
+    // allocated via the host_memory_allocator. On GPU, this is pinned memory.
+    if (client->host_memory_allocator()) {
+      int64 size = ShapeUtil::ByteSizeOf(shape);
+      void* ptr = client->host_memory_allocator()->AllocateRaw(
+          tensorflow::Allocator::kAllocatorAlignment, size);
+      staging_buffer = std::shared_ptr<void>(ptr, [client](void* ptr) {
+        client->host_memory_allocator()->DeallocateRaw(ptr);
+      });
+      std::memcpy(ptr, data, size);
+      BorrowingLiteral literal(static_cast<const char*>(staging_buffer.get()),
+                               shape);
+      TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+          local_device->host_to_device_stream(), literal, buffer));
+    } else {
+      BorrowingLiteral literal(static_cast<const char*>(data), shape);
+      // Otherwise, just transfer the literal.
+      TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+          local_device->host_to_device_stream(), literal, buffer));
     }
 
     EventPool::Handle event =
@@ -408,12 +391,12 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
 
     local_device->ThenRelease(
         local_device->host_to_device_stream(),
-        std::make_pair(leaves_reference, std::move(staging_buffers)));
+        std::make_pair(buffer_reference, std::move(staging_buffer)));
   };
   client->h2d_transfer_pool()->Schedule(transfer_h2d);
-  return absl::make_unique<PyLocalBuffer>(compact_shape,
-                                          std::move(device_buffer),
-                                          std::move(client), std::move(device));
+  return absl::make_unique<PyLocalBuffer>(
+      compact_shape, std::move(on_device_shape), std::move(device_buffer),
+      std::move(client), std::move(device));
 }
 
 /* static */ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::MakeTuple(
@@ -422,11 +405,17 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
   std::vector<Shape> host_shapes;
+  std::vector<Shape> device_shapes;
   std::vector<std::shared_ptr<SharedDeviceBuffer>> device_buffers;
   host_shapes.reserve(buffers.size());
+  device_shapes.reserve(buffers.size());
   device_buffers.reserve(buffers.size());
   for (const PyLocalBuffer* buffer : buffers) {
-    TF_RET_CHECK(buffer->device().get() == device.get());
+    if (buffer->device().get() != device.get()) {
+      return InvalidArgument(
+          "Tuple elements must be on the same device; %s vs %s",
+          buffer->device()->DebugString(), device->DebugString());
+    }
     std::shared_ptr<SharedDeviceBuffer> device_buffer = buffer->DeviceBuffer();
     if (!device_buffer) {
       return InvalidArgument(
@@ -434,20 +423,23 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
           device_buffers.size());
     }
     host_shapes.push_back(buffer->on_host_shape());
+    device_shapes.push_back(buffer->on_device_shape());
     device_buffers.push_back(std::move(device_buffer));
   }
   se::DeviceMemoryAllocator* allocator = client->allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
 
+  Shape on_host_shape = ShapeUtil::MakeTupleShape(host_shapes);
   auto definition_event = std::make_shared<BufferDefinitionEvent>();
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<SharedDeviceBuffer> tuple_buffer,
-                      SharedDeviceBuffer::MakeTuple(
-                          device_buffers, transfer_manager, allocator,
-                          local_device->device_ordinal(), definition_event));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<SharedDeviceBuffer> tuple_buffer,
+      SharedDeviceBuffer::MakeTuple(
+          device_buffers, on_host_shape, transfer_manager, allocator,
+          local_device->device_ordinal(), definition_event));
   auto buffer = absl::make_unique<PyLocalBuffer>(
-      ShapeUtil::MakeTupleShape(host_shapes), tuple_buffer, std::move(client),
-      std::move(device));
+      std::move(on_host_shape), ShapeUtil::MakeTupleShape(device_shapes),
+      tuple_buffer, std::move(client), std::move(device));
 
   // TODO(phawkins): extend TransferManager so we do not need to form a full
   // ShapedBuffer just to write the root tuple index table.
@@ -474,12 +466,13 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
   return buffer;
 }
 
-PyLocalBuffer::PyLocalBuffer(Shape on_host_shape,
+PyLocalBuffer::PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
                              std::shared_ptr<SharedDeviceBuffer> device_buffer,
                              std::shared_ptr<PyLocalClient> client,
                              std::shared_ptr<Device> device)
     : client_(std::move(client)),
       on_host_shape_(std::move(on_host_shape)),
+      on_device_shape_(std::move(on_device_shape)),
       device_(std::move(device)),
       device_buffer_(std::move(device_buffer)) {}
 
@@ -547,7 +540,8 @@ StatusOr<ShapedBuffer> PyLocalBuffer::AsShapedBuffer() const {
     return InvalidArgument(
         "Attempted to fetch value of invalid/deleted buffer.");
   }
-  return device_buffer_->AsShapedBuffer(on_host_shape_);
+  return device_buffer_->AsShapedBuffer(on_host_shape_, on_device_shape_,
+                                        client_->client()->platform());
 }
 
 StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
@@ -568,8 +562,8 @@ PyLocalBuffer::DestructureTuple() {
   results.reserve(num_children);
   for (int64 i = 0; i < num_children; ++i) {
     results.push_back(absl::make_unique<PyLocalBuffer>(
-        on_host_shape_.tuple_shapes(i), device_buffer_->children().at(i),
-        client_, device_));
+        on_host_shape_.tuple_shapes(i), on_device_shape_.tuple_shapes(i),
+        device_buffer_->children().at(i), client_, device_));
   }
   return results;
 }
@@ -582,8 +576,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
                       dst_device->GetLocalDeviceState());
 
   if (dst_device.get() == device_.get()) {
-    return absl::make_unique<PyLocalBuffer>(on_host_shape_, src_device_buffer,
-                                            client_, device_);
+    return absl::make_unique<PyLocalBuffer>(
+        on_host_shape_, on_device_shape_, src_device_buffer, client_, device_);
   }
   LocalDeviceState* transfer_local_device =
       client_->EnqueueD2DTransfersOnSrcStream() ? device_->local_device_state()
@@ -643,10 +637,10 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
   definition_event->SetDefinitionEvent(std::move(event), transfer_stream);
 
   std::shared_ptr<SharedDeviceBuffer> dst_device_buffer =
-      SharedDeviceBuffer::FromScopedShapedBuffer(std::move(dst_buffer),
-                                                 definition_event);
+      SharedDeviceBuffer::FromScopedShapedBuffer(&dst_buffer, definition_event);
   return absl::make_unique<PyLocalBuffer>(
-      on_host_shape_, std::move(dst_device_buffer), client_, dst_device);
+      dst_buffer.on_host_shape(), dst_buffer.on_device_shape(),
+      std::move(dst_device_buffer), client_, dst_device);
 }
 
 Status PyLocalBuffer::BlockHostUntilReady() {
@@ -660,8 +654,9 @@ Status PyLocalBuffer::BlockHostUntilReady() {
   // if there are other device to host transfers scheduled. If this proves to
   // be an issue, we could either use a separate stream for this purpose, or
   // poll for the buffer definition events.
-  se::Stream* stream = client_->device_state(device_buffer->device_ordinal())
-                           .GetDeviceToHostStream();
+  se::Stream* stream =
+      client_->device_state(device_->local_device_state()->device_ordinal())
+          .GetDeviceToHostStream();
   WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
   return stream->BlockHostUntilDone();
 }
@@ -675,30 +670,49 @@ static std::shared_ptr<Device> LookupDevice(const PyLocalClient& client,
 }
 
 PyLocalExecutable::PyLocalExecutable(
-    std::shared_ptr<LocalExecutable> executable,
+    std::vector<std::unique_ptr<LocalExecutable>> executables,
     DeviceAssignment device_assignment, std::shared_ptr<PyLocalClient> client)
     : client_(std::move(client)),
-      executable_(std::move(executable)),
       device_assignment_(
           std::make_shared<DeviceAssignment>(device_assignment)) {
+  executables_.reserve(executables.size());
+  for (auto& executable : executables) {
+    executables_.emplace_back(std::move(executable));
+  }
+
+  // This must go after `executables_` is initialized.
   VLOG(1) << "PyLocalExecutable " << name() << " device_assignment:\n"
           << device_assignment_->ToString();
-  int num_replicas = device_assignment_->replica_count();
+
+  const int num_replicas = device_assignment_->replica_count();
+  const int num_partitions = device_assignment_->computation_count();
+
+  // SPMD sharding produces a single executable for multiple partitions.
+  if (executables_.size() > 1) {
+    CHECK_EQ(num_partitions, executables_.size())
+        << "Number of executables " << executables_.size()
+        << " did not match number of partitions " << num_partitions;
+  }
+
   for (int replica = 0; replica < num_replicas; ++replica) {
-    int device_id = (*device_assignment_)(replica, 0);
-    std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
-    if (device->host_id() != client_->host_id()) {
-      VLOG(3) << "Non-local device: " << device_id;
-      continue;
+    for (int partition = 0; partition < num_partitions; ++partition) {
+      int device_id = (*device_assignment_)(replica, partition);
+      std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
+      if (device->host_id() != client_->host_id()) {
+        VLOG(3) << "Non-local device: " << device_id;
+        continue;
+      }
+      local_logical_devices_.emplace_back(replica, partition);
+      local_devices_.push_back(device);
     }
-    local_replicas_.push_back(replica);
-    local_devices_.push_back(device);
   }
   CHECK_GE(local_devices_.size(), 1) << device_assignment_->ToString();
+  CHECK_LE(local_devices_.size(), client_->local_device_count())
+      << "Inconsistent local device count.";
 }
 
 const std::string& PyLocalExecutable::name() const {
-  Executable* executable = executable_->executable();
+  Executable* executable = executables_[0]->executable();
   if (executable->has_module()) {
     return executable->module().name();
   } else {
@@ -710,13 +724,13 @@ const std::string& PyLocalExecutable::name() const {
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
     absl::Span<PyLocalBuffer* const> argument_handles, int replica,
-    const RunId& run_id) {
-  const int device_id = (*device_assignment_)(replica, 0);
+    int partition, const RunId& run_id) {
+  const int device_id = (*device_assignment_)(replica, partition);
   std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
   CHECK_EQ(device->host_id(), client_->host_id());
   int device_ordinal = device->local_device_state()->device_ordinal();
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
-  VLOG(3) << "Replica " << replica
+  VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
   absl::flat_hash_set<BufferDefinitionEvent*> events;
@@ -734,11 +748,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
           "Deleted buffer passed to Execute() as argument %d to replica %d", i,
           replica);
     }
-    if (device_buffer->device_ordinal() != device_ordinal) {
+    if (handle->device().get() != device.get()) {
       return InvalidArgument(
           "Buffer passed to Execute() as argument %d to replica %d is on "
-          "device %d, but replica is assigned to device %d.",
-          i, replica, device_buffer->device_ordinal(), device_ordinal);
+          "device %s, but replica is assigned to device %s.",
+          i, replica, handle->device()->DebugString(), device->DebugString());
     }
     TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, handle->AsShapedBuffer());
     argument_buffers.push_back(std::move(shaped_buffer));
@@ -750,12 +764,6 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   }
 
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
-  // The choice of where we wait is arbitrary; the reason for the wait is pacing
-  // to avoid problems such as memory fragmentation and running ahead too far,
-  // not for correctness. Placing it before the executable launch allows the
-  // inputs for the next executable to be fetched even if the launch is delayed.
-  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
-      device_state->compute_semaphore().ScopedAcquire(1));
 
   for (BufferDefinitionEvent* event : events) {
     event->WaitForEventOnStream(device_state->compute_stream());
@@ -769,16 +777,29 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   options.set_device_assignment(device_assignment_.get());
   options.set_run_id(run_id);
+  options.set_rng_seed(device_state->GetNewPrngSeed());
 
-  StatusOr<ScopedShapedBuffer> result_buffer =
-      executable_->RunAsync(argument_buffer_ptrs, options);
+  // The choice of where we wait is arbitrary; the reason for the wait is pacing
+  // to avoid problems such as memory fragmentation and running ahead too far,
+  // not for correctness. Placing it before the executable launch allows the
+  // inputs for the next executable to be fetched even if the launch is delayed.
+  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+      device_state->compute_semaphore().ScopedAcquire(1));
 
-  VLOG(1) << "Replica " << replica << " completed; ok=" << result_buffer.ok();
-  if (!result_buffer.ok()) {
+  // SPMD sharding produces a single executable for multiple partitions.
+  int executable_idx = executables_.size() > 1 ? partition : 0;
+
+  StatusOr<ScopedShapedBuffer> result_buffer_or_status =
+      executables_[executable_idx]->RunAsync(argument_buffer_ptrs, options);
+
+  VLOG(1) << "Replica " << replica << " partition " << partition
+          << " completed; ok=" << result_buffer_or_status.ok();
+  if (!result_buffer_or_status.ok()) {
     LOG(ERROR) << "Execution of replica " << replica
-               << " failed: " << result_buffer.status();
-    return result_buffer.status();
+               << " failed: " << result_buffer_or_status.status();
+    return result_buffer_or_status.status();
   }
+  ScopedShapedBuffer& result_buffer = result_buffer_or_status.ValueOrDie();
 
   auto definition_event = std::make_shared<BufferDefinitionEvent>();
   TF_ASSIGN_OR_RETURN(EventPool::Handle event,
@@ -787,10 +808,9 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   definition_event->SetDefinitionEvent(std::move(event),
                                        device_state->compute_stream());
 
-  Shape on_host_shape = result_buffer.ValueOrDie().on_host_shape();
   std::shared_ptr<SharedDeviceBuffer> out_buffer =
-      SharedDeviceBuffer::FromScopedShapedBuffer(
-          std::move(result_buffer.ValueOrDie()), definition_event);
+      SharedDeviceBuffer::FromScopedShapedBuffer(&result_buffer,
+                                                 definition_event);
 
   if (device_state->synchronous_deallocation()) {
     device_buffers.push_back(out_buffer);
@@ -800,9 +820,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
 
   device_state->ThenRelease(
       device_state->compute_stream(),
-      std::make_tuple(executable_, compute_reservation, device_assignment_));
-  return absl::make_unique<PyLocalBuffer>(on_host_shape, std::move(out_buffer),
-                                          client_, device);
+      std::make_tuple(executables_[executable_idx], compute_reservation,
+                      device_assignment_));
+  return absl::make_unique<PyLocalBuffer>(
+      result_buffer.on_host_shape(), result_buffer.on_device_shape(),
+      std::move(out_buffer), client_, device);
 }
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
@@ -812,50 +834,73 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
         "Attempted to execute computation with %d replicas using Execute()",
         num_replicas());
   }
-  return ExecuteHelper(argument_handles, /*replica=*/0, RunId());
+  if (num_partitions() != 1) {
+    return InvalidArgument(
+        "Attempted to execute computation with %d partitions using Execute()",
+        num_partitions());
+  }
+  VLOG(1) << "Executing computation " << name();
+  return ExecuteHelper(argument_handles, /*replica=*/0, /*partition=*/0,
+                       RunId());
 }
 
 StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
 PyLocalExecutable::ExecutePerReplica(
     absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) {
   tensorflow::profiler::TraceMe traceme("LocalExecutable::ExecutePerReplica");
-  int num_local_replicas = local_replicas_.size();
-  const int num_local_devices = client_->local_device_count();
-
-  if (argument_handles.size() != num_local_replicas) {
+  if (num_partitions() != 1) {
     return InvalidArgument(
-        "Attempted to execute with %d local replicas when local replica count "
-        "is %d (total replica count: %d)",
-        argument_handles.size(), num_local_replicas, num_replicas());
+        "Attempted to execute computation with %d partitions using "
+        "ExecutePerReplica()",
+        num_partitions());
   }
-  if (argument_handles.size() > num_local_devices) {
+  return ExecuteOnLocalDevices(argument_handles);
+}
+
+StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
+PyLocalExecutable::ExecuteOnLocalDevices(
+    absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) {
+  tensorflow::profiler::TraceMe traceme(
+      "LocalExecutable::ExecuteOnLocalDevices");
+
+  const int num_local_devices = local_devices_.size();
+
+  if (argument_handles.size() != num_local_devices) {
     return InvalidArgument(
-        "Attempted to execute with %d replicas when device count is %d",
-        argument_handles.size(), num_local_devices);
+        "Attempted to execute with %d argument lists when local device "
+        "count is %d (total replica count: %d, partition count: %d)",
+        argument_handles.size(), num_local_devices, num_replicas(),
+        num_partitions());
   }
 
-  VLOG(1) << "Executing replicated computation; num_replicas=" << num_replicas()
-          << " num_local_replicas=" << num_local_replicas;
+  VLOG(1) << "Executing computation " << name()
+          << "; num_replicas=" << num_replicas()
+          << " num_partitions=" << num_partitions()
+          << " num_local_devices=" << num_local_devices;
   std::vector<StatusOr<std::unique_ptr<PyLocalBuffer>>> results(
-      num_local_replicas);
-  if (num_local_replicas == 1) {
-    // Fast-path if there is only one replica — run the computation on the
+      num_local_devices);
+  if (num_local_devices == 1) {
+    // Fast-path if there is only one device — run the computation on the
     // current thread.
+    const int replica = local_logical_devices_[0].first;
+    const int partition = local_logical_devices_[0].second;
     results[0] =
-        ExecuteHelper(argument_handles[0], local_replicas_[0], RunId());
+        ExecuteHelper(argument_handles[0], replica, partition, RunId());
   } else {
     RunId run_id;
     absl::Mutex mu;
-    int running = num_local_replicas;
+    int running = num_local_devices;
     int failed = 0;
     Status first_failure_status;
 
-    for (int i = 0; i < num_local_replicas; ++i) {
-      const int replica = local_replicas_[i];
+    for (int i = 0; i < num_local_devices; ++i) {
+      const int replica = local_logical_devices_[i].first;
+      const int partition = local_logical_devices_[i].second;
       std::shared_ptr<Device> device = local_devices_[i];
       const LocalDeviceState& device_state = *device->local_device_state();
-      device_state.execute_thread()->Schedule([&, replica, i] {
-        results[i] = ExecuteHelper(argument_handles[i], replica, run_id);
+      device_state.execute_thread()->Schedule([&, replica, partition, i] {
+        results[i] =
+            ExecuteHelper(argument_handles[i], replica, partition, run_id);
 
         absl::MutexLock lock(&mu);
         --running;
@@ -897,20 +942,69 @@ PyLocalExecutable::ExecutePerReplica(
   VLOG(1) << "Replicated execution complete.";
 
   std::vector<std::unique_ptr<PyLocalBuffer>> wrapped_results(
-      num_local_replicas);
-  for (int i = 0; i < num_local_replicas; ++i) {
+      num_local_devices);
+  for (int i = 0; i < num_local_devices; ++i) {
+    const int replica = local_logical_devices_[i].first;
+    const int partition = local_logical_devices_[i].second;
     auto& statusor = results[i];
     if (!statusor.ok()) {
       return AppendStatus(
           statusor.status(),
-          absl::StrFormat(
-              "while running replica %d of a replicated computation (other "
-              "replicas may have failed as well).",
-              local_replicas_[i]));
+          absl::StrFormat("while running replica %d and partition %d of a"
+                          "replicated computation (other "
+                          "replicas may have failed as well).",
+                          replica, partition));
     }
     wrapped_results[i] = std::move(statusor.ValueOrDie());
   }
   return wrapped_results;
+}
+
+/*static*/ StatusOr<std::unique_ptr<PyLocalExecutable>>
+PyLocalExecutable::CompileForDevices(
+    const XlaComputation& computation,
+    absl::optional<std::vector<Shape>> argument_layouts,
+    const ExecutableBuildOptions* build_options,
+    std::shared_ptr<PyLocalClient> client,
+    const std::vector<std::vector<std::shared_ptr<Device>>>&
+        device_assignment) {
+  if (device_assignment.empty()) {
+    return InvalidArgument(
+        "Device assignment passed to Compile() must be non-empty.");
+  }
+  if (device_assignment[0].empty()) {
+    return InvalidArgument(
+        "Device assignment passed to Compile() must have a nonzero number of "
+        "partitions per replica; replica 0 had 0 partitions.");
+  }
+  DeviceAssignment xla_assignment(device_assignment.size(),
+                                  device_assignment[0].size());
+  for (int replica = 0; replica < device_assignment.size(); ++replica) {
+    if (device_assignment[replica].size() != device_assignment[0].size()) {
+      return InvalidArgument(
+          "Device assignment passed to Compile() has different numbers of "
+          "partitions between replicas; %d partitions for replica %d versus %d "
+          "partitions for replica 0.",
+          device_assignment[replica].size(), replica,
+          device_assignment[0].size());
+    }
+    for (int partition = 0; partition < device_assignment.size(); ++partition) {
+      if (device_assignment[0][0]->platform_name() !=
+          device_assignment[replica][partition]->platform_name()) {
+        return InvalidArgument(
+            "Device assignment passed to Compile() must have devices of a "
+            "single kind, got %s for replica 0 partition 0 and %s for replica "
+            "%d partition %d.",
+            device_assignment[0][0]->platform_name(),
+            device_assignment[replica][partition]->platform_name(), replica,
+            partition);
+      }
+      xla_assignment(replica, partition) =
+          device_assignment[replica][partition]->id();
+    }
+  }
+  return Compile(computation, std::move(argument_layouts), build_options,
+                 std::move(client), xla_assignment);
 }
 
 /*static*/ StatusOr<std::unique_ptr<PyLocalExecutable>>
@@ -931,19 +1025,28 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
   }
 
   if (device_assignment) {
+    VLOG(2) << "PyLocalExecutable::Compile got device_assignment:\n"
+            << device_assignment->ToString();
     if (device_assignment->replica_count() != options.num_replicas()) {
       return InvalidArgument(
           "Mismatched number of replicas for device "
-          "assignment and computation (%d vs %d).",
-          device_assignment->replica_count(), options.num_replicas());
-    } else if (device_assignment->computation_count() != 1) {
-      return Unimplemented(
-          "Only 1 computation per replica supported, %d requested.",
-          device_assignment->computation_count());
+          "assignment and computation (%d vs %d).\n%s",
+          device_assignment->replica_count(), options.num_replicas(),
+          device_assignment->ToString());
+    }
+    if (device_assignment->computation_count() != options.num_partitions()) {
+      return InvalidArgument(
+          "Mismatched number of partitions for device "
+          "assignment and computation (%d vs %d).\n%s",
+          device_assignment->computation_count(), options.num_partitions(),
+          device_assignment->ToString());
     }
   } else {
-    TF_ASSIGN_OR_RETURN(device_assignment, client->GetDefaultDeviceAssignment(
-                                               options.num_replicas()));
+    TF_ASSIGN_OR_RETURN(device_assignment,
+                        client->GetDefaultDeviceAssignment(
+                            options.num_replicas(), options.num_partitions()));
+    VLOG(2) << "PyLocalExecutable::Compile using default device_assignment:\n"
+            << device_assignment->ToString();
   }
 
   if (!argument_layouts) {
@@ -990,13 +1093,14 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
   TF_RETURN_IF_ERROR(assign_layouts(&result_layout));
   options.set_result_layout(result_layout);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<LocalExecutable> local_executable,
-                      client->client()->Compile(
-                          computation, argument_layout_pointers, options));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      client->client()->Compile(computation, argument_layout_pointers,
+                                options));
 
-  return absl::make_unique<PyLocalExecutable>(
-      std::shared_ptr<LocalExecutable>(std::move(local_executable)),
-      std::move(*device_assignment), std::move(client));
+  return absl::make_unique<PyLocalExecutable>(std::move(local_executables),
+                                              std::move(*device_assignment),
+                                              std::move(client));
 }
 
 }  // namespace xla

@@ -99,10 +99,6 @@ limitations under the License.
 
 // These CPU capabilities will all be true when Skylake, etc, are enabled during
 // compilation.
-//
-// TODO(b/138433137) Select x86 enhancements at runtime rather than via compile
-// options.
-//
 #if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) &&                    \
     defined(__AVX512F__) && defined(__AVX512DQ__) && defined(__AVX512CD__) && \
     defined(__AVX512BW__) && defined(__AVX512VL__)
@@ -117,12 +113,30 @@ limitations under the License.
 #define RUY_DONOTUSEDIRECTLY_AVX2 0
 #endif
 
+// TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+// Optimization is not finished. In particular the dimensions of the kernel
+// blocks can be changed as desired.
+//
 // Note does not check for LZCNT or POPCNT.
-#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && \
-    defined(__SSE4_2__) && defined(__FMA__)
-#define RUY_DONOTUSEDIRECTLY_SSE4_2 1
+#if defined(RUY_ENABLE_SSE_ENHANCEMENTS) && RUY_PLATFORM(X86_ENHANCEMENTS) && \
+    RUY_PLATFORM(X86) && defined(__SSE4_2__) && defined(__FMA__)
+#define RUY_DONOTUSEDIRECTLY_SSE42 1
 #else
-#define RUY_DONOTUSEDIRECTLY_SSE4_2 0
+#define RUY_DONOTUSEDIRECTLY_SSE42 0
+#endif
+
+// TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+// Optimization is not finished. In particular the dimensions of the kernel
+// blocks can be changed as desired.
+//
+// Note that defined(__AVX512VBMI2__) can be false for compilation with
+// -march=cascadelake.
+// TODO(b/146646451) Check if we should also gate on defined(__AVX512VBMI2__).
+#if defined(RUY_ENABLE_VNNI_ENHANCEMENTS) && RUY_PLATFORM(AVX512) && \
+    defined(__AVX512VNNI__)
+#define RUY_DONOTUSEDIRECTLY_AVX_VNNI 1
+#else
+#define RUY_DONOTUSEDIRECTLY_AVX_VNNI 0
 #endif
 
 // Detect APPLE.

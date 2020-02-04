@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_MUL_H_
 
 #include "fixedpoint/fixedpoint.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/scoped_profiling_label_wrapper.h"
 
 namespace tflite {
 namespace reference_integer_ops {
@@ -46,7 +46,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, int8_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  ScopedProfilingLabelWrapper label("Mul/8bit");
+  ruy::profiler::ScopeLabel label("Mul/8bit");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
@@ -58,7 +58,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, int8_t* output_data) {
-  ScopedProfilingLabelWrapper label("Mul/Int16Int8");
+  ruy::profiler::ScopeLabel label("Mul/Int16Int8");
   int32 output_offset = params.output_offset;
   int32 output_activation_min = params.quantized_activation_min;
   int32 output_activation_max = params.quantized_activation_max;
@@ -90,7 +90,7 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
                                const int8_t* input2_data,
                                const RuntimeShape& output_shape,
                                int8_t* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastMul4DSlow/8bit");
+  ruy::profiler::ScopeLabel label("BroadcastMul4DSlow/8bit");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   // The input shapes are extended as part of NdArrayDesc initialization.

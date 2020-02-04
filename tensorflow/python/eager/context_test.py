@@ -78,7 +78,7 @@ class ContextTest(test.TestCase):
     def f(x):
       return x + constant_op.constant(1.)
 
-    with context.collect_optimized_graphs() as graphs:
+    with context.collect_graphs() as graphs:
       with ops.device('CPU:0'):
         f(constant_op.constant(1.))
 

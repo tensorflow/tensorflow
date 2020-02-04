@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -72,8 +72,6 @@ std::string ToString(enum OperationType op) {
       return "abs";
     case OperationType::ADD:
       return "add";
-    case OperationType::APPLY_MASK:
-      return "apply_mask";
     case OperationType::BATCH_NORMALIZATION:
       return "batch_normalization";
     case OperationType::BATCH_TO_SPACE:
@@ -102,10 +100,10 @@ std::string ToString(enum OperationType op) {
       return "lstm";
     case OperationType::MAX_UNPOOLING_2D:
       return "max_unpooling";
+    case OperationType::MEAN:
+      return "mean";
     case OperationType::MUL:
       return "mul";
-    case OperationType::MULTIPLY_SCALAR:
-      return "multiply_scalar";
     case OperationType::PAD:
       return "pad";
     case OperationType::POOLING_2D:
@@ -144,8 +142,6 @@ std::string ToString(enum OperationType op) {
       return "tanh";
     case OperationType::TRANSPOSE:
       return "transpose";
-    case OperationType::UPSAMPLE_2D:
-      return "upsample_2d";
     default:
       break;
   }
@@ -157,7 +153,6 @@ OperationType OperationTypeFromString(const std::string& name) {
       new std::unordered_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
-          {"apply_mask", OperationType::APPLY_MASK},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
           {"concat", OperationType::CONCAT},
           {"const", OperationType::CONST},
@@ -171,8 +166,8 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
+          {"mean", OperationType::MEAN},
           {"mul", OperationType::MUL},
-          {"multiply_scalar", OperationType::MULTIPLY_SCALAR},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
@@ -191,7 +186,6 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"subtract", OperationType::SUB},
           {"tanh", OperationType::TANH},
           {"transpose", OperationType::TRANSPOSE},
-          {"upsample_2d", OperationType::UPSAMPLE_2D},
       });
   auto op = operations->find(name);
   return op == operations->end() ? OperationType::UNKNOWN : op->second;
@@ -502,6 +496,14 @@ BHWC CalculateOutputShape(const BHWC& input,
   return BHWC(input.b, 1, 1, attr.weights.shape.o);
 }
 
+BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
+  const int b = attr.dims.find(Axis::BATCH) == attr.dims.end() ? input.b : 1;
+  const int h = attr.dims.find(Axis::HEIGHT) == attr.dims.end() ? input.h : 1;
+  const int w = attr.dims.find(Axis::WIDTH) == attr.dims.end() ? input.w : 1;
+  const int c = attr.dims.find(Axis::CHANNELS) == attr.dims.end() ? input.c : 1;
+  return BHWC(b, h, w, c);
+}
+
 Status CalculateOutputShape(const std::vector<BHWC>& input,
                             const ConcatAttributes& attr, BHWC* output_shape) {
   BHWC new_shape = input[0];
@@ -595,25 +597,24 @@ Padding3D CalculateSamePadding(const BHWDC& input,
 }
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
-                           const Upsample2DAttributes& attr) {
+                           const Resize2DAttributes& attr) {
   return attr.align_corners && input_size > 1 && output_size > 1
              ? static_cast<float>(input_size - 1) / (output_size - 1)
              : static_cast<float>(input_size) / output_size;
 }
 
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
-                           const Upsample3DAttributes& attr) {
+                           const Resize3DAttributes& attr) {
   return attr.align_corners && input_size > 1 && output_size > 1
              ? static_cast<float>(input_size - 1) / (output_size - 1)
              : static_cast<float>(input_size) / output_size;
 }
 
-BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr) {
+BHWC CalculateOutputShape(const BHWC& input, const Resize2DAttributes& attr) {
   return BHWC(input.b, attr.new_shape.h, attr.new_shape.w, input.c);
 }
 
-BHWDC CalculateOutputShape(const BHWDC& input,
-                           const Upsample3DAttributes& attr) {
+BHWDC CalculateOutputShape(const BHWDC& input, const Resize3DAttributes& attr) {
   return BHWDC(input.b, attr.new_shape.h, attr.new_shape.w, attr.new_shape.d,
                input.c);
 }

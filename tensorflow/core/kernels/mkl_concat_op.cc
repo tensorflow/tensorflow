@@ -139,7 +139,7 @@ class EigenConcatBaseOp : public OpKernel {
             ? "axis"
             : AxisArgName == NAME_IS_CONCAT_DIM ? "concat_dim" : "<invalid>";
     OP_REQUIRES_OK(c, c->input(axis_attribute_name, &concat_dim_tensor));
-    OP_REQUIRES(c, IsLegacyScalar(concat_dim_tensor->shape()),
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(concat_dim_tensor->shape()),
                 errors::InvalidArgument(
                     axis_attribute_name,
                     " tensor should be a scalar integer, but got shape ",
@@ -153,9 +153,7 @@ class EigenConcatBaseOp : public OpKernel {
 
     int32 axis = (concat_dim < 0) ? (concat_dim + input_dims) : concat_dim;
     OP_REQUIRES(
-        c,
-        (0 <= axis && axis < input_dims) ||
-            (allow_legacy_scalars() && concat_dim == 0),
+        c, (0 <= axis && axis < input_dims),
         errors::InvalidArgument(
             "ConcatOp : Expected concatenating dimensions in the range [",
             -input_dims, ", ", input_dims, "), but got ", concat_dim));
@@ -180,10 +178,10 @@ class EigenConcatBaseOp : public OpKernel {
       inputs_flat_dim0 *= input_shape.dim_size(d);
     }
     int64 output_concat_dim = 0;
-    const bool input_is_scalar = IsLegacyScalar(input_shape);
+    const bool input_is_scalar = TensorShapeUtils::IsScalar(input_shape);
     for (int i = 0; i < N; ++i) {
       const auto in = values[i];
-      const bool in_is_scalar = IsLegacyScalar(input_shapes[i]);
+      const bool in_is_scalar = TensorShapeUtils::IsScalar(input_shapes[i]);
       OP_REQUIRES(
           c,
           (input_shapes[i].dims() == input_dims) ||
@@ -471,7 +469,7 @@ class MklConcatOp : public OpKernel {
                                             : MklGetInput(context, N);
       // Sanity checks
       OP_REQUIRES(
-          context, IsLegacyScalar(concat_dim_tensor.shape()),
+          context, TensorShapeUtils::IsScalar(concat_dim_tensor.shape()),
           errors::InvalidArgument(
               "Concat dim tensor should be a scalar integer, but got shape ",
               concat_dim_tensor.shape().DebugString()));

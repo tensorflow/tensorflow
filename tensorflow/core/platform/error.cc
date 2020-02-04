@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
+namespace {
 
 error::Code ErrnoToCode(int err_number) {
   error::Code code;
@@ -169,6 +170,8 @@ error::Code ErrnoToCode(int err_number) {
   }
   return code;
 }
+
+}  // namespace
 
 Status IOError(const string& context, int err_number) {
   auto code = ErrnoToCode(err_number);

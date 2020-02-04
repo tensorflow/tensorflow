@@ -261,8 +261,8 @@ class GcsFileSystem : public FileSystem {
       size_t block_size, size_t max_bytes, uint64 max_staleness);
 
   /// Loads file contents from GCS for a given filename, offset, and length.
-  Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
-                           char* buffer, size_t* bytes_transferred);
+  virtual Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
+                                   char* buffer, size_t* bytes_transferred);
 
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
 

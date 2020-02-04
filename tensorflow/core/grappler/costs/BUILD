@@ -36,6 +36,25 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "analytical_cost_estimator.h",
+        "cost_estimator.h",
+        "graph_memory.h",
+        "graph_properties.h",
+        "measuring_cost_estimator.h",
+        "op_context.h",
+        "op_level_cost_estimator.h",
+        "utils.h",
+        "virtual_placer.h",
+        "virtual_scheduler.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "graph_properties",
     srcs = ["graph_properties.cc"],
@@ -138,6 +157,8 @@ tf_cuda_library(
     deps = [
         ":cost_estimator",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:gpu_id",
@@ -231,6 +252,7 @@ cc_library(
     hdrs = ["virtual_scheduler.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_estimator",
         ":graph_properties",
         ":op_context",
         ":utils",
@@ -242,7 +264,8 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
-        "//tensorflow/core/grappler/costs:cost_estimator",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

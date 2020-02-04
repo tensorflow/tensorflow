@@ -33,8 +33,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/public/session_options.h"
@@ -269,8 +271,30 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   XSpace space;
   TF_ASSERT_OK(tracer->CollectData(&space));
   // At least one gpu plane and one host plane for launching events.
-  EXPECT_NE(FindPlaneWithName(space, kHostThreads), nullptr);
-  EXPECT_NE(FindPlaneWithName(space, StrCat(kGpuPlanePrefix, 0)), nullptr);
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  ASSERT_NE(host_plane, nullptr);
+  EXPECT_EQ(host_plane->id(), kHostPlaneId);
+
+  const XPlane* device_plane =
+      FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
+  ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
+  EXPECT_EQ(device_plane->id(), kGpuPlaneBaseId);
+  // Check if device capacity is serialized.
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+  EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
+
+  // Check if the device events timestamps are set.
+  plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      EXPECT_GT(event.TimestampNs(), 0);
+      EXPECT_GT(event.DurationNs(), 0);
+    });
+  });
 }
 
 }  // namespace

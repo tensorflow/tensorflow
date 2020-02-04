@@ -17,11 +17,15 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <memory>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -820,6 +824,70 @@ TEST(BasicInterpreter, TestCustomErrorReporter) {
   ASSERT_EQ(reporter.num_calls(), 1);
 }
 
+TEST(BasicInterpreter, TestOverflow) {
+  TestErrorReporter reporter;
+  Interpreter interpreter(&reporter);
+  TfLiteQuantizationParams quantized;
+
+  ASSERT_EQ(interpreter.AddTensors(1), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({0}), kTfLiteOk);
+  // Overflow testing is pointer word size dependent.
+  if (sizeof(size_t) == 8) {
+    // #bits for bytecount = 30 + 30 + 2 = 62 < 64
+    ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                  0, kTfLiteFloat32, "in1", {1 << 30, 1 << 30}, quantized),
+              kTfLiteOk);
+    // #bits for element count = 30 + 30 + 2 = 62 < 64 (no overflow)
+    // #bits for byte count = 30 + 30 + 2 + 2 = 64 == 64 (overflow)
+    ASSERT_NE(
+        interpreter.SetTensorParametersReadWrite(
+            0, kTfLiteFloat32, "in1", {1 << 30, 1 << 30, 1 << 2}, quantized),
+        kTfLiteOk);
+    EXPECT_THAT(
+        reporter.error_messages(),
+        testing::EndsWith("BytesRequired number of bytes overflowed.\n"));
+    // #bits for element count = 30 + 30 + 2 + 4 = 66 > 64 (overflow).
+    // #bits for byte count = 30 + 30 + 2 + 4 + 2 = 68 > 64 (overflow).
+    reporter.Reset();
+    ASSERT_NE(interpreter.SetTensorParametersReadWrite(
+                  0, kTfLiteFloat32, "in1", {1 << 30, 1 << 30, 1 << 2, 1 << 4},
+                  quantized),
+              kTfLiteOk);
+    EXPECT_THAT(
+        reporter.error_messages(),
+        testing::EndsWith("BytesRequired number of elements overflowed.\n"));
+
+  } else if (sizeof(size_t) == 4) {
+    // #bits for bytecount = 14 + 14 + 2 = 30 < 32
+    ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                  0, kTfLiteFloat32, "in1", {1 << 14, 1 << 14}, quantized),
+              kTfLiteOk);
+    // #bits for element count = 14 + 14 + 3 = 31 < 32 (no overflow).
+    // #bits for byte count = 14 + 14 + 3 + 2 = 33 > 32 (overflow).
+    ASSERT_NE(
+        interpreter.SetTensorParametersReadWrite(
+            0, kTfLiteFloat32, "in1", {1 << 14, 1 << 14, 1 << 3}, quantized),
+        kTfLiteOk);
+    EXPECT_THAT(
+        reporter.error_messages(),
+        testing::EndsWith("BytesRequired number of bytes overflowed.\n"));
+    // #bits for element count = 14 + 14 + 4 = 32 == 32 (overflow).
+    // byte count also overflows, but we don't get to that check.
+    reporter.Reset();
+    ASSERT_NE(
+        interpreter.SetTensorParametersReadWrite(
+            0, kTfLiteFloat32, "in1", {1 << 14, 1 << 14, 1 << 4}, quantized),
+        kTfLiteOk);
+    EXPECT_THAT(
+        reporter.error_messages(),
+        testing::EndsWith("BytesRequired number of elements overflowed.\n"));
+  } else {
+    // This test failing means that we are using a non 32/64 bit architecture.
+    ASSERT_TRUE(false);
+  }
+}
+
 TEST(BasicInterpreter, TestUseNNAPI) {
   TestErrorReporter reporter;
   Interpreter interpreter(&reporter);
@@ -1003,6 +1071,30 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   TestExternalContext::Set(context, nullptr);
   EXPECT_EQ(TestExternalContext::Get(context), nullptr);
   interpreter_.SetNumThreads(4);
+}
+
+struct TestCpuBackendContext : public TfLiteInternalBackendContext {
+  // Count the number of calls to ClearCaches for the backend context.
+  void ClearCaches() override { ++num_calls; }
+  void SetMaxNumThreads(int num_threads) override {}
+  int num_calls = 0;
+};
+
+TEST_F(InterpreterTest, ExternalBackendContextClearsCachesOnDelete) {
+  ExternalCpuBackendContext external_cpu_context;
+  TestCpuBackendContext* cpu_backend_context = new TestCpuBackendContext();
+  external_cpu_context.set_internal_backend_context(
+      std::unique_ptr<TfLiteInternalBackendContext>(cpu_backend_context));
+
+  {
+    // Create an interpreter with an external Cpu backend context and ensure
+    // it goes out of scope.
+    Interpreter interpreter;
+    interpreter.SetExternalContext(kTfLiteCpuBackendContext,
+                                   &external_cpu_context);
+    EXPECT_EQ(cpu_backend_context->num_calls, 0);
+  }
+  EXPECT_EQ(cpu_backend_context->num_calls, 1);
 }
 
 // Test fixture that allows playing with execution plans. It creates a two

@@ -607,7 +607,7 @@ TEST_F(ShapeInferenceTest, ConvolveBatchGroupCountUnequalOutputFeature) {
       window, dnums);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("to be equal to batch group count"));
+              HasSubstr("to be a multiple of batch group count"));
 }
 
 namespace fft {
@@ -1171,6 +1171,18 @@ TEST_F(ShapeInferenceTest, UnchangedDimension) {
                                                   /*inferred_dimension=*/-11);
   ASSERT_EQ(ShapeUtil::MakeShape(F32, {2, 3, 10}, {false, false, true}),
             status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, InferDynamicBroadcast) {
+  // CHECK:
+  // %broadcast = s32[15,<=15]{1,0} broadcast(s32[<=15]{0}), dimensions={1}
+
+  auto operand_shape = ShapeUtil::MakeShape(F32, {15}, {true});
+  auto inferred_status =
+      ShapeInference::InferBroadcastShape(operand_shape, {15});
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {15, 15}, {false, true}), inferred);
 }
 
 TEST_F(ShapeInferenceTest, BroadcastScalar) {

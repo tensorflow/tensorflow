@@ -12,7 +12,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
+exports_files([
+    "LICENSE",
+    "run_and_gather_logs_lib.py",
+])
 
 py_library(
     name = "system_info_lib",

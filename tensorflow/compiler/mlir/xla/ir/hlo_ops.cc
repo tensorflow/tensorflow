@@ -600,6 +600,128 @@ void DynamicSliceOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// InfeedOp
+//===----------------------------------------------------------------------===//
+
+// Checks that the result type is of the form `tuple< any_type, token >`.
+static LogicalResult Verify(InfeedOp op) {
+  auto result_ty = op.getResult().getType().cast<TupleType>();
+  auto subtypes = result_ty.getTypes();
+  if (subtypes.size() != 2)
+    return op.emitOpError()
+           << "result is expected to be a tuple of size 2, but got "
+           << subtypes.size();
+  if (!subtypes[1].isa<TokenType>())
+    return op.emitOpError() << "second element of result tuple is expected to "
+                               "be of token type, but got "
+                            << subtypes[1];
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MapOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(MapOp op) {
+  // Checks if the number of `operands` match the arity of the map `computation`
+  // region.
+  auto& computation_block = op.computation().front();
+  auto computation_args = computation_block.getArguments();
+  if (op.operands().size() != computation_args.size())
+    return op.emitOpError()
+           << "expects number of operands to match the arity "
+              "of map computation, but got: "
+           << op.operands().size() << " and " << computation_args.size();
+
+  // The parameters of computation should all be scalars and match the element
+  // type of operands.
+  auto operand_type = op.operands()[0].getType().cast<TensorType>();
+  auto operand_elem_ty = operand_type.getElementType();
+
+  for (auto indexed_arg : llvm::enumerate(computation_args)) {
+    auto arg_type = indexed_arg.value().getType().dyn_cast<TensorType>();
+    if (!arg_type || arg_type.getRank() != 0)
+      return op.emitOpError()
+             << "computation arguments must be 0-rank tensor, but got: arg #"
+             << indexed_arg.index() << " of type "
+             << indexed_arg.value().getType();
+    if (arg_type.getElementType() != operand_elem_ty) {
+      return op.emitOpError()
+             << "element type of operands and computation arguments must "
+                "match, but got: "
+             << operand_elem_ty << " and " << arg_type.getElementType();
+    }
+  }
+
+  // Mapped computation must return single output
+  auto computation_outputs = computation_block.getTerminator()->getOperands();
+  if (computation_outputs.size() != 1)
+    return op.emitOpError()
+           << "computation must return single output, but got: "
+           << computation_outputs.size();
+
+  // The output of computation must be scalar and have the same element type
+  // as op result.
+  auto computation_output_type =
+      computation_outputs[0].getType().dyn_cast<TensorType>();
+  if (!computation_output_type || computation_output_type.getRank() != 0)
+    return op.emitOpError()
+           << "computation must return 0-rank tensor, but got: "
+           << computation_outputs[0].getType();
+
+  auto result_type = op.getType().cast<TensorType>();
+  if (computation_output_type.getElementType() != result_type.getElementType())
+    return op.emitOpError() << "element type of result and computation output "
+                               "must match, but got: "
+                            << result_type.getElementType() << " and "
+                            << computation_output_type.getElementType();
+
+  // Checks that the requested map dimension numbers are monotonically
+  // increasing.
+  auto values = op.dimensions().getValues<int64_t>();
+  auto dimensions = std::vector<int64_t>{values.begin(), values.end()};
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (dimensions[i] != i)
+      return op.emitOpError() << "requires monotonically increasing dimension "
+                                 "numbers, but got: "
+                              << op.dimensions();
+  }
+
+  // Checks that number of dimensions of operands matches the size of
+  // `dimensions` since we currently only support mapping across all
+  // dimensions: i.e., scalar map functions.
+  if (operand_type.hasRank()) {
+    if (dimensions.size() != operand_type.getShape().size())
+      return op.emitOpError()
+             << "applied to a subset of dimensions currently not supported: "
+                "operand dimensions = "
+             << operand_type.getShape().size()
+             << ", requested map dimensions size = " << dimensions.size();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RecvOp
+//===----------------------------------------------------------------------===//
+
+// Checks that the result type is of the form `tuple<any_type, xla_hlo::token>`
+static LogicalResult Verify(RecvOp op) {
+  auto result_ty = op.getResult().getType().cast<TupleType>();
+  auto subtypes = result_ty.getTypes();
+  if (subtypes.size() != 2)
+    return op.emitOpError()
+           << "result is expected to be a tuple of size 2, but got "
+           << subtypes.size();
+  if (!subtypes[1].isa<TokenType>())
+    return op.emitOpError() << "second element of result tuple is expected to "
+                               "be of token type, but got "
+                            << subtypes[1];
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
@@ -926,9 +1048,11 @@ static LogicalResult Verify(SortOp op) {
         }))
       return op.emitOpError("requires all inputs to have the same dimensions");
 
-    if (op.dimension().getSExtValue() >= input_shape.size())
-      return op.emitOpError(
-          "dimension attribute value must be less than input rank");
+    int64_t rank = input_shape.size();
+    int64_t cmp_dim = op.dimension().getSExtValue();
+    if (cmp_dim < -rank || cmp_dim >= rank)
+      return op.emitOpError("dimension attribute value must be in range [-")
+             << rank << ", " << rank << "), but found " << cmp_dim;
   }
 
   Block& block = op.comparator().front();
@@ -1014,6 +1138,63 @@ static LogicalResult Verify(TransposeOp op) {
         resultType, expectedType));
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TriangularSolveOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TriangularSolveOp op) {
+  auto a_type = op.a().getType().dyn_cast<RankedTensorType>();
+
+  // Skip verifier if a is unranked tensor.
+  if (!a_type) return success();
+
+  // Check that a should have rank >= 2
+  auto a_rank = a_type.getRank();
+  if (a_rank < 2)
+    return op.emitOpError()
+           << "operand 'a' must have rank >= 2, but got " << a_type;
+
+  // The two minor dimensions of a must have same size.
+  if (a_type.getDimSize(a_rank - 2) != a_type.getDimSize(a_rank - 1))
+    return op.emitOpError() << "two minor dimensions of operand 'a' must have "
+                               "equal size, but got "
+                            << a_type;
+
+  auto b_type = op.b().getType().dyn_cast<RankedTensorType>();
+  // If b is unranked skip remaining checks.
+  if (!b_type) return success();
+
+  // Check that a and b have same rank.
+  auto b_rank = b_type.getRank();
+  if (a_rank != b_rank)
+    return op.emitOpError() << "operands must have equal rank, but got "
+                            << a_type << " and " << b_type;
+
+  // The shared dimension of a and b should match.
+  if (a_type.getDimSize(a_rank - 1) !=
+      b_type.getDimSize(b_rank - (op.left_side() ? 2 : 1)))
+    return op.emitOpError() << "shared dimension of operands 'a' and 'b' does "
+                               "not match, but got "
+                            << a_type << " and " << b_type;
+
+  // The leading batch dimensions of a and b must be equal.
+  auto a_batch_dims = a_type.getShape().drop_back(2);
+  auto b_batch_dims = b_type.getShape().drop_back(2);
+  if (a_batch_dims != b_batch_dims)
+    return op.emitOpError()
+           << "leading batch dimensions of the operands must be same, but got "
+           << a_type << " and " << b_type;
+
+  // Result and argument b must have same shape.
+  auto result_type = op.getType().dyn_cast<RankedTensorType>();
+  if (!result_type) return success();
+  if (result_type != b_type)
+    return op.emitOpError()
+           << "result and operand 'b' must have same shape, but got "
+           << result_type << " and " << b_type;
   return success();
 }
 

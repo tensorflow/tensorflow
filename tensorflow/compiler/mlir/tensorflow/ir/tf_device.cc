@@ -35,7 +35,9 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/UseDefLists.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "tensorflow/core/platform/logging.h"
@@ -49,6 +51,8 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
       >();
+
+  addOperations<ParallelExecuteOp>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -75,6 +79,86 @@ void Print(ReturnOp op, OpAsmPrinter* p) {
   }
 }
 }  // anonymous namespace
+
+//===----------------------------------------------------------------------===//
+// tf_device.parallel_execute
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+LogicalResult Verify(ParallelExecuteOp op) {
+  const auto& regions = op.getOperation()->getRegions();
+  if (regions.size() < 2) {
+    return op.emitOpError() << "must have at least two regions.";
+  }
+
+  int output_index = 0;
+  for (auto& region_and_index : llvm::enumerate(regions)) {
+    auto& region = region_and_index.value();
+    auto region_index = region_and_index.index();
+
+    // Each region must include a single block of ops and must not be empty.
+    if (region.empty()) {
+      return op.emitOpError()
+             << "regions must not be empty. "
+             << "Found an empty region (" << region_index << ").";
+    }
+
+    if (!has_single_element(region)) {
+      return op.emitOpError()
+             << "regions must be composed of a single block of operations."
+             << "Expected region (" << region_index << ") with 1 block.";
+    }
+
+    auto* region_terminator = region.front().getTerminator();
+    // Check that output types of regions match return operand types.
+    for (auto result_type : region_terminator->getOperandTypes()) {
+      if (result_type !=
+          op.getOperation()->getResult(output_index++).getType()) {
+        return op.emitOpError() << "output types must be a concatenated "
+                                << "list of output types for each regions.";
+      }
+    }
+  }
+
+  // Check that total number of outputs from regions match the output types of
+  // the parallel_execute op.
+  const int num_output_types = op.getOperation()->getNumResults();
+  if (num_output_types != output_index) {
+    return op.emitOpError()
+           << "number of output types (" << num_output_types << ") "
+           << "must match the total number of outputs from all "
+           << "regions (" << output_index << ").";
+  }
+
+  return success();
+}
+
+}  // namespace
+
+// static
+void ParallelExecuteOp::build(Builder* builder, OperationState& state,
+                              int num_regions,
+                              llvm::ArrayRef<Type> output_types) {
+  DCHECK_GE(num_regions, 2);
+  for (int i = 0; i < num_regions; ++i) {
+    Region* region = state.addRegion();
+    region->push_back(new Block);
+  }
+  state.addTypes(output_types);
+}
+
+Operation::result_range ParallelExecuteOp::getRegionOutputs(
+    unsigned region_index) {
+  auto& region = getRegionWithIndex(region_index);
+  return region.getTerminator()->getOpResults();
+}
+
+LogicalResult ParallelExecuteOp::verify() { return Verify(*this); }
+
+Block& ParallelExecuteOp::getRegionWithIndex(unsigned index) {
+  return getOperation()->getRegion(index).front();
+}
 
 //===----------------------------------------------------------------------===//
 // tf_device.replicate

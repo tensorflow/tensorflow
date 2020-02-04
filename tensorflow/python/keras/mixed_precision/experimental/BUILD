@@ -94,7 +94,7 @@ py_library(
     srcs = ["get_layer_policy.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras/engine:base_layer",
     ],
 )
 
@@ -106,7 +106,7 @@ py_test(
         ":get_layer_policy",
         ":policy",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -148,7 +148,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:loss_scale",
-        "//tensorflow/python/keras:generic_utils",
+        "//tensorflow/python/keras/utils:generic_utils",
     ],
 )
 
@@ -174,6 +174,22 @@ cuda_py_test(
         ":test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+    ],
+)
+
+cuda_py_test(
+    name = "loss_scale_benchmark",
+    size = "medium",
+    srcs = ["loss_scale_benchmark.py"],
+    deps = [
+        ":loss_scale_optimizer",
+        ":test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:loss_scaling_gradient_tape",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
@@ -207,14 +223,15 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    shard_count = 10,
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",

@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
 namespace {
@@ -179,13 +179,14 @@ std::string Flag::GetTypeName() const {
     // Parses positional flags.
     if (flag.flag_type_ == Flag::POSITIONAL) {
       if (++positional_count >= *argc) {
-        LOG(ERROR) << "Too few command line arguments";
+        TFLITE_LOG(TFLITE_LOG_ERROR, "Too few command line arguments");
         return false;
       }
       bool value_parsing_ok;
       flag.Parse(argv[positional_count], &value_parsing_ok);
       if (!value_parsing_ok) {
-        LOG(ERROR) << "Failed to parse positional flag: " << flag.name_;
+        TFLITE_LOG(TFLITE_LOG_ERROR, "Failed to parse positional flag: %s",
+                   flag.name_.c_str());
         return false;
       }
       unknown_flags[positional_count] = false;
@@ -199,7 +200,8 @@ std::string Flag::GetTypeName() const {
       bool value_parsing_ok;
       was_found = flag.Parse(argv[i], &value_parsing_ok);
       if (!value_parsing_ok) {
-        LOG(ERROR) << "Failed to parse flag: " << flag.name_;
+        TFLITE_LOG(TFLITE_LOG_ERROR, "Failed to parse flag: %s",
+                   flag.name_.c_str());
         result = false;
       }
       if (was_found) {
@@ -209,7 +211,8 @@ std::string Flag::GetTypeName() const {
     }
     // Check if required flag not found.
     if (flag.flag_type_ == Flag::REQUIRED && !was_found) {
-      LOG(ERROR) << "Required flag not provided: " << flag.name_;
+      TFLITE_LOG(TFLITE_LOG_ERROR, "Required flag not provided: %s",
+                 flag.name_.c_str());
       result = false;
       break;
     }

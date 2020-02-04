@@ -24,42 +24,96 @@ limitations under the License.
 #include <string>
 #endif
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 
 namespace ruy {
 
+namespace {
+
+void DecodeTraversalLinear(int size_log2, std::uint32_t square_index,
+                           SidePair<int>* local_pos) {
+  (*local_pos)[Side::kLhs] = square_index & ((1 << size_log2) - 1);
+  (*local_pos)[Side::kRhs] = square_index >> size_log2;
+}
+
+void DecodeTraversalFractalZ(std::uint32_t square_index,
+                             SidePair<int>* local_pos) {
+  const std::uint32_t n1 = square_index;
+  const std::uint32_t n2 = (n1 & 0x99999999u) | ((n1 & 0x44444444u) >> 1) |
+                           ((n1 & 0x22222222u) << 1);
+  const std::uint32_t n4 = (n2 & 0xc3c3c3c3u) | ((n2 & 0x30303030u) >> 2) |
+                           ((n2 & 0x0c0c0c0cu) << 2);
+  const std::uint32_t n8 = (n4 & 0xf00ff00fu) | ((n4 & 0x0f000f00u) >> 4) |
+                           ((n4 & 0x00f000f0u) << 4);
+  const std::uint32_t n16 = (n8 & 0xff0000ffu) | ((n8 & 0x00ff0000u) >> 8) |
+                            ((n8 & 0x0000ff00u) << 8);
+  (*local_pos)[Side::kLhs] = n16 & 0xffff;
+  (*local_pos)[Side::kRhs] = n16 >> 16;
+}
+
+void DecodeTraversalFractalU(std::uint32_t square_index,
+                             SidePair<int>* local_pos) {
+  DecodeTraversalFractalZ(square_index, local_pos);
+  // Change fractal z-order to u-order
+  (*local_pos)[Side::kLhs] ^= (*local_pos)[Side::kRhs];
+}
+
+// Code inspired by the sample code in
+//   https://en.wikipedia.org/wiki/Hilbert_curve
+// The main optimization is to avoid hard-to-predict conditional branches
+// based on the bits of the square_index parameter.
+void DecodeTraversalFractalHilbert(int size_log2, std::uint32_t square_index,
+                                   SidePair<int>* local_pos) {
+  std::uint32_t t = square_index;
+  std::uint32_t x = 0;
+  std::uint32_t y = 0;
+  // Easy-to-predict for loop, the number of iterations is the same for
+  // an entire GEMM.
+  for (int sb = 0; sb < size_log2; sb++) {
+    std::uint32_t s = 1 << sb;
+    bool rx = t & 2;
+    bool ry = (t & 1) ^ rx;
+    std::uint32_t tmp = rx ? (s - 1 - x) : x;
+    x = ry ? x : rx ? (s - 1 - y) : y;
+    y = ry ? (y + s) : tmp;
+    x = rx ? (x + s) : x;
+    t >>= 2;
+  }
+  (*local_pos)[Side::kLhs] = y;
+  (*local_pos)[Side::kRhs] = x;
+}
+
+}  // end anonymous namespace
+
 void GetBlockByIndex(const BlockMap& block_map, int index,
                      SidePair<int>* block) {
-  gemmlowp::ScopedProfilingLabel label("GetBlockByIndex");
+  profiler::ScopeLabel label("GetBlockByIndex");
   const std::uint32_t index_u32 = index;
 
   const std::uint32_t num_blocks_per_local_curve =
       1u << (2 * block_map.num_blocks_base_log2);
-  const std::uint32_t n1 = index_u32 & (num_blocks_per_local_curve - 1);
+  const std::uint32_t square_index =
+      index_u32 & (num_blocks_per_local_curve - 1);
 
+  const int size_log2 = block_map.num_blocks_base_log2;
   SidePair<int> local_pos;
-  if (block_map.traversal_order == BlockMapTraversalOrder::kLinear) {
-    local_pos[Side::kLhs] = n1 & ((1u << block_map.num_blocks_base_log2) - 1);
-    local_pos[Side::kRhs] = n1 >> block_map.num_blocks_base_log2;
-  } else {
-    // Decode fractal z-order
-    const std::uint32_t n2 = (n1 & 0x99999999u) | ((n1 & 0x44444444u) >> 1) |
-                             ((n1 & 0x22222222u) << 1);
-    const std::uint32_t n4 = (n2 & 0xc3c3c3c3u) | ((n2 & 0x30303030u) >> 2) |
-                             ((n2 & 0x0c0c0c0cu) << 2);
-    const std::uint32_t n8 = (n4 & 0xf00ff00fu) | ((n4 & 0x0f000f00u) >> 4) |
-                             ((n4 & 0x00f000f0u) << 4);
-    const std::uint32_t n16 = (n8 & 0xff0000ffu) | ((n8 & 0x00ff0000u) >> 8) |
-                              ((n8 & 0x0000ff00u) << 8);
-    local_pos[Side::kLhs] = n16 & 0xffff;
-    local_pos[Side::kRhs] = n16 >> 16;
-    if (block_map.traversal_order == BlockMapTraversalOrder::kFractalU) {
-      // Change fractal z-order to u-order
-      local_pos[Side::kLhs] ^= local_pos[Side::kRhs];
-    }
+  switch (block_map.traversal_order) {
+    case BlockMapTraversalOrder::kFractalZ:
+      DecodeTraversalFractalZ(square_index, &local_pos);
+      break;
+    case BlockMapTraversalOrder::kFractalU:
+      DecodeTraversalFractalU(square_index, &local_pos);
+      break;
+    case BlockMapTraversalOrder::kFractalHilbert:
+      DecodeTraversalFractalHilbert(size_log2, square_index, &local_pos);
+      break;
+    default:
+      RUY_DCHECK(block_map.traversal_order == BlockMapTraversalOrder::kLinear);
+      DecodeTraversalLinear(size_log2, square_index, &local_pos);
+      break;
   }
 
   const std::uint32_t rectangular_index =
@@ -69,6 +123,30 @@ void GetBlockByIndex(const BlockMap& block_map, int index,
     const int rectangular_offset = (rectangular_index & mask)
                                    << block_map.num_blocks_base_log2;
     (*block)[side] = local_pos[side] + rectangular_offset;
+  }
+}
+
+BlockMapTraversalOrder GetTraversalOrder(int rows, int cols, int depth,
+                                         int lhs_scalar_size,
+                                         int rhs_scalar_size,
+                                         int local_data_cache_size,
+                                         int shared_data_cache_size) {
+  const int kFractalOptSets =
+      RUY_OPT_FRACTAL_Z | RUY_OPT_FRACTAL_U | RUY_OPT_FRACTAL_HILBERT;
+  const int working_set_size =
+      (lhs_scalar_size * rows + rhs_scalar_size * cols) * depth;
+  if (RUY_OPT_ENABLED(kFractalOptSets) &&
+      (working_set_size > local_data_cache_size)) {
+    if (RUY_OPT_ENABLED(RUY_OPT_FRACTAL_HILBERT) &&
+        (working_set_size > shared_data_cache_size)) {
+      return BlockMapTraversalOrder::kFractalHilbert;
+    } else if (RUY_OPT_ENABLED(RUY_OPT_FRACTAL_U)) {
+      return BlockMapTraversalOrder::kFractalU;
+    } else {
+      return BlockMapTraversalOrder::kFractalZ;
+    }
+  } else {
+    return BlockMapTraversalOrder::kLinear;
   }
 }
 
@@ -83,21 +161,6 @@ int floor_log2_quotient(int num, int denom) {
     log2_quotient++;
   }
   return log2_quotient;
-}
-
-BlockMapTraversalOrder GetTraversalOrder(
-    int rows, int cols, int depth, int lhs_scalar_size, int rhs_scalar_size,
-    int cache_friendly_traversal_threshold) {
-  if (RUY_OPT_ENABLED(RUY_OPT_FRACTAL) &&
-      (rows * lhs_scalar_size + cols * rhs_scalar_size) * depth >=
-          cache_friendly_traversal_threshold) {
-    return RUY_OPT_ENABLED(RUY_OPT_FRACTAL_U)
-               ? BlockMapTraversalOrder::kFractalU
-               : BlockMapTraversalOrder::kFractalZ;  // NOLINT
-    // (clang-tidy complains that the 'else' here is never taken).
-  } else {
-    return BlockMapTraversalOrder::kLinear;
-  }
 }
 
 // Computes the rectangularness of the matrix shape (rows, cols). This is
@@ -179,15 +242,11 @@ int GetMultithreadingScore(int block_size_log2, int rows, int cols,
   }
 }
 
-// Computes a 'cache locality score'. This is the familiar notion that
-// local working sets should be small enough to fit in some local data
-// cache, by which we mean that typically L1 and possibly L2 caches, being
-// local to each CPU core, tend to perform better than typical last-level
-// (e.g. L3) caches shared among all cores. Here we aim to fit in a fast,
-// local cache.
+// Computes a 'cache locality score'.
 int GetCacheLocalityScore(int block_size_log2, int rows, int cols, int depth,
                           int kernel_rows_log2, int kernel_cols_log2,
-                          int lhs_scalar_size, int rhs_scalar_size, Path path) {
+                          int lhs_scalar_size, int rhs_scalar_size, Path path,
+                          int local_data_cache_size) {
   // In the narrow case (e.g. matrix*vector), each byte of the big operand
   // matrix (either LHS or RHS) is traversed only once, so any notion of data
   // locality is irrelevant. Ignore the 'cache locality score' by forcing it to
@@ -197,22 +256,11 @@ int GetCacheLocalityScore(int block_size_log2, int rows, int cols, int depth,
   }
   const int block_rows = std::min(1 << block_size_log2, rows);
   const int block_cols = std::min(1 << block_size_log2, cols);
-#if RUY_PLATFORM(ARM_64)
-  const int kLocalDataCacheSizeLog2 = path == Path::kNeonDotprod ? 17 : 15;
-#elif RUY_PLATFORM(ARM_32)
-  const int kLocalDataCacheSizeLog2 = 14;
-#elif RUY_PLATFORM(X86)
-  const int kLocalDataCacheSizeLog2 = 17;
-#else
-  const int kLocalDataCacheSizeLog2 = 14;
-#endif
-  const int lhs_bytes_log2 =
-      pot_log2(lhs_scalar_size) + ceil_log2(block_rows * depth);
-  const int rhs_bytes_log2 =
-      pot_log2(rhs_scalar_size) + ceil_log2(block_cols * depth);
-  const int total_read_bytes_log2 =
-      1 + std::max(lhs_bytes_log2, rhs_bytes_log2);
-  const int nonlocality_log2 = total_read_bytes_log2 - kLocalDataCacheSizeLog2;
+  const int total_read_bytes =
+      (lhs_scalar_size * block_rows + rhs_scalar_size * block_cols) * depth;
+  const int total_read_bytes_log2 = ceil_log2(total_read_bytes);
+  const int nonlocality_log2 =
+      total_read_bytes_log2 - floor_log2(local_data_cache_size);
   // The values here have been tuned on ARM Cortex-A55.
   // We expect this to have to be tuned differently for other CPUs.
   if (nonlocality_log2 < -1) {
@@ -224,6 +272,8 @@ int GetCacheLocalityScore(int block_size_log2, int rows, int cols, int depth,
   } else if (nonlocality_log2 == 1) {
     return 32;
   } else if (nonlocality_log2 == 2) {
+    return 16;
+  } else if (nonlocality_log2 == 3) {
     return 0;
   } else {
     return -64;
@@ -269,8 +319,9 @@ int GetKernelAmortizationScore(int block_size_log2, int rows, int cols,
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
                   int tentative_thread_count, Path path,
-                  int cache_friendly_traversal_threshold, BlockMap* block_map) {
-  gemmlowp::ScopedProfilingLabel label("MakeBlockMap");
+                  int local_data_cache_size, int shared_data_cache_size,
+                  BlockMap* block_map) {
+  profiler::ScopeLabel label("MakeBlockMap");
 
 #ifdef RUY_MAKEBLOCKMAP_DEBUG
 #if RUY_MAKEBLOCKMAP_DEBUG >= 2
@@ -296,7 +347,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
 
   block_map->traversal_order =
       GetTraversalOrder(rows, cols, depth, lhs_scalar_size, rhs_scalar_size,
-                        cache_friendly_traversal_threshold);
+                        local_data_cache_size, shared_data_cache_size);
 
   int rows_rectangularness_log2 = 0;
   int cols_rectangularness_log2 = 0;
@@ -334,7 +385,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
         block_size_log2, rows, cols, tentative_thread_count);
     const int cache_locality_score = GetCacheLocalityScore(
         block_size_log2, rows, cols, depth, kernel_rows_log2, kernel_cols_log2,
-        lhs_scalar_size, rhs_scalar_size, path);
+        lhs_scalar_size, rhs_scalar_size, path, local_data_cache_size);
     const int kernel_amortization_score = GetKernelAmortizationScore(
         block_size_log2, rows, cols, kernel_rows_log2, kernel_cols_log2);
     const int score =
@@ -409,7 +460,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
 
 void GetBlockMatrixCoords(Side side, const BlockMap& block_map, int block,
                           int* start, int* end) {
-  gemmlowp::ScopedProfilingLabel label("GetBlockMatrixCoords");
+  profiler::ScopeLabel label("GetBlockMatrixCoords");
   *start = block * block_map.small_block_dims[side] +
            std::min(block, block_map.large_blocks[side]) *
                block_map.kernel_dims[side];

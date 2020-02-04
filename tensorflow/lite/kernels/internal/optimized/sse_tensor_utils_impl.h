@@ -24,7 +24,7 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
-#ifdef __SSE4_1__
+#ifdef __SSSE3__
 
 // Matrix multiplication for quantized values using symmetric quantization.
 void SseMatrixBatchVectorMultiplyAccumulate(
@@ -47,7 +47,7 @@ void SseSparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
-#endif  // __SSE4_1__
+#endif  // __SSSE3__
 
 }  // namespace tensor_utils
 }  // namespace tflite

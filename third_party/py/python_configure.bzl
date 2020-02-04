@@ -11,6 +11,38 @@ _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 _PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
 _TF_PYTHON_CONFIG_REPO = "TF_PYTHON_CONFIG_REPO"
 
+def _which(repository_ctx, program_name):
+    """Returns the full path to a program on the execution platform."""
+    if _is_windows(repository_ctx):
+        if not program_name.endswith(".exe"):
+            program_name = program_name + ".exe"
+        result = _execute(repository_ctx, ["where.exe", program_name])
+    else:
+        result = _execute(repository_ctx, ["which", program_name])
+    return result.stdout.rstrip()
+
+def _get_environ(repository_ctx, name, default_value = None):
+    """Returns the value of an environment variable on the execution platform."""
+    if _is_windows(repository_ctx):
+        result = _execute(
+            repository_ctx,
+            ["cmd.exe", "/c", "echo", "%" + name + "%"],
+            empty_stdout_fine = True,
+        )
+    else:
+        cmd = "echo -n \"$%s\"" % name
+        result = _execute(
+            repository_ctx,
+            [_get_bash_bin(repository_ctx), "-c", cmd],
+            empty_stdout_fine = True,
+        )
+    if len(result.stdout) == 0:
+        return default_value
+    return result.stdout
+
+def _get_host_environ(repository_ctx, name):
+    return repository_ctx.os.environ.get(name)
+
 def _tpl(repository_ctx, tpl, substitutions = {}, out = None):
     if not out:
         out = tpl
@@ -27,11 +59,15 @@ def _fail(msg):
     fail("%sPython Configuration Error:%s %s\n" % (red, no_color, msg))
 
 def _is_windows(repository_ctx):
-    """Returns true if the host operating system is windows."""
-    os_name = repository_ctx.os.name.lower()
-    if os_name.find("windows") != -1:
-        return True
-    return False
+    """Returns true if the execution platform is windows."""
+
+    os_name = ""
+    if hasattr(repository_ctx.attr, "exec_properties") and "OSFamily" in repository_ctx.attr.exec_properties:
+        os_name = repository_ctx.attr.exec_properties["OSFamily"]
+    else:
+        os_name = repository_ctx.os.name
+
+    return os_name.lower().find("windows") != -1
 
 def _execute(
         repository_ctx,
@@ -154,70 +190,75 @@ def _symlink_genrule_for_dir(
 
 def _get_python_bin(repository_ctx):
     """Gets the python bin path."""
-    python_bin = repository_ctx.os.environ.get(_PYTHON_BIN_PATH)
+    python_bin = _get_host_environ(repository_ctx, _PYTHON_BIN_PATH)
     if python_bin != None:
         return python_bin
-    python_bin_path = repository_ctx.which("python")
-    if python_bin_path != None:
-        return str(python_bin_path)
-    _fail("Cannot find python in PATH, please make sure " +
-          "python is installed and add its directory in PATH, or --define " +
-          "%s='/something/else'.\nPATH=%s" % (
-              _PYTHON_BIN_PATH,
-              repository_ctx.os.environ.get("PATH", ""),
-          ))
+    python_bin_path = _which(repository_ctx, "python")
+    if python_bin_path == None:
+        _fail("Cannot find python in PATH, please make sure " +
+              "python is installed and add its directory in PATH, or --define " +
+              "%s='/something/else'.\nPATH=%s" % (
+                  _PYTHON_BIN_PATH,
+                  _get_environ("PATH", ""),
+              ))
+    return python_bin_path
 
 def _get_bash_bin(repository_ctx):
     """Gets the bash bin path."""
-    bash_bin = repository_ctx.os.environ.get(_BAZEL_SH)
+    bash_bin = _get_host_environ(repository_ctx, _BAZEL_SH)
     if bash_bin != None:
         return bash_bin
-    else:
-        bash_bin_path = repository_ctx.which("bash")
-        if bash_bin_path != None:
-            return str(bash_bin_path)
-        else:
-            _fail("Cannot find bash in PATH, please make sure " +
-                  "bash is installed and add its directory in PATH, or --define " +
-                  "%s='/path/to/bash'.\nPATH=%s" % (
-                      _BAZEL_SH,
-                      repository_ctx.os.environ.get("PATH", ""),
-                  ))
+    bash_bin_path = _which(repository_ctx, "bash")
+    if bash_bin_path == None:
+        _fail("Cannot find bash in PATH, please make sure " +
+              "bash is installed and add its directory in PATH, or --define " +
+              "%s='/path/to/bash'.\nPATH=%s" % (
+                  _BAZEL_SH,
+                  _get_environ("PATH", ""),
+              ))
+    return bash_bin_path
 
 def _get_python_lib(repository_ctx, python_bin):
     """Gets the python lib path."""
-    python_lib = repository_ctx.os.environ.get(_PYTHON_LIB_PATH)
+    python_lib = _get_host_environ(repository_ctx, _PYTHON_LIB_PATH)
     if python_lib != None:
         return python_lib
-    print_lib = ("<<END\n" +
-                 "from __future__ import print_function\n" +
-                 "import site\n" +
-                 "import os\n" +
-                 "\n" +
-                 "try:\n" +
-                 "  input = raw_input\n" +
-                 "except NameError:\n" +
-                 "  pass\n" +
-                 "\n" +
-                 "python_paths = []\n" +
-                 "if os.getenv('PYTHONPATH') is not None:\n" +
-                 "  python_paths = os.getenv('PYTHONPATH').split(':')\n" +
-                 "try:\n" +
-                 "  library_paths = site.getsitepackages()\n" +
-                 "except AttributeError:\n" +
-                 " from distutils.sysconfig import get_python_lib\n" +
-                 " library_paths = [get_python_lib()]\n" +
-                 "all_paths = set(python_paths + library_paths)\n" +
-                 "paths = []\n" +
-                 "for path in all_paths:\n" +
-                 "  if os.path.isdir(path):\n" +
-                 "    paths.append(path)\n" +
-                 "if len(paths) >=1:\n" +
-                 "  print(paths[0])\n" +
-                 "END")
-    cmd = "%s - %s" % (python_bin, print_lib)
-    result = repository_ctx.execute([_get_bash_bin(repository_ctx), "-c", cmd])
-    return result.stdout.strip("\n")
+
+    # The interesting program to execute.
+    print_lib = [
+        "from __future__ import print_function",
+        "import site",
+        "import os",
+        "python_paths = []",
+        "if os.getenv('PYTHONPATH') is not None:",
+        "  python_paths = os.getenv('PYTHONPATH').split(':')",
+        "try:",
+        "  library_paths = site.getsitepackages()",
+        "except AttributeError:",
+        "  from distutils.sysconfig import get_python_lib",
+        "  library_paths = [get_python_lib()]",
+        "all_paths = set(python_paths + library_paths)",
+        "paths = []",
+        "for path in all_paths:",
+        "  if os.path.isdir(path):",
+        "    paths.append(path)",
+        "if len(paths) >=1:",
+        "  print(paths[0])",
+    ]
+
+    # The below script writes the above program to a file
+    # and executes it. This is to work around the limitation
+    # of not being able to upload files as part of execute.
+    cmd = "from os import linesep;"
+    cmd += "f = open('script.py', 'w');"
+    for line in print_lib:
+        cmd += "f.write(\"%s\" + linesep);" % line
+    cmd += "f.close();"
+    cmd += "from os import system;"
+    cmd += "system(\"%s script.py\");" % python_bin
+
+    result = _execute(repository_ctx, [python_bin, "-c", cmd])
+    return result.stdout.strip()
 
 def _check_python_lib(repository_ctx, python_lib):
     """Checks the python lib path."""
@@ -336,10 +377,10 @@ def _create_remote_python_repository(repository_ctx, remote_config_repo):
 
 def _python_autoconf_impl(repository_ctx):
     """Implementation of the python_autoconf repository rule."""
-    if _TF_PYTHON_CONFIG_REPO in repository_ctx.os.environ:
+    if _get_host_environ(repository_ctx, _TF_PYTHON_CONFIG_REPO) != None:
         _create_remote_python_repository(
             repository_ctx,
-            repository_ctx.os.environ[_TF_PYTHON_CONFIG_REPO],
+            _get_host_environ(repository_ctx, _TF_PYTHON_CONFIG_REPO),
         )
     else:
         _create_local_python_repository(repository_ctx)

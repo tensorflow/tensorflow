@@ -75,7 +75,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
       return Status::OK();
     }
     if (split_path.size() == 3) {
-      const string& parent_path = io::JoinPath(split_path[0], split_path[1]);
+      const string& parent_path = this->JoinPath(split_path[0], split_path[1]);
       if (!BodyExists(parent_path)) {
         return Status(tensorflow::error::FAILED_PRECONDITION,
                       "Base dir not created");
@@ -121,7 +121,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
 
   void ParsePath(const string& name, string* parsed_path) {
     StringPiece scheme, host, path;
-    io::ParseURI(name, &scheme, &host, &path);
+    this->ParseURI(name, &scheme, &host, &path);
     ASSERT_EQ(scheme, "ipfs");
     ASSERT_EQ(host, "solarsystem");
     absl::ConsumePrefix(&path, "/");
@@ -152,7 +152,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
 string Match(InterPlanetaryFileSystem* ipfs, const string& suffix_pattern) {
   std::vector<string> results;
   Status s =
-      ipfs->GetMatchingPaths(io::JoinPath(kPrefix, suffix_pattern), &results);
+      ipfs->GetMatchingPaths(ipfs->JoinPath(kPrefix, suffix_pattern), &results);
   if (!s.ok()) {
     return s.ToString();
   } else {
@@ -179,18 +179,18 @@ TEST(InterPlanetaryFileSystemTest, IPFSMatch) {
   // Returns Jupiter's and Earth's moons.
   EXPECT_EQ(Match(&ipfs, "*/*"),
             "Earth/Moon,Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
-  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "Planet0")));
-  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "Planet1")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "Planet0")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "Planet1")));
   EXPECT_EQ(Match(&ipfs, "Planet[0-1]"), "Planet0,Planet1");
   EXPECT_EQ(Match(&ipfs, "Planet?"), "Planet0,Planet1");
 }
 
 TEST(InterPlanetaryFileSystemTest, MatchSimple) {
   InterPlanetaryFileSystem ipfs;
-  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-00")));
-  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-0a")));
-  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-01")));
-  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-aaa")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-00")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-0a")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-01")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-aaa")));
 
   EXPECT_EQ(Match(&ipfs, "match-*"), "match-00,match-01,match-0a,match-aaa");
   EXPECT_EQ(Match(&ipfs, "match-0[0-9]"), "match-00,match-01");
@@ -203,8 +203,8 @@ TEST(InterPlanetaryFileSystemTest, MatchSimple) {
 // that evil_directory isn't accessed.
 TEST(InterPlanetaryFileSystemTest, MatchOnlyNeeded) {
   InterPlanetaryFileSystem ipfs;
-  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "abcd")));
-  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "evil_directory")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "abcd")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "evil_directory")));
 
   EXPECT_EQ(Match(&ipfs, "abcd"), "abcd");
 }
@@ -212,13 +212,13 @@ TEST(InterPlanetaryFileSystemTest, MatchOnlyNeeded) {
 TEST(InterPlanetaryFileSystemTest, MatchDirectory) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/x")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/x")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-0a/abc/x")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-0a/abc/x")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-01/abc/x")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/x")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-aaa/abc/x")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-aaa/abc/x")));
 
   EXPECT_EQ(Match(&ipfs, "match-*/abc/x"),
             "match-00/abc/x,match-01/abc/x,match-0a/abc/x,match-aaa/abc/x");
@@ -233,19 +233,19 @@ TEST(InterPlanetaryFileSystemTest, MatchDirectory) {
 TEST(InterPlanetaryFileSystemTest, MatchMultipleWildcards) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/00")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/00")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/01")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/01")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/09")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/09")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-01/abc/00")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/00")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-01/abc/04")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/04")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-01/abc/10")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/10")));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-02/abc/00")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-02/abc/00")));
 
   EXPECT_EQ(Match(&ipfs, "match-0[0-1]/abc/0[0-8]"),
             "match-00/abc/00,match-00/abc/01,match-01/abc/00,match-01/abc/04");
@@ -253,7 +253,7 @@ TEST(InterPlanetaryFileSystemTest, MatchMultipleWildcards) {
 
 TEST(InterPlanetaryFileSystemTest, RecursivelyCreateAlreadyExistingDir) {
   InterPlanetaryFileSystem ipfs;
-  const string dirname = io::JoinPath(kPrefix, "match-00/abc/00");
+  const string dirname = ipfs.JoinPath(kPrefix, "match-00/abc/00");
   TF_EXPECT_OK(ipfs.RecursivelyCreateDir(dirname));
   // We no longer check for recursively creating the directory again because
   // `ipfs.IsDirectory` is badly implemented, fixing it will break other tests

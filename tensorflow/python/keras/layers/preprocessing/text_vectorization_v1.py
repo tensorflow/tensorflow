@@ -22,12 +22,13 @@ import numpy as np
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
+from tensorflow.python.keras.layers.preprocessing import categorical_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export(v1=['keras.layers.experimental.preprocessing.TextVectorization'])
+@keras_export(v1=["keras.layers.experimental.preprocessing.TextVectorization"])
 class TextVectorization(text_vectorization.TextVectorization,
                         base_preprocessing_layer_v1.CombinerPreprocessingLayer):
   """Text vectorization layer.
@@ -71,12 +72,15 @@ class TextVectorization(text_vectorization.TextVectorization,
           times the token at that index appeared in the batch item.
         TFIDF: As BINARY, but the TF-IDF algorithm is applied to find the value
           in each token slot.
-    output_sequence_length: Optional length for the output tensor. If set,
-      the output will be padded or truncated to this value in INT mode.
+    output_sequence_length: Optional length for the output tensor. If set, the
+      output will be padded or truncated to this value in INT mode.
     pad_to_max_tokens: If True, BINARY, COUNT, and TFIDF modes will have their
       outputs padded to max_tokens, even if the number of unique tokens in the
       vocabulary is less than max_tokens.
   """
+
+  def _get_vectorization_class(self):
+    return categorical_encoding_v1.CategoricalEncoding
 
   def _get_table_data(self):
     keys, values = self._table.export()

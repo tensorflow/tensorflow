@@ -106,3 +106,9 @@ def is_built_with_rocm():
 def is_built_with_gpu_support():
   """Returns whether TensorFlow was built with GPU (i.e. CUDA or ROCm) support."""
   return is_built_with_cuda() or is_built_with_rocm()
+
+
+@tf_export('test.is_built_with_xla')
+def is_built_with_xla():
+  """Returns whether TensorFlow was built with XLA support."""
+  return _test_util.IsBuiltWithXLA()

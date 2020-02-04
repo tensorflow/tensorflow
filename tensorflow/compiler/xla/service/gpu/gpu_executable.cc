@@ -417,7 +417,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
               slice.allocation()->parameter_number(),
               slice.allocation()->param_shape_index());
           CHECK(output_alias)
-              << "Ouput buffer is coming from parameter "
+              << "Output buffer is coming from parameter "
               << slice.allocation()->parameter_number() << " at index "
               << slice.allocation()->param_shape_index()
               << ", but no alias exists";

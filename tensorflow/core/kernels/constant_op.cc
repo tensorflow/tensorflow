@@ -159,13 +159,23 @@ class FillOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& Tdims = context->input(0);
-    OP_REQUIRES(context, IsLegacyVector(Tdims.shape()),
-                errors::InvalidArgument("dims must be a vector, got shape ",
-                                        Tdims.shape().DebugString()));
+    OP_REQUIRES(
+        context,
+        // TODO(rmlarsen): Disallow legacy use of scalars to represent shape.
+        (TensorShapeUtils::IsVector(Tdims.shape()) ||
+         TensorShapeUtils::IsScalar(Tdims.shape())),
+        errors::InvalidArgument("dims must represent a vector, got shape ",
+                                Tdims.shape().DebugString()));
     const Tensor& Tvalue = context->input(1);
-    OP_REQUIRES(context, IsLegacyScalar(Tvalue.shape()),
-                errors::InvalidArgument("value must be a scalar, got shape ",
-                                        Tvalue.shape().DebugString()));
+    OP_REQUIRES(
+        context,
+        // TODO(rmlarsen): Disallow legacy use of length-1 vector to represent
+        // scalar.
+        TensorShapeUtils::IsScalar(Tvalue.shape()) ||
+            (TensorShapeUtils::IsVector(Tvalue.shape()) &&
+             Tvalue.shape().dim_size(0) == 1),
+        errors::InvalidArgument("value must represent a scalar, got shape ",
+                                Tvalue.shape().DebugString()));
     auto dims = Tdims.flat<Index>();
     TensorShape shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
@@ -269,7 +279,7 @@ class ZerosLikeOp : public OpKernel {
       const Variant& v = input.scalar<Variant>()();
       // DT_VARIANT tensors must be allocated on CPU since they wrap C++
       // objects which can not be efficiently represented in GPU memory.
-      int numa_node = DeviceNumaNode(ctx->device());
+      int numa_node = ctx->device()->NumaNode();
       Tensor out(cpu_allocator(numa_node), DT_VARIANT, TensorShape({}));
       Variant* out_v = &(out.scalar<Variant>()());
       OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(

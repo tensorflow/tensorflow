@@ -172,8 +172,8 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (None, 'a, b', 'a = b + 1'),
-            ('a = b + 1', 'a += max(a)', None),
+            (None, 'a, b', 'a = (b + 1)'),
+            ('a = (b + 1)', 'a += max(a)', None),
         ),
     )
 
@@ -209,7 +209,7 @@ class AstToCfgTest(test.TestCase):
         (
             (None, 'a', '(a > 0)'),
             ('(a > 0)', 'a = 1', None),
-            ('(a > 0)', 'a += -1', None),
+            ('(a > 0)', 'a += (- 1)', None),
         ),
     )
     self.assertStatementEdges(
@@ -973,8 +973,8 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            ('a', 'a = lambda b: a + b', 'return a'),
-            ('a = lambda b: a + b', 'return a', None),
+            ('a', 'a = (lambda b: (a + b))', 'return a'),
+            ('a = (lambda b: (a + b))', 'return a', None),
         ),
     )
 

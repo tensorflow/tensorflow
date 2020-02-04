@@ -89,12 +89,13 @@ constexpr std::array<const char*, 28> kPassThroughOps = {
 };
 
 // TODO(frankchn): Process functions within kFuncDatasetOps as well.
-constexpr std::array<const char*, 5> kFuncDatasetOps = {
+constexpr std::array<const char*, 6> kFuncDatasetOps = {
     "ExperimentalParallelInterleaveDataset",
     "FlatMapDataset",
     "InterleaveDataset",
     "ParallelInterleaveDataset",
-    "ParallelInterleaveDatasetV2"
+    "ParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3"
 };
 
 constexpr std::array<const char*, 5> kUnshardableSourceDatasetOps = {
