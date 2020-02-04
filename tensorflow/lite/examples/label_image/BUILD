@@ -43,7 +43,7 @@ cc_binary(
         ],
         "//tensorflow:android_arm64": [
             "//tensorflow/lite/delegates/gpu:gl_delegate",
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegte",
+            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
     }),
@@ -71,7 +71,7 @@ cc_library(
         ],
         "//tensorflow:android_arm64": [
             "//tensorflow/lite/delegates/gpu:gl_delegate",
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegte",
+            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
     }),
