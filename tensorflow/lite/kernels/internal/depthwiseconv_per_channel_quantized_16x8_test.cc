@@ -256,9 +256,8 @@ void TryTestOneDepthwiseConv3x3Filter() {
       output_shape_inference, output_multiplier.data(), output_shift.data(),
       reference_output_data.data());
 
-  // The following tests compare referene impl and Neon general impl agrees,
-  // and reference impl loosely agrees with fast kernel since they use different
-  // rounding strategy.
+  // The following tests compare reference impl for 16x8 version and
+  // float reference operator.
   reference_integer_ops::DepthwiseConvPerChannel(
       params, output_multiplier.data(), output_shift.data(),
       input_shape_inference, input_data.data(), filter_shape_inference,
