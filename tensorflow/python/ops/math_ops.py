@@ -2344,6 +2344,26 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
+  Usage example:
+
+  >>> x = tf.constant([5, 1, 2, 4])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(5, shape=(), dtype=int32)
+  >>> x = tf.constant([-5, -1, -2, -4])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(-1, shape=(), dtype=int32)
+  >>> x = tf.constant([4, float('nan')])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(4.0, shape=(), dtype=float32)
+  >>> x = tf.constant([float('nan'), float('nan')])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(-inf, shape=(), dtype=float32)
+  >>> x = tf.constant([float('-inf'), float('inf')])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(inf, shape=(), dtype=float32)
+
+  See the numpy docs for `np.amax` and `np.nanmax` behavior.
+
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
@@ -2354,10 +2374,6 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
 
   Returns:
     The reduced tensor.
-
-  @compatibility(numpy)
-  Equivalent to np.max
-  @end_compatibility
   """
   return reduce_max_with_dims(input_tensor, axis, keepdims, name,
                               _ReductionDims(input_tensor, axis))
