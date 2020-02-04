@@ -400,7 +400,7 @@ Status S3FileSystem::GetChildren(const string& dir,
   string bucket, prefix;
   TF_RETURN_IF_ERROR(ParseS3Path(dir, true, &bucket, &prefix));
 
-  if (prefix.back() != '/') {
+  if (prefix.empty() || prefix.back() != '/') {
     prefix.push_back('/');
   }
 
