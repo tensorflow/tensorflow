@@ -266,6 +266,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
   if (input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, weights->type, kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   } else {
     TF_LITE_ENSURE_EQ(context, weights->type, input->type);
   }

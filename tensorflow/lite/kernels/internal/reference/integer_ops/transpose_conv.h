@@ -113,6 +113,7 @@ inline void TransposeConv(
 }
 
 // int16 input, int8 filter, int64 accumulator
+// int16 activation with zero_point=0
 inline void TransposeConv(
     const ConvParams& params, const int32* output_multiplier,
     const int32* output_shift, const RuntimeShape& input_shape,
@@ -139,8 +140,6 @@ inline void TransposeConv(
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
-  const int32 input_offset = params.input_offset;
-  const int32 output_offset = params.output_offset;
   const int32 output_activation_min = std::numeric_limits<int16_t>::min();
   const int32 output_activation_max = std::numeric_limits<int16_t>::max();
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
@@ -175,7 +174,7 @@ inline void TransposeConv(
                                          filter_x, in_channel)];
                   scratch_buffer[Offset(output_shape, batch, out_y, out_x,
                                         out_channel)] +=
-                      (input_value + input_offset) * filter_value;
+                      input_value * filter_value;
                 }
               }
             }
@@ -193,7 +192,6 @@ inline void TransposeConv(
                                             out_channel)];
           int32 scaled_acc = MultiplyByQuantizedMultiplier(
               acc, output_multiplier[out_channel], output_shift[out_channel]);
-          scaled_acc += output_offset;
           scaled_acc = std::max(scaled_acc, output_activation_min);
           scaled_acc = std::min(scaled_acc, output_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
