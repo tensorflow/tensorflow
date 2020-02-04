@@ -11,6 +11,8 @@ import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/remote_tensor_handle.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+
 // A proto representation of an eager operation.
 message Operation {
   // A unique identifier for the operation. Set by the client so that the client
