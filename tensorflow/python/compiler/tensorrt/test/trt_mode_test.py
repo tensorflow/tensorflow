@@ -31,7 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class ImplicitBatchTest(trt_test.TfTrtIntegrationTestBase):
+class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
   """Test squeeze on batch dim and some unary operations in TF-TRT."""
 
   def GraphFn(self, x1):
@@ -57,23 +57,22 @@ class ImplicitBatchTest(trt_test.TfTrtIntegrationTestBase):
     return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
                             [[12, 5]])
 
-  def GetConversionParams(self, run_params, implicit_batch=True):
+  def GetConversionParams(self, run_params, implicit_batch):
     """Return a TrtConversionParams for test."""
-    conversion_params = trt_convert.TrtConversionParams(
-        rewriter_config_template=None,
-        max_workspace_size_bytes=1 << 25,
-        precision_mode=run_params.precision_mode,
-        minimum_segment_size=2,
-        is_dynamic_op=run_params.dynamic_engine,
-        maximum_cached_engines=1,
-        use_calibration=run_params.use_calibration,
-        max_batch_size=32)
+
+    conversion_params = super(TrtModeTestBase,
+                              self).GetConversionParams(run_params)
     rewriter_config = self.GetTrtRewriterConfig(
         run_params=run_params,
         conversion_params=conversion_params,
         use_implicit_batch=implicit_batch)
     return conversion_params._replace(
         rewriter_config_template=rewriter_config)
+
+class ImplicitBatchTest(TrtModeTestBase):
+  def GetConversionParams(self, run_params):
+    """Return a TrtConversionParams for test using implicit batch mdoe"""
+    return super(ImplicitBatchTest, self).GetConversionParams(run_params, True)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build.
@@ -84,7 +83,7 @@ class ImplicitBatchTest(trt_test.TfTrtIntegrationTestBase):
     """
     return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
-class ExplicitBatchTest(ImplicitBatchTest):
+class ExplicitBatchTest(TrtModeTestBase):
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch """
     return super(ExplicitBatchTest, self).GetConversionParams(run_params,
