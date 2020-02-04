@@ -25,16 +25,16 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util import compat
 
 TFIDF = "tf-idf"
@@ -48,7 +48,7 @@ _NUM_ELEMENTS_NAME = "num_elements"
 _IDF_NAME = "idf"
 
 
-class CategoricalEncoding(CombinerPreprocessingLayer):
+class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Categorical encoding layer.
 
   This layer provides options for condensing data into a categorical encoding.
@@ -76,7 +76,7 @@ class CategoricalEncoding(CombinerPreprocessingLayer):
     layer_utils.validate_string_arg(
         output_mode,
         allowable_strings=(COUNT, BINARY, TFIDF),
-        layer_name="Vectorize",
+        layer_name="CategoricalEncoding",
         arg_name="output_mode")
 
     # If max_tokens is set, the value must be greater than 1 - otherwise we
@@ -215,6 +215,12 @@ class CategoricalEncoding(CombinerPreprocessingLayer):
     else:
       out_depth = self._max_tokens
 
+    # If the input is a sparse tensor, we densify it with the default value of
+    # -1. Because -1 is ignored by one_hot, this effectively drops the non-set
+    # positions from the output encoding.
+    if isinstance(inputs, sparse_tensor.SparseTensor):
+      inputs = sparse_ops.sparse_tensor_to_dense(inputs, default_value=-1)
+
     if self._output_mode == BINARY:
       bool_one_hot_data = array_ops.one_hot(
           inputs, depth=out_depth, on_value=True, off_value=False)
@@ -239,7 +245,7 @@ class CategoricalEncoding(CombinerPreprocessingLayer):
     raise ValueError("Unknown output mode %s" % self._output_mode)
 
 
-class _CategoricalEncodingCombiner(Combiner):
+class _CategoricalEncodingCombiner(base_preprocessing_layer.Combiner):
   """Combiner for the CategoricalEncoding preprocessing layer.
 
   This class encapsulates the logic for computing the number of elements in the
@@ -263,12 +269,7 @@ class _CategoricalEncodingCombiner(Combiner):
 
   def compute(self, values, accumulator=None):
     """Computes a step in this computation, returning a new accumulator."""
-    if ragged_tensor.is_ragged(values):
-      values = values.to_list()
-    if isinstance(values, ops.EagerTensor):
-      values = values.numpy()
-    if isinstance(values, np.ndarray):
-      values = values.tolist()
+    values = base_preprocessing_layer.convert_to_list(values)
 
     if accumulator is None:
       accumulator = self._create_accumulator()
