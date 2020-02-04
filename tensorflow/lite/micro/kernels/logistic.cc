@@ -39,22 +39,45 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  switch (input->type) {
-    case kTfLiteFloat32: {
-      reference_ops::Logistic(
-          GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<float>(output));
-      return kTfLiteOk;
+  if (input->type == kTfLiteFloat32) {
+    switch (output->type) {
+      case kTfLiteFloat32: {
+        reference_ops::Logistic(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+        return kTfLiteOk;
+      }
+      default:
+        context->ReportError(context, "Input %s, output %s not supported.",
+                             TfLiteTypeGetName(input->type),
+                             TfLiteTypeGetName(output->type));
+        return kTfLiteError;
     }
-    default: {
-      // TODO(b/141211002): Also support other data types once we have supported
-      // temporary tensors in TFLM.
-      context->ReportError(context,
-                           "Only float32 is supported currently, got %s",
-                           TfLiteTypeGetName(input->type));
-      return kTfLiteError;
+  } else if (input->type == kTfLiteInt8) {
+    switch (output->type) {
+      case kTfLiteInt8: {
+        reference_ops::Logistic(
+            GetTensorShape(input), GetTensorData<int8_t>(input),
+            input->params.scale, input->params.zero_point,
+            GetTensorShape(output), GetTensorData<int8_t>(output),
+            output->params.scale, output->params.zero_point);
+        return kTfLiteOk;
+      }
+      default:
+        context->ReportError(context, "Input %s, output %s not supported.",
+                             TfLiteTypeGetName(input->type),
+                             TfLiteTypeGetName(output->type));
+        return kTfLiteError;
     }
+  } else {
+    // TODO(b/141211002): Also support other data types once we have supported
+    // temporary tensors in TFLM.
+    context->ReportError(context, "Input %s, output %s not supported.",
+                         TfLiteTypeGetName(input->type),
+                         TfLiteTypeGetName(output->type));
+    return kTfLiteError;
   }
+  return kTfLiteOk;
 }
 
 }  // namespace activations
