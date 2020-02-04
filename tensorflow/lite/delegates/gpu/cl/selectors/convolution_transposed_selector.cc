@@ -103,6 +103,7 @@ Status SelectConvolutionTransposed(const ConvolutionTransposedAttributes& attr,
                                                ptr);
     case Vendor::POWERVR:
     case Vendor::NVIDIA:
+    case Vendor::AMD:
       return SelectConvolutionTransposedPowerVR(attr, creation_context, op_def,
                                                 ptr);
     case Vendor::MALI:
