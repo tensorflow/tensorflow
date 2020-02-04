@@ -26,9 +26,11 @@ package_group(
 filegroup(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
+        "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
     ],
 )
 
@@ -47,6 +49,17 @@ gentbl(
             "-gen-op-doc",
             "g3doc/tfl_ops.md",
         ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "tensorflow_lite_op_interfaces_inc_gen",
+    tbl_outs = [
         (
             "-gen-op-interface-decls",
             "ir/tfl_ops_interface.h.inc",
@@ -57,7 +70,7 @@ gentbl(
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/tfl_ops.td",
+    td_file = "ir/tfl_op_interfaces.td",
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
     ],
@@ -199,8 +212,6 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/lite/schema:schema_fbs",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
@@ -209,6 +220,10 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        # TODO(jpienaar): Move this out after splitting out LoopLikeOpInterface.
+        "@llvm-project//mlir:Transforms",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
     alwayslink = 1,
 )
@@ -387,6 +402,8 @@ genrule(
     name = "op_quant_spec_getters_inc",
     srcs = [
         "ir/tfl_ops.td",
+        "ir/tfl_op_interfaces.td",
+        "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
     outs = [

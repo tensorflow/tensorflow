@@ -199,14 +199,16 @@ std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
 bool Environment::IsSupported(TensorStorageType storage_type) const {
   switch (storage_type) {
     case TensorStorageType::TEXTURE_2D:
+      return !device_.IsAMD();
     case TensorStorageType::BUFFER:
       return true;
     case TensorStorageType::TEXTURE_ARRAY:
-      return device_.SupportsTextureArray();
+      return !device_.IsAMD() && device_.SupportsTextureArray();
     case TensorStorageType::IMAGE_BUFFER:
-      return device_.IsAdreno() && device_.SupportsImageBuffer();
+      return (device_.IsAdreno() || device_.IsAMD()) &&
+             device_.SupportsImageBuffer();
     case TensorStorageType::TEXTURE_3D:
-      return device_.SupportsImage3D();
+      return !device_.IsAMD() && device_.SupportsImage3D();
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return false;
     case TensorStorageType::UNKNOWN:
@@ -226,6 +228,9 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
     return TensorStorageType::TEXTURE_2D;
   } else if (gpu.IsMali()) {
     return TensorStorageType::BUFFER;
+  } else if (gpu.IsAMD()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
   }
   return TensorStorageType::BUFFER;
 }

@@ -100,6 +100,30 @@ def _convert(converter, **kwargs):
   return converter.convert()
 
 
+def _get_tflite_interpreter(tflite_model, input_shapes_resize=None):
+  """Creates a TFLite interpreter with resized input tensors.
+
+  Args:
+    tflite_model: Serialized TensorFlow Lite model.
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
+
+  Returns:
+    lite.Interpreter
+  """
+  interpreter = _lite.Interpreter(model_content=tflite_model)
+  if input_shapes_resize:
+    input_details = interpreter.get_input_details()
+    input_details_map = {
+        detail["name"]: detail["index"] for detail in input_details
+    }
+    for name, shape in input_shapes_resize.items():
+      idx = input_details_map[name]
+      interpreter.resize_tensor_input(idx, shape)
+  return interpreter
+
+
 def _get_input_data_map(tflite_model, input_data):
   """Generates a map of input data based on the TFLite model.
 
@@ -110,7 +134,7 @@ def _get_input_data_map(tflite_model, input_data):
   Returns:
     {str: [np.ndarray]}.
   """
-  interpreter = _lite.Interpreter(model_content=tflite_model)
+  interpreter = _get_tflite_interpreter(tflite_model)
   interpreter.allocate_tensors()
   input_details = interpreter.get_input_details()
   return {
@@ -119,7 +143,10 @@ def _get_input_data_map(tflite_model, input_data):
   }
 
 
-def _generate_random_input_data(tflite_model, seed=None, input_data_range=None):
+def _generate_random_input_data(tflite_model,
+                                seed=None,
+                                input_data_range=None,
+                                input_shapes_resize=None):
   """Generates input data based on the input tensors in the TFLite model.
 
   Args:
@@ -130,11 +157,14 @@ def _generate_random_input_data(tflite_model, seed=None, input_data_range=None):
       the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
       generate a random value for tensor `input1` within range [1.0, 5.0)
       (half-inclusive). (default None)
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
 
   Returns:
     ([np.ndarray], {str : [np.ndarray]}).
   """
-  interpreter = _lite.Interpreter(model_content=tflite_model)
+  interpreter = _get_tflite_interpreter(tflite_model, input_shapes_resize)
   interpreter.allocate_tensors()
   input_details = interpreter.get_input_details()
 
@@ -158,17 +188,20 @@ def _generate_random_input_data(tflite_model, seed=None, input_data_range=None):
   return input_data, input_data_map
 
 
-def _evaluate_tflite_model(tflite_model, input_data):
+def _evaluate_tflite_model(tflite_model, input_data, input_shapes_resize=None):
   """Returns evaluation of input data on TFLite model.
 
   Args:
     tflite_model: Serialized TensorFlow Lite model.
     input_data: List of np.ndarray.
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
 
   Returns:
     List of np.ndarray.
   """
-  interpreter = _lite.Interpreter(model_content=tflite_model)
+  interpreter = _get_tflite_interpreter(tflite_model, input_shapes_resize)
   interpreter.allocate_tensors()
 
   input_details = interpreter.get_input_details()
@@ -265,6 +298,7 @@ def evaluate_keras_model(filename):
 
 def compare_models(tflite_model,
                    tf_eval_func,
+                   input_shapes_resize=None,
                    input_data=None,
                    input_data_range=None,
                    tolerance=5):
@@ -276,6 +310,9 @@ def compare_models(tflite_model,
     tflite_model: Serialized TensorFlow Lite model.
     tf_eval_func: Lambda function that takes in input data and outputs the
       results of the TensorFlow model ([np.ndarray data] : [np.ndarray result]).
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
     input_data: np.ndarray to pass into models during inference. (default None)
     input_data_range: A map where the key is the input tensor name and
       the value is a tuple (min_val, max_val) which specifies the value range of
@@ -286,9 +323,12 @@ def compare_models(tflite_model,
   """
   if input_data is None:
     input_data, _ = _generate_random_input_data(
-        tflite_model=tflite_model, input_data_range=input_data_range)
+        tflite_model=tflite_model,
+        input_data_range=input_data_range,
+        input_shapes_resize=input_shapes_resize)
   tf_results = tf_eval_func(input_data)
-  tflite_results, _ = _evaluate_tflite_model(tflite_model, input_data)
+  tflite_results, _ = _evaluate_tflite_model(
+      tflite_model, input_data, input_shapes_resize=input_shapes_resize)
   for tf_result, tflite_result in zip(tf_results, tflite_results):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
 
@@ -337,7 +377,7 @@ def compare_models_v2(tflite_model,
   # Convert the output TensorFlow results into an ordered list.
   if isinstance(tf_results, dict):
     if len(tf_results) == 1:
-      tf_results = [tf_results[tf_results.keys()[0]]]
+      tf_results = [tf_results[list(tf_results.keys())[0]]]
     else:
       tf_results = [tf_results[tflite_label] for tflite_label in tflite_labels]
 
@@ -376,7 +416,7 @@ def test_frozen_graph_quant(filename,
       filename, input_arrays, output_arrays, input_shapes)
   tflite_model_float = _convert(converter, **kwargs)
 
-  interpreter_float = _lite.Interpreter(model_content=tflite_model_float)
+  interpreter_float = _get_tflite_interpreter(tflite_model_float)
   interpreter_float.allocate_tensors()
   float_tensors = interpreter_float.get_tensor_details()
 
@@ -386,7 +426,7 @@ def test_frozen_graph_quant(filename,
   tflite_model_quant = _convert(
       converter, post_training_quantize=True, **kwargs)
 
-  interpreter_quant = _lite.Interpreter(model_content=tflite_model_quant)
+  interpreter_quant = _get_tflite_interpreter(tflite_model_quant)
   interpreter_quant.allocate_tensors()
   quant_tensors = interpreter_quant.get_tensor_details()
   quant_tensors_map = {
@@ -417,6 +457,7 @@ def test_frozen_graph(filename,
                       input_arrays,
                       output_arrays,
                       input_shapes=None,
+                      input_shapes_resize=None,
                       input_data=None,
                       input_data_range=None,
                       **kwargs):
@@ -433,6 +474,9 @@ def test_frozen_graph(filename,
       integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
       Automatically determined when input shapes is None (e.g., {"foo" : None}).
         (default None)
+    input_shapes_resize: A map where the key is the input tensor name and the
+      value is the shape of the input tensor. This resize happens after model
+      conversion, prior to calling allocate tensors. (default None)
     input_data: np.ndarray to pass into models during inference. (default None).
     input_data_range: A map where the key is the input tensor name and
       the value is a tuple (min_val, max_val) which specifies the value range of
@@ -449,6 +493,7 @@ def test_frozen_graph(filename,
   compare_models(
       tflite_model,
       tf_eval_func,
+      input_shapes_resize=input_shapes_resize,
       input_data=input_data,
       input_data_range=input_data_range)
 
@@ -542,7 +587,7 @@ def test_saved_model_v2_quant_float16(directory, **kwargs):
   converter = _lite.TFLiteConverterV2.from_saved_model(directory)
   tflite_model_float = _convert(converter, version=2, **kwargs)
 
-  interpreter_float = _lite.Interpreter(model_content=tflite_model_float)
+  interpreter_float = _get_tflite_interpreter(tflite_model_float)
   interpreter_float.allocate_tensors()
   float_tensors = interpreter_float.get_tensor_details()
 
@@ -553,7 +598,7 @@ def test_saved_model_v2_quant_float16(directory, **kwargs):
       quantize_to_float16=True,
       **kwargs)
 
-  interpreter_quant = _lite.Interpreter(model_content=tflite_model_quant)
+  interpreter_quant = _get_tflite_interpreter(tflite_model_quant)
   interpreter_quant.allocate_tensors()
   quant_tensors = interpreter_quant.get_tensor_details()
   quant_tensors_map = {

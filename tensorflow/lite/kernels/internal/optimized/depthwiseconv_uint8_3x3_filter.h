@@ -5791,7 +5791,8 @@ struct WorkspacePrefetchWrite<
 // Dot product ops hard-coded
 
 template <>
-struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
+struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                       QuantizationType::kNonPerChannelUint8> {
   static inline void ProcessPerDepthNeon(
       const uint8* filter_data, const int32* bias_data,
       int8* shuffled_filter_data, int32* adjusted_bias_data,
@@ -5908,6 +5909,7 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
 
 template <>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                      QuantizationType::kNonPerChannelUint8,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
                       /*max_padding=*/0> {
   static inline void PackMacroBlockNeon(
@@ -6128,6 +6130,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
 template <>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                      QuantizationType::kNonPerChannelUint8,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
                       /*max_padding=*/1> {
   static inline void PackMacroBlockNeon(
@@ -6545,6 +6548,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
 template <>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                      QuantizationType::kNonPerChannelUint8,
                       DepthwiseConvDepthMultiplication::kUnitInputDepth,
                       /*max_padding=*/1> {
   static inline void PackMacroBlockNeon(
@@ -6931,6 +6935,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
 template <>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                      QuantizationType::kNonPerChannelUint8,
                       DepthwiseConvDepthMultiplication::kUnitInputDepth,
                       /*max_padding=*/0> {
   static inline void PackMacroBlockNeon(
@@ -7164,6 +7169,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
 template <>
 struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                        QuantizationType::kNonPerChannelUint8,
                         DepthwiseConvDepthMultiplication::kNoMultiplication,
                         /*stride=*/1> {
   static inline void KernelMacroBlockNeon(
@@ -7977,6 +7983,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
 template <>
 struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                        QuantizationType::kNonPerChannelUint8,
                         DepthwiseConvDepthMultiplication::kNoMultiplication,
                         /*stride=*/2> {
   static inline void KernelMacroBlockNeon(
@@ -8677,6 +8684,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
 template <>
 struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                        QuantizationType::kNonPerChannelUint8,
                         DepthwiseConvDepthMultiplication::kUnitInputDepth,
                         /*stride=*/1> {
   static inline void KernelMacroBlockNeon(
@@ -9361,6 +9369,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
 template <>
 struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
+                        QuantizationType::kNonPerChannelUint8,
                         DepthwiseConvDepthMultiplication::kUnitInputDepth,
                         /*stride=*/2> {
   static inline void KernelMacroBlockNeon(
@@ -9865,18 +9874,25 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 // The height and depth overlap by (filter_size - 1). Thus some data is used
 // twice on the borders of macro blocks.
 //
-template <DepthwiseConvImplementation implementation>
-inline void DepthwiseConvDotProduct3x3(
+template <DepthwiseConvImplementation implementation,
+          QuantizationType quantization_type>
+inline void DepthwiseConvDotProduct3x3Impl(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        input_data,
+    const RuntimeShape& filter_shape,
+    const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+        filter_data,
+    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& output_shape,
+    typename QuantizationTypeImpl<quantization_type>::ExternalType* output_data,
+    int thread_start, int thread_end, int thread_dim) {
   // Check kernel restrictions.
   constexpr int filter_size = 3;
   constexpr int kMaxStride = 2;
   constexpr int kMaxPadding = 1;
-  constexpr int kSymmetricZeroPoint = 128;
+  constexpr int kSymmetricZeroPoint =
+      QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
   TFLITE_DCHECK_EQ(params.weights_offset, -kSymmetricZeroPoint);
   TFLITE_DCHECK_LE(params.stride_width, kMaxStride);
   TFLITE_DCHECK_EQ(params.stride_height, params.stride_width);
@@ -10023,11 +10039,11 @@ inline void DepthwiseConvDotProduct3x3(
   // understand striding, and implicitly handles striding through the parameters
   // that it is given.
   using pack_macro_block_func_t = decltype(
-      &PackMacroBlock<implementation,
+      &PackMacroBlock<implementation, quantization_type,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
                       0>::Run);
   using kernel_macro_block_func_t = decltype(
-      &KernelMacroBlock<implementation,
+      &KernelMacroBlock<implementation, quantization_type,
                         DepthwiseConvDepthMultiplication::kNoMultiplication,
                         1>::Run);
   pack_macro_block_func_t pack_macro_block_func;
@@ -10036,45 +10052,47 @@ inline void DepthwiseConvDotProduct3x3(
     if (has_depth_multiplication) {
       if (padding_required) {
         pack_macro_block_func =
-            PackMacroBlock<implementation,
+            PackMacroBlock<implementation, quantization_type,
                            DepthwiseConvDepthMultiplication::kUnitInputDepth,
                            /*max_padding=*/1>::Run;
       } else {
         pack_macro_block_func =
-            PackMacroBlock<implementation,
+            PackMacroBlock<implementation, quantization_type,
                            DepthwiseConvDepthMultiplication::kUnitInputDepth,
                            /*max_padding=*/0>::Run;
       }
       if (stride == 1) {
         kernel_macro_block_func =
-            KernelMacroBlock<implementation,
+            KernelMacroBlock<implementation, quantization_type,
                              DepthwiseConvDepthMultiplication::kUnitInputDepth,
                              /*stride=*/1>::Run;
       } else {
         kernel_macro_block_func =
-            KernelMacroBlock<implementation,
+            KernelMacroBlock<implementation, quantization_type,
                              DepthwiseConvDepthMultiplication::kUnitInputDepth,
                              /*stride=*/2>::Run;
       }
     } else {
       if (padding_required) {
         pack_macro_block_func =
-            PackMacroBlock<implementation,
+            PackMacroBlock<implementation, quantization_type,
                            DepthwiseConvDepthMultiplication::kNoMultiplication,
                            /*max_padding=*/1>::Run;
       } else {
         pack_macro_block_func =
-            PackMacroBlock<implementation,
+            PackMacroBlock<implementation, quantization_type,
                            DepthwiseConvDepthMultiplication::kNoMultiplication,
                            /*max_padding=*/0>::Run;
       }
       if (stride == 1) {
         kernel_macro_block_func = KernelMacroBlock<
-            implementation, DepthwiseConvDepthMultiplication::kNoMultiplication,
+            implementation, quantization_type,
+            DepthwiseConvDepthMultiplication::kNoMultiplication,
             /*stride=*/1>::Run;
       } else {
         kernel_macro_block_func = KernelMacroBlock<
-            implementation, DepthwiseConvDepthMultiplication::kNoMultiplication,
+            implementation, quantization_type,
+            DepthwiseConvDepthMultiplication::kNoMultiplication,
             /*stride=*/2>::Run;
       }
     }
@@ -10300,26 +10318,36 @@ inline void DepthwiseConvDotProduct3x3(
               : function_params.output_width_micro_repeats + 1;
 
       for (int j_depth = 0; j_depth < depth_overall_macro_count; ++j_depth) {
+        if (quantization_type == QuantizationType::kPerChannelInt8) {
+          // Each macro block handles depth of 64 (8 micro). The kernel
+          // functions receive pointers to quantization data for the block being
+          // processed.
+          function_params.output_multiplier_per_channel =
+              params.output_multiplier_per_channel + 64 * j_depth;
+          function_params.output_shift_per_channel =
+              params.output_shift_per_channel + 64 * j_depth;
+        }
         // Process filter and bias data.
         //
         function_params.depth_micro_repeats =
             j_depth == depth_macro_count ? depth_trailing_micro_repeats : 8;
-        ProcessPerDepth<implementation>::Run(
+        ProcessPerDepth<implementation, quantization_type>::Run(
             filter_data + 64 * j_depth,
             bias_data + 8 * 2 * bias_increment * j_depth,
             filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
 
-        const uint8* input_data_block =
-            input_data + b * input_batch_stride +
-            j_depth * input_depth_macro_stride +
-            k_width * input_width_macro_stride -
-            function_params.padding_left * input_depth +
-            row_start * stride * input_height_stride -
-            full_padding_top * input_height_stride;
-        uint8* output_data_block = output_data + b * output_batch_stride +
-                                   row_start * output_height_stride +
-                                   j_depth * 64 +
-                                   k_width * output_width_macro_stride;
+        const typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            input_data_block = input_data + b * input_batch_stride +
+                               j_depth * input_depth_macro_stride +
+                               k_width * input_width_macro_stride -
+                               function_params.padding_left * input_depth +
+                               row_start * stride * input_height_stride -
+                               full_padding_top * input_height_stride;
+        typename QuantizationTypeImpl<quantization_type>::ExternalType*
+            output_data_block =
+                output_data + b * output_batch_stride +
+                row_start * output_height_stride + j_depth * 64 +
+                k_width * output_width_macro_stride;
 
         // Under depth multiplication the workspace_height_stride does not have
         // to depend on input_width_overall_micro_repeats, but this improves the
@@ -10383,6 +10411,20 @@ inline void DepthwiseConvDotProduct3x3(
       }
     }
   }
+}
+
+template <DepthwiseConvImplementation implementation>
+inline void DepthwiseConvDotProduct3x3(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+  DepthwiseConvDotProduct3x3Impl<
+      implementation, depthwise_conv::QuantizationType::kNonPerChannelUint8>(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data, thread_start, thread_end,
+      thread_dim);
 }
 
 #undef vst1_lane_8x4

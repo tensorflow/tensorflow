@@ -42,6 +42,78 @@ TEST(XPlaneUtilsTest, IsNestedTest) {
   EXPECT_FALSE(IsNested(event, not_parent));
 }
 
+TEST(XPlaneUtilsTest, RemovePlaneWithName) {
+  XSpace space;
+  RemovePlaneWithName(&space, "non-exist");
+  EXPECT_EQ(space.planes_size(), 0);
+
+  space.add_planes()->set_name("p1");
+  space.add_planes()->set_name("p2");
+  space.add_planes()->set_name("p3");
+  RemovePlaneWithName(&space, "non-exist");
+  EXPECT_EQ(space.planes_size(), 3);
+  RemovePlaneWithName(&space, "p2");
+  EXPECT_EQ(space.planes_size(), 2);
+  RemovePlaneWithName(&space, "p1");
+  EXPECT_EQ(space.planes_size(), 1);
+  RemovePlaneWithName(&space, "p1");
+  EXPECT_EQ(space.planes_size(), 1);
+  RemovePlaneWithName(&space, "p3");
+  EXPECT_EQ(space.planes_size(), 0);
+}
+
+TEST(XPlaneUtilsTest, RemoveEmptyPlanes) {
+  XSpace space;
+  RemoveEmptyPlanes(&space);
+  EXPECT_EQ(space.planes_size(), 0);
+
+  auto* plane1 = space.add_planes();
+  plane1->set_name("p1");
+  plane1->add_lines()->set_name("p1l1");
+  plane1->add_lines()->set_name("p1l2");
+
+  auto* plane2 = space.add_planes();
+  plane2->set_name("p2");
+
+  auto* plane3 = space.add_planes();
+  plane3->set_name("p3");
+  plane3->add_lines()->set_name("p3l1");
+
+  auto* plane4 = space.add_planes();
+  plane4->set_name("p4");
+
+  RemoveEmptyPlanes(&space);
+  ASSERT_EQ(space.planes_size(), 2);
+  EXPECT_EQ(space.planes(0).name(), "p1");
+  EXPECT_EQ(space.planes(1).name(), "p3");
+}
+
+TEST(XPlaneUtilsTest, RemoveEmptyLines) {
+  XPlane plane;
+  RemoveEmptyLines(&plane);
+  EXPECT_EQ(plane.lines_size(), 0);
+
+  auto* line1 = plane.add_lines();
+  line1->set_name("l1");
+  line1->add_events();
+  line1->add_events();
+
+  auto* line2 = plane.add_lines();
+  line2->set_name("l2");
+
+  auto* line3 = plane.add_lines();
+  line3->set_name("l3");
+  line3->add_events();
+
+  auto* line4 = plane.add_lines();
+  line4->set_name("l4");
+
+  RemoveEmptyLines(&plane);
+  ASSERT_EQ(plane.lines_size(), 2);
+  EXPECT_EQ(plane.lines(0).name(), "l1");
+  EXPECT_EQ(plane.lines(1).name(), "l3");
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

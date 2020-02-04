@@ -652,8 +652,12 @@ class BatchNormalizationBase(Layer):
 
     return (r, d, out_mean, out_variance)
 
+  def _calculate_mean_and_var(self, inputs, reduction_axes, keep_dims):
+    return nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+
   def _moments(self, inputs, reduction_axes, keep_dims):
-    mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+    mean, variance = self._calculate_mean_and_var(inputs, reduction_axes,
+                                                  keep_dims)
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
     if self._support_zero_size_input():

@@ -608,6 +608,8 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
           // Convert TF_OperationGetAttrInt int64_t* out-argument to Python
           // bool.
+          // Acquire GIL for returning output returning.
+          pybind11::gil_scoped_acquire acquire;
           return tensorflow::pyo(PyLong_FromLongLong(value));
         });
 
@@ -703,10 +705,8 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       [](const char* library_filename) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
-        // Release GIL.
-        py::gil_scoped_release release;
         auto output = TF_LoadLibrary(library_filename, status.get());
-        tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         return output;
       },
       py::return_value_policy::reference);
@@ -796,20 +796,19 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       py::return_value_policy::reference);
 
   // Python needs to own deletion of outputs
-  m.def(
-      "TF_ImportGraphDefResultsReturnOutputs",
-      [](TF_ImportGraphDefResults* results) {
-        int num_outputs;
-        TF_Output* outputs;
-        TF_ImportGraphDefResultsReturnOutputs(results, &num_outputs, &outputs);
-        py::list py_list;
-        for (int i = 0; i < num_outputs; ++i) {
-          TF_Output* tf_output_ptr = new TF_Output(outputs[i]);
-          py_list.append(tf_output_ptr);
-        }
-        return py_list;
-      },
-      py::return_value_policy::move);
+  m.def("TF_ImportGraphDefResultsReturnOutputs",
+        [](TF_ImportGraphDefResults* results) {
+          int num_outputs;
+          TF_Output* outputs;
+          TF_ImportGraphDefResultsReturnOutputs(results, &num_outputs,
+                                                &outputs);
+          py::list py_list;
+          for (int i = 0; i < num_outputs; ++i) {
+            TF_Output tf_output = TF_Output(outputs[i]);
+            py_list.append(tf_output);
+          }
+          return py_list;
+        });
 
   m.def(
       "TF_ImportGraphDefResultsReturnOperations",

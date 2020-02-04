@@ -212,6 +212,16 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     with self.assertRaises(TypeError):
       values.select_replica_mirrored(1, result)
 
+  def testRegroupKeepsDictBasedClass(self):
+    class DictBasedClass(dict):
+      """Dummy class inherited from a dict."""
+
+    result = values.regroup(
+        (DictBasedClass(a="a1", b="b1"), DictBasedClass(a="a2", b="b2")))
+    self.assertIsInstance(result, DictBasedClass)
+    self._is_per_replica(result["a"], ["a1", "a2"])
+    self._is_per_replica(result["b"], ["b1", "b2"])
+
   def testWrapClass(self):
     # Normally a mirrored value would be the same across devices, but
     # for a test it is convenient to be able to tell the values apart.

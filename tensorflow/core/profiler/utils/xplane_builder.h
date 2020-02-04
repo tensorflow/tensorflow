@@ -92,6 +92,9 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   XEventBuilder(const XLine* line, XEvent* event)
       : XStatsBuilder<XEvent>(event), line_(line), event_(event) {}
 
+  int64 OffsetPs() const { return event_->offset_ps(); }
+  int64 MetadataId() const { return event_->metadata_id(); }
+
   void SetOffsetPs(int64 offset_ps) { event_->set_offset_ps(offset_ps); }
 
   void SetOffsetNs(int64 offset_ns) { SetOffsetPs(NanosToPicos(offset_ns)); }

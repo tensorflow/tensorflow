@@ -82,7 +82,7 @@ using EventGroupNameMap = absl::flat_hash_map<int64 /*group_id*/, std::string>;
 
 // Creates an EventNode for each event in event_node_map and connect events
 // according to the nesting relationship within the thread.
-void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* host_trace,
+void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* plane,
                         EventNodeMap* event_node_map);
 
 // Connects events across threads according to connect_info_list.
@@ -97,19 +97,16 @@ void CreateEventGroup(const std::vector<int64 /*EventType*/>& root_event_types,
                       const EventNodeMap& event_node_map,
                       EventGroupNameMap* event_group_name_map);
 
-// Groups events in host_trace and device_traces using the nesting relationship
-// within the same thread and connect_info_list across threads, and populates
-// event_group_name_map.
+// Groups events in space using the nesting relationship within the same thread
+// and connect_info_list across threads, and populates event_group_name_map if
+// not nullptr.
 void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
-                 const std::vector<int64>& root_event_types, XPlane* host_trace,
-                 const std::vector<XPlane*>& device_traces,
+                 const std::vector<int64>& root_event_types, XSpace* space,
                  EventGroupNameMap* event_group_name_map);
 
 // Calls GroupEvents with connect_info_list and root_event_types specific to
 // TensorFlow.
-void GroupTfEvents(XPlane* host_trace,
-                   const std::vector<XPlane*>& device_traces,
-                   EventGroupNameMap* event_group_name_map);
+void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map);
 
 }  // namespace profiler
 }  // namespace tensorflow

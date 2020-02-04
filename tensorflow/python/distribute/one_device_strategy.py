@@ -253,17 +253,17 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     worker_device_pairs = [(self._input_device, [self._device])]
     self._input_workers = input_lib.InputWorkers(worker_device_pairs)
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       with ops.device(self._device):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
     else:
       with ops.colocate_with(colocate_with):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)

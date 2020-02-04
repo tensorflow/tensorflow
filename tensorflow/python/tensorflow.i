@@ -17,10 +17,11 @@ limitations under the License.
  * The includes are intentionally not alphabetically sorted, as the order of
  * includes follows dependency order */
 
-%include "tensorflow/python/grappler/cluster.i"
-%include "tensorflow/python/grappler/item.i"
-%include "tensorflow/python/grappler/tf_optimizer.i"
-%include "tensorflow/python/grappler/cost_analyzer.i"
+%include "tensorflow/python/platform/base.i"
+
+%{
+#include "tensorflow/core/lib/core/status.h"
+%}
 
 // TODO(slebedev): This is a temporary workaround for projects implicitly
 // relying on TensorFlow exposing tensorflow::Status.

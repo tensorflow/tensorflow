@@ -256,6 +256,7 @@ cc_library(
         "transforms/sink_constant.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tpu_cluster_formation.cc",
+        "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",

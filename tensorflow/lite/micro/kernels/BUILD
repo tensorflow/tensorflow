@@ -40,6 +40,7 @@ cc_library(
         "pooling.cc",
         "prelu.cc",
         "quantize.cc",
+        "reduce.cc",
         "reshape.cc",
         "round.cc",
         "softmax.cc",
@@ -109,6 +110,7 @@ cc_library(
         "portable_optimized/depthwise_conv.cc",
         "prelu.cc",
         "quantize.cc",
+        "reduce.cc",
         "reshape.cc",
         "round.cc",
         "softmax.cc",
@@ -570,6 +572,18 @@ tflite_micro_cc_test(
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "reduce_test",
+    srcs = [
+        "reduce_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

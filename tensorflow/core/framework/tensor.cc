@@ -1015,6 +1015,10 @@ inline float PrintOneElement(const Eigen::half& h, bool print_v2) {
   return static_cast<float>(h);
 }
 
+inline float PrintOneElement(bfloat16 f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
@@ -1156,6 +1160,9 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
   }
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
+    case DT_BFLOAT16:
+      return SummarizeArray<bfloat16>(limit, num_elts, shape_, data, print_v2);
+      break;
     case DT_HALF:
       return SummarizeArray<Eigen::half>(limit, num_elts, shape_, data,
                                          print_v2);

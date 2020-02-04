@@ -347,6 +347,7 @@ pybind_extension(
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:platform",
     ] + select({
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
         "//conditions:default": [],

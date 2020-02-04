@@ -197,7 +197,16 @@ def get_pybind_export_symbols(symbols_file, lib_paths_file):
   for lib in lib_paths:
     if lib:
       for cc_lib in symbols:  # keys in symbols = cc_library target name
-        if cc_lib in lib:
+        path_to_lib = cc_lib.split("/")
+        cc_target = path_to_lib[-1]
+        # if `len(path_to_lib)` is larger than 1, that means, we are given one
+        # or more parent directory of the target. e.g. `[foo/bar]` instead of
+        # just the target name `[bar]`.
+        if len(path_to_lib) > 1:
+          parent_dir = path_to_lib[0]
+        else:
+          parent_dir = ""
+        if cc_target in lib and parent_dir in lib:
           symbols_all.extend(
             get_symbols(lib, "|".join(symbols[cc_lib])))
 

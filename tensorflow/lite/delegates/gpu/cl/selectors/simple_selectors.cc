@@ -43,13 +43,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
-                     const BHWC& mask_shape,
-                     std::unique_ptr<GPUOperation>* ptr) {
-  ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
-  *ptr = absl::make_unique<ApplyMask>(std::move(operation));
-}
-
 void SelectLSTM(const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr) {
   LSTM operation = CreateLSTM(op_def);

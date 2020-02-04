@@ -268,7 +268,7 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
 
   // Make sure the preset assignments is sane.
   EXPECT_EQ(preset_assignments->chunks().size(), 3);
-  EXPECT_EQ(preset_assignments->sizes().size(), 1);
+  EXPECT_EQ(preset_assignments->assignment_informations().size(), 1);
   // Ensure the offset assigned to add and sub are different.
   EXPECT_NE(preset_assignments->chunks()[0].second.offset,
             preset_assignments->chunks()[1].second.offset);

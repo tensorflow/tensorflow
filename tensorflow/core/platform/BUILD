@@ -85,6 +85,7 @@ exports_files(
         "mutex.h",
         "net.h",
         "numa.h",
+        "resource_loader.h",
         "snappy.h",
         "stacktrace_handler.h",
         "subprocess.h",
@@ -514,6 +515,13 @@ cc_library(
 )
 
 cc_library(
+    name = "resource_loader",
+    testonly = 1,
+    textual_hdrs = ["resource_loader.h"],
+    deps = tf_platform_deps("resource_loader"),
+)
+
+cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
     deps = tf_platform_deps("rocm_rocdl_path"),
@@ -896,12 +904,26 @@ tf_cc_test(
         "//tensorflow/core/platform/testdata:test_noop",
         "//tensorflow/core/platform/testdata:test_stderr",
     ],
-    tags = [
-        "no_windows",
-    ],
     deps = [
+        ":resource_loader",
         ":strcat",
         ":subprocess",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "resource_loader_test",
+    size = "small",
+    srcs = ["resource_loader_test.cc"],
+    data = [
+        ":resource_loader.h",
+    ],
+    deps = [
+        ":resource_loader",
+        ":status",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -936,7 +958,7 @@ tf_cc_test(
     srcs = ["platform_strings_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
-        "platform_strings",
+        ":platform_strings",
         "//tensorflow/core:lib",
     ],
 )

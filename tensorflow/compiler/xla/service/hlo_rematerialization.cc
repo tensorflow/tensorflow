@@ -412,7 +412,8 @@ class MemoryUsageTracker {
 
   // Returns the number of bytes that the current memory usage will be reduced
   // by if the given sequence of instructions is rematerialized.
-  int64 MemoryReducedIfRematerialized(const absl::Span<Item*>& items) const;
+  int64 MemoryReducedIfRematerialized(
+      absl::Span<const Item* const> items) const;
 
   Status AddCompressInstructions(Item* original_item, Item* compressed_item,
                                  Item* uncompressed_item);
@@ -433,6 +434,9 @@ class MemoryUsageTracker {
   bool IsPlaced(const HloInstruction* instruction) const {
     return instruction_list_.GetItem(instruction)->placed;
   }
+
+  // Returns whether 'item' has any unplaced users.
+  bool HasUnplacedUsers(Item* item) const;
 
   // Returns the current memory usage. This is the sum of sizes of all live
   // values.
@@ -827,12 +831,12 @@ int64 MemoryUsageTracker::MemoryReducedIfRematerialized(Item* item) const {
 }
 
 int64 MemoryUsageTracker::MemoryReducedIfRematerialized(
-    const absl::Span<Item*>& items) const {
+    absl::Span<const Item* const> items) const {
   CHECK_NE(in_progress_item_, nullptr);
   int64 memory_reduced = 0;
-  absl::flat_hash_set<Item*> remat_candidates;
+  absl::flat_hash_set<const Item*> remat_candidates;
 
-  for (Item* item : items) {
+  for (const Item* item : items) {
     if (!item->placed || item == in_progress_item_) {
       LOG(WARNING) << "Unplaced item or in progress item being checked for "
                       "rematerialization.";
@@ -1228,96 +1232,120 @@ MemoryUsageTracker::PickRematerializationCandidate(
   return {best_item, best_strategy};
 }
 
-StatusOr<int64> RematerializeInstruction(
-    MemoryUsageTracker* memory_tracker, Item* best_item,
-    absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
-    InstructionList* instruction_list) {
-  HloInstruction* best = best_item->instruction;
-  VLOG(1) << "Rematerializing instruction " << best->name() << " (saving "
-          << HumanReadableNumBytes(
-                 memory_tracker->MemoryReducedIfRematerialized(best_item))
-          << ")";
-
-  int64 net_instructions_added = 0;
-
-  HloComputation* computation = best->parent();
-
-  HloInstruction* remat =
-      computation->AddInstruction(best->Clone(/*suffix=*/"remat"));
-
-  // Add control dependencies to the new operation.
-  for (auto successor : best->control_successors()) {
-    TF_RETURN_IF_ERROR(remat->AddControlDependencyTo(successor));
-  }
-  for (auto predecessor : best->control_predecessors()) {
-    TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(remat));
-  }
-
-  Item* remat_item = instruction_list->CreateItem(remat);
-
-  // Replace each remaining use of 'best' with the rematerialization.
-  std::vector<HloInstruction*> best_users_copy = best->users();
-  for (HloInstruction* user : best_users_copy) {
-    if (!memory_tracker->IsPlaced(user)) {
-      VLOG(2) << "  Replacing use of " << best->name() << " in " << user->name()
-              << " with " << remat->name();
-      TF_RETURN_IF_ERROR(best->ReplaceUseWith(user, remat));
-    }
-  }
-
-  // Account for the rematerialization in the memory tracker.
-  TF_RETURN_IF_ERROR(
-      memory_tracker->AddRematerializedInstruction(best_item, remat_item));
-
-  // Insert rematerialized instruction right before the earliest unplaced
-  // use of the instruction *and* the earliest unplaced last use of any
-  // operands of remat. Unplaced uses of the remat's operands are included
-  // because we don't want to extend the live range of remat's operands as
-  // this could increase memory usage.
-  ItemList place_before;
-  for (auto user : remat->users()) {
-    place_before.push_back(instruction_list->GetItem(user));
-  }
-  for (auto* operand : remat->operands()) {
-    for (auto* operand_user : operand->users()) {
-      if (operand_user != remat) {
-        Item* operand_user_item = instruction_list->GetItem(operand_user);
-        if (!operand_user_item->placed) {
-          place_before.push_back(operand_user_item);
-        }
+bool MemoryUsageTracker::HasUnplacedUsers(Item* item) const {
+  for (BufferId buffer_id : item->buffers_defined) {
+    const Buffer& buffer = buffers_.at(buffer_id);
+    for (Item* user : buffer.users) {
+      if (!user->placed) {
+        return true;
       }
     }
   }
-  // Insert rematerialized instruction before any of its successors to
-  // preserve ordering regarding control dependency.
-  for (auto successor : remat->control_successors()) {
-    Item* successor_item = instruction_list->GetItem(successor);
-    // Assert to make sure we never remat an operation with control
-    // successor already placed.
-    CHECK(!successor_item->placed) << successor_item->instruction->name();
-    place_before.push_back(successor_item);
-  }
-  instruction_list->InsertBeforeInstructions(remat_item, place_before);
+  return false;
+}
 
-  // If the rematerialized instruction is dead then rematerialization is
-  // essentially a move. Don't delete the instruction now because we don't
-  // want duplicate HloInstruction* values during the course of the
-  // transformation because we keep maps with HloInstruction* values as
-  // keys.
-  if (best->users().empty()) {
-    VLOG(2) << best->name() << " is now dead";
-    if (ContainsKey(*remat_move_instructions, best)) {
-      // Previously, 'best' was a rematerialization which killed the
-      // instruction it was a copying of. Now 'remat' is a rematerialization
-      // of 'best' and kills 'best'. Stop rematerializing this instruction
-      // to avoid an infinite loop.
-      instruction_list->Blacklist(remat);
+StatusOr<int64> RematerializeInstructions(
+    MemoryUsageTracker* memory_tracker, std::vector<Item*>* best_items,
+    absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
+    InstructionList* instruction_list) {
+  int64 net_instructions_added = 0;
+  int64 total_memory_saved =
+      memory_tracker->MemoryReducedIfRematerialized(*best_items);
+  std::vector<string> instruction_names(best_items->size());
+  // Rematerialize the block of instructions in the reverse order to account for
+  // dependencies between instructions in best_items.
+  for (int i = best_items->size() - 1; i >= 0; --i) {
+    Item* best_item = (*best_items)[i];
+    HloInstruction* best = best_item->instruction;
+    instruction_names[i] = best->name();
+    HloComputation* computation = best->parent();
+
+    // If the item to remat has no unplaced users, then skip the
+    // rematerialization. Such an instruction can appear in best_items because
+    // it is part of a good block, but does not itself add any benefit.
+    if (!memory_tracker->HasUnplacedUsers(best_item)) {
+      continue;
     }
-    remat_move_instructions->insert(remat);
 
-  } else {
-    net_instructions_added++;
+    HloInstruction* remat =
+        computation->AddInstruction(best->Clone(/*suffix=*/"remat"));
+
+    // Add control dependencies to the new operation.
+    for (auto successor : best->control_successors()) {
+      TF_RETURN_IF_ERROR(remat->AddControlDependencyTo(successor));
+    }
+    for (auto predecessor : best->control_predecessors()) {
+      TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(remat));
+    }
+
+    Item* remat_item = instruction_list->CreateItem(remat);
+
+    // Replace each remaining use of 'best' with the rematerialization.
+    std::vector<HloInstruction*> best_users_copy = best->users();
+    for (HloInstruction* user : best_users_copy) {
+      if (!memory_tracker->IsPlaced(user)) {
+        VLOG(2) << "  Replacing use of " << best->name() << " in "
+                << user->name() << " with " << remat->name();
+        TF_RETURN_IF_ERROR(best->ReplaceUseWith(user, remat));
+      }
+    }
+
+    // Account for the rematerialization in the memory tracker.
+    TF_RETURN_IF_ERROR(
+        memory_tracker->AddRematerializedInstruction(best_item, remat_item));
+
+    // Insert rematerialized instruction right before the earliest unplaced
+    // use of the instruction *and* the earliest unplaced last use of any
+    // operands of remat. Unplaced uses of the remat's operands are included
+    // because we don't want to extend the live range of remat's operands as
+    // this could increase memory usage.
+    ItemList place_before;
+    for (auto user : remat->users()) {
+      place_before.push_back(instruction_list->GetItem(user));
+    }
+    for (auto* operand : remat->operands()) {
+      for (auto* operand_user : operand->users()) {
+        if (operand_user != remat) {
+          Item* operand_user_item = instruction_list->GetItem(operand_user);
+          if (!operand_user_item->placed) {
+            place_before.push_back(operand_user_item);
+          }
+        }
+      }
+    }
+    // Insert rematerialized instruction before any of its successors to
+    // preserve ordering regarding control dependency.
+    for (auto successor : remat->control_successors()) {
+      Item* successor_item = instruction_list->GetItem(successor);
+      // Assert to make sure we never remat an operation with control
+      // successor already placed.
+      CHECK(!successor_item->placed) << successor_item->instruction->name();
+      place_before.push_back(successor_item);
+    }
+    instruction_list->InsertBeforeInstructions(remat_item, place_before);
+
+    // If the rematerialized instruction is dead then rematerialization is
+    // essentially a move. Don't delete the instruction now because we don't
+    // want duplicate HloInstruction* values during the course of the
+    // transformation because we keep maps with HloInstruction* values as
+    // keys.
+    if (best->users().empty()) {
+      VLOG(2) << best->name() << " is now dead";
+      if (ContainsKey(*remat_move_instructions, best)) {
+        // Previously, 'best' was a rematerialization which killed the
+        // instruction it was a copying of. Now 'remat' is a rematerialization
+        // of 'best' and kills 'best'. Stop rematerializing this instruction
+        // to avoid an infinite loop.
+        instruction_list->Blacklist(remat);
+      }
+      remat_move_instructions->insert(remat);
+    } else {
+      net_instructions_added++;
+    }
   }
+  VLOG(1) << "Rematerializing instructions ["
+          << absl::StrJoin(instruction_names, ", ") << "] (saving "
+          << HumanReadableNumBytes(total_memory_saved) << ")";
   return net_instructions_added;
 }
 
@@ -1494,7 +1522,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
       changed = true;
       remat_count++;
 
-      int64 added_instruction = 0;
+      int64 num_instructions_added = 0;
       if (best_strategy.kind == RematStrategy::kCompress) {
         VLOG(1) << "Compressing instruction " << best->name() << " (saving "
                 << HumanReadableNumBytes(
@@ -1502,7 +1530,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
                            best_item, best_strategy.compact_shape))
                 << ")";
 
-        TF_ASSIGN_OR_RETURN(added_instruction,
+        TF_ASSIGN_OR_RETURN(num_instructions_added,
                             CompressInstruction(&memory_tracker, best_item,
                                                 best_strategy.compact_shape,
                                                 &instruction_list));
@@ -1512,12 +1540,13 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
                        memory_tracker.MemoryReducedIfRematerialized(best_item))
                 << ")";
 
-        TF_ASSIGN_OR_RETURN(added_instruction,
-                            RematerializeInstruction(&memory_tracker, best_item,
-                                                     &remat_move_instructions,
-                                                     &instruction_list));
+        std::vector<Item*> best_items{best_item};
+        TF_ASSIGN_OR_RETURN(num_instructions_added,
+                            RematerializeInstructions(
+                                &memory_tracker, &best_items,
+                                &remat_move_instructions, &instruction_list));
       }
-      net_instructions_added += added_instruction;
+      net_instructions_added += num_instructions_added;
 
       VLOG(1) << "memory_usage after rematerialization = "
               << HumanReadableNumBytes(memory_tracker.memory_usage());

@@ -1638,6 +1638,7 @@ def _reset_context():
   global _context
   with _context_lock:
     if _context is not None:
+      _context._clear_caches()
       _context = None
   _create_context()
   pywrap_tfe.TFE_ClearScalarCache()
