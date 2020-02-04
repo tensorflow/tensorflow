@@ -148,11 +148,11 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
               errors::Internal("computation input should be a string scalar"));
 
   xrt::XLAComputation computation_proto;
-  OP_REQUIRES(
-      ctx,
-      computation_proto.ParseFromString(computation_input.scalar<tstring>()()),
-      errors::InvalidArgument(
-          "Unable to parse computation input to XLAComputation"));
+  OP_REQUIRES(ctx,
+              ParseFromTString(computation_input.scalar<tstring>()(),
+                               &computation_proto),
+              errors::InvalidArgument(
+                  "Unable to parse computation input to XLAComputation"));
 
   string key;
   OP_REQUIRES_OK(ctx, CompilationCacheKey(computation_proto, &key));
