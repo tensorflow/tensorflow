@@ -133,6 +133,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
     self._indices = indices
     self._values = values
     self._dense_shape = dense_shape
+    self._name = None
 
     indices_shape = indices.shape.with_rank(2)
     values_shape = values.shape.with_rank(1)
@@ -197,14 +198,20 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
 
   @property
   def name(self):
-    """Get the name of the sparse tensor"""
-    return self.__str__()
+    """Get the string name of the sparse tensor"""
+    if self._name is None:
+      self.set_name(self.__str__())
+    return self._name
   
   @property
   def graph(self):
     """The `Graph` that contains the index, value, and dense_shape tensors."""
     return self._indices.graph
 
+  def set_name(self, name):
+    """Set the string name of the sparse tensor."""
+    self._name = name
+    
   def __str__(self):
     return "SparseTensor(indices=%s, values=%s, dense_shape=%s)" % (
         self._indices, self._values, self._dense_shape)
