@@ -60,8 +60,9 @@ Status KernelSupportLibrary::IfWithStatus(
     absl::string_view name, llvm::Value* condition,
     const std::function<Status()>& true_block_generator,
     const std::function<Status()>& false_block_generator) {
-  llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-      condition, name, b_, false_block_generator != nullptr);
+  llvm_ir::LlvmIfData if_data =
+      llvm_ir::EmitIfThenElse(condition, name, b_,
+                              /*emit_else=*/false_block_generator != nullptr);
   b_->SetInsertPoint(&if_data.true_block->back());
   TF_RETURN_IF_ERROR(true_block_generator());
   if (false_block_generator != nullptr) {
