@@ -1636,7 +1636,6 @@ cc_library(
         "//tensorflow/core:autotuning_proto_cc",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
     ],
 )
 
