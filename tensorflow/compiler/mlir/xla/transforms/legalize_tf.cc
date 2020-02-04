@@ -937,7 +937,7 @@ class ConvertFusedBatchNormGradBase
     // Gets the result values.
     Value x_backprop, scale_backprop, offset_backprop;
     if (op.is_training()) {  // training
-      // TODO(b/145536565): handle GPU logic seperately.
+      // TODO(b/145536565): handle GPU logic separately.
       // Infers the output type with the converted `act`.
       Type feature_type = RankedTensorType::get(
           {GetDimSize(act_type, feature_dim)}, kernel_type);
