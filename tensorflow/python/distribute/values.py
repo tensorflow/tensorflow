@@ -630,6 +630,12 @@ class TPUVariableMixin(object):
     else:
       return self._read_variable_op()
 
+  def value(self):
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self).value()
+    else:
+      return self._read_variable_op()
+
   @property
   def constraint(self):
     return self.primary.constraint

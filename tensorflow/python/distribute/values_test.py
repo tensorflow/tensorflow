@@ -541,6 +541,31 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.tpu_strategy,
           ],
           mode=["graph", "eager"]))
+  def testValueInReplicaContext(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          1., aggregation=variables_lib.VariableAggregation.MEAN)
+      self.evaluate(variables_lib.global_variables_initializer())
+
+      @def_function.function
+      def f():
+        with ops.control_dependencies([v.assign_add(1.)]):
+          return v.value()
+
+      results = self.evaluate(
+          distribution.experimental_local_results(
+              distribution.experimental_run_v2(f)))
+      for value in results:
+        self.assertEqual(2., value)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+          ],
+          mode=["graph", "eager"]))
   def testAssignOutOfScope_mirrored(self, distribution):
     with distribution.scope():
       mirrored = variables_lib.Variable(1.)
