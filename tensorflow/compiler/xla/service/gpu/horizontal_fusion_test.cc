@@ -37,7 +37,17 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HorizontalFusionTest : public HloTestBase {};
+class HorizontalFusionTest : public HloTestBase {
+ protected:
+  HloModuleConfig GetModuleConfigWithHorizontalFusionEnabled() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_use_horizontal_fusion(true);
+
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return config;
+  }
+};
 
 TEST_F(HorizontalFusionTest, BasicTest) {
   auto module = ParseAndReturnVerifiedModule(R"(

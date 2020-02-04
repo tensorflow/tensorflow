@@ -280,12 +280,14 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
-    HloPassPipeline horizontal_fusion("horizontal_fusion");
-    horizontal_fusion.AddPass<GpuHorizontalFusion>();
-    horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
-                                      /*only_fusion_computations=*/true);
-    horizontal_fusion.AddPass<HloDCE>();
-    TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
+    if (hlo_module->config().debug_options().xla_gpu_use_horizontal_fusion()) {
+      HloPassPipeline horizontal_fusion("horizontal_fusion");
+      horizontal_fusion.AddPass<GpuHorizontalFusion>();
+      horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                                        /*only_fusion_computations=*/true);
+      horizontal_fusion.AddPass<HloDCE>();
+      TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
+    }
   }
 
   return Status::OK();

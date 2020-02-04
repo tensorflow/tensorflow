@@ -260,7 +260,11 @@ message DebugOptions {
 
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
-  // Next id: 133
+
+  // Enable horizontal fusion on XLA GPU.
+  bool xla_gpu_use_horizontal_fusion = 133;
+
+  // Next id: 134
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
