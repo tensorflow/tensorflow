@@ -29,8 +29,9 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from unittest import skip
 
-
+@skip("TrtModeTestBase defines a common base class for other tests")
 class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
   """Test squeeze on batch dim and some unary operations in TF-TRT."""
 
@@ -57,7 +58,7 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
     return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
                             [[12, 5]])
 
-  def GetConversionParams(self, run_params, implicit_batch):
+  def GetConversionParams(self, run_params, implicit_batch=False):
     """Return a TrtConversionParams for test."""
 
     conversion_params = super(TrtModeTestBase,
