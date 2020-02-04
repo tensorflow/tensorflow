@@ -398,7 +398,7 @@ Status S3FileSystem::FileExists(const string& fname) {
 Status S3FileSystem::GetChildren(const string& dir,
                                  std::vector<string>* result) {
   string bucket, prefix;
-  TF_RETURN_IF_ERROR(ParseS3Path(dir, false, &bucket, &prefix));
+  TF_RETURN_IF_ERROR(ParseS3Path(dir, true, &bucket, &prefix));
 
   if (prefix.back() != '/') {
     prefix.push_back('/');
