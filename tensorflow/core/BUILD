@@ -511,13 +511,9 @@ tf_cuda_library(
         "//tensorflow/core/framework:variant_tensor_data.h",
         "//tensorflow/core/util/sparse:framework_group",
         "//tensorflow/core/util:framework_srcs",
+        "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/public:version.h",
-    ] + select({
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "//tensorflow/core/util:memmapped_file_system_hdrs",
-        ],
-    }) + if_mkl([
+    ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
     visibility = ["//visibility:public"],
@@ -2150,38 +2146,42 @@ alias(
     actual = "//tensorflow/core/util:version_info",
 )
 
-FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
-    "//tensorflow/core/graph:framework_internal_private_headers",
-    "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
-    "//tensorflow/core/framework:framework_internal_private_hdrs",
-    "//tensorflow/core/util:framework_internal_private_hdrs",
-    "//tensorflow/core/example:feature_util.h",
-] + select({
-    "//tensorflow:windows": [],
-    "//conditions:default": [
+filegroup(
+    name = "framework_internal_private_headers",
+    srcs = [
+        "//tensorflow/core/example:feature_util.h",
+        "//tensorflow/core/framework:framework_internal_private_hdrs",
+        "//tensorflow/core/graph:framework_internal_private_headers",
+        "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
+        "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
     ],
-})
+    visibility = ["//visibility:private"],
+)
 
-FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
-    "//tensorflow/core/framework:model.h",  # only needed for tests
-    "//tensorflow/core/framework:op_segment.h",
-    "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
-    "//tensorflow/core/framework:resource_var.h",
-    "//tensorflow/core/framework:run_handler.h",
-    "//tensorflow/core/framework:run_handler_util.h",
-    "//tensorflow/core/framework:shared_ptr_variant.h",
-    "//tensorflow/core/framework:tensor_reference.h",
-    "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
-    "//tensorflow/core/framework:unique_tensor_references.h",
-    "//tensorflow/core/framework:variant.h",
-    "//tensorflow/core/util:framework_internal_public_hdrs",
-]
+filegroup(
+    name = "framework_internal_public_headers",
+    srcs = [
+        "//tensorflow/core/framework:model.h",  # only needed for tests
+        "//tensorflow/core/framework:op_segment.h",
+        "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
+        "//tensorflow/core/framework:resource_var.h",
+        "//tensorflow/core/framework:run_handler.h",
+        "//tensorflow/core/framework:run_handler_util.h",
+        "//tensorflow/core/framework:shared_ptr_variant.h",
+        "//tensorflow/core/framework:tensor_reference.h",
+        "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
+        "//tensorflow/core/framework:unique_tensor_references.h",
+        "//tensorflow/core/framework:variant.h",
+        "//tensorflow/core/util:framework_internal_public_hdrs",
+    ],
+    visibility = ["//visibility:private"],
+)
 
 tf_cuda_library(
     name = "framework_internal",
-    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS,
-    hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
+    srcs = [":framework_internal_private_headers"],
+    hdrs = [":framework_internal_public_headers"],
     deps = [
         ":framework_internal_headers_lib",
         "//third_party/eigen3",
@@ -2225,10 +2225,12 @@ cc_header_only_library(
 
 tf_cuda_library(
     name = "framework_internal_impl",
-    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + [
+    srcs = [
+        ":framework_internal_private_headers",
         "//tensorflow/core/framework:framework_internal_impl_srcs",
         "//tensorflow/core/graph:framework_internal_impl_srcs",
         "//tensorflow/core/util:framework_internal_impl_srcs",
+        "//tensorflow/core/util:memmapped_file_system_srcs",
         "//tensorflow/core/util/sparse:framework_internal_impl_group",
     ] + glob(
         [
@@ -2237,13 +2239,8 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
         ],
-    ) + select({
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "//tensorflow/core/util:memmapped_file_system_srcs",
-        ],
-    }),
-    hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
+    ),
+    hdrs = [":framework_internal_public_headers"],
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": ["-lm"],
@@ -3134,6 +3131,7 @@ tf_cc_tests(
         "common_runtime/buf_rendezvous_test.cc",
         "common_runtime/collective_executor_mgr_test.cc",
         "common_runtime/collective_rma_local_test.cc",
+        "common_runtime/device_mgr_test.cc",
         "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
         "common_runtime/dynamic_device_mgr_test.cc",

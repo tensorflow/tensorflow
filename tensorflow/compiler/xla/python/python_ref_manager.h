@@ -62,6 +62,7 @@ class PythonRefManager {
   // Creates a managed std::shared_ptr to an object. When the shared_ptr is
   // destroyed, the reference to 'object' will be added to python_garbage_,
   // and collected next time CollectGarbage() is called.
+  std::shared_ptr<ManagedPyObjects> ManageReference(pybind11::object object);
   std::shared_ptr<ManagedPyObjects> ManageReferences(
       absl::Span<pybind11::object> objects);
 

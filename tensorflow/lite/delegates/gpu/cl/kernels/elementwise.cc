@@ -105,13 +105,15 @@ ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
 ElementwiseTwoInput::ElementwiseTwoInput(ElementwiseTwoInput&& operation)
     : ElementwiseOperation(std::move(operation)),
       link_index_(operation.link_index_),
-      op_type_(operation.op_type_) {}
+      op_type_(operation.op_type_),
+      broadcast_(operation.broadcast_) {}
 
 ElementwiseTwoInput& ElementwiseTwoInput::operator=(
     ElementwiseTwoInput&& operation) {
   if (this != &operation) {
     link_index_ = operation.link_index_;
     op_type_ = operation.op_type_;
+    broadcast_ = operation.broadcast_;
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
@@ -121,31 +123,46 @@ void ElementwiseTwoInput::SetLinkIndex(int index) { link_index_ = index; }
 
 std::string ElementwiseTwoInput::GetCoreCode(
     const LinkingContext& context) const {
+  const std::string size_name = "src_size_" + std::to_string(link_index_);
   TensorCodeGenerator src_tensor(
       absl::StrCat("src_data_", link_index_),
-      WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      WHSPoint{size_name + ".x", size_name + ".y", size_name + ".z"},
       definition_.src_tensors[1]);
-  std::string result;
+  const std::string x_coord = broadcast_.width ? "0" : context.x_coord;
+  const std::string y_coord = broadcast_.height ? "0" : context.y_coord;
+  const std::string s_coord = broadcast_.channels ? "0" : context.s_coord;
+  const std::string second_var = "second_var_" + std::to_string(link_index_);
+  std::string result = "  FLT4 " + second_var + " = " +
+                       src_tensor.ReadWHS(x_coord, y_coord, s_coord) + ";\n";
+  if (broadcast_.channels) {
+    result += "  " + second_var + ".y = " + second_var + ".x;\n";
+    result += "  " + second_var + ".z = " + second_var + ".x;\n";
+    result += "  " + second_var + ".w = " + second_var + ".x;\n";
+  }
   switch (op_type_) {
+    case OperationType::ADD:
+      result += "$0 += $1;\n";
+      break;
     case OperationType::DIV:
-      result = "$0 /= $1;\n";
+      result += "$0 /= $1;\n";
+      break;
+    case OperationType::MUL:
+      result += "$0 *= $1;\n";
       break;
     case OperationType::POW:
-      result = "$0 = pow($0, $1);\n";
+      result += "$0 = pow($0, $1);\n";
       break;
     case OperationType::SQUARED_DIFF:
-      result = "$0 -= $1;\n";
+      result += "$0 -= $1;\n";
       result += "$0 *= $0;\n";
       break;
     case OperationType::SUB:
-      result = "$0 -= $1;\n";
+      result += "$0 -= $1;\n";
       break;
     default:
       return "Unknown operation type;\n";
   }
-  return absl::Substitute(
-      result, context.var_name,
-      src_tensor.ReadWHS(context.x_coord, context.y_coord, context.s_coord));
+  return absl::Substitute(result, context.var_name, second_var);
 }
 
 std::string ElementwiseTwoInput::GetArgsDeclaration() const {
@@ -164,9 +181,21 @@ Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
   return OkStatus();
 }
 
+ElementwiseTwoInput CreateElementwiseTwoInput(
+    const OperationDef& definition, const OperationType& op_type,
+    const BroadcastSettings& broadcast) {
+  ElementwiseTwoInput operation(definition, op_type, broadcast);
+  operation.SetLinkIndex(0);
+  return operation;
+}
+
 ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
                                               const OperationType& op_type) {
-  ElementwiseTwoInput operation(definition, op_type);
+  BroadcastSettings broadcast;
+  broadcast.width = false;
+  broadcast.height = false;
+  broadcast.channels = false;
+  ElementwiseTwoInput operation(definition, op_type, broadcast);
   operation.SetLinkIndex(0);
   return operation;
 }

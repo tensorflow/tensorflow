@@ -301,6 +301,23 @@ PyObject* InterpreterWrapper::TensorSize(int i) const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
+PyObject* InterpreterWrapper::TensorSizeSignature(int i) const {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+
+  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const int32_t* size_signature_data = nullptr;
+  int32_t size_signature_size = 0;
+  if (tensor->dims_signature != nullptr) {
+    size_signature_data = tensor->dims_signature->data;
+    size_signature_size = tensor->dims_signature->size;
+  }
+  PyObject* np_array =
+      PyArrayFromIntVector(size_signature_data, size_signature_size);
+
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
+}
+
 PyObject* InterpreterWrapper::TensorQuantization(int i) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_TENSOR_BOUNDS_CHECK(i);

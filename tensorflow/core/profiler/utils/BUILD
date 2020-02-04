@@ -157,6 +157,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":timespan",
+        ":xplane_builder",
+        ":xplane_schema",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
@@ -227,6 +229,7 @@ tf_cc_test(
         ":tf_xplane_visitor",
         ":xplane_builder",
         ":xplane_schema",
+        ":xplane_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -247,6 +250,25 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "derived_timeline",
+    srcs = ["derived_timeline.cc"],
+    hdrs = ["derived_timeline.h"],
+    deps = [
+        ":group_events",
+        ":tf_xplane_visitor",
+        ":trace_utils",
+        ":xplane_builder",
+        ":xplane_schema",
+        ":xplane_utils",
+        ":xplane_visitor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
     ],

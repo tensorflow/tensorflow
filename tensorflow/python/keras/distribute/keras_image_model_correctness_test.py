@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
+from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
@@ -43,8 +44,10 @@ class DistributionStrategyCnnCorrectnessTest(
           strides=(4, 4),
           kernel_regularizer=keras.regularizers.l2(1e-4))(
               image)
-      if self.with_batch_norm:
+      if self.with_batch_norm == 'regular':
         c1 = keras.layers.BatchNormalization(name='bn1')(c1)
+      elif self.with_batch_norm == 'sync':
+        c1 = keras.layers.SyncBatchNormalization(name='bn1')(c1)
       c1 = keras.layers.MaxPooling2D(pool_size=(2, 2))(c1)
       logits = keras.layers.Dense(
           10, activation='softmax', name='pred')(
@@ -107,7 +110,22 @@ class DistributionStrategyCnnCorrectnessTest(
         distribution,
         use_numpy,
         use_validation_data,
-        with_batch_norm=True,
+        with_batch_norm='regular',
+        experimental_run_tf_function=experimental_run_tf_function)
+
+  @combinations.generate(
+      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+  def test_cnn_with_sync_batch_norm_correctness(self, distribution, use_numpy,
+                                                use_validation_data,
+                                                experimental_run_tf_function):
+    if not context.executing_eagerly() or not experimental_run_tf_function:
+      self.skipTest('SyncBatchNorm is not enabled in graph mode.')
+
+    self.run_correctness_test(
+        distribution,
+        use_numpy,
+        use_validation_data,
+        with_batch_norm='sync',
         experimental_run_tf_function=experimental_run_tf_function)
 
   @combinations.generate(
@@ -134,7 +152,7 @@ class DistributionStrategyCnnCorrectnessTest(
         distribution,
         use_numpy,
         use_validation_data,
-        with_batch_norm=True,
+        with_batch_norm='regular',
         partial_last_batch=True)
 
 

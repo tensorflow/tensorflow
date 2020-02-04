@@ -546,7 +546,7 @@ struct OrcJITPostCompilationHook {
     if (!DumpingEnabledForHloModule(*module)) {
       return;
     }
-    DumpToFileInDir(*module, /*file_suffix=*/"o",
+    DumpToFileInDir(*module, /*file_prefix=*/"", /*file_suffix=*/"o",
                     absl::string_view(obj_file.getData().data(),
                                       obj_file.getData().size()));
   }
@@ -818,7 +818,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     if (DumpingEnabledForHloModule(*module)) {
-      DumpToFileInDirOrStdout(*module, "buffer_assignment",
+      DumpToFileInDirOrStdout(*module, "", "buffer_assignment",
                               assignment->ToString());
     }
     DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
@@ -887,7 +887,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       if (!DumpingEnabledForHloModule(*module)) {
         return;
       }
-      DumpToFileInDir(*module, /*file_suffix=*/"o",
+      DumpToFileInDir(*module, /*file_prefix=*/"", /*file_suffix=*/"o",
                       absl::string_view(obj_file.getData().data(),
                                         obj_file.getData().size()));
     };

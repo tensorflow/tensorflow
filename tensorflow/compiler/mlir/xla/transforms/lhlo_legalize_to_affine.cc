@@ -56,7 +56,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
     }
     auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
     auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
-    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
+    Value opResult = MapXlaOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(op), element_type, {l, r}, &rewriter);
     if (opResult == nullptr) {
       return this->matchFailure();

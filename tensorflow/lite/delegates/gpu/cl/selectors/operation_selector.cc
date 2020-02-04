@@ -26,11 +26,32 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
+namespace {
+bool IsWidthBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
+         inputs[1]->tensor.shape.w == 1;
+}
+bool IsHeightBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
+         inputs[1]->tensor.shape.h == 1;
+}
+bool IsChannelsBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
+         inputs[1]->tensor.shape.c == 1;
+}
+}  // namespace
 
 Status GPUOperationFromNode(const CreationContext& creation_context,
                             const OperationDef& op_def, ModelHints hints,
@@ -59,12 +80,23 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       if (adds || adds_scalar) {
         return SelectBroadcastAdd(attr, creation_context, op_def, gpu_op);
       } else {
-        auto output = outputs[0];
-        std::vector<int> channels(inputs.size());
-        for (int i = 0; i < inputs.size(); ++i) {
-          channels[i] = inputs[i]->tensor.shape.c;
+        BroadcastSettings broadcast;
+        broadcast.width = IsWidthBroadcastedForSecondInput(inputs);
+        broadcast.height = IsHeightBroadcastedForSecondInput(inputs);
+        broadcast.channels = IsChannelsBroadcastedForSecondInput(inputs);
+        if (broadcast.width || broadcast.height || broadcast.channels) {
+          ElementwiseTwoInput operation =
+              CreateElementwiseTwoInput(op_def, op_type, broadcast);
+          *gpu_op =
+              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+        } else {
+          auto output = outputs[0];
+          std::vector<int> channels(inputs.size());
+          for (int i = 0; i < inputs.size(); ++i) {
+            channels[i] = inputs[i]->tensor.shape.c;
+          }
+          SelectAdd(op_def, channels, output->tensor.shape.c, gpu_op);
         }
-        SelectAdd(op_def, channels, output->tensor.shape.c, gpu_op);
         return OkStatus();
       }
     }
@@ -121,8 +153,20 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
 
         return SelectMultiplyScalar(attr, creation_context, op_def, gpu_op);
       } else {
-        SelectApplyMask(op_def, inputs[0]->tensor.shape,
-                        inputs[1]->tensor.shape, gpu_op);
+        if (inputs.size() == 2) {
+          BroadcastSettings broadcast;
+          broadcast.width = IsWidthBroadcastedForSecondInput(inputs);
+          broadcast.height = IsHeightBroadcastedForSecondInput(inputs);
+          broadcast.channels = IsChannelsBroadcastedForSecondInput(inputs);
+          ElementwiseTwoInput operation =
+              CreateElementwiseTwoInput(op_def, op_type, broadcast);
+          *gpu_op =
+              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+          return OkStatus();
+        } else {
+          return UnimplementedError(
+              "No support of multiply with more than 2 inputs");
+        }
         return OkStatus();
       }
     }
@@ -190,8 +234,12 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
+      BroadcastSettings broadcast;
+      broadcast.width = IsWidthBroadcastedForSecondInput(inputs);
+      broadcast.height = IsHeightBroadcastedForSecondInput(inputs);
+      broadcast.channels = IsChannelsBroadcastedForSecondInput(inputs);
       ElementwiseTwoInput operation =
-          CreateElementwiseTwoInput(op_def, op_type);
+          CreateElementwiseTwoInput(op_def, op_type, broadcast);
       *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
       return OkStatus();
     }

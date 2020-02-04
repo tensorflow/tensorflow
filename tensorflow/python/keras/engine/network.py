@@ -366,7 +366,7 @@ class Network(base_layer.Layer):
   @property
   def _layer_checkpoint_dependencies(self):
     """Dictionary of layer dependencies to be included in the checkpoint."""
-    # Use getattr becuase this function can be called from __setattr__, at which
+    # Use getattr because this function can be called from __setattr__, at which
     # point the _is_graph_network attribute has not been created.
     if (not getattr(self, '_is_graph_network', False) and
         base_layer_utils.is_subclassed(self)):

@@ -589,54 +589,6 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return result;
            })
-      // TODO(phawkins): delete these methods in favor of the versions on Device
-      .def("TransferToInfeed",
-           [](PyLocalClient* client, const LiteralSlice& literal,
-              int device_ordinal) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
-                                 LookupDeviceOrdinal(client, device_ordinal,
-                                                     "TransferToInfeed"));
-             return client->TransferToInfeed(literal, device);
-           })
-      .def("TransferToInfeed",
-           [](PyLocalClient* client, const LiteralSlice& literal,
-              std::shared_ptr<Device> device) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             return client->TransferToInfeed(literal, device);
-           })
-      // TODO(phawkins): delete these methods in favor of the versions on Device
-      .def("TransferFromOutfeed",
-           [](PyLocalClient* client, const Shape& shape,
-              int device_ordinal) -> StatusOr<py::object> {
-             GlobalPyRefManager()->CollectGarbage();
-             std::shared_ptr<Literal> literal_shared;
-             {
-               py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
-                                   LookupDeviceOrdinal(client, device_ordinal,
-                                                       "TransferFromOutfeed"));
-               TF_ASSIGN_OR_RETURN(Literal literal,
-                                   client->TransferFromOutfeed(shape, device));
-               literal_shared = std::make_shared<Literal>(std::move(literal));
-             }
-             return LiteralToPython(std::move(literal_shared));
-           })
-      .def("TransferFromOutfeed",
-           [](PyLocalClient* client, const Shape& shape,
-              std::shared_ptr<Device> device) -> StatusOr<py::object> {
-             GlobalPyRefManager()->CollectGarbage();
-             std::shared_ptr<Literal> literal_shared;
-             {
-               py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(Literal literal,
-                                   client->TransferFromOutfeed(shape, device));
-               literal_shared = std::make_shared<Literal>(std::move(literal));
-             }
-             return LiteralToPython(std::move(literal_shared));
-           })
       .def("CreateChannelHandle",
            [](PyLocalClient* client) {
              return client->client()->CreateChannelHandle();
@@ -655,8 +607,8 @@ PYBIND11_MODULE(xla_extension, m) {
           "from_python",
           [](const pybind11::object& argument,
              std::shared_ptr<PyLocalClient> client,
-             std::shared_ptr<Device> device)
-              -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
+             std::shared_ptr<Device> device,
+             bool force_copy) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
             CHECK(device != nullptr);
             auto iter = client->id_to_device().find(device->id());
             if (iter->second != device) {
@@ -665,23 +617,24 @@ PYBIND11_MODULE(xla_extension, m) {
                   device->DebugString(), client->platform_name());
             }
             GlobalPyRefManager()->CollectGarbage();
+
+            absl::optional<CastToArrayResult> c = CastToArray(argument);
+            if (!c) {
+              return InvalidArgument("from_python argument must be an array.");
+            }
+
             TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
                                 GetPythonBufferTree(argument));
             std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-                GlobalPyRefManager()->ManageReferences(
-                    absl::MakeSpan(tree.arrays));
-            tree.arrays.clear();
-
-            std::vector<BorrowingLiteral> leaves;
-            leaves.insert(leaves.end(),
-                          std::make_move_iterator(tree.leaves.begin()),
-                          std::make_move_iterator(tree.leaves.end()));
+                GlobalPyRefManager()->ManageReference(std::move(c->array));
 
             py::gil_scoped_release gil_release;
-            return PyLocalBuffer::FromLiterals(
-                std::move(leaves), tree.shape, std::move(py_buffer_ref),
+            return PyLocalBuffer::FromHostBuffer(
+                c->buf_ptr, c->shape, force_copy, std::move(py_buffer_ref),
                 std::move(client), std::move(device));
-          })
+          },
+          py::arg("argument"), py::arg("client"), py::arg("device"),
+          py::arg("force_copy") = false)
       .def_static("make_tuple",
                   [](const std::vector<PyLocalBuffer*> buffers,
                      std::shared_ptr<PyLocalClient> client,

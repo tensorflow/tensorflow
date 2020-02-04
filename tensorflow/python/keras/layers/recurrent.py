@@ -146,11 +146,14 @@ class StackedRNNCells(Layer):
         kwargs['training'] = training
       else:
         kwargs.pop('training', None)
+      # Use the __call__ function for callable objects, eg layers, so that it
+      # will have the proper name scopes for the ops, etc.
+      cell_call_fn = cell.__call__ if callable(cell) else cell.call
       if generic_utils.has_arg(cell.call, 'constants'):
-        inputs, states = cell.call(inputs, states, constants=constants,
-                                   **kwargs)
+        inputs, states = cell_call_fn(inputs, states,
+                                      constants=constants, **kwargs)
       else:
-        inputs, states = cell.call(inputs, states, **kwargs)
+        inputs, states = cell_call_fn(inputs, states, **kwargs)
       new_nested_states.append(states)
 
     return inputs, nest.pack_sequence_as(state_size,
@@ -161,9 +164,10 @@ class StackedRNNCells(Layer):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
     for cell in self.cells:
-      if isinstance(cell, Layer):
-        if not cell.built:
+      if isinstance(cell, Layer) and not cell.built:
+        with K.name_scope(cell.name):
           cell.build(input_shape)
+          cell.built = True
       if getattr(cell, 'output_size', None) is not None:
         output_dim = cell.output_size
       elif _is_multiple_state(cell.state_size):
@@ -561,10 +565,11 @@ class RNN(Layer):
             nest.map_structure(get_input_spec, input_shape))
       step_input_shape = nest.map_structure(get_step_input_shape, input_shape)
 
-    # allow cell (if layer) to build before we set or validate state_spec
-    if isinstance(self.cell, Layer):
-      if not self.cell.built:
+    # allow cell (if layer) to build before we set or validate state_spec.
+    if isinstance(self.cell, Layer) and not self.cell.built:
+      with K.name_scope(self.cell.name):
         self.cell.build(step_input_shape)
+        self.cell.built = True
 
     # set or validate state_spec
     if _is_multiple_state(self.cell.state_size):
@@ -749,6 +754,9 @@ class RNN(Layer):
 
     # TF RNN cells expect single tensor as state instead of list wrapped tensor.
     is_tf_rnn_cell = getattr(self.cell, '_is_tf_rnn_cell', None) is not None
+    # Use the __call__ function for callable objects, eg layers, so that it
+    # will have the proper name scopes for the ops, etc.
+    cell_call_fn = self.cell.__call__ if callable(self.cell) else self.cell.call
     if constants:
       if not generic_utils.has_arg(self.cell.call, 'constants'):
         raise ValueError('RNN cell does not support constants')
@@ -758,7 +766,7 @@ class RNN(Layer):
         states = states[:-self._num_constants]  # pylint: disable=invalid-unary-operand-type
 
         states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
-        output, new_states = self.cell.call(
+        output, new_states = cell_call_fn(
             inputs, states, constants=constants, **kwargs)
         if not nest.is_sequence(new_states):
           new_states = [new_states]
@@ -767,7 +775,7 @@ class RNN(Layer):
 
       def step(inputs, states):
         states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
-        output, new_states = self.cell.call(inputs, states, **kwargs)
+        output, new_states = cell_call_fn(inputs, states, **kwargs)
         if not nest.is_sequence(new_states):
           new_states = [new_states]
         return output, new_states

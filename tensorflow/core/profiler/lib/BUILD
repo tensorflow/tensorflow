@@ -28,6 +28,7 @@ cc_library(
         "//tensorflow:android": [],
         "//conditions:default": [
             "//tensorflow/core/profiler/convert:xplane_to_trace_events",
+            "//tensorflow/core/profiler/utils:group_events",
         ],
     }),
 )

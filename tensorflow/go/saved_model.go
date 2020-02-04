@@ -22,7 +22,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core"
+	tfpb "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf"
 )
 
 // #include <stdlib.h>
