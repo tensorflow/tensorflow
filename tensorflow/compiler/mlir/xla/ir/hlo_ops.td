@@ -1242,4 +1242,23 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   let hasCustomHLOConverter = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// XLA Quantize Operator.
+//===----------------------------------------------------------------------===//
+def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]>,
+    BASE_HLO_DequantizeOp {
+  let arguments = (ins
+    TensorOf<[I32]>:$input,
+    F32Attr:$min_range,
+    F32Attr:$max_range,
+    HLO_DequantizeModeAttr:$mode,
+    BoolAttr:$transpose_output,
+    DefaultValuedAttr<BoolAttr, "false">:$is_16bits
+  );
+
+  let results = (outs TensorOf<[BF16]>:$output);
+
+  let hasCustomHLOConverter = 1;
+}
+
 #endif // HLO_OPS

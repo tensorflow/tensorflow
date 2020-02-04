@@ -837,3 +837,35 @@ func @sort_wrong_block_arg_type(%input0: tensor<16x16xf32>, %input1: tensor<16x1
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
   return
 }
+
+// -----
+
+// CHECK: func @dequantize
+func @dequantize(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_shape(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  // expected-error @+1 {{mismatched dimensions.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = true} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_size(%arg: tensor<16x16xi32>) -> tensor<16x16xbf16> {
+  // expected-error @+1 {{last dimension of output should be 4x of the input.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x16xbf16>
+  return %0 : tensor<16x16xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_mode(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  // expected-error @+1 {{Dequantization mode. Only MIN_COMBINED is supported.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "hello", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
