@@ -3855,7 +3855,7 @@ def cohen_kappa(labels,
                                      (labels, predictions_idx, weights)):
     # Convert 2-dim (num, 1) to 1-dim (num,)
     labels.get_shape().with_rank_at_most(2)
-    if labels.get_shape().ndims == 2:
+    if labels.get_shape().ndims == 2 and labels.get_shape()[1] == 1:
       labels = array_ops.squeeze(labels, axis=[-1])
     predictions_idx, labels, weights = (
         metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
