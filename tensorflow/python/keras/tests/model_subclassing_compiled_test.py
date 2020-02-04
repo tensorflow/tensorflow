@@ -25,8 +25,8 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import model_subclassing_test_util as model_util
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.tests import model_subclassing_test_util as model_util
 from tensorflow.python.platform import test
 
 try:
