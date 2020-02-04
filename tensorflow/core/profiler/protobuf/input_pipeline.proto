@@ -3,7 +3,6 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "google/protobuf/any.proto";
-import "tensorflow/core/profiler/protobuf/hardware_types.proto";
 
 // Used for both step duration and Op duration.
 message StepSummary {
@@ -22,10 +21,13 @@ message PerGenericStepDetails {
   // Breakdown of the step time in different event categories.
   // The unknown time (in ms).
   double unknown_time_ms = 3;
-  // The infeed time (in ms).
-  double infeed_ms = 4;
-  // The outfeed time (in ms).
-  double outfeed_ms = 5;
+  // The time (in ms) in which the host is waiting for input data to be ready.
+  double host_wait_input_ms = 11;
+  // The time (in ms) in which the host is sending input data to the device.
+  // Total input time = host_wait_input_ms + host_to_device_ms.
+  double host_to_device_ms = 12;
+  // The output time (in ms).
+  double output_ms = 5;
   // The device-compute time (in ms).
   double device_compute_ms = 6;
   // The device-to-device communication time (in ms).
@@ -36,6 +38,7 @@ message PerGenericStepDetails {
   double host_prepare_ms = 9;
   // The time spent on compiling (in ms).
   double host_compile_ms = 10;
+  reserved 4;
 }
 
 message InputTimeBreakdown {
@@ -81,10 +84,14 @@ message InputPipelineAnalysisRecommendation {
 message GenericStepTimeBreakdown {
   // Summary of all unknown time as a part of step in ms.
   StepSummary unknown_time_ms_summary = 1;
-  // Summary of all infeed time as a part of step in ms.
-  StepSummary infeed_ms_summary = 2;
-  // Summary of all outfeed time as a part of step in ms.
-  StepSummary outfeed_ms_summary = 3;
+  // Summary of all host-wait-input time as a part of step in ms.
+  StepSummary host_wait_input_ms_summary = 9;
+  // Summary of all host-to-device time as a part of step in ms.
+  StepSummary host_to_device_ms_summary = 10;
+  // Summary of all input time as a part of step in ms.
+  StepSummary input_ms_summary = 11;
+  // Summary of all output time as a part of step in ms.
+  StepSummary output_ms_summary = 3;
   // Summary of all device-compute time as a part of step in ms.
   StepSummary device_compute_ms_summary = 4;
   // Summary of all device-to-device time as a part of step in ms.
@@ -95,15 +102,16 @@ message GenericStepTimeBreakdown {
   StepSummary host_prepare_ms_summary = 7;
   // Summary of all compilation time as a part of step in ms.
   StepSummary host_compile_ms_summary = 8;
+  reserved 2;
 }
 
 message InputPipelineAnalysisResult {
   // Hardware type.
-  HardwareType hardware_type = 1;
+  string hardware_type = 9;
   // Summary of all step duration across all cores.
   StepSummary step_time_summary = 2;
-  // Summary of all infeed dequeue op duration as percentage of step duration.
-  StepSummary infeed_percent_summary = 3;
+  // Summary of all input-related stall as percentage of step duration.
+  StepSummary input_percent_summary = 3;
   // Details of each step. Can be unpacked into a PerGenericStepDetails.
   repeated google.protobuf.Any step_details = 4;
   // The breakdown of the input processing time.
@@ -115,4 +123,5 @@ message InputPipelineAnalysisResult {
   // Breakdown of the step time. Can be unpacked into a
   // GenericStepTimeBreakdown.
   google.protobuf.Any step_time_breakdown = 8;
+  reserved 1;
 }

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
@@ -242,11 +243,11 @@ class NcclClique {
   // We disable thread-safety analysis because in common use, only the primary
   // thread in a Rendezvous acquires this lock, and that makes thread-safety
   // analysis unhappy.  Tread carefully, you are playing with fire.
-  void Lock() NO_THREAD_SAFETY_ANALYSIS {
+  void Lock() ABSL_NO_THREAD_SAFETY_ANALYSIS {
     TF_CHECK_OK(status_);
     mu_->lock();
   }
-  void Unlock() NO_THREAD_SAFETY_ANALYSIS {
+  void Unlock() ABSL_NO_THREAD_SAFETY_ANALYSIS {
     TF_CHECK_OK(status_);
     mu_->unlock();
   }

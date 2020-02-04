@@ -58,7 +58,7 @@ namespace {
 // direction. Longterm solution is to add a function attribute to maintain the
 // original HLO naming.
 string SanitizeFunctionName(llvm::StringRef name) {
-  string output = name;
+  string output(name);
   llvm::for_each(output, [](char& x) { x = x == '-' ? '_' : x; });
   return output;
 }
@@ -449,6 +449,32 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           "permutation", ConvertDimensions(instruction->dimensions())));
       MakeAndReturn(TransposeOp);
     }
+    case HloOpcode::kTriangularSolve: {
+      attributes.push_back(builder_->getNamedAttr(
+          "left_side",
+          builder_->getBoolAttr(
+              instruction->triangular_solve_options().left_side())));
+      attributes.push_back(builder_->getNamedAttr(
+          "lower", builder_->getBoolAttr(
+                       instruction->triangular_solve_options().lower())));
+      attributes.push_back(builder_->getNamedAttr(
+          "unit_diagonal",
+          builder_->getBoolAttr(
+              instruction->triangular_solve_options().unit_diagonal())));
+      auto transpose_a =
+          builder_->getStringAttr(TriangularSolveOptions::Transpose_Name(
+              instruction->triangular_solve_options().transpose_a()));
+      attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
+      MakeAndReturn(TriangularSolveOp);
+    }
+    case HloOpcode::kMap: {
+      auto op = func_builder->create<mlir::xla_hlo::MapOp>(
+          loc, result_type, operands,
+          ConvertDimensions(instruction->dimensions()));
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->to_apply(), &op.computation()));
+      return op.getOperation();
+    }
     case HloOpcode::kConvolution: {
       llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
       llvm::SmallVector<int64_t, 8> paddings;
@@ -632,7 +658,6 @@ StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
     return mlir::xla_hlo::TokenType::get(builder_->getContext());
   }
   if (shape.IsTuple()) {
-    mlir::Type mlir_type;
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes_size());
     for (const auto& subtype : shape.tuple_shapes()) {
@@ -709,7 +734,7 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
     llvm::ArrayRef<int64_t> padding) {
   auto ty =
-      mlir::RankedTensorType::get({2, static_cast<int64_t>(padding.size()) / 2},
+      mlir::RankedTensorType::get({static_cast<int64_t>(padding.size()) / 2, 2},
                                   builder_->getIntegerType(64));
   auto attr = DenseIntElementsAttr::get(ty, padding);
   return builder_->getNamedAttr("padding", attr);

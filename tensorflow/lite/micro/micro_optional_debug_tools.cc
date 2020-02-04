@@ -121,7 +121,7 @@ void PrintInterpreterState(MicroInterpreter* interpreter) {
 
   for (size_t node_index = 0; node_index < interpreter->operators_size();
        node_index++) {
-    struct pairTfLiteNodeAndRegistration node_and_reg =
+    const NodeAndRegistration node_and_reg =
         interpreter->node_and_registration(static_cast<int>(node_index));
     const TfLiteNode& node = node_and_reg.node;
     const TfLiteRegistration* reg = node_and_reg.registration;

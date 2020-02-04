@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow;
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+
 // Some of the data from AllocatorStats
 message MemAllocatorStats {
   int64 num_allocs = 1;
@@ -9,7 +11,7 @@ message MemAllocatorStats {
   int64 peak_bytes_in_use = 3;
   int64 largest_alloc_size = 4;
   float fragmentation_metric = 5;
-};
+}
 
 message MemChunk {
   uint64 address = 1;
@@ -21,7 +23,7 @@ message MemChunk {
   uint64 action_count = 7;
   bool in_use = 8;
   uint64 step_id = 9;
-};
+}
 
 message BinSummary {
   int32 bin = 1;
@@ -42,4 +44,4 @@ message MemoryDump {
   repeated MemChunk chunk = 3;
   repeated SnapShot snap_shot = 4;
   MemAllocatorStats stats = 5;
-};
+}

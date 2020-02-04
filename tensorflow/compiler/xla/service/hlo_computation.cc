@@ -466,6 +466,12 @@ HloComputation::ComputeChannelDependencies() const {
   return channel_dependency_group;
 }
 
+static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
+  return absl::c_all_of(instruction->users(), [](HloInstruction* user) {
+    return user->opcode() == HloOpcode::kTrace;
+  });
+}
+
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   auto channel_dependency_group = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
@@ -479,7 +485,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // instructions to the post order at the end (necessarily they have no
       // users).
       trace_instructions.push_back(instruction.get());
-    } else if (instruction->users().empty()) {
+    } else if (HasOnlyTraceUsers(instruction.get())) {
       ComputeInstructionPostOrder(channel_dependency_group, &post_order,
                                   instruction.get(), &visited);
     }

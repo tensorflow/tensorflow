@@ -308,6 +308,16 @@ ResourceHandle MakeResourceHandle(
       name, *ctx->device(), MakeTypeIndex<T>(), dtypes_and_shapes);
 }
 
+template <typename T>
+ResourceHandle MakeResourceHandle(
+    OpKernelConstruction* ctx, const string& container, const string& name,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {}) {
+  return MakeResourceHandle(
+      container.empty() ? ctx->resource_manager()->default_container()
+                        : container,
+      name, *ctx->device(), MakeTypeIndex<T>(), dtypes_and_shapes);
+}
+
 Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
                                   const string& container, const string& name,
                                   const TypeIndex& type_index);

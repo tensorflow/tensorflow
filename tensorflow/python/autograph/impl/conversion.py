@@ -61,6 +61,7 @@ from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.utils import ag_logging as logging
+from tensorflow.python.eager import function
 from tensorflow.python.util import tf_inspect
 
 
@@ -433,6 +434,8 @@ def is_whitelisted(
     # longer be whitelisted.
 
     owner_class = inspect_utils.getmethodclass(o)
+    if owner_class is function.TfMethodTarget:
+      owner_class = o.__self__.target_class
     if owner_class is not None:
       if issubclass(owner_class, unittest.TestCase):
         logging.log(2, 'Whitelisted: %s: method of TestCase subclass', o)
@@ -599,7 +602,9 @@ def convert_class_to_ast(c, program_ctx):
     renames[qual_names.QN(base.__name__)] = qual_names.QN(alias)
 
   # Generate the definition of the converted class.
-  bases = [gast.Name(n, gast.Load(), None) for n in base_names]
+  bases = [
+      gast.Name(n, ctx=gast.Load(), annotation=None, type_comment=None)
+      for n in base_names]
   class_def = gast.ClassDef(
       class_name,
       bases=bases,
@@ -706,7 +711,11 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
 
   if isinstance(node, gast.Lambda):
     node = gast.Assign(
-        targets=[gast.Name(new_name, gast.Store(), None)], value=node)
+        targets=[
+            gast.Name(
+                new_name, ctx=gast.Store(), annotation=None, type_comment=None)
+        ],
+        value=node)
   elif do_rename:
     node.name = new_name
   else:

@@ -510,9 +510,15 @@ static LogicalResult Verify(BroadcastToOp op) {
 // CastOp
 //===----------------------------------------------------------------------===//
 
-void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.insert<CastSameType>(context);
+//===----------------------------------------------------------------------===//
+// LeakyReluOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  // Cast with the same type is a no-op.
+  Value operand = getOperand();
+  if (getType() == operand.getType()) return operand;
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1608,65 +1614,69 @@ void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
-// TODO(b/128020684): Verify the rank of the output and change to use
-// m_Constant.
+// TODO(b/128020684): Verify the output type.
 static LogicalResult Verify(ReshapeOp op) {
-  auto shapeType = op.shape().getType().cast<TensorType>();
-  if (!shapeType.hasRank()) return success();
-  if (shapeType.getRank() != 1)
+  auto shape_type = op.shape().getType().cast<TensorType>();
+  if (!shape_type.hasRank()) return success();
+  if (shape_type.getRank() != 1)
     return op.emitOpError("shape must be 1D tensor");
-  auto rankByShape = shapeType.getShape()[0];
-  auto typeOfTensor = op.tensor().getType().cast<TensorType>();
+  auto rank_by_shape = shape_type.getShape()[0];
+  auto type_of_tensor = op.tensor().getType().cast<TensorType>();
   // No compile time verification for unknown sized shape.
-  if (rankByShape == -1 || !typeOfTensor.hasStaticShape()) return success();
+  if (rank_by_shape == -1 || !type_of_tensor.hasStaticShape()) return success();
+  int64_t num_by_tensor = type_of_tensor.getNumElements();
+
+  auto out_ty = op.getType().cast<RankedTensorType>();
+  if (out_ty && out_ty.hasStaticShape()) {
+    int64_t num_output_elements = out_ty.getNumElements();
+    if (num_by_tensor != num_output_elements)
+      return op.emitOpError()
+             << "number of output elements (" << num_output_elements
+             << ") does not match expected number of elements ("
+             << num_by_tensor << ")";
+  }
+
   // Check values if constant shape. No compiling time verification for
   // non-constant shape.
-  auto *shapeOp = op.shape().getDefiningOp();
-  if (!shapeOp) return success();
-  Attribute shapeCst;
-  if (auto shapeStdOp = dyn_cast<ConstantOp>(shapeOp)) {
-    shapeCst = shapeStdOp.getValue();
-  } else if (auto shapeTFOp = dyn_cast<ConstOp>(shapeOp)) {
-    shapeCst = shapeTFOp.value();
-  } else {
-    return success();
-  }
-  auto shapeCstAttr = shapeCst.dyn_cast<ElementsAttr>();
-  if (!shapeCstAttr) return op.emitOpError("shape must be a valid tensor");
+  auto *shape_op = op.shape().getDefiningOp();
+  if (!shape_op) return success();
+  Attribute shape_cst;
+  if (!matchPattern(shape_op, m_Constant(&shape_cst))) return success();
+  auto shape_cst_attr = shape_cst.dyn_cast<ElementsAttr>();
+  if (!shape_cst_attr) return op.emitOpError("shape must be a valid tensor");
 
-  if (auto opaqueAttr = shapeCstAttr.dyn_cast<OpaqueElementsAttr>()) {
-    opaqueAttr.decode(shapeCstAttr);
+  if (auto opaque_attr = shape_cst_attr.dyn_cast<OpaqueElementsAttr>()) {
+    opaque_attr.decode(shape_cst_attr);
   }
 
   // We know the shape is a 1-D Tensor, then let us get the number of
   // elements it implies.
-  unsigned numByShape = 1;
-  unsigned unknownDimCount = 0;
-  for (int i = 0, e = rankByShape; i != e; ++i) {
-    auto num = shapeCstAttr.getValue<IntegerAttr>(i).getInt();
+  unsigned num_by_shape = 1;
+  unsigned unknown_dim_count = 0;
+  for (int i = 0, e = rank_by_shape; i != e; ++i) {
+    auto num = shape_cst_attr.getValue<IntegerAttr>(i).getInt();
     // The dimension size value can be -1, and that the real size needs to
     // be computed so that the total size remains constant. At most one
     // component of shape can be -1.
     if (num == -1) {
-      if (++unknownDimCount > 1) {
+      if (++unknown_dim_count > 1) {
         return op.emitOpError("more than one component of shape are -1");
       }
     } else {
-      numByShape *= num;
+      num_by_shape *= num;
     }
   }
-  auto numByTensor = typeOfTensor.getNumElements();
   // If there is one component of shape is -1, the dimension should be
   // computed so that the total size remains constant.
-  if (unknownDimCount == 1) {
-    if (numByTensor % numByShape != 0)
+  if (unknown_dim_count == 1) {
+    if (num_by_tensor % num_by_shape != 0)
       return op.emitOpError(
           "one component of shape is -1 but couldn't infer the dimension");
     return success();
   }
   // If the elements by the tensor and implies by the shape don't match,
   // fail this static check.
-  if (numByTensor != numByShape) {
+  if (num_by_tensor != num_by_shape) {
     return op.emitOpError(
         "mismatch in tensor elements and shape implied elements");
   }
@@ -2248,14 +2258,16 @@ constexpr const T &Clamp(const T &val, const T &low, const T &high) {
 }
 
 // For the given `input_shape`, calculates the sliced shape using the given
-// `begin`, `end`, and `stride` ranges and `begin_mask` and `end_mask` masks.
-// Updates the result back to `input_shape`. At the same time, canonicalizes
-// `begin`, `end`, and `strides. The calculation follows tf.StridedSlice op
-// semantics.
+// `begin`, `end`, and `stride` ranges and `begin_mask`, `end_mask`, and
+// `shrink_axis_mask` masks. Updates the result back to `input_shape`. If
+// `shrink_axis_mask` is not zero, this function will not drop the corresponding
+// dimensions in `input_shape`; it will turn them into 1s. At the same time,
+// canonicalizes `begin`, `end`, and `strides. The calculation follows
+// tf.StridedSlice op semantics.
 static void CalculateSlicedShapeAndBoundRanges(
     MutableArrayRef<int64_t> input_shape, int32_t begin_mask, int32_t end_mask,
-    MutableArrayRef<int64_t> begin, MutableArrayRef<int64_t> end,
-    MutableArrayRef<int64_t> stride) {
+    int32_t shrink_axis_mask, MutableArrayRef<int64_t> begin,
+    MutableArrayRef<int64_t> end, MutableArrayRef<int64_t> stride) {
   assert(input_shape.size() <= 32);  // Only 32-bit masks are supported.
 
   // Make sure ranges' ranks are consistent with the input.
@@ -2298,20 +2310,26 @@ static void CalculateSlicedShapeAndBoundRanges(
     if (interval_len != 0 && (interval_len < 0) == (stride_i < 0))
       size_i = (interval_len / stride_i) + (interval_len % stride_i != 0);
 
-    input_shape[i] = size_i;
     begin[i] = begin_i;
-    end[i] = end_i;
-    stride[i] = stride_i;
+    if ((1 << i) & shrink_axis_mask) {
+      // Shrink this dimension. It means we only take the element at begin_i.
+      input_shape[i] = 1;
+      end[i] = begin_i + 1;
+      stride[i] = 1;
+    } else {
+      input_shape[i] = size_i;
+      end[i] = end_i;
+      stride[i] = stride_i;
+    }
   }
 }
 
 bool StridedSliceOp::GetSlicedBoundRanges(
-    ArrayRef<int64_t> shape, SmallVectorImpl<int64_t> *begin_indices,
+    SmallVectorImpl<int64_t> *begin_indices,
     SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
   if (this->ellipsis_mask().getZExtValue() ||
-      this->new_axis_mask().getZExtValue() ||
-      this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(antiagainst): support these masks
+      this->new_axis_mask().getZExtValue())
+    return false;  // TODO(b/146512589): support these masks
 
   // TODO(hinsu): Support lowering for ops with dynamic begin and end values
   // when it is possible to derive indices based on mask attributes.
@@ -2321,7 +2339,9 @@ bool StridedSliceOp::GetSlicedBoundRanges(
       !matchPattern(this->strides(), m_Constant(&strides_attr)))
     return false;
 
-  auto input_shape = llvm::to_vector<4>(shape);
+  auto input_ty = this->input().getType().dyn_cast<RankedTensorType>();
+  if (!input_ty || !input_ty.hasStaticShape()) return false;
+  auto input_shape = llvm::to_vector<4>(input_ty.getShape());
   int rank = input_shape.size();
 
   begin_indices->clear();
@@ -2340,7 +2360,8 @@ bool StridedSliceOp::GetSlicedBoundRanges(
 
   CalculateSlicedShapeAndBoundRanges(
       input_shape, this->begin_mask().getZExtValue(),
-      this->end_mask().getZExtValue(), *begin_indices, *end_indices, *strides);
+      this->end_mask().getZExtValue(), this->shrink_axis_mask().getZExtValue(),
+      *begin_indices, *end_indices, *strides);
   return true;
 }
 
@@ -2368,7 +2389,7 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
   if (this->ellipsis_mask().getZExtValue() ||
       this->new_axis_mask().getZExtValue() ||
       this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(antiagainst): support these masks
+    return false;  // TODO(b/146512589): support these masks
 
   DenseIntElementsAttr shape_attr;
   DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
@@ -2399,6 +2420,7 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
 
   CalculateSlicedShapeAndBoundRanges(*shape, this->begin_mask().getZExtValue(),
                                      this->end_mask().getZExtValue(),
+                                     this->shrink_axis_mask().getZExtValue(),
                                      *begin_indices, *end_indices, *strides);
   return true;
 }
@@ -2621,16 +2643,16 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(VariableShapeOp op) {
-  auto resource_operand_type = op.input()
-                                   .getType()
-                                   .cast<TensorType>()
-                                   .getElementType()
-                                   .cast<TF::ResourceType>();
-  auto subtypes = resource_operand_type.getSubtypes();
+  auto input_type = op.input().getType().cast<TensorType>();
+  if (input_type.hasStaticShape() && input_type.getNumElements() != 1)
+    return op.emitOpError("requires input to have one resource");
+
+  auto resource_type = input_type.getElementType().cast<TF::ResourceType>();
+  auto subtypes = resource_type.getSubtypes();
   switch (subtypes.size()) {
     case 1:
       return VerifyShapeOperandAndResult(
-          op, resource_operand_type.getSubtypes().front(), op.getType());
+          op, resource_type.getSubtypes().front(), op.getType());
     case 0:
       return VerifyShapeOperandAndResult(op, Type(), op.getType());
     default:
@@ -2664,7 +2686,6 @@ static LogicalResult Verify(WhileOp op) {
     return op.emitOpError("requires cond function to have exactly one result");
 
   SmallVector<Type, 4> operands(op.getOperandTypes());
-  SmallVector<Type, 4> results(op.getResultTypes());
 
   // Collect all the type lists for the op so that different pairs of type lists
   // can be compared for the compatibility.
@@ -2672,7 +2693,7 @@ static LogicalResult Verify(WhileOp op) {
   std::pair<std::string, ArrayRef<Type>> typeLists[] = {
       {"operand", operands},
       {"body function result", bodyFuncType.getResults()},
-      {"result", results},
+      {"result", op.getResultTypes()},
       {"cond function input", condFuncType.getInputs()},
       {"body function input", bodyFuncType.getInputs()},
   };

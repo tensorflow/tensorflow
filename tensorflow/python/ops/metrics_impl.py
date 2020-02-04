@@ -291,7 +291,7 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
       # inside a while_loop (and perhaps a TPU rewrite context). But we don't
       # want the value op to be evaluated every step or on the TPU. So we
       # create it outside so that it can be evaluated at the end on the host,
-      # once the update ops have been evaluted.
+      # once the update ops have been evaluated.
 
       # pylint: disable=protected-access
       if distribution.extended._outer_control_flow_context is None:

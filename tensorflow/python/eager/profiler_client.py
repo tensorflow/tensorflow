@@ -19,7 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.eager import eager_util as c_api_util
+from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 
 
@@ -74,4 +75,4 @@ def monitor(service_addr,
     pywrap_tfe.TFE_ProfilerClientMonitor(service_addr, duration_ms,
                                          monitoring_level, display_timestamp,
                                          buffer_)
-    return pywrap_tfe.TF_GetBuffer(buffer_)
+    return pywrap_tf_session.TF_GetBuffer(buffer_)

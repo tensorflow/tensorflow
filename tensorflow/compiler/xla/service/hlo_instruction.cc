@@ -409,12 +409,21 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
+      absl::optional<int64> split_dimension;
+      if (proto.dimensions_size() > 0) {
+        TF_RET_CHECK(proto.dimensions_size() == 1)
+            << "AllToAll cannot have more than 1 dimension (split dimension)";
+        TF_RET_CHECK(all_operands().size() == 1)
+            << "AllToAll must have a single operand when the split dimension "
+               "is specified";
+        split_dimension = proto.dimensions(0);
+      }
       instruction = CreateAllToAll(
           shape, all_operands(),
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
-          /*channel_id=*/channel_id);
+          /*channel_id=*/channel_id, split_dimension);
       break;
     }
     case HloOpcode::kCollectivePermute: {
@@ -496,9 +505,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             proto.convolution_dimension_numbers());
       }
       custom_call_instr->set_feature_group_count(
-          std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
+          std::max(static_cast<int64>(proto.feature_group_count()), int64{1}));
       custom_call_instr->set_batch_group_count(
-          std::max(static_cast<int64>(proto.batch_group_count()), 1LL));
+          std::max(static_cast<int64>(proto.batch_group_count()), int64{1}));
       custom_call_instr->set_custom_call_has_side_effect(
           proto.custom_call_has_side_effect());
       break;
@@ -911,9 +920,10 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     const std::vector<ReplicaGroup>& replica_groups,
-    const absl::optional<int64>& channel_id) {
-  return absl::make_unique<HloAllToAllInstruction>(shape, operands,
-                                                   replica_groups, channel_id);
+    const absl::optional<int64>& channel_id,
+    const absl::optional<int64>& split_dimension) {
+  return absl::make_unique<HloAllToAllInstruction>(
+      shape, operands, replica_groups, channel_id, split_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>

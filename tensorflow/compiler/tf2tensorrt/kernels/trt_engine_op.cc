@@ -617,7 +617,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
       }
     } else {
       const string msg =
-          StrCat("Ouput node ", output_name, " not found, at ", name());
+          StrCat("Output node ", output_name, " not found, at ", name());
       LOG(ERROR) << msg;
       ctx->SetStatus(errors::NotFound(msg));
       return !kRetry;

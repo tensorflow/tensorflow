@@ -34,16 +34,16 @@ py_library(
         "//tensorflow/python/keras:callbacks",
         "//tensorflow/python/keras:callbacks_v1",
         "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:engine_utils",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:losses",
-        "//tensorflow/python/keras:mode_keys",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras:saving",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/saving",
+        "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -213,7 +213,7 @@ distribute_py_test(
     srcs = ["keras_image_model_correctness_test.py"],
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
-    shard_count = 8,
+    shard_count = 16,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
@@ -320,8 +320,8 @@ cuda_py_test(
     srcs = ["multi_worker_test.py"],
     shard_count = 32,
     tags = [
+        "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -377,6 +377,11 @@ cuda_py_test(
 cuda_py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
+    shard_count = 10,
+    tags = [
+        "manual",  # TODO(b/148795660): Reenable once the flakiness is fixed.
+        "notap",
+    ],
     deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",

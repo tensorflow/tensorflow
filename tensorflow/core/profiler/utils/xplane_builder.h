@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -25,10 +26,74 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-class XEventBuilder {
+template <class T>
+class XStatsBuilder {
+ public:
+  explicit XStatsBuilder(T* stats_owner) : stats_owner_(stats_owner) {}
+
+  void AddStatValue(const XStatMetadata& metadata, uint32 value) {
+    AddStat(metadata)->set_uint64_value(value);
+  }
+  void AddStatValue(const XStatMetadata& metadata, uint64 value) {
+    AddStat(metadata)->set_uint64_value(value);
+  }
+  void AddStatValue(const XStatMetadata& metadata, int32 value) {
+    AddStat(metadata)->set_int64_value(value);
+  }
+  void AddStatValue(const XStatMetadata& metadata, int64 value) {
+    AddStat(metadata)->set_int64_value(value);
+  }
+  void AddStatValue(const XStatMetadata& metadata, double value) {
+    AddStat(metadata)->set_double_value(value);
+  }
+  void AddStatValue(const XStatMetadata& metadata, absl::string_view value) {
+    AddStat(metadata)->set_str_value(string(value));
+  }
+  void AddStatValue(const XStatMetadata& metadata, string&& value) {
+    AddStat(metadata)->set_str_value(std::move(value));
+  }
+
+  void AddStat(const XStatMetadata& metadata, const XStat& stat) {
+    DCHECK_EQ(metadata.id(), stat.metadata_id());
+    *stats_owner_->add_stats() = stat;
+  }
+
+  void ParseAndAddStatValue(const XStatMetadata& metadata,
+                            absl::string_view value) {
+    int64 int_value;
+    uint64 uint_value;
+    double double_value;
+    if (absl::SimpleAtoi(value, &int_value)) {
+      AddStatValue(metadata, int_value);
+    } else if (absl::SimpleAtoi(value, &uint_value)) {
+      AddStatValue(metadata, uint_value);
+    } else if (absl::SimpleAtod(value, &double_value)) {
+      AddStatValue(metadata, double_value);
+    } else {
+      AddStatValue(metadata, value);
+    }
+  }
+  void ReserveStats(size_t num_stats) {
+    stats_owner_->mutable_stats()->Reserve(num_stats);
+  }
+
+ private:
+  XStat* AddStat(const XStatMetadata& metadata) {
+    XStat* stat = stats_owner_->add_stats();
+    stat->set_metadata_id(metadata.id());
+    return stat;
+  }
+
+  T* stats_owner_;
+};
+
+class XEventBuilder : public XStatsBuilder<XEvent> {
  public:
   XEventBuilder(const XLine* line, XEvent* event)
-      : line_(line), event_(event) {}
+      : XStatsBuilder<XEvent>(event), line_(line), event_(event) {}
+
+  int64 OffsetPs() const { return event_->offset_ps(); }
+  int64 MetadataId() const { return event_->metadata_id(); }
 
   void SetOffsetPs(int64 offset_ps) { event_->set_offset_ps(offset_ps); }
 
@@ -55,43 +120,7 @@ class XEventBuilder {
                   event_->offset_ps());
   }
 
-  void ReserveStats(size_t num_stats) {
-    event_->mutable_stats()->Reserve(num_stats);
-  }
-
-  void AddStatValue(const XStatMetadata& metadata, uint32 value) {
-    AddStat(metadata)->set_uint64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, uint64 value) {
-    AddStat(metadata)->set_uint64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, int32 value) {
-    AddStat(metadata)->set_int64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, int64 value) {
-    AddStat(metadata)->set_int64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, double value) {
-    AddStat(metadata)->set_double_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, absl::string_view value) {
-    AddStat(metadata)->set_str_value(string(value));
-  }
-  void AddStatValue(const XStatMetadata& metadata, string&& value) {
-    AddStat(metadata)->set_str_value(std::move(value));
-  }
-
-  void ParseAndAddStatValue(const XStatMetadata& metadata,
-                            absl::string_view value);
-
-  void AddStat(const XStatMetadata& metadata, const XStat& stat) {
-    DCHECK_EQ(metadata.id(), stat.metadata_id());
-    *event_->add_stats() = stat;
-  }
-
  private:
-  XStat* AddStat(const XStatMetadata& metadata);
-
   const XLine* line_;
   XEvent* event_;
 };
@@ -100,6 +129,7 @@ class XLineBuilder {
  public:
   explicit XLineBuilder(XLine* line) : line_(line) {}
 
+  int64 Id() { return line_->id(); }
   void SetId(int64 id) { line_->set_id(id); }
 
   void SetName(absl::string_view name) { line_->set_name(string(name)); }
@@ -126,16 +156,24 @@ class XLineBuilder {
 
 // Provides methods to build an XPlane.
 // NOTE: avoid to use two builders to wrap the same XPlane.
-class XPlaneBuilder {
+class XPlaneBuilder : public XStatsBuilder<XPlane> {
  public:
   explicit XPlaneBuilder(XPlane* plane);
 
+  int64 Id() { return plane_->id(); }
   void SetId(int64 id) { plane_->set_id(id); }
 
   void SetName(absl::string_view name) { plane_->set_name(string(name)); }
 
   void ReserveLines(size_t num_lines) {
     plane_->mutable_lines()->Reserve(num_lines);
+  }
+
+  template <typename ForEachLineFunc>
+  void ForEachLine(ForEachLineFunc&& for_each_line) const {
+    for (XLine& line : *plane_->mutable_lines()) {
+      for_each_line(XLineBuilder(&line));
+    }
   }
 
   XLineBuilder GetOrCreateLine(int64 line_id);

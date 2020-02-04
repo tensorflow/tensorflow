@@ -54,15 +54,17 @@ Status CreateCLContext(const CLDevice& device,
                                      CLErrorCodeToString(error_code)));
   }
 
-  *result = CLContext(context);
+  *result = CLContext(context, true);
   return OkStatus();
 }
 
 }  // namespace
 
-CLContext::CLContext(cl_context context) : context_(context) {}
+CLContext::CLContext(cl_context context, bool has_ownership)
+    : context_(context), has_ownership_(has_ownership) {}
 
-CLContext::CLContext(CLContext&& context) : context_(context.context_) {
+CLContext::CLContext(CLContext&& context)
+    : context_(context.context_), has_ownership_(context.has_ownership_) {
   context.context_ = nullptr;
 }
 
@@ -70,6 +72,7 @@ CLContext& CLContext::operator=(CLContext&& context) {
   if (this != &context) {
     Release();
     std::swap(context_, context.context_);
+    has_ownership_ = context.has_ownership_;
   }
   return *this;
 }
@@ -77,7 +80,7 @@ CLContext& CLContext::operator=(CLContext&& context) {
 CLContext::~CLContext() { Release(); }
 
 void CLContext::Release() {
-  if (context_) {
+  if (has_ownership_ && context_) {
     clReleaseContext(context_);
     context_ = nullptr;
   }

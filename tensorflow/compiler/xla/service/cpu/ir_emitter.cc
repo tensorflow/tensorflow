@@ -299,7 +299,7 @@ int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   DCHECK_LE(byte_size, 16);
 
   // Allocations may be 8-byte aligned if part of a small block.
-  return std::min(8LL, byte_size);
+  return std::min(int64{8}, byte_size);
 }
 
 int64 IrEmitter::ByteSizeOf(const Shape& shape) const {

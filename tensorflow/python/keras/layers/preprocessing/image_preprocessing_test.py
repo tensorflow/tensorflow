@@ -27,6 +27,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import image_ops_impl as image_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -456,6 +457,153 @@ class RandomContrastTest(keras_parameterized.TestCase):
     layer = image_preprocessing.RandomContrast((.5, .6), name='image_preproc')
     config = layer.get_config()
     layer_1 = image_preprocessing.RandomContrast.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomTranslationTest(keras_parameterized.TestCase):
+
+  def _run_test(self, height_factor, width_factor):
+    np.random.seed(1337)
+    num_samples = 2
+    orig_height = 5
+    orig_width = 8
+    channels = 3
+    kwargs = {'height_factor': height_factor, 'width_factor': width_factor}
+    with tf_test_util.use_gpu():
+      testing_utils.layer_test(
+          image_preprocessing.RandomTranslation,
+          kwargs=kwargs,
+          input_shape=(num_samples, orig_height, orig_width, channels),
+          expected_output_shape=(None, orig_height, orig_width, channels))
+
+  @parameterized.named_parameters(
+      ('random_translate_4_by_6', .4, .6), ('random_translate_3_by_2', .3, .2),
+      ('random_translate_tuple_factor', (.5, .4), (.2, .3)))
+  def test_random_translation(self, height_factor, width_factor):
+    self._run_test(height_factor, width_factor)
+
+  def test_random_translation_negative_lower(self):
+    mock_offset = np.random.random((12, 1))
+    with test.mock.patch.object(
+        gen_stateful_random_ops, 'stateful_uniform', return_value=mock_offset):
+      with self.cached_session(use_gpu=True):
+        layer = image_preprocessing.RandomTranslation((-0.2, .3), .4)
+        layer_2 = image_preprocessing.RandomTranslation((0.2, .3), .4)
+        inp = np.random.random((12, 5, 8, 3)).astype(np.float32)
+        actual_output = layer(inp, training=1)
+        actual_output_2 = layer_2(inp, training=1)
+        self.assertAllClose(actual_output, actual_output_2)
+
+  def test_random_translation_inference(self):
+    with CustomObjectScope(
+        {'RandomTranslation': image_preprocessing.RandomTranslation}):
+      input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+      expected_output = input_images
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomTranslation(.5, .5)
+        actual_output = layer(input_images, training=0)
+        self.assertAllClose(expected_output, actual_output)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.RandomTranslation(.5, .6, name='image_preproc')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.RandomTranslation.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomRotationTest(keras_parameterized.TestCase):
+
+  def _run_test(self, factor):
+    np.random.seed(1337)
+    num_samples = 2
+    orig_height = 5
+    orig_width = 8
+    channels = 3
+    kwargs = {'factor': factor}
+    with tf_test_util.use_gpu():
+      testing_utils.layer_test(
+          image_preprocessing.RandomRotation,
+          kwargs=kwargs,
+          input_shape=(num_samples, orig_height, orig_width, channels),
+          expected_output_shape=(None, orig_height, orig_width, channels))
+
+  @parameterized.named_parameters(('random_rotate_4', .4),
+                                  ('random_rotate_3', .3),
+                                  ('random_rotate_tuple_factor', (.5, .4)))
+  def test_random_rotation(self, factor):
+    self._run_test(factor)
+
+  def test_random_rotation_inference(self):
+    with CustomObjectScope(
+        {'RandomTranslation': image_preprocessing.RandomRotation}):
+      input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+      expected_output = input_images
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomRotation(.5)
+        actual_output = layer(input_images, training=0)
+        self.assertAllClose(expected_output, actual_output)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.RandomRotation(.5, name='image_preproc')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.RandomRotation.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomZoomTest(keras_parameterized.TestCase):
+
+  def _run_test(self, height_factor, width_factor):
+    np.random.seed(1337)
+    num_samples = 2
+    orig_height = 5
+    orig_width = 8
+    channels = 3
+    kwargs = {'height_factor': height_factor, 'width_factor': width_factor}
+    with tf_test_util.use_gpu():
+      testing_utils.layer_test(
+          image_preprocessing.RandomZoom,
+          kwargs=kwargs,
+          input_shape=(num_samples, orig_height, orig_width, channels),
+          expected_output_shape=(None, orig_height, orig_width, channels))
+
+  @parameterized.named_parameters(
+      ('random_zoom_4_by_6', .4, .6), ('random_zoom_2_by_3', .2, .3),
+      ('random_zoom_tuple_factor', (.4, .5), (.2, .3)))
+  def test_random_zoom_in(self, height_factor, width_factor):
+    self._run_test(height_factor, width_factor)
+
+  @parameterized.named_parameters(
+      ('random_zoom_4_by_6', 1.4, 1.6), ('random_zoom_2_by_3', 1.2, 1.3),
+      ('random_zoom_tuple_factor', (1.4, 1.5), (1.2, 1.3)))
+  def test_random_zoom_out(self, height_factor, width_factor):
+    self._run_test(height_factor, width_factor)
+
+  def test_random_zoom_invalid_factor(self):
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomZoom((.5, .4), .2)
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomZoom(.2, (.5, .4))
+
+  def test_random_zoom_inference(self):
+    with CustomObjectScope(
+        {'RandomZoom': image_preprocessing.RandomZoom}):
+      input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+      expected_output = input_images
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomZoom(.5, .5)
+        actual_output = layer(input_images, training=0)
+        self.assertAllClose(expected_output, actual_output)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.RandomZoom(.5, .6, name='image_preproc')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.RandomZoom.from_config(config)
     self.assertEqual(layer_1.name, layer.name)
 
 

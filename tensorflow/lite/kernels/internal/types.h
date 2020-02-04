@@ -854,6 +854,8 @@ struct DepthwiseParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  const int32* output_multiplier_per_channel;
+  const int32* output_shift_per_channel;
 };
 
 struct DequantizationParams {
@@ -880,6 +882,9 @@ struct FullyConnectedParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  // Mark the operands as cacheable if they are unchanging, e.g. weights.
+  bool lhs_cacheable;
+  bool rhs_cacheable;
   FullyConnectedWeightsFormat weights_format;
 };
 
@@ -988,6 +993,10 @@ struct ReshapeParams {
 
 struct ResizeBilinearParams {
   bool align_corners;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Corresponds to the same argument for the
+  // original TensorFlow op in TF2.0.
+  bool half_pixel_centers;
 };
 
 struct ResizeNearestNeighborParams {

@@ -60,9 +60,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_LOGISTIC() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, activations::Prepare,
-                                 activations::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = activations::Prepare;
+  r.invoke = activations::Eval;
   return &r;
 }
 }  // namespace micro

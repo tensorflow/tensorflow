@@ -42,6 +42,8 @@ upper_tabs:
         path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
+      - title: "1.x compatibility"
+        path: /lite/convert/1x_compatibility
 
       - heading: "Inference"
       - title: "Overview"
@@ -54,6 +56,7 @@ upper_tabs:
         path: /lite/guide/ops_compatibility
       - title: "Select operators from TensorFlow"
         path: /lite/guide/ops_select
+        status: experimental
       - title: "List of hosted models"
         path: /lite/guide/hosted_models
 
@@ -78,8 +81,11 @@ upper_tabs:
         path: /lite/performance/gpu
       - title: "Advanced GPU"
         path: /lite/performance/gpu_advanced
+      - title: "NNAPI delegate"
+        path: /lite/performance/nnapi
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
+        status: experimental
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
 

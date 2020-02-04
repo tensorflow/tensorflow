@@ -24,6 +24,7 @@ py_library(
         ":load",
         ":loader",
         ":main_op",
+        ":method_name_updater",
         ":save",
         ":signature_constants",
         ":signature_def_utils",
@@ -514,5 +515,29 @@ py_library(
     srcs = ["save_options.py"],
     deps = [
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "method_name_updater",
+    srcs = ["method_name_updater.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        ":loader",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+tf_py_test(
+    name = "method_name_updater_test",
+    srcs = ["method_name_updater_test.py"],
+    deps = [
+        ":method_name_updater",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/eager:test",
     ],
 )

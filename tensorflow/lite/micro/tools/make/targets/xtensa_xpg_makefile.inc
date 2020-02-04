@@ -7,11 +7,14 @@ ifeq ($(TARGET), xtensa-xpg)
   TARGET_ARCH := xtensa-xpg
 
   PLATFORM_ARGS = \
+    -DTF_LITE_MICRO_TENSORS_PREPARED \
     -DTF_LITE_STATIC_MEMORY \
     -DNDEBUG \
     -DTF_LITE_MCU_DEBUG_LOG \
     --xtensa-core=$(XTENSA_CORE) \
-    -g -O2 \
+    -mcoproc \
+    -O3 \
+    -DXTENSA -DMAX_RFFT_PWR=9 -DMIN_RFFT_PWR=MAX_RFFT_PWR -fdata-sections \
     -fmessage-length=0
 
   TARGET_TOOLCHAIN_PREFIX := xt-

@@ -56,6 +56,13 @@ class HloRematerialization : public HloModulePass {
     kRecomputeAndCompress  // Consider both kRecompute and kRemat.
   };
 
+  // Enum to specify whether this rematerialization pass occurs before or after
+  // multi-output fusion.
+  enum class RematerializationPass {
+    kPreFusion,  // Rematerialization pass before multi-output fusion.
+    kPostFusion  // Rematerialization pass after multi-output fusion.
+  };
+
   static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
 
   // Constructor parameters:
@@ -75,12 +82,13 @@ class HloRematerialization : public HloModulePass {
   //   shape. If nullptr is provided, an default identity function is used.
   explicit HloRematerialization(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
-      RematerializationSizes* sizes,
+      RematerializationSizes* sizes, RematerializationPass pass_location,
       CompactShapeFunction compact_shape_function = nullptr,
       RematerializationMode mode = RematerializationMode::kRecomputeAndCompress)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
         sizes_(sizes),
+        pass_location_(pass_location),
         compact_shape_function_(compact_shape_function == nullptr
                                     ? DefaultCompactShapeFunction
                                     : std::move(compact_shape_function)),
@@ -131,6 +139,10 @@ class HloRematerialization : public HloModulePass {
   // Pointer to data structure which records the peak memory usage of the HLO
   // module before/after rematerialization
   RematerializationSizes* sizes_;
+
+  // Specifies whether this rematerialization pass occurs before or after
+  // multi-output fusion.
+  RematerializationPass pass_location_;
 
   // Converts a shape into compact form, returns the same shape if a shape is
   // already considered compact.

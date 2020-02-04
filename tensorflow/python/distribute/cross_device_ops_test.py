@@ -455,7 +455,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                         task_id,
                         num_gpus=0,
                         use_strategy_object=False,
-                        local_mode=False):
+                        local_mode=False,
+                        num_packs=1):
     collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=10 + CollectiveAllReduceTest.collective_key_base,
         op_instance_key_start=100 + CollectiveAllReduceTest.collective_key_base,
@@ -474,7 +475,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         return strategy, devices, ""
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
-            1, num_gpus, collective_keys=collective_keys)
+            1, num_gpus, collective_keys=collective_keys, num_packs=num_packs)
         return collective_all_reduce_ops, devices, ""
     else:
       if num_gpus:
@@ -499,7 +500,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                 "grpc://" + self._cluster_spec[task_type][task_id])
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
-            NUM_WORKERS, num_gpus, collective_keys=collective_keys)
+            NUM_WORKERS, num_gpus, collective_keys=collective_keys,
+            num_packs=num_packs)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
 
@@ -531,13 +533,15 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                       task_id,
                       num_gpus,
                       use_strategy_object=False,
-                      local_mode=False):
+                      local_mode=False,
+                      num_packs=1):
     collective_all_reduce, devices, master_target = self._get_test_objects(
         task_type,
         task_id,
         num_gpus,
         use_strategy_object=use_strategy_object,
-        local_mode=local_mode)
+        local_mode=local_mode,
+        num_packs=num_packs)
     if local_mode:
       num_workers = 1
       worker_device = None
@@ -699,56 +703,48 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
-          use_strategy_object=[True, False]))
-  def testReductionDistributed(self, num_gpus, use_strategy_object):
-    if context.num_gpus() < num_gpus:
-      return
+          required_gpus=[0, 1, 2],
+          use_strategy_object=[True, False],
+          num_packs=[1, 2]))
+  def testReductionDistributed(self, required_gpus, use_strategy_object,
+                               num_packs):
     self._run_between_graph_clients(
         self._test_reduction,
         self._cluster_spec,
-        num_gpus,
-        use_strategy_object=use_strategy_object)
+        required_gpus,
+        use_strategy_object=use_strategy_object,
+        num_packs=num_packs)
 
   @combinations.generate(
       combinations.combine(
-          mode=["graph"],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
-          batch_reduce=[True]))
-  def testReduceIndexedSlicesDistributed(self, num_gpus, batch_reduce):
-    if context.num_gpus() < num_gpus:
-      return
+          mode=["graph"], required_gpus=[0, 1, 2], batch_reduce=[True]))
+  def testReduceIndexedSlicesDistributed(self, required_gpus, batch_reduce):
     self._run_between_graph_clients(self._test_reduce_indexed_slices,
-                                    self._cluster_spec, num_gpus, batch_reduce)
+                                    self._cluster_spec, required_gpus,
+                                    batch_reduce)
 
   # Collective ops doesn't support strategy with one device.
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[2],
           required_gpus=2,
           use_strategy_object=[True, False]))
-  def testReductionLocal(self, num_gpus, use_strategy_object):
-    if context.num_gpus() < num_gpus:
-      return
+  def testReductionLocal(self, required_gpus, use_strategy_object):
     self._test_reduction(
         None,
         None,
-        num_gpus,
+        required_gpus,
         use_strategy_object=use_strategy_object,
         local_mode=True)
 
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
-          num_gpus=[2],
           required_gpus=2,
           batch_reduce=[True, False]))
-  def testReduceIndexedSlicesLocal(self, num_gpus, batch_reduce):
+  def testReduceIndexedSlicesLocal(self, required_gpus, batch_reduce):
     self._test_reduce_indexed_slices(
-        None, None, num_gpus, batch_reduce, local_mode=True)
+        None, None, required_gpus, batch_reduce, local_mode=True)
 
 
 if __name__ == "__main__":

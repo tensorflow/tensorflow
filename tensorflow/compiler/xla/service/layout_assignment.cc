@@ -319,7 +319,7 @@ Status LayoutConstraints::SetInstructionLayout(
         CHECK_EQ(1, buffers.size());
         CHECK_EQ(buffers[0]->instruction(), instruction);
 
-        if (subshape.IsArray()) {
+        if (subshape.IsArray() && subshape.has_layout()) {
           return SetBufferLayout(subshape.layout(), *buffers[0], mandatory);
         } else {
           return Status::OK();
@@ -472,12 +472,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
         const ShapeLayout& parameter_layout =
             computation_layout->parameter_layout(
                 instruction->parameter_number());
-        if (parameter_layout.LayoutIsSet()) {
-          // Parameter layouts must match the respective layout in
-          // ComputationLayout, if there is one.
-          TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
-              parameter_layout.shape(), instruction));
-        }
+        // Parameter layouts must match the respective layout in
+        // ComputationLayout, if there is one.
+        TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+            parameter_layout.shape(), instruction));
       }
     } else if (IsLayoutConstrainedCustomCall(instruction)) {
       const HloCustomCallInstruction* custom_call =
@@ -765,15 +763,23 @@ Status CheckParameterLayout(HloInstruction* parameter,
                             const ComputationLayout& computation_layout) {
   const ShapeLayout& parameter_layout =
       computation_layout.parameter_layout(parameter->parameter_number());
-  if (parameter_layout.LayoutIsSet() &&
-      !parameter_layout.MatchesLayoutInShape(parameter->shape(),
-                                             /*minor_to_major_only=*/true)) {
-    return InternalError(
-        "parameter instruction %s does not match layout of computation "
-        "shape: %s",
-        parameter->ToString(), parameter_layout.ToString());
-  }
-  return Status::OK();
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      parameter_layout.shape(),
+      [&](const Shape& subshape, const ShapeIndex& shape_index) {
+        if (!ShapeUtil::IsLeafIndex(parameter_layout.shape(), shape_index) ||
+            !subshape.has_layout()) {
+          return Status::OK();
+        }
+        if (!Shape::Equal().MinorToMajorOnlyInLayout().IgnoreDynamicDimension()(
+                subshape,
+                ShapeUtil::GetSubshape(parameter->shape(), shape_index))) {
+          return InternalError(
+              "parameter instruction %s does not match layout of computation "
+              "shape: %s",
+              parameter->ToString(), parameter_layout.ToString());
+        }
+        return Status::OK();
+      });
 }
 
 // The layout of a constant instruction must match the layout of its literal.
@@ -1072,7 +1078,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
         LayoutUtil::MinorToMajor(output_layout));
     Shape operand_shape = operand->shape();
     *operand_shape.mutable_layout() =
-        LayoutUtil::MakeDescendingLayout(operand_shape.rank());
+        LayoutUtil::GetDefaultLayoutForShape(operand_shape);
     auto aligned_operand_shape =
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
     if (aligned_operand_shape) {
@@ -1133,7 +1139,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
         LayoutUtil::MinorToMajor(operand_layout));
     Shape output_shape = user->shape();
     *output_shape.mutable_layout() =
-        LayoutUtil::MakeDescendingLayout(output_shape.rank());
+        LayoutUtil::GetDefaultLayoutForShape(output_shape);
     auto aligned_user_shape =
         ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);
     if (aligned_user_shape) {
@@ -1871,7 +1877,7 @@ Status LayoutAssignment::RunOnComputation(
             ? ShapeUtil::GetSubshape(instruction->literal().shape(),
                                      buffer.index())
                   .layout()
-            : GetDefaultLayoutForShape(buffer.shape());
+            : LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
     TF_RETURN_IF_ERROR(constraints.SetBufferLayout(new_layout, buffer,
                                                    /*mandatory=*/false));
 
@@ -2004,14 +2010,33 @@ Status LayoutAssignment::PropagateComputationLayouts(
       /*ignore_layouts=*/false);
   for (int64 i = 0; i < computed_computation_layout.parameter_count(); ++i) {
     ShapeLayout* param_layout = computation_layout->mutable_parameter_layout(i);
-    if (!param_layout->LayoutIsSet()) {
+    bool needs_assign = false;
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        param_layout->shape(),
+        [&](const Shape& subshape, const ShapeIndex& shape_index) {
+          if (!ShapeUtil::IsLeafIndex(param_layout->shape(), shape_index)) {
+            return Status::OK();
+          }
+          if (!subshape.has_layout()) {
+            needs_assign = true;
+            return Status::OK();
+          }
+          const auto& computed_subshape = ShapeUtil::GetSubshape(
+              computed_computation_layout.parameter_shape(i), shape_index);
+          if (subshape.layout() != computed_subshape.layout()) {
+            return InternalError(
+                "Assigned parameter shape %s does not match layout of "
+                "computation shape: %s",
+                computed_computation_layout.ToString(),
+                computation_layout->ToString());
+          }
+          return Status::OK();
+        }));
+    if (needs_assign) {
       VLOG(4) << "Assigning layout to parameter " << i << " of computation "
               << computation->name() << ": "
               << computed_computation_layout.parameter_layout(i).ToString();
       *param_layout = computed_computation_layout.parameter_layout(i);
-    } else {
-      TF_RET_CHECK(computed_computation_layout.parameter_layout(i) ==
-                   *param_layout);
     }
   }
   ShapeLayout* result_layout = computation_layout->mutable_result_layout();

@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_ENV_VAR_H_
 #define TENSORFLOW_CORE_UTIL_ENV_VAR_H_
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -35,6 +35,11 @@ Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
 // If the string cannot be parsed into int64, an error status is returned.
 Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
                            int64* value);
+// Returns a float into "value" from the environmental variable "env_var_name".
+// If it is unset, the default value is used.
+// If the string cannot be parsed into float, an error status is returned.
+Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
+                           float* value);
 
 // Returns a string into "value" from the environmental variable "env_var_name".
 // If it is unset, the default value is used.

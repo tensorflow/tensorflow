@@ -43,11 +43,16 @@ def VGG16(include_top=True,
           input_shape=None,
           pooling=None,
           classes=1000):
-  """Instantiates the VGG16 architecture.
+  """Instantiates the VGG16 model.
 
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in your Keras config at `~/.keras/keras.json`.
+  By default, it loads weights pre-trained on ImageNet. Check 'weights' for
+  other options.
+
+  This model can be built both with 'channels_first' data format
+  (channels, height, width) or 'channels_last' data format
+  (height, width, channels).
+
+  The default input size for this model is 224x224.
 
   Arguments:
       include_top: whether to include the 3 fully-connected
@@ -199,10 +204,12 @@ def VGG16(include_top=True,
 
 @keras_export('keras.applications.vgg16.preprocess_input')
 def preprocess_input(x, data_format=None):
+  """Preprocesses the input (encoding a batch of images) to the VGG16 model."""
   return imagenet_utils.preprocess_input(
       x, data_format=data_format, mode='caffe')
 
 
 @keras_export('keras.applications.vgg16.decode_predictions')
 def decode_predictions(preds, top=5):
+  """Decodes the prediction result from the VGG16 model."""
   return imagenet_utils.decode_predictions(preds, top=top)

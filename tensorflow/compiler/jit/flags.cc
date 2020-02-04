@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/jit/flags.h"
+
 #include <mutex>  // NOLINT
 
+#include "absl/base/call_once.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
@@ -32,7 +35,7 @@ XlaOpsCommonFlags* ops_flags;
 IntroduceFloatingPointJitterPassFlags* jitter_flags;
 
 std::vector<Flag>* flag_list;
-std::once_flag flags_init;
+absl::once_flag flags_init;
 
 bool SetterForXlaAutoJitFlag(const string& value) {
   int32 opt_level;
@@ -155,6 +158,7 @@ void AllocateAndParseFlags() {
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
+  device_flags->tf_xla_enable_xla_devices = true;
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
@@ -187,6 +191,12 @@ void AllocateAndParseFlags() {
             "Switch a device into 'on-demand' mode, where instead of "
             "autoclustering ops are compiled one by one just-in-time."),
 
+       Flag("tf_xla_enable_xla_devices",
+            &device_flags->tf_xla_enable_xla_devices,
+            "Generate XLA_* devices, where placing a computation on such a "
+            "device"
+            "forces compilation by XLA. Deprecated."),
+
        Flag("tf_xla_always_defer_compilation",
             &ops_flags->tf_xla_always_defer_compilation, ""),
 
@@ -206,38 +216,45 @@ void AllocateAndParseFlags() {
 }  // namespace
 
 bool SetXlaAutoJitFlagFromFlagString(const string& value) {
-  std::call_once(flags_init, &AllocateAndParseFlags);
+  absl::call_once(flags_init, &AllocateAndParseFlags);
   return SetterForXlaAutoJitFlag(value);
 }
 
 BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags() {
-  std::call_once(flags_init, &AllocateAndParseFlags);
+  absl::call_once(flags_init, &AllocateAndParseFlags);
   return build_ops_flags;
 }
 
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags() {
-  std::call_once(flags_init, &AllocateAndParseFlags);
+  absl::call_once(flags_init, &AllocateAndParseFlags);
   return mark_for_compilation_flags;
 }
 
 XlaDeviceFlags* GetXlaDeviceFlags() {
-  std::call_once(flags_init, &AllocateAndParseFlags);
+  absl::call_once(flags_init, &AllocateAndParseFlags);
   return device_flags;
 }
 
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {
-  std::call_once(flags_init, &AllocateAndParseFlags);
+  absl::call_once(flags_init, &AllocateAndParseFlags);
   return *ops_flags;
 }
 
 const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags() {
-  std::call_once(flags_init, &AllocateAndParseFlags);
+  absl::call_once(flags_init, &AllocateAndParseFlags);
   return *jitter_flags;
 }
 
 void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
-  std::call_once(flags_init, &AllocateAndParseFlags);
+  absl::call_once(flags_init, &AllocateAndParseFlags);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
 }
+
+static bool xla_is_enabled = false;
+
+void SetXlaIsEnabled() { xla_is_enabled = true; }
+
+bool IsXlaEnabled() { return xla_is_enabled; }
+
 }  // namespace tensorflow

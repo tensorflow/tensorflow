@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/model.h"
+
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -20,7 +22,8 @@ limitations under the License.
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "tensorflow/lite/model.h"
+#include <fstream>
+#include <iostream>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -70,6 +73,44 @@ class TrivialResolver : public OpResolver {
 
 TEST(BasicFlatBufferModel, TestNonExistantFiles) {
   ASSERT_TRUE(!FlatBufferModel::BuildFromFile("/tmp/tflite_model_1234"));
+}
+
+TEST(BasicFlatBufferModel, TestBufferAlignment) {
+  // On 32-bit ARM buffers are required to be 4-bytes aligned, on other
+  // platforms there is no alignment requirement.
+  const uintptr_t kAlignment = 4;
+  const uintptr_t kAlignmentBits = kAlignment - 1;
+
+  // Use real model data so that we can be sure error is only from the
+  // alignment requirement and not from bad data.
+  std::ifstream fp("tensorflow/lite/testdata/empty_model.bin");
+  ASSERT_TRUE(fp.good());
+  std::string empty_model_data((std::istreambuf_iterator<char>(fp)),
+                               std::istreambuf_iterator<char>());
+  auto free_chars = [](char* p) { free(p); };
+  std::unique_ptr<char, decltype(free_chars)> buffer(
+      reinterpret_cast<char*>(malloc(empty_model_data.size() + kAlignment)),
+      free_chars);
+
+  // Check that aligned buffer works (no other errors in the test).
+  char* aligned = reinterpret_cast<char*>(
+      (reinterpret_cast<uintptr_t>(buffer.get()) + kAlignment) &
+      ~kAlignmentBits);
+  memcpy(aligned, empty_model_data.c_str(), empty_model_data.size());
+  EXPECT_TRUE(
+      FlatBufferModel::BuildFromBuffer(aligned, empty_model_data.size()));
+
+  // Check unaligned buffer handling.
+  char* unaligned =
+      reinterpret_cast<char*>(reinterpret_cast<uintptr_t>(buffer.get()) | 0x1);
+  memcpy(unaligned, empty_model_data.c_str(), empty_model_data.size());
+#ifdef __arm__
+  EXPECT_FALSE(
+      FlatBufferModel::BuildFromBuffer(unaligned, empty_model_data.size()));
+#else   // !__arm__
+  EXPECT_TRUE(
+      FlatBufferModel::BuildFromBuffer(unaligned, empty_model_data.size()));
+#endif  // __arm__
 }
 
 // Make sure a model with nothing in it loads properly.
@@ -248,15 +289,13 @@ class FakeVerifier : public tflite::TfLiteVerifier {
 TEST(BasicFlatBufferModel, TestWithTrueVerifier) {
   FakeVerifier verifier(true);
   ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
-      "tensorflow/lite/testdata/test_model.bin",
-      &verifier));
+      "tensorflow/lite/testdata/test_model.bin", &verifier));
 }
 
 TEST(BasicFlatBufferModel, TestWithFalseVerifier) {
   FakeVerifier verifier(false);
   ASSERT_FALSE(FlatBufferModel::VerifyAndBuildFromFile(
-      "tensorflow/lite/testdata/test_model.bin",
-      &verifier));
+      "tensorflow/lite/testdata/test_model.bin", &verifier));
 }
 
 TEST(BasicFlatBufferModel, TestWithNullVerifier) {
@@ -269,8 +308,7 @@ TEST(BasicFlatBufferModel, TestWithNullVerifier) {
 TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
   TestErrorReporter reporter;
   auto model = FlatBufferModel::BuildFromFile(
-      "tensorflow/lite/testdata/empty_model.bin",
-      &reporter);
+      "tensorflow/lite/testdata/empty_model.bin", &reporter);
   ASSERT_TRUE(model);
 
   std::unique_ptr<Interpreter> interpreter;

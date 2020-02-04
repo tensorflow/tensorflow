@@ -28,19 +28,22 @@ using tensorflow::string;
 
 namespace {
 
-std::vector<int64> TensorShapeAsVector(TFE_TensorHandle* handle,
-                                       TF_Status* status) {
+std::vector<int64> TensorShapeAsVector(const tensorflow::TensorHandle& handle,
+                                       tensorflow::Status* status) {
   std::vector<int64> shape;
-  int rank = TFE_TensorHandleNumDims(handle, status);
-  if (TF_GetCode(status) != TF_OK) {
+  int rank = -1;
+  *status = handle.NumDims(&rank);
+  if (!status->ok()) {
     return shape;
   }
   shape.reserve(rank);
   for (int i = 0; i < rank; ++i) {
-    shape.push_back(TFE_TensorHandleDim(handle, i, status));
-    if (TF_GetCode(status) != TF_OK) {
+    tensorflow::int64 dim;
+    *status = handle.Dim(i, &dim);
+    if (!status->ok()) {
       return shape;
     }
+    shape.push_back(dim);
   }
   return shape;
 }
@@ -51,14 +54,19 @@ extern "C" {
 
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     TFE_TensorHandle* h, TF_Status* status) {
+  return h->handle->TensorDebugInfo(&status->status);
+}
+
+TFE_TensorDebugInfo* tensorflow::TensorHandleInterface::TensorDebugInfo(
+    Status* status) {
   const tensorflow::Tensor* tensor;
-  status->status = h->handle->Tensor(&tensor);
-  if (TF_GetCode(status) != TF_OK) {
+  *status = handle_->Tensor(&tensor);
+  if (!status->ok()) {
     return nullptr;
   }
 
 #ifdef TENSORFLOW_EAGER_USE_XLA
-  tensorflow::Device* device = h->handle->device();
+  tensorflow::Device* device = handle_->device();
 
   // If tensor resides on an XLA device, use XLA device's PaddedShapeFn.
   tensorflow::XlaDevice* xla_device =
@@ -67,15 +75,15 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     tensorflow::XlaDevice::PaddedShapeFn shape_fn =
         xla_device->metadata().padded_shape_fn();
     xla::Shape padded_shape;
-    status->status = shape_fn(*tensor, &padded_shape);
-    if (!status->status.ok()) {
+    *status = shape_fn(*tensor, &padded_shape);
+    if (!status->ok()) {
       return nullptr;
     }
     if (VLOG_IS_ON(3)) {
-      std::vector<int64> shape_to_log = TensorShapeAsVector(h, status);
-      if (!status->status.ok()) {
+      std::vector<int64> shape_to_log = TensorShapeAsVector(*handle_, status);
+      if (!status->ok()) {
         // Ignore the status here as we are simply logging.
-        status->status = tensorflow::Status::OK();
+        *status = tensorflow::Status::OK();
       } else {
         VLOG(3) << "Fully padded shape of ["
                 << absl::StrJoin(shape_to_log, ", ") << "] is "
@@ -88,7 +96,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
         // Currently, the only case of XlaTensor containing a tuple shape is to
         // represent 64 bit ints, doubles, and complex numbers (we don't support
         // 64bit complex numbers).
-        status->status = tensorflow::errors::InvalidArgument(
+        *status = tensorflow::errors::InvalidArgument(
             "XlaTensors should only contain tuples of size 2. Shape: ",
             padded_shape.DebugString());
         return nullptr;
@@ -100,13 +108,13 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
       const xla::Shape& shape1 =
           xla::ShapeUtil::GetTupleElementShape(padded_shape, 1);
       if (shape0.IsTuple() || shape1.IsTuple()) {
-        status->status = tensorflow::errors::InvalidArgument(
+        *status = tensorflow::errors::InvalidArgument(
             "XlaTensors should not contain nested tuples. Shape: ",
             padded_shape.DebugString());
         return nullptr;
       }
       if (!xla::ShapeUtil::Equal(shape0, shape1)) {
-        status->status = tensorflow::errors::InvalidArgument(
+        *status = tensorflow::errors::InvalidArgument(
             "Subshapes of XlaTensors should be the same. Shape: ",
             padded_shape.DebugString());
         return nullptr;
@@ -131,15 +139,15 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
         dev_dims.push_back(padded_shape.dimensions(dim_index));
       }
     }
-    status->status = tensorflow::Status::OK();
+    *status = tensorflow::Status::OK();
     return new TFE_TensorDebugInfo(dev_dims);
   }
 #endif  // TENSORFLOW_EAGER_USE_XLA
 
   // If the tensor is not an XLA tensor, the device shape is
   // the same as regular tensor shape.
-  std::vector<int64> dev_dims = TensorShapeAsVector(h, status);
-  if (TF_GetCode(status) != TF_OK) {
+  std::vector<int64> dev_dims = TensorShapeAsVector(*handle_, status);
+  if (!status->ok()) {
     return nullptr;
   }
   return new TFE_TensorDebugInfo(dev_dims);

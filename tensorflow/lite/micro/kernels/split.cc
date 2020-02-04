@@ -116,7 +116,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace split
 
 TfLiteRegistration* Register_SPLIT() {
-  static TfLiteRegistration r = {nullptr, nullptr, split::Prepare, split::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = split::Prepare;
+  r.invoke = split::Eval;
   return &r;
 }
 

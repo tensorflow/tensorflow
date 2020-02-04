@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -113,15 +114,17 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      bool is_variable = false) {
+      bool is_variable = false, const size_t rank_dims_signature = 0,
+      const int* dims_signature = nullptr) {
     return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                        dims.data(), quantization, is_variable);
+                                        dims.data(), quantization, is_variable,
+                                        rank_dims_signature, dims_signature);
   }
-  TfLiteStatus SetTensorParametersReadWrite(int tensor_index, TfLiteType type,
-                                            const char* name, const size_t rank,
-                                            const int* dims,
-                                            TfLiteQuantization quantization,
-                                            bool is_variable = false);
+  TfLiteStatus SetTensorParametersReadWrite(
+      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      const int* dims, TfLiteQuantization quantization,
+      bool is_variable = false, const size_t rank_dims_signature = 0,
+      const int* dims_signature = nullptr);
 
   // WARNING: Experimental interface, subject to change
   // Overrides execution plan. This bounds checks indices sent in.

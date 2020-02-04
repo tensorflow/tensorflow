@@ -40,53 +40,58 @@ class SparseFillEmptyRowsOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    const Tensor* indices_t;
-    const Tensor* values_t;
-    const Tensor* dense_shape_t;
-    const Tensor* default_value_t;
-    OP_REQUIRES_OK(context, context->input("indices", &indices_t));
-    OP_REQUIRES_OK(context, context->input("values", &values_t));
-    OP_REQUIRES_OK(context, context->input("dense_shape", &dense_shape_t));
-    OP_REQUIRES_OK(context, context->input("default_value", &default_value_t));
+    const int kIndicesInput = 0;
+    const int kValuesInput = 1;
+    const int kDenseShapeInput = 2;
+    const int kDefaultValueInput = 3;
+
+    const int kOutputIndicesOutput = 0;
+    const int kOutputValuesOutput = 1;
+    const int kEmptyRowIndicatorOutput = 2;
+    const int kReverseIndexMapOutput = 3;
+
+    const Tensor& indices_t = context->input(kIndicesInput);
+    const Tensor& values_t = context->input(kValuesInput);
+    const Tensor& dense_shape_t = context->input(kDenseShapeInput);
+    const Tensor& default_value_t = context->input(kDefaultValueInput);
 
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(dense_shape_t->shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(dense_shape_t.shape()),
                 errors::InvalidArgument("dense_shape must be a vector, saw: ",
-                                        dense_shape_t->shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(indices_t->shape()),
+                                        dense_shape_t.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(indices_t.shape()),
                 errors::InvalidArgument("indices must be a matrix, saw: ",
-                                        indices_t->shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(values_t->shape()),
+                                        indices_t.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(values_t.shape()),
                 errors::InvalidArgument("values must be a vector, saw: ",
-                                        values_t->shape().DebugString()));
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(default_value_t->shape()),
-        errors::InvalidArgument("default_value must be a scalar, saw: ",
-                                default_value_t->shape().DebugString()));
+                                        values_t.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(default_value_t.shape()),
+                errors::InvalidArgument("default_value must be a scalar, saw: ",
+                                        default_value_t.shape().DebugString()));
     // TODO(ebrevdo): add shape checks between values, indices,
     // dense_shape.  Also add check that dense rank > 0.
 
-    const T& default_value = default_value_t->scalar<T>()();
-    const auto indices = indices_t->matrix<int64>();
-    const auto values = values_t->vec<T>();
-    const auto dense_shape = dense_shape_t->vec<int64>();
+    const T& default_value = default_value_t.scalar<T>()();
+    const auto indices = indices_t.matrix<int64>();
+    const auto values = values_t.vec<T>();
+    const auto dense_shape = dense_shape_t.vec<int64>();
 
-    const int64 N = indices_t->shape().dim_size(0);
+    const int64 N = indices_t.shape().dim_size(0);
     const int64 dense_rows = dense_shape(0);
 
     Tensor* empty_row_indicator_t;
-    OP_REQUIRES_OK(context, context->allocate_output("empty_row_indicator",
+    OP_REQUIRES_OK(context, context->allocate_output(kEmptyRowIndicatorOutput,
                                                      TensorShape({dense_rows}),
                                                      &empty_row_indicator_t));
     auto empty_row_indicator = empty_row_indicator_t->vec<bool>();
     Tensor* reverse_index_map_t;
-    OP_REQUIRES_OK(
-        context, context->allocate_output("reverse_index_map", TensorShape({N}),
-                                          &reverse_index_map_t));
+    OP_REQUIRES_OK(context, context->allocate_output(kReverseIndexMapOutput,
+                                                     TensorShape({N}),
+                                                     &reverse_index_map_t));
     auto reverse_index_map = reverse_index_map_t->vec<int64>();
 
-    int rank = indices_t->shape().dim_size(1);
+    int rank = indices_t.shape().dim_size(1);
 
     if (dense_rows == 0) {
       OP_REQUIRES(
@@ -96,13 +101,13 @@ class SparseFillEmptyRowsOp : public OpKernel {
                                   N));
       Tensor* output_indices_t;
       TensorShape output_indices_shape({0, rank});
-      OP_REQUIRES_OK(context, context->allocate_output("output_indices",
+      OP_REQUIRES_OK(context, context->allocate_output(kOutputIndicesOutput,
                                                        output_indices_shape,
                                                        &output_indices_t));
       Tensor* output_values_t;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output("output_values", TensorShape({0}),
-                                              &output_values_t));
+      OP_REQUIRES_OK(context, context->allocate_output(kOutputValuesOutput,
+                                                       TensorShape({0}),
+                                                       &output_values_t));
 
       // Exit early, nothing more to do.
       return;
@@ -139,16 +144,16 @@ class SparseFillEmptyRowsOp : public OpKernel {
     Tensor* output_indices_t;
     const int64 N_full = scratch(dense_rows - 1);
     TensorShape output_indices_shape({N_full, rank});
-    OP_REQUIRES_OK(context, context->allocate_output("output_indices",
+    OP_REQUIRES_OK(context, context->allocate_output(kOutputIndicesOutput,
                                                      output_indices_shape,
                                                      &output_indices_t));
     auto output_indices = output_indices_t->matrix<int64>();
     output_indices.device(d) = output_indices.constant(0);
 
     Tensor* output_values_t;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(
-                     "output_values", TensorShape({N_full}), &output_values_t));
+    OP_REQUIRES_OK(context, context->allocate_output(kOutputValuesOutput,
+                                                     TensorShape({N_full}),
+                                                     &output_values_t));
     auto output_values = output_values_t->vec<T>();
     output_values.device(d) = output_values.constant(default_value);
 

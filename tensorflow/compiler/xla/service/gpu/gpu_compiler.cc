@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
 
 #include "absl/memory/memory.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/depthwise_convolution_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
@@ -140,26 +140,23 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<DotDecomposer>();
 
+    pipeline.AddPass<Convolution4DExpander>();
+
+    auto cost_model = [](HloInstruction*) {
+      // We need a cost model for GPUs. Currently, do nothing.
+      return false;
+    };
+    pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
+
     // We use the ConvolutionGroupConverter to convert backprops of filter
     // grouped convolutions into non-grouped equivalents.
-    auto batch_group_cost_model = [](HloInstruction* conv) {
-      auto dim_numbers = conv->convolution_dimension_numbers();
-      const int64 input_batch_size = conv->operand(0)->shape().dimensions(
-          dim_numbers.input_batch_dimension());
-      return conv->batch_group_count() != input_batch_size;
-    };
+    auto batch_group_cost_model = [](HloInstruction*) { return false; };
 
     pipeline.AddPass<ConvolutionGroupConverter>(
         batch_group_cost_model,
         /*convert_batch_groups_only=*/true,
         /*filter_expansion=*/true);
 
-    auto cost_model = [](HloInstruction* conv) {
-      // We need a cost model for GPUs. Currently, do nothing.
-      return false;
-    };
-
-    pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
     // Convert BF16 operations to F32 operations so that the GPU backend can
@@ -431,7 +428,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "thunk_schedule",
+    DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule->ToString());
   }
 

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_LOGISTIC_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_LOGISTIC_H_
 
+#include <cmath>
+
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -27,11 +29,29 @@ namespace reference_ops {
 
 inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
                      const RuntimeShape& output_shape, float* output_data) {
+  const float cutoff_upper = 16.619047164916992188f;
+  const float cutoff_lower = -9.f;
+
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  // Rational for using approximation in reference kernel.
+  // 0. This approximation gives enough precision for float.
+  // 1. This works around an issue on an embedded chipset where exp() does not
+  // return correctly as expected - exp(x) should return inf when overflown
+  // not 1.701417   IEEE 754 defines representation for inf.
+  // 2. This will speed up calculation and is matching the behavior in the
+  // optimized kernels. (check the definition of scalar_logistic_op<float>)
 
   for (int i = 0; i < flat_size; i++) {
     float val = input_data[i];
-    float result = 1.f / (1.f + std::exp(-val));
+    float result;
+    if (val > cutoff_upper) {
+      result = 1.0f;
+    } else if (val < cutoff_lower) {
+      result = std::exp(val);
+    } else {
+      result = 1.f / (1.f + std::exp(-val));
+    }
     output_data[i] = result;
   }
 }

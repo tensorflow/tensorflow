@@ -329,7 +329,7 @@ class XlaBuilder {
                            int64 target_param_num,
                            ShapeIndex target_param_index, int64 target_dim_num);
 
-  // Adds a new input/output alias. Since the input/ouput shape information are
+  // Adds a new input/output alias. Since the input/output shape information are
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,

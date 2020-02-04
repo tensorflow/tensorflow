@@ -69,7 +69,8 @@ std::string GenerateConvolutionTransposedCode(
       break;
   }
 
-  const std::string pixel_stride = op_def.batch_support ? "dst_size.w" : "1";
+  const std::string pixel_stride =
+      op_def.IsBatchSupported() ? "dst_size.w" : "1";
   if (need_local_mem) {  // we use fixed workgroup size when use local mem
     c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
   }
@@ -83,7 +84,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "    int4 dst_size,             \n";
   c += "    int filter_offset          \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X0 = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -92,7 +93,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
   if (!need_local_mem) {
-    if (op_def.batch_support) {
+    if (op_def.IsBatchSupported()) {
       c += "  if (X0 * 2 * dst_size.w > dst_size.x || Y * 2 > dst_size.y || Z "
            ">= "
            "dst_size.z) return;\n";
@@ -209,7 +210,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  }\n";
   c += "\n";
   if (need_local_mem) {
-    if (op_def.batch_support) {
+    if (op_def.IsBatchSupported()) {
       c += "  if (X0 * 2 * dst_size.w > dst_size.x || Y * 2 > dst_size.y || Z "
            ">= "
            "dst_size.z) return;\n";
@@ -218,7 +219,7 @@ std::string GenerateConvolutionTransposedCode(
            "return;\n";
     }
   }
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  X = X0 * 2 * dst_size.w + B - dst_size.w;\n";
   } else {
     c += "  X = X * 2 - 1;\n";

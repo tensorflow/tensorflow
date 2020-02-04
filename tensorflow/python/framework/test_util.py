@@ -44,9 +44,9 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import _pywrap_stacktrace_handler
 from tensorflow.python import _pywrap_util_port
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.client import session
 from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import context
@@ -199,7 +199,7 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False,
     _strip_hash_table_shared_name(actual)
     _strip_hash_table_shared_name(expected)
 
-  diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
+  diff = pywrap_tf_session.EqualGraphDefWrapper(actual.SerializeToString(),
                                                 expected.SerializeToString())
   if diff:
     raise AssertionError(compat.as_str(diff))
@@ -282,6 +282,10 @@ def IsGoogleCudaEnabled():
 
 def IsBuiltWithROCm():
   return _pywrap_util_port.IsBuiltWithROCm()
+
+
+def IsBuiltWithXLA():
+  return _pywrap_util_port.IsBuiltWithXLA()
 
 
 def IsBuiltWithNvcc():
@@ -1623,14 +1627,14 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
-def use_deterministic_cudnn(func):
+def disable_cudnn_autotune(func):
   """Disable autotuning during the call to this function.
 
   Some tests want to base assertions on a graph being isomorphic with a copy.
   To ensure this, this decorator disables autotuning.
 
   Args:
-    func: Function to run with CUDNN autotuning turned off.
+    func: Function to run with CuDNN autotuning turned off.
 
   Returns:
     Decorated function.
@@ -1639,10 +1643,25 @@ def use_deterministic_cudnn(func):
   def decorator(f):
 
     def decorated(self, *args, **kwargs):
-      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
-      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
+      os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = "--xla_gpu_autotune_level=0"
+      if original_xla_flags:
+        new_xla_flags = original_xla_flags + " " + new_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+
       result = f(self, *args, **kwargs)
-      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+
+      if (original_tf_cudnn_use_autotune is None):
+        del os.environ["TF_CUDNN_USE_AUTOTUNE"]
+      else:
+        os.environ["TF_CUDNN_USE_AUTOTUNE"] = original_tf_cudnn_use_autotune
+      if (original_xla_flags is None):
+        del os.environ["XLA_FLAGS"]
+      else:
+        os.environ["XLA_FLAGS"] = original_xla_flags
+
       return result
 
     return decorated
@@ -1675,10 +1694,10 @@ def enable_tf_xla_constant_folding(description):
     def decorator(f):
 
       def decorated(self, *args, **kwargs):
-        original_var = pywrap_tensorflow.TF_GetXlaConstantFoldingDisabled()
-        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(False)
+        original_var = pywrap_tf_session.TF_GetXlaConstantFoldingDisabled()
+        pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(False)
         result = f(self, *args, **kwargs)
-        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(original_var)
+        pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(original_var)
         return result
 
       return decorated
@@ -1780,9 +1799,9 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
           # Update the global XLABuildOpsPassFlags to enable lazy compilation,
           # which allows the compiler to fall back to TF classic. Remember the
           # old value so that we can reset it.
-          old_value = pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(True)
+          old_value = pywrap_tf_session.TF_SetXlaEnableLazyCompilation(True)
           result = func(self, *args, **kwargs)
-          pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(old_value)
+          pywrap_tf_session.TF_SetXlaEnableLazyCompilation(old_value)
           return result
         else:
           return func(self, *args, **kwargs)
@@ -1816,13 +1835,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
-      pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
-      pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
-      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
+      pywrap_tf_session.TF_SetXlaAutoJitMode("2")
+      pywrap_tf_session.TF_SetXlaMinClusterSize(1)
+      pywrap_tf_session.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tf_session.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
-      pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
+      pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
     self._threads = []
     self._tempdir = None
@@ -2041,7 +2060,7 @@ class TensorFlowTestCase(googletest.TestCase):
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
-    """Returns a TensorFlow Session for use in executing tests.
+    """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
 
@@ -2905,8 +2924,8 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
-  # Fix Python 3 compatibility issues
-  if six.PY3:
+  # Fix Python 3+ compatibility issues
+  if not six.PY2:
     # pylint: disable=invalid-name
 
     # Silence a deprecation warning

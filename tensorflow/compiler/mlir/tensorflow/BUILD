@@ -13,6 +13,7 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
+        "//third_party/tf_runtime_google/...",
     ],
 )
 
@@ -244,6 +245,7 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/optimize_global_tensors.cc",
+        "transforms/promote_resources_to_args.cc",
         "transforms/raise_control_flow.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
@@ -254,6 +256,7 @@ cc_library(
         "transforms/sink_constant.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tpu_cluster_formation.cc",
+        "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
@@ -381,15 +384,24 @@ cc_library(
 )
 
 cc_library(
+    name = "parse_text_proto",
+    srcs = ["utils/parse_text_proto.cc"],
+    hdrs = ["utils/parse_text_proto.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:casts",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "import_utils",
-    srcs = [
-        "utils/import_utils.cc",
-    ],
-    hdrs = [
-        "utils/import_utils.h",
-    ],
+    srcs = ["utils/import_utils.cc"],
+    hdrs = ["utils/import_utils.h"],
     deps = [
         ":error_util",
+        ":parse_text_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
@@ -568,6 +580,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
@@ -595,6 +608,7 @@ cc_library(
     srcs = ["utils/mangling_util.cc"],
     hdrs = ["utils/mangling_util.h"],
     deps = [
+        ":parse_text_proto",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -835,6 +849,7 @@ cc_library(
     srcs = ["utils/compile_mlir_util.cc"],
     hdrs = ["utils/compile_mlir_util.h"],
     deps = [
+        ":bridge_logger",
         ":convert_type",
         ":dump_mlir_util",
         ":error_util",

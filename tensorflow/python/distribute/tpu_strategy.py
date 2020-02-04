@@ -508,21 +508,21 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     """
     tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
     if kwargs.pop("skip_mirrored_creator", False):
-      return next_creator(*args, **kwargs)
+      return next_creator(**kwargs)
 
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       devices = self._tpu_devices[:, self._logical_device_stack[-1]]
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
     else:
       devices = colocate_with.devices
 
-    def _real_mirrored_creator(*args, **kwargs):  # pylint: disable=g-missing-docstring
+    def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       initial_value = None
       value_list = []
       for i, d in enumerate(devices):
@@ -545,23 +545,22 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           kwargs["initial_value"] = initial_value
 
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
-            v = next_creator(*args, **kwargs)
+            v = next_creator(**kwargs)
 
           assert not isinstance(v, values.TPUMirroredVariable)
           value_list.append(v)
       return value_list
 
-    return values.create_mirrored_variable(
-        self._container_strategy(),
-        _real_mirrored_creator,
-        values.TPUMirroredVariable,
-        values.TPUSyncOnReadVariable,
-        *args, **kwargs)
+    return values.create_mirrored_variable(self._container_strategy(),
+                                           _real_mirrored_creator,
+                                           values.TPUMirroredVariable,
+                                           values.TPUSyncOnReadVariable,
+                                           **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations):
-    if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      if not tensor_util.is_tensor(value):
-        value = ops.convert_to_tensor(value, dtype=dtypes.float32)
+    if (isinstance(value, values.DistributedValues) or
+        tensor_util.is_tensor(value)
+       ) and values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self._num_replicas_in_sync)

@@ -408,11 +408,10 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 def BothTypesMatch : Constraint<CPred<"$0.getType() == $1.getType()">,
    "types must be equal">;
 
-foreach src = [TF_SelectOp, TF_SelectV2Op] in
-  def : Pat<(src $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
-    // TODO(jpienaar): This restriction is to avoid creating a currently
-    // unsupported HLO select.
-    [(BothTypesMatch $t, $e)]>;
+def : Pat<(TF_SelectOp $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
+  // TODO(jpienaar): This restriction is to avoid creating a currently
+  // unsupported HLO select.
+  [(BothTypesMatch $t, $e)]>;
 
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
@@ -471,16 +470,33 @@ def : Pat<(TF_SignOp $x),
             (HLO_SignOp $x)
           )>;
 
+def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
+  "getElementTypeOrSelf($0.getType()).isIntOrFloat() && "
+  "getElementTypeOrSelf($1.getType()).isIntOrFloat() && "
+  "getElementTypeOrSelf($0.getType()).getIntOrFloatBitWidth() == "
+  "getElementTypeOrSelf($1.getType()).getIntOrFloatBitWidth()">,
+  "element types must be integers or floats of same width">;
+
+// TODO(mgester): Due to restrictions of xla::BitcastConvertType we currently
+// only lower if both input and output types are int or float and have same width
+
+def : Pat<(TF_BitcastOp:$res HLO_Tensor:$arg),
+          (HLO_BitcastConvertOp $arg),
+          [(BothElementTypesSameWidthIntOrFloat $res, $arg)]>;
+
 //===----------------------------------------------------------------------===//
-// RngUniform.
+// Random ops.
 //===----------------------------------------------------------------------===//
 
-// TODO(misard,phawkins): handle random number generator seeds/states correctly.
-def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
-          (HLO_RngUniformOp
+foreach srcDstOpPair = [[TF_RandomUniformOp, HLO_RngUniformOp],
+                        [TF_RandomStandardNormalOp, HLO_RngNormalOp]] in {
+// TODO(b/148269299): handle random number generator seeds/states correctly.
+def : Pat<(srcDstOpPair[0]:$old $shape, $seed, $seed2),
+          (srcDstOpPair[1]
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
             (CastValueToI64 $old, $shape)),
-            [(IsShapedTensor $shape)]>;
+          [(IsShapedTensor $shape)]>;
+}

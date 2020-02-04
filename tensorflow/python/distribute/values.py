@@ -728,8 +728,7 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
 
 
 def create_mirrored_variable(  # pylint: disable=missing-docstring
-    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls,
-    *args, **kwargs):
+    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls, **kwargs):
   # Figure out what collections this variable should be added to.
   # We'll add the MirroredVariable to those collections instead.
   var_collections = kwargs.pop("collections", None)
@@ -772,7 +771,7 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
   # was never recorded on the tape instead of having to do this manually
   # here.
   with tape.stop_recording():
-    value_list = real_mirrored_creator(*args, **kwargs)
+    value_list = real_mirrored_creator(**kwargs)
     var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
     result = var_cls(strategy, value_list, aggregation)
 
@@ -841,7 +840,22 @@ class MirroredVariable(DistributedVariable, Mirrored):
           raise ValueError(
               _aggregation_error_msg.format(variable_type="MirroredVariable"))
 
-        def merge_fn(strategy, value, *other_args, **other_kwargs):
+        def merge_fn(strategy, value, *other_args, **other_kwargs):  # pylint: disable=missing-docstring
+          # Don't allow MEAN with non float dtype, since it may cause unexpected
+          # precision loss. Python3 and NumPy automatically upcast integers to
+          # float in division, but we should always preserve the type.
+          #
+          # Note that to be backward compatible we allow the case when the value
+          # is *always* the same on each replica. I.E. value is not a
+          # PerReplica. Refer to regroup() to see how values are grouped.
+          if self._aggregation == vs.VariableAggregation.MEAN and (
+              not self.dtype.is_floating) and isinstance(value, PerReplica):
+            raise ValueError(
+                "Cannot update non-float variables with "
+                "tf.VariableAggregation.MEAN aggregation in replica context. "
+                "Either change the variable dtype to float or update it in "
+                "cross-replica context.")
+
           v = _apply_aggregation(strategy, value, self._aggregation, self)
           return strategy.extended.update(
               self, f, args=(v,) + other_args, kwargs=other_kwargs)
@@ -1182,10 +1196,10 @@ def regroup(values, wrap_class=PerReplica):
       assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
       assert set(v.keys()) == v0keys, ("v[0].keys: %s  v[i].keys: %s" %
                                        (v0keys, set(v.keys())))
-    return {
+    return type(v0)(**{
         key: regroup(tuple(v[key] for v in values), wrap_class)
         for key in v0keys
-    }
+    })
 
   # If exactly the same object across all devices, return it unwrapped.
   same_id = True
@@ -1420,6 +1434,10 @@ class AggregatingVariable(variables_lib.Variable):
   @property
   def name(self):
     return self._v.name
+
+  @property
+  def trainable(self):
+    return self._v.trainable
 
   @property
   def dtype(self):

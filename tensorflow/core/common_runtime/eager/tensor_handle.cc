@@ -95,7 +95,8 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
 Status TensorHandle::CreateLocalHandle(const class Tensor& t,
                                        TensorHandle** h) {
   // TODO(b/136608821): Move away from nullptr
-  return CreateLocalHandle(t, nullptr, nullptr, nullptr, h);
+  return CreateLocalHandle(t, /*d=*/nullptr, /*op_device=*/nullptr,
+                           /*ctx=*/nullptr, h);
 }
 
 Status TensorHandle::CreateLocalHandle(const class Tensor& t, Device* d,
@@ -296,8 +297,8 @@ Status TensorHandle::TensorValue(tensorflow::TensorValue* t) {
   return tensor_handle_data_->TensorValue(t);
 }
 
-Device* TensorHandle::DeviceOrHostCPU(EagerContext* ctx) const {
-  return (device_ == nullptr) ? ctx->HostCPU() : device_;
+Device* TensorHandle::DeviceOrHostCPU(const EagerContext& ctx) const {
+  return (device_ == nullptr) ? ctx.HostCPU() : device_;
 }
 
 Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
@@ -589,7 +590,8 @@ void TensorHandle::Poison(Status status) {
   is_ready_ = true;
 }
 
-Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
+Status TensorHandle::CopyToDevice(const EagerContext& ctx,
+                                  tensorflow::Device* dstd,
                                   tensorflow::Tensor* output) {
   tensorflow::Device* srcd = DeviceOrHostCPU(ctx);
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;

@@ -1,5 +1,4 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load("//tensorflow/lite:build_def.bzl", "if_tflite_experimental_runtime", "tflite_experimental_runtime_linkopts")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -23,25 +22,21 @@ cc_library(
     srcs = ["interpreter_wrapper.cc"],
     hdrs = [
         "interpreter_wrapper.h",
-        "//tensorflow/lite/experimental/tflite_api_dispatcher:tflite_api_dispatcher.h",
     ],
-    defines = if_tflite_experimental_runtime(
-        if_false = [],
-        if_true = ["TFLITE_EXPERIMENTAL_RUNTIME"],
-    ),
     deps = [
         ":numpy",
         ":python_error_reporter",
         ":python_utils",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
-        "//third_party/python_runtime:headers",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/experimental/tflite_api_dispatcher",
         "//tensorflow/lite/kernels:builtin_ops",
-    ] + tflite_experimental_runtime_linkopts(),
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 cc_library(
