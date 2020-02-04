@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.layers.preprocessing import categorical
 from tensorflow.python.ops import array_ops
@@ -139,6 +140,96 @@ class CategoryLookupVocabFileTest(keras_parameterized.TestCase):
     self.assertAllClose(
         np.asarray([[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]), output.indices)
     self.assertAllClose(np.asarray([0, 1, 2, 2, 0]), output.values)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class CategoryCrossingTest(keras_parameterized.TestCase):
+
+  def test_crossing_basic(self):
+    layer = categorical.CategoryCrossing()
+    inputs_0 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [1, 1]],
+        values=['a', 'b', 'c'],
+        dense_shape=[2, 2])
+    inputs_1 = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [1, 2]], values=['d', 'e'], dense_shape=[2, 3])
+    output = layer([inputs_0, inputs_1])
+    self.assertAllClose(np.asarray([[0, 0], [1, 0], [1, 1]]), output.indices)
+    self.assertAllEqual([b'a_X_d', b'b_X_e', b'c_X_e'], output.values)
+
+  def test_crossing_hashed_basic(self):
+    layer = categorical.CategoryCrossing(num_bins=1)
+    inputs_0 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [1, 1]],
+        values=['a', 'b', 'c'],
+        dense_shape=[2, 2])
+    inputs_1 = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [1, 2]], values=['d', 'e'], dense_shape=[2, 3])
+    output = layer([inputs_0, inputs_1])
+    self.assertAllClose(np.asarray([[0, 0], [1, 0], [1, 1]]), output.indices)
+    self.assertAllClose([0, 0, 0], output.values)
+
+  def test_crossing_hashed_two_bins(self):
+    layer = categorical.CategoryCrossing(num_bins=2)
+    inputs_0 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [1, 1]],
+        values=['a', 'b', 'c'],
+        dense_shape=[2, 2])
+    inputs_1 = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [1, 2]], values=['d', 'e'], dense_shape=[2, 3])
+    output = layer([inputs_0, inputs_1])
+    self.assertAllClose(np.asarray([[0, 0], [1, 0], [1, 1]]), output.indices)
+    self.assertEqual(output.values.numpy().max(), 1)
+    self.assertEqual(output.values.numpy().min(), 0)
+
+  def test_crossing_with_dense_inputs(self):
+    layer = categorical.CategoryCrossing()
+    inputs_0 = np.asarray([[1, 2]])
+    inputs_1 = np.asarray([[1, 3]])
+    output = layer([inputs_0, inputs_1])
+    self.assertAllEqual([[b'1_X_1', b'1_X_3', b'2_X_1', b'2_X_3']], output)
+
+  def test_crossing_hashed_with_dense_inputs(self):
+    layer = categorical.CategoryCrossing(num_bins=2)
+    inputs_0 = np.asarray([[1, 2]])
+    inputs_1 = np.asarray([[1, 3]])
+    output = layer([inputs_0, inputs_1])
+    self.assertAllClose([[1, 1, 0, 0]], output)
+
+  def test_crossing_compute_output_signature(self):
+    input_shapes = [
+        tensor_shape.TensorShape([2, 2]),
+        tensor_shape.TensorShape([2, 3])
+    ]
+    input_specs = [
+        tensor_spec.TensorSpec(input_shape, dtypes.string)
+        for input_shape in input_shapes
+    ]
+    layer = categorical.CategoryCrossing()
+    output_spec = layer.compute_output_signature(input_specs)
+    self.assertEqual(output_spec.shape.dims[0], input_shapes[0].dims[0])
+    self.assertEqual(output_spec.dtype, dtypes.string)
+
+    layer = categorical.CategoryCrossing(num_bins=2)
+    output_spec = layer.compute_output_signature(input_specs)
+    self.assertEqual(output_spec.shape.dims[0], input_shapes[0].dims[0])
+    self.assertEqual(output_spec.dtype, dtypes.int64)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = categorical.CategoryCrossing(num_bins=2, name='hashing')
+    config = layer.get_config()
+    layer_1 = categorical.CategoryCrossing.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+    layer = categorical.CategoryCrossing(name='hashing')
+    config = layer.get_config()
+    layer_1 = categorical.CategoryCrossing.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+  def test_incorrect_depth(self):
+    with self.assertRaises(NotImplementedError):
+      categorical.CategoryCrossing(depth=1)
 
 
 if __name__ == '__main__':
