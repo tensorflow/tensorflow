@@ -51,7 +51,7 @@ class CategoricalEncodingInputTest(
     preprocessing_test_utils.PreprocessingLayerTest):
 
   def test_sparse_input(self):
-    input_array = np.array([[1, 2, 3, 0], [0, 3, 1, 0]])
+    input_array = np.array([[1, 2, 3, 0], [0, 3, 1, 0]], dtype=np.int64)
     sparse_tensor_data = sparse_ops.from_dense(input_array)
 
     # pyformat: disable
@@ -102,9 +102,10 @@ class CategoricalEncodingAdaptTest(
 
   def test_sparse_adapt(self):
     vocab_data = sparse_ops.from_dense(
-        np.array([[1, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 0, 4]]))
+        np.array([[1, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 0, 4]], dtype=np.int64))
     vocab_dataset = dataset_ops.Dataset.from_tensors(vocab_data)
-    input_array = sparse_ops.from_dense(np.array([[1, 2, 3, 0], [0, 3, 1, 0]]))
+    input_array = sparse_ops.from_dense(
+        np.array([[1, 2, 3, 0], [0, 3, 1, 0]], dtype=np.int64))
 
     # pyformat: disable
     expected_output = [[0, 1, 1, 1, 0],
