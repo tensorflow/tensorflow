@@ -1727,50 +1727,58 @@ tf_proto_library_cc(
     ],
 )
 
-LIB_INTERNAL_PRIVATE_HEADERS = [
-    "//tensorflow/core/framework:resource_handle.h",
-    "//tensorflow/core/platform:legacy_lib_internal_headers",
-    "//tensorflow/core/platform:lib_internal_private_hdrs",
-    "//tensorflow/core/lib/bfloat16:bfloat16.h",
-    "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
-    "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
-    "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
-    "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
-    "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_headers",
-    "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
-    "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
-    "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
-    "//tensorflow/core/lib/math:math_util.h",
-] + glob(
-    [
-        "lib/**/*.h",
-    ],
-    exclude = [
-        "**/*test*",
-        "lib/gif/**/*",
-        "lib/jpeg/**/*",
-        "lib/png/**/*",
-    ],
+filegroup(
+    name = "lib_internal_private_headers",
+    srcs = [
+        "//tensorflow/core/framework:resource_handle.h",
+        "//tensorflow/core/platform:legacy_lib_internal_headers",
+        "//tensorflow/core/platform:lib_internal_private_hdrs",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
+        "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+        "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
+        "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
+        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_headers",
+        "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
+        "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
+        "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
+        "//tensorflow/core/lib/math:math_util.h",
+    ] + glob(
+        [
+            "lib/**/*.h",
+        ],
+        exclude = [
+            "**/*test*",
+            "lib/gif/**/*",
+            "lib/jpeg/**/*",
+            "lib/png/**/*",
+        ],
+    ),
+    visibility = ["//visibility:private"],
 )
 
-LIB_INTERNAL_PUBLIC_HEADERS = [
-    "//tensorflow/core/lib/core:legacy_lib_internal_core_headers",
-    "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
-    "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
-    "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
-    "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
-    "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
-    "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
-    "lib/wav/wav_io.h",
-    "//tensorflow/core/platform:lib_internal_public_hdrs",
-    "//tensorflow/core/platform:legacy_platform_lib_hdrs",
-    "//tensorflow/core/util:lib_internal_public_hdrs",
-]
+filegroup(
+    name = "lib_internal_public_headers",
+    srcs = [
+        "lib/wav/wav_io.h",
+        "//tensorflow/core/lib/core:legacy_lib_internal_core_headers",
+        "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
+        "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
+        "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
+        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
+        "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
+        "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
+        "//tensorflow/core/platform:legacy_platform_lib_hdrs",
+        "//tensorflow/core/platform:lib_internal_public_hdrs",
+        "//tensorflow/core/util:lib_internal_public_hdrs",
+    ],
+    visibility = ["//visibility:private"],
+)
 
 cc_library(
     name = "lib_internal",
-    srcs = LIB_INTERNAL_PRIVATE_HEADERS,
-    hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
+    srcs = [":lib_internal_private_headers"],
+    hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
@@ -1792,7 +1800,10 @@ cc_library(
 
 cc_library(
     name = "lib_internal_impl",
-    srcs = LIB_INTERNAL_PRIVATE_HEADERS + glob(
+    srcs = [
+        ":lib_internal_private_headers",
+        "//tensorflow/core/platform:legacy_lib_internal_srcs",
+    ] + glob(
         [
             "lib/**/*.cc",
         ],
@@ -1803,10 +1814,8 @@ cc_library(
             "lib/jpeg/**/*",
             "lib/png/**/*",
         ],
-    ) + [
-        "//tensorflow/core/platform:legacy_lib_internal_srcs",
-    ],
-    hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
+    ),
+    hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
