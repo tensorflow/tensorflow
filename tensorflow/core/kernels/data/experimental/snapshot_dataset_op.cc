@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 #include "tensorflow/core/util/batch_util.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -244,10 +245,15 @@ class SnapshotReader {
     if (compression_type_ == io::compression::kNone) {
       return input_stream_->ReadNBytes(length, record);
     } else {
-      tstring tmp_str;
-      Status s = input_stream_->ReadNBytes(length, &tmp_str);
-      record->Append(tmp_str);
-      return s;
+      auto tmp_str = MakeUnique<tstring>();
+      TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(length, tmp_str.get()));
+      tstring* tmp_str_raw = tmp_str.release();
+      record->AppendExternalMemory(
+          *tmp_str_raw, tmp_str_raw,
+          [](absl::string_view unused_data, void* arg) {
+            delete static_cast<tstring*>(arg);
+          });
+      return Status::OK();
     }
   }
 #endif
