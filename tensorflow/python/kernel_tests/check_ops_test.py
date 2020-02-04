@@ -1595,9 +1595,14 @@ class AssertShapesTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_sparse_tensor_input(self):
-    A = array_ops.ones([2, 2], name="rank_two")
-    check_ops.assert_shapes(((sparse_ops.from_dense(A), [2, 2]),))
+    x = array_ops.ones([2, 2], name="x")
+    check_ops.assert_shapes(((sparse_ops.from_dense(x), [2, 2]),))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_numpy_array_input(self):
+    x = np.ones([2, 2])
+    check_ops.assert_shapes(((x, [2, 2]),))
+    
   @test_util.run_in_graph_and_eager_modes
   def test_raise_static_rank_1_size_not_1_mismatch_scalar(self):
     x = array_ops.constant([2, 2], name="x")
