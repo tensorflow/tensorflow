@@ -242,6 +242,7 @@ cc_library(
         "transforms/generated_optimize.inc",
         "transforms/graph_pruning.cc",
         "transforms/inline_global_tensors.cc",
+        "transforms/mark_function_visibility.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/optimize_global_tensors.cc",
