@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
 #include "tensorflow/lite/micro/mli_tf_utils.h"
 
 #include "mli_api.h"
@@ -106,20 +107,43 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
     ConvertToMliTensor<int32_t>(bias, &mli_bias);
     ConvertToMliTensor<int8_t>(output, &mli_out);
 
-    mli_point_to_subtsr_cfg substr_cfg_in = {{0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
-    mli_point_to_subtsr_cfg substr_cfg_out = {{0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
+    mli_point_to_subtsr_cfg subtsr_cfg_in = {{0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
+    mli_point_to_subtsr_cfg subtsr_cfg_out = {{0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
     mli_tensor sub_mli_in = {0};
     mli_tensor sub_mli_out = {0};
+    mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
+    mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
+
+    // Tensors for data in fast (local) memory and config to copy data from external to local memory
+    mli_tensor weights_local = mli_weights;
+    mli_tensor bias_local = mli_bias;
+    mli_tensor in_local = sub_mli_in;
+    mli_tensor out_local = sub_mli_out;
+    mli_mov_cfg_t copy_config;
+    mli_mov_cfg_for_copy(&copy_config);
+    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
+    bool in_is_local = in_local.data == sub_mli_in.data;
+    bool out_is_local = out_local.data == sub_mli_out.data;
+
+    mli_mov_tensor_sync(&mli_weights, &copy_config, &weights_local);
+    mli_mov_tensor_sync(&mli_bias, &copy_config, &bias_local);
 
     const int batches = MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
 
     for (int i = 0; i < batches; i++) {
-      substr_cfg_in.start_coord[0] = i;
-      substr_cfg_out.start_coord[0] = i;
-      mli_hlp_point_to_subtensor(&mli_in, &substr_cfg_in, &sub_mli_in);
-      mli_hlp_point_to_subtensor(&mli_out, &substr_cfg_out, &sub_mli_out);
-
-      mli_krn_fully_connected_sa8_sa8_sa32(&sub_mli_in, &mli_weights, &mli_bias, &sub_mli_out);
+      mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
+      mli_krn_fully_connected_sa8_sa8_sa32(&in_local, &weights_local, &bias_local, &out_local);
+      mli_mov_tensor_sync(&out_local, &copy_config, &sub_mli_out);
+      subtsr_cfg_in.start_coord[0]++;
+      subtsr_cfg_out.start_coord[0]++;
+      mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
+      mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
+      if (in_is_local) {
+        in_local.data = sub_mli_in.data;
+      }
+      if (out_is_local) {
+        out_local.data = sub_mli_out.data;
+      }
     }
   } else {
     FullyConnectedParams op_params;

@@ -22,7 +22,8 @@ else
 endif
 
   PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -O3 -Hpurge -Hcl -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
-  PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -m -Hldopt=-Coutput=memory.map
+  PLATFORM_FLAGS += -tcf_core_config
+  PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -m -Hldopt=-Coutput=memory.map -default_lcf=$(MAKEFILE_DIR)/targets/arc/memory.lcf 
 
   CXXFLAGS += $(PLATFORM_FLAGS)
   CXXFLAGS:=$(filter-out -std=c++11,$(CXXFLAGS))
@@ -80,6 +81,12 @@ endif
     third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_conv2d_spec_api.h \
     third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_depthwise_conv2d_spec_api.h \
     third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_maxpool_spec_api.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_mov_api.h
+
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/scratch_buffers.h
+    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/scratch_buffers.cc
+
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/tools/make/targets/arc/memory.lcf
 
 endif # USE_EMBARC_MLI
 

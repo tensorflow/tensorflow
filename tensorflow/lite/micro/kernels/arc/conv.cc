@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
 #include "tensorflow/lite/micro/mli_tf_utils.h"
 
 #include "mli_api.h"
@@ -150,7 +151,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       GetTensorData<uint8_t>(im2col), nullptr);
 }
 
-void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
+TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, OpData* data,
                              const TfLiteTensor* input,
                              const TfLiteTensor* filter,
@@ -204,20 +205,43 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       cfg.padding_bottom = data->padding.height + data->padding.height_offset;
     }
 
-    mli_point_to_subtsr_cfg substr_cfg_in = {{0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
-    mli_point_to_subtsr_cfg substr_cfg_out = {{0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
-    mli_tensor sub_mli_in = {0};
-    mli_tensor sub_mli_out = {0};
+    // Get first input from batch
+    mli_point_to_subtsr_cfg subtsr_cfg_in = { {0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1]) };
+    mli_point_to_subtsr_cfg subtsr_cfg_out = { {0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1]) };
+    mli_tensor sub_mli_in = { 0 };
+    mli_tensor sub_mli_out = { 0 };
+    mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
+    mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
 
+    // Tensors for data in fast (local) memory and config to copy data from external to local memory
+    mli_tensor weights_local = mli_weights;
+    mli_tensor bias_local = mli_bias;
+    mli_tensor in_local = sub_mli_in;
+    mli_tensor out_local = sub_mli_out;
+    mli_mov_cfg_t copy_config;
+    mli_mov_cfg_for_copy(&copy_config);
+    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
+    bool in_is_local = in_local.data == sub_mli_in.data;
+    bool out_is_local = out_local.data == sub_mli_out.data;
+
+    mli_mov_tensor_sync(&mli_weights, &copy_config, &weights_local);
+    mli_mov_tensor_sync(&mli_bias, &copy_config, &bias_local);
     const int batches = MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
 
     for (int i = 0; i < batches; i++) {
-      substr_cfg_in.start_coord[0] = i;
-      substr_cfg_out.start_coord[0] = i;
-      mli_hlp_point_to_subtensor(&mli_in, &substr_cfg_in, &sub_mli_in);
-      mli_hlp_point_to_subtensor(&mli_out, &substr_cfg_out, &sub_mli_out);
-
-      mli_krn_conv2d_hwc_sa8_sa8_sa32(&sub_mli_in, &mli_weights, &mli_bias, &cfg, &sub_mli_out);
+      mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
+      mli_krn_conv2d_hwc_sa8_sa8_sa32(&in_local, &weights_local, &bias_local, &cfg, &out_local);
+      mli_mov_tensor_sync(&out_local, &copy_config, &sub_mli_out);
+      subtsr_cfg_in.start_coord[0]++;
+      subtsr_cfg_out.start_coord[0]++;
+      mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
+      mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
+      if (in_is_local) {
+        in_local.data = sub_mli_in.data;
+      }
+      if (out_is_local) {
+        out_local.data = sub_mli_out.data;
+      }
     }
   } else {
     ConvParams op_params;
@@ -238,6 +262,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
         GetTensorData<int32>(bias), GetTensorShape(output),
         GetTensorData<int8>(output));
   }
+  return kTfLiteOk;
 }
 
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
@@ -314,7 +339,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                 nullptr, output);
       break;
     case kTfLiteInt8:
-      EvalQuantizedPerChannel(context, node, params, &data, input, filter, bias,
+      return EvalQuantizedPerChannel(context, node, params, &data, input, filter, bias,
                               output, nullptr);
       break;
     case kTfLiteUInt8:
