@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Gradient checker for functions.
 
 The gradient checker verifies numerically that an function properly
@@ -94,7 +93,7 @@ def _to_numpy(a):
   return a
 
 
-def _prepare(f, xs_dtypes):
+def _prepare(f, xs_dtypes, xs_shapes):
   """Return a function that executes 'f'.
 
     In TF 2.x, this is the same as `f`.
@@ -104,9 +103,9 @@ def _prepare(f, xs_dtypes):
   Args:
     f: the function.
     xs_dtypes: dtypes of f's arguments.
+    xs_shapes: shapes of f's arguments.
 
   Returns:
-    a function that will be evaluated in both graph and eager mode
   """
   if context.executing_eagerly():
 
@@ -114,12 +113,17 @@ def _prepare(f, xs_dtypes):
       return f(*map(ops.convert_to_tensor, xs_data))
 
     return decorated_eager
-  xs = [array_ops.placeholder(x_dtype) for x_dtype in xs_dtypes]
+  xs = [
+      array_ops.placeholder(x_dtype, shape=x_shape)
+      for x_dtype, x_shape in zip(xs_dtypes, xs_shapes)
+  ]
   y = f(*xs)
   sess = ops.get_default_session()
+
   def decorated_graph(*xs_data):
     xs_data = [_to_numpy(a) for a in xs_data]
     return sess.run(y, feed_dict=dict(zip(xs, xs_data)))
+
   return decorated_graph
 
 
@@ -159,12 +163,13 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
 
   # For each of the entry of dy, we set this to be 1 and
   # everything else to be 0 and compute the gradients -- this will give us one
-  # one row of the Jacobian matrix.
+  # row of the Jacobian matrix.
   dy_data = np.zeros(y_shape, dtype=y_dtype.as_numpy_dtype)
   dy_data_flat = dy_data.ravel().view(y_dtype.real_dtype.as_numpy_dtype)
   grad_fn_unprep = backprop.gradients_function(f, [param])
   grad_fn = _prepare(lambda dy, *xs: grad_fn_unprep(*xs, dy=dy),
-                     [y_dtype] + [z.dtype for z in xs])
+                     [y_dtype] + [z.dtype for z in xs],
+                     [None] + [z.shape for z in xs])
   for row in range(y_size):
     dy_data_flat[row] = 1
     grad = _to_numpy(grad_fn(dy_data, *xs)[0])
@@ -192,8 +197,7 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
   return jacobian
 
 
-def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param,
-                              delta):
+def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param, delta):
   """Computes the numeric Jacobian for f regarding xs[param].
 
   One can think of the relation among f, xs and y as y = f(xs).
@@ -227,6 +231,7 @@ def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param,
   y_dtype = y_dtype.real_dtype.as_numpy_dtype
 
   xs_dtypes = [x.dtype for x in xs]
+  xs_shapes = [x.shape for x in xs]
   # Converts xs to numpy arrays to do in-place perturbation.
   # Calls asarray() to avoid copying in ravel() later.
   xs = [np.asarray(_to_numpy(x)) for x in xs]
@@ -240,7 +245,7 @@ def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param,
   # For each of the entry of x, we slightly perturbs this by adding and
   # subtracting a delta and then compute difference between the outputs. This
   # will give us one column of the Jacobian matrix.
-  f = _prepare(f, xs_dtypes)
+  f = _prepare(f, xs_dtypes, xs_shapes)
   for col in range(x_size):
     original = x.ravel().view(x_dtype)[col]
     x.ravel().view(x_dtype)[col] += delta
@@ -256,17 +261,14 @@ def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param,
   return jacobian
 
 
-def _compute_gradient(f,
-                      y_shape,
-                      y_dtype,
-                      xs,
-                      param,
-                      delta):
+def _compute_gradient(f, y_shape, y_dtype, xs, param, delta):
   """Computes the theoretical and numerical jacobian."""
   x = xs[param]
   t = x.dtype
-  allowed_types = [dtypes.float16, dtypes.bfloat16, dtypes.float32,
-                   dtypes.float64, dtypes.complex64, dtypes.complex128]
+  allowed_types = [
+      dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
+      dtypes.complex64, dtypes.complex128
+  ]
   assert t.base_dtype in allowed_types, ("Cannot compute gradient for "
                                          "unsupported type %s of argument %s" %
                                          (t.name, param))
@@ -274,10 +276,8 @@ def _compute_gradient(f,
   assert t2.base_dtype in allowed_types, ("Cannot compute gradient for "
                                           "unsupported type %s of y" % t2.name)
   y_size = _product(y_shape)
-  jacob_t = _compute_theoretical_jacobian(f, y_shape, y_dtype,
-                                          xs, param)
-  jacob_n = _compute_numeric_jacobian(f, y_size, y_dtype, xs,
-                                      param, delta)
+  jacob_t = _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param)
+  jacob_n = _compute_numeric_jacobian(f, y_size, y_dtype, xs, param, delta)
   return jacob_t, jacob_n
 
 
@@ -287,10 +287,13 @@ def _compute_gradient_list(f, xs, delta):
   xs = list(map(ops.convert_to_tensor, xs))
   # run the function to get info of the result
   xs_dtypes = [x.dtype for x in xs]
-  f_temp = _prepare(f, xs_dtypes)
+  xs_shapes = [x.shape for x in xs]
+  f_temp = _prepare(f, xs_dtypes, xs_shapes)
   y = f_temp(*xs)
-  return zip(*[_compute_gradient(f, y.shape, dtypes.as_dtype(y.dtype),
-                                 xs, i, delta) for i in range(len(xs))])
+  return zip(*[
+      _compute_gradient(f, y.shape, dtypes.as_dtype(y.dtype), xs, i, delta)
+      for i in range(len(xs))
+  ])
 
 
 @tf_export("test.compute_gradient", v1=[])
