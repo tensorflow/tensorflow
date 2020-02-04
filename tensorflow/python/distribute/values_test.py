@@ -1258,7 +1258,6 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
       self.evaluate(distribution.experimental_local_results(
           distribution.experimental_run_v2(assign)))
-      result = self.evaluate(v.read_value())
       num_replicas = distribution.num_replicas_in_sync
       sum_of_replica_values = num_replicas * (num_replicas - 1) / 2.
       if aggregation == variables_lib.VariableAggregation.SUM:
@@ -1267,7 +1266,8 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         expected = sum_of_replica_values / num_replicas
       else:
         expected = 0
-      self.assertEqual(expected, result, aggregation)
+      self.assertEqual(expected, self.evaluate(v.read_value()), aggregation)
+      self.assertEqual(expected, self.evaluate(v.value()), aggregation)
 
   # TODO(b/145574622): Re-enable this test once ReduceOp argument is
   # respected on GPUs.

@@ -1086,6 +1086,14 @@ class SyncOnReadVariable(DistributedVariable):
       else:
         return self.get().assign(*args, **kwargs)
 
+  def value(self):
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      if distribution_strategy_context.in_cross_replica_context():
+        return self._get_cross_replica()
+      else:
+        # _get_closest() returns a Variable.
+        return self._get_closest().value()
+
   @property
   def aggregation(self):
     return self._aggregation
