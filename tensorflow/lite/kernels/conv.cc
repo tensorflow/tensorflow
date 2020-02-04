@@ -669,6 +669,8 @@ void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
 
   switch (kernel_type) {
     case kGenericOptimized:
