@@ -34,12 +34,20 @@ namespace tensorflow {
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);        \
   REGISTER_KERNEL_BUILDER(                                                    \
+      Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);        \
+  REGISTER_KERNEL_BUILDER(                                                    \
       Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);  \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("Conv2DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       NoOp);                                                                  \
   REGISTER_KERNEL_BUILDER(                                                    \
+      Name("Conv3DBackpropFilterV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      NoOp);                                                                  \
+  REGISTER_KERNEL_BUILDER(                                                    \
       Name("Conv2DBackpropInput").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
+      NoOp);                                                                  \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("Conv3DBackpropInputV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       NoOp);                                                                  \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);       \
