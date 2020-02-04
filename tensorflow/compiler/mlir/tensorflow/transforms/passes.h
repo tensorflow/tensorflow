@@ -182,10 +182,6 @@ void CreateTPUBridge(OpPassManager& pm);
 
 namespace tf_saved_model {
 
-// Creates a pass that uses tf_saved_model dialect linkage information
-// to delete unused func's.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateDeleteUnusedFuncsPass();
-
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
 

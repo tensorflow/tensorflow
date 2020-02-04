@@ -234,7 +234,6 @@ cc_library(
         "transforms/cluster_formation.cc",
         "transforms/cluster_outlining.cc",
         "transforms/decompose_resource_ops_pass.cc",
-        "transforms/delete_unused_funcs.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/fold_switch.cc",
         "transforms/functional_control_flow_to_cfg.cc",
