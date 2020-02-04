@@ -523,6 +523,7 @@ class Converter {
                                nvinfer1::ITensor** tensor);
 
   // Helper function to add a squeeze op to the network.
+  //
   // The trt_axes argument lists those axes that need to be squeezed. Each axis
   // in the list is numbered according to TRT convention (see ConvertAxis for
   // details).
