@@ -374,8 +374,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*allocate_buffers_for_constants=*/true,
           /*colorer=*/BufferAssigner::DefaultColorer(),
           /*must_not_live_out=*/{}, GetCanShareBuffer()));
-  DumpHloModuleIfEnabled(*module, *buffer_assignment, "",
-                         "after_optimizations");
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   IrEmitterContext ir_emitter_context(
       module.get(), buffer_assignment.get(), stream_exec->platform(),

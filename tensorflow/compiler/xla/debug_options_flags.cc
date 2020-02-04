@@ -39,6 +39,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
+  opts.set_xla_dump_include_timestamp(true);
+  opts.set_xla_dump_max_hlo_modules(-1);
 #ifdef INTEL_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
@@ -488,6 +490,17 @@ static void AllocateFlags() {
           "If specified, dumps HLO before and after optimization passes which "
           "match this regular expression, in addition to dumping at the very "
           "beginning and end of compilation."),
+      tensorflow::Flag(
+          "xla_dump_include_timestamp",
+          bool_setter_for(&DebugOptions::set_xla_dump_include_timestamp),
+          flag_values->xla_dump_include_timestamp(),
+          "If specified, includes a timestamp in the dumped filenames."),
+      tensorflow::Flag(
+          "xla_dump_max_hlo_modules",
+          int32_setter_for(&DebugOptions::set_xla_dump_max_hlo_modules),
+          flag_values->xla_dump_max_hlo_modules(),
+          "Max number of hlo module dumps in a directory. Set to < 0 for "
+          "unbounded."),
       tensorflow::Flag(
           "xla_hlo_graph_addresses",
           bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
