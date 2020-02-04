@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define TPUDRIVER_CAPI_EXPORT __attribute__((visibility("default")))
