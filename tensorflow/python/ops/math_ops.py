@@ -4581,7 +4581,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
 @tf_export("math.exp", "exp")
 @dispatch.add_dispatch_support
 def exp(x, name=None):
-  """Computes exponential of x element-wise.  \\(y = e^x\\).
+  r"""Computes exponential of x element-wise.  \\(y = e^x\\).
 
   This function computes the exponential of the input tensor element-wise.
   i.e. `math.exp(x)` or \\(e^x\\), where `x` is the input tensor.
