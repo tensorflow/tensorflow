@@ -30,6 +30,7 @@ VALID_LIBS = [
     "jsoncpp_git",
     "libjpeg_turbo",
     "lmdb",
+    "mkl_dnn",
     "nasm",
     "nsync",
     "opt_einsum_archive",

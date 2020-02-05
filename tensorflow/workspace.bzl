@@ -160,6 +160,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:mkl_dnn.BUILD"),
         sha256 = "ed56652dd237deb86ee9bf102c18de5f2625c059e5ab1d7512c8dc01e316b694",
         strip_prefix = "mkl-dnn-0.21.2",
         urls = [
