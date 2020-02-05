@@ -23,7 +23,7 @@ install_ubuntu_16_pip_deps pip3.6
 
 pip3.7 install --upgrade auditwheel --user
 
-update_bazel_linux
+install_bazelisk
 
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 

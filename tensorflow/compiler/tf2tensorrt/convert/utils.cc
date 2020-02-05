@@ -120,8 +120,9 @@ string DebugString(const nvinfer1::ITensor& tensor) {
 string DebugString(const std::vector<nvinfer1::Dims>& dimvec) {
   return absl::StrCat("[",
                       absl::StrJoin(dimvec, ",",
-                                    [](std::string* out, nvinfer1::Dims in)
-                                    {out->append(DebugString(in));}),
+                                    [](std::string* out, nvinfer1::Dims in) {
+                                      out->append(DebugString(in));
+                                    }),
                       "]");
 }
 

@@ -2027,12 +2027,13 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
           kAlternateMemorySpace);
-  // Indexes {1} and {2} of the while loop argument are only placed in the
-  // alternate memory if we enable the allocate_across_sequential_calls option.
+  // Index {1} is a scalar, so it is always placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {1})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-          memory_space_across_while);
+          kDefaultMemorySpace);
+  // Index {2} of the while loop argument is placed in the alternate memory if
+  // we enable the allocate_across_sequential_calls option.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,

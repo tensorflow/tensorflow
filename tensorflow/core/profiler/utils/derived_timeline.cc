@@ -74,11 +74,11 @@ class DerivedXLineBuilder {
   XStatMetadata* group_id_stats_;
 };
 
-constexpr absl::string_view kDerivedLineSteps = "Steps";
-constexpr absl::string_view kDerivedLineTensorFlowOps = "TensorFlow Ops";
-constexpr absl::string_view kDerivedLineXlaModules = "XLA Modules";
-constexpr absl::string_view kDerivedLineXlaOps = "XLA Ops";
-constexpr absl::string_view kAnnotationDelimiter = "::";
+const absl::string_view kDerivedLineSteps = "Steps";
+const absl::string_view kDerivedLineTensorFlowOps = "TensorFlow Ops";
+const absl::string_view kDerivedLineXlaModules = "XLA Modules";
+const absl::string_view kDerivedLineXlaOps = "XLA Ops";
+const absl::string_view kAnnotationDelimiter = "::";
 
 }  // namespace
 
@@ -166,6 +166,21 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     }
   }
   RemoveEmptyLines(device_trace);
+}
+
+void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
+                              XSpace* space) {
+  // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
+  // to look up tensorflow op name from hlo_module/hlo_op.
+  auto symbol_resolver = [&](absl::string_view hlo_module,
+                             absl::string_view hlo_op) -> absl::string_view {
+    return absl::string_view();
+  };
+  for (XPlane& plane : *space->mutable_planes()) {
+    // Derived timelines only generated for device traces.
+    if (plane.id() == kHostPlaneId) continue;
+    DeriveEventsFromAnnotations(symbol_resolver, event_group_name_map, &plane);
+  }
 }
 
 }  // namespace profiler

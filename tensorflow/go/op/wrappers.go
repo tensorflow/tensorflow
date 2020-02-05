@@ -45090,6 +45090,14 @@ func SubstrUnit(value string) SubstrAttr {
 // output = [b'hir', b'ee', b'n']
 // ```
 //
+// Raises:
+//
+//   * `ValueError`: If the first argument cannot be converted to a
+//      Tensor of `dtype string`.
+//   * `InvalidArgumentError`: If indicies are out of range.
+//   * `ValueError`: If `pos` and `len` are not the same shape.
+//
+//
 // Arguments:
 //	input: Tensor of strings
 //	pos: Scalar defining the position of first character in each substring

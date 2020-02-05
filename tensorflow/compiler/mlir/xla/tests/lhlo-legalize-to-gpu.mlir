@@ -12,7 +12,6 @@ func @reduce(%arg: memref<100x10xf32>,
       : (memref<100x10xf32>, memref<f32>, memref<100xf32>) -> ()
   return
 }
-// CHECK: #map0 = [[MAP:.*]]
 
 // CHECK: func @reduce(%[[ARG0:.*]]: memref<100x10xf32>, %[[ARG1:.*]]: memref<f32>, %[[ARG2:.*]]: memref<100xf32>) {
 // CHECK-DAG: %[[C100:.*]] = constant 100 : index
@@ -26,7 +25,7 @@ func @reduce(%arg: memref<100x10xf32>,
 // CHECK: loop.for %[[IDX1:.*]] = %[[LB]] to %[[UB]] step %[[STEP]] {
 // CHECK: %[[LHS:.*]] = linalg.slice %[[ARG2]][%[[IDX]]] : memref<100xf32>, index, memref<f32, #map0>
 // CHECK: %[[RHS:.*]] = linalg.slice %[[ARG0]][%[[IDX]], %[[IDX1]]] : memref<100x10xf32>, index, index, memref<f32, #map0>
-// CHECK: "xla_lhlo.add"(%[[LHS]], %[[RHS]], %[[LHS]]) : (memref<f32, [[MAP]]>, memref<f32, [[MAP]]>, memref<f32, [[MAP]]>) -> ()
+// CHECK: "xla_lhlo.add"(%[[LHS]], %[[RHS]], %[[LHS]]) : (memref<f32, {{.*}}>, memref<f32, {{.*}}>, memref<f32, {{.*}}>) -> ()
 // CHECK: }
 // CHECK: gpu.terminator
 // CHECK: }

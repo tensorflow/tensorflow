@@ -57,7 +57,8 @@ strategies = [
     strategy_combinations.mirrored_strategy_with_one_gpu,
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
     strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.tpu_strategy
+    strategy_combinations.tpu_strategy,
+    strategy_combinations.central_storage_strategy_with_two_gpus,
 ]
 
 

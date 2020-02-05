@@ -257,43 +257,6 @@ ios_application(
 )
 
 objc_library(
-    name = "kernel_tests_lib",
-    testonly = 1,
-    srcs = [
-        "//tensorflow/lite/delegates/gpu/metal/kernels:add_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:concat_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:conv_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:depthwise_conv_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:elementwise_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:fully_connected_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:max_unpooling_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:mul_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:padding_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:pooling_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:prelu_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:relu_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:reshape_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:resize_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:slice_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:softmax_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:transpose_conv_test.mm",
-    ],
-    hdrs = [
-    ],
-    sdk_frameworks = ["XCTest"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:common",
-        "//tensorflow/lite/delegates/gpu/metal:environment",
-        "//tensorflow/lite/delegates/gpu/metal:inference_context",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
-    ],
-)
-
-objc_library(
     name = "common_tests_lib",
     testonly = 1,
     srcs = [
@@ -310,6 +273,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -321,7 +285,7 @@ ios_unit_test(
     test_host = ":TestApplication",
     deps = [
         ":common_tests_lib",
-        ":kernel_tests_lib",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:kernel_tests_lib",
     ],
 )
 

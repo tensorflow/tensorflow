@@ -406,15 +406,15 @@ Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& shapes) {
   if (use_implicit_batch_) {
     const int batch_size = shapes[0].dim_size(0);
     if (batch_size < 1) {
-      return errors::InvalidArgument(
-          "Incorrect batch dimension, for ", name(),
-          ": ", TensorShapeUtils::ShapeListString(shapes));
+      return errors::InvalidArgument("Incorrect batch dimension, for ", name(),
+                                     ": ",
+                                     TensorShapeUtils::ShapeListString(shapes));
     }
     for (const TensorShape& shape : shapes) {
       if (batch_size != shape.dim_size(0)) {
         return errors::InvalidArgument(
-            "Input shapes are inconsistent on the batch dimension, for ", name(),
-            ": ", TensorShapeUtils::ShapeListString(shapes));
+            "Input shapes are inconsistent on the batch dimension, for ",
+            name(), ": ", TensorShapeUtils::ShapeListString(shapes));
       }
     }
   }
@@ -690,7 +690,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
         trt_shape.push_back(dims.d[j]);
       }
 #else
-      LOG(ERROR) << "Explicit batch mode is only supported with TensorRT 6 and above.";
+      LOG(ERROR)
+          << "Explicit batch mode is only supported with TensorRT 6 and above.";
       return kRetry;
 #endif
     } else {
@@ -760,7 +761,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     ret = execution_context->enqueueV2(&buffers[0], *stream, nullptr);
     VLOG(1) << "Called IExecutionContext::enqueueV2";
 #else
-    LOG(ERROR) << "Explicit batch mode is only supported with TensorRT 6 and above.";
+    LOG(ERROR)
+        << "Explicit batch mode is only supported with TensorRT 6 and above.";
     return kRetry;
 #endif
   }
