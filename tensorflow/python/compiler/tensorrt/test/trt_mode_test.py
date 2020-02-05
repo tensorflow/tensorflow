@@ -18,18 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+from unittest import skip
 
-from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
-from unittest import skip
+
 
 @skip("TrtModeTestBase defines a common base class for other tests")
 class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
@@ -45,7 +41,9 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
     return array_ops.identity(q, name="output_0")
 
   def GetParams(self):
-    """ The input has 1 as a first dimension, which is removed by the squeeze
+    """ Get input parameters.
+
+    The input has 1 as a first dimension, which is removed by the squeeze
     op in the graph.
 
     In explicit batch mode, TensorRT can convert the whole graph. In this mode
@@ -70,6 +68,7 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
     return conversion_params._replace(
         rewriter_config_template=rewriter_config)
 
+
 class ImplicitBatchTest(TrtModeTestBase):
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test using implicit batch mdoe"""
@@ -77,6 +76,7 @@ class ImplicitBatchTest(TrtModeTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build.
+
     The squeeze op is not converted by TensorRT in implicit batch mode.
     Because of this we have two TRTEngineOp in the graphs: one for the
     subgraph before 'squeeze(q,0)', and another one for the rest of the ops
@@ -84,17 +84,20 @@ class ImplicitBatchTest(TrtModeTestBase):
     """
     return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
+
 class ExplicitBatchTest(TrtModeTestBase):
   def GetConversionParams(self, run_params):
-    """Return a TrtConversionParams for test that enables explicit batch """
+    """Return a TrtConversionParams that enables explicit batch mode. """
     return super(ExplicitBatchTest, self).GetConversionParams(run_params,
                                                               False)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build.
+
     In explicit batch mode the whole graph is converted using a single engine.
     """
     return ["TRTEngineOp_0"]
+
 
 if __name__ == "__main__":
   test.main()
