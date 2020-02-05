@@ -117,6 +117,22 @@ string DebugString(const nvinfer1::ITensor& tensor) {
                 ", dims=", DebugString(tensor.getDimensions()), ")");
 }
 
+string DebugString(const std::vector<nvinfer1::Dims>& dimvec) {
+  return absl::StrCat("[",
+                      absl::StrJoin(dimvec, ",",
+                                    [](std::string* out, nvinfer1::Dims in) {
+                                      out->append(DebugString(in));
+                                    }),
+                      "]");
+}
+
+string DebugString(const std::vector<TensorShape>& shapes) {
+  return TensorShapeUtils::ShapeListString(shapes);
+}
+
+string DebugString(const std::vector<PartialTensorShape>& shapes) {
+  return PartialTensorShapeUtils::PartialShapeListString(shapes);
+}
 #endif
 
 string GetLinkedTensorRTVersion() {
