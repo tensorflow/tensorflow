@@ -860,6 +860,7 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     v, replica_local = _make_replica_local(
         variable_scope.VariableAggregation.SUM)
 
+    self.assertEqual(v[0].constraint, replica_local.constraint)
     self.assertEqual(v[0].name, replica_local.name)
     self.assertEqual(v[0].dtype, replica_local.dtype)
     self.assertEqual(v[0].shape, replica_local.shape)

@@ -429,6 +429,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     return self._get_closest().initial_value
 
   @property
+  def constraint(self):
+    return self.primary.constraint
+
+  @property
   def graph(self):
     return self.primary.graph
 
@@ -635,10 +639,6 @@ class TPUVariableMixin(object):
       return super(TPUVariableMixin, self).value()
     else:
       return self._read_variable_op()
-
-  @property
-  def constraint(self):
-    return self.primary.constraint
 
   def _as_graph_element(self):
     if _enclosing_tpu_context() is None:
