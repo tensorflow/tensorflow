@@ -4382,7 +4382,7 @@ bool MIOpenSupport::DoPoolBackward(
 
   // miopen requires the strides and dims to be ordered as BDYX.
   std::vector<int64> dims64 =
-      output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
+      input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
 
   // miopen does not use strides and must have 4D tensor.
   std::vector<int> dims(4);
@@ -4478,7 +4478,7 @@ bool MIOpenSupport::DoPoolBackward(
 
   // miopen requires the strides and dims to be ordered as BDYX.
   std::vector<int64> dims64 =
-      output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
+      input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
 
   // miopen does not use strides and must have 4D tensor.
   std::vector<int> dims(4);
