@@ -1308,7 +1308,8 @@ TEST_F(QuantizeFCTest, VerifyFC) {
   EXPECT_EQ(model_.operator_codes[1]->version, 1);
 }
 
-class QuantizeCustomOpTest : public QuantizeModelTest {
+class QuantizeCustomOpTest : public QuantizeModelTest,
+    public ::testing::WithParamInterface<tflite::TensorType> {
  protected:
   QuantizeCustomOpTest() {
     input_model_ = ReadModel(internal::kModelMixed);
@@ -1317,10 +1318,10 @@ class QuantizeCustomOpTest : public QuantizeModelTest {
   }
 };
 
-TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
+TEST_P(QuantizeCustomOpTest, VerifyMixedQuantization) {
   auto status =
-      QuantizeModel(&builder_, &model_, TensorType_INT8, TensorType_INT8,
-                    /*allow_float=*/true, TensorType_INT8, &error_reporter_);
+      QuantizeModel(&builder_, &model_, GetParam(), GetParam(),
+                    /*allow_float=*/true, GetParam(), &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
   auto float_graph = readonly_model_->subgraphs()->Get(0);
@@ -1334,8 +1335,45 @@ TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
       BuiltinOperator_CUSTOM,   BuiltinOperator_CUSTOM,
       BuiltinOperator_QUANTIZE, BuiltinOperator_SQUEEZE};
   const std::vector<TensorType> op_input_types = {
-      TensorType_INT8,    TensorType_INT8,    TensorType_FLOAT32,
-      TensorType_FLOAT32, TensorType_FLOAT32, TensorType_INT8};
+      GetParam(),    GetParam(),    TensorType_FLOAT32,
+      TensorType_FLOAT32, TensorType_FLOAT32, GetParam()};
+  for (int i = 0; i < subgraph->operators.size(); ++i) {
+    OperatorT* op = subgraph->operators[i].get();
+    ASSERT_EQ(model_.operator_codes[op->opcode_index]->builtin_code,
+              op_codes[i]);
+    ASSERT_EQ(subgraph->tensors[op->inputs[0]]->type, op_input_types[i]);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(QuantizeCustomOpTest, QuantizeCustomOpTest,
+                         ::testing::Values(TensorType_INT8, TensorType_INT16));
+
+class QuantizeOp16x8Test : public QuantizeModelTest {
+ protected:
+  QuantizeOp16x8Test() {
+    input_model_ = ReadModel(internal::kModelMixed16x8);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeOp16x8Test, VerifyMixedQuantization16x8) {
+  auto status =
+      QuantizeModel(&builder_, &model_, TensorType_INT16, TensorType_FLOAT32,
+                    /*allow_float=*/true, TensorType_INT16, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+  const auto& subgraph = model_.subgraphs[0];
+  auto float_graph = readonly_model_->subgraphs()->Get(0);
+  // The original model conv_2d->log_softmax
+  ASSERT_EQ(float_graph->operators()->size(), 2);
+  // The resulting model should be:
+  // conv_2d->dequantize->log_softmax
+  ASSERT_EQ(subgraph->operators.size(), 3);
+  const std::vector<BuiltinOperator> op_codes = {
+      BuiltinOperator_CONV_2D,  BuiltinOperator_DEQUANTIZE,
+      BuiltinOperator_LOG_SOFTMAX};
+  const std::vector<TensorType> op_input_types = {
+      TensorType_INT16,    TensorType_INT16,    TensorType_FLOAT32};
   for (int i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
     ASSERT_EQ(model_.operator_codes[op->opcode_index]->builtin_code,

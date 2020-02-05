@@ -65,7 +65,8 @@ struct TensorProperty {
 struct OperatorProperty {
   // Is a quantized operations currently supported.
   bool quantizable = true;
-
+  // Is a quantized operations currently supported for 16x8
+  bool quantizable_int16 = true;
   // Op has arbitrary number of inputs, such as concat.
   bool arbitrary_inputs = false;
   // Op has arbitrary number of outputs, such as slice.
