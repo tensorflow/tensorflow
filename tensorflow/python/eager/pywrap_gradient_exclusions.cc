@@ -308,6 +308,7 @@ bool OpGradientDoesntRequireInputIndices(
           {"StackPush", {true, {}}},
           {"StatelessMultinomial", {true, {}}},
           {"StatelessRandomBinomial", {true, {}}},
+          {"StatelessRandomGammaV2", {false, {1}}},
           {"StatelessRandomNormal", {true, {}}},
           {"StatelessRandomUniform", {true, {}}},
           {"StatelessRandomUniformInt", {true, {}}},

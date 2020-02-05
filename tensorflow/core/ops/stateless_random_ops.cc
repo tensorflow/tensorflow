@@ -105,4 +105,14 @@ REGISTER_OP("StatelessRandomBinomial")
     .Attr("dtype: {half, float, double, int32, int64} = DT_INT64")
     .SetShapeFn(StatelessShape);
 
+REGISTER_OP("StatelessRandomGammaV2")
+    .Input("shape: T")
+    .Input("seed: Tseed")
+    .Input("alpha: dtype")
+    .Output("output: dtype")
+    .Attr("dtype: {float16, float32, float64}")
+    .Attr("T: {int32, int64}")
+    .Attr("Tseed: {int32, int64} = DT_INT64")
+    .SetShapeFn(StatelessShape);
+
 }  // namespace tensorflow
