@@ -35,6 +35,11 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  const EventGroupNameMap& event_group_name_map,
                                  XPlane* device_trace);
 
+// Loops through XPlanes of input XSpace, if it is "device" XPlane, generating
+// derived timelines for the plane by calling DeriveEventsFromAnnotations.
+void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
+                              XSpace* space);
+
 }  // namespace profiler
 }  // namespace tensorflow
 
