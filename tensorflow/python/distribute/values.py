@@ -1094,6 +1094,13 @@ class SyncOnReadVariable(DistributedVariable):
         # _get_closest() returns a Variable.
         return self._get_closest().value()
 
+  def numpy(self):
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    else:
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+
   @property
   def aggregation(self):
     return self._aggregation
@@ -1110,8 +1117,9 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
-    if distribution_strategy_context.in_cross_replica_context():
-      return self._get_cross_replica()
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      if distribution_strategy_context.in_cross_replica_context():
+        return ops.convert_to_tensor(self._get_cross_replica())
     return self._get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):

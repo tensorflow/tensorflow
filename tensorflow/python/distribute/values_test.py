@@ -1269,6 +1269,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         expected = 0
       self.assertEqual(expected, self.evaluate(v.read_value()), aggregation)
       self.assertEqual(expected, self.evaluate(v.value()), aggregation)
+      self.assertEqual(expected, self.evaluate(v), aggregation)
 
   # TODO(b/145574622): Re-enable this test once ReduceOp argument is
   # respected on GPUs.
