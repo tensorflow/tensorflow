@@ -75,7 +75,7 @@ _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
 
 
 @keras_export('keras.Model', 'keras.models.Model')
-class Model(network.Network, version_utils.VersionSelector):
+class Model(network.Network, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:

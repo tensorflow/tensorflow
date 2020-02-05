@@ -27,17 +27,10 @@ import numpy as np
 import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
-from google.protobuf import json_format
-from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
-from tensorflow.python.eager import execute
-from tensorflow.python.eager import function
-from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import auto_control_deps
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
@@ -49,6 +42,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
@@ -58,7 +52,6 @@ from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.keras.utils import version_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
@@ -73,25 +66,15 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
-# Prefix that is added to the TF op layer names.
-_TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
-_keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
-                                           'keras layers usage', 'method')
-_keras_model_gauge = monitoring.BoolGauge(
-    '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
-
-
-@keras_export('keras.layers.Layer')
-class Layer(module.Module, version_utils.LayerVersionSelector):
+# pylint: disable=g-classes-have-attributes
+class Layer(base_layer.Layer):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -740,13 +723,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if build_graph and base_layer_utils.needs_keras_history(inputs):
       base_layer_utils.create_keras_history(inputs)
 
-    # Clear eager losses on top level model call.
-    # We are clearing the losses only on the top level model call and not on
-    # every layer/model call because layer/model may be reused.
-    if (base_layer_utils.is_in_eager_or_tf_function() and
-        not call_context.in_call):
-      self._clear_losses()
-
     with call_context.enter(self, inputs, build_graph, training_value):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
@@ -769,34 +745,24 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs)
 
-          if not self.dynamic:
-            # Wrapping `call` function in autograph to allow for dynamic control
-            # flow and control dependencies in call. We are limiting this to
-            # subclassed layers as autograph is strictly needed only for
-            # subclassed layers and models.
-            # tf_convert will respect the value of autograph setting in the
-            # enclosing tf.function, if any.
-            if (base_layer_utils.is_subclassed(self) and
-                not base_layer_utils.from_saved_model(self)):
-              call_fn = autograph.tf_convert(
-                  self.call, ag_ctx.control_status_ctx())
-            else:
-              call_fn = self.call
+          # Wrapping `call` function in autograph to allow for dynamic control
+          # flow and control dependencies in call. We are limiting this to
+          # subclassed layers as autograph is strictly needed only for
+          # subclassed layers and models.
+          # tf_convert will respect the value of autograph setting in the
+          # enclosing tf.function, if any.
+          if (base_layer_utils.is_subclassed(self) and
+              not base_layer_utils.from_saved_model(self)):
+            call_fn = autograph.tf_convert(
+                self.call, ag_ctx.control_status_ctx())
+          else:
+            call_fn = self.call
 
+          if not self.dynamic:
             try:
               with base_layer_utils.autocast_context_manager(
                   self._compute_dtype):
-                # Add auto_control_deps in V2 when they are not already added by
-                # a `tf.function`.
-                if (ops.executing_eagerly_outside_functions() and
-                    not base_layer_utils.is_in_eager_or_tf_function()):
-                  with auto_control_deps.AutomaticControlDependencies() as acd:
-                    outputs = call_fn(cast_inputs, *args, **kwargs)
-                    # Wrap Tensors in `outputs` in `tf.identity` to avoid
-                    # circular dependencies.
-                    outputs = base_layer_utils.mark_as_return(outputs, acd)
-                else:
-                  outputs = call_fn(cast_inputs, *args, **kwargs)
+                outputs = call_fn(cast_inputs, *args, **kwargs)
 
             except errors.OperatorNotAllowedInGraphError as e:
               raise TypeError('You are attempting to use Python control '
@@ -902,7 +868,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   @trackable.no_automatic_dependency_tracking
   def input_spec(self, value):
     for v in nest.flatten(value):
-      if v is not None and not isinstance(v, InputSpec):
+      if v is not None and not isinstance(v, base_layer.InputSpec):
         raise TypeError('Layer input_spec must be an instance of InputSpec. '
                         'Got: {}'.format(v))
     self._input_spec = value
@@ -974,14 +940,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # If any eager losses are present, we assume the model to be part of an
       # eager training loop (either a custom one or the one used when
       # `run_eagerly=True`) and so we always return just the eager losses.
-      if layer._eager_losses:
-        # Filter placeholder losses that may have been added by revived layers.
-        # (see base_layer_utils for details).
-        if (layer._eager_losses[0] is
-            not base_layer_utils.REVIVED_LOSS_PLACEHOLDER):
-          collected_losses.extend(layer._eager_losses)
-      else:
-        collected_losses.extend(layer._losses)
+      collected_losses.extend(layer._losses)
       for regularizer in layer._callable_losses:
         loss_tensor = regularizer()
         if loss_tensor is not None:
@@ -1073,7 +1032,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     losses = nest.flatten(losses)
 
     callable_losses = []
-    eager_losses = []
     symbolic_losses = []
     for loss in losses:
       if callable(loss):
@@ -1088,18 +1046,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(_tag_unconditional(loss))
         base_layer_utils.check_graph_consistency(loss, method='add_loss')
-      elif tensor_util.is_tensor(loss):
-        eager_losses.append(_tag_unconditional(loss))
 
     self._callable_losses.extend(callable_losses)
 
     in_call_context = base_layer_utils.call_context().in_call
-    if eager_losses and not in_call_context:
-      raise ValueError(
-          'Expected a symbolic Tensors or a callable for the loss value. '
-          'Please wrap your loss computation in a zero argument `lambda`.')
-
-    self._eager_losses.extend(eager_losses)
 
     if in_call_context:
       for symbolic_loss in symbolic_losses:
@@ -1111,15 +1061,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         else:
           # Possible a loss was added in a Layer's `build`.
           self._losses.append(symbolic_loss)
-
-  @trackable.no_automatic_dependency_tracking
-  def _clear_losses(self):
-    """Used every step in eager to reset losses."""
-    self._eager_losses = []
-    if hasattr(self, '_layers'):
-      for layer in trackable_layer_utils.filter_empty_layer_containers(
-          self._layers):
-        layer._clear_losses()
 
   @property
   def metrics(self):
@@ -1176,10 +1117,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     if in_call_context:
       # TF Function path should take the eager path.
-      if is_symbolic and not base_layer_utils.is_in_tf_function():
-        self._symbolic_add_metric(value, aggregation, name)
-      else:
-        self._eager_add_metric(value, aggregation, name)
+      self._symbolic_add_metric(value, aggregation, name)
     else:
       if not is_symbolic:
         raise ValueError('Expected a symbolic Tensor for the metric value, '
@@ -1239,14 +1177,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     updates = generic_utils.to_list(updates)
 
-    # All updates can be run immediately in Eager or in a tf.function.
-    if base_layer_utils.is_in_eager_or_tf_function():
-      if not call_context.frozen:
-        for update in updates:
-          if callable(update):
-            update()
-      return
-
     if call_context.in_call:
       relevant_inputs = call_context.inputs
     else:
@@ -1264,10 +1194,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       """
       if callable(x):
         update = lambda: process_update(x())
-        if not ops.executing_eagerly_outside_functions():
-          # In V1 mode, call the callable right away and process. This is needed
-          # for TPU strategy.
-          return update()
+        return update()
       elif isinstance(x, ops.Operation):
         update = x
       elif hasattr(x, 'op'):
@@ -1280,10 +1207,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       return update
 
     updates = [process_update(x) for x in updates]
-    # Non-callable Updates are run automatically inside `call` in V2, so
-    # they do not need to be tracked later.
-    if ops.executing_eagerly_outside_functions() and call_context.in_call:
-      updates = [u for u in updates if callable(u)]
     self._updates.extend(updates)
 
   def set_weights(self, weights):
@@ -1913,26 +1836,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           'We found {} metrics with the name: "{}"'.format(len(match), name))
     return match[0]
 
-  def _eager_add_metric(self, value, aggregation=None, name=None):
-    # If the given metric is available in `metrics` list we just update state
-    # on it, otherwise we create a new metric instance and
-    # add it to the `metrics` list.
-    metric_obj = getattr(value, '_metric_obj', None)
-    if metric_obj:
-      name = metric_obj.name
-
-    match = self._get_existing_metric(name)
-    if match:
-      # Tensors that come from a Metric object already updated the Metric state.
-      if not metric_obj:
-        match(value)
-      return
-
-    if not metric_obj:
-      assert aggregation is not None
-      metric_obj, _ = base_layer_utils.create_mean_metric(value, name)
-    self._metrics.append(metric_obj)
-
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
     base_layer_utils.check_graph_consistency(value, method='add_metric')
     match = self._get_existing_metric(name)
@@ -2207,13 +2110,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     # Optionally load weight values specified at layer instantiation.
     if self._initial_weights is not None:
-      if ops.executing_eagerly_outside_functions():
-        with ops.init_scope():
-          # Using `init_scope` since we want variable assignment in
-          # `set_weights` to be treated like variable initialization.
-          self.set_weights(self._initial_weights)
-      else:
-        self.set_weights(self._initial_weights)
+      self.set_weights(self._initial_weights)
       self._initial_weights = None
 
   def _symbolic_call(self, inputs):
@@ -2487,22 +2384,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return ('mask' in self._call_fn_args or
             getattr(self, 'compute_mask', None) is not None)
 
-  @property
-  def _eager_losses(self):
-    # A list of loss values containing activity regularizers and losses
-    # manually added through `add_loss` during eager execution. It is cleared
-    # after every batch.
-    # Because we plan on eventually allowing a same model instance to be trained
-    # in eager mode or graph mode alternatively, we need to keep track of
-    # eager losses and symbolic losses via separate attributes.
-    if not hasattr(self._thread_local, '_eager_losses'):
-      self._thread_local._eager_losses = []
-    return self._thread_local._eager_losses
-
-  @_eager_losses.setter
-  def _eager_losses(self, losses):
-    self._thread_local._eager_losses = losses
-
   def _dedup_weights(self, weights):
     """Dedupe weights while maintaining order as much as possible."""
     output, seen_weights = [], object_identity.ObjectIdentitySet()
@@ -2548,176 +2429,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     state['_thread_local'] = threading.local()
     # Bypass Trackable logic as `__dict__` already contains this info.
     object.__setattr__(self, '__dict__', state)
-
-
-class TensorFlowOpLayer(Layer):
-  """Wraps a TensorFlow Operation in a Layer.
-
-  This class is used internally by the Functional API. When a user
-  uses a raw TensorFlow Operation on symbolic tensors originating
-  from an `Input` Layer, the resultant operation will be wrapped
-  with this Layer object in order to make the operation compatible
-  with the Keras API.
-
-  This Layer will create a new, identical operation (except for inputs
-  and outputs) every time it is called. If `run_eagerly` is `True`,
-  the op creation and calculation will happen inside an Eager function.
-
-  Instances of this Layer are created when `autolambda` is called, which
-  is whenever a Layer's `__call__` encounters symbolic inputs that do
-  not have Keras metadata, or when a Network's `__init__` encounters
-  outputs that do not have Keras metadata.
-
-  Attributes:
-    node_def: String, the serialized NodeDef of the Op this layer will wrap.
-    name: String, the name of the Layer.
-    constants: Dict of NumPy arrays, the values of any Tensors needed for this
-      Operation that do not originate from a Keras `Input` Layer. Since all
-      placeholders must come from Keras `Input` Layers, these Tensors must be
-      treated as constant in the Functional API.
-    trainable: Bool, whether this Layer is trainable. Currently Variables are
-      not supported, and so this parameter has no effect.
-    dtype: The default dtype of this Layer. Inherited from `Layer` and has no
-      effect on this class, however is used in `get_config`.
-  """
-
-  @trackable.no_automatic_dependency_tracking
-  def __init__(self,
-               node_def,
-               name,
-               constants=None,
-               trainable=True,
-               dtype=None):
-    # Pass autocast=False, as if inputs are cast, input types might not match
-    # Operation type.
-    super(TensorFlowOpLayer, self).__init__(
-        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
-        autocast=False)
-    _keras_layers_gauge.get_cell('TensorflowOpLayer').set(True)
-    if isinstance(node_def, dict):
-      self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
-    else:
-      if not isinstance(node_def, bytes):
-        node_def = node_def.encode('utf-8')
-      self.node_def = node_def_pb2.NodeDef.FromString(node_def)
-    # JSON serialization stringifies keys which are integer input indices.
-    self.constants = ({
-        int(index): constant for index, constant in constants.items()
-    } if constants is not None else {})
-    # Layer uses original op unless it is called on new inputs.
-    # This means `built` is not set in `__call__`.
-    self.built = True
-
-  def call(self, inputs):
-    if context.executing_eagerly():
-      return self._defun_call(inputs)
-    return self._make_op(inputs)
-
-  def _make_node_def(self, graph):
-    node_def = node_def_pb2.NodeDef()
-    node_def.CopyFrom(self.node_def)
-    # Used in TPUReplicateContext to indicate whether this node has been cloned
-    # and to not add TPU attributes.
-    node_def.attr['_cloned'].b = True
-    node_def.name = graph.unique_name(node_def.name)
-    return node_def
-
-  def _make_op(self, inputs):
-    inputs = nest.flatten(inputs)
-    graph = inputs[0].graph
-    node_def = self._make_node_def(graph)
-    with graph.as_default():
-      for index, constant in self.constants.items():
-        # Recreate constant in graph to add distribution context.
-        value = tensor_util.constant_value(constant)
-        if value is not None:
-          constant = constant_op.constant(value, name=node_def.input[index])
-        inputs.insert(index, constant)
-      c_op = ops._create_c_op(graph, node_def, inputs, control_inputs=[])
-      op = graph._create_op_from_tf_operation(c_op)
-      op._control_flow_post_processing()
-
-      # Record the gradient because custom-made ops don't go through the
-      # code-gen'd eager call path
-      op_type = compat.as_str(op.op_def.name)
-      attr_names = [compat.as_str(attr.name) for attr in op.op_def.attr]
-      attrs = []
-      for attr_name in attr_names:
-        attrs.append(attr_name)
-        attrs.append(op.get_attr(attr_name))
-      attrs = tuple(attrs)
-      execute.record_gradient(op_type, op.inputs, attrs, op.outputs)
-
-      if len(op.outputs) == 1:
-        return op.outputs[0]
-      return op.outputs
-
-  @function.defun
-  def _defun_call(self, inputs):
-    """Wraps the op creation method in an Eager function for `run_eagerly`."""
-    return self._make_op(inputs)
-
-  def get_config(self):
-    config = super(TensorFlowOpLayer, self).get_config()
-    config.update({
-        # `__init__` prefixes the name. Revert to the constructor argument.
-        'name': config['name'][len(_TF_OP_LAYER_NAME_PREFIX):],
-        'node_def': json_format.MessageToDict(self.node_def),
-        'constants': {
-            i: backend.get_value(c) for i, c in self.constants.items()
-        }
-    })
-    return config
-
-
-class AddLoss(Layer):
-  """Adds its inputs as a loss.
-
-  Attributes:
-    unconditional: Whether or not the loss should be conditioned on the inputs.
-  """
-
-  def __init__(self, unconditional, **kwargs):
-    # Pass autocast=False, as there is no reason to cast loss to a different
-    # dtype.
-    kwargs['autocast'] = False
-    super(AddLoss, self).__init__(**kwargs)
-    self.unconditional = unconditional
-
-  def call(self, inputs):
-    self.add_loss(inputs, inputs=(not self.unconditional))
-    return inputs
-
-  def get_config(self):
-    config = super(AddLoss, self).get_config()
-    config.update({'unconditional': self.unconditional})
-    return config
-
-
-class AddMetric(Layer):
-  """Adds its inputs as a metric.
-
-  Attributes:
-    aggregation: 'mean' or None. How the inputs should be aggregated.
-    metric_name: The name to use for this metric.
-  """
-
-  def __init__(self, aggregation=None, metric_name=None, **kwargs):
-    super(AddMetric, self).__init__(**kwargs)
-    self.aggregation = aggregation
-    self.metric_name = metric_name
-
-  def call(self, inputs):
-    self.add_metric(inputs, self.aggregation, self.metric_name)
-    return inputs
-
-  def get_config(self):
-    config = super(AddMetric, self).get_config()
-    config.update({
-        'aggregation': self.aggregation,
-        'metric_name': self.metric_name
-    })
-    return config
 
 
 class KerasHistory(

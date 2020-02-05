@@ -99,7 +99,10 @@ py_library(
 
 py_library(
     name = "base_layer",
-    srcs = ["base_layer.py"],
+    srcs = [
+        "base_layer.py",
+        "base_layer_v1.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":base_layer_utils",
@@ -121,6 +124,7 @@ py_library(
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/keras/utils:version_utils",
         "//tensorflow/python/module",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
