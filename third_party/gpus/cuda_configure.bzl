@@ -43,6 +43,7 @@ load(
     "is_windows",
     "raw_exec",
     "read_dir",
+    "which",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
@@ -225,7 +226,7 @@ def find_cc(repository_ctx):
     if cc_name.startswith("/"):
         # Absolute path, maybe we should make this supported by our which function.
         return cc_name
-    cc = repository_ctx.which(cc_name)
+    cc = which(repository_ctx, cc_name)
     if cc == None:
         fail(("Cannot find {}, either correct your path or set the {}" +
               " environment variable").format(target_cc_name, cc_path_envvar))
