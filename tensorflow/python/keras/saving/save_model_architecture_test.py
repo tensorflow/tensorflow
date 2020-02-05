@@ -59,12 +59,33 @@ class TestModelArchitectures(keras_parameterized.TestCase):
 
     return x, y
 
+  def get_custom_objects(self):
+    """Define custom_objects."""
+
+    class CustomOpt(keras.optimizers.SGD):
+      pass
+
+    def custom_loss(y_true, y_pred):
+      return keras.losses.mse(y_true, y_pred)
+
+    return {'CustomOpt': CustomOpt,
+            'custom_loss': custom_loss}
+
   @parameterized.named_parameters(*model_architectures.ALL_MODELS)
   def test_basic_saving_and_loading(self, model_fn):
     save_format = testing_utils.get_save_format()
-    if ('subclassed' in model_fn.__name__
-        and save_format in ['h5', 'hdf5', 'keras']):
-      self.skipTest('h5 save format does not support subclass model.')
+    custom_objects = self.get_custom_objects()
+    if 'subclassed_in_functional' in model_fn.__name__:
+      subclass_custom_objects = {
+          'MySubclassModel':
+              model_architectures.MySubclassModel,
+      }
+      custom_objects.update(subclass_custom_objects)
+    elif ('subclassed' in model_fn.__name__ and
+          save_format in ['h5', 'hdf5', 'keras']):
+      self.skipTest('Saving the model to HDF5 format requires the model to be '
+                    'a Functional model or a Sequential model.')
+
     # TODO(b/147493902): Remove this skipTest once fixed.
     if ('stacked_rnn' in model_fn.__name__
         and save_format in ['h5', 'hdf5', 'keras']):
@@ -82,7 +103,9 @@ class TestModelArchitectures(keras_parameterized.TestCase):
     out1 = model.predict(x_test)
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
     # Load model.
-    loaded_model = keras.models.load_model(saved_model_dir)
+    loaded_model = keras.models.load_model(
+        saved_model_dir,
+        custom_objects=custom_objects)
     out2 = loaded_model.predict(x_test)
 
     self.assertAllClose(out1, out2, atol=1e-05)

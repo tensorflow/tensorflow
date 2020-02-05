@@ -72,8 +72,6 @@ std::string ToString(enum OperationType op) {
       return "abs";
     case OperationType::ADD:
       return "add";
-    case OperationType::APPLY_MASK:
-      return "apply_mask";
     case OperationType::BATCH_NORMALIZATION:
       return "batch_normalization";
     case OperationType::BATCH_TO_SPACE:
@@ -106,8 +104,6 @@ std::string ToString(enum OperationType op) {
       return "mean";
     case OperationType::MUL:
       return "mul";
-    case OperationType::MULTIPLY_SCALAR:
-      return "multiply_scalar";
     case OperationType::PAD:
       return "pad";
     case OperationType::POOLING_2D:
@@ -157,7 +153,6 @@ OperationType OperationTypeFromString(const std::string& name) {
       new std::unordered_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
-          {"apply_mask", OperationType::APPLY_MASK},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
           {"concat", OperationType::CONCAT},
           {"const", OperationType::CONST},
@@ -173,7 +168,6 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
           {"mul", OperationType::MUL},
-          {"multiply_scalar", OperationType::MULTIPLY_SCALAR},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
@@ -500,6 +494,14 @@ BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
 BHWC CalculateOutputShape(const BHWC& input,
                           const FullyConnectedAttributes& attr) {
   return BHWC(input.b, 1, 1, attr.weights.shape.o);
+}
+
+BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
+  const int b = attr.dims.find(Axis::BATCH) == attr.dims.end() ? input.b : 1;
+  const int h = attr.dims.find(Axis::HEIGHT) == attr.dims.end() ? input.h : 1;
+  const int w = attr.dims.find(Axis::WIDTH) == attr.dims.end() ? input.w : 1;
+  const int c = attr.dims.find(Axis::CHANNELS) == attr.dims.end() ? input.c : 1;
+  return BHWC(b, h, w, c);
 }
 
 Status CalculateOutputShape(const std::vector<BHWC>& input,

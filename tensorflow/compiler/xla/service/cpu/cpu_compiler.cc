@@ -19,7 +19,6 @@ limitations under the License.
 #include <string.h>
 
 #include <map>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -27,6 +26,7 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
@@ -166,7 +166,7 @@ namespace {
 // multiple invocations of the LLVM compilation pipeline with a different set of
 // flags. Therefore, we only pass command-line flags to LLVM once, before the
 // first module is compiled.
-std::once_flag llvm_command_line_options_initialized;
+absl::once_flag llvm_command_line_options_initialized;
 
 // This visitor records which HLO instructions should have profiling information
 // recorded.
@@ -546,7 +546,7 @@ struct OrcJITPostCompilationHook {
     if (!DumpingEnabledForHloModule(*module)) {
       return;
     }
-    DumpToFileInDir(*module, /*file_suffix=*/"o",
+    DumpToFileInDir(*module, /*file_prefix=*/"", /*file_suffix=*/"o",
                     absl::string_view(obj_file.getData().data(),
                                       obj_file.getData().size()));
   }
@@ -565,8 +565,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   auto slow_compile_alarm = SlowCompilationAlarm();
 
   TF_RET_CHECK(stream_exec != nullptr);
-  std::call_once(llvm_command_line_options_initialized,
-                 &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
+  absl::call_once(llvm_command_line_options_initialized,
+                  &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
 
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
@@ -623,7 +623,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                           absl::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
-  DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
+  DumpHloModuleIfEnabled(*module, *assignment, "", "after_optimizations");
 
   // Each computation is a single function.  Emit all embedded computations
   // before the entry computation. The order of computations returned from
@@ -702,9 +702,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
 
-  std::call_once(llvm_command_line_options_initialized,
-                 &llvm_ir::InitializeLLVMCommandLineOptions,
-                 modules[0]->config());
+  absl::call_once(llvm_command_line_options_initialized,
+                  &llvm_ir::InitializeLLVMCommandLineOptions,
+                  modules[0]->config());
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
@@ -818,10 +818,10 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     if (DumpingEnabledForHloModule(*module)) {
-      DumpToFileInDirOrStdout(*module, "buffer_assignment",
+      DumpToFileInDirOrStdout(*module, "", "buffer_assignment",
                               assignment->ToString());
     }
-    DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
+    DumpHloModuleIfEnabled(*module, *assignment, "", "after_optimizations");
 
     std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
     std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
@@ -887,7 +887,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       if (!DumpingEnabledForHloModule(*module)) {
         return;
       }
-      DumpToFileInDir(*module, /*file_suffix=*/"o",
+      DumpToFileInDir(*module, /*file_prefix=*/"", /*file_suffix=*/"o",
                       absl::string_view(obj_file.getData().data(),
                                         obj_file.getData().size()));
     };

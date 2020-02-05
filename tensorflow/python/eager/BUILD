@@ -143,13 +143,14 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":eager_util",
         ":executor",
         ":monitoring",
+        "//tensorflow/python:c_api_util",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
@@ -177,7 +178,8 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
-        ":eager_util",
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
     ],
@@ -200,7 +202,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        ":eager_util",
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
     ],
@@ -210,6 +213,7 @@ cuda_py_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":profiler",
         ":test",
@@ -223,7 +227,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":eager_util",
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
     ],
 )
@@ -488,6 +493,7 @@ py_library(
         "//tensorflow/python:func_graph",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
+        "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -551,17 +557,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
-    ],
-)
-
-py_library(
-    name = "eager_util",
-    srcs = ["eager_util.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python:util",
     ],
 )
 

@@ -255,7 +255,7 @@ class IrEmitterUnnested : public IrEmitter,
       HloInstruction* unnested_hlo, const Shape& reduction_operand_shape,
       absl::Span<HloInstruction* const> output_instructions,
       const llvm_ir::IrArray::Index& index,
-      const ReductionCodegenInfo& kernel_info,
+      const ReductionCodegenInfo& reduction_info,
       absl::Span<HloComputation* const> reducers, int64 x_iter_num);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
@@ -351,8 +351,13 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Prints a given format string with the given arguments, prefixed with thread
   // id and block id, and postfixed with a newline.
-  llvm::Value* EmitPrintfWithThreadId(absl::string_view fmt,
-                                      absl::Span<llvm::Value* const> arguments);
+  //
+  // `thread_id_filter` and `block_id_filter`: if provided, restrict printing to
+  // only given thread and/or block id.
+  void EmitPrintfWithThreadId(
+      absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
+      absl::optional<int64> thread_id_filter = absl::nullopt,
+      absl::optional<int64> block_id_filter = absl::nullopt);
 
   Status Postprocess(HloInstruction* hlo) override;
 

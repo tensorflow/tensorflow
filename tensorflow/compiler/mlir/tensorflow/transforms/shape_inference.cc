@@ -384,7 +384,7 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
                                             int64_t graph_version,
                                             int64_t max_iteration) {
   ModuleOp module = func.getParentOfType<ModuleOp>();
-  auto func_uses = func.getSymbolUses(module);
+  auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   int num_uses = std::distance(func_uses->begin(), func_uses->end());
   if (num_uses != 1) {
     func.emitError(llvm::formatv(

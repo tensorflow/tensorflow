@@ -184,7 +184,8 @@ class Exporter {
   // converted to the library functions in that graph.
   static Status Convert(mlir::ModuleOp module, const GraphExportConfig& configs,
                         std::unique_ptr<Graph>* graph,
-                        FunctionLibraryDefinition* flib_def);
+                        FunctionLibraryDefinition* flib_def,
+                        absl::flat_hash_set<Node*>* control_ret_nodes);
 
   // Converts a given FuncOp to a FunctionDef and adds it to the function
   // definition library
@@ -244,7 +245,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(op_to_name_.GetUniqueName(func.getName().str()));
+    node_def->set_name(
+        std::string(op_to_name_.GetUniqueName(func.getName().str())));
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
 
@@ -282,7 +284,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(op_to_name_.GetUniqueName(function.getName().str()));
+    node_def->set_name(
+        std::string(op_to_name_.GetUniqueName(function.getName().str())));
 
   node_def->set_op(FunctionLibraryDefinition::kRetOp);
   DataType dtype;
@@ -579,7 +582,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // If there is a result index specified, ensure only one and that it
       // matches the result index of the op.
       auto result = it.value().cast<mlir::OpResult>();
-      std::string orig_name = output_names[it.index()];
+      std::string orig_name(output_names[it.index()]);
       auto tensor_id = ParseTensorName(orig_name);
       auto name = LegalizeNodeName(
           llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
@@ -607,7 +610,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
     for (auto it : llvm::enumerate(function.getArguments())) {
       // TODO(lyandy): Update when changing feed/fetch import.
-      std::string orig_name = input_names[it.index()];
+      std::string orig_name(input_names[it.index()]);
       std::string name = LegalizeNodeName(orig_name);
       auto tensor_id = ParseTensorName(name);
       TF_RET_CHECK(tensor_id.index() == 0)
@@ -788,7 +791,8 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
 Status Exporter::Convert(mlir::ModuleOp module,
                          const GraphExportConfig& configs,
                          std::unique_ptr<Graph>* graph,
-                         FunctionLibraryDefinition* flib_def) {
+                         FunctionLibraryDefinition* flib_def,
+                         absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::Identifier entry_func_id =
       mlir::Identifier::get("main", module.getContext());
   absl::optional<mlir::FuncOp> entry_func;
@@ -810,10 +814,9 @@ Status Exporter::Convert(mlir::ModuleOp module,
     return errors::FailedPrecondition("entry function `main` must be present");
 
   // Updates the graph and the function library definition.
-  absl::flat_hash_set<Node*> control_ret_nodes;
   TF_ASSIGN_OR_RETURN(
       *graph, Exporter::Convert(configs, tf_dialect, entry_func.value(), &flib,
-                                &control_ret_nodes));
+                                control_ret_nodes));
   for (auto& func_def : flib.function()) {
     TF_RETURN_IF_ERROR(flib_def->AddFunctionDef(func_def));
   }
@@ -827,9 +830,19 @@ Status Exporter::Convert(mlir::ModuleOp module,
 Status ConvertMlirToGraph(mlir::ModuleOp module,
                           const GraphExportConfig& configs,
                           std::unique_ptr<Graph>* graph,
-                          FunctionLibraryDefinition* flib_def) {
+                          FunctionLibraryDefinition* flib_def,
+                          absl::flat_hash_set<Node*>* control_ret_nodes) {
   TF_RETURN_IF_ERROR(HasSingleGraphSingleOpIslandsFunctions(module));
-  return Exporter::Convert(module, configs, graph, flib_def);
+  return Exporter::Convert(module, configs, graph, flib_def, control_ret_nodes);
+}
+
+Status ConvertMlirToGraph(mlir::ModuleOp module,
+                          const GraphExportConfig& configs,
+                          std::unique_ptr<Graph>* graph,
+                          FunctionLibraryDefinition* flib_def) {
+  absl::flat_hash_set<Node*> control_ret_nodes;
+  return ConvertMlirToGraph(module, configs, graph, flib_def,
+                            &control_ret_nodes);
 }
 
 StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(

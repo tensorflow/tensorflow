@@ -1171,23 +1171,16 @@ def function(func=None,
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,
       which can then be detected when processing serialized function.
-      See
-      https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md
-      for details.  For an example of utilizing this attribute see:
-      https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc
+      See [standardizing composite ops](https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md)  # pylint: disable=line-too-long
+      for details.  For an example of utilizing this attribute see this
+      [example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc)
       The code above automatically detects and substitutes function that
       implements "embedded_matmul" and allows TFLite to substitute its own
       implementations. For instance, a tensorflow user can use this
        attribute to mark that their function also implements
-      `embedded_matmul``` (perhaps more efficiently!)
-      by specifying it using this flag.
-
-        ```python
-        @tf.function(experimental_implements="embedded_matmul"):
-        def embedding_matmul(a, b):
-           # custom implementation here
-        ```
-
+      `embedded_matmul` (perhaps more efficiently!)
+      by specifying it using this parameter:
+      `@tf.function(experimental_implements="embedded_matmul")`
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,

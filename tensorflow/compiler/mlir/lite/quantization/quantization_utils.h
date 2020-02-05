@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
@@ -167,9 +167,12 @@ struct QuantizationPattern : public RewritePattern {
         return matchFailure();
       }
 
-      // If it is terminator or not quantizable, we shouldn't rewrite.
+      // If it is terminator or not quantizable or any ops form the mlir quant
+      // ops dialect, we shouldn't rewrite.
       if (quantized_op->isKnownTerminator() ||
-          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
+          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
+          llvm::isa<quant::QuantizeCastOp>(quantized_op) ||
+          llvm::isa<quant::DequantizeCastOp>(quantized_op)) {
         return matchFailure();
       }
 
@@ -442,7 +445,7 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
 bool RemoveRedundantStatsOps(mlir::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter);
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_

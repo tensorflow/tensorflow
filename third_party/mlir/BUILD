@@ -435,6 +435,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":Analysis",
         ":DialectUtils",
         ":IR",
         ":StandardOps",
@@ -815,6 +816,14 @@ gentbl(
         (
             "-gen-llvmir-conversions",
             "include/mlir/Dialect/LLVMIR/LLVMConversions.inc",
+        ),
+        (
+            "-gen-enum-to-llvmir-conversions",
+            "include/mlir/Dialect/LLVMIR/LLVMConversionEnumsToLLVM.inc",
+        ),
+        (
+            "-gen-enum-from-llvmir-conversions",
+            "include/mlir/Dialect/LLVMIR/LLVMConversionEnumsFromLLVM.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -1337,7 +1346,6 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":TransformUtils",
-        ":VectorAnalysis",
         ":VectorOps",
         "@llvm-project//llvm:support",
     ],
@@ -1526,28 +1534,6 @@ cc_library(
 )
 
 cc_library(
-    name = "VectorAnalysis",
-    srcs = glob([
-        "lib/Analysis/Vector*.cpp",
-        "lib/Analysis/Vector*.h",
-    ]),
-    hdrs = glob([
-        "include/mlir/Analysis/Vector*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":AffineOps",
-        ":Analysis",
-        ":IR",
-        ":StandardOps",
-        ":Support",
-        ":VectorOps",
-        "@llvm-project//llvm:support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "Translation",
     srcs = glob([
         "lib/Translation/*.cpp",
@@ -1598,6 +1584,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":LLVMConversionIncGen",
         ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":Support",
@@ -1811,6 +1798,7 @@ cc_binary(
         ":LoopsToGPUPass",
         ":MlirOptLib",
         ":MlirOptMain",
+        ":OpenMPDialect",
         ":QuantOps",
         ":QuantOpsDialectRegistration",
         ":ROCDLDialect",
@@ -1940,6 +1928,51 @@ cc_binary(
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:tablegen",
     ],
+)
+
+## OpenMP dialect
+gentbl(
+    name = "OpenMPOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/OpenMP/OpenMPOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/OpenMP/OpenMPOps.cpp.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/OpenMP/OpenMPOps.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/OpenMP/OpenMPOps.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "OpenMPDialect",
+    srcs = glob(
+        [
+            "lib/Dialect/OpenMP/IR/*.cpp",
+            "lib/Dialect/OpenMP/IR/*.h",
+        ],
+    ),
+    hdrs = glob([
+        "include/mlir/Dialect/OpenMP/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":OpenMPOpsIncGen",
+        "@llvm-project//llvm:support",
+    ],
+    alwayslink = 1,
 )
 
 filegroup(
@@ -2252,10 +2285,9 @@ cc_library(
         ":IR",
         ":LinalgOpsIncGen",
         ":LinalgStructuredOpsIncGen",
-        ":LinalgTransformPatternsIncGen",
         ":Parser",
+        ":StandardOps",
         ":Support",
-        "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
     alwayslink = 1,
@@ -2279,7 +2311,6 @@ cc_library(
         "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/LinalgTransforms.h",
-        "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
     includes = ["include"],
@@ -2505,6 +2536,9 @@ exports_files(
 )
 
 exports_files(
-    ["include/mlir/Analysis/InferTypeOpInterface.td"],
+    [
+        "include/mlir/Analysis/InferTypeOpInterface.td",
+        "include/mlir/Transforms/LoopLikeInterface.td",
+    ],
     visibility = ["@llvm-project//mlir:friends"],
 )

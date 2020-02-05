@@ -126,8 +126,10 @@ Status CreateFileForDumping(llvm::StringRef name,
                  << "' directory for dumping: " << status;
     return Status(error::Code::UNAVAILABLE, "(unavailable)");
   }
-  *filepath =
-      llvm::Twine(dir).concat("/").concat(MakeUniqueFilename(name)).str();
+  *filepath = llvm::Twine(dir)
+                  .concat("/")
+                  .concat(MakeUniqueFilename(std::string(name)))
+                  .str();
 
   // Try to open the file and generate a raw_ostream.
   std::unique_ptr<WritableFile> file;

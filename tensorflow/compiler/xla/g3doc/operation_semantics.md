@@ -966,7 +966,7 @@ DotGeneral performs the sum of products over contracting dimensions specified
 in 'dimension_numbers'.
 
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
-to be the same and but must have the same dimension sizes.
+to be the same but must have the same dimension sizes.
 
 Example with contracting dimension numbers:
 

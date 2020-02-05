@@ -258,32 +258,6 @@ def getdefiningclass(m, owner_class):
   return owner_class
 
 
-def istfmethodtarget(m):
-  """Tests whether an object is a `function.TfMethodTarget`."""
-  # See eager.function.TfMethodTarget for more details.
-  return (hasattr(m, '__self__') and
-          hasattr(m.__self__, 'weakrefself_target__') and
-          hasattr(m.__self__, 'weakrefself_func__') and
-          hasattr(m, '__module__') and
-          (m.__module__ != 'mock'))
-
-
-def getmethodself(m):
-  """An extended version of inspect.getmethodclass."""
-  if not hasattr(m, '__self__'):
-    return None
-  if m.__self__ is None:
-    return None
-
-  # A fallback allowing methods to be actually bound to a type different
-  # than __self__. This is useful when a strong reference from the method
-  # to the object is not desired, for example when caching is involved.
-  if istfmethodtarget(m):
-    return m.__self__.target
-
-  return m.__self__
-
-
 def getmethodclass(m):
   """Resolves a function's owner, e.g. a method's class.
 
@@ -314,15 +288,15 @@ def getmethodclass(m):
     if isinstance(m.__class__, six.class_types):
       return m.__class__
 
-  # Instance method and class methods: return the class of "self".
-  m_self = getmethodself(m)
+  # Instance and class: return the class of "self".
+  m_self = getattr(m, '__self__', None)
   if m_self is not None:
-    if tf_inspect.isclass(m_self):
+    if inspect.isclass(m_self):
       return m_self
     return m_self.__class__
 
   # Class, static and unbound methods: search all defined classes in any
-  # namespace. This is inefficient but more robust method.
+  # namespace. This is inefficient but more robust a method.
   owners = []
   caller_frame = tf_inspect.currentframe().f_back
   try:

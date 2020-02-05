@@ -34,18 +34,20 @@ class HloExecutionProfile;
 class HloSnapshot;
 
 // Create the filename we will use to dump in DumpToFileInDir.
-string FilenameFor(const HloModule& module, absl::string_view suffix);
+string FilenameFor(const HloModule& module, absl::string_view prefix,
+                   absl::string_view suffix);
 
 // Writes the given string to a file in the xla_dump_to directory specified by
 // module's DebugOptions.
 //
 // If module doesn't have an xla_dump_to directory, does nothing.
-void DumpToFileInDir(const HloModule& module, absl::string_view file_suffix,
-                     absl::string_view contents);
+void DumpToFileInDir(const HloModule& module, absl::string_view file_prefix,
+                     absl::string_view file_suffix, absl::string_view contents);
 
 // Like DumpToFileInDir, except if module doesn't have an xla_dump_to directory
 // specified, or if that directory is equal to "-", writes to stdout instead.
 void DumpToFileInDirOrStdout(const HloModule& module,
+                             absl::string_view file_prefix,
                              absl::string_view file_suffix,
                              absl::string_view contents);
 
@@ -63,7 +65,7 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
 void DumpHloModuleIfEnabled(const HloModule& module, absl::string_view name);
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const BufferAssignment& buffer_assn,
-                            absl::string_view name);
+                            absl::string_view prefix, absl::string_view name);
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const HloExecutionProfile& profile,
                             absl::string_view name);

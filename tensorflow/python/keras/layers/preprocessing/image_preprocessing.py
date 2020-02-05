@@ -18,9 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
@@ -28,7 +32,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import image_ops_impl as image_ops
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -380,6 +384,512 @@ class RandomFlip(Layer):
     }
     base_config = super(RandomFlip, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+
+class RandomTranslation(Layer):
+  """Randomly translate each image during training.
+
+  Arguments:
+    height_factor: a positive float represented as fraction of value, or a tuple
+      of size 2 representing lower and upper bound for shifting vertically. When
+      represented as a single float, this value is used for both the upper and
+      lower bound. For instance, `height_factor=(0.2, 0.3)` results in an output
+      height varying in the range `[original - 20%, original + 30%]`.
+      `height_factor=0.2` results in an output height varying in the range
+      `[original - 20%, original + 20%]`.
+    width_factor: a positive float represented as fraction of value, or a tuple
+      of size 2 representing lower and upper bound for shifting horizontally.
+      When represented as a single float, this value is used for both the upper
+      and lower bound.
+    fill_mode: Points outside the boundaries of the input are filled according
+      to the given mode (one of `{'nearest', 'bilinear'}`).
+    fill_value: Value used for points outside the boundaries of the input if
+      `mode='constant'`.
+    seed: Integer. Used to create a random seed.
+  Input shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
+  Output shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
+  Raise:
+    ValueError: if lower bound is not between [0, 1], or upper bound is
+      negative.
+  """
+
+  def __init__(self,
+               height_factor,
+               width_factor,
+               fill_mode='nearest',
+               fill_value=0.,
+               seed=None,
+               **kwargs):
+    self.height_factor = height_factor
+    if isinstance(height_factor, (tuple, list)):
+      self.height_lower = abs(height_factor[0])
+      self.height_upper = height_factor[1]
+    else:
+      self.height_lower = self.height_upper = height_factor
+    if self.height_upper < 0.:
+      raise ValueError('`height_factor` cannot have negative values as upper '
+                       'bound, got {}'.format(height_factor))
+    if abs(self.height_lower) > 1. or abs(self.height_upper) > 1.:
+      raise ValueError('`height_factor` must have values between [-1, 1], '
+                       'got {}'.format(height_factor))
+
+    self.width_factor = width_factor
+    if isinstance(width_factor, (tuple, list)):
+      self.width_lower = abs(width_factor[0])
+      self.width_upper = width_factor[1]
+    else:
+      self.width_lower = self.width_upper = width_factor
+    if self.width_upper < 0.:
+      raise ValueError('`width_factor` cannot have negative values as upper '
+                       'bound, got {}'.format(width_factor))
+    if abs(self.width_lower) > 1. or abs(self.width_upper) > 1.:
+      raise ValueError('`width_factor` must have values between [-1, 1], '
+                       'got {}'.format(width_factor))
+
+    if fill_mode not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+    self.fill_mode = fill_mode
+    self.fill_value = fill_value
+    self.seed = seed
+    self._rng = make_generator(self.seed)
+    self.input_spec = InputSpec(ndim=4)
+    super(RandomTranslation, self).__init__(**kwargs)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = K.learning_phase()
+
+    def random_translated_inputs():
+      """Translated inputs with random ops."""
+      inputs_shape = array_ops.shape(inputs)
+      batch_size = inputs_shape[0]
+      h_axis, w_axis = 1, 2
+      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
+      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      height_translate = self._rng.uniform(
+          shape=[batch_size, 1],
+          minval=-self.height_lower,
+          maxval=self.height_upper)
+      height_translate = height_translate * img_hd
+      width_translate = self._rng.uniform(
+          shape=[batch_size, 1],
+          minval=-self.width_lower,
+          maxval=self.width_upper)
+      width_translate = width_translate * img_wd
+      translations = math_ops.cast(
+          array_ops.concat([height_translate, width_translate], axis=1),
+          dtype=inputs.dtype)
+      return transform(
+          inputs,
+          get_translation_matrix(translations),
+          interpolation=self.fill_mode)
+
+    output = tf_utils.smart_cond(training, random_translated_inputs,
+                                 lambda: inputs)
+    output.set_shape(inputs.shape)
+    return output
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+  def get_config(self):
+    config = {
+        'height_factor': self.height_factor,
+        'width_factor': self.width_factor,
+        'fill_mode': self.fill_mode,
+        'fill_value': self.fill_value,
+        'seed': self.seed,
+    }
+    base_config = super(RandomTranslation, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+def get_translation_matrix(translations, name=None):
+  """Returns projective transform(s) for the given translation(s).
+
+  Args:
+    translations: A matrix of 2-element lists representing [dx, dy] to translate
+      for each image (for a batch of images).
+    name: The name of the op.
+
+  Returns:
+    A tensor of shape (num_images, 8) projective transforms which can be given
+      to `transform`.
+  """
+  with ops.name_scope(name, 'translation_matrix'):
+    num_translations = array_ops.shape(translations)[0]
+    # The translation matrix looks like:
+    #     [[1 0 -dx]
+    #      [0 1 -dy]
+    #      [0 0 1]]
+    # where the last entry is implicit.
+    # Translation matrices are always float32.
+    return array_ops.concat(
+        values=[
+            array_ops.ones((num_translations, 1), dtypes.float32),
+            array_ops.zeros((num_translations, 1), dtypes.float32),
+            -translations[:, 0, None],
+            array_ops.zeros((num_translations, 1), dtypes.float32),
+            array_ops.ones((num_translations, 1), dtypes.float32),
+            -translations[:, 1, None],
+            array_ops.zeros((num_translations, 2), dtypes.float32),
+        ],
+        axis=1)
+
+
+def transform(images,
+              transforms,
+              interpolation='nearest',
+              output_shape=None,
+              name=None):
+  """Applies the given transform(s) to the image(s).
+
+  Args:
+    images: A tensor of shape (num_images, num_rows, num_columns, num_channels)
+      (NHWC), (num_rows, num_columns, num_channels) (HWC), or (num_rows,
+      num_columns) (HW). The rank must be statically known (the shape is not
+      `TensorShape(None)`.
+    transforms: Projective transform matrix/matrices. A vector of length 8 or
+      tensor of size N x 8. If one row of transforms is [a0, a1, a2, b0, b1, b2,
+      c0, c1], then it maps the *output* point `(x, y)` to a transformed *input*
+      point `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`, where
+      `k = c0 x + c1 y + 1`. The transforms are *inverted* compared to the
+      transform mapping input points to output points. Note that gradients are
+      not backpropagated into transformation parameters.
+    interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
+    output_shape: Output dimesion after the transform, [height, width]. If None,
+      output is the same size as input image.
+    name: The name of the op.
+
+  Returns:
+    Image(s) with the same type and shape as `images`, with the given
+    transform(s) applied. Transformed coordinates outside of the input image
+    will be filled with zeros.
+
+  Raises:
+    TypeError: If `image` is an invalid type.
+    ValueError: If output shape is not 1-D int32 Tensor.
+  """
+  with ops.name_scope(name, 'transform'):
+    if output_shape is None:
+      output_shape = array_ops.shape(images)[1:3]
+      if not context.executing_eagerly():
+        output_shape_value = tensor_util.constant_value(output_shape)
+        if output_shape_value is not None:
+          output_shape = output_shape_value
+
+    output_shape = ops.convert_to_tensor(
+        output_shape, dtypes.int32, name='output_shape')
+
+    if not output_shape.get_shape().is_compatible_with([2]):
+      raise ValueError('output_shape must be a 1-D Tensor of 2 elements: '
+                       'new_height, new_width, instead got '
+                       '{}'.format(output_shape))
+
+    return image_ops.image_projective_transform_v2(
+        images,
+        output_shape=output_shape,
+        transforms=transforms,
+        interpolation=interpolation.upper())
+
+
+def get_rotation_matrix(angles, image_height, image_width, name=None):
+  """Returns projective transform(s) for the given angle(s).
+
+  Args:
+    angles: A scalar angle to rotate all images by, or (for batches of images) a
+      vector with an angle to rotate each image in the batch. The rank must be
+      statically known (the shape is not `TensorShape(None)`).
+    image_height: Height of the image(s) to be transformed.
+    image_width: Width of the image(s) to be transformed.
+    name: The name of the op.
+
+  Returns:
+    A tensor of shape (num_images, 8). Projective transforms which can be given
+      to operation `image_projective_transform_v2`. If one row of transforms is
+       [a0, a1, a2, b0, b1, b2, c0, c1], then it maps the *output* point
+       `(x, y)` to a transformed *input* point
+       `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
+       where `k = c0 x + c1 y + 1`.
+  """
+  with ops.name_scope(name, 'rotation_matrix'):
+    x_offset = ((image_width - 1) - (math_ops.cos(angles) *
+                                     (image_width - 1) - math_ops.sin(angles) *
+                                     (image_height - 1))) / 2.0
+    y_offset = ((image_height - 1) - (math_ops.sin(angles) *
+                                      (image_width - 1) + math_ops.cos(angles) *
+                                      (image_height - 1))) / 2.0
+    num_angles = array_ops.shape(angles)[0]
+    return array_ops.concat(
+        values=[
+            math_ops.cos(angles)[:, None],
+            -math_ops.sin(angles)[:, None],
+            x_offset[:, None],
+            math_ops.sin(angles)[:, None],
+            math_ops.cos(angles)[:, None],
+            y_offset[:, None],
+            array_ops.zeros((num_angles, 2), dtypes.float32),
+        ],
+        axis=1)
+
+
+class RandomRotation(Layer):
+  """Randomly rotate each image.
+
+  By default, random rotations are only applied during training.
+  At inference time, the layer does nothing. If you need to apply random
+  rotations at inference time, set `training` to True when calling the layer.
+
+  Input shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)`, data_format='channels_last'.
+
+  Output shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)`, data_format='channels_last'.
+
+  Attributes:
+    factor: a positive float represented as fraction of 2pi, or a tuple of size
+      2 representing lower and upper bound for rotating clockwise and
+      counter-clockwise. When represented as a single float, lower = upper.
+    fill_mode: Points outside the boundaries of the input are filled according
+      to the given mode (one of `{'constant', 'nearest', 'bilinear', 'reflect',
+      'wrap'}`).
+    seed: Integer. Used to create a random seed.
+  Raise:
+    ValueError: if lower bound is not between [0, 1], or upper bound is
+      negative.
+  """
+
+  def __init__(self,
+               factor,
+               fill_mode='nearest',
+               seed=None,
+               **kwargs):
+    self.factor = factor
+    if isinstance(factor, (tuple, list)):
+      self.lower = factor[0]
+      self.upper = factor[1]
+    else:
+      self.lower = self.upper = factor
+    if self.lower < 0. or self.upper < 0.:
+      raise ValueError('Factor cannot have negative values, '
+                       'got {}'.format(factor))
+    if fill_mode not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+    self.fill_mode = fill_mode
+    self.seed = seed
+    self._rng = make_generator(self.seed)
+    self.input_spec = InputSpec(ndim=4)
+    super(RandomRotation, self).__init__(**kwargs)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = K.learning_phase()
+
+    def random_rotated_inputs():
+      """Rotated inputs with random ops."""
+      inputs_shape = array_ops.shape(inputs)
+      batch_size = inputs_shape[0]
+      h_axis, w_axis = 1, 2
+      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
+      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      min_angle = self.lower * 2. * np.pi
+      max_angle = self.upper * 2. * np.pi
+      angles = self._rng.uniform(
+          shape=[batch_size], minval=-min_angle, maxval=max_angle)
+      return transform(
+          inputs,
+          get_rotation_matrix(angles, img_hd, img_wd),
+          interpolation=self.fill_mode)
+
+    output = tf_utils.smart_cond(training, random_rotated_inputs,
+                                 lambda: inputs)
+    output.set_shape(inputs.shape)
+    return output
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+  def get_config(self):
+    config = {
+        'factor': self.factor,
+        'fill_mode': self.fill_mode,
+        'seed': self.seed,
+    }
+    base_config = super(RandomRotation, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+class RandomZoom(Layer):
+  """Randomly zoom each image during training.
+
+  Arguments:
+    height_factor: a positive float represented as fraction of value, or a tuple
+      of size 2 representing lower and upper bound for zooming horizontally.
+      When represented as a single float, this value is used for both the
+      upper and lower bound. For instance, `height_factor=(0.2, 0.3)` result in
+      an output zoom varying in the range `[original * 20%, original * 30%]`.
+    width_factor: a positive float represented as fraction of value, or a tuple
+      of size 2 representing lower and upper bound for zooming vertically.
+      When represented as a single float, this value is used for both the
+      upper and lower bound. For instance, `width_factor=(0.2, 0.3)` result in
+      an output zoom varying in the range `[original * 20%, original * 30%]`.
+    fill_mode: Points outside the boundaries of the input are filled according
+      to the given mode (one of `{'nearest', 'bilinear'}`).
+    fill_value: Value used for points outside the boundaries of the input if
+      `mode='constant'`.
+    seed: Integer. Used to create a random seed.
+
+  Input shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)`, data_format='channels_last'.
+
+  Output shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)`, data_format='channels_last'.
+
+  Raise:
+    ValueError: if lower bound is not between [0, 1], or upper bound is
+      negative.
+  """
+
+  def __init__(self,
+               height_factor,
+               width_factor,
+               fill_mode='nearest',
+               fill_value=0.,
+               seed=None,
+               **kwargs):
+    self.height_factor = height_factor
+    if isinstance(height_factor, (tuple, list)):
+      self.height_lower = height_factor[0]
+      self.height_upper = height_factor[1]
+    else:
+      self.height_lower = self.height_upper = height_factor
+    if self.height_lower < 0. or self.height_upper < 0.:
+      raise ValueError('`height_factor` cannot have negative values, '
+                       'got {}'.format(height_factor))
+    if self.height_lower > self.height_upper:
+      raise ValueError('`height_factor` cannot have lower bound larger than '
+                       'upper bound, got {}.'.format(height_factor))
+
+    self.width_factor = width_factor
+    if isinstance(width_factor, (tuple, list)):
+      self.width_lower = width_factor[0]
+      self.width_upper = width_factor[1]
+    else:
+      self.width_lower = self.width_upper = width_factor
+    if self.width_lower < 0. or self.width_upper < 0.:
+      raise ValueError('`width_factor` cannot have negative values, '
+                       'got {}'.format(width_factor))
+    if self.width_lower > self.width_upper:
+      raise ValueError('`width_factor` cannot have lower bound larger than '
+                       'upper bound, got {}.'.format(width_factor))
+
+    if fill_mode not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+    self.fill_mode = fill_mode
+    self.fill_value = fill_value
+    self.seed = seed
+    self._rng = make_generator(self.seed)
+    self.input_spec = InputSpec(ndim=4)
+    super(RandomZoom, self).__init__(**kwargs)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = K.learning_phase()
+
+    def random_zoomed_inputs():
+      """Zoomed inputs with random ops."""
+      inputs_shape = array_ops.shape(inputs)
+      batch_size = inputs_shape[0]
+      h_axis, w_axis = 1, 2
+      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
+      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      height_zoom = self._rng.uniform(
+          shape=[batch_size, 1],
+          minval=-self.height_lower,
+          maxval=self.height_upper)
+      height_zoom = height_zoom * img_hd
+      width_zoom = self._rng.uniform(
+          shape=[batch_size, 1],
+          minval=-self.width_lower,
+          maxval=self.width_upper)
+      width_zoom = width_zoom * img_wd
+      zooms = math_ops.cast(
+          array_ops.concat([height_zoom, width_zoom], axis=1),
+          dtype=inputs.dtype)
+      return transform(
+          inputs, get_zoom_matrix(zooms, img_hd, img_wd),
+          interpolation=self.fill_mode)
+
+    output = tf_utils.smart_cond(training, random_zoomed_inputs,
+                                 lambda: inputs)
+    output.set_shape(inputs.shape)
+    return output
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+  def get_config(self):
+    config = {
+        'height_factor': self.height_factor,
+        'width_factor': self.width_factor,
+        'fill_mode': self.fill_mode,
+        'fill_value': self.fill_value,
+        'seed': self.seed,
+    }
+    base_config = super(RandomZoom, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+def get_zoom_matrix(zooms, image_height, image_width, name=None):
+  """Returns projective transform(s) for the given zoom(s).
+
+  Args:
+    zooms: A matrix of 2-element lists representing [zx, zy] to zoom
+      for each image (for a batch of images).
+    image_height: Height of the image(s) to be transformed.
+    image_width: Width of the image(s) to be transformed.
+    name: The name of the op.
+
+  Returns:
+    A tensor of shape (num_images, 8). Projective transforms which can be given
+      to operation `image_projective_transform_v2`. If one row of transforms is
+       [a0, a1, a2, b0, b1, b2, c0, c1], then it maps the *output* point
+       `(x, y)` to a transformed *input* point
+       `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
+       where `k = c0 x + c1 y + 1`.
+  """
+  with ops.name_scope(name, 'zoom_matrix'):
+    num_zooms = array_ops.shape(zooms)[0]
+    # The zoom matrix looks like:
+    #     [[zx 0 0]
+    #      [0 zy 0]
+    #      [0 0 1]]
+    # where the last entry is implicit.
+    # Zoom matrices are always float32.
+    x_offset = ((image_height + 1.) / 2.0) * (zooms[:, 0, None] - 1.)
+    y_offset = ((image_width + 1.) / 2.0) * (zooms[:, 1, None] - 1.)
+    return array_ops.concat(
+        values=[
+            zooms[:, 0, None],
+            array_ops.zeros((num_zooms, 1), dtypes.float32),
+            x_offset,
+            array_ops.zeros((num_zooms, 1), dtypes.float32),
+            zooms[:, 1, None],
+            y_offset,
+            array_ops.zeros((num_zooms, 2), dtypes.float32),
+        ],
+        axis=1)
 
 
 class RandomContrast(Layer):

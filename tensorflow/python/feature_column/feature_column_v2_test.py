@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
@@ -40,7 +41,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
@@ -2101,12 +2101,11 @@ class LinearModelTest(test.TestCase):
     model = fc.LinearModel(columns)
     model.compile(
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        loss='categorical_crossentropy',
+        loss='binary_crossentropy',
         metrics=['accuracy'])
 
     x = {'a': np.random.random((10, 1))}
-    y = np.random.randint(20, size=(10, 1))
-    y = np_utils.to_categorical(y, num_classes=20)
+    y = np.random.randint(0, 2, size=(10, 1))
     model.fit(x, y, epochs=1, batch_size=5)
     model.fit(x, y, epochs=1, batch_size=5)
     model.evaluate(x, y, batch_size=5)
@@ -5704,7 +5703,7 @@ class _TestStateManager(fc.StateManager):
     raise ValueError('Could not find variable.')
 
 
-class EmbeddingColumnTest(test.TestCase):
+class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_defaults(self):
@@ -6272,8 +6271,16 @@ class EmbeddingColumnTest(test.TestCase):
       self.assertAllClose(((94.,), (29.,), (0.,), (42.,)),
                           self.evaluate(predictions))
 
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': True
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': False
+      })
   @test_util.run_deprecated_v1
-  def test_dense_features(self):
+  def test_dense_features(self, use_safe_embedding_lookup):
     # Inputs.
     vocabulary_size = 3
     sparse_input = sparse_tensor.SparseTensorValue(
@@ -6317,7 +6324,8 @@ class EmbeddingColumnTest(test.TestCase):
     embedding_column = fc.embedding_column(
         categorical_column,
         dimension=embedding_dimension,
-        initializer=_initializer)
+        initializer=_initializer,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
     # Provide sparse input and get dense result.
     l = df.DenseFeatures((embedding_column,))
@@ -6338,6 +6346,14 @@ class EmbeddingColumnTest(test.TestCase):
 
     self.assertAllEqual(embedding_values, self.evaluate(trainable_vars[0]))
     self.assertAllEqual(expected_lookups, self.evaluate(dense_features))
+
+    if use_safe_embedding_lookup:
+      self.assertIn('SparseFillEmptyRows',
+                    [x.type for x in ops.get_default_graph().get_operations()])
+    else:
+      self.assertNotIn(
+          'SparseFillEmptyRows',
+          [x.type for x in ops.get_default_graph().get_operations()])
 
   @test_util.run_deprecated_v1
   def test_dense_features_not_trainable(self):
@@ -6646,31 +6662,33 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertEqual([categorical_column], embedding_column.parents)
 
     config = embedding_column.get_config()
-    self.assertEqual({
-        'categorical_column': {
-            'class_name': 'IdentityCategoricalColumn',
-            'config': {
-                'number_buckets': 3,
-                'key': 'aaa',
-                'default_value': None
-            }
-        },
-        'ckpt_to_load_from': None,
-        'combiner': 'mean',
-        'dimension': 2,
-        'initializer': {
-            'class_name': 'TruncatedNormal',
-            'config': {
-                'dtype': 'float32',
-                'stddev': 0.7071067811865475,
-                'seed': None,
-                'mean': 0.0
-            }
-        },
-        'max_norm': None,
-        'tensor_name_in_ckpt': None,
-        'trainable': True
-    }, config)
+    self.assertEqual(
+        {
+            'categorical_column': {
+                'class_name': 'IdentityCategoricalColumn',
+                'config': {
+                    'number_buckets': 3,
+                    'key': 'aaa',
+                    'default_value': None
+                }
+            },
+            'ckpt_to_load_from': None,
+            'combiner': 'mean',
+            'dimension': 2,
+            'initializer': {
+                'class_name': 'TruncatedNormal',
+                'config': {
+                    'dtype': 'float32',
+                    'stddev': 0.7071067811865475,
+                    'seed': None,
+                    'mean': 0.0
+                }
+            },
+            'max_norm': None,
+            'tensor_name_in_ckpt': None,
+            'trainable': True,
+            'use_safe_embedding_lookup': True
+        }, config)
 
     custom_objects = {'TruncatedNormal': init_ops.TruncatedNormal}
     new_embedding_column = fc.EmbeddingColumn.from_config(
@@ -6707,27 +6725,32 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertEqual([categorical_column], embedding_column.parents)
 
     config = embedding_column.get_config()
-    self.assertEqual({
-        'categorical_column': {
-            'class_name': 'IdentityCategoricalColumn',
-            'config': {
-                'number_buckets': 3,
-                'key': 'aaa',
-                'default_value': None
-            }
-        },
-        'ckpt_to_load_from': None,
-        'combiner': 'mean',
-        'dimension': 2,
-        'initializer': '_initializer',
-        'max_norm': None,
-        'tensor_name_in_ckpt': None,
-        'trainable': True
-    }, config)
+    self.assertEqual(
+        {
+            'categorical_column': {
+                'class_name': 'IdentityCategoricalColumn',
+                'config': {
+                    'number_buckets': 3,
+                    'key': 'aaa',
+                    'default_value': None
+                }
+            },
+            'ckpt_to_load_from': None,
+            'combiner': 'mean',
+            'dimension': 2,
+            'initializer': '_initializer',
+            'max_norm': None,
+            'tensor_name_in_ckpt': None,
+            'trainable': True,
+            'use_safe_embedding_lookup': True
+        }, config)
 
     custom_objects = {
         '_initializer': _initializer,
     }
+
+    # use_safe_embedding_lookup might not be populated for legacy reasons.
+    del config['use_safe_embedding_lookup']
 
     new_embedding_column = fc.EmbeddingColumn.from_config(
         config, custom_objects=custom_objects)
@@ -6746,7 +6769,7 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertIs(categorical_column, new_embedding_column.categorical_column)
 
 
-class SharedEmbeddingColumnTest(test.TestCase):
+class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_defaults(self):
@@ -6952,8 +6975,16 @@ class SharedEmbeddingColumnTest(test.TestCase):
     _assert_sparse_tensor_value(self, self.evaluate(output_b),
                                 self.evaluate(output_b_embedded))
 
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': True
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': False
+      })
   @test_util.run_deprecated_v1
-  def test_get_dense_tensor(self):
+  def test_get_dense_tensor(self, use_safe_embedding_lookup):
     # Inputs.
     vocabulary_size = 3
     # -1 values are ignored.
@@ -6988,12 +7019,18 @@ class SharedEmbeddingColumnTest(test.TestCase):
         # example 1:
         (2., 3.5),  # ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
     )
-    expected_lookups_b = (
-        # example 0:
-        (1., 2.),  # ids [0], embedding = [1, 2]
-        # example 1:
-        (0., 0.),  # ids [], embedding = [0, 0]
-    )
+    if use_safe_embedding_lookup:
+      expected_lookups_b = (
+          # example 0:
+          (1., 2.),  # ids [0], embedding = [1, 2]
+          # example 1:
+          (0., 0.),  # ids [], embedding = [0, 0]
+      )
+    else:
+      expected_lookups_b = (
+          # example 0:
+          (1., 2.),  # ids [0], embedding = [1, 2]
+      )
 
     # Build columns.
     categorical_column_a = fc.categorical_column_with_identity(
@@ -7003,7 +7040,8 @@ class SharedEmbeddingColumnTest(test.TestCase):
     embedding_column_a, embedding_column_b = fc.shared_embedding_columns_v2(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
-        initializer=_initializer)
+        initializer=_initializer,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
     # Provide sparse input and get dense result.
     embedding_lookup_a = embedding_column_a.get_dense_tensor(
@@ -7024,8 +7062,112 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertAllEqual(expected_lookups_a, self.evaluate(embedding_lookup_a))
     self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
 
+    if use_safe_embedding_lookup:
+      self.assertIn('SparseFillEmptyRows',
+                    [x.type for x in ops.get_default_graph().get_operations()])
+    else:
+      self.assertNotIn(
+          'SparseFillEmptyRows',
+          [x.type for x in ops.get_default_graph().get_operations()])
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': True
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': False
+      })
   @test_util.run_deprecated_v1
-  def test_get_dense_tensor_placeholder_inputs(self):
+  def test_get_dense_tensor_valid(self, use_safe_embedding_lookup):
+    # Inputs.
+    vocabulary_size = 3
+    # -1 values are ignored.
+    input_a = np.array([
+        [2, 1],  # example 0, ids [2, 1]
+        [0, -1]
+    ])  # example 1, ids [0]
+    input_b = np.array([
+        [1, -1],  # example 0, ids [1]
+        [1, 2]
+    ])  # example 1, ids [1, 2]
+    input_features = {'aaa': input_a, 'bbb': input_b}
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+        (7., 11.)  # id 2
+    )
+
+    def _initializer(shape, dtype, partition_info=None):
+      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+      self.assertEqual(dtypes.float32, dtype)
+      self.assertIsNone(partition_info)
+      return embedding_values
+
+    # Expected lookup result, using combiner='mean'.
+    expected_lookups_a = (
+        # example 0:
+        (5., 8.),  # ids [2, 1], embedding =  mean([3, 5] + [7, 11]) = [5, 8]
+        # example 1:
+        (1., 2),  # ids [0], embedding = [1, 2]
+    )
+    expected_lookups_b = (
+        # example 0:
+        (3., 5.),  # ids [1], embedding = [3, 5]
+        # example 1:
+        (5., 8.),  # ids [1, 2], embedding = mean([3, 5] + [7, 11]) = [5, 8]
+    )
+
+    # Build columns.
+    categorical_column_a = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    categorical_column_b = fc.categorical_column_with_identity(
+        key='bbb', num_buckets=vocabulary_size)
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns_v2(
+        [categorical_column_a, categorical_column_b],
+        dimension=embedding_dimension,
+        initializer=_initializer,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
+
+    # Provide sparse input and get dense result.
+    embedding_lookup_a = embedding_column_a.get_dense_tensor(
+        fc.FeatureTransformationCache(input_features), None)
+    embedding_lookup_b = embedding_column_b.get_dense_tensor(
+        fc.FeatureTransformationCache(input_features), None)
+
+    # Assert expected embedding variable and lookups.
+    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+    self.assertCountEqual(('aaa_bbb_shared_embedding:0',),
+                          tuple([v.name for v in global_vars]))
+    embedding_var = global_vars[0]
+
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+
+    self.assertAllEqual(embedding_values, self.evaluate(embedding_var))
+    self.assertAllEqual(expected_lookups_a, self.evaluate(embedding_lookup_a))
+    self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
+    if use_safe_embedding_lookup:
+      self.assertIn('SparseFillEmptyRows',
+                    [x.type for x in ops.get_default_graph().get_operations()])
+    else:
+      self.assertNotIn(
+          'SparseFillEmptyRows',
+          [x.type for x in ops.get_default_graph().get_operations()])
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': True
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': False
+      })
+  @test_util.run_deprecated_v1
+  def test_get_dense_tensor_placeholder_inputs(self, use_safe_embedding_lookup):
     # Inputs.
     vocabulary_size = 3
     # -1 values are ignored.
@@ -7073,13 +7215,21 @@ class SharedEmbeddingColumnTest(test.TestCase):
     embedding_column_a, embedding_column_b = fc.shared_embedding_columns_v2(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
-        initializer=_initializer)
+        initializer=_initializer,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
     # Provide sparse input and get dense result.
     embedding_lookup_a = embedding_column_a.get_dense_tensor(
         fc.FeatureTransformationCache(input_features), None)
     embedding_lookup_b = embedding_column_b.get_dense_tensor(
         fc.FeatureTransformationCache(input_features), None)
+    if use_safe_embedding_lookup:
+      self.assertIn('SparseFillEmptyRows',
+                    [x.type for x in ops.get_default_graph().get_operations()])
+    else:
+      self.assertNotIn(
+          'SparseFillEmptyRows',
+          [x.type for x in ops.get_default_graph().get_operations()])
 
     with _initialized_session() as sess:
       sess.run([embedding_lookup_a, embedding_lookup_b], feed_dict=feed_dict)

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <random>
 #include <string>
 #include <thread>  // NOLINT
 #include <unordered_map>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -1383,6 +1385,66 @@ TEST(DirectSessionTest, SessionSyncRun) {
   std::hash<std::thread::id> hasher;
   EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
             static_cast<int64>(outputs[0].scalar<int64>()()));
+}
+
+REGISTER_OP("ExpensiveNoop").SetIsStateful();
+
+class ExpensiveNoopOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+  bool IsExpensive() override { return true; }
+  void Compute(OpKernelContext* ctx) override {
+    const string& stack_trace = tensorflow::CurrentStackTrace();
+    const string process_method = "ExecutorState::Process()";
+    size_t pos = 0;
+    int frame_count = 0;
+    while ((pos = stack_trace.find("ExecutorState::Process()", pos)) !=
+           string::npos) {
+      ++frame_count;
+      ++pos;
+    }
+    OP_REQUIRES(ctx, frame_count <= 1,
+                errors::Internal(
+                    "Recursive call to ExecutorState::Process() detected."));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ExpensiveNoop").Device(DEVICE_CPU),
+                        ExpensiveNoopOp);
+
+TEST(DirectSessionTest, SessionSyncRun_DeepGraph) {
+  Graph g(OpRegistry::Global());
+
+  std::vector<Node*> nodes;
+  nodes.reserve(1024);
+
+  auto make_expensive_noop = [&g](gtl::ArraySlice<Node*> control_deps) {
+    Node* ret;
+    auto builder = NodeBuilder(g.NewName("N"), "ExpensiveNoop");
+    for (Node* control_dep : control_deps) {
+      builder = builder.ControlInput(control_dep);
+    }
+    TF_CHECK_OK(builder.Finalize(&g, &ret));
+    return ret;
+  };
+
+  Node* base = make_expensive_noop({});
+
+  Node* child_1 = make_expensive_noop({base});
+  Node* child_2 = make_expensive_noop({base});
+
+  GraphDef def;
+  g.ToGraphDef(&def);
+
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+
+  EXPECT_TRUE(sess->Run(run_opts, {}, {}, {child_1->name(), child_2->name()},
+                        &outputs, nullptr)
+                  .ok());
 }
 
 TEST(DirectSessionTest, SyncSession) {

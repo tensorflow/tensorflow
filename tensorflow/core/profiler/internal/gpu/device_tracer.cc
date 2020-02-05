@@ -325,6 +325,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
           }
         }
       }
+      events.clear();
     }
 
     void Flush(uint64 start_walltime_ns, uint64 start_gpu_ns,
@@ -352,6 +353,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         line.SetName(
             GetDeviceXLineName(line.Id(), events_types_per_line[line.Id()]));
       });
+      events.clear();
     }
 
     void GetDeviceCapabilities(int32 device_ordinal,

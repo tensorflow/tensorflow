@@ -202,9 +202,14 @@ class PyLocalClient {
 // Thread-safe.
 class PyLocalBuffer {
  public:
-  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromLiterals(
-      std::vector<BorrowingLiteral> leaves_literals, const Shape& tuple_shape,
-      std::shared_ptr<void> leaves_reference,
+  // If `force_copy` is true, forces a copy of the input buffer on CPU.
+  // Otherwise the library is free to alias the output buffer with `data`.
+  // `buffer_reference` is an optional shared pointer that should be kept alive
+  // by the runtime as long as the contents of `data` may still be accessed by
+  // the runtime (may be nullptr).
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromHostBuffer(
+      const void* data, const Shape& shape, bool force_copy,
+      std::shared_ptr<void> buffer_reference,
       std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device);
 
   static StatusOr<std::unique_ptr<PyLocalBuffer>> MakeTuple(
