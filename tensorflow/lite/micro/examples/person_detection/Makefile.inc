@@ -64,6 +64,9 @@ $(IMAGE_PROVIDER_TEST_SRCS),$(IMAGE_PROVIDER_TEST_HDRS)))
 $(eval $(call microlite_test,detection_responder_test,\
 $(DETECTION_RESPONDER_TEST_SRCS),$(DETECTION_RESPONDER_TEST_HDRS)))
 
+
+$(eval $(call generate_project_third_party_parsing))
+
 # Builds a standalone object recognition binary.
 $(eval $(call microlite_test,person_detection,\
 $(person_detection_SRCS),$(person_detection_HDRS)))
