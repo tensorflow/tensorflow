@@ -968,6 +968,12 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
                                            results);
       }
       if (auto whileOp = dyn_cast<mlir::TFL::WhileOp>(inst)) {
+        if (inst->getNumOperands() != inst->getNumResults()) {
+          inst->emitOpError(
+              "number of operands and results don't match, only canonical "
+              "TFL While supported");
+          return llvm::None;
+        }
         return BuildWhileOperator(whileOp, operands, results);
       }
 

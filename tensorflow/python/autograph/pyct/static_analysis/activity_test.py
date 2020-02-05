@@ -389,6 +389,19 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     node, _ = self._parse_and_analyze(test_fn)
     fn_node = node
     self.assertScopeIs(anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('c',), ())
+    self.assertScopeIs(
+        anno.getanno(node.body[0], anno.Static.SCOPE), ('c',), ())
+
+  def test_raise_names_are_read(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      raise b
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    self.assertScopeIs(anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('b',), ())
+    self.assertScopeIs(
+        anno.getanno(node.body[0], anno.Static.SCOPE), ('b',), ())
 
   def test_aug_assign(self):
 

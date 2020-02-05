@@ -243,3 +243,59 @@ tensorflow::TF_GraphSetTensorShape_wrapper
 tensorflow::TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper
 tensorflow::TF_TryEvaluateConstant_wrapper
 
+[grappler_item] # tf_item
+tensorflow::grappler::GrapplerItem::MainOpsFanin
+tensorflow::grappler::GrapplerItem::EnqueueOpsFanin
+
+[graph_properties] # tf_item
+tensorflow::grappler::GraphProperties::InferStatically
+tensorflow::grappler::GraphProperties::GetOutputProperties
+
+[grappler_item_builder] # tf_item
+tensorflow::grappler::GrapplerItemFromMetaGraphDef
+
+[topological_sort] # tf_item
+tensorflow::grappler::TopologicalSort
+
+[clusters/utils] # tf_cluster tf_optimizer
+tensorflow::grappler::GetDeviceInfo
+
+[costs/utils] # tf_optimizer tf_cluster
+tensorflow::grappler::CostGraphToOpPerformanceData
+tensorflow::grappler::GetDeviceInfo
+
+[meta_optimizer] # tf_optimizer
+tensorflow::grappler::MetaOptimizer::MetaOptimizer
+tensorflow::grappler::MetaOptimizer::Optimize
+tensorflow::grappler::MetaOptimizer::PrintResult
+
+[clusters/cluster] # tf_cluster
+tensorflow::grappler::Cluster::AllowSoftPlacement
+tensorflow::grappler::Cluster::SetNumWarmupSteps
+tensorflow::grappler::Cluster::DisableDetailedStats
+tensorflow::grappler::Cluster::DetailedStatsEnabled
+
+[single_machine] # tf_cluster
+tensorflow::grappler::SingleMachine::SingleMachine
+
+[op_level_cost_estimator] # tf_cluster
+tensorflow::grappler::OpLevelCostEstimator::OpLevelCostEstimator
+tensorflow::grappler::OpLevelCostEstimator::PredictCosts
+tensorflow::grappler::OpLevelCostEstimator::GetDeviceInfo
+
+[virtual_cluster] # tf_cluster
+tensorflow::grappler::VirtualCluster::VirtualCluster
+
+[graph_memory] # tf_cluster
+tensorflow::grappler::GraphMemory::InferStatically
+tensorflow::grappler::GraphMemory::InferDynamically
+
+[measuring_cost_estimator] # tf_cluster
+tensorflow::grappler::MeasuringCostEstimator::MeasuringCostEstimator
+tensorflow::grappler::MeasuringCostEstimator::Initialize
+tensorflow::grappler::MeasuringCostEstimator::PredictCosts
+
+[devices] # tf_cluster
+tensorflow::grappler::GetNumAvailableGPUs
+tensorflow::grappler::GetNumAvailableLogicalCPUCores
+

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 
@@ -107,6 +107,11 @@ Status ConvertGraphDefToXlaViaMlir(const GraphDef& graph_def,
   FakeDevice device(attr);
   device_set.AddDevice(&device);
   AddDevicesToOp(*module, &device_set);
+
+  if (failed(mlir::TF::MarkFunctionVisibilityUsingEntryFunctionSpecification(
+          *module))) {
+    return errors::Internal("Problem with mark function visibility");
+  }
 
   TF_RETURN_IF_ERROR(mlir::TF::RunBridgeWithStandardPipeline(
       *module, /*enable_logging=*/VLOG_IS_ON(1), /*enable_inliner=*/true));

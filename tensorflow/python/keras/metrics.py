@@ -1922,7 +1922,7 @@ class AUC(Metric):
     """
     deps = []
     if not self._built:
-      self._build(y_true.shape)
+      self._build(y_pred.shape)
 
     if self.multi_label or (self.label_weights is not None):
       # y_true should have shape (number of examples, number of labels).

@@ -2076,6 +2076,9 @@ class ReplicaContext(object):
     Returns:
        A `Tensor` nest with the reduced `value`s from each replica.
     """
+    if isinstance(reduce_op, six.string_types):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
+
     def batch_all_reduce(strategy, *value_flat):
       return strategy.extended.batch_reduce_to(
           reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat])

@@ -87,13 +87,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
         loc, rewriter.getIndexType(),
         rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
     auto launch_op = rewriter.create<mlir::gpu::LaunchOp>(
-        loc, one, one, one, block_size_x, one, one, reduce_op.getOperands());
-    // Map reduce operands and correspondign launch values.
-    BlockAndValueMapping mapping;
-    for (auto pair :
-         llvm::zip(reduce_op.getOperands(), launch_op.getKernelArguments())) {
-      mapping.map(std::get<0>(pair), std::get<1>(pair));
-    }
+        loc, one, one, one, block_size_x, one, one);
     {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointToEnd(&launch_op.body().front());
@@ -101,10 +95,8 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Load the initial value and store it to the output.
       for (auto pair : llvm::zip(reduce_op.init_values(), reduce_op.out())) {
-        auto init_value = rewriter.create<mlir::LoadOp>(
-            loc, mapping.lookup(std::get<0>(pair)));
-        rewriter.create<mlir::StoreOp>(loc, init_value,
-                                       mapping.lookup(std::get<1>(pair)),
+        auto init_value = rewriter.create<mlir::LoadOp>(loc, std::get<0>(pair));
+        rewriter.create<mlir::StoreOp>(loc, init_value, std::get<1>(pair),
                                        ArrayRef<Value>{index});
       }
 
@@ -125,7 +117,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       rewriter.setInsertionPointToStart(loop.getBody());
       // Compute memrefs for the value to reduce. This makes it easier to just
       // inline the body.
-      auto output = mapping.lookup(*reduce_op.out().begin());
+      auto output = *reduce_op.out().begin();
       // TODO(herhut) Move this to the SliceOp builder.
       auto resType = MemRefType::get(
           llvm::None, output.getType().cast<MemRefType>().getElementType(),
@@ -143,7 +135,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
                                 : launch_op.getThreadIds().x);
       }
       // TODO(herhut) Move this to the SliceOp builder.
-      auto input = mapping.lookup(*reduce_op.operand_begin());
+      auto input = *reduce_op.operand_begin();
       auto rhs = rewriter.create<mlir::linalg::SliceOp>(
           loc,
           MemRefType::get(
@@ -155,6 +147,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
+      BlockAndValueMapping mapping;
       mapping.map(reduce_op.body().front().getArgument(0), accumulator);
       mapping.map(reduce_op.body().front().getArgument(1), rhs);
       mapping.map(reduce_op.body().front().getArgument(2), accumulator);

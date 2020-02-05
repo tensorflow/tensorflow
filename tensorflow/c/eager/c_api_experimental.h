@@ -27,7 +27,7 @@ extern "C" {
 // creating a new op every time. If `raw_device_name` is `NULL` or empty, it
 // does not set the device name. If it's not `NULL`, then it attempts to parse
 // and set the device name. It's effectively `TFE_OpSetDevice`, but it is faster
-// than seperately calling it because if the existing op has the same
+// than separately calling it because if the existing op has the same
 // `raw_device_name`, it skips parsing and just leave as it is.
 TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
                                        const char* op_or_function_name,

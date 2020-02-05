@@ -877,15 +877,23 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
       optional<int64> channel_id;
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      optional<std::vector<int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
+          (dimensions && dimensions->size() != 1)) {
         return false;
       }
       std::vector<ReplicaGroup> replica_groups;
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
+      optional<int64> split_dimension;
+      if (dimensions) {
+        split_dimension = dimensions->at(0);
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
-          shape, operands, replica_groups, channel_id));
+          shape, operands, replica_groups, channel_id, split_dimension));
       break;
     }
     case HloOpcode::kCollectivePermute: {

@@ -15,20 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_SSE_CHECK_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_SSE_CHECK_H_
 
-#if defined(__SSE4_1__)
-// SSE 4.1 available: Use the SSE code.
+#if defined(__SSSE3__)
+// SSSE 3 available: Use the SSE code.
 #define SSE_OR_PORTABLE(funcname, ...) Sse##funcname(__VA_ARGS__)
 
 #else
 
-#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
-
-// No SSE 4.1 available: Fall back to NEON_OR_PORTABLE, potentially used with
-// NEON_2_SSE translator library. As the library requires SSSE3, the fallback is
-// generally using Portable code, only a narrow subset of processors supporting
-// SSSE3 but no SSE4.1 is affected - but that includes the android_x86 ABI (not
-// android_x86_64).
-#define SSE_OR_PORTABLE(...) NEON_OR_PORTABLE(__VA_ARGS__)
+// No SSSE 3 available: Use Portable code
+#define SSE_OR_PORTABLE(...) Portable##funcname(__VA_ARGS__)
 #endif
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_SSE_CHECK_H_

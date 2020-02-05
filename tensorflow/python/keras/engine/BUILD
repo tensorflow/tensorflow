@@ -99,7 +99,10 @@ py_library(
 
 py_library(
     name = "base_layer",
-    srcs = ["base_layer.py"],
+    srcs = [
+        "base_layer.py",
+        "base_layer_v1.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":base_layer_utils",
@@ -118,7 +121,10 @@ py_library(
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
-        "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/keras/utils:version_utils",
         "//tensorflow/python/module",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
@@ -160,11 +166,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":base_layer",
         "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python/data",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/module",
     ],
 )

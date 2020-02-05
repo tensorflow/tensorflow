@@ -43,15 +43,6 @@ def _get_environ(repository_ctx, name, default_value = None):
 def _get_host_environ(repository_ctx, name):
     return repository_ctx.os.environ.get(name)
 
-def _tpl(repository_ctx, tpl, substitutions = {}, out = None):
-    if not out:
-        out = tpl
-    repository_ctx.template(
-        out,
-        Label("//third_party/py:%s.tpl" % tpl),
-        substitutions,
-    )
-
 def _fail(msg):
     """Output failure message when auto configuration fails."""
     red = "\033[0;31m"
@@ -329,6 +320,12 @@ def _get_numpy_include(repository_ctx, python_bin):
 
 def _create_local_python_repository(repository_ctx):
     """Creates the repository containing files set up to build with Python."""
+
+    # Resolve all labels before doing any real work. Resolving causes the
+    # function to be restarted with all previous state being lost. This
+    # can easily lead to a O(n^2) runtime in the number of labels.
+    build_tpl = repository_ctx.path(Label("//third_party/py:BUILD.tpl"))
+
     python_bin = _get_python_bin(repository_ctx)
     _check_python_bin(repository_ctx, python_bin)
     python_lib = _get_python_lib(repository_ctx, python_bin)
@@ -363,7 +360,8 @@ def _create_local_python_repository(repository_ctx):
         "numpy_include/numpy",
         "numpy_include",
     )
-    _tpl(repository_ctx, "BUILD", {
+
+    repository_ctx.template("BUILD", build_tpl, {
         "%{PYTHON_BIN_PATH}": python_bin,
         "%{PYTHON_INCLUDE_GENRULE}": python_include_rule,
         "%{PYTHON_IMPORT_LIB_GENRULE}": python_import_lib_genrule,

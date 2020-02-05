@@ -313,6 +313,9 @@ class ActivityAnalyzer(transformer.Base):
   def visit_Expr(self, node):
     return self._process_statement(node)
 
+  def visit_Raise(self, node):
+    return self._process_statement(node)
+
   def visit_Return(self, node):
     return self._process_statement(node)
 

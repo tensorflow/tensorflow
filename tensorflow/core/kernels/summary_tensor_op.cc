@@ -48,8 +48,8 @@ class SummaryTensorOpV2 : public OpKernel {
       tensor.AsProtoTensorContent(v->mutable_tensor());
     }
 
-    v->mutable_metadata()->ParseFromString(
-        serialized_summary_metadata_tensor.scalar<tstring>()());
+    ParseFromTString(serialized_summary_metadata_tensor.scalar<tstring>()(),
+                     v->mutable_metadata());
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));

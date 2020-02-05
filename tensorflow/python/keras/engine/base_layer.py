@@ -58,6 +58,7 @@ from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import version_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
@@ -90,7 +91,7 @@ _keras_model_gauge = monitoring.BoolGauge(
 
 
 @keras_export('keras.layers.Layer')
-class Layer(module.Module):
+class Layer(module.Module, version_utils.LayerVersionSelector):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -768,20 +769,20 @@ class Layer(module.Module):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs)
 
-          # Wrapping `call` function in autograph to allow for dynamic control
-          # flow and control dependencies in call. We are limiting this to
-          # subclassed layers as autograph is strictly needed only for
-          # subclassed layers and models.
-          # tf_convert will respect the value of autograph setting in the
-          # enclosing tf.function, if any.
-          if (base_layer_utils.is_subclassed(self) and
-              not base_layer_utils.from_saved_model(self)):
-            call_fn = autograph.tf_convert(
-                self.call, ag_ctx.control_status_ctx())
-          else:
-            call_fn = self.call
-
           if not self.dynamic:
+            # Wrapping `call` function in autograph to allow for dynamic control
+            # flow and control dependencies in call. We are limiting this to
+            # subclassed layers as autograph is strictly needed only for
+            # subclassed layers and models.
+            # tf_convert will respect the value of autograph setting in the
+            # enclosing tf.function, if any.
+            if (base_layer_utils.is_subclassed(self) and
+                not base_layer_utils.from_saved_model(self)):
+              call_fn = autograph.tf_convert(
+                  self.call, ag_ctx.control_status_ctx())
+            else:
+              call_fn = self.call
+
             try:
               with base_layer_utils.autocast_context_manager(
                   self._compute_dtype):

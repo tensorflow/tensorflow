@@ -284,7 +284,7 @@ void WarnIfBadDriverJITVersion() {
 bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // If the xla_gpu_ptx_file options is set, be explicit when a file is used
   // and warn when a file is not used to ease catching typo in filename.
-  std::string prefix = xla::FilenameFor(*module, *ptx);
+  std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
   for (const string filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
@@ -374,7 +374,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
   }
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "ptx", ptx);
+    DumpToFileInDirOrStdout(*module, "", "ptx", ptx);
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(

@@ -630,6 +630,12 @@ class TPUVariableMixin(object):
     else:
       return self._read_variable_op()
 
+  def value(self):
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self).value()
+    else:
+      return self._read_variable_op()
+
   @property
   def constraint(self):
     return self.primary.constraint
@@ -1079,6 +1085,14 @@ class SyncOnReadVariable(DistributedVariable):
             tuple(_assign_on_device(v.device, v, tensor) for v in self._values))
       else:
         return self.get().assign(*args, **kwargs)
+
+  def value(self):
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      if distribution_strategy_context.in_cross_replica_context():
+        return self._get_cross_replica()
+      else:
+        # _get_closest() returns a Variable.
+        return self._get_closest().value()
 
   @property
   def aggregation(self):
@@ -1570,11 +1584,15 @@ class AggregatingVariable(variables_lib.Variable):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
 
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    return ops.convert_to_tensor(self.get(), dtype=dtype, name=name,
+                                 as_ref=as_ref)
+
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
 def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
-  return ops.convert_to_tensor(var.get(), dtype=dtype, name=name, as_ref=as_ref)
+  return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
 
 
 ops.register_tensor_conversion_function(AggregatingVariable,

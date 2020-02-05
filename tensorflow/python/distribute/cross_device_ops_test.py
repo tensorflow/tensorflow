@@ -635,16 +635,29 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                 _fake_mirrored(mean_2 * len(devices) * num_workers, d2)
             ], sess)
 
-  def _get_indexed_slices(self, devices, start_i, as_per_replica=True):
+  def _get_indexed_slices(self,
+                          devices,
+                          start_i,
+                          variable_length,
+                          as_per_replica=True):
     dense_shape = [10, 2]
     values = ([[1., 2.]], [[3., 4.]], [[2., 1.]], [[0., 0.]], [[3., 1.]],
               [[2., 1.]])
     indices = ([1], [2], [3], [4], [5], [6])
+
+    # values and indices that have variable lengths.
+    vl_values = ([[1., 2.], [3., 4.]], [[3., 4.]], [[2., 1.]], [[0., 0.]],
+                 [[3., 1.], [2., 1.]], [[2., 1.]])
+    vl_indices = ([1, 2], [2], [3], [4], [5, 6], [6])
+
     indexed_slices = []
     for i, d in enumerate(devices):
       idx = i + start_i
       indexed_slices.append(
-          _make_indexed_slices(values[idx], indices[idx], dense_shape, d))
+          _make_indexed_slices(
+              vl_values[idx] if variable_length else values[idx],
+              vl_indices[idx] if variable_length else indices[idx], dense_shape,
+              d))
     if as_per_replica:
       per_replica = value_lib.PerReplica(indexed_slices)
       return per_replica
@@ -656,6 +669,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                                   task_id,
                                   num_gpus,
                                   batch_reduce,
+                                  variable_length,
                                   local_mode=False):
     collective_all_reduce, devices, master_target = self._get_test_objects(
         task_type, task_id, num_gpus, local_mode=local_mode)
@@ -670,7 +684,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
          ops.device(worker_device), \
          self.cached_session(target=master_target) as sess:
       per_replica = self._get_indexed_slices(devices,
-                                             (task_id or 0) * max(num_gpus, 1))
+                                             (task_id or 0) * max(num_gpus, 1),
+                                             variable_length)
 
       if batch_reduce:
         result = collective_all_reduce.batch_reduce(
@@ -693,7 +708,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       devices_cpu = [(worker_device or "") + "/device:CPU:0"] * (
           max(num_gpus, 1) * num_workers)
       per_replica_on_cpu = self._get_indexed_slices(
-          devices_cpu, 0, as_per_replica=False)
+          devices_cpu, 0, variable_length, as_per_replica=False)
       expected_result = cross_device_utils.aggregate_tensors_or_indexed_slices(
           per_replica_on_cpu)
       expected_result = sess.run(ops.convert_to_tensor(expected_result))
@@ -717,11 +732,15 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
 
   @combinations.generate(
       combinations.combine(
-          mode=["graph"], required_gpus=[0, 1, 2], batch_reduce=[True]))
-  def testReduceIndexedSlicesDistributed(self, required_gpus, batch_reduce):
+          mode=["graph"],
+          required_gpus=[0, 1, 2],
+          batch_reduce=[True],
+          variable_length=[True, False]))
+  def testReduceIndexedSlicesDistributed(self, required_gpus, batch_reduce,
+                                         variable_length):
     self._run_between_graph_clients(self._test_reduce_indexed_slices,
                                     self._cluster_spec, required_gpus,
-                                    batch_reduce)
+                                    batch_reduce, variable_length)
 
   # Collective ops doesn't support strategy with one device.
   @combinations.generate(
@@ -741,10 +760,17 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       combinations.combine(
           mode=["graph"],
           required_gpus=2,
-          batch_reduce=[True, False]))
-  def testReduceIndexedSlicesLocal(self, required_gpus, batch_reduce):
+          batch_reduce=[True, False],
+          variable_length=[True, False]))
+  def testReduceIndexedSlicesLocal(self, required_gpus, batch_reduce,
+                                   variable_length):
     self._test_reduce_indexed_slices(
-        None, None, required_gpus, batch_reduce, local_mode=True)
+        None,
+        None,
+        required_gpus,
+        batch_reduce,
+        variable_length,
+        local_mode=True)
 
 
 if __name__ == "__main__":

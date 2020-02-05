@@ -30,6 +30,7 @@ import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -366,7 +367,7 @@ class Network(base_layer.Layer):
   @property
   def _layer_checkpoint_dependencies(self):
     """Dictionary of layer dependencies to be included in the checkpoint."""
-    # Use getattr becuase this function can be called from __setattr__, at which
+    # Use getattr because this function can be called from __setattr__, at which
     # point the _is_graph_network attribute has not been created.
     if (not getattr(self, '_is_graph_network', False) and
         base_layer_utils.is_subclassed(self)):
@@ -876,7 +877,9 @@ class Network(base_layer.Layer):
 
           # Map Keras tensors in kwargs to their computed value.
           def _map_tensor_if_from_keras_layer(t):
-            if isinstance(t, ops.Tensor) and hasattr(t, '_keras_history'):
+            if (isinstance(t,
+                           (ops.Tensor, composite_tensor.CompositeTensor)) and
+                hasattr(t, '_keras_history')):
               t_id = str(id(t))
               return tensor_dict[t_id].pop()
             return t
@@ -1466,8 +1469,9 @@ class Network(base_layer.Layer):
           kwargs = copy.copy(node.arguments) if node.arguments else {}
 
           for tensor in nest.flatten(kwargs):
-            if isinstance(tensor, ops.Tensor) and hasattr(tensor,
-                                                          '_keras_history'):
+            if (isinstance(tensor,
+                           (ops.Tensor, composite_tensor.CompositeTensor)) and
+                hasattr(tensor, '_keras_history')):
               tensor_usage_count[str(id(tensor))] += 1
 
           for tensor in nest.flatten(node.input_tensors):

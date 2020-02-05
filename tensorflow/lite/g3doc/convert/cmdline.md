@@ -1,7 +1,7 @@
 # Converter command line reference
 
 This page describes how to use the [TensorFlow Lite converter](index.md) using
-the command line tool. However, The[Python API](python_api.md) is recommended
+the command line tool. However, the [Python API](python_api.md) is recommended
 for the majority of cases.
 
 Note: This only contains documentation on the command line tool in TensorFlow 2.

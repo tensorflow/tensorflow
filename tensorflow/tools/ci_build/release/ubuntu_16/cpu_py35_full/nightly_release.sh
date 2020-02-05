@@ -21,7 +21,9 @@ set_bazel_outdir
 
 install_ubuntu_16_pip_deps pip3.5
 
-update_bazel_linux
+pip3.7 install --upgrade auditwheel --user
+
+install_bazelisk
 
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 

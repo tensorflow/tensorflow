@@ -82,8 +82,6 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
   host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
@@ -110,8 +108,6 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
   host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
@@ -129,8 +125,6 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
                {{StatType::kCorrelationId, 100}, {StatType::kDeviceId, 1}});
 
   XPlaneBuilder device_plane_builder(space.add_planes());
-  device_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
   device_plane_builder.SetName(absl::StrCat(kGpuPlanePrefix, ":0"));
   device_plane_builder.ReserveLines(1);
 

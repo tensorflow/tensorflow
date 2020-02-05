@@ -168,15 +168,15 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
         local_sum = math_ops.reduce_sum(y, axis=axes, keepdims=True)
         local_squared_sum = math_ops.reduce_sum(math_ops.square(y), axis=axes,
                                                 keepdims=True)
+        batch_size = math_ops.cast(array_ops.shape_v2(y)[0], dtypes.float32)
         y_sum, y_squared_sum, global_batch_size = (
             replica_ctx.all_reduce(reduce_util.ReduceOp.SUM, [
-                local_sum, local_squared_sum, array_ops.shape_v2(y)[0]]))
+                local_sum, local_squared_sum, batch_size]))
 
         axes_vals = [(array_ops.shape_v2(y))[i] for i in range(1, len(axes))]
         multiplier = math_ops.cast(math_ops.reduce_prod(axes_vals),
                                    dtypes.float32)
-        multiplier = multiplier * math_ops.cast(global_batch_size,
-                                                dtypes.float32)
+        multiplier = multiplier * global_batch_size
 
         mean = y_sum / multiplier
         y_squared_mean = y_squared_sum / multiplier
