@@ -568,6 +568,27 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
 }
 
 //===----------------------------------------------------------------------===//
+// PartitionedCall op utilities.
+//===----------------------------------------------------------------------===//
+
+// Verify that the arguments to be passed into the function are the same types
+// as the function paramter types.
+static bool ArgTypesMatchCallee(mlir::Operation *op, OperandRange args,
+                                FlatSymbolRefAttr func) {
+  auto module = op->getParentOfType<ModuleOp>();
+  auto function = module.lookupSymbol<FuncOp>(func.getValue());
+  FunctionType function_ty = function.getType();
+
+  for (auto arg_in : llvm::zip(args, function_ty.getInputs())) {
+    if (std::get<0>(arg_in).getType() != std::get<1>(arg_in)) {
+      // Argument type and input type mismatch.
+      return false;
+    }
+  }
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // Slice op utilities.
 //===----------------------------------------------------------------------===//
 
@@ -3482,11 +3503,11 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
+  target.addLegalOp<CallOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as xla_hlo dialect also defines a ReturnOp.
-    target.addLegalOp<CallOp, ModuleOp, FuncOp, ModuleTerminatorOp,
-                      ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
     return applyFullConversion(op, target, patterns);
   }
 

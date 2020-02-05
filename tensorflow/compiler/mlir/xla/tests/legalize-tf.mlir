@@ -1319,6 +1319,60 @@ func @pack(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2x2xi32> {
 }
 
 //===----------------------------------------------------------------------===//
+// PartitionedCall op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @partitioned_call
+func @partitioned_call(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK: call @pcall_func(%arg0) : (tensor<i32>) -> tensor<i32>
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @partitioned_call_multi_input
+func @partitioned_call_multi_input(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  // CHECK: call @pcall_multi_input(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %0 = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @pcall_multi_input} : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_multi_input(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @partitioned_call_multi_in_out
+func @partitioned_call_multi_in_out(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  // CHECK: call @pcall_multi_in_out(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
+  %0, %1 = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @pcall_multi_in_out} : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
+  return %0, %1 : tensor<i32>, tensor<i32>
+}
+
+func @pcall_multi_in_out(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  return %arg1, %arg0 : tensor<i32>, tensor<i32>
+}
+
+// CHECK-LABEL: func @unhandled_partitioned_call
+func @unhandled_partitioned_call(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<i32>, tensor<i32>) {
+  // The argument types don't match the parameter types for the
+  // pcall_multi_in_out function. That's fine for a PartitionedCallOp but not
+  // for a standard CallOp, so this op can't be lowered.
+  // CHECK: "tf.PartitionedCall"
+  %0, %1 = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @pcall_multi_in_out} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  return %0, %1 : tensor<i32>, tensor<i32>
+}
+
+// CHECK-LABEL: func @unhandled_partitioned_call_2
+func @unhandled_partitioned_call_2(%arg0: tensor<i32>, %arg1: tensor<*xi32>) -> (tensor<i32>, tensor<i32>) {
+  // CHECK: "tf.PartitionedCall"
+  %0, %1 = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @pcall_multi_in_out} : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  return %0, %1 : tensor<i32>, tensor<i32>
+}
+
+//===----------------------------------------------------------------------===//
 // Relu op legalizations.
 //===----------------------------------------------------------------------===//
 

@@ -765,6 +765,10 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
+// Note: There is no HLO_CallOp because the standard call operation mlir::CallOp
+// is used instead. A mlir::CallOp is exported to a HLO call instruction
+// directly.
+
 def HLO_CholeskyOp : HLO_Op<"cholesky",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_CholeskyOp {
   let arguments = (ins
