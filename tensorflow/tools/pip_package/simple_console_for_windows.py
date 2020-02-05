@@ -21,8 +21,14 @@ from __future__ import print_function
 
 import code
 import sys
+from tensorflow.tools.test import system_info_lib
 
+# print system information..
+def Info(unused_args):
+  config = system_info_lib.gather_machine_configuration()
+  print(config)
 
+  
 def main(_):
   """Run an interactive console."""
   code.interact()
