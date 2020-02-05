@@ -82,6 +82,20 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT broadcast.4 = f32[3,1,2] broadcast(%Arg_0.1), dimensions={1, 2}
 }
 
+// CHECK-LABEL:  func @test_batch_norm_grad
+%test_batch_norm_grad (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], variance: f32[2], grad_output: f32[2,2,2,2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
+  %input = f32[2,2,2,2] parameter(0)
+  %scale = f32[2] parameter(1)
+  %mean = f32[2] parameter(2)
+  %variance = f32[2] parameter(3)
+  %grad_output = f32[2,2,2,2] parameter(4)
+
+  // CHECK:  "xla_hlo.batch_norm_grad"
+  // CHECK-SAME:  epsilon = 1.000000e-03 : f32
+  // CHECK-SAME:  feature_index = 1 : i64
+  ROOT %batch-norm-grad = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-grad(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %mean, f32[2] %variance, f32[2,2,2,2] %grad_output), epsilon=0.001, feature_index=1
+}
+
 // CHECK-LABEL:  func @call(%arg0: tensor<i64>) -> tensor<i64> {
 %call (arg_1: s64[]) -> s64[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}

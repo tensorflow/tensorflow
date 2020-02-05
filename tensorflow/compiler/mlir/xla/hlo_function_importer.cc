@@ -241,6 +241,22 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       }
       MakeAndReturn(BroadcastInDimOp);
     }
+#define MakeAndReturnBatchNormOp(batch_norm_op)                         \
+  {                                                                     \
+    attributes.push_back(builder_->getNamedAttr(                        \
+        "epsilon", builder_->getF32FloatAttr(instruction->epsilon()))); \
+    attributes.push_back(builder_->getNamedAttr(                        \
+        "feature_index",                                                \
+        builder_->getI64IntegerAttr(instruction->feature_index())));    \
+    MakeAndReturn(batch_norm_op);                                       \
+  }
+    case HloOpcode::kBatchNormGrad:
+      MakeAndReturnBatchNormOp(BatchNormGradOp);
+    case HloOpcode::kBatchNormInference:
+      MakeAndReturnBatchNormOp(BatchNormInferenceOp);
+    case HloOpcode::kBatchNormTraining:
+      MakeAndReturnBatchNormOp(BatchNormTrainingOp);
+
     case HloOpcode::kDot: {
       attributes.push_back(ConvertPrecisionConfig(instruction));
 
