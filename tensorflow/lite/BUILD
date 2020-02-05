@@ -181,7 +181,6 @@ cc_library(
     ],
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
-        ":simple_memory_arena",
         ":string",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
@@ -277,14 +276,15 @@ cc_test(
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
     deps = [
+        ":external_cpu_backend_context",
         ":framework",
         ":string_util",
         ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
@@ -466,13 +466,15 @@ cc_test(
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.
 # Note: This target is not yet finalized, and the exact set of exported (C/C++)
-# APIs is subject to change.
+# APIs is subject to change. The output library name is platform dependent:
+#   - Linux/Android: `libtensorflowlite.so`
+#   - Mac: `libtensorflowlite.dylib`
+#   - Windows: `tensorflowlite.dll`
 tflite_cc_shared_object(
-    name = "libtensorflowlite.so",
+    name = "tensorflowlite",
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
-            "-Wl,-install_name,@rpath/libtensorflowlite.so",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
@@ -480,6 +482,7 @@ tflite_cc_shared_object(
             "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
         ],
     }),
+    per_os_targets = True,
     deps = [
         ":framework",
         ":tflite_exported_symbols.lds",

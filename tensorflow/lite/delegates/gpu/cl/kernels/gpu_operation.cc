@@ -87,6 +87,20 @@ bool OperationDef::HasAllTensorsOfType(TensorStorageType storage_type) const {
   return true;
 }
 
+bool OperationDef::IsBatchSupported() const {
+  for (const auto& src : src_tensors) {
+    if (HasAxis(src.layout, Axis::BATCH)) {
+      return true;
+    }
+  }
+  for (const auto& dst : dst_tensors) {
+    if (HasAxis(dst.layout, Axis::BATCH)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 GPUOperation::GPUOperation(const OperationDef& definition)
     : definition_(definition) {}
 

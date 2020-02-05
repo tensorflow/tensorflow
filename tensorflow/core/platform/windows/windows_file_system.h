@@ -67,6 +67,8 @@ class WindowsFileSystem : public FileSystem {
   Status RenameFile(const string& src, const string& target) override;
 
   string TranslateName(const string& name) const override { return name; }
+
+  char Separator() const override { return '\\'; };
 };
 
 class LocalWinFileSystem : public WindowsFileSystem {

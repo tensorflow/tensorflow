@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 #include "tensorflow/core/util/batch_util.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -243,10 +245,15 @@ class SnapshotReader {
     if (compression_type_ == io::compression::kNone) {
       return input_stream_->ReadNBytes(length, record);
     } else {
-      tstring tmp_str;
-      Status s = input_stream_->ReadNBytes(length, &tmp_str);
-      record->Append(tmp_str);
-      return s;
+      auto tmp_str = MakeUnique<tstring>();
+      TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(length, tmp_str.get()));
+      tstring* tmp_str_raw = tmp_str.release();
+      record->AppendExternalMemory(
+          *tmp_str_raw, tmp_str_raw,
+          [](absl::string_view unused_data, void* arg) {
+            delete static_cast<tstring*>(arg);
+          });
+      return Status::OK();
     }
   }
 #endif
@@ -450,7 +457,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
 
     uint64 hash;
-    OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
+    OP_REQUIRES_OK(ctx, ComputeDatasetHash(graph_def, path, &hash));
 
     Status dump_status = DumpDatasetGraph(path, hash, graph_def);
     if (!dump_status.ok()) {
@@ -1698,6 +1705,19 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     const std::string mode_;
     const std::string snapshot_name_;
   };
+
+  Status ComputeDatasetHash(const GraphDef& graph_def, const std::string& path,
+                            uint64* hash) {
+    TF_RETURN_IF_ERROR(HashGraph(graph_def, hash));
+    // Adding path, compression, reader / writer path prefix, shard size
+    // bytes to the fp as they effect the data written on disk.
+    *hash = Hash64Combine(*hash, Hash64(path));
+    *hash = Hash64Combine(*hash, Hash64(compression_));
+    *hash = Hash64Combine(*hash, Hash64(reader_path_prefix_));
+    *hash = Hash64Combine(*hash, Hash64(writer_path_prefix_));
+    *hash = Hash64Combine(*hash, shard_size_bytes_);
+    return Status::OK();
+  }
 
   const int graph_def_version_;
   DataTypeVector output_types_;

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/serialization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
@@ -200,10 +201,12 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       for (const auto& node : graph_def.node()) {
         if (node.name() == output_node) {
           node_def = &node;
+          break;
         }
       }
       if (node_def == nullptr) {
         VLOG(3) << "Failed to find node: " << output_node;
+        return;
       }
       uint64 hash = 0;
       Status s = HashNode(graph_def, *node_def, &hash);

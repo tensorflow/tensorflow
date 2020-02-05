@@ -25,7 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -253,11 +253,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     """An internal class to help manage the TF_Buffer lifetime."""
 
     def __init__(self, buf_string):
-      self._buffer = pywrap_tensorflow.TF_NewBufferFromString(
+      self._buffer = pywrap_tf_session.TF_NewBufferFromString(
           compat.as_bytes(buf_string))
 
     def __del__(self):
-      pywrap_tensorflow.TF_DeleteBuffer(self._buffer)
+      pywrap_tf_session.TF_DeleteBuffer(self._buffer)
 
   def __init__(self, name, num_replicas, pivot):
     """Builds a new TPUReplicateContext.
@@ -312,19 +312,24 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       return handle
 
     if device_assignment is not None:
+      # Find a variable copy for each replica in the device assignment.
+      # Note that the order of devices for replicas for the variable and the
+      # device assignment might not match.
       job_name = pydev.DeviceSpec.from_string(vars_[0].device).job
-
-      tpu_devices = set()
+      devices_to_vars = {v.device: v for v in vars_}
+      replicated_vars = []
       for replica_id in range(device_assignment.num_replicas):
         for logical_core in range(device_assignment.num_cores_per_replica):
-          tpu_devices.add(
-              device_util.canonicalize(
-                  device_assignment.tpu_device(
-                      replica=replica_id,
-                      logical_core=logical_core,
-                      job=job_name)))
-
-      replicated_vars = [v for v in vars_ if v.device in tpu_devices]
+          device = device_util.canonicalize(
+              device_assignment.tpu_device(
+                  replica=replica_id, logical_core=logical_core, job=job_name))
+          if device in devices_to_vars:
+            replicated_vars.append(devices_to_vars[device])
+            break
+        else:
+          raise ValueError(
+              "Failed to find a variable on any device in replica {} for "
+              "current device assignment".format(replica_id))
     else:
       replicated_vars = vars_
 

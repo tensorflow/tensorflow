@@ -38,6 +38,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
@@ -1106,6 +1107,43 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # Gradient of `Mul` requires accumulating both its inputs. But since one
     # of those is a Const (2.0), we should have just one accumulator.
     self.assertLen(push_back_nodes, 1)
+
+  def testDoNotAccumulateForwardTensorsForReductionOps(self):
+
+    @def_function.function
+    def Fn():
+      with backprop.GradientTape() as tape:
+        x = constant_op.constant(2.)
+        tape.watch(x)
+
+        def Body(i, x):
+          forward_graph = ops.get_default_graph()
+
+          @custom_gradient.custom_gradient
+          def SquaredWithZeroGrad(x):
+
+            def Grad(unused_g, variables=None):  # pylint: disable=redefined-outer-name
+              del variables
+              gradient_graph = ops.get_default_graph()
+              shape = gen_array_ops.shape(x)
+              assert shape.graph is forward_graph
+              rank = gen_array_ops.rank(x)
+              assert rank.graph is forward_graph
+              size = gen_array_ops.size(x)
+              assert size.graph is forward_graph
+              zeros = array_ops.zeros(shape)
+              assert zeros.graph is gradient_graph
+              return zeros
+
+            return x * 2, Grad
+
+          return i + 1, SquaredWithZeroGrad(x)
+
+        _, result = while_loop_v2(lambda i, _: i < 2, Body, [0, x])
+      grad = tape.gradient(result, x)
+      return grad
+
+    Fn()
 
 
 def ScalarShape():

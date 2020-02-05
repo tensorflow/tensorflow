@@ -299,8 +299,8 @@ Status MetaOptimizer::InitializeOptimizersByName(
 
     if (custom_optimizer) {
       VLOG(2) << "Registered custom graph optimizer: " << optimizer_name;
-      TF_RETURN_IF_ERROR(custom_optimizer->Init(
-          GetCustomGraphOptimizerConfig(optimizer_name)));
+      TF_RETURN_IF_ERROR(custom_optimizer->InitWithConfig(
+          config_proto_, GetCustomGraphOptimizerConfig(optimizer_name)));
       optimizers->push_back(std::move(custom_optimizer));
       initialized_custom_optimizers.insert(optimizer_name);
     } else {
@@ -326,7 +326,8 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
     if (custom_optimizer) {
       VLOG(2) << "Registered custom configurable graph optimizer: "
               << optimizer_config.name();
-      TF_RETURN_IF_ERROR(custom_optimizer->Init(&optimizer_config));
+      TF_RETURN_IF_ERROR(
+          custom_optimizer->InitWithConfig(config_proto_, &optimizer_config));
       optimizers->push_back(std::move(custom_optimizer));
     } else {
       // If there are no custom optimizers with given name, try to initialize a
@@ -725,25 +726,6 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
           false;
 
-      // TODO(b/129545186): Shape inference in GraphProperties doesn't work well
-      // with _Arg nodes. Replace them with Placeholders with unknown shape.
-      absl::flat_hash_set<absl::string_view> input_nodes;
-      for (auto& input_arg : func_item.inputs()) {
-        input_nodes.insert(input_arg.node_name);
-      }
-      for (NodeDef& func_node : *func_item.graph.mutable_node()) {
-        if (input_nodes.contains(func_node.name())) {
-          func_node.set_op("Placeholder");
-          auto& attrs = *func_node.mutable_attr();
-          attrs["dtype"] = attrs["T"];
-          attrs.erase("index");
-          attrs.erase("T");
-          TensorShapeProto unknown_shape;
-          unknown_shape.set_unknown_rank(true);
-          *(attrs["shape"].mutable_shape()) = unknown_shape;
-        }
-      }
-
       // Optimize function body graph.
       GraphDef optimized_func_graph;
       if (IsTPUGraphDef(*optimized_graph)) {
@@ -800,7 +782,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << absl::StrJoin(optimized_funcs, ", ");
-
+  VLOG(3) << "Optimized graph =\n" << optimized_graph->DebugString();
   if (VLOG_IS_ON(1)) {
     DumpGraphDefToFile(
         strings::StrCat("after_MetaOptimizer_",

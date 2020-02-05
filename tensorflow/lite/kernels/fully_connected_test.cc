@@ -140,8 +140,12 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
     input_size_ = total_input_size / batches_;
 
     input_ = AddInput(input);
-    weights_ =
-        AddInput({input.type, {units_, input_size_}, input.min, input.max});
+    if (input.type == TensorType_INT16) {
+      weights_ = AddInput({TensorType_INT8, {units_, input_size_}, -63.5, 64});
+    } else {
+      weights_ =
+          AddInput({input.type, {units_, input_size_}, input.min, input.max});
+    }
 
     if (bias_tensor_optional) {
       bias_ = AddNullInput();
@@ -152,8 +156,13 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
       // of input and filter. Supposedly this is correctly set during quantized
       // training.
       auto bias_scale = GetScale(input_) * GetScale(weights_);
-      TensorData bias{TensorType_INT32, {units_}, 0, 0, bias_scale};
-      bias_ = AddInput(bias);
+      if (input.type == TensorType_INT16) {
+        TensorData bias{TensorType_INT64, {units_}, 0, 0, bias_scale};
+        bias_ = AddInput(bias);
+      } else {
+        TensorData bias{TensorType_INT32, {units_}, 0, 0, bias_scale};
+        bias_ = AddInput(bias);
+      }
     }
 
     output_ = AddOutput(output);
@@ -217,6 +226,9 @@ class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
 
   void SetBias(const std::vector<float>& data) {
     QuantizeAndPopulate<int32_t>(bias_, data);
+  }
+  void SetBias64(const std::vector<float>& data) {
+    QuantizeAndPopulate<int64_t>(bias_, data);
   }
   template <typename T>
   void SetWeights(const std::vector<float>& data) {
@@ -519,6 +531,35 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(23, 24, 25, 57, 58, 59));
+}
+
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16) {
+  const float ulp = (float)1 / (float)512;
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT16, {2, 10}, -64 + ulp, 64},
+      /*output=*/{TensorType_INT16, {}, -128 + 2 * ulp, 128});
+
+  // input_product_scale < output_scale was not true.
+  m.SetWeights<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias64({1, 2, 3});
+
+  m.SetInput<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAre(24 * 256 - 1, 25 * 256 - 1, 26 * 256 - 1,
+                          58 * 256 - 1, 59 * 256 - 1, 60 * 256 - 1));
 }
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8NoBias) {

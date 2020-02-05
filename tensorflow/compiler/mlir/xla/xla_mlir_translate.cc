@@ -153,10 +153,21 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     return mlir::failure();
   }
 
-  output << statusOrHloModule.ValueOrDie()->ToString(
-      HloPrintOptions()
-          // We don't interpret or use layouts
-          .set_include_layout_in_shapes(false));
+  HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
+
+  // We don't interpret or use layouts
+  output << hlo_module->ToString(
+      HloPrintOptions().set_include_layout_in_shapes(false));
+
+  // Output alias information as comments in the HLO text.
+  hlo_module->input_output_alias_config().ForEachAlias(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
+        output << "// OutputIndex " << output_index.ToString()
+               << " aliases with input " << alias.parameter_number << " at "
+               << alias.parameter_index.ToString() << "\n";
+      });
+
   return mlir::success();
 }
 

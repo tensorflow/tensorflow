@@ -53,7 +53,31 @@ message SummaryMetadata {
 
   // Longform readable description of the summary sequence. Markdown supported.
   string summary_description = 3;
+
+  // Class of data stored in this time series. Required for compatibility with
+  // TensorBoard's generic data facilities (`DataProvider`, et al.). This value
+  // imposes constraints on the dtype and shape of the corresponding tensor
+  // values. See `DataClass` docs for details.
+  DataClass data_class = 4;
 };
+
+enum DataClass {
+  // Unknown data class, used (implicitly) for legacy data. Will not be
+  // processed by data ingestion pipelines.
+  DATA_CLASS_UNKNOWN = 0;
+  // Scalar time series. Each `Value` for the corresponding tag must have
+  // `tensor` set to a rank-0 tensor of floating-point dtype, which will be
+  // converted to float64.
+  DATA_CLASS_SCALAR = 1;
+  // Tensor time series. Each `Value` for the corresponding tag must have
+  // `tensor` set. The tensor value is arbitrary, but should be small to
+  // accommodate direct storage in database backends: an upper bound of a few
+  // kilobytes is a reasonable rule of thumb.
+  DATA_CLASS_TENSOR = 2;
+  // Blob sequence time series. Each `Value` for the corresponding tag must
+  // have `tensor` set to a rank-1 tensor of bytestring dtype.
+  DATA_CLASS_BLOB_SEQUENCE = 3;
+}
 
 // A Summary is a set of named values to be displayed by the
 // visualizer.

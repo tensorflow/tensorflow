@@ -849,31 +849,32 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
-  
+
   Usage Example:
-    >>> x = [[[1., 2., 3.],
-    ...       [4., 5., 6.]],
-    ...       [[7., 8., 9.],
-    ...       [10., 11., 12.]]]
-    >>> padded_image = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4)
-    >>> padded_image
-    <tf.Tensor: shape=(4, 4, 3), dtype=float32, numpy=
-     array([[[ 0.,  0.,  0.],
-             [ 0.,  0.,  0.],
-             [ 0.,  0.,  0.],
-             [ 0.,  0.,  0.]],
-            [[ 0.,  0.,  0.],
-             [ 1.,  2.,  3.],
-             [ 4.,  5.,  6.],
-             [ 0.,  0.,  0.]],
-            [[ 0.,  0.,  0.],
-             [ 7.,  8.,  9.],
-             [10., 11., 12.],
-             [ 0.,  0.,  0.]],
-            [[ 0.,  0.,  0.],
-             [ 0.,  0.,  0.],
-             [ 0.,  0.,  0.],
-             [ 0.,  0.,  0.]]], dtype=float32)>
+
+  >>> x = [[[1., 2., 3.],
+  ...       [4., 5., 6.]],
+  ...       [[7., 8., 9.],
+  ...       [10., 11., 12.]]]
+  >>> padded_image = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4)
+  >>> padded_image
+  <tf.Tensor: shape=(4, 4, 3), dtype=float32, numpy=
+  array([[[ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 1.,  2.,  3.],
+  [ 4.,  5.,  6.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 7.,  8.,  9.],
+  [10., 11., 12.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.]]], dtype=float32)>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor

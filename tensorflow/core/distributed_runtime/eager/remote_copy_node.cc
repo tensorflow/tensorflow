@@ -56,7 +56,7 @@ Status CreateUncachedKernelAndDeviceOp(
                                       ctx.HostCPU()));
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
-  return kernel->get()->Init(ndef, nullptr);
+  return kernel->get()->Init(ndef, /*graph_collector=*/nullptr);
 }
 
 // This gets a unique wire ID. We add a random identifier so that if the
@@ -105,14 +105,17 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
 
   EagerKernelArgs args(std::move(input_vector));
-  return kernel->Run(args, nullptr, nullptr, absl::nullopt);
+  return kernel->Run(args, /*outputs=*/nullptr,
+                     /*cancellation_manager=*/nullptr,
+                     /*remote_func_params=*/absl::nullopt);
 }
 
 void RemoteCopyNode::StartSend() {
   // TODO(gjn): We should consider just using the low-level SendOp::Compute()
   // functionality here instead of constructing an Op.
   EagerOperation op(ctx_);
-  Status status = op.Reset("_Send", nullptr, false, nullptr);
+  Status status = op.Reset("_Send", /*raw_device_name=*/nullptr,
+                           /*remote=*/false, /*executor=*/nullptr);
   if (!status.ok()) {
     captured_state_->SetSendStatus(status);
     return;
@@ -244,7 +247,8 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
   // TODO(gjn): We should consider just using the low-level RecvOp::Compute()
   // functionality here instead of constructing an Op.
   EagerOperation op(ctx_);
-  Status status = op.Reset("_Recv", nullptr, false, nullptr);
+  Status status = op.Reset("_Recv", /*raw_device_name=*/nullptr,
+                           /*remote=*/false, /*executor=*/nullptr);
   if (!status.ok()) {
     captured_state_->dst()->Poison(status);
     done(status);

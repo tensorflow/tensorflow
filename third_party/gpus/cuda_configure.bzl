@@ -133,13 +133,6 @@ def _get_nvcc_tmp_dir_for_windows(repository_ctx):
     )
     return escaped_tmp_dir + "\\\\nvcc_inter_files_tmp_dir"
 
-def _get_nvcc_tmp_dir_for_unix(repository_ctx):
-    """Return the UNIX tmp directory for nvcc to generate intermediate source files."""
-    escaped_tmp_dir = escape_string(
-        get_env_var(repository_ctx, "TMPDIR", "/tmp"),
-    )
-    return escaped_tmp_dir + "/nvcc_inter_files_tmp_dir"
-
 def _get_msvc_compiler(repository_ctx):
     vc_path = find_vc_path(repository_ctx)
     return find_msvc_tool(repository_ctx, vc_path, "cl.exe").replace("\\", "/")
@@ -420,74 +413,6 @@ def matches_version(environ_version, detected_version):
 _NVCC_VERSION_PREFIX = "Cuda compilation tools, release "
 
 _DEFINE_CUDNN_MAJOR = "#define CUDNN_MAJOR"
-
-def find_cuda_define(repository_ctx, header_dir, header_file, define):
-    """Returns the value of a #define in a header file.
-
-      Greps through a header file and returns the value of the specified #define.
-      If the #define is not found, then raise an error.
-
-      Args:
-        repository_ctx: The repository context.
-        header_dir: The directory containing the header file.
-        header_file: The header file name.
-        define: The #define to search for.
-
-      Returns:
-        The value of the #define found in the header.
-      """
-
-    # Confirm location of the header and grep for the line defining the macro.
-    h_path = repository_ctx.path("%s/%s" % (header_dir, header_file))
-    if not h_path.exists:
-        auto_configure_fail("Cannot find %s at %s" % (header_file, str(h_path)))
-    result = repository_ctx.execute(
-        # Grep one more lines as some #defines are splitted into two lines.
-        [
-            "grep",
-            "--color=never",
-            "-A1",
-            "-E",
-            define,
-            str(h_path),
-        ],
-    )
-    if result.stderr:
-        auto_configure_fail("Error reading %s: %s" % (str(h_path), result.stderr))
-
-    # Parse the version from the line defining the macro.
-    if result.stdout.find(define) == -1:
-        auto_configure_fail(
-            "Cannot find line containing '%s' in %s" % (define, h_path),
-        )
-
-    # Split results to lines
-    lines = result.stdout.split("\n")
-    num_lines = len(lines)
-    for l in range(num_lines):
-        line = lines[l]
-        if define in line:  # Find the line with define
-            version = line
-            if l != num_lines - 1 and line[-1] == "\\":  # Add next line, if multiline
-                version = version[:-1] + lines[l + 1]
-            break
-
-    # Remove any comments
-    version = version.split("//")[0]
-
-    # Remove define name
-    version = version.replace(define, "").strip()
-
-    # Remove the code after the version number.
-    version_end = version.find(" ")
-    if version_end != -1:
-        if version_end == 0:
-            auto_configure_fail(
-                "Cannot extract the version from line containing '%s' in %s" %
-                (define, str(h_path)),
-            )
-        version = version[:version_end].strip()
-    return version
 
 def compute_capabilities(repository_ctx):
     """Returns a list of strings representing cuda compute capabilities."""

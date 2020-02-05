@@ -54,10 +54,6 @@ class SavedModelKerasModelTest(test_base.TestSavedModelBase):
   def test_save_strategy_restore_no_strategy(self, model_and_input,
                                              distribution, save_in_scope,
                                              experimental_run_tf_function):
-    if save_in_scope:
-      # TODO(b/134703272): Unskip this test when fixed.
-      self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
-                     'supported.'))
     self.run_test_save_strategy_restore_no_strategy(
         model_and_input, distribution, save_in_scope,
         experimental_run_tf_function)
@@ -70,10 +66,6 @@ class SavedModelKerasModelTest(test_base.TestSavedModelBase):
                                           distribution_for_restoring,
                                           save_in_scope,
                                           experimental_run_tf_function):
-    if save_in_scope:
-      # TODO(b/134703272): Unskip this test when fixed.
-      self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
-                     'supported.'))
     self.run_test_save_strategy_restore_strategy(model_and_input,
                                                  distribution_for_saving,
                                                  distribution_for_restoring,
@@ -127,10 +119,6 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
   def test_save_strategy_restore_no_strategy(
       self, model_and_input, distribution, save_in_scope,
       experimental_run_tf_function):
-    if save_in_scope:
-      # TODO(b/134703272): Unskip this test when fixed.
-      self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
-                     'supported.'))
     self.run_test_save_strategy_restore_no_strategy(
         model_and_input, distribution, save_in_scope,
         experimental_run_tf_function)
@@ -143,10 +131,6 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
                                           distribution_for_restoring,
                                           save_in_scope,
                                           experimental_run_tf_function):
-    if save_in_scope:
-      # TODO(b/134703272): Unskip this test when fixed.
-      self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
-                     'supported.'))
     self.run_test_save_strategy_restore_strategy(model_and_input,
                                                  distribution_for_saving,
                                                  distribution_for_restoring,

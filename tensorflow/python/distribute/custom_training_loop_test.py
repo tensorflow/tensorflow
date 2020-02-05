@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -93,6 +95,28 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     self.assertAllEqual(
         constant_op.constant(4., shape=(distribution.num_replicas_in_sync)),
         run(2.))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testStatefulExperimentalRunAlwaysExecute(self, distribution):
+    with distribution.scope():
+      v = variables.Variable(
+          0.0, aggregation=variables.VariableAggregation.MEAN)
+
+    @def_function.function
+    def train_step():
+
+      def assign_add():
+        v.assign_add(1.0)
+
+      distribution.experimental_run_v2(assign_add)
+      return array_ops.zeros([])
+
+    train_step()
+    self.assertAllEqual(1.0, v.numpy())
 
   @combinations.generate(
       combinations.combine(
@@ -486,6 +510,42 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
+  def testDatasetPartialBatchWithMixedOutputs(self, distribution):
+    # Dynamic output size with a mix of static and dynamic outputs
+    dataset = get_dataset_from_tensor_slices([5.]).batch(2)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(iterator):
+
+      def computation(x):
+        # Fixed size output with a dynamic sized output.
+        return array_ops.zeros([3]), math_ops.square(x)
+
+      return distribution.experimental_run_v2(
+          computation, args=(next(iterator),))
+
+    results = run(input_iterator)
+
+    # First result is fixed for all replicas.
+    for replica_id in range(distribution.num_replicas_in_sync):
+      self.assertAllEqual([0., 0., 0.],
+                          distribution.experimental_local_results(
+                              results[0])[replica_id])
+    # Only first replica has distributed dataset computation.
+    self.assertAllEqual([25.],
+                        distribution.experimental_local_results(results[1])[0])
+    # Other replicas have no distributed dataset computation.
+    for replica_id in range(1, distribution.num_replicas_in_sync):
+      self.assertAllEqual([],
+                          distribution.experimental_local_results(
+                              results[1])[replica_id])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
   def testIterationInsideFunction(self, distribution):
 
     def step_fn(data):
@@ -629,6 +689,167 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
+  def test_single_keras_layer_experimental_run(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = keras.layers.Dense(4, name="dense")
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        return grads
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_keras_model_creation_experimental_run(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = self._get_model()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        return grads
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_keras_model_optimizer_experimental_run(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = self._get_model()
+      optimizer = keras.optimizer_v2.rmsprop.RMSprop()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        return loss
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_keras_subclass_model_optimizer_experimental_run(self, distribution):
+    def get_subclass_model():
+
+      class KerasSubclassModel(keras.Model):
+
+        def __init__(self):
+          super(KerasSubclassModel, self).__init__()
+          self.l = keras.layers.Dense(4, name="dense")
+
+        def call(self, x):
+          return self.l(x)
+
+      return KerasSubclassModel()
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = get_subclass_model()
+      optimizer = keras.optimizer_v2.rmsprop.RMSprop()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        return loss
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_keras_model_optimizer_experimental_run_loop(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = self._get_model()
+      optimizer = keras.optimizer_v2.rmsprop.RMSprop()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        return loss
+
+      for _ in range(5):
+        distribution.experimental_run_v2(step_fn, args=(next(iterator),))
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
   def test_lstm(self, distribution):
 
     batch_size = 32
@@ -676,6 +897,95 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
       return distribution.experimental_local_results(outputs)
 
     train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def test_nested_tf_functions(self, distribution):
+    # The test builds two computations with keras layers, one with nested
+    # tf.function, and the other without nested tf.function. We run these
+    # computations independently on the model with same weights, and make sure
+    # the variables are still the same after one training step.
+
+    inputs = np.random.random((10, 3)).astype(np.float32)
+    targets = np.ones((10, 4), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets)).repeat()
+    dataset = dataset.batch(10, drop_remainder=True)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    def get_model():
+      x = keras.layers.Input(shape=(3,), name="input")
+      y = keras.layers.Dense(4, name="dense")(x)
+      model = keras.Model(x, y)
+      return model
+
+    with distribution.scope():
+      model = get_model()
+      optimizer = keras.optimizer_v2.gradient_descent.SGD(0.1, momentum=0.01)
+      weights_file = os.path.join(self.get_temp_dir(), ".h5")
+      model.save_weights(weights_file)
+      model2 = get_model()
+      model2.load_weights(weights_file)
+
+    # Make sure model and model2 variables are in sync when initialized.
+    for model_v, model2_v in zip(model.variables, model2.variables):
+      self.assertAllClose(model_v.numpy(), model2_v.numpy())
+
+    def compute_loss(images, targets):
+      outputs = model(images)
+      return math_ops.reduce_sum(outputs - targets)
+
+    @def_function.function
+    def train_step_without_nested_tf_function(inputs):
+
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          loss = compute_loss(images, targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+
+      distribution.experimental_run_v2(step_fn, args=(inputs,))
+
+    @def_function.function
+    def compute_loss2(images, targets):
+      outputs = model2(images)
+      return math_ops.reduce_sum(outputs - targets)
+
+    @def_function.function
+    def train_step_with_nested_tf_function(inputs):
+
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          loss = compute_loss2(images, targets)
+        grads = tape.gradient(loss, model2.variables)
+        optimizer.apply_gradients(zip(grads, model2.variables))
+
+      distribution.experimental_run_v2(step_fn, args=(inputs,))
+
+    inputs = next(input_iterator)
+
+    train_step_without_nested_tf_function(inputs)
+    train_step_with_nested_tf_function(inputs)
+
+    # Make sure model and model2 variables are still in sync.
+    for model_v, model2_v in zip(model.variables, model2.variables):
+      self.assertAllClose(model_v.numpy(), model2_v.numpy())
+
+  def _get_dataset(self):
+    inputs = np.zeros((10, 3), dtype=np.float32)
+    targets = np.zeros((10, 4), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10, drop_remainder=True)
+    return dataset
+
+  def _get_model(self):
+    x = keras.layers.Input(shape=(3,), name="input")
+    y = keras.layers.Dense(4, name="dense")(x)
+    model = keras.Model(x, y)
+    return model
 
 
 if __name__ == "__main__":

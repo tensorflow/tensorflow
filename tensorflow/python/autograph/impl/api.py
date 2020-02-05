@@ -43,6 +43,7 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.utils import ag_logging as logging
+from tensorflow.python.eager import function
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -338,7 +339,7 @@ def _call_unconverted(f, args, kwargs, options, update_cache=True):
   if update_cache:
     conversion.cache_whitelisted(f, options)
 
-  if inspect_utils.istfmethodtarget(f):
+  if inspect.ismethod(f) and isinstance(f.__self__, function.TfMethodTarget):
     return f.__self__.call(args, kwargs)
 
   if kwargs is not None:
@@ -500,16 +501,15 @@ def converted_call(f,
   # TODO(mdan): Move this entire block inside to_graph.
   try:  # Begin of transformation error guards
 
-    if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
-      # Regular functions
+    if inspect.ismethod(f) or inspect.isfunction(f):
       target_entity = f
-      f_self = inspect_utils.getmethodself(f)
+      effective_args = args
 
-      # TODO(b/119246461): This may be more elegantly handled using __get__?
+      f_self = getattr(f, '__self__', None)
       if f_self is not None:
-        effective_args = (f_self,) + args
-      else:
-        effective_args = args
+        if isinstance(f_self, function.TfMethodTarget):
+          f_self = f_self.target
+        effective_args = (f_self,) + effective_args
 
     elif hasattr(f, '__class__') and hasattr(f.__class__, '__call__'):
       # Callable objects. Dunder methods have special lookup rules, see:
@@ -521,7 +521,7 @@ def converted_call(f,
       target_entity = f
       raise NotImplementedError('unknown callable type "%s"' % type(f))
 
-    if not tf_inspect.isclass(target_entity):
+    if not inspect.isclass(target_entity):
       if not hasattr(target_entity, '__code__'):
         logging.log(2, 'Permanently whitelisted: %s: native binding',
                     target_entity)

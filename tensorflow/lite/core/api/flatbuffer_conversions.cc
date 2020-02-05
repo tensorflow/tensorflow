@@ -476,6 +476,12 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* schema_params =
               op->builtin_options_as_ResizeBilinearOptions()) {
         params->align_corners = schema_params->align_corners();
+        params->half_pixel_centers = schema_params->half_pixel_centers();
+      } else {
+        // Some older models did not populate the ResizeBilinearOptions field in
+        // the flatbuffer, so ensure it's set to a sensible default.
+        params->align_corners = false;
+        params->half_pixel_centers = false;
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;

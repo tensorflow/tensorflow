@@ -225,23 +225,45 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo));
 
-  // The size of each replica group must match the number of operands to the
-  // all-to-all.
+  auto* all_to_all = Cast<HloAllToAllInstruction>(hlo);
+  TF_RET_CHECK(all_to_all != nullptr);
+  if (all_to_all->split_dimension()) {
+    if (hlo->replica_groups().empty()) {
+      return InternalError(
+          "An array all-to-all must have an explicit replica_groups config");
+    }
+  }
+
+  // The size of each replica group must be the same (the split count of the
+  // operaion). In case the default replica group is used (empty replica group,
+  // must not be an array all-to-all, as checked above), infer from the number
+  // of operands.
+  const int64 split_count = hlo->replica_groups().empty()
+                                ? hlo->operand_count()
+                                : hlo->replica_groups()[0].replica_ids_size();
   for (const ReplicaGroup& g : hlo->replica_groups()) {
-    if (g.replica_ids_size() != hlo->operand_count()) {
+    if (g.replica_ids_size() != split_count) {
       return InternalError(
           "Replica group has size %d, but all replica groups in an all-to-all "
-          "with N operands must have size N: %s",
+          "must have size N: %s",
           g.replica_ids_size(), hlo->ToString());
     }
   }
 
-  std::vector<const Shape*> operand_shapes;
-  for (const HloInstruction* operand : hlo->operands()) {
-    operand_shapes.push_back(&operand->shape());
+  if (all_to_all->split_dimension()) {
+    TF_RET_CHECK(hlo->operand_count() == 1);
+    return CheckShape(
+        hlo, ShapeInference::InferAllToAllShape(
+                 hlo->operand(0)->shape(), *all_to_all->split_dimension(),
+                 *all_to_all->split_dimension(), split_count));
+  } else {
+    std::vector<const Shape*> operand_shapes;
+    for (const HloInstruction* operand : hlo->operands()) {
+      operand_shapes.push_back(&operand->shape());
+    }
+    return CheckShape(hlo,
+                      ShapeInference::InferAllToAllTupleShape(operand_shapes));
   }
-  return CheckShape(hlo,
-                    ShapeInference::InferAllToAllTupleShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandlePartitionId(HloInstruction* hlo) {
@@ -560,6 +582,15 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
         PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
         PrimitiveType_Name(bitcast->shape().element_type()));
   }
+  if (layout_sensitive_ &&
+      shape_size_function_(bitcast->shape()) !=
+          shape_size_function_(bitcast->operand(0)->shape())) {
+    return InternalError(
+        "Bitcast cannot have different shape sizes of output (%d) and operand "
+        "(%d)",
+        shape_size_function_(bitcast->shape()),
+        shape_size_function_(bitcast->operand(0)->shape()));
+  }
   return Status::OK();
 }
 
@@ -817,11 +848,24 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
 Status ShapeVerifier::HandleCopyStart(HloInstruction* copy_start) {
   return CheckShape(copy_start,
                     ShapeUtil::MakeTupleShape({copy_start->operand(0)->shape(),
+                                               copy_start->operand(0)->shape(),
                                                ShapeUtil::MakeShape(U32, {})}),
                     /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
+  const Shape& operand_shape = copy_done->operand(0)->shape();
+  const Shape& dest_shape = ShapeUtil::GetTupleElementShape(operand_shape, 0);
+  const Shape& src_shape = ShapeUtil::GetTupleElementShape(operand_shape, 1);
+  if (!ShapesSame(dest_shape, src_shape,
+                  /*minor_to_major_only=*/false,
+                  /*ignore_memory_space=*/true)) {
+    return InternalError(
+        "Source and destination buffers in CopyDone arguments need to be the "
+        "same shape found %s and %s\n%s",
+        StringifyShape(dest_shape), StringifyShape(src_shape),
+        copy_done->ToString());
+  }
   return CheckShape(copy_done, ShapeUtil::GetTupleElementShape(
                                    copy_done->operand(0)->shape(), 0));
 }

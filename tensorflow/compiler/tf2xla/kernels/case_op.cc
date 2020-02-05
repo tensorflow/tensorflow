@@ -41,33 +41,6 @@ XlaCaseOp::XlaCaseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
   }
 }
 
-namespace {
-
-Status ConvertCompileTimeConstArgumentsToConst(
-    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args) {
-  for (int i = 0; i < args->size(); i++) {
-    XlaCompiler::Argument& arg = (*args)[i];
-    const XlaExpression& expression = ctx->InputExpression(i + 1);
-    // If the input tensor is a compile time constant build a kConstant type
-    // argument.
-    if (arg.kind == XlaCompiler::Argument::kParameter) {
-      // NOTE: We can not simply check that this is Kind::kConstant because
-      // this could be the output of a MetadataOnly op e.g. Size.
-      xla::StatusOr<absl::optional<Tensor>> maybe_constant =
-          expression.ResolveConstant(ctx->compiler()->client());
-      if (maybe_constant.ok() && maybe_constant.ValueOrDie().has_value()) {
-        arg.kind = XlaCompiler::Argument::kConstant;
-        arg.type = expression.dtype();
-        arg.constant_value = std::move(maybe_constant.ValueOrDie().value());
-        arg.shape = expression.GetShape().ValueOrDie();
-      }
-    }
-  }
-  return Status::OK();
-}
-
-}  // namespace
-
 // TODO(b/35949885): There is duplication here with the handling of the
 // while_op/if_op. Refactor the common code out/rework.
 void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
@@ -116,17 +89,36 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   if (propagate_compile_time_consts_) {
+    std::vector<std::vector<bool>> case_branch_must_be_const_nodes(
+        num_branches);
+    std::vector<const FunctionBody*> case_bodies(num_branches);
+    for (int branch_idx = 0; branch_idx < num_branches; branch_idx++) {
+      OP_REQUIRES_OK(ctx, FindMustBeConstNodes(
+                              ctx, branches_[branch_idx],
+                              &case_branch_must_be_const_nodes[branch_idx],
+                              &case_bodies[branch_idx]));
+    }
+
     // Replaces `kParameter` type args in `arguments` with `kConstant` if
     // the op input corresponding to that arg is a compile-time const. This
     // is necessary to propagate compile time consts to ops in the branch
     // functions.
-    // Note: Propagating "all" compile-time constants may not be necessary. We
-    // should ideally only propagate consts which are required to be compile
-    // time constants in the branch functions. But that would require calling
-    // BackwardsConstAnalysis here which would be expensive. However, if we
-    // start hitting memory issues we should revisit this.
-    OP_REQUIRES_OK(ctx,
-                   ConvertCompileTimeConstArgumentsToConst(ctx, &arguments));
+    auto arg_is_parameter = [&](int arg_idx) {
+      if (arguments[arg_idx].kind != XlaCompiler::Argument::kParameter) {
+        return false;
+      }
+      for (int branch_idx = 0; branch_idx < num_branches; branch_idx++) {
+        if (!case_branch_must_be_const_nodes
+                [branch_idx]
+                [case_bodies[branch_idx]->arg_nodes[arg_idx]->id()]) {
+          return false;
+        }
+      }
+      return true;
+    };
+    ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
+                                            /*xla_expression_offset=*/1,
+                                            arg_is_parameter);
   }
 
   // Compile each branch of the conditional.

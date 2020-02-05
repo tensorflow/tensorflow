@@ -630,6 +630,12 @@ class TPUVariableMixin(object):
     else:
       return self._read_variable_op()
 
+  def value(self):
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self).value()
+    else:
+      return self._read_variable_op()
+
   @property
   def constraint(self):
     return self.primary.constraint
@@ -728,8 +734,7 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
 
 
 def create_mirrored_variable(  # pylint: disable=missing-docstring
-    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls,
-    *args, **kwargs):
+    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls, **kwargs):
   # Figure out what collections this variable should be added to.
   # We'll add the MirroredVariable to those collections instead.
   var_collections = kwargs.pop("collections", None)
@@ -772,7 +777,7 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
   # was never recorded on the tape instead of having to do this manually
   # here.
   with tape.stop_recording():
-    value_list = real_mirrored_creator(*args, **kwargs)
+    value_list = real_mirrored_creator(**kwargs)
     var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
     result = var_cls(strategy, value_list, aggregation)
 
@@ -841,7 +846,22 @@ class MirroredVariable(DistributedVariable, Mirrored):
           raise ValueError(
               _aggregation_error_msg.format(variable_type="MirroredVariable"))
 
-        def merge_fn(strategy, value, *other_args, **other_kwargs):
+        def merge_fn(strategy, value, *other_args, **other_kwargs):  # pylint: disable=missing-docstring
+          # Don't allow MEAN with non float dtype, since it may cause unexpected
+          # precision loss. Python3 and NumPy automatically upcast integers to
+          # float in division, but we should always preserve the type.
+          #
+          # Note that to be backward compatible we allow the case when the value
+          # is *always* the same on each replica. I.E. value is not a
+          # PerReplica. Refer to regroup() to see how values are grouped.
+          if self._aggregation == vs.VariableAggregation.MEAN and (
+              not self.dtype.is_floating) and isinstance(value, PerReplica):
+            raise ValueError(
+                "Cannot update non-float variables with "
+                "tf.VariableAggregation.MEAN aggregation in replica context. "
+                "Either change the variable dtype to float or update it in "
+                "cross-replica context.")
+
           v = _apply_aggregation(strategy, value, self._aggregation, self)
           return strategy.extended.update(
               self, f, args=(v,) + other_args, kwargs=other_kwargs)
@@ -1066,6 +1086,14 @@ class SyncOnReadVariable(DistributedVariable):
       else:
         return self.get().assign(*args, **kwargs)
 
+  def value(self):
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      if distribution_strategy_context.in_cross_replica_context():
+        return self._get_cross_replica()
+      else:
+        # _get_closest() returns a Variable.
+        return self._get_closest().value()
+
   @property
   def aggregation(self):
     return self._aggregation
@@ -1182,10 +1210,10 @@ def regroup(values, wrap_class=PerReplica):
       assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
       assert set(v.keys()) == v0keys, ("v[0].keys: %s  v[i].keys: %s" %
                                        (v0keys, set(v.keys())))
-    return {
+    return type(v0)(**{
         key: regroup(tuple(v[key] for v in values), wrap_class)
         for key in v0keys
-    }
+    })
 
   # If exactly the same object across all devices, return it unwrapped.
   same_id = True
@@ -1556,11 +1584,15 @@ class AggregatingVariable(variables_lib.Variable):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
 
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    return ops.convert_to_tensor(self.get(), dtype=dtype, name=name,
+                                 as_ref=as_ref)
+
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
 def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
-  return ops.convert_to_tensor(var.get(), dtype=dtype, name=name, as_ref=as_ref)
+  return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
 
 
 ops.register_tensor_conversion_function(AggregatingVariable,

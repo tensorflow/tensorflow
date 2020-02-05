@@ -3,7 +3,6 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "google/protobuf/any.proto";
-import "tensorflow/core/profiler/protobuf/hardware_types.proto";
 
 // Used for both step duration and Op duration.
 message StepSummary {
@@ -108,7 +107,7 @@ message GenericStepTimeBreakdown {
 
 message InputPipelineAnalysisResult {
   // Hardware type.
-  HardwareType hardware_type = 1;
+  string hardware_type = 9;
   // Summary of all step duration across all cores.
   StepSummary step_time_summary = 2;
   // Summary of all input-related stall as percentage of step duration.
@@ -124,4 +123,5 @@ message InputPipelineAnalysisResult {
   // Breakdown of the step time. Can be unpacked into a
   // GenericStepTimeBreakdown.
   google.protobuf.Any step_time_breakdown = 8;
+  reserved 1;
 }

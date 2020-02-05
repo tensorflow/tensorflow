@@ -14,11 +14,11 @@
 
 # This becomes the BUILD file for @local_config_cc// under Windows.
 
+package(default_visibility = ["//visibility:public"])
+
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_toolchain", "cc_toolchain_suite")
 load(":windows_cc_toolchain_config.bzl", "cc_toolchain_config")
 load(":armeabi_cc_toolchain_config.bzl", "armeabi_cc_toolchain_config")
-
-package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "malloc",
@@ -81,8 +81,6 @@ cc_toolchain_config(
     compiler = "msys-gcc",
     cpu = "x64_windows",
     cxx_builtin_include_directories = [
-        # This is a workaround for https://github.com/bazelbuild/bazel/issues/5087.
-        "C:\\botcode\\w",
         "c:/tools/msys64/usr/",
     ],
     dbg_mode_debug_flag = "/DEBUG:FULL",
@@ -143,8 +141,6 @@ cc_toolchain_config(
     compiler = "mingw-gcc",
     cpu = "x64_windows",
     cxx_builtin_include_directories = [
-        # This is a workaround for https://github.com/bazelbuild/bazel/issues/5087.
-        "C:\\botcode\\w",
         "c:/tools/msys64/mingw64/",
     ],
     dbg_mode_debug_flag = "/DEBUG:FULL",
@@ -205,9 +201,7 @@ cc_toolchain_config(
     compiler = "msvc-cl",
     cpu = "x64_windows",
     cxx_builtin_include_directories = [
-        # This is a workaround for https://github.com/bazelbuild/bazel/issues/5087.
-        "C:\\botcode\\w",
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.24.28314\\include",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\VC\\Tools\\MSVC\\14.25.28508\\include",
         "C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\include\\um",
         "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\ucrt",
         "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\shared",
@@ -219,23 +213,23 @@ cc_toolchain_config(
     default_link_flags = ["/MACHINE:X64"],
     fastbuild_mode_debug_flag = "/DEBUG:FASTLINK",
     host_system_name = "local",
-    msvc_cl_path = "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/cl.exe",
-    msvc_env_include = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.24.28314\\include;C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\include\\um;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\ucrt;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\shared;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\um;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\winrt;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\cppwinrt",
-    msvc_env_lib = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.24.28314\\lib\\x64;C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\lib\\um\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.17763.0\\ucrt\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.17763.0\\um\\x64;",
-    msvc_env_path = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.24.28314\\bin\\HostX64\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools\\x64\\;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.17763.0\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\\\MSBuild\\Current\\Bin;C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\Tools\\;;C:\\Windows\\system32",
+    msvc_cl_path = "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/cl.exe",
+    msvc_env_include = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\VC\\Tools\\MSVC\\14.25.28508\\include;C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\include\\um;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\ucrt;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\shared;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\um;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\winrt;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\cppwinrt",
+    msvc_env_lib = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\VC\\Tools\\MSVC\\14.25.28508\\lib\\x64;C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\lib\\um\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.17763.0\\ucrt\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.17763.0\\um\\x64;",
+    msvc_env_path = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\VC\\Tools\\MSVC\\14.25.28508\\bin\\HostX64\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools\\x64\\;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.17763.0\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\\\MSBuild\\Current\\Bin;C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\Common7\\IDE\\;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\Common7\\Tools\\;;C:\\Windows\\system32",
     msvc_env_tmp = "C:\\Users\\ContainerAdministrator\\AppData\\Local\\Temp",
-    msvc_lib_path = "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/lib.exe",
-    msvc_link_path = "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/link.exe",
-    msvc_ml_path = "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/ml64.exe",
+    msvc_lib_path = "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/lib.exe",
+    msvc_link_path = "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/link.exe",
+    msvc_ml_path = "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/ml64.exe",
     target_libc = "msvcrt",
     target_system_name = "local",
     tool_paths = {
-        "ar": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/lib.exe",
-        "ml": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/ml64.exe",
-        "cpp": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/cl.exe",
-        "gcc": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/cl.exe",
+        "ar": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/lib.exe",
+        "ml": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/ml64.exe",
+        "cpp": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/cl.exe",
+        "gcc": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/cl.exe",
         "gcov": "wrapper/bin/msvc_nop.bat",
-        "ld": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/HostX64/x64/link.exe",
+        "ld": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.25.28508/bin/HostX64/x64/link.exe",
         "nm": "wrapper/bin/msvc_nop.bat",
         "objcopy": "wrapper/bin/msvc_nop.bat",
         "objdump": "wrapper/bin/msvc_nop.bat",
@@ -279,10 +273,7 @@ cc_toolchain_config(
     abi_version = "local",
     compiler = "clang-cl",
     cpu = "x64_windows",
-    cxx_builtin_include_directories = [
-        # This is a workaround for https://github.com/bazelbuild/bazel/issues/5087.
-        "C:\\botcode\\w",
-    ],
+    cxx_builtin_include_directories = [],
     dbg_mode_debug_flag = "/DEBUG",
     default_link_flags = [
         "/MACHINE:X64",

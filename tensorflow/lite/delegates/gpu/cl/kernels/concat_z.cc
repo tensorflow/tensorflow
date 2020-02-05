@@ -168,9 +168,17 @@ Status ConcatZ::Compile(const CreationContext& creation_context) {
   const auto code =
       GetConcatKernelCode(definition_, channels_, linked_operations_);
   std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F32 &&
-      creation_context.device->IsPowerVR() && !IsAllChannelsX4(channels_)) {
+  if (creation_context.device->IsPowerVR() &&
+      definition_.precision == CalculationsPrecision::F32 &&
+      !IsAllChannelsX4(channels_)) {
     // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
+  if (creation_context.device->IsAMD() &&
+      definition_.precision != CalculationsPrecision::F32 &&
+      definition_.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
+      !IsAllChannelsX4(channels_)) {
+    // BUG, some AMD gpus crashe without it
     options.push_back(CompilerOptions::CL_OPT_DISABLE);
   }
   return creation_context.cache->GetOrCreateCLKernel(

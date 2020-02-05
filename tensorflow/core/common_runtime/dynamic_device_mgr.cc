@@ -26,6 +26,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+DynamicDeviceMgr::DynamicDeviceMgr() : cpu_device_(nullptr) {}
+
 DynamicDeviceMgr::~DynamicDeviceMgr() {
   // Release resources ahead of destroying the device manager as the resource
   // destructors (e.g. ~IteratorResource) assume devices still exist.
@@ -143,11 +145,20 @@ Status DynamicDeviceMgr::AddDevices(
 
 Status DynamicDeviceMgr::RemoveDevices(std::vector<Device*> devices) {
   mutex_lock l(devices_mu_);
+
   for (const auto& d : devices) {
+    if (d == cpu_device_) {
+      TF_RETURN_IF_ERROR(
+          errors::InvalidArgument("Can not remove HostCPU device ", d->name()));
+    }
     auto it = dynamic_devices_.find(d);
     if (it == dynamic_devices_.end()) {
       TF_RETURN_IF_ERROR(errors::InvalidArgument("Unknown device ", d->name()));
     }
+  }
+
+  for (const auto& d : devices) {
+    auto it = dynamic_devices_.find(d);
 
     // Clear registration of (1) full name and (2) canonical name
     for (const string& name :
@@ -174,6 +185,22 @@ Status DynamicDeviceMgr::RemoveDevicesByName(
     devices_to_remove.emplace_back(device);
   }
   return RemoveDevices(devices_to_remove);
+}
+
+Device* DynamicDeviceMgr::HostCPU() const {
+  mutex_lock l(devices_mu_);
+  if (dynamic_devices_.find(cpu_device_) != dynamic_devices_.end()) {
+    return cpu_device_;
+  }
+  cpu_device_ = nullptr;
+  for (const auto& pair : dynamic_devices_) {
+    std::cerr << "WOWZA: " << pair.first << std::endl;
+    if (pair.first->device_type() == DEVICE_CPU) {
+      cpu_device_ = pair.first;
+      break;
+    }
+  }
+  return cpu_device_;
 }
 
 }  // namespace tensorflow

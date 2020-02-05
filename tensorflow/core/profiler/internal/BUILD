@@ -528,7 +528,7 @@ tf_cc_test(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "profiler_interface.h",
     ],
