@@ -57,6 +57,7 @@ tf_cc_test(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:AffineDialectRegistration",
         "@llvm-project//mlir:AffineToStandardTransforms",
+        "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",

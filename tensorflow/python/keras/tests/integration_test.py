@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.utils import np_utils
+from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.platform import test
@@ -232,18 +233,20 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
         num_classes=2)
     y_train = np_utils.to_categorical(y_train)
 
-    model = keras.models.Sequential()
-    model.add(keras.layers.RNN(rnn_cell.LSTMCell(5), return_sequences=True,
-                               input_shape=x_train.shape[1:]))
-    model.add(keras.layers.RNN(rnn_cell.GRUCell(y_train.shape[-1],
-                                                activation='softmax',
-                                                dtype=dtypes.float32)))
-    model.compile(
-        loss='categorical_crossentropy',
-        optimizer=keras.optimizer_v2.adam.Adam(0.005),
-        metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    with base_layer.keras_style_scope():
+      model = keras.models.Sequential()
+      model.add(keras.layers.RNN(rnn_cell.LSTMCell(5), return_sequences=True,
+                                 input_shape=x_train.shape[1:]))
+      model.add(keras.layers.RNN(rnn_cell.GRUCell(y_train.shape[-1],
+                                                  activation='softmax',
+                                                  dtype=dtypes.float32)))
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer=keras.optimizer_v2.adam.Adam(0.005),
+          metrics=['acc'],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
+
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)

@@ -27,7 +27,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.saving import model_architectures
+from tensorflow.python.keras.tests import model_architectures
 from tensorflow.python.platform import test
 
 

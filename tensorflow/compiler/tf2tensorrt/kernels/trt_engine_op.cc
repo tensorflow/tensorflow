@@ -405,8 +405,13 @@ Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& shapes) {
 
   if (use_implicit_batch_) {
     const int batch_size = shapes[0].dim_size(0);
+    if (batch_size < 1) {
+      return errors::InvalidArgument(
+          "Incorrect batch dimension, for ", name(),
+          ": ", TensorShapeUtils::ShapeListString(shapes));
+    }
     for (const TensorShape& shape : shapes) {
-      if (shape.dims() < 1 || batch_size != shape.dim_size(0)) {
+      if (batch_size != shape.dim_size(0)) {
         return errors::InvalidArgument(
             "Input shapes are inconsistent on the batch dimension, for ", name(),
             ": ", TensorShapeUtils::ShapeListString(shapes));

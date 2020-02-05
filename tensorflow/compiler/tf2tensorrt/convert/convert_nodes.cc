@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -2397,9 +2398,7 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // For dynamic input shapes, we need to use TRT ops to build the new shape.
-  const bool is_dynamic =
-      std::count(input_dims.begin(), input_dims.end(), -1) > 0;
-  if (is_dynamic) {
+  if (absl::c_any_of(input_dims, [](int i){return i==-1;})) {
        return errors::Unimplemented(
         "Squeeze is not implemented for dynamic input shapes");
   }
@@ -2434,11 +2433,12 @@ Status ConvertSqueeze(OpConverterParams* params) {
   std::vector<int> trt_axes;
   trt_axes.reserve(squeeze_dims.size());
   for (int tf_axis : squeeze_dims) {
-    // Make sure axis is valid.
+    // If the axis is valid, then convert it to TRT axis, otherwise abort
+    // conversion.
     int trt_axis;
     TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
                                    params->use_implicit_batch, &trt_axis));
-    // Make sure target dimension is size 1.
+    // Make sure target dimension is size 1 or unknown size (-1)
     if (input_dims[trt_axis] != -1 && input_dims[trt_axis] != 1) {
       return errors::InvalidArgument(
           "Dimension ", tf_axis, " with size ", input_dims[trt_axis],

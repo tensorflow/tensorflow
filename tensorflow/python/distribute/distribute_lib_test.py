@@ -77,7 +77,7 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
       return fn(*args, **kwargs)
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     return _get_test_variable(kwargs["name"], kwargs["synchronization"],
                               kwargs["aggregation"])
 
@@ -432,8 +432,8 @@ class _TestStrategy2(distribute_lib.Strategy):
 
 class _TestExtended2(_TestExtended):
 
-  def _create_variable(self, next_creator, *args, **kwargs):
-    return next_creator(*args, **kwargs)
+  def _create_variable(self, next_creator, **kwargs):
+    return next_creator(**kwargs)
 
 
 class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):

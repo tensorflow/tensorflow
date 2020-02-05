@@ -641,7 +641,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       const std::vector<ReplicaGroup>& replica_groups,
-      const absl::optional<int64>& channel_id);
+      const absl::optional<int64>& channel_id,
+      const absl::optional<int64>& split_dimension = absl::nullopt);
 
   // Creates a communication instructions that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,

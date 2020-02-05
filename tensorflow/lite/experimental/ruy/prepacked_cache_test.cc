@@ -156,7 +156,7 @@ TEST(PrepackedCacheTest, TestCacheOnCacheable) {
   dst.data = dst_data;
 
   ruy::BasicSpec<float, float> spec;
-  // Perform the multiplication and confirm no caching occured.
+  // Perform the multiplication and confirm no caching occurred.
   ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, &context, &dst);
   EXPECT_EQ(cache->TotalSize(), 0);
 

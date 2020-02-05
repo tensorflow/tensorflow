@@ -34,8 +34,6 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   XSpace space;
   XPlane* host_plane = space.add_planes();
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
   host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
@@ -63,8 +61,6 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
-  device_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
   device_plane_builder.ReserveLines(1);
 
   auto stream = device_plane_builder.GetOrCreateLine(0);

@@ -167,11 +167,15 @@ class EagerContext : public core::RefCounted {
   // devices, and the context currently allows soft device placement, a suitable
   // device not matching `preferred` will be chosen.
   //
+  // The `dtype` parameter specifies the operation's result data type, if
+  // known. Setting it to DT_INVALID will make this method not use the data type
+  // for its decisions.
+  //
   // The chosen device is stored in the `device` argument. The argument is not
   // modified unless this method returns `Status::OK()`.
-  Status SelectDevice(const DeviceNameUtils::ParsedName& preferred,
+  Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const PrioritizedDeviceTypeVector& supported,
-                      Device** device) const;
+                      const DataType dtype, Device** device) const;
 
   // Sets the implicit copy policy for the current thread.
   void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);

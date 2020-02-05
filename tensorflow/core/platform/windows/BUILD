@@ -210,6 +210,7 @@ cc_library(
 
 cc_library(
     name = "wide_char",
+    srcs = ["wide_char.cc"],
     hdrs = ["wide_char.h"],
     tags = [
         "manual",

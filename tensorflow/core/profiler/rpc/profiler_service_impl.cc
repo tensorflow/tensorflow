@@ -61,6 +61,11 @@ void AddToolData(absl::string_view tool_name, const Proto& tool_output,
   tool_output.SerializeToString(tool_data->mutable_data());
 }
 
+// Returns the tool name with extension.
+std::string ToolName(absl::string_view tool) {
+  return absl::StrCat(tool, ".pb");
+}
+
 Status CollectDataToResponse(const ProfileRequest& req,
                              ProfilerSession* profiler, uint64 start_time_ns,
                              ProfileResponse* response) {
@@ -83,17 +88,17 @@ Status CollectDataToResponse(const ProfileRequest& req,
     if (tools.contains(kOverviewPage)) {
       profiler::OverviewPage overview_page_db =
           profiler::ConvertOpStatsToOverviewPage(op_stats, hw_type);
-      AddToolData(kOverviewPage, overview_page_db, response);
+      AddToolData(ToolName(kOverviewPage), overview_page_db, response);
     }
     if (tools.contains(kInputPipeline)) {
       profiler::InputPipelineAnalysisResult input_pipeline_analysis =
           profiler::ConvertOpStatsToInputPipelineAnalysis(op_stats, hw_type);
-      AddToolData(kInputPipeline, input_pipeline_analysis, response);
+      AddToolData(ToolName(kInputPipeline), input_pipeline_analysis, response);
     }
     if (tools.contains(kTensorflowStats)) {
       profiler::TfStatsDatabase tf_stats_db =
           profiler::ConvertOpStatsToTfStats(op_stats);
-      AddToolData(kTensorflowStats, tf_stats_db, response);
+      AddToolData(ToolName(kTensorflowStats), tf_stats_db, response);
     }
   }
   return Status::OK();
