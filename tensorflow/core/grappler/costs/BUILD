@@ -36,6 +36,25 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "analytical_cost_estimator.h",
+        "cost_estimator.h",
+        "graph_memory.h",
+        "graph_properties.h",
+        "measuring_cost_estimator.h",
+        "op_context.h",
+        "op_level_cost_estimator.h",
+        "utils.h",
+        "virtual_placer.h",
+        "virtual_scheduler.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "graph_properties",
     srcs = ["graph_properties.cc"],

@@ -7,6 +7,8 @@ option java_outer_classname = "GraphDebugInfoProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+
 message GraphDebugInfo {
   // This represents a file/line location in the source code.
   message FileLineCol {

@@ -30,6 +30,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -1621,7 +1622,8 @@ name=None))
                  map_func,
                  cycle_length=AUTOTUNE,
                  block_length=1,
-                 num_parallel_calls=None):
+                 num_parallel_calls=None,
+                 deterministic=None):
     """Maps `map_func` across this dataset, and interleaves the results.
 
     For example, you can use `Dataset.interleave()` to process many input files
@@ -1669,9 +1671,21 @@ name=None))
      5, 5]
 
     NOTE: The order of elements yielded by this transformation is
-    deterministic, as long as `map_func` is a pure function. If
-    `map_func` contains any stateful operations, the order in which
-    that state is accessed is undefined.
+    deterministic, as long as `map_func` is a pure function and
+    `deterministic=True`. If `map_func` contains any stateful operations, the
+    order in which that state is accessed is undefined.
+
+    Performance can often be improved by setting `num_parallel_calls` so that
+    `interleave` will use multiple threads to fetch elements. If determinism
+    isn't required, it can also improve performance to set
+    `deterministic=False`.
+
+    >>> filenames = ["/var/data/file1.txt", "/var/data/file2.txt",
+    ...              "/var/data/file3.txt", "/var/data/file4.txt"]
+    >>> dataset = tf.data.Dataset.from_tensor_slices(filenames)
+    >>> dataset = dataset.interleave(lambda x: tf.data.TFRecordDataset(x),
+    ...     cycle_length=4, num_parallel_calls=tf.data.experimental.AUTOTUNE,
+    ...     deterministic=False)
 
     Args:
       map_func: A function mapping a dataset element to a dataset.
@@ -1688,6 +1702,12 @@ name=None))
         from cycle elements synchronously with no parallelism. If the value
         `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
+      deterministic: (Optional.) A boolean controlling whether determinism
+        should be traded for performance by allowing elements to be produced out
+        of order.  If `deterministic` is `None`, the
+        `tf.data.Options.experimental_deterministic` dataset option (`True` by
+        default) is used to decide whether to produce elements
+        deterministically.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1696,7 +1716,8 @@ name=None))
       return InterleaveDataset(self, map_func, cycle_length, block_length)
     else:
       return ParallelInterleaveDataset(self, map_func, cycle_length,
-                                       block_length, num_parallel_calls)
+                                       block_length, num_parallel_calls,
+                                       deterministic)
 
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
@@ -2334,9 +2355,11 @@ class DatasetV1(DatasetV2):
                  map_func,
                  cycle_length=AUTOTUNE,
                  block_length=1,
-                 num_parallel_calls=None):
-    return DatasetV1Adapter(super(DatasetV1, self).interleave(
-        map_func, cycle_length, block_length, num_parallel_calls))
+                 num_parallel_calls=None,
+                 deterministic=None):
+    return DatasetV1Adapter(
+        super(DatasetV1, self).interleave(map_func, cycle_length, block_length,
+                                          num_parallel_calls, deterministic))
 
   @functools.wraps(DatasetV2.filter)
   def filter(self, predicate):
@@ -4016,8 +4039,13 @@ class InterleaveDataset(UnaryDataset):
 class ParallelInterleaveDataset(UnaryDataset):
   """A `Dataset` that maps a function over its input and interleaves the result."""
 
-  def __init__(self, input_dataset, map_func, cycle_length, block_length,
-               num_parallel_calls):
+  def __init__(self,
+               input_dataset,
+               map_func,
+               cycle_length,
+               block_length,
+               num_parallel_calls,
+               deterministic=None):
     """See `Dataset.interleave()` for details."""
     self._input_dataset = input_dataset
     self._map_func = StructuredFunctionWrapper(
@@ -4033,14 +4061,32 @@ class ParallelInterleaveDataset(UnaryDataset):
         block_length, dtype=dtypes.int64, name="block_length")
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-    variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v2(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-        self._cycle_length,
-        self._block_length,
-        self._num_parallel_calls,
-        f=self._map_func.function,
-        **self._flat_structure)
+    if deterministic is None:
+      deterministic_string = "default"
+    elif deterministic:
+      deterministic_string = "true"
+    else:
+      deterministic_string = "false"
+
+    if deterministic is not None or compat.forward_compatible(2020, 2, 20):
+      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v3(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
+          self._cycle_length,
+          self._block_length,
+          self._num_parallel_calls,
+          f=self._map_func.function,
+          deterministic=deterministic_string,
+          **self._flat_structure)
+    else:
+      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v2(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
+          self._cycle_length,
+          self._block_length,
+          self._num_parallel_calls,
+          f=self._map_func.function,
+          **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 

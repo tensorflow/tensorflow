@@ -414,10 +414,12 @@ LogicalResult FormClustersInBlock(Block* block,
     auto cluster_metadata = metadata_map.find(cluster.getFirst());
 
     // No TPUReplicateMetadata for a `_tpu_replicate` attribute.
-    if (cluster_metadata == metadata_map.end())
-      return cluster_ops.front()->emitError()
-             << "TPUReplicateMetadata for associated '" << kTPUReplicateAttr
-             << "' attribute '" << cluster.getFirst() << "' is missing";
+    if (cluster_metadata == metadata_map.end()) {
+      cluster_ops.front()->emitWarning()
+          << "TPUReplicateMetadata for associated '" << kTPUReplicateAttr
+          << "' attribute '" << cluster.getFirst() << "' is missing";
+      continue;
+    }
 
     llvm::SmallSetVector<Operation*, 8> preceding_users =
         CollectClusterPrecedingUsers(block, cluster_ops);

@@ -1617,6 +1617,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "fusion_node_indexing_evaluation",
+    srcs = ["fusion_node_indexing_evaluation.cc"],
+    hdrs = ["fusion_node_indexing_evaluation.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "fusion_node_indexing_evaluation_test",
+    srcs = ["fusion_node_indexing_evaluation_test.cc"],
+    deps = [
+        ":fusion_node_indexing_evaluation",
+        ":hlo",
+        ":hlo_parser",
+        ":instruction_fusion",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
 tf_cc_test(
     name = "hlo_creation_utils_test",
     srcs = ["hlo_creation_utils_test.cc"],

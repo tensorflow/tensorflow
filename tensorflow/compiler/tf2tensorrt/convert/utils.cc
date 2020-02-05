@@ -118,30 +118,19 @@ string DebugString(const nvinfer1::ITensor& tensor) {
 }
 
 string DebugString(const std::vector<nvinfer1::Dims>& dimvec) {
-  string out = "[";
-  for (auto dims: dimvec) {
-    StrAppend(&out, DebugString(dims));
-  }
-  StrAppend(&out, "]");
-  return out;
+  return absl::StrCat("[",
+                      absl::StrJoin(dimvec, ",",
+                                    [](std::string* out, nvinfer1::Dims in)
+                                    {out->append(DebugString(in));}),
+                      "]");
 }
 
 string DebugString(const std::vector<TensorShape>& shapes) {
-  string out = "[";
-  for (auto shape: shapes) {
-    StrAppend(&out, shape.DebugString());
-  }
-  StrAppend(&out, "]");
-  return out;
+  return TensorShapeUtils::ShapeListString(shapes);
 }
 
 string DebugString(const std::vector<PartialTensorShape>& shapes) {
-  string out = "[";
-  for (auto shape: shapes) {
-    StrAppend(&out, shape.DebugString());
-  }
-  StrAppend(&out, "]");
-  return out;
+  return PartialTensorShapeUtils::PartialShapeListString(shapes);
 }
 #endif
 

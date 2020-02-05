@@ -30,8 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import model_subclassing_test_util as model_util
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.tests import model_subclassing_test_util as model_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops

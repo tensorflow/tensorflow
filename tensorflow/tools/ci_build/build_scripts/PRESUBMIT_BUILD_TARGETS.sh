@@ -15,4 +15,4 @@
 #!/bin/bash
 set -x
 
-DEFAULT_BAZEL_TARGETS="//tensorflow/...  //tensorflow/compiler/xla/python/tpu_driver/... -//tensorflow/compiler/tests/... -//tensorflow/compiler/tf2tensorrt/..."
+DEFAULT_BAZEL_TARGETS="//tensorflow/...  //tensorflow/compiler/xla/python/tpu_driver/... -//tensorflow/compiler/tests/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/..."

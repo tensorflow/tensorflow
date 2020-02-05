@@ -268,22 +268,6 @@ PyLocalClient::PyLocalClient(
   }
 }
 
-Status PyLocalClient::TransferToInfeed(const LiteralSlice& literal,
-                                       std::shared_ptr<Device> device) {
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
-  return client_->TransferToInfeedLocal(literal,
-                                        local_device->device_ordinal());
-}
-
-StatusOr<Literal> PyLocalClient::TransferFromOutfeed(
-    const Shape& shape, std::shared_ptr<Device> device) {
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
-  return client_->TransferFromOutfeedLocal(shape,
-                                           local_device->device_ordinal());
-}
-
 StatusOr<DeviceAssignment> PyLocalClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   return client_->backend().computation_placer()->AssignDevices(num_replicas,

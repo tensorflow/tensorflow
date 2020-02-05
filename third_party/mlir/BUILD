@@ -1444,7 +1444,6 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":CFGTransforms",
         ":IR",
         ":LLVMDialect",
         ":Pass",
@@ -1712,6 +1711,7 @@ cc_library(
         ":LLVMDialect",
         ":LLVMTransforms",
         ":LinalgToLLVM",
+        ":LinalgToSPIRV",
         ":NVVMDialect",
         ":Parser",
         ":Pass",
@@ -2264,6 +2264,29 @@ cc_library(
         ":VectorToLLVM",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "LinalgToSPIRV",
+    srcs = glob([
+        "lib/Conversion/LinalgToSPIRV/*.cpp",
+        "lib/Conversion/LinalgToSPIRV/*.h",
+    ]),
+    hdrs = glob([
+        "include/mlir/Conversion/LinalgToSPIRV/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":DialectUtils",
+        ":IR",
+        ":LinalgOps",
+        ":LinalgTransforms",
+        ":Pass",
+        ":SPIRVDialect",
+        ":SPIRVLowering",
+        ":StandardOps",
     ],
     alwayslink = 1,
 )

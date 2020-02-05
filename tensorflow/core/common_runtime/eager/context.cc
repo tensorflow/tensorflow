@@ -168,11 +168,16 @@ std::vector<string> DevicesToString(const std::vector<Device*>& devices) {
 }
 }  // namespace
 
-Status EagerContext::SelectDevice(const DeviceNameUtils::ParsedName& preferred,
+Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
                                   const PrioritizedDeviceTypeVector& supported,
-                                  Device** device) const {
+                                  const DataType dtype, Device** device) const {
   std::vector<Device*> selected;
   const DeviceSet& pflr_devices = *pflr()->device_set();
+
+  // We always place string tensors on the CPU device if we're allowed to.
+  if (dtype == DT_STRING && AllowSoftPlacement()) {
+    preferred = HostCPU()->parsed_name();
+  }
 
   // If there are no preferred devices, select the first registered device from
   // the supported device list.

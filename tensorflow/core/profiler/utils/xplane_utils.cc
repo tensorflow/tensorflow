@@ -106,5 +106,30 @@ void CreateXEvent(
                offset_ps, duration_ps, stats);
 }
 
+void RemovePlaneWithName(XSpace* space, absl::string_view name) {
+  auto* planes = space->mutable_planes();
+  planes->erase(
+      std::remove_if(planes->begin(), planes->end(),
+                     [&](const XPlane& plane) { return plane.name() == name; }),
+      planes->end());
+}
+
+void RemoveEmptyPlanes(XSpace* space) {
+  auto* planes = space->mutable_planes();
+  planes->erase(std::remove_if(planes->begin(), planes->end(),
+                               [&](const XPlane& plane) {
+                                 return plane.lines_size() == 0;
+                               }),
+                planes->end());
+}
+
+void RemoveEmptyLines(XPlane* plane) {
+  auto* lines = plane->mutable_lines();
+  lines->erase(std::remove_if(
+                   lines->begin(), lines->end(),
+                   [&](const XLine& line) { return line.events_size() == 0; }),
+               lines->end());
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

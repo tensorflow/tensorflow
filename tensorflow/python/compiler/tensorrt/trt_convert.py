@@ -1116,6 +1116,8 @@ class TrtGraphConverterV2(object):
     for inp in input_fn():
       self._converted_func(*map(ops.convert_to_tensor, inp))
 
+    self._build_called_once = True
+
   def save(self, output_saved_model_dir):
     """Save the converted SavedModel.
 

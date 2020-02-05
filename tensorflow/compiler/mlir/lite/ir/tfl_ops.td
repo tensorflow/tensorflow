@@ -3394,11 +3394,14 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let description = [{
     output = input; while (cond(output)) { output = body(output) }
 
+    While loop where all values are passes through arguments with no implicit
+    capture.
+
     input: A list of input tensors whose types are T.
     output: A list of output tensors whose types are T.
     cond: A region takes 'input' and returns a boolean scalar tensor.
     body: A region that takes a list of tensors and returns another
-        list of tensors. Both lists have the same types.
+          list of tensors. Both lists have the same types.
   }];
 
   let arguments = (ins
@@ -3408,9 +3411,11 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
     // op.
     DefaultValuedAttr<BoolAttr, "false">:$is_stateless
   );
+  let results = (outs Variadic<AnyTensor>:$output);
+
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let results = (outs Variadic<AnyTensor>:$output);
+  let hasCanonicalizer = 1;
 }
 
 #endif // TFL_OPS

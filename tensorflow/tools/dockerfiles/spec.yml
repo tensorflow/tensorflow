@@ -70,11 +70,10 @@ slice_sets:
           args:
               - USE_PYTHON_3_NOT_2=1
 
-    # TODO(angerson): On February 3, stop publishing Python 2 devel containers
     py-devel:
         - add_to_name: ""
           args:
-              - USE_PYTHON_3_NOT_2=
+              - USE_PYTHON_3_NOT_2=1
         - add_to_name: "-py3"
           args:
               - USE_PYTHON_3_NOT_2=1

@@ -172,8 +172,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     created_variables = []
     trainable_variables = []
 
-    def appending_creator(next_creator, *args, **kwargs):
-      v = next_creator(*args, **kwargs)
+    def appending_creator(next_creator, **kwargs):
+      v = next_creator(**kwargs)
       created_variables.append(v.name)
       if "trainable" in kwargs and kwargs["trainable"]:
         trainable_variables.append(v.name)

@@ -142,6 +142,10 @@ namespace TFTPU {
 // `_tpu_replicate` attribute.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
 
+// Creates a pass that allows TPU program inputs to have layouts determined at
+// run time.
+std::unique_ptr<OpPassBase<FuncOp>> CreateTPUDynamicLayoutPass();
+
 // Creates a pass that remaps and assigns padding map from a
 // `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
