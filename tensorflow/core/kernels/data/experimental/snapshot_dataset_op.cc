@@ -70,7 +70,8 @@ const int64 kSnappyWriterOutputBufferSizeBytes = 16 << 20;  // 16 MiB
 // will throw an error if the compressed block length cannot fit in the input
 // buffer.
 const int64 kSnappyReaderInputBufferSizeBytes = 1 << 30;    // 1 GiB
-const int64 kSnappyReaderOutputBufferSizeBytes = 16 << 20;  // 16 MiB
+// TODO(b/148804377): Set this in a smarter fashion.
+const int64 kSnappyReaderOutputBufferSizeBytes = 32 << 20;  // 32 MiB
 
 const size_t kHeaderSize = sizeof(uint64);
 
@@ -241,12 +242,15 @@ class SnapshotReader {
 
 #if defined(PLATFORM_GOOGLE)
   Status ReadRecord(absl::Cord* record) {
-    profiler::TraceMe activity(
-        [&]() { return absl::StrCat(kClassName, kSeparator, kReadCord); },
-        profiler::TraceMeLevel::kInfo);
     tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
     uint64 length = core::DecodeFixed64(header.data());
+    profiler::TraceMe activity(
+        [&]() {
+          return absl::StrCat(kClassName, kSeparator, kReadCord,
+                              "#length=", length, "#");
+        },
+        profiler::TraceMeLevel::kInfo);
 
     if (compression_type_ == io::compression::kNone) {
       return input_stream_->ReadNBytes(length, record);
@@ -655,6 +659,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(DetermineOpState(
               dataset()->mode_, s, metadata,
               dataset()->pending_snapshot_expiry_seconds_, &state_));
+          VLOG(2) << "Snapshot state: " << state_;
           TF_RETURN_IF_ERROR(InitializeIterator(ctx, metadata));
         }
         return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
@@ -667,6 +672,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kState), static_cast<int64>(state_)));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kHashDir), hash_dir_));
+        VLOG(2) << "Saving Snapshot iterator: " << state_;
         return Status::OK();
       }
 
@@ -689,6 +695,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         experimental::SnapshotMetadataRecord metadata;
         TF_RETURN_IF_ERROR(ReadMetadataFile(hash_dir_, &metadata));
         TF_RETURN_IF_ERROR(InitializeIterator(ctx, metadata));
+        VLOG(2) << "Restoring Snapshot iterator: " << state_;
         return RestoreInput(ctx, reader, iterator_);
       }
 
@@ -820,6 +827,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 absl::StrCat(dataset()->node_name(), kSeparator,
                              kSnapshotReadElements),
                 static_cast<float>(num_elements_read_), elements_produced_);
+            stats_aggregator->AddScalar(
+                absl::StrCat(dataset()->node_name(), kSeparator,
+                             "snapshot_reader_buffer_size"),
+                static_cast<float>(buffer_.size()), elements_produced_);
           }
 
           if (!buffer_.empty()) {
@@ -899,6 +910,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               writer->WriteScalar(full_name(kNumFilesDone), num_files_done_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNumElementsRead),
                                                  num_elements_read_));
+          VLOG(2) << "Saving SnapshotReaderIterator: " << num_elements_read_
+                  << "; elements_produced: " << elements_produced_;
           return Status::OK();
         }
 
@@ -962,6 +975,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               reader->ReadScalar(full_name(kNumFilesDone), &num_files_done_));
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumElementsRead),
                                                 &num_elements_read_));
+          VLOG(2) << "Restoring SnapshotReaderIterator: " << num_elements_read_
+                  << "; elements_produced: " << elements_produced_;
           return Status::OK();
         }
 
@@ -1257,6 +1272,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                kSnapshotWrittenElements),
                   static_cast<float>(num_elements_written_),
                   elements_produced_);
+              stats_aggregator->AddScalar(
+                  absl::StrCat(dataset()->node_name(), kSeparator,
+                               "snapshot_writer_buffer_size"),
+                  static_cast<float>(buffer_.size()), elements_produced_);
             }
 
             absl::Time end = absl::Now();
@@ -1315,8 +1334,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                   buffer_element.value[j]));
             }
           }
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(kNextFileIndex), next_file_index_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNumElementsWritten),
                                                  num_elements_written_));
           if (next_elem_.end_of_sequence) {
@@ -1332,6 +1349,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 full_name(strings::StrCat(kNextElem, "[", i, "]")),
                 next_elem_.value[i]));
           }
+          VLOG(2) << "Saving SnapshotWriterIterator: " << num_elements_written_
+                  << "; elements_produced: " << elements_produced_;
           return Status::OK();
         }
 
@@ -1395,12 +1414,25 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                   &buffer_element.value.back()));
             }
           }
-          {
-            int64 temp;
-            TF_RETURN_IF_ERROR(
-                reader->ReadScalar(full_name(kNextFileIndex), &temp));
-            next_file_index_ = static_cast<uint64>(temp);
+          // Since the last save we might have written out some files. So we
+          // get a list of files in the directory and take the final filename
+          // written. We use the name of the snapshot file to figure out
+          // next_file_index_;
+          std::vector<std::string> filenames;
+          TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
+              absl::StrCat(absl::string_view(run_dir_), "/*"), &filenames));
+          std::sort(filenames.begin(), filenames.end());
+          std::string final_filename = filenames.back();
+          std::vector<std::string> split_filename =
+              absl::StrSplit(final_filename, '/');
+          std::vector<std::string> split_snapshot_filename =
+              absl::StrSplit(split_filename.back(), '.');
+          std::string max_num_str = split_snapshot_filename[0];
+          uint64 max_num;
+          if (!strings::safe_strtou64(max_num_str, &max_num)) {
+            return errors::Internal("Could not parse: ", max_num, " as uint64");
           }
+          next_file_index_ = max_num + 1;
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumElementsWritten),
                                                 &num_elements_written_));
           size_t next_elem_size;
@@ -1423,6 +1455,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 full_name(strings::StrCat(kNextElem, "[", i, "]")),
                 &next_elem_.value.back()));
           }
+          VLOG(2) << "Restoring SnapshotWriterIterator: "
+                  << num_elements_written_
+                  << "; elements_produced: " << elements_produced_;
           return Status::OK();
         }
 
