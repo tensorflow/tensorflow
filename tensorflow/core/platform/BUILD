@@ -508,8 +508,6 @@ cc_library(
     hdrs = ["regexp.h"],
     deps = [
         ":platform",
-        ":types",
-        "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
 )
