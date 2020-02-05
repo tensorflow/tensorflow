@@ -24,25 +24,30 @@ limitations under the License.
 namespace tflite {
 
 // This little structure holds the offset and the size for a dynamic memory
-// allocation in the memory arena. When the arena is committed and the
-// underlying buffer is set, the alloc can be resolved into an actual memory
-// pointer.
-struct ArenaAlloc {
-  ArenaAlloc() { reset(); }
+// allocation in the memory arena as well as first_node and last_node that use
+// corresponding tensor. It means that continuous part of memory with this size
+// needs to be allocated before execution of operation in the first node and can
+// be deallocated after execution of the operation in the last_node. When the
+// arena is committed and the underlying buffer is set, the alloc can be
+// resolved into an actual memory pointer.
+struct ArenaAllocWithUsageInterval {
+  ArenaAllocWithUsageInterval() { reset(); }
 
   size_t offset;
   size_t size;
   int32_t tensor;
-  int32_t node;
+  int32_t first_node;
+  int32_t last_node;
 
   inline void reset() {
     offset = 0;
     size = 0;
     tensor = -1;
-    node = -1;
+    first_node = -1;
+    last_node = -1;
   }
 
-  inline bool operator<(const ArenaAlloc& other) const {
+  inline bool operator<(const ArenaAllocWithUsageInterval& other) const {
     return offset < other.offset;
   }
 };
@@ -59,12 +64,17 @@ class SimpleMemoryArena {
         arena_alignment_(arena_alignment),
         high_water_mark_(0),
         underlying_buffer_size_(0),
-        allocs_() {}
+        ordered_allocs_() {}
 
+  // Schedule memory allocation for a tensor with a given size, assuming that it
+  // needs to be allocated before the execution of first_node, and deallocated
+  // after the execution of last_node.
   TfLiteStatus Allocate(TfLiteContext* context, size_t alignment, size_t size,
-                        int32_t tensor, int32_t node, ArenaAlloc* new_alloc);
+                        int32_t tensor, int32_t first_node, int32_t last_node,
+                        ArenaAllocWithUsageInterval* new_alloc);
 
-  TfLiteStatus Deallocate(TfLiteContext* context, const ArenaAlloc& alloc);
+  TfLiteStatus Deallocate(TfLiteContext* context,
+                          const ArenaAllocWithUsageInterval& alloc);
 
   inline size_t RequiredBufferSize() {
     // Add in a small amount of padding to reduce the chance of resize events
@@ -75,7 +85,8 @@ class SimpleMemoryArena {
 
   TfLiteStatus Commit(TfLiteContext* context);
 
-  TfLiteStatus ResolveAlloc(TfLiteContext* context, const ArenaAlloc& alloc,
+  TfLiteStatus ResolveAlloc(TfLiteContext* context,
+                            const ArenaAllocWithUsageInterval& alloc,
                             char** output_ptr);
 
   // This clears allocation details but does not release the underlying buffer.
@@ -101,8 +112,7 @@ class SimpleMemoryArena {
   std::unique_ptr<char[]> underlying_buffer_;
   size_t underlying_buffer_size_;
   char* underlying_buffer_aligned_ptr_;
-  // TODO(maciekc): add list iterator to the ArenaAlloc to lookup quickly.
-  std::list<ArenaAlloc> allocs_;
+  std::list<ArenaAllocWithUsageInterval> ordered_allocs_;
 };
 
 }  // namespace tflite
