@@ -120,7 +120,7 @@ inline void TransposeConv(
     const int16* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& output_shape,
     int16* output_data, const RuntimeShape& im2col_shape, int8* im2col_data,
-    int64* scratch_buffer) {
+    std::int64_t* scratch_buffer) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -147,7 +147,7 @@ inline void TransposeConv(
   const int num_elements = output_shape.FlatSize();
   // We need to initialize scratch_buffer to all 0s, as we apply the same
   // 'scatter' based trick as in float version.
-  memset(scratch_buffer, 0, num_elements * sizeof(int64));
+  memset(scratch_buffer, 0, num_elements * sizeof(std::int64_t));
 
   // Loop through input elements one at a time.
   for (int batch = 0; batch < batches; ++batch) {
@@ -188,7 +188,7 @@ inline void TransposeConv(
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          int64 acc = scratch_buffer[Offset(output_shape, batch, out_y, out_x,
+          std::int64_t acc = scratch_buffer[Offset(output_shape, batch, out_y, out_x,
                                             out_channel)];
           int32 scaled_acc = MultiplyByQuantizedMultiplier(
               acc, output_multiplier[out_channel], output_shift[out_channel]);
