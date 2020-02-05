@@ -1335,12 +1335,12 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // They are filled with zeros so as to avoid NaN outputs.
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(3, TensorShape({}), &placeholder_1));
+        context, context->allocate_output(3, TensorShape({0}), &placeholder_1));
     functor::SetZeroFunctor<Device, float> f;
     f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(4, TensorShape({}), &placeholder_2));
+        context, context->allocate_output(4, TensorShape({0}), &placeholder_2));
     f(context->eigen_device<Device>(), placeholder_2->flat<U>());
 
     // If input is empty, set gradients w.r.t scale/offset to zero.
