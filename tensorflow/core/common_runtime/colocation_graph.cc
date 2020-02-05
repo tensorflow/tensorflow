@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/inspecting_placer.h"
@@ -381,6 +382,7 @@ bool Member::MergeSupportedDevices(
   // The priorities are taken from the corresponding source vector.
   PrioritizedDeviceTypeVector target_intersection;
   PrioritizedDeviceTypeVector other_intersection;
+
   for (const auto& prioritized_device_type : supported_device_types_) {
     bool found = false;
     for (const auto& other_prioritized_device_type : other_devices) {
@@ -396,26 +398,8 @@ bool Member::MergeSupportedDevices(
     }
   }
 
-  // Sort the devices by priority order.
-  auto device_sort = [](const std::pair<DeviceType, int32>& a,
-                        const std::pair<DeviceType, int32>& b) {
-    // First look at set priorities.
-    if (a.second != b.second) {
-      return a.second > b.second;
-    }
-    // Then fallback to default priorities.
-    auto a_priority = DeviceSet::DeviceTypeOrder(a.first);
-    auto b_priority = DeviceSet::DeviceTypeOrder(b.first);
-    if (a_priority != b_priority) {
-      return a_priority > b_priority;
-    }
-    // Finally just look at the Device type strings.
-    return a.first.type_string() < b.first.type_string();
-  };
-
-  std::sort(target_intersection.begin(), target_intersection.end(),
-            device_sort);
-  std::sort(other_intersection.begin(), other_intersection.end(), device_sort);
+  DeviceSet::SortPrioritizedDeviceTypeVector(&target_intersection);
+  DeviceSet::SortPrioritizedDeviceTypeVector(&other_intersection);
 
   PrioritizedDeviceTypeVector result;
 
@@ -442,7 +426,7 @@ bool Member::MergeSupportedDevices(
       for (const auto& prioritized_device : target_intersection) {
         result.push_back(std::make_pair(prioritized_device.first, 0));
       }
-      std::sort(result.begin(), result.end(), device_sort);
+      DeviceSet::SortPrioritizedDeviceTypeVector(&result);
     }
   }
 
@@ -1368,7 +1352,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
     const PrioritizedDeviceTypeVector& supported_device_types,
     const Device* default_local_device) {
   Device* filtered_default_device = nullptr;
-  std::vector<std::pair<Device*, int32>> prioritized_filtered_devices;
+  PrioritizedDeviceVector prioritized_filtered_devices;
   for (const auto& supported_device_type : supported_device_types) {
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) ==
@@ -1387,26 +1371,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       }
     }
   }
-
-  auto device_sort = [](const std::pair<Device*, int32>& a,
-                        const std::pair<Device*, int32>& b) {
-    if (a.second != b.second) {
-      return a.second > b.second;
-    }
-
-    auto a_priority =
-        DeviceSet::DeviceTypeOrder(DeviceType(a.first->device_type()));
-    auto b_priority =
-        DeviceSet::DeviceTypeOrder(DeviceType(b.first->device_type()));
-    // First sort by prioritized device type (higher is preferred) and
-    // then by device name (lexicographically).
-    if (a_priority != b_priority) {
-      return a_priority > b_priority;
-    }
-    return StringPiece(a.first->name()) < StringPiece(b.first->name());
-  };
-  std::sort(prioritized_filtered_devices.begin(),
-            prioritized_filtered_devices.end(), device_sort);
+  DeviceSet::SortPrioritizedDeviceVector(&prioritized_filtered_devices);
 
   std::vector<Device*> filtered_devices;
   if (filtered_default_device != nullptr) {

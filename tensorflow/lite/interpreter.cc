@@ -101,7 +101,27 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   UseNNAPI(false);
 }
 
-Interpreter::~Interpreter() {}
+Interpreter::~Interpreter() {
+  // The owned external Cpu Backend Context will go out of scope with this
+  // interpreter. If we have an external backend context that is not
+  // owned, we need to clear the cache for other interpreters that may
+  // use the context.
+  if (external_contexts_[kTfLiteCpuBackendContext] &&
+      (external_contexts_[kTfLiteCpuBackendContext] !=
+       own_external_cpu_backend_context_.get())) {
+    ExternalCpuBackendContext* external_context =
+        static_cast<ExternalCpuBackendContext*>(
+            external_contexts_[kTfLiteCpuBackendContext]);
+    TfLiteInternalBackendContext* internal_context =
+        external_context->internal_backend_context();
+    if (internal_context) {
+      // This call may have negative performance impacts on the next inference
+      // for any interpreter using this context. The cache will be refreshed
+      // by the next inference.
+      internal_context->ClearCaches();
+    }
+  }
+}
 
 void Interpreter::SetExternalContext(TfLiteExternalContextType type,
                                      TfLiteExternalContext* ctx) {

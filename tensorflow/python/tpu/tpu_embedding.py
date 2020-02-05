@@ -836,6 +836,19 @@ class TPUEmbedding(object):
                                slot_variable_names_by_table=None):
     """Create embedding and slot variables, with ops to load and retrieve them.
 
+    N.B.: the retrieve embedding variables (including slot variables) ops are
+    returned as lambda fn, as the call side might want to impose control
+    dependencies between the TPU computation and retrieving actions. For
+    example, the following code snippet ensures the TPU computation finishes
+    first, and then we pull the variables back from TPU to CPU.
+
+    ```
+    updates_ops = []
+    with ops.control_dependencies([loss]):
+      for op_fn in retrieve_parameters_op_fns:
+        update_ops.append(op_fn())
+    ```
+
     Args:
       embedding_variable_name_by_table: A dictionary mapping from string of
         table name to string of embedding variable name. If `None`,

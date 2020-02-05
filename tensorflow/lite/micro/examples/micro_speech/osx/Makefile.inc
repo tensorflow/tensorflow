@@ -5,5 +5,5 @@ ifeq ($(TARGET), osx)
     -framework AudioToolbox
 
   MICROLITE_LIBS += $(LINKER_FLAGS)
-  MICRO_SPEECH_HDRS += tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_model_settings.h
+  MICRO_SPEECH_HDRS += tensorflow/lite/micro/examples/micro_speech/simple_features/simple_model_settings.h
 endif

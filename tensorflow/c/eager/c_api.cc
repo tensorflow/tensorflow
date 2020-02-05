@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -95,10 +96,8 @@ using tensorflow::string;
 namespace {
 
 const tensorflow::OpDef* GetOpDef(TFE_Op* op, TF_Status* status) {
-  if (op->inference_ctx) {
-    return op->inference_ctx->op_def;
-  }
-  const tensorflow::OpDef* op_def;
+  const tensorflow::OpDef* op_def = op->operation.OpDef();
+  if (op_def) return op_def;
   status->status =
       tensorflow::OpDefForOp(op->operation.Name().c_str(), &op_def);
   return op_def;
@@ -267,9 +266,9 @@ tensorflow::Status GetReplacedFromExistingWorkers(
 }
 
 tensorflow::Status CreateRemoteContexts(
-    const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
-    tensorflow::uint64 context_view_id, int keep_alive_secs,
-    const tensorflow::ServerDef& server_def,
+    TFE_Context* ctx, const std::vector<string>& remote_workers,
+    tensorflow::uint64 context_id, tensorflow::uint64 context_view_id,
+    int keep_alive_secs, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
     const bool lazy_copy_remote_function_inputs,
     const tensorflow::eager::CreateContextRequest& base_request) {
@@ -298,7 +297,7 @@ tensorflow::Status CreateRemoteContexts(
       continue;
     }
 
-    tensorflow::eager::CreateContextRequest request(base_request);
+    tensorflow::eager::CreateContextRequest request;
     tensorflow::eager::CreateContextResponse* response =
         new tensorflow::eager::CreateContextResponse();
     request.set_context_id(context_id);
@@ -306,6 +305,21 @@ tensorflow::Status CreateRemoteContexts(
     *request.mutable_server_def() = server_def;
     request.mutable_server_def()->set_job_name(parsed_name.job);
     request.mutable_server_def()->set_task_index(parsed_name.task);
+    request.mutable_server_def()->mutable_default_session_config()->MergeFrom(
+        server_def.default_session_config());
+
+    std::vector<bool> filtered_device_mask;
+    ctx->context->FilterDevicesForRemoteWorkers(
+        remote_worker, base_request.cluster_device_attributes(),
+        &filtered_device_mask);
+    DCHECK_EQ(filtered_device_mask.size(),
+              base_request.cluster_device_attributes_size());
+    for (int i = 0; i < filtered_device_mask.size(); i++) {
+      if (filtered_device_mask[i]) {
+        const auto& da = base_request.cluster_device_attributes(i);
+        *request.add_cluster_device_attributes() = da;
+      }
+    }
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
     request.set_lazy_copy_remote_function_inputs(
@@ -327,13 +341,34 @@ tensorflow::Status CreateRemoteContexts(
 }
 
 tensorflow::Status UpdateRemoteContexts(
-    const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
+    TFE_Context* ctx, const std::vector<string>& remote_workers,
+    const std::vector<string>& added_workers,
+    const std::vector<string>& removed_workers, tensorflow::uint64 context_id,
     tensorflow::uint64 context_view_id, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
   std::vector<tensorflow::Status> statuses(num_remote_workers);
+
+  int cluster_device_count = base_request.cluster_device_attributes_size();
+  std::unordered_set<string> added_or_removed(added_workers.begin(),
+                                              added_workers.end());
+  std::copy(removed_workers.begin(), removed_workers.end(),
+            std::inserter(added_or_removed, added_or_removed.end()));
+  // Whether each device is in the updated (added or removed) workers
+  std::vector<bool> device_added_or_removed(cluster_device_count);
+  for (int i = 0; i < base_request.cluster_device_attributes_size(); i++) {
+    const auto& da = base_request.cluster_device_attributes().at(i);
+    tensorflow::DeviceNameUtils::ParsedName pn;
+    tensorflow::DeviceNameUtils::ParseFullName(da.name(), &pn);
+    string task_name;
+    tensorflow::DeviceNameUtils::GetTaskName(pn, &task_name);
+    if (added_or_removed.find(task_name) != added_or_removed.end()) {
+      device_added_or_removed[i] = true;
+    }
+  }
+
   for (int i = 0; i < num_remote_workers; i++) {
     const string& remote_worker = remote_workers[i];
     tensorflow::DeviceNameUtils::ParsedName parsed_name;
@@ -356,17 +391,42 @@ tensorflow::Status UpdateRemoteContexts(
       continue;
     }
 
+    std::vector<bool> filtered_device_mask;
+    ctx->context->FilterDevicesForRemoteWorkers(
+        remote_worker, base_request.cluster_device_attributes(),
+        &filtered_device_mask);
+    DCHECK_EQ(filtered_device_mask.size(), cluster_device_count);
+
+    // If any of the devices that match the device filters are in the set of
+    // added or removed workers, we must send a complete UpdateContextRequest.
+    // Otherwise, only send a simple request to increment context view ID.
+    std::vector<bool> added_or_removed_filtered_devices(cluster_device_count);
+    std::transform(device_added_or_removed.begin(),
+                   device_added_or_removed.end(), filtered_device_mask.begin(),
+                   added_or_removed_filtered_devices.begin(),
+                   std::logical_and<bool>());
+    const bool full_update_request =
+        std::accumulate(added_or_removed_filtered_devices.begin(),
+                        added_or_removed_filtered_devices.end(), false,
+                        std::logical_or<bool>());
+
     tensorflow::eager::UpdateContextRequest request;
     auto* response = new tensorflow::eager::UpdateContextResponse();
-
-    *request.mutable_server_def() = server_def;
-    request.mutable_server_def()->set_job_name(parsed_name.job);
-    request.mutable_server_def()->set_task_index(parsed_name.task);
-    for (const auto& da : base_request.cluster_device_attributes()) {
-      *request.add_cluster_device_attributes() = da;
-    }
     request.set_context_id(context_id);
     request.set_context_view_id(context_view_id);
+    if (full_update_request) {
+      *request.mutable_server_def() = server_def;
+      request.mutable_server_def()->set_job_name(parsed_name.job);
+      request.mutable_server_def()->set_task_index(parsed_name.task);
+      request.mutable_server_def()->mutable_default_session_config()->MergeFrom(
+          server_def.default_session_config());
+      for (int i = 0; i < cluster_device_count; i++) {
+        if (filtered_device_mask[i]) {
+          const auto& da = base_request.cluster_device_attributes(i);
+          *request.add_cluster_device_attributes() = da;
+        }
+      }
+    }
 
     eager_client->UpdateContextAsync(
         &request, response,
@@ -518,7 +578,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   grpc_server->worker_env()->device_mgr->ListDeviceAttributes(
       &local_device_attributes);
 
-  // This request make sure that we can create Rendevzous properly between
+  // This request make sure that we can create Rendezvous properly between
   // Local and Remote context.
   tensorflow::eager::CreateContextRequest base_request;
   for (const auto& da : cluster_device_attributes) {
@@ -527,15 +587,12 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   for (const auto& da : local_device_attributes) {
     *base_request.add_cluster_device_attributes() = da;
   }
-  base_request.mutable_server_def()
-      ->mutable_default_session_config()
-      ->MergeFrom(server_def.default_session_config());
 
   // Initialize remote eager workers.
   // TODO(b/138847548) Create remote eager contexts in async mode by default.
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
-        remote_workers, context_id, context_view_id, keep_alive_secs,
+        ctx, remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
         context->LazyCopyFunctionRemoteInputs(), base_request));
   } else {
@@ -545,7 +602,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     // we must set their context_view_id to the existing master's
     // context_view_id + 1.
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
-        added_workers, context_id, context_view_id + 1, keep_alive_secs,
+        ctx, added_workers, context_id, context_view_id + 1, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
         context->LazyCopyFunctionRemoteInputs(), base_request));
     if (!existing_workers.empty()) {
@@ -555,8 +612,9 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         }
       }
       LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
-          existing_workers, context_id, context_view_id + 1, server_def,
-          remote_eager_workers.get(), base_request));
+          ctx, existing_workers, added_workers, removed_workers, context_id,
+          context_view_id + 1, server_def, remote_eager_workers.get(),
+          base_request));
     }
   }
 
@@ -613,81 +671,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   return tensorflow::Status::OK();
 }
 #endif  // !IS_MOBILE_PLATFORM
-
-tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
-                                           TFE_TensorHandle* input) {
-  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
-  if (!input_def.number_attr().empty() || !input_def.type_list_attr().empty()) {
-    // Some clients that are still setting their input attributes manually are
-    // adding input list to their op by calling `TFE_OpAddInput` for each of
-    // its elements instead of calling `TFE_OpAddInputList`. When this happens,
-    // we cannot detect the end of such list, thus lose track of the input
-    // arguments in the op definition. To guarantee backward compatibility with
-    // those clients, disable automatic inference in this case.
-    op->inference_ctx.reset(nullptr);
-    return tensorflow::Status::OK();
-  }
-  const std::string& type_attr = input_def.type_attr();
-  if (!type_attr.empty() && ictx->attrs.find(type_attr) == ictx->attrs.end()) {
-    op->operation.MutableAttrs()->Set(
-        type_attr,
-        static_cast<tensorflow::DataType>(input->handle->DataType()));
-    ictx->attrs.insert(type_attr);
-  }
-  return tensorflow::Status::OK();
-}
-
-void OpInferSingleTypeInputListAttrs(TFE_Op* op,
-                                     const tensorflow::OpDef::ArgDef& input_def,
-                                     const tensorflow::DataType dtype,
-                                     int num_inputs) {
-  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  if (ictx->attrs.find(input_def.number_attr()) == ictx->attrs.end()) {
-    op->operation.MutableAttrs()->Set(input_def.number_attr(), num_inputs);
-    ictx->attrs.insert(input_def.number_attr());
-  }
-  if (ictx->attrs.find(input_def.type_attr()) == ictx->attrs.end()) {
-    op->operation.MutableAttrs()->Set(input_def.type_attr(), dtype);
-    ictx->attrs.insert(input_def.type_attr());
-  }
-}
-
-void OpInferMixedTypeInputListAttrs(
-    TFE_Op* op, const tensorflow::OpDef::ArgDef& input_def,
-    const std::vector<tensorflow::DataType>& dtypes) {
-  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  if (ictx->attrs.find(input_def.type_list_attr()) == ictx->attrs.end()) {
-    op->operation.MutableAttrs()->Set(
-        input_def.type_list_attr(),
-        tensorflow::gtl::ArraySlice<const tensorflow::DataType>(dtypes.data(),
-                                                                dtypes.size()));
-    ictx->attrs.insert(input_def.type_list_attr());
-  }
-}
-
-tensorflow::Status OpInferInputListAttrs(TFE_Op* op, TFE_TensorHandle** inputs,
-                                         int num_inputs) {
-  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
-  if (!input_def.type_list_attr().empty()) {
-    std::vector<tensorflow::DataType> dtypes(num_inputs);
-    for (int i = 0; i < num_inputs; ++i) {
-      dtypes[i] = static_cast<const tensorflow::DataType>(
-          inputs[i]->handle->DataType());
-    }
-    OpInferMixedTypeInputListAttrs(op, input_def, dtypes);
-  } else if (!input_def.type_attr().empty() &&
-             !input_def.number_attr().empty()) {
-    OpInferSingleTypeInputListAttrs(
-        op, input_def,
-        static_cast<const tensorflow::DataType>(inputs[0]->handle->DataType()),
-        num_inputs);
-  } else {
-    return tensorflow::errors::InvalidArgument("Invalid input list definition");
-  }
-  return tensorflow::Status::OK();
-}
 
 }  // namespace
 
@@ -786,6 +769,22 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }
+  if (server_def.has_cluster_device_filters()) {
+    const auto& cdf = server_def.cluster_device_filters();
+    for (const auto& jdf : cdf.jobs()) {
+      const string& remote_prefix = "/job:" + jdf.name() + "/task:";
+      for (const auto& tdf : jdf.tasks()) {
+        const int32_t task_index = tdf.first;
+        std::vector<string> device_filters(tdf.second.device_filters_size());
+        for (int i = 0; i < tdf.second.device_filters_size(); i++) {
+          device_filters[i] = tdf.second.device_filters(i);
+        }
+        const string remote_worker = remote_prefix + std::to_string(task_index);
+        status->status =
+            ctx->context->SetRemoteDeviceFilters(remote_worker, device_filters);
+      }
+    }
+  }
   status->status = UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def,
                                                   ctx, /*reset_context=*/true);
 #endif  // !IS_MOBILE_PLATFORM
@@ -809,6 +808,11 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
              tensorflow::EagerContext::kInvalidContextId) {
     status->status = tensorflow::errors::InvalidArgument(
         "Trying to update a context with invalid context id.");
+  }
+  if (server_def.has_cluster_device_filters()) {
+    LOG(WARNING) << "Device filters can only be specified when initializing "
+                    "the cluster. Any changes in device filters are ignored "
+                    "when updating the server def.";
   }
   // TODO(haoyuzhang): Check server_def compatibility before the update
   status->status = UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def,
@@ -1090,7 +1094,7 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
     } else {
       tensorflow::EagerContext* ctx = handle_->Context();
       CHECK_NE(ctx, nullptr);
-      *status = handle_->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
+      *status = handle_->CopyToDevice(*ctx, ctx->HostCPU(), &tensor);
       if (!status->ok()) return nullptr;
     }
     return tensorflow::TF_TensorFromTensor(tensor, status);
@@ -1201,8 +1205,14 @@ size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
-  return NewOrResetOp(ctx, op_or_function_name, nullptr, status,
-                      /* op_to_reset= */ nullptr);
+  std::unique_ptr<TFE_Op> new_op(
+      new TFE_Op{tensorflow::EagerOperation(ctx->context)});
+  status->status =
+      new_op->operation.Reset(op_or_function_name, nullptr, false, nullptr);
+  if (!status->status.ok()) {
+    new_op.reset();
+  }
+  return new_op.release();
 }
 
 void TFE_DeleteOp(TFE_Op* op) { delete op; }
@@ -1213,7 +1223,7 @@ void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
   tensorflow::Device* device = (op->operation.Device() == nullptr)
-                                   ? op->operation.EagerContext()->HostCPU()
+                                   ? op->operation.EagerContext().HostCPU()
                                    : op->operation.Device();
   return device->name().c_str();
 }
@@ -1227,16 +1237,12 @@ void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
-  return op->AddInput(input, status);
-}
-
-void TFE_Op::AddInput(TFE_TensorHandle* input, TF_Status* status) {
-  operation.AddInput(tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-                         input->handle.get())
-                         ->Handle());
-  if (inference_ctx) {
-    status->status = OpInferSingleInputAttrs(this, input);
-  }
+  tensorflow::TensorHandle* h =
+      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+          input->handle.get())
+          ->Handle();
+  op->operation.AddInput(h);
+  status->status = op->operation.MaybeInferSingleInputAttrs(h);
 }
 
 void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
@@ -1247,9 +1253,7 @@ void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
             inputs[i]->handle.get())
             ->Handle());
   }
-  if (op->inference_ctx) {
-    status->status = OpInferInputListAttrs(op, inputs, num_inputs);
-  }
+  status->status = op->operation.InferInputListAttrs(num_inputs);
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
@@ -1482,15 +1486,10 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  VLOG(1) << "Calling TFE_Execute() on op " << op;
-  op->Execute(retvals, num_retvals, status);
-}
-
-void TFE_Op::Execute(TFE_TensorHandle** retvals, int* num_retvals,
-                     TF_Status* status) {
   absl::FixedArray<tensorflow::TensorHandle*> handle_retvals(*num_retvals);
-  status->status =
-      tensorflow::EagerExecute(&operation, handle_retvals.data(), num_retvals);
+  VLOG(1) << "Calling TFE_Execute() on op " << op;
+  status->status = tensorflow::EagerExecute(&op->operation,
+                                            handle_retvals.data(), num_retvals);
   if (!status->status.ok()) {
     return;
   }

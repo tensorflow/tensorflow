@@ -900,6 +900,106 @@ static inline Status MatInvBatchedImpl(
 
 TF_CALL_LAPACK_TYPES(MATINV_BATCHED_INSTANCE);
 
+template <typename Scalar, typename SolverFnT>
+static inline Status TrsmImpl(SolverFnT solver, cublasHandle_t cublas_handle,
+                              cublasSideMode_t side, cublasFillMode_t uplo,
+                              cublasOperation_t trans, cublasDiagType_t diag,
+                              int m, int n,
+                              const Scalar* alpha, /* host or device pointer */
+                              const Scalar* A, int lda, Scalar* B, int ldb) {
+  mutex_lock lock(handle_map_mutex);
+  using CudaScalar = typename CUDAComplexT<Scalar>::type;
+  TF_RETURN_IF_CUBLAS_ERROR(solver(cublas_handle, side, uplo, trans, diag, m, n,
+                                   reinterpret_cast<const CudaScalar*>(alpha),
+                                   reinterpret_cast<const CudaScalar*>(A), lda,
+                                   reinterpret_cast<CudaScalar*>(B), ldb));
+  return Status::OK();
+}
+
+#define TRSM_INSTANCE(Scalar, type_prefix)                                   \
+  template <>                                                                \
+  Status CudaSolver::Trsm<Scalar>(                                           \
+      cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans, \
+      cublasDiagType_t diag, int m, int n,                                   \
+      const Scalar* alpha, /* host or device pointer */                      \
+      const Scalar* A, int lda, Scalar* B, int ldb) {                        \
+    return TrsmImpl(BLAS_SOLVER_FN(trsm, type_prefix), cublas_handle_, side, \
+                    uplo, trans, diag, m, n, alpha, A, lda, B, ldb);         \
+  }
+
+TF_CALL_LAPACK_TYPES(TRSM_INSTANCE);
+
+template <typename Scalar, typename SolverFnT>
+static inline Status TrsvImpl(SolverFnT solver, cublasHandle_t cublas_handle,
+                              cublasFillMode_t uplo, cublasOperation_t trans,
+                              cublasDiagType_t diag, int n, const Scalar* A,
+                              int lda, Scalar* x, int incx) {
+  mutex_lock lock(handle_map_mutex);
+  using CudaScalar = typename CUDAComplexT<Scalar>::type;
+  TF_RETURN_IF_CUBLAS_ERROR(solver(cublas_handle, uplo, trans, diag, n,
+                                   reinterpret_cast<const CudaScalar*>(A), lda,
+                                   reinterpret_cast<CudaScalar*>(x), incx));
+  return Status::OK();
+}
+
+#define TRSV_INSTANCE(Scalar, type_prefix)                                   \
+  template <>                                                                \
+  Status CudaSolver::Trsv<Scalar>(                                           \
+      cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag, \
+      int n, const Scalar* A, int lda, Scalar* x, int incx) {                \
+    return TrsvImpl(BLAS_SOLVER_FN(trsv, type_prefix), cublas_handle_, uplo, \
+                    trans, diag, n, A, lda, x, incx);                        \
+  }
+
+TF_CALL_LAPACK_TYPES(TRSV_INSTANCE);
+
+template <typename Scalar, typename SolverFnT>
+static inline Status TrsmBatchedImpl(
+    SolverFnT solver, CudaSolver* cuda_solver, OpKernelContext* context,
+    cublasHandle_t cublas_handle, cublasSideMode_t side, cublasFillMode_t uplo,
+    cublasOperation_t trans, cublasDiagType_t diag, int m, int n,
+    const Scalar* alpha, const Scalar* const host_a_dev_ptrs[], int lda,
+    Scalar* host_b_dev_ptrs[], int ldb, int batch_size) {
+  mutex_lock lock(handle_map_mutex);
+  using CudaScalar = typename CUDAComplexT<Scalar>::type;
+  ScratchSpace<uint8> dev_a_dev_ptrs =
+      cuda_solver->GetScratchSpace<uint8>(sizeof(CudaScalar*) * batch_size, "",
+                                          /* on_host */ false);
+  ScratchSpace<uint8> dev_b_dev_ptrs =
+      cuda_solver->GetScratchSpace<uint8>(sizeof(CudaScalar*) * batch_size, "",
+                                          /* on_host */ false);
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
+    return errors::Internal("TrsmBatched: failed to copy pointers to device");
+  }
+  if (!CopyHostToDevice(context, dev_b_dev_ptrs.mutable_data() /* dest */,
+                        host_b_dev_ptrs /* source */, dev_b_dev_ptrs.bytes())) {
+    return errors::Internal("TrsmBatched: failed to copy pointers to device");
+  }
+  TF_RETURN_IF_CUBLAS_ERROR(
+      solver(cublas_handle, side, uplo, trans, diag, m, n,
+             reinterpret_cast<const CudaScalar*>(alpha),
+             reinterpret_cast<const CudaScalar* const*>(dev_a_dev_ptrs.data()),
+             lda, reinterpret_cast<CudaScalar**>(dev_b_dev_ptrs.mutable_data()),
+             ldb, batch_size));
+  return Status::OK();
+}
+
+#define TRSM_BATCHED_INSTANCE(Scalar, type_prefix)                            \
+  template <>                                                                 \
+  Status CudaSolver::TrsmBatched(                                             \
+      cublasSideMode_t side, cublasFillMode_t uplo, cublasOperation_t trans,  \
+      cublasDiagType_t diag, int m, int n, const Scalar* alpha,               \
+      const Scalar* const dev_Aarray[], int lda, Scalar* dev_Barray[],        \
+      int ldb, int batch_size) {                                              \
+    return TrsmBatchedImpl(BLAS_SOLVER_FN(trsmBatched, type_prefix), this,    \
+                           context_, cublas_handle_, side, uplo, trans, diag, \
+                           m, n, alpha, dev_Aarray, lda, dev_Barray, ldb,     \
+                           batch_size);                                       \
+  }
+
+TF_CALL_LAPACK_TYPES(TRSM_BATCHED_INSTANCE);
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

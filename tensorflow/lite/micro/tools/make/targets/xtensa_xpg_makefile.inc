@@ -7,6 +7,7 @@ ifeq ($(TARGET), xtensa-xpg)
   TARGET_ARCH := xtensa-xpg
 
   PLATFORM_ARGS = \
+    -DTF_LITE_MICRO_TENSORS_PREPARED \
     -DTF_LITE_STATIC_MEMORY \
     -DNDEBUG \
     -DTF_LITE_MCU_DEBUG_LOG \

@@ -30,7 +30,6 @@ namespace lstm_eval {
 
 // Pamameters for quantized lstm.
 struct IntegerLstmParameter {
-  IntegerLstmParameter() : inv_large_value(4) {}
   int32_t effective_input_to_input_scale_a;
   int32_t effective_input_to_input_scale_b;
   int32_t effective_recurrent_to_input_scale_a;
@@ -70,7 +69,11 @@ struct IntegerLstmParameter {
   int8_t quantized_proj_clip;
   int32_t hidden_zp;
   int32_t cell_scale;
-  std::vector<int32_t> inv_large_value;
+
+  int32_t input_variance_guard;
+  int32_t forget_variance_guard;
+  int32_t cell_variance_guard;
+  int32_t output_variance_guard;
 
   // The fields are used for pre-computing zero_point * weight.
   // We cannot use temporary tensors since temporary tensors are not alllocated
@@ -151,7 +154,8 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* recovered_cell_weights, TfLiteTensor* input_quantized,
     TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
     TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output);
+    TfLiteTensor* cell_state, TfLiteTensor* output_scratch_buffer,
+    TfLiteTensor* output, CpuBackendContext* context);
 
 TfLiteStatus EvalInteger(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,

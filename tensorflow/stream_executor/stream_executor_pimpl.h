@@ -685,7 +685,7 @@ class StreamExecutor {
   std::unique_ptr<rng::RngSupport> rng_ GUARDED_BY(mu_);
 
   // Slot to cache the owned DeviceDescription for the underlying device
-  // once it has been quieried from DeviceDescription().
+  // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
       GUARDED_BY(mu_);
 

@@ -93,6 +93,9 @@ constexpr char kVarHandleOp[] = "VarHandleOp";
 constexpr char kVarHandlesOp[] = "_VarHandlesOp";
 constexpr char kReadVariableOp[] = "ReadVariableOp";
 constexpr char kReadVariablesOp[] = "_ReadVariablesOp";
+constexpr char kAssignVariableOp[] = "AssignVariableOp";
+constexpr char kAssignAddVariableOp[] = "AssignAddVariableOp";
+constexpr char kAssignSubVariableOp[] = "AssignSubVariableOp";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -375,6 +378,14 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(
       kFusedBatchNormGrad,
       wrap(&OpLevelCostEstimator::PredictFusedBatchNormGrad));
+  device_cost_impl_.emplace(
+      kAssignVariableOp, wrap(&OpLevelCostEstimator::PredictAssignVariableOps));
+  device_cost_impl_.emplace(
+      kAssignAddVariableOp,
+      wrap(&OpLevelCostEstimator::PredictAssignVariableOps));
+  device_cost_impl_.emplace(
+      kAssignSubVariableOp,
+      wrap(&OpLevelCostEstimator::PredictAssignVariableOps));
 
   persistent_ops_ = {
       kConst,       kVariable,       kVariableV2,   kAutoReloadVariable,
@@ -435,6 +446,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Tan", EIGEN_COST(scalar_tan_op<float>));
   // Binary ops alphabetically sorted
   elementwise_ops_.emplace("Add", EIGEN_COST(scalar_sum_op<float>));
+  elementwise_ops_.emplace("AddV2", EIGEN_COST(scalar_sum_op<float>));
   elementwise_ops_.emplace("ApproximateEqual", 1);
   elementwise_ops_.emplace("BiasAdd", EIGEN_COST(scalar_sum_op<float>));
   elementwise_ops_.emplace("QuantizedBiasAdd",
@@ -1882,6 +1894,28 @@ Costs OpLevelCostEstimator::PredictMaxPoolGrad(
   costs.inaccurate = found_unknown_shapes;
   costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
+  return costs;
+}
+
+/* This predict function handles three types of tensorflow ops
+ * AssignVariableOp/AssignAddVariableOp/AssignSubVariableOp, broadcasting
+ * was not possible for these ops, therefore the input tensor's shapes is
+ * enough to compute the cost */
+Costs OpLevelCostEstimator::PredictAssignVariableOps(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  /* First input of these ops are reference to the assignee. */
+  if (op_info.inputs_size() != 2) return Costs::ZeroCosts(true);
+  const double total_input_size =
+      CalculateInputSize(op_info, &found_unknown_shapes);
+  const double flops = op_info.op() == kAssignVariableOp
+                           ? 0.0
+                           : CalculateTensorElementCount(op_info.inputs(1),
+                                                         &found_unknown_shapes);
+  Costs costs = PredictOpCountBasedCost(flops, total_input_size, 0, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 

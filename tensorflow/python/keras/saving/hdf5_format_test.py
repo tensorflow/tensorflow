@@ -616,7 +616,7 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       # out of proportion. Note that it fits into the internal HDF5
       # attribute memory limit on its own but because h5py converts
       # the list of layer names into numpy array, which uses the same
-      # amout of memory for every item, it increases the memory
+      # amount of memory for every item, it increases the memory
       # requirements substantially.
       x = keras.Input(shape=(2,), name='input_' + ('x' * (2**15)))
       f = x
@@ -751,6 +751,22 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
     model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
     model = keras.models.load_model(saved_model_dir)
+
+  def test_saving_group_naming_h5py(self):
+    # Test saving model with layer which name is prefix to a previous layer
+    # name.
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    input_layer = keras.layers.Input((None, None, 3), name='test_input')
+    x = keras.layers.Conv2D(1, 1, name='conv1/conv')(input_layer)
+    x = keras.layers.Activation('relu', name='conv1')(x)
+    model = keras.models.Model(inputs=input_layer, outputs=x)
+
+    model.save_weights(h5_path)
+    model.load_weights(h5_path)
 
   def test_primitive_attrs_contain_no_extraneous_strings(self):
     if h5py is None:
@@ -1217,7 +1233,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     self.assertEqual(44., self.evaluate(v))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_nonexistant_prefix_directory(self):
+  def test_nonexistent_prefix_directory(self):
     m = keras.Model()
     v = m.add_weight(name='v', shape=[])
     self.evaluate(v.assign(42.))

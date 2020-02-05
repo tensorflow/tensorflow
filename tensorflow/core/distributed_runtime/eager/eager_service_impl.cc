@@ -119,6 +119,13 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   auto* r = env_->rendezvous_mgr->Find(request->context_id());
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Creating context on /job:" << request->server_def().job_name()
+            << "/task:" << request->server_def().task_index();
+    for (const auto& da : request->cluster_device_attributes()) {
+      VLOG(2) << "    " << da.name();
+    }
+  }
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
       true));
@@ -229,6 +236,16 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
         " but received update request at view #", request->context_view_id(),
         ". View id should only be continuously incremented.");
   }
+  if (request->cluster_device_attributes_size() == 0) {
+    // In this case, the client indicates that the updated `server_def` and
+    // device info is irrelevant to this worker, since it is not connected to
+    // the updated ones (likely due to device filter settings). The worker
+    // simply needs to update view ID and does not update other internal state.
+    ctx->IncrementContextViewId();
+    VLOG(1) << "Processing simplified UpdateContextRequest on "
+            << ctx->HostCPU()->name();
+    return Status::OK();
+  }
   // TODO(b/143914772): Potential memory leak if rendezvous has pending
   // tensors for removed / replaced workers.
 
@@ -326,19 +343,6 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
                                    QueueResponse* queue_response) {
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
-  const tensorflow::AttrTypeMap* types;
-  bool is_function = false;
-  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp(name, &types, &is_function));
-  if (is_function && !eager_context->FindFunctionByName(name)) {
-    return errors::NotFound(
-        "'", name,
-        "' is neither a type of a primitive operation nor a name "
-        "of a function registered in binary running on ",
-        port::Hostname(),
-        ". One possible root cause is the client and server binaries are not "
-        "built with the same version. Please make sure the operation or "
-        "function is registered in the binary running in this process.");
-  }
   absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
       absl::nullopt;
   if (operation.is_function()) {
@@ -348,11 +352,9 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
       remote_func_params = {operation.id(), absl::nullopt};
     }
   }
-  op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
-                                          types, eager_executor,
-                                          remote_func_params));
-
-  TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
+  op.reset(new tensorflow::EagerOperation(eager_context));
+  TF_RETURN_IF_ERROR(op->Reset(name, operation.device().c_str(), false,
+                               eager_executor, remote_func_params));
 
   {
     profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",

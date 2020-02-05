@@ -4,6 +4,10 @@ load(
     "tf_proto_library",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
@@ -35,7 +39,6 @@ exports_files(
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
-        "env_var.h",
         "equal_graph_def.h",
         "events_writer.h",
         "example_proto_fast_parsing.h",
@@ -156,11 +159,6 @@ filegroup(
         "work_sharder.cc",
         "work_sharder.h",
     ],
-)
-
-filegroup(
-    name = "lib_internal_impl_srcs",
-    srcs = ["env_var.cc"],
 )
 
 filegroup(
@@ -475,6 +473,22 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "env_var",
+    srcs = ["env_var.cc"],
+    hdrs = ["env_var.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
     ],
 )
 

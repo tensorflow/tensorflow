@@ -28,7 +28,7 @@ limitations under the License.
 // (https://github.com/google/googletest) to discourage over-eager use of mocks
 // that lead to cumbersome class hierarchies and tests that might end up not
 // testing real code in important ways.
-#include <gtest/gtest.h>
+#include <gtest/gtest.h>  // IWYU pragma: export
 
 namespace tensorflow {
 namespace testing {

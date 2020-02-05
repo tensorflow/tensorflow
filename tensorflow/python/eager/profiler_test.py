@@ -23,6 +23,7 @@ import os
 from tensorflow.core.protobuf import trace_events_pb2
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
@@ -42,8 +43,12 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     profile_result = profiler.stop()
     profile_pb = trace_events_pb2.Trace()
     profile_pb.ParseFromString(profile_result)
-    profile_pb_str = '%s' % profile_pb
-    self.assertTrue('Mul' in profile_pb_str)
+    devices = frozenset(device.name for device in profile_pb.devices.values())
+    self.assertIn('/host:CPU', devices)
+    if config.list_physical_devices('GPU'):
+      self.assertIn('/device:GPU:0', devices)
+    events = frozenset(event.name for event in profile_pb.trace_events)
+    self.assertIn('Mul:Mul', events)
     with self.assertRaises(profiler.ProfilerNotRunningError):
       profiler.stop()
 

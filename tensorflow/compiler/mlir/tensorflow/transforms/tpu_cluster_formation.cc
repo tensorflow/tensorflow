@@ -247,7 +247,7 @@ void UpdateLaunchOpResultExternalUses(tf_device::LaunchOp launch_op,
   for (auto ret_vals : llvm::zip(results, launch_op.getResults())) {
     Value old_ret = std::get<0>(ret_vals);
     Value new_ret = std::get<1>(ret_vals);
-    for (auto& use : old_ret.getUses())
+    for (auto& use : llvm::make_early_inc_range(old_ret.getUses()))
       if (!launch_op_block.findAncestorOpInBlock(*use.getOwner()))
         use.set(new_ret);
   }
@@ -331,7 +331,7 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
       return input->emitOpError() << "requires " << num_replicas << " operands";
 
     replicated_inputs.push_back(
-        {input->getOperands(), *input->result_type_begin()});
+        {input->getOperands(), input->getOperand(0).getType()});
     if (llvm::cast<TF::TPUReplicatedInputOp>(input).is_mirrored_variable())
       mirrored_variable_indices.push_back(pos_and_input.index());
   }
@@ -414,10 +414,12 @@ LogicalResult FormClustersInBlock(Block* block,
     auto cluster_metadata = metadata_map.find(cluster.getFirst());
 
     // No TPUReplicateMetadata for a `_tpu_replicate` attribute.
-    if (cluster_metadata == metadata_map.end())
-      return cluster_ops.front()->emitError()
-             << "TPUReplicateMetadata for associated '" << kTPUReplicateAttr
-             << "' attribute '" << cluster.getFirst() << "' is missing";
+    if (cluster_metadata == metadata_map.end()) {
+      cluster_ops.front()->emitWarning()
+          << "TPUReplicateMetadata for associated '" << kTPUReplicateAttr
+          << "' attribute '" << cluster.getFirst() << "' is missing";
+      continue;
+    }
 
     llvm::SmallSetVector<Operation*, 8> preceding_users =
         CollectClusterPrecedingUsers(block, cluster_ops);

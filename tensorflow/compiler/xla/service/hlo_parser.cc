@@ -635,6 +635,7 @@ bool HloParserImpl::ParseInstructionList(HloComputation** computation,
     // This means some instruction was marked as ROOT but we didn't find it in
     // the pool, which should not happen.
     if (root_node == nullptr) {
+      // LOG(FATAL) crashes the program by calling abort().
       LOG(FATAL) << "instruction " << root_name
                  << " was marked as ROOT but the parser has not seen it before";
     }
@@ -876,15 +877,23 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
       optional<int64> channel_id;
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      optional<std::vector<int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
+          (dimensions && dimensions->size() != 1)) {
         return false;
       }
       std::vector<ReplicaGroup> replica_groups;
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
+      optional<int64> split_dimension;
+      if (dimensions) {
+        split_dimension = dimensions->at(0);
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
-          shape, operands, replica_groups, channel_id));
+          shape, operands, replica_groups, channel_id, split_dimension));
       break;
     }
     case HloOpcode::kCollectivePermute: {
@@ -1028,6 +1037,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
+        return false;
+      }
       if (channel_id != operands[0]->channel_id()) {
         return false;
       }
@@ -1059,6 +1071,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &is_host_transfer};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
         return false;
       }
       if (channel_id != operands[0]->channel_id()) {
@@ -2997,16 +3012,20 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
     bool success = [&] {
       switch (fd->type()) {
         case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
-          reflection->SetBool(
-              message, fd, **(static_cast<optional<bool>*>(p.second.result)));
+          auto attr_value = static_cast<optional<bool>*>(p.second.result);
+          if (attr_value->has_value()) {
+            reflection->SetBool(message, fd, **attr_value);
+          }
           return true;
         }
         case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-          std::string value =
-              **(static_cast<optional<std::string>*>(p.second.result));
-          const tensorflow::protobuf::EnumValueDescriptor* evd =
-              fd->enum_type()->FindValueByName(value);
-          reflection->SetEnum(message, fd, evd);
+          auto attr_value =
+              static_cast<optional<std::string>*>(p.second.result);
+          if (attr_value->has_value()) {
+            const tensorflow::protobuf::EnumValueDescriptor* evd =
+                fd->enum_type()->FindValueByName(**attr_value);
+            reflection->SetEnum(message, fd, evd);
+          }
           return true;
         }
         default:

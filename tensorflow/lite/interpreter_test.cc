@@ -17,11 +17,15 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <memory>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -365,15 +369,14 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
   ASSERT_LT(interpreter.tensor(0)->data.raw, interpreter.tensor(1)->data.raw);
-  ASSERT_LT(interpreter.tensor(1)->data.raw, interpreter.tensor(2)->data.raw);
-  ASSERT_LT(interpreter.tensor(2)->data.raw, interpreter.tensor(3)->data.raw);
-  ASSERT_LT(interpreter.tensor(3)->data.raw, interpreter.tensor(4)->data.raw);
-  ASSERT_LT(interpreter.tensor(4)->data.raw, interpreter.tensor(5)->data.raw);
-  ASSERT_LT(interpreter.tensor(5)->data.raw, interpreter.tensor(7)->data.raw);
-  ASSERT_EQ(interpreter.tensor(6)->data.raw, interpreter.tensor(2)->data.raw);
-  // #7 is the one with the largest pointer.
+  ASSERT_LT(interpreter.tensor(1)->data.raw, interpreter.tensor(3)->data.raw);
+  ASSERT_EQ(interpreter.tensor(3)->data.raw, interpreter.tensor(9)->data.raw);
+  ASSERT_LT(interpreter.tensor(3)->data.raw, interpreter.tensor(5)->data.raw);
+  ASSERT_LT(interpreter.tensor(5)->data.raw, interpreter.tensor(2)->data.raw);
+  ASSERT_EQ(interpreter.tensor(2)->data.raw, interpreter.tensor(7)->data.raw);
+  ASSERT_LT(interpreter.tensor(2)->data.raw, interpreter.tensor(4)->data.raw);
+  // #4 is the one with the largest pointer.
   ASSERT_EQ(interpreter.tensor(8)->data.raw, nullptr);
-  ASSERT_EQ(interpreter.tensor(9)->data.raw, interpreter.tensor(5)->data.raw);
 }
 
 TEST(BasicInterpreter, BufferAccess) {
@@ -1067,6 +1070,30 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   TestExternalContext::Set(context, nullptr);
   EXPECT_EQ(TestExternalContext::Get(context), nullptr);
   interpreter_.SetNumThreads(4);
+}
+
+struct TestCpuBackendContext : public TfLiteInternalBackendContext {
+  // Count the number of calls to ClearCaches for the backend context.
+  void ClearCaches() override { ++num_calls; }
+  void SetMaxNumThreads(int num_threads) override {}
+  int num_calls = 0;
+};
+
+TEST_F(InterpreterTest, ExternalBackendContextClearsCachesOnDelete) {
+  ExternalCpuBackendContext external_cpu_context;
+  TestCpuBackendContext* cpu_backend_context = new TestCpuBackendContext();
+  external_cpu_context.set_internal_backend_context(
+      std::unique_ptr<TfLiteInternalBackendContext>(cpu_backend_context));
+
+  {
+    // Create an interpreter with an external Cpu backend context and ensure
+    // it goes out of scope.
+    Interpreter interpreter;
+    interpreter.SetExternalContext(kTfLiteCpuBackendContext,
+                                   &external_cpu_context);
+    EXPECT_EQ(cpu_backend_context->num_calls, 0);
+  }
+  EXPECT_EQ(cpu_backend_context->num_calls, 1);
 }
 
 // Test fixture that allows playing with execution plans. It creates a two

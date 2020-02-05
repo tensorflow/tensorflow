@@ -25,7 +25,7 @@ cc_library(
         "//tensorflow/lite:framework",
     ] + tflite_experimental_runtime_linkopts(
         if_true = [
-            # "//tensorflow/lite/experimental/tf_runtime:tfrt_tflite_interpreter_alwayslink",
+            # "//tensorflow/lite/experimental/tf_runtime/tfrt_kernels:tfrt_tflite_interpreter_alwayslink",
             # "//third_party/tf_runtime:basic_kernels_alwayslink",
         ],
     ),

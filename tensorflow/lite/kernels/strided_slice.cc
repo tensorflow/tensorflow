@@ -59,10 +59,6 @@ struct StridedSliceContext {
   int dims;
 };
 
-// This Op only supports 1-4D cases and since we use the reference 4D
-// implementation, the 1-3D tensors are mapped to 4D.
-const int kMaxDim = 4;
-
 StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
   StridedSliceParams op_params;
   op_params.start_indices_count = op_context->dims;
@@ -205,6 +201,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
       if (kernel_type == kReference) {
         TF_LITE_STRIDED_SLICE(reference_ops, int8_t);
+      }
+      break;
+    case kTfLiteInt16:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, int16_t);
       }
       break;
     case kTfLiteBool:

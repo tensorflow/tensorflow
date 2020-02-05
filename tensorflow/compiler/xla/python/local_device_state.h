@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_DEVICE_STATE_H_
 
 #include <memory>
+#include <random>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/python/event_pool.h"
 #include "tensorflow/compiler/xla/python/semaphore.h"
 #include "tensorflow/compiler/xla/python/worker_thread.h"
@@ -40,12 +42,16 @@ class LocalDeviceState {
   //
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
-  LocalDeviceState(se::StreamExecutor* executor, bool synchronous_deallocation,
-                   bool asynchronous, bool allow_event_reuse);
+  LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
+                   bool synchronous_deallocation, bool asynchronous,
+                   bool allow_event_reuse);
   virtual ~LocalDeviceState();
 
+  se::StreamExecutor* executor() const { return executor_; }
   // StreamExecutor (local) device ordinal.
   int device_ordinal() const { return executor_->device_ordinal(); }
+
+  LocalClient* client() const { return client_; }
 
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
 
@@ -97,6 +103,9 @@ class LocalDeviceState {
 
   Semaphore& compute_semaphore() { return compute_semaphore_; }
 
+  // Returns a fresh, PRNG-generated random seed for an XLA computation.
+  int GetNewPrngSeed();
+
  private:
   Status SynchronizeAllActivity();
 
@@ -108,7 +117,8 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  se::StreamExecutor* executor_;
+  se::StreamExecutor* const executor_;
+  LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;
   std::unique_ptr<se::Stream> host_to_device_stream_;
   std::vector<std::unique_ptr<se::Stream>> device_to_host_streams_;
@@ -121,6 +131,10 @@ class LocalDeviceState {
   absl::Mutex mu_;
   int next_device_to_host_stream_ GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ GUARDED_BY(mu_) = 0;
+
+  std::random_device prng_seed_device_ GUARDED_BY(mu_);
+  std::mt19937 prng_seed_generator_ GUARDED_BY(mu_);
+  std::uniform_int_distribution<> prng_seed_distribution_ GUARDED_BY(mu_);
 
   // Callback stream is used for running short host-side callbacks after device
   // side events, without preventing the device-side stream from doing useful

@@ -222,6 +222,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
@@ -540,6 +541,7 @@ edgetpu_ops = [
     "conv_relu1",
     "conv_relu6",
     "depthwiseconv",  # high error
+    "expand_dims",
     "fully_connected",
     "l2norm",  # high error
     "maximum",
@@ -548,6 +550,7 @@ edgetpu_ops = [
     "minimum",
     "mul",
     "pad",  # high error
+    "pack",
     "relu",
     "relu1",
     "relu6",

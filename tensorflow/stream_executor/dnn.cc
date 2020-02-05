@@ -615,5 +615,18 @@ bool DnnSupport::IsStatusOk(const port::Status& status, bool report_error) {
   return false;
 }
 
+port::Status DnnSupport::DoCtcLoss(Stream* stream, dnn::DataType element_type,
+                                   const RnnStateTensorDescriptor& probs_desc,
+                                   const DeviceMemoryBase probs_data,
+                                   absl::Span<const int> labels_data,
+                                   absl::Span<const int> labels_lengths_data,
+                                   absl::Span<const int> input_lengths_data,
+                                   DeviceMemoryBase costs_data,
+                                   const RnnStateTensorDescriptor& grads_desc,
+                                   DeviceMemoryBase grads_data,
+                                   DeviceMemory<uint8> scratch_memory) {
+  return port::UnimplementedError("CtcLoss not implemented");
+}
+
 }  // namespace dnn
 }  // namespace stream_executor

@@ -50,14 +50,12 @@ bool HasFeature<string>(const string& key, const Features& features) {
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
 
-#ifdef USE_TSTRING
 template <>
 bool HasFeature<tstring>(const string& key, const Features& features) {
   auto it = features.feature().find(key);
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
-#endif
 
 bool HasFeatureList(const string& key,
                     const SequenceExample& sequence_example) {
@@ -88,13 +86,11 @@ protobuf::RepeatedField<float>* GetFeatureValues<float>(Feature* feature) {
   return feature->mutable_float_list()->mutable_value();
 }
 
-#ifdef USE_TSTRING
 template <>
 const protobuf::RepeatedPtrField<string>& GetFeatureValues<tstring>(
     const Feature& feature) {
   return feature.bytes_list().value();
 }
-#endif
 
 template <>
 const protobuf::RepeatedPtrField<string>& GetFeatureValues<string>(
@@ -102,13 +98,11 @@ const protobuf::RepeatedPtrField<string>& GetFeatureValues<string>(
   return feature.bytes_list().value();
 }
 
-#ifdef USE_TSTRING
 template <>
 protobuf::RepeatedPtrField<string>* GetFeatureValues<tstring>(
     Feature* feature) {
   return feature->mutable_bytes_list()->mutable_value();
 }
-#endif
 
 template <>
 protobuf::RepeatedPtrField<string>* GetFeatureValues<string>(Feature* feature) {
@@ -142,12 +136,10 @@ void ClearFeatureValues<string>(Feature* feature) {
   feature->mutable_bytes_list()->Clear();
 }
 
-#ifdef USE_TSTRING
 template <>
 void ClearFeatureValues<tstring>(Feature* feature) {
   feature->mutable_bytes_list()->Clear();
 }
-#endif
 
 template <>
 Features* GetFeatures<Features>(Features* proto) {
@@ -188,18 +180,14 @@ template <>
 const protobuf::RepeatedPtrField<string>& GetFeatureValues<string>(
     const Feature& feature);
 
-#ifdef USE_TSTRING
 template <>
 const protobuf::RepeatedPtrField<string>& GetFeatureValues<tstring>(
     const Feature& feature);
-#endif
 
 template <>
 protobuf::RepeatedPtrField<string>* GetFeatureValues<string>(Feature* feature);
 
-#ifdef USE_TSTRING
 template <>
 protobuf::RepeatedPtrField<string>* GetFeatureValues<tstring>(Feature* feature);
-#endif
 
 }  // namespace tensorflow

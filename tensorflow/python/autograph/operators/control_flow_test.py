@@ -34,7 +34,9 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -191,7 +193,7 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda: state.field_1 < 6,
         get_state=get_state,
         set_state=set_state,
-        symbol_names=(),
+        symbol_names=('state.field_1', 'state.field_2'),
         opts={})
     self.assertEqual(self.evaluate((state.field_1, state.field_2)), (6, 6))
 
@@ -404,6 +406,30 @@ class ForLoopTest(test.TestCase):
       return s
     self.assertAllEqual(test_fn(), 1234)
 
+  def test_tf_iterator_shape_invariants(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function
+    def test_fn():
+      def body(i):
+        nonlocal s
+        s = array_ops.concat([s, [i]], 0)
+
+      def set_state(loop_vars):
+        nonlocal s
+        s, = loop_vars
+
+      s = constant_op.constant([], dtype=dtypes.int64)
+      control_flow.for_stmt(
+          iter(dataset_ops.Dataset.range(5)),
+          extra_test=None,
+          body=body,
+          get_state=lambda: (s,),
+          set_state=set_state,
+          symbol_names=('s',),
+          opts={'shape_invariants': [(s, tensor_shape.TensorShape([None]))]})
+      return s
+    self.assertAllEqual(test_fn(), [0, 1, 2, 3, 4])
+
   def test_tf_iterator_no_loop_vars(self):
     def body(i):
       v.assign(v.read_value() * 10 + i)
@@ -614,7 +640,7 @@ class WhileLoopTest(test.TestCase):
     self.assertEqual(i, 5)
     self.assertEqual(self.evaluate(s), 1234)
 
-  def test_python_infinite_loop(self):
+  def test_python_while_infinite(self):
     if not __debug__:
       self.skipTest('Feature disabled in optimized mode.')
     with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
@@ -627,7 +653,47 @@ class WhileLoopTest(test.TestCase):
             symbol_names=(),
             opts={})
 
-  def test_python_long_loop_unroll_warning(self):
+  def test_python_for_infinite(self):
+    if not __debug__:
+      self.skipTest('Feature disabled in optimized mode.')
+    with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
+      with self.assertRaisesRegexp(ValueError, 'iteration limit'):
+        control_flow.for_stmt(
+            iter_=range(101),
+            extra_test=None,
+            body=lambda i: None,
+            get_state=None,
+            set_state=None,
+            symbol_names=(),
+            opts={})
+
+  def test_python_while_large_unroll_warning(self):
+    if not __debug__:
+      self.skipTest('Feature disabled in optimized mode.')
+    with test.mock.patch.object(
+        control_flow, 'INEFFICIENT_UNROLL_MIN_ITERATIONS', 10):
+      with ops.Graph().as_default():
+        out_capturer = six.StringIO()
+        with test.mock.patch.object(sys, 'stdout', out_capturer):
+          with test.mock.patch.object(ag_logging, 'echo_log_to_stdout', True):
+            def custom_iterator():
+              for i in range(11):
+                c = constant_op.constant(i)
+                yield c
+
+            i = 0
+            control_flow.for_stmt(
+                iter_=custom_iterator(),
+                extra_test=None,
+                body=lambda i: None,
+                get_state=None,
+                set_state=None,
+                symbol_names=(),
+                opts={})
+        self.assertTrue(re.match(
+            r'.* Large unrolled loop.*Const.*', out_capturer.getvalue()))
+
+  def test_python_for_large_unroll_warning(self):
     if not __debug__:
       self.skipTest('Feature disabled in optimized mode.')
     with test.mock.patch.object(
@@ -650,8 +716,7 @@ class WhileLoopTest(test.TestCase):
                 symbol_names=('i',),
                 opts={})
         self.assertTrue(re.match(
-            r'.*ops.*loop.*large.*iterations.*Add.*',
-            out_capturer.getvalue()))
+            r'.* Large unrolled loop.*Add.*', out_capturer.getvalue()))
 
 
 @test_util.run_all_in_graph_and_eager_modes

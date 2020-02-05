@@ -32,12 +32,11 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
-from tensorflow.python.eager import eager_util as c_api_util
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.framework import errors
-from tensorflow.python.tpu import topology
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
@@ -429,8 +428,6 @@ class Context(object):
     self._soft_device_placement = None
     self._log_device_placement = None
     self._enable_mlir_bridge = None
-    self._tpu_topologies_by_job = {}
-    self._attempted_tpu_initialization = set()
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -463,24 +460,6 @@ class Context(object):
     """
     return self._rng.randint(0, _MAXINT32)
 
-  def _maybe_initialize_tpu_system(self, job):
-    """Initializes TPUs associated with `job` if necessary."""
-    if job in self._attempted_tpu_initialization:
-      return
-    self._attempted_tpu_initialization.add(job)
-    try:
-      with c_api_util.tf_buffer() as buffer_:
-        pywrap_tfe.TFE_InitializeTPUSystem(self._context_handle, job, buffer_)
-        topology_proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
-    except errors.NotFoundError:
-      pass
-    else:
-      # TODO(b/134094971): Remove this when lazy tensor copy in multi-device
-      # function has been implemented.
-      self.mirroring_policy = MIRRORING_ALL
-      parsed_topology = topology.Topology(serialized=topology_proto_data)
-      self._tpu_topologies_by_job[job] = parsed_topology
-
   def _initialize_logical_devices(self):
     """Helper to initialize devices."""
     # Store list of devices
@@ -493,8 +472,6 @@ class Context(object):
         dev_name = pywrap_tfe.TF_DeviceListName(device_list, i)
         context_devices.append(pydev.canonical_name(dev_name))
         spec = pydev.DeviceSpec.from_string(dev_name)
-
-        self._maybe_initialize_tpu_system(spec.job)
         # If the job is localhost, we assume that the cluster has not yet been
         # configured and thus clear the job, replica & task.
         if spec.job == "localhost":
@@ -808,6 +785,13 @@ class Context(object):
   def devices(self):
     """List of the names of devices available to execute operations."""
     return self._devices
+
+  def host_address_space(self):
+    self.ensure_initialized()
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tfe.TFE_HostAddressSpace(self._context_handle, buffer_)
+      address_space = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
+    return address_space
 
   # TODO(fishx): remove this property.
   @property
@@ -1438,18 +1422,6 @@ class Context(object):
     self._thread_local_data.function_call_options = None
 
   @property
-  def tpu_topologies(self):
-    """A sequence of TPU topologies for connected TPU systems."""
-    ensure_initialized()
-    return tuple(self._tpu_topologies_by_job.values())
-
-  @property
-  def tpu_topologies_by_job(self):
-    """A mapping from job name to TPU topology for connected TPU systems."""
-    ensure_initialized()
-    return self._tpu_topologies_by_job
-
-  @property
   def log_device_placement(self):
     return self.config.log_device_placement
 
@@ -1566,7 +1538,7 @@ class Context(object):
       return None
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_ContextExportRunMetadata(self._context_handle, buffer_)
-      proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     run_metadata = config_pb2.RunMetadata()
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
     return run_metadata
@@ -1666,8 +1638,10 @@ def _reset_context():
   global _context
   with _context_lock:
     if _context is not None:
+      _context._clear_caches()
       _context = None
   _create_context()
+  pywrap_tfe.TFE_ClearScalarCache()
 
 
 def context():
@@ -2068,8 +2042,8 @@ def export_run_metadata():
 
 
 @contextlib.contextmanager
-def collect_optimized_graphs():
-  """Collects a flat list of post-optimization graphs.
+def collect_graphs(optimized=True):
+  """Collects a flat list of pre- or post-optimization graphs.
 
   The collected graphs include device placements, which can be useful for
   testing.
@@ -2081,13 +2055,15 @@ def collect_optimized_graphs():
   def f(x):
     return x + constant_op.constant(1.)
 
-  with context.collect_optimized_graphs() as graphs:
+  with context.collect_graphs() as graphs:
     with ops.device("CPU:0"):
       f(constant_op.constant(1.))
 
   graph, = graphs  # `graph` contains a single GraphDef for inspection
   ```
 
+  Args:
+    optimized: whether to collect optimized graphs or non-optimized graphs
   Yields:
     A list of GraphDefs, populated when the context manager exits.
   """
@@ -2100,7 +2076,10 @@ def collect_optimized_graphs():
   finally:
     ctx.disable_graph_collection()
   for graph in metadata.function_graphs:
-    graphs.append(graph.post_optimization_graph)
+    if optimized:
+      graphs.append(graph.post_optimization_graph)
+    else:
+      graphs.append(graph.pre_optimization_graph)
 
 
 def get_server_def():

@@ -20,23 +20,18 @@ limitations under the License.
 namespace tflite {
 namespace reference_integer_ops {
 
-template<typename T> struct OutputParams {};
-template<> struct OutputParams<int8> {
-  static const int output_num_bits = 8;
-  static const int32 output_min = std::numeric_limits<int8>::min();
-};
-template<> struct OutputParams<int16> {
-  static const int output_num_bits = 16 - 1;
-  static const int32 output_min = 0;
-};
-
-// Quantized softmax with int8/int16 integer input and output.
-template <typename T>
+// Quantized softmax with int8 input and int8/int16 output.
+// Quantized softmax with int16 input and int16 output, zero_point=0.
+template <typename InputT = int8_t, typename OutputT = int8_t>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const T* input_data,
-                    const RuntimeShape& output_shape, T* output_data) {
-  const int32 input_beta_multiplier = params.input_multiplier;
-  const int32 input_beta_left_shift = params.input_left_shift;
+                    const RuntimeShape& input_shape, const InputT* input_data,
+                    const RuntimeShape& output_shape, OutputT* output_data) {
+  bool input_type_check = (std::is_same<InputT, int8_t>::value ||
+                           std::is_same<InputT, int16_t>::value);
+  TFLITE_DCHECK(input_type_check);
+
+  const int32_t input_beta_multiplier = params.input_multiplier;
+  const int32_t input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
@@ -46,9 +41,10 @@ inline void Softmax(const SoftmaxParams& params,
   static const int kScaledDiffIntegerBits = 5;
   static const int kAccumulationIntegerBits = 12;
   using FixedPointScaledDiff =
-      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+      gemmlowp::FixedPoint<int32_t, kScaledDiffIntegerBits>;
+  using FixedPointAccum =
+      gemmlowp::FixedPoint<int32_t, kAccumulationIntegerBits>;
+  using FixedPoint0 = gemmlowp::FixedPoint<int32_t, 0>;
 
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -56,21 +52,25 @@ inline void Softmax(const SoftmaxParams& params,
   const int depth =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  int32 min_num = std::numeric_limits<T>::min();
-  int32 max_num = std::numeric_limits<T>::max();
-  OutputParams<T> output_params;
+  int32 min_num = std::is_same<InputT, int16_t>::value
+                      ? 0
+                      : std::numeric_limits<OutputT>::min();
+  int32 max_num = std::numeric_limits<OutputT>::max();
+  int output_num_bits =
+      std::is_same<InputT, int16_t>::value ? 15 : (sizeof(OutputT) * 8);
+
   for (int i = 0; i < outer_size; ++i) {
-    T max_in_row = min_num;
+    InputT max_in_row = min_num;
     for (int c = 0; c < depth; ++c) {
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
 
     FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32_t input_diff =
+          static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
+        const int32_t input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
                 input_diff, input_beta_multiplier, input_beta_left_shift);
         const FixedPointScaledDiff scaled_diff_f8 =
@@ -85,25 +85,25 @@ inline void Softmax(const SoftmaxParams& params,
         sum_of_exps.raw(), kAccumulationIntegerBits, &num_bits_over_unit));
 
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32_t input_diff =
+          static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
+        const int32_t input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
                 input_diff, input_beta_multiplier, input_beta_left_shift);
         const FixedPointScaledDiff scaled_diff_f8 =
             FixedPointScaledDiff::FromRaw(input_diff_rescaled);
 
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
-        const int32 unsat_output = gemmlowp::RoundingDivideByPOT(
-            (shifted_scale * exp_in_0).raw(), num_bits_over_unit + 31 - output_params.output_num_bits);
-        const int32 shifted_output = unsat_output + output_params.output_min;
-
-        output_data[i * depth + c] =
-            static_cast<T>(std::max(std::min(shifted_output, max_num), min_num));
-
+        const int32_t unsat_output = gemmlowp::RoundingDivideByPOT(
+            (shifted_scale * exp_in_0).raw(),
+            num_bits_over_unit + 31 - output_num_bits);
+        // TODO(b/148494470): Handle int32 shifts properly:
+        const int32_t shifted_output = unsat_output + min_num;
+        output_data[i * depth + c] = static_cast<OutputT>(
+            std::max(std::min(shifted_output, max_num), min_num));
       } else {
-        output_data[i * depth + c] = output_params.output_min;
+        output_data[i * depth + c] = min_num;
       }
     }
   }

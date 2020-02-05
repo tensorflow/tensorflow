@@ -2397,14 +2397,25 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return InferFromCostGraph(metadata.cost_graph());
 }
 
-Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def,
+                                             bool allow_symbolic_shapes) const {
   *output_graph_def = item_.graph;
   for (int i = 0; i < output_graph_def->node_size(); i++) {
     auto node = output_graph_def->mutable_node(i);
     AttrValue attr_output_shape;
     auto tensor_properties = GetOutputProperties(node->name());
     for (const auto& tensor_property : tensor_properties) {
-      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+      TensorShapeProto* proto = attr_output_shape.mutable_list()->add_shape();
+      *proto = tensor_property.shape();
+      if (!allow_symbolic_shapes) {
+        // There may be dim.size < -1 in SymbolicShapeRefiner. Change those to
+        // -1.
+        for (int i = 0; i < proto->dim_size(); i++) {
+          if (proto->dim(i).size() < -1) {
+            proto->mutable_dim(i)->set_size(-1);
+          }
+        }
+      }
     }
     (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
   }

@@ -197,7 +197,6 @@ TEST(CodegenTest, Golden) {
   variable3->mutable_shape()->add_dim()->set_size(5);
   variable3->set_type(DT_INT32);
   CompileResult compile_result;
-  compile_result.tensorflow_header_root = "third_party/tensorflow";
   compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
       {},
       {BufferInfo::MakeTempBuffer(1),

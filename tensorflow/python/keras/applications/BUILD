@@ -34,7 +34,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers_base",
+        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -53,13 +53,14 @@ tf_py_test(
 # Add target for each application module file, to make sure it only
 # runs the test for the application models contained in that
 # application module when it has been modified.
+# TODO(b/146940090): Remove the "no_oss" tag in the following tests.
 tf_py_test(
     name = "applications_load_weight_test_resnet",
     srcs = ["applications_load_weight_test.py"],
     args = ["--module=resnet"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -75,7 +76,7 @@ tf_py_test(
     args = ["--module=resnet_v2"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -91,7 +92,7 @@ tf_py_test(
     args = ["--module=vgg16"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -107,7 +108,7 @@ tf_py_test(
     args = ["--module=vgg19"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -123,7 +124,7 @@ tf_py_test(
     args = ["--module=xception"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -139,7 +140,7 @@ tf_py_test(
     args = ["--module=inception_v3"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -155,7 +156,7 @@ tf_py_test(
     args = ["--module=inception_resnet_v2"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -171,7 +172,7 @@ tf_py_test(
     args = ["--module=mobilenet"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -187,7 +188,7 @@ tf_py_test(
     args = ["--module=mobilenet_v2"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -205,7 +206,7 @@ tf_py_test(
     main = "applications_load_weight_test.py",
     shard_count = 3,
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -223,7 +224,7 @@ tf_py_test(
     main = "applications_load_weight_test.py",
     shard_count = 8,
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -239,7 +240,7 @@ tf_py_test(
     args = ["--module=nasnet"],
     main = "applications_load_weight_test.py",
     tags = [
-        "no_oss",  # TODO(b/146940090): fix kokoro error
+        "no_oss",
         "no_pip",
     ],
     deps = [

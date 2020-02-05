@@ -86,7 +86,7 @@ class BaseActivationsOpModel : public SingleOpModel {
       output_ = AddOutput({TensorType_INT8, {}, 0, 0, 1. / 256, -128});
     } else if (input.type == TensorType_INT16) {
       output_ = AddOutput({TensorType_INT16, {}, 0, 0,
-                           1.0f/(std::numeric_limits<int16_t>::max() + 1), 0});
+                           1. / 32768, 0});
     } else {
       output_ = AddOutput({input.type, {}});
     }

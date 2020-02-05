@@ -1,6 +1,10 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
@@ -296,6 +300,22 @@ cc_library(
 )
 
 cc_library(
+    name = "resource_loader",
+    testonly = 1,
+    srcs = ["resource_loader.cc"],
+    hdrs = ["//tensorflow/core/platform:resource_loader.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@bazel_tools//tools/cpp/runfiles",
+    ],
+)
+
+cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"],
     hdrs = ["//tensorflow/core/platform:rocm_rocdl_path.h"],
@@ -504,6 +524,8 @@ filegroup(
         "mutex.h",
         "mutex_data.h",
         "notification.h",
+        "subprocess.cc",
+        "subprocess.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
     ],

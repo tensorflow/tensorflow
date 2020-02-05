@@ -121,7 +121,7 @@ class TensorHandle : public core::RefCounted {
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
 
-  Device* DeviceOrHostCPU(EagerContext* ctx) const;
+  Device* DeviceOrHostCPU(const EagerContext& ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
   Status NumDims(int* num_dims) const;
@@ -167,7 +167,7 @@ class TensorHandle : public core::RefCounted {
   // on a non-ready tensor.
   void Poison(Status status);
 
-  Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
+  Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* dstd,
                       tensorflow::Tensor* output);
 
   Status InferenceShape(

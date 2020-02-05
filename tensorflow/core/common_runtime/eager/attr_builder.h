@@ -85,6 +85,7 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // trigger a NodeDef creation).
 class AttrBuilder {
  public:
+  AttrBuilder() {}
   explicit AttrBuilder(const char* op) { Reset(op); }
 
   void Reset(const char* op) {

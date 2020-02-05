@@ -27,7 +27,8 @@ cc_library(
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
-            "//tensorflow/core/profiler/convert:run_metadata_to_trace_events",
+            "//tensorflow/core/profiler/convert:xplane_to_trace_events",
+            "//tensorflow/core/profiler/utils:group_events",
         ],
     }),
 )
@@ -45,7 +46,7 @@ tf_cuda_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "profiler_session.h",
     ],
@@ -63,6 +64,18 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:traceme_recorder",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "annotated_traceme",
+    hdrs = ["annotated_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":scoped_annotation",
+        ":traceme",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -89,6 +102,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "annotated_traceme.h",
         "profiler_session.cc",
         "profiler_session.h",
         "scoped_annotation.h",

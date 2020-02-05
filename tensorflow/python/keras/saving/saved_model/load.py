@@ -113,6 +113,9 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
     if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config))
+    else:
+      logging.warning('No training configuration found in save file, so the '
+                      'model was *not* compiled. Compile it manually.')
   # pylint: enable=protected-access
 
   return model
@@ -290,7 +293,8 @@ class KerasObjectLoader(tf_load.Loader):
     model_is_functional_or_sequential = (
         metadata.get('is_graph_network', False) or
         metadata['class_name'] == 'Sequential')
-    if (generic_utils.LAYER_UNDEFINED_CONFIG_KEY in config or
+    if (config is None or
+        generic_utils.LAYER_UNDEFINED_CONFIG_KEY in config or
         not model_is_functional_or_sequential):
       return None  # Revive as custom model.
 

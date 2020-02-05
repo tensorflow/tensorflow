@@ -154,9 +154,6 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-#ifdef USE_TSTRING
-  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
-  // migration.
   Status AddVector(const std::vector<string>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(),
                           TensorShape({static_cast<int64>(val.size())}));
@@ -169,7 +166,6 @@ class GraphDefBuilderWrapper {
     }
     return Status::OK();
   }
-#endif  // USE_TSTRING
 
   // Adds a `Const` node for the given tensor value to the graph.
   //

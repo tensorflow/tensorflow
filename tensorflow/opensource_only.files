@@ -271,6 +271,7 @@ tensorflow/third_party/toolchains/preconfig/win_1803/bazel_026/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_121/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
+tensorflow/third_party/toolchains/preconfig/win_1803/py38/BUILD
 tensorflow/third_party/toolchains/remote/BUILD
 tensorflow/third_party/toolchains/remote/BUILD.tpl
 tensorflow/third_party/toolchains/remote/configure.bzl
@@ -328,6 +329,7 @@ tensorflow/tools/ci_build/release/ubuntu_16/cpu_py38_full/nightly_release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/cpu_py38_full/nonpip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/cpu_py38_full/pip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/nightly.sh
+tensorflow/tools/ci_build/release/ubuntu_16/custom_op/release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_pip_on_cpu/build.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py2_full/nightly_release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py2_full/nonpip.sh
