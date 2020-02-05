@@ -168,20 +168,5 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
   RemoveEmptyLines(device_trace);
 }
 
-void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
-                              XSpace* space) {
-  // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
-  // to look up tensorflow op name from hlo_module/hlo_op.
-  auto symbol_resolver = [&](absl::string_view hlo_module,
-                             absl::string_view hlo_op) -> absl::string_view {
-    return absl::string_view();
-  };
-  for (XPlane& plane : *space->mutable_planes()) {
-    // Derived timelines only generated for device traces.
-    if (plane.id() == kHostPlaneId) continue;
-    DeriveEventsFromAnnotations(symbol_resolver, event_group_name_map, &plane);
-  }
-}
-
 }  // namespace profiler
 }  // namespace tensorflow
