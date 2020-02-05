@@ -68,25 +68,21 @@ cc_library(
         "@org_tensorflow//tensorflow:linux_aarch64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
-            "ENABLE_NO_ENCRYPTION",
             "OPENSSL_IS_BORINGSSL",
         ],
         "@org_tensorflow//tensorflow:linux_x86_64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
-            "ENABLE_NO_ENCRYPTION",
             "OPENSSL_IS_BORINGSSL",
         ],
         "@org_tensorflow//tensorflow:macos": [
             "PLATFORM_APPLE",
             "ENABLE_CURL_CLIENT",
-            "ENABLE_NO_ENCRYPTION",
             "OPENSSL_IS_BORINGSSL",
         ],
         "@org_tensorflow//tensorflow:linux_ppc64le": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
-            "ENABLE_NO_ENCRYPTION",
             "OPENSSL_IS_BORINGSSL",
         ],
         "//conditions:default": [],
