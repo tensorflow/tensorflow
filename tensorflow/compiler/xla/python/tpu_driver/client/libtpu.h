@@ -25,6 +25,8 @@ limitations under the License.
 extern "C" {
 #endif
 
+// ------------------- TPU Driver Support -----------------------
+
 struct TpuDriverFn;
 
 typedef struct TpuDriver TpuDriver;
@@ -254,6 +256,16 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_EventAwait TpuDriver_EventAwait;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeEvent TpuDriver_FreeEvent;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeStatus TpuDriver_FreeStatus;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Version TpuDriver_Version;
+
+// ------------------- TensorFlow Support -----------------------
+
+typedef struct TfTpuDriver_CompileOp TfTpuDriver_CompileOp;
+
+TfTpuDriver_CompileOp* TfTpuDriver_CompileOpConstructor(void* ctx);
+
+void TfTpuDriver_CompileOpExecute(TfTpuDriver_CompileOp* op, void* ctx);
+
+void TfTpuDriver_CompileOpFree(TfTpuDriver_CompileOp* op);
 
 #ifdef __cplusplus
 }
