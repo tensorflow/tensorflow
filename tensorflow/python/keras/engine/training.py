@@ -573,6 +573,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
+            Note that `validation_data` does not support all the data types that
+            are supported in `x`, eg, dict, generator or `keras.utils.Sequence`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
             when `x` is a generator. 'batch' is a special option for dealing
