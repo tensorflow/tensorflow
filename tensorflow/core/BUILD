@@ -72,7 +72,6 @@ load(
     "if_mobile",
     "if_not_windows",
     "tf_android_core_proto_headers",
-    "tf_android_core_proto_sources",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -1252,7 +1251,7 @@ alias(
 # List of protos we want on android
 filegroup(
     name = "android_proto_srcs",
-    srcs = tf_android_core_proto_sources(CORE_PROTO_SRCS),
+    srcs = CORE_PROTO_SRCS,
     visibility = ["//visibility:public"],
 )
 

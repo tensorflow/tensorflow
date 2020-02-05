@@ -107,16 +107,8 @@ def _add_tfcore_prefix(src):
         return src
     return "//tensorflow/core:" + src
 
-# List of proto files for android builds
-def tf_android_core_proto_sources(core_proto_sources_relative):
-    return [
-        _add_tfcore_prefix(p)
-        for p in core_proto_sources_relative
-    ]
-
-# Returns the list of pb.h and proto.h headers that are generated for
-# tf_android_core_proto_sources().
 def tf_android_core_proto_headers(core_proto_sources_relative):
+    """Returns the list of pb.h and proto.h headers that are generated for the provided sources."""
     return ([
         _add_tfcore_prefix(p).replace(":", "/").replace(".proto", ".pb.h")
         for p in core_proto_sources_relative
