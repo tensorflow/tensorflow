@@ -5955,6 +5955,7 @@ tf_kernel_library(
         ":random_ops",
         ":resource_variable_ops",
         ":stateful_random_ops",
+        ":stateless_random_ops",
         ":training_op_helpers",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

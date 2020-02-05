@@ -93,4 +93,16 @@ REGISTER_OP("StatelessMultinomial")
       return Status::OK();
     });
 
+REGISTER_OP("StatelessRandomBinomial")
+    .Input("shape: S")
+    .Input("seed: Tseed")
+    .Input("counts: T")
+    .Input("probs: T")
+    .Output("output: dtype")
+    .Attr("S: {int32, int64}")
+    .Attr("Tseed: {int32, int64} = DT_INT64")
+    .Attr("T: {half, float, double, int32, int64} = DT_DOUBLE")
+    .Attr("dtype: {half, float, double, int32, int64} = DT_INT64")
+    .SetShapeFn(StatelessShape);
+
 }  // namespace tensorflow
