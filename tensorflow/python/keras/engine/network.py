@@ -2042,8 +2042,8 @@ def validate_save_format(filepath, save_format):
   to Tensorflow SavedModel or HDF5. Output will default to 'tf' in TF2.X and
   'h5' in TF1.X.
 
-  Defaults to 'h5' if `filepath` is a path to a hdf5 file (having suffix '.h5' or
-  '.hdf5' or '.keras') or is an h5py.File object.
+  Defaults to 'h5' if `filepath` is a path to a hdf5 file (having suffix '.h5'
+  or '.hdf5' or '.keras') or is an h5py.File object.
 
   Args:
     filepath: Value of the `filepath` argument passed to the method.
@@ -2086,14 +2086,13 @@ def validate_save_format(filepath, save_format):
       save_format = 'h5'
     else:
       raise ValueError(
-          'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
-          save_format))
+          'Unknown format "%s". Was expecting one of {"tf", "h5"}.'
+          % (save_format))
   if save_format == 'tf' and filepath_is_h5:
     raise ValueError(
         ('Got save_format="tf"/"tensorflow", but the filepath ("%s") looks '
-        'like an HDF5 file. Omit the ".h5"/".keras" when saving in '
-        'TensorFlow format.')
-        % filepath)
+         'like an HDF5 file. Omit the ".h5"/".keras" when saving in '
+         'TensorFlow format.') % filepath)
   if save_format == 'tf' and filepath_is_h5py_file:
     raise ValueError(
         'Got save_format="tf"/"tensorflow", but the given `filepath`'
