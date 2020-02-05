@@ -39,6 +39,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "get_bash_bin",
     "get_python_bin",
     "is_windows",
     "raw_exec",
@@ -338,13 +339,11 @@ def _cuda_include_path(repository_ctx, cuda_config):
         cuda_config.cuda_toolkit_path,
         ".exe" if cuda_config.cpu_value == "Windows" else "",
     ))
-    result = raw_exec(repository_ctx, [
-        nvcc_path,
-        "-v",
-        "/dev/null",
-        "-o",
-        "/dev/null",
-    ])
+
+    # The expected exit code of this command is non-zero. Bazel remote execution
+    # only caches commands with zero exit code. So force a zero exit code.
+    cmd = "%s -v /dev/null -o /dev/null ; [ $? -eq 1 ]" % str(nvcc_path)
+    result = raw_exec(repository_ctx, [get_bash_bin(repository_ctx), "-c", cmd])
     target_dir = ""
     for one_line in result.stderr.splitlines():
         if one_line.startswith("#$ _TARGET_DIR_="):
