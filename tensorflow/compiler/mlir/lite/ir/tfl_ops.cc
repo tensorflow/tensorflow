@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
 
 //===----------------------------------------------------------------------===//

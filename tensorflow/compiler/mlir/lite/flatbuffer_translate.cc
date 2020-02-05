@@ -554,9 +554,14 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     attr = cst.value();
   } else if (auto cst = dyn_cast<tfl::QConstOp>(inst)) {
     attr = cst.value();
+  } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
+    attr = cst.value();
+  } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
+    attr = cst.value();
   } else {
     return empty_buffer_;
   }
+
   tensorflow::Tensor tensor;
   auto status = tensorflow::ConvertToTensor(attr, &tensor);
   if (!status.ok()) {
@@ -637,6 +642,14 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
       shape.push_back(dim == -1 ? 1 : dim);
     }
     shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+  }
+
+  if (auto* inst = value.getDefiningOp()) {
+    if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
+      // CreateSparsityParameters(cst.s_param());
+    } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
+      // CreateSparsityParameters(cst.s_param());
+    }
   }
 
   Type element_type = type.getElementType();
