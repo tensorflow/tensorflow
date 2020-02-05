@@ -169,6 +169,8 @@ class SnapshotWriter {
   }
 #endif  // PLATFORM_GOOGLE
 
+  Status Sync() { return dest_->Sync(); }
+
   Status Close() {
     if (dest_is_owned_) {
       Status s = dest_->Close();
@@ -1157,7 +1159,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                         const string& run_id)
             : DatasetIterator<Dataset>(params),
               hash_dir_(hash_dir),
-              run_id_(run_id) {}
+              run_id_(run_id) {
+          if (run_id_.empty()) {
+            run_id_ = strings::StrCat(
+                strings::Hex(random::New64(), strings::kZeroPad4));
+          }
+          run_dir_ =
+              io::JoinPath(dataset()->writer_path_prefix_, hash_dir_, run_id_);
+        }
 
         ~SnapshotWriterIterator() override {
           mutex_lock l(mu_);
@@ -1169,15 +1178,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
         Status Initialize(IteratorContext* ctx) override {
-          mutex_lock l(mu_);
           thread_pool_ = ctx->CreateThreadPool(kSnapshotWriterWorkerPool,
                                                dataset()->num_writer_threads_);
-          if (run_id_.empty()) {
-            run_id_ = strings::StrCat(
-                strings::Hex(random::New64(), strings::kZeroPad4));
-          }
-          run_dir_ =
-              io::JoinPath(dataset()->writer_path_prefix_, hash_dir_, run_id_);
           return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
         }
 
@@ -1533,7 +1535,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               out_tensor.AsProtoTensorContent(t);
             }
 
-            if (*bytes_written > dataset()->shard_size_bytes_) {
+            bool should_close;
+            TF_RETURN_IF_ERROR(ShouldCloseFile(*snapshot_data_filename,
+                                               *bytes_written, (*writer).get(),
+                                               (*file).get(), &should_close));
+            if (should_close) {
               // If we exceed the shard size, we get a new file and reset.
               TF_RETURN_IF_ERROR((*writer)->Close());
               TF_RETURN_IF_ERROR((*file)->Sync());
@@ -1619,6 +1625,41 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
+        Status ShouldCloseFile(const string& filename, uint64 bytes_written,
+                               SnapshotWriter* writer, WritableFile* file,
+                               bool* should_close) {
+          // If the compression ratio has been estimated, use it to decide
+          // whether the file should be closed. We avoid estimating the
+          // compression ratio repeatedly because it requires syncing the file,
+          // which can be expensive.
+          {
+            tf_shared_lock l(mu_);
+            if (compression_ratio_ > 0.0) {
+              *should_close = bytes_written > (compression_ratio_ *
+                                               dataset()->shard_size_bytes_);
+              return Status::OK();
+            }
+          }
+          // If the number of bytes written aren't shard_size_bytes_ yet, we
+          // keep on going.
+          if (bytes_written <= dataset()->shard_size_bytes_) {
+            *should_close = false;
+            return Status::OK();
+          }
+          // Use the actual file size to determine compression ratio.
+          // Make sure that all bytes are written out.
+          TF_RETURN_IF_ERROR(writer->Sync());
+          TF_RETURN_IF_ERROR(file->Sync());
+          uint64 file_size;
+          TF_RETURN_IF_ERROR(Env::Default()->GetFileSize(filename, &file_size));
+          mutex_lock l(mu_);
+          compression_ratio_ = static_cast<double>(bytes_written) /
+                               static_cast<double>(file_size);
+          LOG(INFO) << "Writing compression achieved: " << compression_ratio_;
+          *should_close = file_size >= dataset()->shard_size_bytes_;
+          return Status::OK();
+        }
+
         mutex mu_;
         // This condition variable is notified
         // 1. By the background writer threads when an element from the buffer
@@ -1636,6 +1677,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         const string hash_dir_;
         tstring run_id_ GUARDED_BY(mu_);
         tstring run_dir_ GUARDED_BY(mu_);
+        double compression_ratio_ GUARDED_BY(mu_) = 0.0;
         bool is_restored_ GUARDED_BY(mu_) = false;
 
         uint64 elements_produced_ GUARDED_BY(mu_) = 0;
