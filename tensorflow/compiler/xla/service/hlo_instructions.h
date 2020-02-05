@@ -393,6 +393,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
   // devices in each replica_group, and also means the concatenated dimension
   // on the output (i.e., input and the output shapes are the same).
   absl::optional<int64> split_dimension() const { return split_dimension_; }
+  void set_split_dimension(int64 dim) { split_dimension_ = dim; }
 
  protected:
   std::vector<string> ExtraAttributesToStringImpl(

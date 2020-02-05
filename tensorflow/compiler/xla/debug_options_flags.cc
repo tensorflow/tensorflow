@@ -535,6 +535,12 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_reductions),
           flag_values->xla_gpu_deterministic_reductions(),
           "Always run deterministic reductions on GPU"),
+      // TODO(b/148871440): Enable by default on Feb 7.
+      tensorflow::Flag(
+          "xla_gpu_use_horizontal_fusion",
+          bool_setter_for(&DebugOptions::set_xla_gpu_use_horizontal_fusion),
+          flag_values->xla_gpu_use_horizontal_fusion(),
+          "Allow horizontal fusion for XLA GPU."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

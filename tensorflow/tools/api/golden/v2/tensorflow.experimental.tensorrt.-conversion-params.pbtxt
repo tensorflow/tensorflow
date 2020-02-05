@@ -1,0 +1,9 @@
+path: "tensorflow.experimental.tensorrt.ConversionParams"
+tf_class {
+  is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert.TrtConversionParams\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'rewriter_config_template\', \'max_workspace_size_bytes\', \'precision_mode\', \'minimum_segment_size\', \'is_dynamic_op\', \'maximum_cached_engines\', \'use_calibration\', \'max_batch_size\'], varargs=None, keywords=None, defaults=[\'None\', \'1073741824\', \'FP32\', \'3\', \'True\', \'1\', \'True\', \'1\'], "
+  }
+}

@@ -39,7 +39,8 @@ class XRTMetricsCollectOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(metrics_proto.shape()),
                 errors::Internal("request input should be a string scalar"));
     xrt::XRTMetricsCollect metrics;
-    OP_REQUIRES(ctx, metrics.ParseFromString(metrics_proto.scalar<tstring>()()),
+    OP_REQUIRES(ctx,
+                ParseFromTString(metrics_proto.scalar<tstring>()(), &metrics),
                 errors::InvalidArgument(
                     "Unable to parse request input to XRTMetricsCollect"));
 

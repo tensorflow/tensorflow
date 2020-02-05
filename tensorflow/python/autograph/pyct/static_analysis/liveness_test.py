@@ -230,6 +230,21 @@ class LivenessAnalyzerTest(LivenessAnalyzerTestBase):
     self.assertHasLiveIn(fn_body[0].body[0], ('x',))
     self.assertHasLiveIn(fn_body[1], ('x',))
 
+  def test_live_in_raise(self):
+
+    def test_fn(x, a, b, c):
+      if a > 0:
+        b = b + 1
+        raise c
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveIn(fn_body[0], ('a', 'b', 'c', 'x'))
+    self.assertHasLiveIn(fn_body[0].body[0], ('b', 'c'))
+    self.assertHasLiveIn(fn_body[1], ('x',))
+
   def test_live_in_return_statement(self):
 
     def test_fn(x, a, b, c):  # pylint:disable=unused-argument

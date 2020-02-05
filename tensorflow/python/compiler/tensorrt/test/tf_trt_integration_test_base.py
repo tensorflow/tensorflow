@@ -220,7 +220,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_v2=run_params.is_v2,
         disable_non_trt_optimizers=disable_non_trt_optimizers)
     for optimizer in rewriter_config.custom_optimizers:
-      if optimizer.name == 'TensorRTOptimizer':
+      if optimizer.name == "TensorRTOptimizer":
         optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
     return rewriter_config
 
