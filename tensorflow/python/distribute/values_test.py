@@ -59,18 +59,18 @@ class DistributedValuesTest(test.TestCase):
     one = constant_op.constant(1)
     two = constant_op.constant(2)
     v = values.DistributedValues((one, two))
-    self.assertEqual(one, v.get())
+    self.assertEqual(one, v._get())
     with distribute_lib.ReplicaContext(None, 1):
-      self.assertEqual(two, v.get())
+      self.assertEqual(two, v._get())
 
   def testGetGraph(self):
     with context.graph_mode(), ops.Graph().as_default():
       one = constant_op.constant(1)
       two = constant_op.constant(2)
       v = values.DistributedValues((one, two))
-      self.assertEqual(one, v.get())
+      self.assertEqual(one, v._get())
       with distribute_lib.ReplicaContext(None, 1):
-        self.assertEqual(two, v.get())
+        self.assertEqual(two, v._get())
 
   def testIsTensorLike(self):
     with context.graph_mode(), ops.Graph().as_default():
