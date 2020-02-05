@@ -2766,23 +2766,27 @@ cc_library(
     ],
 )
 
-GPU_RUNTIME_HEADERS = [
-    "common_runtime/gpu/gpu_bfc_allocator.h",
-    "common_runtime/gpu/gpu_cudamalloc_allocator.h",
-    "common_runtime/gpu/gpu_debug_allocator.h",
-    "common_runtime/gpu/gpu_device.h",
-    "common_runtime/gpu/gpu_host_allocator.h",
-    "common_runtime/gpu/gpu_id.h",
-    "common_runtime/gpu/gpu_id_manager.h",
-    "common_runtime/gpu/gpu_id_utils.h",
-    "common_runtime/gpu/gpu_init.h",
-    "common_runtime/gpu/gpu_managed_allocator.h",
-    "common_runtime/gpu/gpu_mem_allocator.h",
-    "common_runtime/gpu/gpu_process_state.h",
-    "common_runtime/gpu/gpu_stream_util.h",
-    "common_runtime/gpu/gpu_util.h",
-    "common_runtime/gpu_device_context.h",
-]
+filegroup(
+    name = "gpu_runtime_headers",
+    srcs = [
+        "common_runtime/gpu/gpu_bfc_allocator.h",
+        "common_runtime/gpu/gpu_cudamalloc_allocator.h",
+        "common_runtime/gpu/gpu_debug_allocator.h",
+        "common_runtime/gpu/gpu_device.h",
+        "common_runtime/gpu/gpu_host_allocator.h",
+        "common_runtime/gpu/gpu_id.h",
+        "common_runtime/gpu/gpu_id_manager.h",
+        "common_runtime/gpu/gpu_id_utils.h",
+        "common_runtime/gpu/gpu_init.h",
+        "common_runtime/gpu/gpu_managed_allocator.h",
+        "common_runtime/gpu/gpu_mem_allocator.h",
+        "common_runtime/gpu/gpu_process_state.h",
+        "common_runtime/gpu/gpu_stream_util.h",
+        "common_runtime/gpu/gpu_util.h",
+        "common_runtime/gpu_device_context.h",
+    ],
+    visibility = ["//visibility:private"],
+)
 
 tf_cuda_library(
     name = "gpu_runtime_impl",
@@ -2797,7 +2801,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util.cc",
         "common_runtime/gpu/gpu_util_platform_specific.cc",
     ],
-    hdrs = GPU_RUNTIME_HEADERS,
+    hdrs = [":gpu_runtime_headers"],
     copts = tf_copts(),
     cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
@@ -2825,7 +2829,7 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "gpu_runtime",
-    hdrs = GPU_RUNTIME_HEADERS,
+    hdrs = [":gpu_runtime_headers"],
     linkstatic = 1,
     deps = [
         ":core_cpu_lib",
