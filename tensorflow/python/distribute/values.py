@@ -1584,11 +1584,15 @@ class AggregatingVariable(variables_lib.Variable):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
 
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    return ops.convert_to_tensor(self.get(), dtype=dtype, name=name,
+                                 as_ref=as_ref)
+
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
 def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
-  return ops.convert_to_tensor(var.get(), dtype=dtype, name=name, as_ref=as_ref)
+  return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
 
 
 ops.register_tensor_conversion_function(AggregatingVariable,
