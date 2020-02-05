@@ -84,6 +84,15 @@ class CategoryLookupVocabListTest(keras_parameterized.TestCase):
         np.asarray([[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]), output.indices)
     self.assertAllClose(np.asarray([0, 4, 2, 3, 0]), output.values)
 
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    vocabulary_list = ['A', 'B', 'C', 'D', 'E']
+    layer = categorical.CategoryLookup(
+        vocabulary=vocabulary_list, num_oov_tokens=0, name='lookup')
+    config = layer.get_config()
+    layer_1 = categorical.CategoryLookup.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class CategoryLookupVocabFileTest(keras_parameterized.TestCase):
@@ -230,6 +239,48 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
   def test_incorrect_depth(self):
     with self.assertRaises(NotImplementedError):
       categorical.CategoryCrossing(depth=1)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class HashingTest(keras_parameterized.TestCase):
+
+  def test_hash_single_bin(self):
+    layer = categorical.Hashing(num_bins=1)
+    inp = np.asarray([['A'], ['B'], ['C'], ['D'], ['E']])
+    output = layer(inp)
+    self.assertAllClose(np.asarray([[0], [0], [0], [0], [0]]), output)
+
+  def test_hash_two_bins(self):
+    layer = categorical.Hashing(num_bins=2)
+    inp = np.asarray([['A'], ['B'], ['C'], ['D'], ['E']])
+    output = layer(inp)
+    self.assertEqual(output.numpy().max(), 1)
+    self.assertEqual(output.numpy().min(), 0)
+
+  def test_hash_sparse_input(self):
+    layer = categorical.Hashing(num_bins=2)
+    inp = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]],
+        values=['omar', 'stringer', 'marlo', 'wire', 'skywalker'],
+        dense_shape=[3, 2])
+    output = layer(inp)
+    self.assertEqual(output.values.numpy().max(), 1)
+    self.assertEqual(output.values.numpy().min(), 0)
+
+  def test_hash_compute_output_signature(self):
+    input_shape = tensor_shape.TensorShape([2, 3])
+    input_spec = tensor_spec.TensorSpec(input_shape, dtypes.string)
+    layer = categorical.Hashing(num_bins=2)
+    output_spec = layer.compute_output_signature(input_spec)
+    self.assertEqual(output_spec.shape.dims, input_shape.dims)
+    self.assertEqual(output_spec.dtype, dtypes.int64)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = categorical.Hashing(num_bins=2, name='hashing')
+    config = layer.get_config()
+    layer_1 = categorical.Hashing.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
 
 
 if __name__ == '__main__':
