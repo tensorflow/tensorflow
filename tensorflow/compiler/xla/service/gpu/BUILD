@@ -401,15 +401,19 @@ filegroup(
     ),
 )
 
-# virtual targets since nested select statements not possible
-tf_cuda_library(
-    name = "virtual_nccl",
-    deps = if_cuda(["@local_config_nccl//:nccl"]),
+# use alias since nested select statements not possible
+cc_library(
+    name = "empty",
 )
 
-tf_cuda_library(
+alias(
+    name = "virtual_nccl",
+    actual = if_cuda("@local_config_nccl//:nccl", ":empty"),
+)
+
+alias(
     name = "virtual_rccl",
-    deps = if_rocm(["@local_config_rocm//rocm:rccl"]),
+    actual = if_rocm("@local_config_rocm//rocm:rccl", ":empty"),
 )
 
 tf_cuda_library(
