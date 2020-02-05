@@ -145,7 +145,9 @@ class SnapshotWriter {
 
   Status WriteRecord(const StringPiece& data) {
     profiler::TraceMe activity(
-        absl::StrCat(kClassName, kSeparator, kWriteStringPiece),
+        [&]() {
+          return absl::StrCat(kClassName, kSeparator, kWriteStringPiece);
+        },
         profiler::TraceMeLevel::kInfo);
     char header[kHeaderSize];
     core::EncodeFixed64(header, data.size());
@@ -155,8 +157,9 @@ class SnapshotWriter {
 
 #if defined(PLATFORM_GOOGLE)
   Status WriteRecord(const absl::Cord& data) {
-    profiler::TraceMe activity(absl::StrCat(kClassName, kSeparator, kWriteCord),
-                               profiler::TraceMeLevel::kInfo);
+    profiler::TraceMe activity(
+        [&]() { return absl::StrCat(kClassName, kSeparator, kWriteCord); },
+        profiler::TraceMeLevel::kInfo);
     char header[kHeaderSize];
     core::EncodeFixed64(header, data.size());
 
@@ -213,9 +216,9 @@ class SnapshotReader {
       io::ZlibCompressionOptions zlib_options;
       zlib_options = io::ZlibCompressionOptions::GZIP();
 
-      input_stream_.reset(new io::ZlibInputStream(
+      input_stream_ = absl::make_unique<io::ZlibInputStream>(
           input_stream_.release(), zlib_options.input_buffer_size,
-          zlib_options.output_buffer_size, zlib_options, true));
+          zlib_options.output_buffer_size, zlib_options, true);
     } else if (compression_type_ == io::compression::kSnappy) {
       input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
           file_, /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
@@ -226,7 +229,7 @@ class SnapshotReader {
 
   Status ReadRecord(tstring* record) {
     profiler::TraceMe activity(
-        absl::StrCat(kClassName, kSeparator, kReadString),
+        [&]() { return absl::StrCat(kClassName, kSeparator, kReadString); },
         profiler::TraceMeLevel::kInfo);
     tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
@@ -236,8 +239,9 @@ class SnapshotReader {
 
 #if defined(PLATFORM_GOOGLE)
   Status ReadRecord(absl::Cord* record) {
-    profiler::TraceMe activity(absl::StrCat(kClassName, kSeparator, kReadCord),
-                               profiler::TraceMeLevel::kInfo);
+    profiler::TraceMe activity(
+        [&]() { return absl::StrCat(kClassName, kSeparator, kReadCord); },
+        profiler::TraceMeLevel::kInfo);
     tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
     uint64 length = core::DecodeFixed64(header.data());
@@ -245,7 +249,7 @@ class SnapshotReader {
     if (compression_type_ == io::compression::kNone) {
       return input_stream_->ReadNBytes(length, record);
     } else {
-      auto tmp_str = MakeUnique<tstring>();
+      auto tmp_str = absl::make_unique<tstring>();
       TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(length, tmp_str.get()));
       tstring* tmp_str_raw = tmp_str.release();
       record->AppendExternalMemory(
@@ -297,10 +301,10 @@ Status ReadMetadataFile(const string& hash_dir,
       Env::Default()->NewRandomAccessFile(metadata_filename, &file));
 
   tstring record_bytes;
-  auto reader = absl::make_unique<SnapshotReader>(file.get());
-  TF_RETURN_IF_ERROR(reader->ReadRecord(&record_bytes));
+  SnapshotReader reader(file.get());
+  TF_RETURN_IF_ERROR(reader.ReadRecord(&record_bytes));
 
-  metadata->ParseFromString(record_bytes);
+  metadata->ParseFromArray(record_bytes.data(), record_bytes.size());
   return Status::OK();
 }
 
@@ -824,7 +828,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
               {
                 profiler::TraceMe activity(
-                    absl::StrCat(prefix(), kSeparator, kBookkeeping),
+                    [&]() {
+                      return absl::StrCat(prefix(), kSeparator, kBookkeeping);
+                    },
                     profiler::TraceMeLevel::kInfo);
                 // Printing some statistics along the way.
                 int64 num_bytes = 0;
@@ -961,9 +967,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         // Reads one file end to end.
         Status ReadFile(const string& filename) {
           std::unique_ptr<RandomAccessFile> file;
-          TF_CHECK_OK(Env::Default()->NewRandomAccessFile(filename, &file));
-          std::unique_ptr<SnapshotReader> reader(
-              new SnapshotReader(file.get(), dataset()->compression_));
+          TF_RETURN_IF_ERROR(
+              Env::Default()->NewRandomAccessFile(filename, &file));
+          SnapshotReader reader(file.get(), dataset()->compression_);
 
           while (true) {
             // Wait for a slot in the buffer.
@@ -982,31 +988,28 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             }
 #if !defined(PLATFORM_GOOGLE)
             tstring record_bytes;
-            Status s = reader->ReadRecord(&record_bytes);
+            Status s = reader.ReadRecord(&record_bytes);
 #else
             absl::Cord record_cord;
-            Status s = reader->ReadRecord(&record_cord);
+            Status s = reader.ReadRecord(&record_cord);
 #endif
             if (s.ok()) {
               profiler::TraceMe activity(
-                  absl::StrCat(prefix(), kSeparator, kParse),
+                  [&]() { return absl::StrCat(prefix(), kSeparator, kParse); },
                   profiler::TraceMeLevel::kInfo);
               experimental::SnapshotRecord record;
 #if !defined(PLATFORM_GOOGLE)
-              record.ParseFromString(record_bytes);
+              record.ParseFromArray(record_bytes.data(), record_bytes.size());
 #else
               record.ParseFromCord(record_cord);
 #endif
-              std::vector<Tensor> out_tensors;
+              BufferElement elem;
               for (int i = 0; i < record.tensor_size(); ++i) {
-                Tensor t;
-                if (!t.FromProto(record.tensor(i))) {
+                elem.value.emplace_back();
+                if (!elem.value.back().FromProto(record.tensor(i))) {
                   return errors::DataLoss("Unable to parse tensor from proto.");
                 }
-                out_tensors.push_back(t);
               }
-              BufferElement elem;
-              std::swap(elem.value, out_tensors);
               elem.status = Status::OK();
               mutex_lock l(mu_);
               buffer_.push_back(std::move(elem));
@@ -1233,7 +1236,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           {
             profiler::TraceMe activity(
-                absl::StrCat(prefix(), kSeparator, kBookkeeping),
+                [&]() {
+                  return absl::StrCat(prefix(), kSeparator, kBookkeeping);
+                },
                 profiler::TraceMeLevel::kInfo);
 
             // Book keeping to report some statistics.
@@ -1480,7 +1485,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                  std::unique_ptr<SnapshotWriter>* writer,
                                  bool* end_of_processing) {
           profiler::TraceMe activity(
-              absl::StrCat(prefix(), kSeparator, kProcessOneElement),
+              [&]() {
+                return absl::StrCat(prefix(), kSeparator, kProcessOneElement);
+              },
               profiler::TraceMeLevel::kInfo);
           bool cancelled = false;
           *end_of_processing = false;
@@ -1520,7 +1527,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           if (produced_elem) {
             experimental::SnapshotRecord record;
-            for (auto out_tensor : elem.value) {
+            for (const auto& out_tensor : elem.value) {
               *bytes_written += out_tensor.TotalBytes();
               TensorProto* t = record.add_tensor();
               out_tensor.AsProtoTensorContent(t);
