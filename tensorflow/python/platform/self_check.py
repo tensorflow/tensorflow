@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import json
 
 
 try:
@@ -74,12 +75,19 @@ def preload_check():
         try:
           ctypes.WinDLL(build_info.cudart_dll_name)
         except OSError:
+          with open("cuda_links.json") as f:
+            link_dict = json.load(f)
           raise ImportError(
-              "Could not find %r. TensorFlow requires that this DLL be "
-              "installed in a directory that is named in your %%PATH%% "
-              "environment variable. Download and install CUDA %s from "
-              "this URL: https://developer.nvidia.com/cuda-90-download-archive"
-              % (build_info.cudart_dll_name, build_info.cuda_version_number))
+            "Could not find %r. TensorFlow requires that this DLL be "
+            "installed in a directory that is named in your %%PATH%% "
+            "environment variable. Download and install CUDA %s from "
+            "this URL: %s"
+            % (
+              build_info.cudart_dll_name,
+              build_info.cuda_version_number,
+              link_dict.get(str(build_info.cuda_version_number), link_dict["10.2"])
+            )
+          )
 
       if hasattr(build_info, "cudnn_dll_name") and hasattr(
           build_info, "cudnn_version_number"):
