@@ -929,7 +929,7 @@ ops.register_tensor_conversion_function(MirroredVariable,
 
 def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
   return ops.convert_to_tensor(
-      value.get(), dtype=dtype, name=name, as_ref=as_ref)
+      value._get(), dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
 ops.register_tensor_conversion_function(Mirrored,
