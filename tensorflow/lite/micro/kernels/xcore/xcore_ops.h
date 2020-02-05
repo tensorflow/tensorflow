@@ -18,7 +18,7 @@ namespace xcore {
 
 TfLiteRegistration* Register_Conv2D_SIDO();
 TfLiteRegistration* Register_Conv2D_DIDO();
-TfLiteRegistration* Register_FullyConnected_DIAO();
+TfLiteRegistration* Register_FullyConnected_16();
 TfLiteRegistration* Register_ArgMax_16();
 TfLiteRegistration* Register_MaxPool();
 TfLiteRegistration* Register_AvgPool();
