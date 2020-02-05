@@ -21,14 +21,14 @@ namespace fully_connected {
 
         TfLiteTensor* output = GetOutput(context, node, 0);
 
-        int32_t C_in = input->dims->data[1];
-        int32_t C_out = output->dims->data[1];
+        int32_t C_in = weights->dims->data[1];
+        int32_t C_out = weights->dims->data[0];
 
         fully_connected_16(
             output->data.i16,
             weights->data.int8,
             input->data.int8,
-            (data16_t*) bias_shift_scale,
+            (data16_t*) bias_shift_scale->data.i16,
             C_in,
             C_out
         );
