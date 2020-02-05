@@ -78,15 +78,18 @@ def preload_check():
           with open("cuda_links.json") as f:
             link_dict = json.load(f)
           raise ImportError(
-            "Could not find %r. TensorFlow requires that this DLL be "
-            "installed in a directory that is named in your %%PATH%% "
-            "environment variable. Download and install CUDA %s from "
-            "this URL: %s"
-            % (
-              build_info.cudart_dll_name,
-              build_info.cuda_version_number,
-              link_dict.get(str(build_info.cuda_version_number), link_dict["10.2"])
-            )
+              "Could not find %r. TensorFlow requires that this DLL be "
+              "installed in a directory that is named in your %%PATH%% "
+              "environment variable. Download and install CUDA %s from "
+              "this URL: %s"
+              % (
+                  build_info.cudart_dll_name,
+                  build_info.cuda_version_number,
+                  link_dict.get(
+                      str(build_info.cuda_version_number),
+                      link_dict["10.2"]
+                  )
+              )
           )
 
       if hasattr(build_info, "cudnn_dll_name") and hasattr(
