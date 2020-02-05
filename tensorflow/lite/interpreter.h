@@ -336,8 +336,13 @@ class Interpreter {
 
   /// Set the number of threads available to the interpreter.
   ///
-  /// NOTE: num_threads should be greater than -1.
-  /// User may use -1, to reset to default values.
+  /// NOTE: num_threads should be >= -1.
+  /// User may use -1, to reset to default values like below.
+  ///
+  ///  For example:
+  ///  Cpu Context Default Thread Count: X
+  ///   if num_threads == -1:
+  ///        Context::max_threads = X
   void SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.

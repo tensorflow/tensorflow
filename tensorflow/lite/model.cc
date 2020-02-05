@@ -629,7 +629,8 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   if (num_threads < -1) {
     error_reporter_->Report(
-        "num_threads should be greater than -1(default value).");
+        "num_threads should be >=0 or just -1 to let TFLite runtime set the "
+        "value.");
     return kTfLiteError;
   }
 

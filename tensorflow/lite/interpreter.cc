@@ -247,11 +247,17 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
 void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
 
 void Interpreter::SetNumThreads(int num_threads) {
-  // num_threads should be greater than -1.
-  // User may use -1, to reset to default values.
+  // num_threads should be >= -1.
+  // User may use -1, to reset to default values like below.
+  //
+  // For example:
+  // Cpu Context Default Thread Count: X
+  // if num_threads == -1:
+  //      Context::max_threads = X
   if (num_threads < -1) {
-    context_->ReportError(
-        context_, "num_threads should be greater than -1(default value).");
+    context_->ReportError(context_,
+                          "num_threads should be >=0 or just -1 to let TFLite "
+                          "runtime set the value.");
     return;
   }
 

@@ -28,7 +28,10 @@ namespace {
 // explicitly specified by the context.
 const int kDefaultNumThreadpoolThreads = 4;
 
-bool IsValidNumThreads(int num_threads) { return num_threads > -1; }
+bool IsValidNumThreads(int num_threads) { return num_threads >= -1; }
+int GetNumThreads(int num_threads) {
+  return num_threads > -1 ? num_threads : kDefaultNumThreadpoolThreads;
+}
 
 #ifndef EIGEN_DONT_ALIGN
 // Eigen may require buffers to be aligned to 16, 32 or 64 bytes depending on
@@ -104,8 +107,7 @@ class LazyEigenThreadPoolHolder {
 
   // Updates the thread count, invalidating the ThreadPoolDevice if necessary.
   void SetNumThreads(int num_threads) {
-    const int target_num_threads =
-        num_threads > -1 ? num_threads : kDefaultNumThreadpoolThreads;
+    const int target_num_threads = GetNumThreads(num_threads);
     if (target_num_threads_ != target_num_threads) {
       target_num_threads_ = target_num_threads;
       // As the device references the thread pool wrapper, destroy it first.
@@ -133,7 +135,7 @@ RefCountedEigenContext* GetEigenContext(TfLiteContext* context) {
 
 TfLiteStatus Refresh(TfLiteContext* context) {
   if (IsValidNumThreads(context->recommended_num_threads)) {
-    SetEigenNbThreads(context->recommended_num_threads);
+    SetEigenNbThreads(GetNumThreads(context->recommended_num_threads));
   }
 
   auto* ptr = GetEigenContext(context);
