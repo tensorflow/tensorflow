@@ -91,7 +91,8 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
 
   if (s->hexagon_delegate) {
     const std::string libhexagon_path("/data/local/tmp");
-    auto delegate = evaluation::CreateHexagonDelegate(libhexagon_path);
+    auto delegate =
+        evaluation::CreateHexagonDelegate(libhexagon_path, s->profiling);
 
     if (!delegate) {
       LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
