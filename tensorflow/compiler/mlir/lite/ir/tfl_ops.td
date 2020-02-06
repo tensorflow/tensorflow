@@ -3469,16 +3469,13 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
 
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
        DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-       SingleBlockImplicitTerminator<"YieldOp">,
-       // Make isolated from above to force values through operands to simplify
-       // exporting to subgraphs.
-       IsolatedFromAbove]> {
+       SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = [{While loop}];
 
   let description = [{
     output = input; while (cond(output)) { output = body(output) }
 
-    While loop where all values are passes through arguments with no implicit
+    While loop where all values are passes through arguments with implicit
     capture.
 
     input: A list of input tensors whose types are T.

@@ -304,6 +304,7 @@ cc_library(
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/unroll_batch_matmul.cc",
+        "transforms/while_loop_outline.cc",
     ],
     hdrs = [
         "transforms/dilated_conv.h",
@@ -316,6 +317,7 @@ cc_library(
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
