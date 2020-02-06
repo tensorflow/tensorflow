@@ -64,6 +64,13 @@ cc_library(
     hdrs = [
         "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
     ],
+    copts = [
+        "-DENABLE_OPENSSL_ENCRYPTION",
+        "-DAWS_SDK_VERSION_MAJOR=1",
+        "-DAWS_SDK_VERSION_MINOR=7",
+        "-DAWS_SDK_VERSION_PATCH=266",
+        "-DOPENSSL_IS_BORINGSSL",
+    ],
     defines = select({
         "@org_tensorflow//tensorflow:linux_aarch64": [
             "PLATFORM_LINUX",
@@ -92,19 +99,12 @@ cc_library(
         "aws-cpp-sdk-s3/include/",
     ],
     deps = [
-        "@curl",
-        "@boringssl//:crypto",
         "@aws-c-common",
         "@aws-c-event-stream",
         "@aws-checksums",
+        "@boringssl//:crypto",
+        "@curl",
     ],
-    copts = [
-        "-DENABLE_OPENSSL_ENCRYPTION",
-        "-DAWS_SDK_VERSION_MAJOR=1",
-        "-DAWS_SDK_VERSION_MINOR=7",
-        "-DAWS_SDK_VERSION_PATCH=266",
-        "-DOPENSSL_IS_BORINGSSL",
-    ], 
 )
 
 template_rule(

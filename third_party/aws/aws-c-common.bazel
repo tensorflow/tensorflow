@@ -31,7 +31,7 @@ cc_library(
     }) + glob([
         "source/**/*.c",
         "include/**/*.h",
-        "include/**/*.inl"
+        "include/**/*.inl",
     ]),
     hdrs = [
         "include/aws/common/config.h",
@@ -40,16 +40,15 @@ cc_library(
         "include/",
     ],
     deps = [
-
     ],
     copts = [
-      "-std=c99",
-      "-D_POSIX_C_SOURCE=199309L",
-      "-D_GNU_SOURCE",
+        "-std=c99",
+        "-D_POSIX_C_SOURCE=199309L",
+        "-D_GNU_SOURCE",
     ],
     linkopts = [
-      "-lrt",
-      "-pthread",
+        "-lrt",
+        "-pthread",
     ],
 )
 
@@ -64,4 +63,3 @@ template_rule(
         "cmakedefine AWS_HAVE_EXECINFO": "define AWS_HAVE_EXECINFO",
     },
 )
-

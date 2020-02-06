@@ -7,7 +7,6 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-
 cc_library(
     name = "aws-checksums",
     srcs = glob([
@@ -24,12 +23,12 @@ cc_library(
         "@aws-c-common",
     ],
     copts = [
-       #"-std=c99",
-       #"-D_POSIX_C_SOURCE=199309L",
-       #"-D_GNU_SOURCE",
+        #"-std=c99",
+        #"-D_POSIX_C_SOURCE=199309L",
+        #"-D_GNU_SOURCE",
     ],
     linkopts = [
-       #"-lrt",
-       #"-pthread",
+        #"-lrt",
+        #"-pthread",
     ],
 )
