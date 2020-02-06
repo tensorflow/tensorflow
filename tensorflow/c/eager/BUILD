@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
     "tf_copts",
     "tf_cuda_cc_test",
     "tf_cuda_library",
@@ -289,6 +290,27 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "custom_device_test",
+    size = "small",
+    srcs = [
+        "custom_device_test.cc",
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "tape",
     hdrs = ["tape.h"],
@@ -301,7 +323,10 @@ cc_library(
 
 filegroup(
     name = "headers",
-    srcs = ["c_api.h"],
+    srcs = [
+        "c_api.h",
+        "c_api_experimental.h",
+    ],
     visibility = ["//tensorflow:__subpackages__"],
 )
 

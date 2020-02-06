@@ -106,6 +106,24 @@ class RunMetadataListener {
   virtual void BeforeClearRunMetadata() = 0;
 };
 
+class TensorHandle;
+class EagerOperation;
+
+class CustomDevice {
+ public:
+  virtual ~CustomDevice() {}
+  virtual const string& name() = 0;
+  virtual Status CopyTensorToDevice(TensorHandle* tensor,
+                                    TensorHandle** result) = 0;
+
+  virtual Status CopyTensorFromDevice(TensorHandle* tensor,
+                                      const string& target_device_name,
+                                      TensorHandle** result) = 0;
+
+  virtual Status Execute(EagerOperation* op, TensorHandle** retvals,
+                         int* num_retvals) = 0;
+};
+
 class EagerContext : public core::RefCounted {
  public:
   static const uint64 kInvalidContextId = 0;
@@ -416,6 +434,12 @@ class EagerContext : public core::RefCounted {
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
+  Status FindCustomDeviceFromName(const string& device_name,
+                                  CustomDevice** dev) const;
+
+  void RegisterCustomDevice(const string& name,
+                            std::unique_ptr<CustomDevice> device);
+
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
@@ -492,6 +516,7 @@ class EagerContext : public core::RefCounted {
   std::vector<DeviceType> prioritized_device_type_list_;
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
+  std::unordered_map<string, std::unique_ptr<CustomDevice>> custom_devices_;
 
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 

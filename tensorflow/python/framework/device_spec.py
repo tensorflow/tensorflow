@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.python.util.tf_export import tf_export
 
 
-_VALID_DEVICE_TYPES = {"CPU", "GPU", "TPU"}
+_VALID_DEVICE_TYPES = frozenset({"CPU", "GPU", "TPU", "CUSTOM"})
 
 
 # ==============================================================================

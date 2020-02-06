@@ -177,7 +177,13 @@ Status ValidateInputTypeAndPlacement(
   for (int i = 0; i < n_inputs; ++i) {
     TensorHandle* handle = op->Inputs()[i];
     Device* expected_device = kernel->InputDevice(i);
-    Device* handle_device = handle->DeviceOrHostCPU(*ctx);
+    auto handle_device_variant = handle->DeviceOrHostCPU(*ctx);
+    if (VariantDeviceIsCustom(handle_device_variant)) {
+      return errors::Unimplemented(
+          "Custom devices and remote execution are not yet supported "
+          "together.");
+    }
+    Device* handle_device = absl::get<Device*>(handle_device_variant);
     const bool maybe_copy = !skip_remote_copy || !handle->IsRemote();
     // If the input is already on the right device, then nothing to do.
     if (expected_device != handle_device && maybe_copy) {
@@ -229,10 +235,14 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
 
 Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
                          Device** result) {
+  if (TF_PREDICT_FALSE(VariantDeviceIsCustom(tensor_handle->device()))) {
+    return errors::Unimplemented(
+        "The kernel cache does not work with custom devices.");
+  }
   Device* cpu_device = ctx.HostCPU();
   string device_name;
   if (tensor_handle->IsRemote()) {
-    Device* device = tensor_handle->device();
+    Device* device = absl::get<Device*>(tensor_handle->device());
     device_name = device != nullptr ? device->name() : cpu_device->name();
     *result = (device == nullptr ? cpu_device : device);
   } else if (tensor_handle->dtype == DT_RESOURCE) {
@@ -251,7 +261,7 @@ Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
   } else if (MTypeFromDType(tensor_handle->dtype) == HOST_MEMORY) {
     *result = cpu_device;
   } else {
-    Device* device = tensor_handle->device();
+    Device* device = absl::get<Device*>(tensor_handle->device());
     device_name = device != nullptr ? device->name() : cpu_device->name();
     *result = (device == nullptr ? cpu_device : device);
   }
@@ -659,8 +669,10 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         !ctx.LazyCopyFunctionRemoteInputs() || !op->is_function();
     for (int i = 0; i < op->Inputs().size(); i++) {
       tensorflow::TensorHandle* input = op->Inputs()[i];
-      tensorflow::Device* input_device = input->device();
-      const string* input_device_name = &input->DeviceOrHostCPU(ctx)->name();
+      tensorflow::Device* input_device = absl::get<Device*>(input->device());
+      tensorflow::Device* input_device_or_cpu =
+          absl::get<Device*>(input->DeviceOrHostCPU(ctx));
+      const string* input_device_name = &input_device_or_cpu->name();
       bool serialize_resource_dtype_and_shape = false;
       if (op->Device() != input_device &&
           // If the expected and actual devices are on the same task, don't
@@ -668,7 +680,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           // when the op is executed on the device.
           !ctx.OnSameTask(op->Device(), input_device)) {
         if (eagerly_copy_function_remote_inputs ||
-            input->DeviceOrHostCPU(ctx)->IsLocal()) {
+            input_device_or_cpu->IsLocal()) {
           tensorflow::Device* remote_cpu_device;
           TF_RETURN_IF_ERROR(
               ctx.CPUDeviceOnTask(op->Device(), &remote_cpu_device));
@@ -678,7 +690,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           // correctly determined after the kernel is selected/instantiated,
           // since the op might have its inputs on host memory.
           TensorHandle* handle = op->Inputs()[i];
-          Device* handle_device = handle->DeviceOrHostCPU(ctx);
+          Device* handle_device =
+              absl::get<Device*>(handle->DeviceOrHostCPU(ctx));
           // If the input is already on the right device, then nothing to do.
           if (remote_cpu_device != handle_device) {
             TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(
@@ -854,7 +867,12 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
       // ineligible for CPU pinning.
       break;
     } else if (all_inputs_eligible_for_cpu_pinning) {
-      Device* input_device = tensor_handle->DeviceOrHostCPU(ctx);
+      auto input_device_variant = tensor_handle->DeviceOrHostCPU(ctx);
+      if (VariantDeviceIsCustom(input_device_variant)) {
+        all_inputs_eligible_for_cpu_pinning = false;
+        continue;
+      }
+      Device* input_device = absl::get<Device*>(input_device_variant);
       DVLOG(2) << "for op " << op->Name() << " input " << i << " "
                << DataTypeString(tensor_handle->dtype)
                << " input device = " << input_device->name()
@@ -902,6 +920,12 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
+  CustomDevice* custom_device;
+  if (op->EagerContext()
+          .FindCustomDeviceFromName(op->GetDeviceName(), &custom_device)
+          .ok()) {
+    return custom_device->Execute(op, retvals, num_retvals);
+  }
 
   if (!op->Executor().Async()) {
     // In sync mode, always clear error to maintain the same behavior as before.
@@ -996,7 +1020,7 @@ Status EagerKernelExecute(
   for (int i = 0; i < retvals.size(); ++i) {
     DCHECK_EQ(kernel->device(), retvals[i]->op_device());
     DCHECK_EQ(ctx->CanonicalDevice(kernel->OutputDevice(i)),
-              retvals[i]->device());
+              absl::get<Device*>(retvals[i]->device()));
 
     TF_RETURN_IF_ERROR(retvals[i]->SetTensor(std::move(outputs[i])));
   }
@@ -1031,9 +1055,12 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                          EagerExecutor* executor, Device* device, bool mirror,
                          TensorHandle** result) {
-  Device* send_device = h->DeviceOrHostCPU(*ctx);
-
-  bool sender_is_local = send_device->IsLocal();
+  auto send_device = h->DeviceOrHostCPU(*ctx);
+  if (VariantDeviceIsCustom(send_device)) {
+    return errors::Unimplemented(
+        "Copying a TensorHandle from a custom device is not supported.");
+  }
+  bool sender_is_local = absl::get<Device*>(send_device)->IsLocal();
 
   bool recver_is_local = device->IsLocal();
 

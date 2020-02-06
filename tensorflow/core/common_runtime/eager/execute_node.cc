@@ -71,9 +71,16 @@ Status ExecuteNodeArgs::Init(
     serialize_remote_handle_ =
         [ctx, &op_inputs](const int i,
                           eager::RemoteTensorHandle* handle) -> Status {
+      absl::variant<Device*, CustomDevice*> variant_device =
+          op_inputs[i]->device();
+      if (VariantDeviceIsCustom(variant_device)) {
+        return errors::Internal(
+            "Custom devices and remote execution are currently not supported "
+            "together.");
+      }
+      Device* device = absl::get<Device*>(variant_device);
       return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          op_inputs[i], handle, op_inputs[i]->device(),
-          op_inputs[i]->device()->name());
+          op_inputs[i], handle, device, device->name());
     };
 #endif  // !IS_MOBILE_PLATFORM
   }

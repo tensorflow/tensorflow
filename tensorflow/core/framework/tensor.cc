@@ -1244,6 +1244,11 @@ StringPiece Tensor::tensor_data() const {
   return StringPiece(static_cast<char*>(buf_->data()), TotalBytes());
 }
 
+void* Tensor::data() const {
+  if (buf_ == nullptr) return nullptr;  // Don't die for empty tensors
+  return static_cast<void*>(buf_->data());
+}
+
 bool Tensor::SharesBufferWith(const Tensor& b) const {
   return buf_ != nullptr && b.buf_ != nullptr &&
          buf_->root_buffer() == b.buf_->root_buffer();
