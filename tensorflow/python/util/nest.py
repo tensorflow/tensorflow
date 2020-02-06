@@ -122,6 +122,7 @@ _is_mapping_view = _pywrap_utils.IsMappingView
 _is_attrs = _pywrap_utils.IsAttrs
 _is_composite_tensor = _pywrap_utils.IsCompositeTensor
 _is_type_spec = _pywrap_utils.IsTypeSpec
+_is_mutable_mapping = _pywrap_utils.IsNestCompatibleMapping
 
 
 def _sequence_like(instance, args):
@@ -168,6 +169,9 @@ def _sequence_like(instance, args):
     # Pack a CompositeTensor's components according to a TypeSpec.
     assert len(args) == 1
     return instance._from_components(args[0])  # pylint: disable=protected-access
+  # elif _is_mutable_mapping(instance):
+  #   new_mapping = instance_type(instance)
+  #   new_mapping.update()
   elif isinstance(instance, _six.moves.range):
     return _sequence_like(list(instance), args)
   elif isinstance(instance, _wrapt.ObjectProxy):

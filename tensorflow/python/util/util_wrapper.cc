@@ -140,6 +140,24 @@ PYBIND11_MODULE(_pywrap_utils, m) {
       Returns:
         True if `instance` is a `collections.Mapping`.
     )pbdoc");
+    m.def(
+      "IsNestCompatibleMapping",
+      [](const py::handle& o) {
+        bool result = tensorflow::swig::IsNestCompatibleMapping(o.ptr());
+        if (PyErr_Occurred()) {
+          throw py::error_already_set();
+        }
+        return result;
+      },
+      R"pbdoc(
+      Returns True if `instance` is a `collections.MutableMapping`.
+
+      Args:
+        instance: An instance of a Python object.
+
+      Returns:
+        True if `instance` is a `collections.MutableMapping`.
+    )pbdoc");
   m.def(
       "IsMappingView",
       [](const py::handle& o) {
