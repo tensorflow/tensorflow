@@ -237,8 +237,8 @@ class SpatialDropout1D(Dropout):
     noise_shape = (input_shape[0], 1, input_shape[2])
     return noise_shape
   
-  
-  @keras_export('keras.layers.TemporalDropout1D')
+
+@keras_export('keras.layers.TemporalDropout1D')
 class TemporalDropout1D(Dropout):
   """Temporal 1D version of Dropout.
 
