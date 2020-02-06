@@ -162,6 +162,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf2xla_proto_cc",
+        ":tf2xla_util",
         ":xla_compiler",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
@@ -175,10 +176,7 @@ cc_library(
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
     ],
 )
 
