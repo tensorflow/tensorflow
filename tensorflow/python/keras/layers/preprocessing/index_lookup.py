@@ -24,11 +24,11 @@ import operator
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
+from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -43,7 +43,7 @@ _ACCUMULATOR_VOCAB_NAME = "vocab"
 _ACCUMULATOR_COUNTS_NAME = "counts"
 
 
-class IndexLookup(CombinerPreprocessingLayer):
+class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Maps strings (or integers) from a vocabulary to integer indices.
 
   This layer translates a set of arbitray strings or integers into an integer
@@ -354,13 +354,21 @@ class IndexLookup(CombinerPreprocessingLayer):
     # a RT we need to use map_flat_values to look up every element.
     if ragged_tensor.is_ragged(inputs):
       indexed_data = ragged_functional_ops.map_flat_values(table.lookup, inputs)
+    elif isinstance(
+        inputs, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+      indexed_data = sparse_tensor.SparseTensor(inputs.indices,
+                                                table.lookup(inputs.values),
+                                                inputs.dense_shape)
     else:
       indexed_data = table.lookup(inputs)
 
-    return indexed_data
+    # Composite tensors can pass tensor values through, which will cause
+    # errors if this is the only layer in the model. To fix this, pass
+    # the output through an identity op.
+    return array_ops.identity(indexed_data)
 
 
-class _IndexLookupCombiner(Combiner):
+class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
   """Combiner for the IndexLookup preprocessing layer.
 
   This class encapsulates the logic for computing a vocabulary based on the
@@ -370,7 +378,7 @@ class _IndexLookupCombiner(Combiner):
     vocab_size: (Optional) If set, only the top `vocab_size` tokens (based on
       frequency across the dataset) are retained in the vocabulary. If None, or
       set to a value greater than the total number of distinct tokens in the
-      dataset, all tokens are retained.
+      dataset, all tokens are retained.s
   """
   ACCUMULATOR_CLS = collections.namedtuple("Accumulator", ["count_dict"])
 
@@ -379,12 +387,7 @@ class _IndexLookupCombiner(Combiner):
 
   def compute(self, values, accumulator=None):
     """Compute a step in this computation, returning a new accumulator."""
-    if ragged_tensor.is_ragged(values):
-      values = values.to_list()
-    if isinstance(values, ops.EagerTensor):
-      values = values.numpy()
-    if isinstance(values, np.ndarray):
-      values = values.tolist()
+    values = base_preprocessing_layer.convert_to_list(values)
 
     if accumulator is None:
       accumulator = self._create_accumulator()
