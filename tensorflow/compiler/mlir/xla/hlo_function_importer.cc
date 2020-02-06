@@ -256,6 +256,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       MakeAndReturnBatchNormOp(BatchNormInferenceOp);
     case HloOpcode::kBatchNormTraining:
       MakeAndReturnBatchNormOp(BatchNormTrainingOp);
+#undef MakeAndReturnBatchNormOp
 
     case HloOpcode::kDot: {
       attributes.push_back(ConvertPrecisionConfig(instruction));
