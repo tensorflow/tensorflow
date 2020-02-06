@@ -235,6 +235,39 @@ class IrEmitterUnnested : public IrEmitter,
       const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
+  // Emits code to process up to
+  // (tile_size_x/num_threads_x * tile_size_y/num_threads_y) elements in a tile,
+  // given `emit_elem_function` is the function to emit code to process one
+  // element, `thread_id_y` and `thread_id_x` are the intra-tile coordinates for
+  // the first element to process, and `index` is the index for the origin of
+  // the tile. Information about tile_size_x/y and num_threads_x/y are stored in
+  // `mapping_scheme`. Emits bounds check to ensure that each processed element
+  // is within the boundary defined by `tile_width` and `tile_height`.
+  //
+  // Pseudocode:
+  //
+  // for (y_loc = 0; y_loc < tile_height; y_loc += num_threads_y) {
+  //   for (j = 0; j < tile_size_x / num_threads_x; j++) { // unrolled
+  //     if (dilated) {
+  //       x_loc = x + j * num_threads_x;
+  //     } else {
+  //       x_loc = x * (tile_size_x / num_threads_x) + j;
+  //     }
+  //
+  //     if (x_loc < tile_width) {
+  //       emit_elem_function(y + y_loc, x_loc);
+  //     }
+  //   }
+  // }
+  //
+  void EmitTile(
+      const KernelMappingScheme& mapping_scheme,
+      const llvm_ir::IrArray::Index& tile_origin_index, const string& loop_name,
+      KernelSupportLibrary* ksl, llvm::Value* thread_id_y,
+      llvm::Value* thread_id_x, llvm::Value* tile_height,
+      llvm::Value* tile_width,
+      const IrEmitterUnnested::EmitElementFunction& emit_elem_function);
+
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
   void EmitTileElementForCopy(

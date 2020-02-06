@@ -203,11 +203,12 @@ class KernelSupportLibrary {
   //     `true_block_generator()`;
   //   else
   //      `false_block_generator()`;
-  // The else is skipped if false_block_generator is null.
   Status IfWithStatus(
       absl::string_view name, llvm::Value* condition,
       const std::function<Status()>& true_block_generator,
-      const std::function<Status()>& false_block_generator = nullptr);
+      const std::function<Status()>& false_block_generator = []() -> Status {
+        return Status::OK();
+      });
 
   Status IfWithStatus(
       llvm::Value* condition,
@@ -219,32 +220,26 @@ class KernelSupportLibrary {
                         false_block_generator);
   }
 
-  void If(llvm::Value* condition,
-          const std::function<void()>& true_block_generator,
-          const std::function<void()>& false_block_generator = nullptr) {
+  void If(
+      llvm::Value* condition, const std::function<void()>& true_block_generator,
+      const std::function<void()>& false_block_generator = []() {}) {
     If("", condition, true_block_generator, false_block_generator);
   }
 
-  void If(absl::string_view name, llvm::Value* condition,
-          const std::function<void()>& true_block_generator,
-          const std::function<void()>& false_block_generator = nullptr) {
-    if (false_block_generator != nullptr) {
-      TF_CHECK_OK(IfWithStatus(
-          name, condition,
-          [&]() {
-            true_block_generator();
-            return Status::OK();
-          },
-          [&]() {
-            false_block_generator();
-            return Status::OK();
-          }));
-    } else {
-      TF_CHECK_OK(IfWithStatus(name, condition, [&]() {
-        true_block_generator();
-        return Status::OK();
-      }));
-    }
+  void If(
+      absl::string_view name, llvm::Value* condition,
+      const std::function<void()>& true_block_generator,
+      const std::function<void()>& false_block_generator = []() {}) {
+    TF_CHECK_OK(IfWithStatus(
+        name, condition,
+        [&]() {
+          true_block_generator();
+          return Status::OK();
+        },
+        [&]() {
+          false_block_generator();
+          return Status::OK();
+        }));
   }
 
   using ArgumentVector = absl::Span<llvm::Value* const>;
