@@ -16,7 +16,6 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    data = [":vocabulary_testdata"],
     srcs_version = "PY2AND3",
     deps = [
         ":categorical",
@@ -184,23 +183,12 @@ py_library(
     ],
 )
 
-filegroup(
-    name = "vocabulary_testdata",
-    srcs = [
-        "testdata/wire_vocabulary.txt",
-    ],
-)
-
 cuda_py_test(
     name = "categorical_test",
     size = "medium",
     srcs = ["categorical_test.py"],
-    data = [":vocabulary_testdata"],
     python_version = "PY3",
     shard_count = 4,
-    tags = [
-        "no_oss",
-    ],
     deps = [
         ":categorical",
         "//tensorflow/python:client_testlib",
