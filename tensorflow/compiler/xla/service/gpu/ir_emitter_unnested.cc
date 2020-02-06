@@ -1911,20 +1911,20 @@ static llvm::Value* GetStartOffsetX(const KernelMappingScheme& mapping_scheme,
 void IrEmitterUnnested::EmitTile(
     const KernelMappingScheme& mapping_scheme,
     const IrArray::Index& tile_origin_index, const string& loop_name,
-    KernelSupportLibrary* ksl, llvm::Value* y, llvm::Value* x,
-    llvm::Value* tile_height, llvm::Value* tile_width,
+    KernelSupportLibrary* ksl, llvm::Value* thread_id_y,
+    llvm::Value* thread_id_x, llvm::Value* tile_height, llvm::Value* tile_width,
     const IrEmitterUnnested::EmitElementFunction& emit_elem_function) {
   llvm::Type* index_ty = tile_width->getType();
   auto constant = [&](int64 val) {
     return llvm::ConstantInt::get(index_ty, val);
   };
   int64 num_threads_x = mapping_scheme.GetNumThreadsX();
-  int64 num_threads_y = mapping_scheme.GetNumThreadsY();
+  llvm::Value* num_threads_y = constant(mapping_scheme.GetNumThreadsY());
   int64 tile_size_x = mapping_scheme.GetTileSizeX();
 
   int64 x_num_steps = tile_size_x / num_threads_x;
   llvm::Value* start_offset_x =
-      GetStartOffsetX(mapping_scheme, x, index_ty, &b_);
+      GetStartOffsetX(mapping_scheme, thread_id_x, index_ty, &b_);
 
   // Using dilated mapping scheme, each thread steps with a stride of number
   // of threads.
@@ -1935,20 +1935,38 @@ void IrEmitterUnnested::EmitTile(
   IrArray::Index source_idx =
       tile_origin_index.AddOffsetToDim(start_offset_x, kDimX, &b_);
 
+  auto ceil_of_ratio = [&](llvm::Value* a, llvm::Value* b) {
+    return b_.CreateUDiv(b_.CreateAdd(b_.CreateAdd(a, b), constant(-1)), b);
+  };
+
+  // The outer loop below is simply doing:
+  //
+  // for (int y_loc=thread_id_y; y_loc<tile_height; y_loc+=num_threads_y)
+  //
+  //
+  // However, in order to avoid an LLVM optimization triggering the ptxas bug,
+  // we write this loop in a convoluted way:
+  //
+  // y_bound = ceil_of_ratio(tile_height - thread_id_y, num_threads_y)
+  // for (int y_indvar=0; y_indvar<y_bound; y_indvar+=1)
+  //    y_loc = thread_id_y + y_indvar * num_threads_y
+  //
+  // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
+  // workaround.
   ksl->For(
       loop_name + "_y_in_tile",
-      /*start=*/y,
-      /*end=*/tile_height,
-      /*step=*/constant(num_threads_y), [&](llvm::Value* y_loc) {
-        IrArray::Index source_idx_y =
-            source_idx.AddOffsetToDim(y_loc, kDimY, &b_);
+      /*start=*/constant(0),
+      /*end=*/
+      ceil_of_ratio(b_.CreateSub(tile_height, thread_id_y), num_threads_y),
+      /*step=*/constant(1), [&](llvm::Value* y_indvar) {
+        llvm::Value* y_loc =
+            b_.CreateAdd(thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
         for (int64 j = 0; j < x_num_steps; j++) {
           llvm::Value* x_loc =
               b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
           IrArray::Index source_idx_x =
-              source_idx_y.AddOffsetToDim(constant(j * step_x), kDimX, &b_);
-          // The if-statement below always evaluates to true for the blocks
-          // where the entire processed tile fits within the input buffer.
+              source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+                  .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
           ksl->If(loop_name + "_x_in_tile", b_.CreateICmpULT(x_loc, tile_width),
                   [&] { emit_elem_function(source_idx_x, y_loc, x_loc, j); });
         }
