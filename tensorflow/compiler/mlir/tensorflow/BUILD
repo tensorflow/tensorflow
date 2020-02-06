@@ -255,6 +255,7 @@ cc_library(
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/test_side_effect_analysis.cc",
+        "transforms/tf_device_assignment.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_dynamic_padding_mapper.cc",
