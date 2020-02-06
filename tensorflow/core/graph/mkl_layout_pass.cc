@@ -362,10 +362,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 // End - element-wise ops. See note above.
 
 // NOTE: names are alphabetically sorted.
-#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
