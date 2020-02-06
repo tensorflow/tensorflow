@@ -114,6 +114,26 @@ TEST(XPlaneUtilsTest, RemoveEmptyLines) {
   EXPECT_EQ(plane.lines(1).name(), "l3");
 }
 
+TEST(XPlaneUtilsTest, SortXPlaneTest) {
+  XPlane plane;
+  XLine* line = plane.add_lines();
+  *line->add_events() = CreateEvent(200, 100);
+  *line->add_events() = CreateEvent(100, 100);
+  *line->add_events() = CreateEvent(120, 50);
+  *line->add_events() = CreateEvent(120, 30);
+  SortXPlane(&plane);
+  ASSERT_EQ(plane.lines_size(), 1);
+  ASSERT_EQ(plane.lines(0).events_size(), 4);
+  EXPECT_EQ(plane.lines(0).events(0).offset_ps(), 100);
+  EXPECT_EQ(plane.lines(0).events(0).duration_ps(), 100);
+  EXPECT_EQ(plane.lines(0).events(1).offset_ps(), 120);
+  EXPECT_EQ(plane.lines(0).events(1).duration_ps(), 50);
+  EXPECT_EQ(plane.lines(0).events(2).offset_ps(), 120);
+  EXPECT_EQ(plane.lines(0).events(2).duration_ps(), 30);
+  EXPECT_EQ(plane.lines(0).events(3).offset_ps(), 200);
+  EXPECT_EQ(plane.lines(0).events(3).duration_ps(), 100);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow
