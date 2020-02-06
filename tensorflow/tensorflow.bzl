@@ -1622,12 +1622,12 @@ def _py_wrap_cc_impl(ctx):
     ]
     args += ["-l" + f.path for f in ctx.files.swig_includes]
     args += ["-I" + i for i in swig_include_dirs.to_list()]
-    args += [src.path]
+    args.append(src.path)
     outputs = [ctx.outputs.cc_out, ctx.outputs.py_out]
     ctx.actions.run(
         executable = ctx.executable._swig,
         arguments = args,
-        inputs = inputs.to_list(),
+        inputs = inputs,
         outputs = outputs,
         mnemonic = "PythonSwig",
         progress_message = "SWIGing " + src.path,

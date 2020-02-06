@@ -148,12 +148,12 @@ class Metric(base_layer.Layer):
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
 
-    # TODO(psv): We are excluding wrapping `update_state` of built-in metrics
-    # with function here because of b/121302287. With this, built-in metrics
-    # will continue to work with TPUs and custom metrics will not, however
-    # users writing custom metrics need not worry about control dependencies
-    # and returning ops.
-    if cls.__module__ == Metric.__module__:
+    # If `update_state` is not in eager/tf.function and it is not from a
+    # built-in metric, wrap it in `tf.function`. This is so that users writing
+    # custom metrics in v1 need not worry about control dependencies and
+    # return ops.
+    if (base_layer_utils.is_in_eager_or_tf_function() or
+        cls.__module__ == Metric.__module__):
       update_state_fn = obj.update_state
     else:
       update_state_fn = def_function.function(obj.update_state)
@@ -178,7 +178,10 @@ class Metric(base_layer.Layer):
     def replica_local_fn(*args, **kwargs):
       """Updates the state of the metric in a replica-local context."""
       update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
-      with ops.control_dependencies([update_op]):
+      update_ops = []
+      if update_op is not None:
+        update_ops.append(update_op)
+      with ops.control_dependencies(update_ops):
         result_t = self.result()  # pylint: disable=not-callable
 
         # We are adding the metric object as metadata on the result tensor.
@@ -225,9 +228,6 @@ class Metric(base_layer.Layer):
          All update ops added to the graph by this function will be executed.
       As a result, code should generally work the same way with graph or
       eager execution.
-
-    Please use `tf.config.experimental_run_functions_eagerly(True)` to execute
-    this function eagerly for debugging or profiling.
 
     Args:
       *args:

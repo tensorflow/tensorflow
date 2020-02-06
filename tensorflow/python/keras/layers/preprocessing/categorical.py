@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import string_ops
 
 
 class CategoryLookup(Layer):
@@ -38,15 +39,15 @@ class CategoryLookup(Layer):
   sequence of int.
 
   Attributes:
-    vocabulary: The vocabulary to lookup the input. If it is a file, it
-      represents the source vocab file; If it is a list/tuple, it represents the
-      source vocab list. If it is None, the vocabulary can later be set.
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. This is used when `adapt`
       is called.
     num_oov_tokens: Non-negative integer. The number of out-of-vocab tokens. All
       out-of-vocab inputs will be assigned IDs in the range of [0,
       num_oov_tokens) based on a hash.
+    vocabulary: The vocabulary to lookup the input. If it is a file, it
+      represents the source vocab file; If it is a list/tuple, it represents the
+      source vocab list. If it is None, the vocabulary can later be set.
     name: Name to give to the layer.
     **kwargs: Keyword arguments to construct a layer.
   Input shape: A string or int tensor of shape `[batch_size, d1, ..., dm]`
@@ -70,7 +71,7 @@ class CategoryLookup(Layer):
     self.max_tokens = max_tokens
     self.num_oov_tokens = num_oov_tokens
     self.vocabulary = vocabulary
-    super(CategoryLookup, self).__init__(name, **kwargs)
+    super(CategoryLookup, self).__init__(name=name, **kwargs)
 
   def __call__(self, inputs, *args, **kwargs):
     if isinstance(inputs, (np.ndarray, float, int)):
@@ -106,6 +107,15 @@ class CategoryLookup(Layer):
           shape=output_shape, dtype=output_dtype)
     else:
       return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
+
+  def get_config(self):
+    config = {
+        'max_tokens': self.max_tokens,
+        'num_oov_tokens': self.num_oov_tokens,
+        'vocabulary': self.vocabulary
+    }
+    base_config = super(CategoryLookup, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 class CategoryCrossing(Layer):
@@ -223,4 +233,74 @@ class CategoryCrossing(Layer):
   def get_config(self):
     config = {'depth': self.depth, 'num_bins': self.num_bins}
     base_config = super(CategoryCrossing, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+class Hashing(Layer):
+  """Implements categorical feature hashing, also known as "hashing trick".
+
+  This layer transforms categorical inputs to hashed output. It converts a
+  sequence of int or string to a sequence of int. The stable hash function uses
+  tensorflow::ops::Fingerprint to produce universal output that is consistent
+  across platforms.
+
+  Usage:
+  ```python
+    layer = Hashing(num_bins=3)
+    inp = np.asarray([['A', 'B'], ['C', 'A']])
+    layer(inputs)
+    [[0, 0], [1, 0]]
+  ```
+
+  Arguments:
+    num_bins: Number of hash bins.
+    name: Name to give to the layer.
+    **kwargs: Keyword arguments to construct a layer.
+
+  Input shape: A string, int32 or int64 tensor of shape
+    `[batch_size, d1, ..., dm]`
+
+  Output shape: An int64 tensor of shape `[batch_size, d1, ..., dm]`
+
+  Example:
+    If the input is a 5 by 1 string tensor '[['A'], ['B'], ['C'], ['D'], ['E']]'
+    with `num_bins=2`, then output is 5 by 1 integer tensor
+    [[hash('A')], [hash('B')], [hash('C')], [hash('D')], [hash('E')]].
+  """
+
+  def __init__(self, num_bins, name=None, **kwargs):
+    # TODO(tanzheny): consider adding strong hash variant.
+    self._num_bins = num_bins
+    super(Hashing, self).__init__(name=name, **kwargs)
+
+  def call(self, inputs):
+    # TODO(tanzheny): Add ragged support.
+    # TODO(tanzheny): Add int support.
+    if isinstance(inputs, sparse_tensor.SparseTensor):
+      sparse_values = inputs.values
+      sparse_hashed_values = string_ops.string_to_hash_bucket_fast(
+          sparse_values, self._num_bins, name='lookup')
+      return sparse_tensor.SparseTensor(
+          indices=inputs.indices,
+          values=sparse_hashed_values,
+          dense_shape=inputs.dense_shape)
+    # string_to_hash_bucket_fast uses FarmHash as hash function.
+    return string_ops.string_to_hash_bucket_fast(
+        inputs, self._num_bins, name='lookup')
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+  def compute_output_signature(self, input_spec):
+    output_shape = self.compute_output_shape(input_spec.shape.as_list())
+    output_dtype = dtypes.int64
+    if isinstance(input_spec, sparse_tensor.SparseTensorSpec):
+      return sparse_tensor.SparseTensorSpec(
+          shape=output_shape, dtype=output_dtype)
+    else:
+      return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
+
+  def get_config(self):
+    config = {'num_bins': self._num_bins}
+    base_config = super(Hashing, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

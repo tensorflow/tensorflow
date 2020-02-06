@@ -193,6 +193,54 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     self.assertAllClose(expected_output, output_dataset)
 
 
+@keras_parameterized.run_all_keras_modes
+class InverseLookupOutputTest(keras_parameterized.TestCase,
+                              preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_inverse_output(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_ints = [[2, 3, 4, 5], [5, 4, 2, 1]]
+    # Note that the token 'michigan' has been replaced by ''. This is because
+    # 'michigan' is OOV for this layer.
+    expected_strings = np.array([["earth", "wind", "and", "fire"],
+                                 ["fire", "and", "earth", ""]])
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(max_tokens=None)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    string_data = layer(int_data, invert=True)
+    model = keras.Model(inputs=input_data, outputs=[int_data, string_data])
+    int_outputs, string_outputs = model.predict(input_array)
+    self.assertAllEqual(expected_ints, int_outputs)
+    self.assertAllEqual(expected_strings, string_outputs)
+
+  def test_inverse_output_serialization(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_ints = [[2, 3, 4, 5], [5, 4, 2, 1]]
+    # Note that the token 'michigan' has been replaced by ''. This is because
+    # 'michigan' is OOV for this layer.
+    expected_strings = np.array([["earth", "wind", "and", "fire"],
+                                 ["fire", "and", "earth", ""]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(max_tokens=None)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    string_data = layer(int_data, invert=True)
+    model = keras.Model(inputs=input_data, outputs=[int_data, string_data])
+
+    with CustomObjectScope({"IndexLookup": get_layer_class()}):
+      new_model = keras.Model.from_config(model.get_config())
+    new_model.set_weights(model.get_weights())
+    int_outputs, string_outputs = new_model.predict(input_array)
+    self.assertAllEqual(expected_ints, int_outputs)
+    self.assertAllEqual(expected_strings, string_outputs)
+
+
 @keras_parameterized.run_all_keras_modes(always_skip_eager=True)
 class IndexLookupSaveableTest(keras_parameterized.TestCase,
                               preprocessing_test_utils.PreprocessingLayerTest):

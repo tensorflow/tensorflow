@@ -9,8 +9,9 @@ cc_library(
     name = "tflite_api_dispatcher",
     hdrs = ["tflite_api_dispatcher.h"],
     defines = if_tflite_experimental_runtime(
-        if_false = [],
-        if_true = ["TFLITE_EXPERIMENTAL_RUNTIME"],
+        if_eager = ["TFLITE_EXPERIMENTAL_RUNTIME_EAGER"],
+        if_non_eager = ["TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER"],
+        if_none = [],
     ),
     deps = [
         "//tensorflow/lite:framework",
@@ -24,7 +25,7 @@ cc_library(
         ":tflite_api_dispatcher",
         "//tensorflow/lite:framework",
     ] + tflite_experimental_runtime_linkopts(
-        if_true = [
+        if_non_eager = [
             # "//tensorflow/lite/experimental/tf_runtime/tfrt_kernels:tfrt_tflite_interpreter_alwayslink",
             # "//third_party/tf_runtime:basic_kernels_alwayslink",
         ],

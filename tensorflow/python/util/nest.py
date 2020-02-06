@@ -259,6 +259,37 @@ def flatten(structure, expand_composites=False):
   Users must not modify any collections used in nest while this function is
   running.
 
+  Examples:
+
+  1. Python dict (ordered by key):
+
+  >>> dict = { "key3": "value3", "key1": "value1", "key2": "value2" }
+  >>> tf.nest.flatten(dict)
+  ['value1', 'value2', 'value3']
+
+  2. For a nested python tuple:
+
+  >>> tuple = ((1.0, 2.0), (3.0, 4.0, 5.0), (6.0))
+  >>> tf.nest.flatten(tuple)
+      [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+  3. Numpy array (will not flatten):
+
+  >>> array = np.array([[1, 2], [3, 4]])
+  >>> tf.nest.flatten(array)
+      [array([[1, 2],
+              [3, 4]])]
+
+
+  4. `tf.Tensor` (will not flatten):
+
+  >>> tensor = tf.constant([[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]])
+  >>> tf.nest.flatten(tensor)
+      [<tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+        array([[1., 2., 3.],
+               [4., 5., 6.],
+               [7., 8., 9.]], dtype=float32)>]
+
   Args:
     structure: an arbitrarily nested structure or a scalar object. Note, numpy
       arrays are considered scalars.

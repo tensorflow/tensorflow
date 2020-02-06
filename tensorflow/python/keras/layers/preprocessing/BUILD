@@ -23,6 +23,7 @@ py_library(
         ":image_preprocessing",
         ":normalization",
         ":preprocessing_test_utils",
+        ":reduction",
         ":text_vectorization",
     ],
 )
@@ -162,6 +163,19 @@ py_library(
 )
 
 py_library(
+    name = "reduction",
+    srcs = [
+        "reduction.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/engine:base_layer",
+    ],
+)
+
+py_library(
     name = "preprocessing_test_utils",
     srcs = ["preprocessing_test_utils.py"],
     srcs_version = "PY2AND3",
@@ -252,6 +266,17 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "reduction_test",
+    srcs = ["reduction_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":reduction",
+        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

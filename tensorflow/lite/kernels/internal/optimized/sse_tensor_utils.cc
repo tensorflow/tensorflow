@@ -40,11 +40,15 @@ static inline __m128i DotProdInt8x4x4(__m128i a_8x16, __m128i b_8x16) {
 
 // Horizontally add 4 int32 values stored in a single XMM register to int32_t.
 static inline int32_t ReduceInt32x4(__m128i acc) {
-  acc = _mm_hadd_epi32(acc, acc);
-  // This second hadd could be only 64 bit, but 64 and 128 bit hadd has same
-  // latency on most CPUs, and it costs more to move. (Moving can be no-op, but
-  // nevertheless is an extra instruction occupying the decoder and I cache.)
-  acc = _mm_hadd_epi32(acc, acc);
+  // Shuffle to contain high half of acc (both in high and low halfs).
+  __m128i shuffle = _mm_unpackhi_epi64(acc, acc);
+  // Add shuffle and acc; low half is sums of twos (high half is ignored).
+  acc = _mm_add_epi32(acc, shuffle);
+  // Shuffle the two elements in low half (ignore high half).
+  shuffle = _mm_shuffle_epi32(acc, _MM_SHUFFLE(2, 3, 0, 1));
+  // Add shuffle and acc; lowest element is sum of all 4 input.
+  acc = _mm_add_epi32(acc, shuffle);
+  // Return lowest element as int32_t.
   return _mm_cvtsi128_si32(acc);
 }
 

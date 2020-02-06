@@ -60,6 +60,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import traceback
 
 import numpy as np
 
@@ -782,15 +783,17 @@ class _PythonLoopChecker(object):
     if len(new_ops) < INEFFICIENT_UNROLL_MIN_OPS:
       return False
 
-    # TODO(mdan): Add location information.
     ag_logging.warn(
         'Large unrolled loop detected. Did you mean to use a TF loop?'
-        ' The following ops were created after iteration %s: %s\n.'
-        'See'
+        ' The following ops were created after iteration %s: %s'
+        '\nSee'
         ' https://github.com/tensorflow/tensorflow/blob/master/'
         'tensorflow/python/autograph/g3doc/reference/common_errors.md'
         '#warning-large-unrolled-loop-detected'
-        '', self.iterations, new_ops)
+        '\n'
+        'Location:'
+        '\n%s'
+        '', self.iterations, new_ops, '\n'.join(traceback.format_stack()))
     return True
 
   def before_iteration(self):

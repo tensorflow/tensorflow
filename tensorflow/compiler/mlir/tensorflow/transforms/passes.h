@@ -79,6 +79,10 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 std::unique_ptr<OpPassBase<ModuleOp>>
 CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
 
+// Create a simple device assignment pass on TF dialect for CoreRT use case.
+std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
+    llvm::StringRef default_device);
+
 }  // namespace TF
 
 namespace TFControlFlow {

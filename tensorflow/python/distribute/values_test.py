@@ -59,18 +59,18 @@ class DistributedValuesTest(test.TestCase):
     one = constant_op.constant(1)
     two = constant_op.constant(2)
     v = values.DistributedValues((one, two))
-    self.assertEqual(one, v.get())
+    self.assertEqual(one, v._get())
     with distribute_lib.ReplicaContext(None, 1):
-      self.assertEqual(two, v.get())
+      self.assertEqual(two, v._get())
 
   def testGetGraph(self):
     with context.graph_mode(), ops.Graph().as_default():
       one = constant_op.constant(1)
       two = constant_op.constant(2)
       v = values.DistributedValues((one, two))
-      self.assertEqual(one, v.get())
+      self.assertEqual(one, v._get())
       with distribute_lib.ReplicaContext(None, 1):
-        self.assertEqual(two, v.get())
+        self.assertEqual(two, v._get())
 
   def testIsTensorLike(self):
     with context.graph_mode(), ops.Graph().as_default():
@@ -860,6 +860,7 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     v, replica_local = _make_replica_local(
         variable_scope.VariableAggregation.SUM)
 
+    self.assertEqual(v[0].constraint, replica_local.constraint)
     self.assertEqual(v[0].name, replica_local.name)
     self.assertEqual(v[0].dtype, replica_local.dtype)
     self.assertEqual(v[0].shape, replica_local.shape)
@@ -1268,6 +1269,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         expected = 0
       self.assertEqual(expected, self.evaluate(v.read_value()), aggregation)
       self.assertEqual(expected, self.evaluate(v.value()), aggregation)
+      self.assertEqual(expected, self.evaluate(v), aggregation)
 
   # TODO(b/145574622): Re-enable this test once ReduceOp argument is
   # respected on GPUs.

@@ -60,6 +60,17 @@ void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
 
+// Returns the plane with the given name in the container or null if not found.
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Returns the plane with the given name in the container. If necessary, adds a
+// new plane to the container.
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
+// (descending) so nested events are sorted from outer to innermost.
+void SortXPlane(XPlane* plane);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

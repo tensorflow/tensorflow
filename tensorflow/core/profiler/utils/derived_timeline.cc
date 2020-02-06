@@ -74,11 +74,11 @@ class DerivedXLineBuilder {
   XStatMetadata* group_id_stats_;
 };
 
-constexpr absl::string_view kDerivedLineSteps = "Steps";
-constexpr absl::string_view kDerivedLineTensorFlowOps = "TensorFlow Ops";
-constexpr absl::string_view kDerivedLineXlaModules = "XLA Modules";
-constexpr absl::string_view kDerivedLineXlaOps = "XLA Ops";
-constexpr absl::string_view kAnnotationDelimiter = "::";
+const absl::string_view kDerivedLineSteps = "Steps";
+const absl::string_view kDerivedLineTensorFlowOps = "TensorFlow Ops";
+const absl::string_view kDerivedLineXlaModules = "XLA Modules";
+const absl::string_view kDerivedLineXlaOps = "XLA Ops";
+const absl::string_view kAnnotationDelimiter = "::";
 
 }  // namespace
 

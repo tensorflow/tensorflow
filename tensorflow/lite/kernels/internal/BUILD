@@ -232,6 +232,7 @@ cc_library(
         "optimized/integer_ops/softmax.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
+        "optimized/sparse_ops/fully_connected.h",
     ],
     copts = tflite_copts(),
     deps = [
@@ -456,6 +457,7 @@ cc_library(
         "reference/requantize.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/sparse_ops/fully_connected.h",
         "reference/strided_slice.h",
         "reference/svdf.h",
     ],

@@ -960,6 +960,182 @@ class RandomContrast(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+class RandomHeight(Layer):
+  """Randomly vary the height of a batch of images during training.
+
+  Adjusts the height of a batch of images by a random factor. The input
+  should be a 4-D tensor in the "channels_last" image data format.
+
+  By default, this layer is inactive during inference.
+
+  Arguments:
+    factor: A positive float (fraction of original height), or a tuple of
+      size 2 representing lower and upper bound for resizing vertically. When
+      represented as a single float, this value is used for both the upper and
+      lower bound. For instance, `factor=(0.2, 0.3)` results in an output height
+      varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
+      0.3)` results in an output height varying in the range `[original - 20%,
+      original + 30%]`. `factor=0.2` results in an output height varying in the
+      range `[original - 20%, original + 20%]`.
+    interpolation: String, the interpolation method. Defaults to `bilinear`.
+      Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
+      `gaussian`, `mitchellcubic`
+    seed: Integer. Used to create a random seed.
+
+  Input shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)` (data_format='channels_last').
+
+  Output shape:
+    4D tensor with shape:
+    `(samples, random_height, width, channels)`.
+  """
+
+  def __init__(self, factor, interpolation='bilinear', seed=None, **kwargs):
+    self.factor = factor
+    if isinstance(factor, (tuple, list)):
+      self.height_lower = -factor[0]
+      self.height_upper = factor[1]
+    else:
+      self.height_lower = self.height_upper = factor
+    if self.height_lower > 1.:
+      raise ValueError('`factor` cannot have abs lower bound larger than 1.0, '
+                       'got {}'.format(factor))
+    self.interpolation = interpolation
+    self._interpolation_method = get_interpolation(interpolation)
+    self.input_spec = InputSpec(ndim=4)
+    self.seed = seed
+    self._rng = make_generator(self.seed)
+    super(RandomHeight, self).__init__(**kwargs)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = K.learning_phase()
+
+    def random_height_inputs():
+      """Inputs height-adjusted with random ops."""
+      inputs_shape = array_ops.shape(inputs)
+      h_axis, w_axis = 1, 2
+      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
+      img_wd = inputs_shape[w_axis]
+      height_factor = self._rng.uniform(
+          shape=[],
+          minval=(1.0 - self.height_lower),
+          maxval=(1.0 + self.height_upper))
+      adjusted_height = math_ops.cast(height_factor * img_hd, dtypes.int32)
+      adjusted_size = array_ops.stack([adjusted_height, img_wd])
+      output = image_ops.resize_images_v2(
+          images=inputs, size=adjusted_size, method=self._interpolation_method)
+      original_shape = inputs.shape.as_list()
+      output_shape = [original_shape[0]] + [None] + original_shape[2:4]
+      output.set_shape(output_shape)
+      return output
+
+    return tf_utils.smart_cond(training, random_height_inputs, lambda: inputs)
+
+  def compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    return tensor_shape.TensorShape(
+        [input_shape[0], None, input_shape[2], input_shape[3]])
+
+  def get_config(self):
+    config = {
+        'factor': self.factor,
+        'interpolation': self.interpolation,
+        'seed': self.seed,
+    }
+    base_config = super(RandomHeight, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+class RandomWidth(Layer):
+  """Randomly vary the width of a batch of images during training.
+
+  Adjusts the width of a batch of images by a random factor. The input
+  should be a 4-D tensor in the "channels_last" image data format.
+
+  By default, this layer is inactive during inference.
+
+  Arguments:
+    factor: A positive float (fraction of original width), or a tuple of
+      size 2 representing lower and upper bound for resizing horizontally. When
+      represented as a single float, this value is used for both the upper and
+      lower bound. For instance, `factor=(0.2, 0.3)` results in an output width
+      varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
+      0.3)` results in an output width varying in the range `[original - 20%,
+      original + 30%]`. `factor=0.2` results in an output width varying in the
+      range `[original - 20%, original + 20%]`.
+    interpolation: String, the interpolation method. Defaults to `bilinear`.
+      Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
+      `gaussian`, `mitchellcubic`
+    seed: Integer. Used to create a random seed.
+
+  Input shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)` (data_format='channels_last').
+
+  Output shape:
+    4D tensor with shape:
+    `(samples, random_height, width, channels)`.
+  """
+
+  def __init__(self, factor, interpolation='bilinear', seed=None, **kwargs):
+    self.factor = factor
+    if isinstance(factor, (tuple, list)):
+      self.width_lower = -factor[0]
+      self.width_upper = factor[1]
+    else:
+      self.width_lower = self.width_upper = factor
+    if self.width_lower > 1.:
+      raise ValueError('`factor` cannot have abs lower bound larger than 1.0, '
+                       'got {}'.format(factor))
+    self.interpolation = interpolation
+    self._interpolation_method = get_interpolation(interpolation)
+    self.input_spec = InputSpec(ndim=4)
+    self.seed = seed
+    self._rng = make_generator(self.seed)
+    super(RandomWidth, self).__init__(**kwargs)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = K.learning_phase()
+
+    def random_width_inputs():
+      """Inputs width-adjusted with random ops."""
+      inputs_shape = array_ops.shape(inputs)
+      h_axis, w_axis = 1, 2
+      img_hd = inputs_shape[h_axis]
+      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      width_factor = self._rng.uniform(
+          shape=[],
+          minval=(1.0 - self.width_lower),
+          maxval=(1.0 + self.width_upper))
+      adjusted_width = math_ops.cast(width_factor * img_wd, dtypes.int32)
+      adjusted_size = array_ops.stack([img_hd, adjusted_width])
+      output = image_ops.resize_images_v2(
+          images=inputs, size=adjusted_size, method=self._interpolation_method)
+      original_shape = inputs.shape.as_list()
+      output_shape = original_shape[0:2] + [None] + [original_shape[3]]
+      output.set_shape(output_shape)
+      return output
+
+    return tf_utils.smart_cond(training, random_width_inputs, lambda: inputs)
+
+  def compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    return tensor_shape.TensorShape(
+        [input_shape[0], input_shape[1], None, input_shape[3]])
+
+  def get_config(self):
+    config = {
+        'factor': self.factor,
+        'interpolation': self.interpolation,
+        'seed': self.seed,
+    }
+    base_config = super(RandomWidth, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
 def make_generator(seed=None):
   if seed:
     return stateful_random_ops.Generator.from_seed(seed)

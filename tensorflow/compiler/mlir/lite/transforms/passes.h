@@ -78,6 +78,9 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeFunctionalOpsPass();
 // Creates an instance pass to add default quantization parameters.
 std::unique_ptr<OpPassBase<FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max);
+
+// Creates an instance pass to convert dense tensor to sparse format.
+std::unique_ptr<OpPassBase<FuncOp>> CreateDenseToSparsePass();
 }  // namespace TFL
 
 }  // namespace mlir
