@@ -1939,6 +1939,10 @@ void IrEmitterUnnested::EmitTile(
     return b_.CreateUDiv(b_.CreateAdd(b_.CreateAdd(a, b), constant(-1)), b);
   };
 
+  // True iff all threads always execute all instructions in the tiling
+  // dimension X.
+  bool x_tile_fits = mapping_scheme.GetDimsInElems()[kDimX] % tile_size_x == 0;
+
   // The outer loop below is simply doing:
   //
   // for (int y_loc=thread_id_y; y_loc<tile_height; y_loc+=num_threads_y)
@@ -1967,8 +1971,13 @@ void IrEmitterUnnested::EmitTile(
           IrArray::Index source_idx_x =
               source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
                   .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
-          ksl->If(loop_name + "_x_in_tile", b_.CreateICmpULT(x_loc, tile_width),
-                  [&] { emit_elem_function(source_idx_x, y_loc, x_loc, j); });
+          if (!x_tile_fits) {
+            ksl->If(loop_name + "_x_in_tile",
+                    b_.CreateICmpULT(x_loc, tile_width),
+                    [&] { emit_elem_function(source_idx_x, y_loc, x_loc, j); });
+          } else {
+            emit_elem_function(source_idx_x, y_loc, x_loc, j);
+          }
         }
       });
 }
