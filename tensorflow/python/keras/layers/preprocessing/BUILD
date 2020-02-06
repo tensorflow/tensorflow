@@ -189,6 +189,9 @@ cuda_py_test(
     srcs = ["categorical_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "no_windows",  # b/149031156
+    ],
     deps = [
         ":categorical",
         "//tensorflow/python:client_testlib",
