@@ -39,15 +39,23 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate);
 class Delegate {
  public:
   explicit Delegate(const TfLiteXNNPackDelegateOptions* options) {
-    if (options) {
-      options_ = *options;
-    } else {
-      // default: don't use thread pool.
-      options_.num_threads = 0;
+#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
+    if (options != nullptr && options->num_threads > 1) {
+      threadpool_.reset(
+          pthreadpool_create(static_cast<size_t>(options->num_threads)));
     }
+#endif
   }
 
   TfLiteDelegate* tflite_delegate() { return &delegate_; }
+
+  pthreadpool_t threadpool() {
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+    return nullptr;
+#else
+    return threadpool_.get();
+#endif
+  }
 
  private:
   TfLiteDelegate delegate_ = {
@@ -59,13 +67,18 @@ class Delegate {
       kTfLiteDelegateFlagsNone,       // .flags
   };
 
-  TfLiteXNNPackDelegateOptions options_;
+#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
+  // Thread pool with smart-pointer for lifetime management.
+  std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
+      nullptr, &pthreadpool_destroy};
+#endif
 };
 
 class Subgraph {
  public:
   static Subgraph* Create(TfLiteContext* context,
-                          const TfLiteDelegateParams* params) {
+                          const TfLiteDelegateParams* params,
+                          pthreadpool_t threadpool) {
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
     const std::unordered_set<int> inputs(
         &params->input_tensors->data[0],
@@ -178,7 +191,8 @@ class Subgraph {
     }
 
     xnn_runtime_t runtime_ptr = nullptr;
-    status = xnn_create_runtime(subgraph.get(), &runtime_ptr);
+    status = xnn_create_runtime_v2(subgraph.get(), threadpool, /*flags=*/0,
+                                   &runtime_ptr);
     if (status != xnn_status_success) {
       context->ReportError(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -734,7 +748,11 @@ void* SubgraphInit(TfLiteContext* context, const char* buffer, size_t length) {
   const TfLiteDelegateParams* params =
       reinterpret_cast<const TfLiteDelegateParams*>(buffer);
 
-  return static_cast<void*>(Subgraph::Create(context, params));
+  pthreadpool_t threadpool =
+      static_cast<::tflite::xnnpack::Delegate*>(params->delegate->data_)
+          ->threadpool();
+
+  return static_cast<void*>(Subgraph::Create(context, params, threadpool));
 }
 
 TfLiteStatus SubgraphPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -792,6 +810,6 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreate(
 
 void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate) {
   if (delegate != nullptr) {
-    delete reinterpret_cast<::tflite::xnnpack::Delegate*>(delegate);
+    delete static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);
   }
 }
