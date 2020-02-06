@@ -544,14 +544,21 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 }
 
-// Get the binding index of a tensor in an engine.
-// The binding index is looked up using the tensor's name and the profile idx.
-// Profile idx should be set to zero, if we do not have optimization profiles.
-Status GetTrtBindingIndex(const char* tensor_name, int profile_idx,
+// Gets the binding index of a tensor in an engine.
+//
+// The binding index is looked up using the tensor's name and the profile index.
+// Profile index should be set to zero, if we do not have optimization profiles.
+Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
                           const nvinfer1::ICudaEngine* cuda_engine,
-                          int* binding_idx) {
-  *binding_idx = cuda_engine->getBindingIndex(tensor_name);
-  if (*binding_idx == -1) {
+                          int* binding_index) {
+  // If the engine has been built for K profiles, the first getNbBindings() / K
+  // bindings are used by profile number 0, the following getNbBindings() / K
+  // bindings are used by profile number 1 etc.
+  //
+  // GetBindingIndex(tensor_name) returns the binding index for the progile 0.
+  // We can also consider it as a "binding_index_within_profile".
+  *binding_index = cuda_engine->getBindingIndex(tensor_name);
+  if (*binding_index == -1) {
     const string msg = StrCat("Input node ", tensor_name, " not found");
     LOG(ERROR) << msg;
     return errors::NotFound(msg);
@@ -561,11 +568,13 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_idx,
 #else
   int n_profiles = 1;
 #endif
-  // If we have more then one optimization profiles then the binding idx
-  // depends on the profile number
+  // If we have more then one optimization profile, then we need to shift the
+  // binding index according to the following formula:
+  // binding_index_within_engine = binding_index_within_profile +
+  //                               profile_index * bindings_per_profile
   const int bindings_per_profile =
       cuda_engine->getNbBindings() / n_profiles;
-  *binding_idx = *binding_idx + profile_idx * bindings_per_profile;
+  *binding_index = *binding_index + profile_index * bindings_per_profile;
   return Status::OK();
 }
 
@@ -600,7 +609,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   // Setup engine inputs.
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string input_name = StrCat(IONamePrefixes::kInputPHName, i);
-    int binding_index = -1;
+    int binding_index;
     auto status = GetTrtBindingIndex(input_name.c_str(), 0,
                                      cuda_engine.get(), &binding_index);
     if (!status.ok()) {
@@ -671,7 +680,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   // Setup engine outputs.
   for (int i = 0; i < ctx->num_outputs(); i++) {
     const string output_name = StrCat(IONamePrefixes::kOutputPHName, i);
-    int binding_index = -1;
+    int binding_index;
     auto status = GetTrtBindingIndex(output_name.c_str(), 0,
                                      cuda_engine.get(), &binding_index);
     if (!status.ok()) {
@@ -706,8 +715,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     // Allocate output tensor of TRTEngineOp
     Tensor* output_tensor = nullptr;
     TensorShape output_shape;
-    status = TensorShapeUtils::MakeShape(
-        trt_shape.data(), trt_shape.size(), &output_shape);
+    status = TensorShapeUtils::MakeShape(trt_shape.data(),
+                                         trt_shape.size(), &output_shape);
     if (!status.ok()) {
       LOG(ERROR) << "Failed to get output shape: " << status;
       return kRetry;
