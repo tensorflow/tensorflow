@@ -401,7 +401,7 @@ def compute_average_loss(per_example_loss,
           labels, predictions)
 
       # Compute loss that is scaled by sample_weight and by global batch size.
-      return tf.compute_average_loss(
+      return tf.nn.compute_average_loss(
           per_example_loss,
           sample_weight=sample_weight,
           global_batch_size=GLOBAL_BATCH_SIZE)
@@ -452,7 +452,7 @@ def scale_regularization_loss(regularization_loss):
           labels, predictions)
 
       # Compute loss that is scaled by sample_weight and by global batch size.
-      loss = tf.compute_average_loss(
+      loss = tf.nn.compute_average_loss(
           per_example_loss,
           sample_weight=sample_weight,
           global_batch_size=GLOBAL_BATCH_SIZE)
