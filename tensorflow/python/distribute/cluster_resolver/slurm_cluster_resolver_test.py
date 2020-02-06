@@ -1,4 +1,4 @@
-# Copyright 2018-2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.distribute.cluster_resolver import SlurmClusterResolver
+from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import expand_hostlist, expand_tasks_per_node
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -30,7 +31,6 @@ mock = test.mock
 class SlurmClusterResolverTest(test.TestCase):
 
   def test_expand_hostlist(self):
-    from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import expand_hostlist
     self.assertEqual(expand_hostlist('n1'), ['n1'])
     self.assertEqual(expand_hostlist('n[1,3]'), ['n1', 'n3'])
     self.assertEqual(expand_hostlist('n[1-3]'), ['n1', 'n2', 'n3'])
@@ -38,7 +38,6 @@ class SlurmClusterResolverTest(test.TestCase):
                      ['n1', 'n2', 'm5', 'o3', 'o4', 'o6', 'o7', 'o8', 'o9'])
 
   def test_expand_tasks_per_node(self):
-    from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import expand_tasks_per_node
     self.assertEqual(expand_tasks_per_node('2'), [2])
     self.assertEqual(expand_tasks_per_node('2,1,3'), [2, 1, 3])
     self.assertEqual(expand_tasks_per_node('3(x2),2,1'), [3, 3, 2, 1])

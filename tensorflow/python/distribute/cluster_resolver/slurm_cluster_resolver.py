@@ -79,8 +79,7 @@ def expand_hostlist(hostlist):
         hosts.append(prefix)
       else:
         hosts.extend(prefix + str(i)
-                     for i in expand_range_expression(m.group(3))
-        )
+                     for i in expand_range_expression(m.group(3)))
   except Exception as e:
     raise ValueError('Invalid hostlist format "%s": %s' % (hostlist, e))
   return hosts
