@@ -733,6 +733,7 @@ Defined Functions:
 
     def __init__(self):
       self.var = variables.Variable(1.0, name='my_var')
+      self.write_var = variables.Variable(1.0, name='write_var')
 
     @def_function.function(input_signature=[
         tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
@@ -752,20 +753,32 @@ Defined Functions:
       del y
       return {'res': x + self.var}
 
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+    ])
+    def func_write(self, x, y):
+      del y
+      self.write_var.assign(x + self.var)
+      return {'res': self.write_var}
+
   @parameterized.named_parameters(
       ('VariablesToFeedNone', '', 'func2'),
       ('VariablesToFeedAll', 'all', 'func2'),
       ('VariablesToFeedMyVar', 'my_var', 'func2'),
-      ('VariablesToFeedNoneLargeConstant', '', 'func3'))
+      ('VariablesToFeedNoneLargeConstant', '', 'func3'),
+      ('WriteToWriteVar', 'all', 'func_write'),
+  )
   def testAOTCompileCPUFreezesAndCompiles(self, variables_to_feed, func):
     if not test.is_built_with_xla():
       self.skipTest('Skipping test because XLA is not compiled in.')
 
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
     dummy_model = self.AOTCompileDummyModel()
-    func = dummy_model.func2 if func == 'func2' else dummy_model.func3
+    func = getattr(dummy_model, func)
     with self.cached_session():
       self.evaluate(dummy_model.var.initializer)
+      self.evaluate(dummy_model.write_var.initializer)
       save.save(dummy_model, saved_model_dir, signatures={'func': func})
 
     self.parser = saved_model_cli.create_parser()
@@ -793,7 +806,15 @@ Defined Functions:
     # arg_y got filtered out as it's not used by the output.
     self.assertNotIn('arg_feed_y_data', header_contents)
     if variables_to_feed:
-      self.assertIn('var_param_my_var', header_contents)
+      # Read-only-variables' setters preserve constness.
+      self.assertIn('set_var_param_my_var_data(const float', header_contents)
+      self.assertNotIn('set_var_param_my_var_data(float', header_contents)
+    if func == dummy_model.func_write:
+      # Writeable variables setters do not preserve constness.
+      self.assertIn('set_var_param_write_var_data(float', header_contents)
+      self.assertNotIn(
+          'set_var_param_write_var_data(const float', header_contents)
+
     makefile_contents = file_io.read_file_to_string(
         '{}_makefile.inc'.format(output_prefix))
     self.assertIn('-D_GLIBCXX_USE_CXX11_ABI=', makefile_contents)

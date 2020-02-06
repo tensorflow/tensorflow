@@ -28,6 +28,9 @@ namespace xla_hlo {
 // op quant spec.
 std::unique_ptr<OpPassBase<FuncOp>> CreatePropagateQuantPass();
 
+// Rewrite the graph and quantize the constant.
+std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializeToXlaPass();
+
 }  // namespace xla_hlo
 }  // namespace mlir
 

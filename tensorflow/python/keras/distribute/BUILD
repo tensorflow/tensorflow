@@ -377,6 +377,7 @@ cuda_py_test(
 cuda_py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
+    shard_count = 10,
     tags = [
         "manual",  # TODO(b/148795660): Reenable once the flakiness is fixed.
         "notap",

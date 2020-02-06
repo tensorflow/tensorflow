@@ -14,11 +14,13 @@ package(
 cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
+        "pywrap_gradient_exclusions.cc",
         "pywrap_tensor.cc",
         "pywrap_tensor_conversion.cc",
         "pywrap_tfe_src.cc",
     ],
     hdrs = [
+        "pywrap_gradient_exclusions.h",
         "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
@@ -885,5 +887,39 @@ cuda_py_test(
         ":remote",
         ":test",
         "//tensorflow/python:resource_variable_ops",
+    ],
+)
+
+py_binary(
+    name = "gradient_input_output_exclusions",
+    srcs = ["gradient_input_output_exclusions.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+# Needed for the test below.
+exports_files([
+    "pywrap_gradient_exclusions.cc",
+])
+
+py_test(
+    name = "gradient_input_output_exclusions_test",
+    srcs = ["gradient_input_output_exclusions_test.py"],
+    data = [
+        "//tensorflow/python/eager:pywrap_gradient_exclusions.cc",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",  # No point linking the gen script in the pip package.
+    ],
+    deps = [
+        ":gradient_input_output_exclusions",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
     ],
 )

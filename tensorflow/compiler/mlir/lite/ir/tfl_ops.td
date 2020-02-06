@@ -594,6 +594,57 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   ];
 }
 
+// Attributes used for encoding sparse tensors.
+// Please find detailed explanation of these parameters in the TFLite schema.
+def TFL_DT_Dense : StrEnumAttrCase<"DENSE", 0>;
+def TFL_DT_SparseCSR : StrEnumAttrCase<"SPARSE_CSR", 1>;
+
+def TFL_DimensionTypeAttr : StrEnumAttr<
+    "DimensionType", "dimension type", [TFL_DT_Dense, TFL_DT_SparseCSR]>;
+
+def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
+                            StructFieldAttr<"format", TFL_DimensionTypeAttr>,
+                            StructFieldAttr<"dense_size", I32Attr>,
+                            StructFieldAttr<"segments", I32ArrayAttr>,
+                            StructFieldAttr<"indices", I32ArrayAttr>] > {
+  let description = "Dimension metadata.";
+}
+
+def DimensionMetadataArrayAttr : TypedArrayAttrBase<DimensionMetadataAttr,
+    "Array of DimensionMetadata">{}
+
+def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
+                            StructFieldAttr<"traversal_order", I32ArrayAttr>,
+                            StructFieldAttr<"block_map", I32ArrayAttr>,
+                            StructFieldAttr<"dim_metadata", DimensionMetadataArrayAttr>]> {
+  let description = "Sparsity parameter.";
+  let storageType = [{ TFL::SparsityParameterAttr }];
+}
+
+def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [NoSideEffect,
+    FirstAttrDerivedResultType]> {
+  let summary = "Sparse constant pseudo op.";
+
+  let description = [{
+    Represents a sparse constant value in TensorFlow Lite dialect. This is not
+    an actual operation and it will be lowered to buffer instead.
+  }];
+
+  let arguments = (ins ElementsAttr:$value, SparsityParameterAttr:$s_param);
+
+  let results = (outs AnyTensor:$output);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, Attribute value, "
+    "SparsityParameterAttr s_param",
+    [{
+      state.addTypes(value.getType());
+      state.addAttribute("value", value);
+      state.addAttribute("s_param", s_param);
+    }]>
+  ];
+}
+
 def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
   let summary = "External const op.";
 
@@ -652,7 +703,8 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
     TFL_ChannelDimIndexInterface,
-    AffineOpCoefficient<-1, 1>]> {
+    AffineOpCoefficient<-1, 1>,
+    TFL_SparseOp]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -677,6 +729,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let extraClassDeclaration = [{
     // ChannelDimIndexInterface:
     int GetChannelDimIndex() { return 0; }
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
   }];
 }
 
@@ -2911,6 +2965,36 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
   ];
 }
 
+def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
+    NoSideEffect, FirstAttrDerivedResultType, NoQuantizableResult]> {
+  let summary = "Sparse quantized constant pseudo op";
+
+  let description = [{
+    Represents a sparse quantized constant value in TensorFlow Lite dialect.
+    This is not an actual operation and it will be lowered to buffer instead.
+    The quantization parameters are stored as a type attribute in this constant.
+  }];
+
+  let arguments = (
+    ins TensorTypeAttr:$qtype,
+    ElementsAttr:$value,
+    SparsityParameterAttr:$s_param
+  );
+
+  let results = (outs AnyTensor:$output);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, TypeAttr qtype, "
+    "Attribute value, SparsityParameterAttr s_param",
+    [{
+      state.addTypes(qtype.getValue());
+      state.addAttribute("qtype", qtype);
+      state.addAttribute("value", value);
+      state.addAttribute("s_param", s_param);
+    }]>
+  ];
+}
+
 def TFL_QuantizeOp: TFL_Op<"quantize", [
     FirstAttrDerivedResultType, NoQuantizableResult]> {
   let summary = "Quantize operator";
@@ -3385,16 +3469,13 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
 
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
        DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-       SingleBlockImplicitTerminator<"YieldOp">,
-       // Make isolated from above to force values through operands to simplify
-       // exporting to subgraphs.
-       IsolatedFromAbove]> {
+       SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = [{While loop}];
 
   let description = [{
     output = input; while (cond(output)) { output = body(output) }
 
-    While loop where all values are passes through arguments with no implicit
+    While loop where all values are passes through arguments with implicit
     capture.
 
     input: A list of input tensors whose types are T.

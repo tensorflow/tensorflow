@@ -1959,24 +1959,33 @@ static void EmitTile(
   IrArray::Index source_idx =
       tile_origin_index.AddOffsetToDim(start_offset_x, kDimX, b);
 
-  ksl->For(
-      loop_name + "_y_in_tile",
-      /*start=*/y,
-      /*end=*/tile_height,
-      /*step=*/constant(num_threads_y), [&](llvm::Value* y_loc) {
-        IrArray::Index source_idx_y =
-            source_idx.AddOffsetToDim(y_loc, kDimY, b);
-        for (int64 j = 0; j < x_num_steps; j++) {
-          llvm::Value* x_loc =
-              b->CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
-          IrArray::Index source_idx_x =
-              source_idx_y.AddOffsetToDim(constant(j * step_x), kDimX, b);
-          // The if-statement below always evaluates to true for the blocks
-          // where the entire processed tile fits within the input buffer.
-          ksl->If(loop_name + "_x_in_tile", b->CreateICmpULT(x_loc, tile_width),
-                  [&] { emit_elem_function(source_idx_x, y_loc, x_loc, j); });
-        }
-      });
+  // True when all threads will always execute all instructions.
+  // So we do not need to emit condition.
+  bool always_full_tile = mapping_scheme.GetDimsInElems()[2] % tile_size_x == 0;
+
+  ksl->For(loop_name + "_y_in_tile",
+           /*start=*/y,
+           /*end=*/tile_height,
+           /*step=*/constant(num_threads_y), [&](llvm::Value* y_loc) {
+             IrArray::Index source_idx_y =
+                 source_idx.AddOffsetToDim(y_loc, kDimY, b);
+             for (int64 j = 0; j < x_num_steps; j++) {
+               llvm::Value* x_loc =
+                   b->CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
+               IrArray::Index source_idx_x =
+                   source_idx_y.AddOffsetToDim(constant(j * step_x), kDimX, b);
+               // The if-statement below always evaluates to true for the blocks
+               // where the entire processed tile fits within the input buffer.
+               if (!always_full_tile) {
+                 ksl->If(loop_name + "_x_in_tile",
+                         b->CreateICmpULT(x_loc, tile_width), [&] {
+                           emit_elem_function(source_idx_x, y_loc, x_loc, j);
+                         });
+               } else {
+                 emit_elem_function(source_idx_x, y_loc, x_loc, j);
+               }
+             }
+           });
 }
 
 // Emits code to process a tensor element in a tile for the given kCopy HLO that
@@ -2614,33 +2623,33 @@ void IrEmitterUnnested::EmitHlo021Tile(
           // tile[y, x] = input[index]
           // Note that tile_width and tile_height are flipped here because we
           // are reading a transposed tile.
-          EmitTile(mapping_scheme, input_tile_origin, "input", ksl, &b_, y, x,
-                   tile_width, tile_height,
-                   [&](const IrArray::Index& index, llvm::Value* y_loc,
-                       llvm::Value* x_loc, int64 /*x_iter_num*/) {
-                     for (int64 id : tiled_param_ids) {
-                       IrArray& input_in_logical_shape =
-                           param_in_reduced_shape_arrays[id];
+          xla::gpu::EmitTile(
+              mapping_scheme, input_tile_origin, "input", ksl, &b_, y, x,
+              tile_width, tile_height,
+              [&](const IrArray::Index& index, llvm::Value* y_loc,
+                  llvm::Value* x_loc, int64 /*x_iter_num*/) {
+                for (int64 id : tiled_param_ids) {
+                  IrArray& input_in_logical_shape =
+                      param_in_reduced_shape_arrays[id];
 
-                       llvm::Value* shmem_buffer = param_shmem_buffers[id];
-                       llvm::Value* zero =
-                           llvm::ConstantInt::get(index_type, 0);
-                       // TODO(jlebar): Add AA metadata to this store.  Tile
-                       // buffers are global variables, so LLVM can't infer much
-                       // about it.
-                       Store(input_in_logical_shape.EmitReadArrayElement(
-                                 index, &b_, "input_element"),
-                             GEP(shmem_buffer, {zero, y_loc, x_loc}));
-                     }
-                   });
+                  llvm::Value* shmem_buffer = param_shmem_buffers[id];
+                  llvm::Value* zero = llvm::ConstantInt::get(index_type, 0);
+                  // TODO(jlebar): Add AA metadata to this store.  Tile
+                  // buffers are global variables, so LLVM can't infer much
+                  // about it.
+                  Store(input_in_logical_shape.EmitReadArrayElement(
+                            index, &b_, "input_element"),
+                        GEP(shmem_buffer, {zero, y_loc, x_loc}));
+                }
+              });
 
           // Wait for all threads to reach this point using `__syncthreads` in
           // CUDA.
           EmitSyncThreads();
         }
 
-        EmitTile(mapping_scheme, index, loop_name, ksl, &b_, y, x, tile_height,
-                 tile_width, element_generator);
+        xla::gpu::EmitTile(mapping_scheme, index, loop_name, ksl, &b_, y, x,
+                           tile_height, tile_width, element_generator);
         bool block_contains_multi_tiles = mapping_scheme.GetTileSizeZ() > 1;
 
         // If a tile block contains multiple tiles and shared memory buffers are
@@ -3065,8 +3074,9 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
       [&](llvm::Value* y, llvm::Value* x, const IrArray::Index& index,
           const string& loop_name, llvm::Value* tile_height,
           llvm::Value* tile_width, KernelSupportLibrary* ksl) {
-        EmitTile(reduction_info.GetKernelMappingScheme(), index, loop_name, ksl,
-                 &b_, y, x, tile_height, tile_width, emit_reduction_tile);
+        xla::gpu::EmitTile(reduction_info.GetKernelMappingScheme(), index,
+                           loop_name, ksl, &b_, y, x, tile_height, tile_width,
+                           emit_reduction_tile);
       });
   EmitEpilogueForReduction(index_ty, unnested_hlo, reduction_info,
                            reduce_instructions, reduction_output_shape_indices,

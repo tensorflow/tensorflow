@@ -2779,6 +2779,35 @@ tf.math.less_equal(x, y) ==> [True, True, True]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_LinSpaceOp : TF_Op<"LinSpace", [NoSideEffect]> {
+  let summary = "Generates values in an interval.";
+
+  let description = [{
+A sequence of `num` evenly-spaced values are generated beginning at `start`.
+If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
+so that the last one is exactly `stop`.
+
+For example:
+
+```
+tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$start,
+    TF_FpTensor:$stop,
+    TF_I32OrI64Tensor:$num
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_LogOp : TF_Op<"Log", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes natural logarithm of x element-wise.";
 

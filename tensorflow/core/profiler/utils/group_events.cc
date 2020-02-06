@@ -29,6 +29,13 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+// Creates stat metadata for the stats which may be added by grouping.
+void CreateStatMetadata(XPlane* plane) {
+  XPlaneBuilder builder(plane);
+  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
+  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
+}
+
 // Returns event type if it is a KernelLaunch or KernelExecute event.
 absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
                                          const XEvent& event) {
@@ -74,12 +81,8 @@ const XStat* GetStat(const XPlaneVisitor& visitor, const XEvent& event,
 }
 
 void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
-  absl::optional<int64> maybe_group_id_stat_metadata_id =
-      visitor.GetStatMetadataId(StatType::kGroupId);
-  // TODO(jihochoi): Create stat metadata for group_id if not found.
-  if (maybe_group_id_stat_metadata_id) {
-    AddOrUpdateIntStat(*maybe_group_id_stat_metadata_id, group_id, event);
-  }
+  AddOrUpdateIntStat(*visitor.GetStatMetadataId(StatType::kGroupId), group_id,
+                     event);
 }
 
 }  // namespace
@@ -223,6 +226,7 @@ void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
   std::vector<XPlaneVisitor> visitors;
   visitors.reserve(space->planes_size());
   for (auto& plane : *space->mutable_planes()) {
+    CreateStatMetadata(&plane);
     visitors.push_back(CreateTfXPlaneVisitor(&plane));
     ConnectIntraThread(visitors.back(), &plane, &event_node_map);
   }

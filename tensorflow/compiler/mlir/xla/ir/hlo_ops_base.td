@@ -631,6 +631,33 @@ class BASE_HLO_CompareOp {
 }
 
 //===----------------------------------------------------------------------===//
+// Quantize op definitions.
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA ComparisonDirection enum.
+def HLO_MIN_COMBINED : StrEnumAttrCase<"MIN_COMBINED">;
+
+def HLO_DequantizeModeAttr : StrEnumAttr<"DequantizeMode",
+  "Dequantization mode. Only MIN_COMBINED is supported.",
+  [HLO_MIN_COMBINED]>;
+
+class BASE_HLO_DequantizeOp {
+  string summary = "Dequantize operator";
+
+  string description = [{
+    Dequantize the quantized input of packed uint32 to bfloat16. Only uint8 or
+    uint16 is supported for the original unpacked input.
+
+    Returns a tensor of shape [d0,..., dn * unpack_size] if unpacked input shape
+    is [d0, ..., dn], where unpack_size = sizeof(unit32) / sizeof(T), where T is
+    the unpacked input type. If transpose_output is true, will return a tensor
+    of shape [dn * unpack_size, dn-1, ..., d1, d0]. transpose_output is faster
+    when input's rank higher than 1. The input needs to be transposed to use
+    transpose_output feature.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // XLA Slice definitions.
 //===----------------------------------------------------------------------===//
 

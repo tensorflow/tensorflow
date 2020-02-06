@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
@@ -26,6 +27,47 @@ namespace {
 Timespan XEventTimespan(const XEvent& event) {
   return Timespan(event.offset_ps(), event.duration_ps());
 }
+
+// Creates a Timespan from a non-empty XLine.
+Timespan XLineTimespan(const XLine& line) {
+  uint64 begin_ps = kuint64max, end_ps = 0;
+  for (const XEvent& event : line.events()) {
+    // Don't use XEventTimespan. We need the absolute event start time as lines
+    // might have different timestamps.
+    Timespan span(line.timestamp_ns() * 1000 + event.offset_ps(),
+                  event.duration_ps());
+    begin_ps = std::min(span.begin_ps(), begin_ps);
+    end_ps = std::max(span.end_ps(), end_ps);
+  }
+  return Timespan::FromEndPoints(begin_ps, end_ps);
+}
+
+// Functor that compares XEvents of the same XLine for sorting by timespan.
+struct XEventsComparator {
+  bool operator()(const XEvent* a, const XEvent* b) const {
+    return XEventTimespan(*a) < XEventTimespan(*b);
+  }
+};
+
+// Functor that compares XLines of the same XPlane for sorting by timespan.
+class XLinesComparator {
+ public:
+  bool operator()(const XLine* a, const XLine* b) const {
+    return CachedXLineTimespan(a) < CachedXLineTimespan(b);
+  }
+
+ private:
+  Timespan CachedXLineTimespan(const XLine* line) const {
+    DCHECK_GT(line->events_size(), 0);
+    Timespan& line_timespan = line_timespan_[line];
+    if (line_timespan.Instant()) {
+      line_timespan = XLineTimespan(*line);
+    }
+    return line_timespan;
+  }
+
+  mutable absl::flat_hash_map<const XLine*, Timespan> line_timespan_;
+};
 
 }  // namespace
 
@@ -104,6 +146,57 @@ void CreateXEvent(
     const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
   CreateXEvent(plane_builder, line_builder, GetHostEventTypeStr(event_type),
                offset_ps, duration_ps, stats);
+}
+
+void RemovePlaneWithName(XSpace* space, absl::string_view name) {
+  auto* planes = space->mutable_planes();
+  planes->erase(
+      std::remove_if(planes->begin(), planes->end(),
+                     [&](const XPlane& plane) { return plane.name() == name; }),
+      planes->end());
+}
+
+void RemoveEmptyPlanes(XSpace* space) {
+  auto* planes = space->mutable_planes();
+  planes->erase(std::remove_if(planes->begin(), planes->end(),
+                               [&](const XPlane& plane) {
+                                 return plane.lines_size() == 0;
+                               }),
+                planes->end());
+}
+
+void RemoveEmptyLines(XPlane* plane) {
+  auto* lines = plane->mutable_lines();
+  lines->erase(std::remove_if(
+                   lines->begin(), lines->end(),
+                   [&](const XLine& line) { return line.events_size() == 0; }),
+               lines->end());
+}
+
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    if (plane.name() == name) return &plane;
+  }
+  return nullptr;
+}
+
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
+  XPlane* plane = FindMutablePlaneWithName(space, name);
+  if (plane == nullptr) {
+    plane = space->add_planes();
+    plane->set_name(std::string(name));
+  }
+  return plane;
+}
+
+void SortXPlane(XPlane* plane) {
+  for (XLine& line : *plane->mutable_lines()) {
+    auto& events = *line.mutable_events();
+    std::sort(events.pointer_begin(), events.pointer_end(),
+              XEventsComparator());
+  }
+  std::sort(plane->mutable_lines()->pointer_begin(),
+            plane->mutable_lines()->pointer_end(), XLinesComparator());
 }
 
 }  // namespace profiler

@@ -216,8 +216,8 @@ cuda_py_test(
     deps = [
         ":test_util",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -322,9 +322,19 @@ py_library(
     srcs = ["saved_model_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":saved_model_aot_compile",
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
+    ],
+)
+
+py_library(
+    name = "saved_model_aot_compile",
+    srcs = ["saved_model_aot_compile.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python",
         "//tensorflow/python:tf_optimizer",
     ] + if_xla_available(
         ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],

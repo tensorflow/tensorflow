@@ -243,8 +243,8 @@ class IrEmitterUnnested : public IrEmitter,
       llvm::Value* x_loc, int64 x_iter_num,
       absl::Span<llvm::Value* const> param_shmem_buffers);
 
-  // Emits code to process a tensor element in a tile for the given kLoop fusion
-  // HLO containing parameters that are 0-2-1 transpose of its outputs.
+  // Emits code to process a tensor element in a tile for the given kLoop
+  // fusion HLO containing parameters that are 0-2-1 transpose of its outputs.
   void EmitTileElementForFusion(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
@@ -272,8 +272,8 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloInstruction* const> reduce_instructions,
       llvm::Type* index_type);
 
-  // Wraps up the code generation for a tile block of a reduction kernel: write
-  // the calculated output into the output tensor.
+  // Wraps up the code generation for a tile block of a reduction kernel:
+  // write the calculated output into the output tensor.
   void EmitEpilogueForReduction(
       llvm::Type* index_ty, HloInstruction* unnested_hlo,
       const ReductionCodegenInfo& reduction_info,
@@ -297,15 +297,15 @@ class IrEmitterUnnested : public IrEmitter,
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
   // Thunk object. The kernel implementation will be unrolled if unroll_factor
-  // is greater than one. 'implements_whole_instruction' specifies whether this
-  // KernelThunk implements the whole 'inst' HloInstruction. In some cases
-  // 'inst' will be implemented by a sequence of Thunks.
+  // is greater than one. 'implements_whole_instruction' specifies whether
+  // this KernelThunk implements the whole 'inst' HloInstruction. In some
+  // cases 'inst' will be implemented by a sequence of Thunks.
   std::unique_ptr<KernelThunk> BuildKernelThunk(
       const HloInstruction* inst, bool implements_whole_instruction,
       int unroll_factor = 1);
 
-  // Returns a thunk that, given a reduce or select-and-scatter op, initializes
-  // its memory to the appropriate initial value.
+  // Returns a thunk that, given a reduce or select-and-scatter op,
+  // initializes its memory to the appropriate initial value.
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
       HloInstruction* hlo, const ShapeIndex& index = {});
 
@@ -342,7 +342,8 @@ class IrEmitterUnnested : public IrEmitter,
     llvm::Value* lane_id;
   };
 
-  // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane id.
+  // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane
+  // id.
   //
   // Returns a struct containting these values.
   ThreadIdInfo EmitThreadIdInfo(int64 threads_per_block, llvm::Type* index_ty,
@@ -354,11 +355,11 @@ class IrEmitterUnnested : public IrEmitter,
   // Emits current block id.
   llvm::Value* EmitBlockId();
 
-  // Prints a given format string with the given arguments, prefixed with thread
-  // id and block id, and postfixed with a newline.
+  // Prints a given format string with the given arguments, prefixed with
+  // thread id and block id, and postfixed with a newline.
   //
-  // `thread_id_filter` and `block_id_filter`: if provided, restrict printing to
-  // only given thread and/or block id.
+  // `thread_id_filter` and `block_id_filter`: if provided, restrict printing
+  // to only given thread and/or block id.
   void EmitPrintfWithThreadId(
       absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
       absl::optional<int64> thread_id_filter = absl::nullopt,

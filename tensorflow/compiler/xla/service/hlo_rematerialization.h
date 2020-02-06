@@ -83,12 +83,14 @@ class HloRematerialization : public HloModulePass {
   explicit HloRematerialization(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
       RematerializationSizes* sizes, RematerializationPass pass_location,
+      int block_size_limit,
       CompactShapeFunction compact_shape_function = nullptr,
       RematerializationMode mode = RematerializationMode::kRecomputeAndCompress)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
         sizes_(sizes),
         pass_location_(pass_location),
+        block_size_limit_(block_size_limit),
         compact_shape_function_(compact_shape_function == nullptr
                                     ? DefaultCompactShapeFunction
                                     : std::move(compact_shape_function)),
@@ -143,6 +145,10 @@ class HloRematerialization : public HloModulePass {
   // Specifies whether this rematerialization pass occurs before or after
   // multi-output fusion.
   RematerializationPass pass_location_;
+
+  // Maximum number of consecutive instructions to consider for
+  // rematerialization.
+  int block_size_limit_;
 
   // Converts a shape into compact form, returns the same shape if a shape is
   // already considered compact.

@@ -14,7 +14,9 @@ ifeq ($(TARGET), xtensa-xpg)
     --xtensa-core=$(XTENSA_CORE) \
     -mcoproc \
     -O3 \
-    -DXTENSA -DMAX_RFFT_PWR=9 -DMIN_RFFT_PWR=MAX_RFFT_PWR -fdata-sections \
+    -DXTENSA -DMAX_RFFT_PWR=9 -DMIN_RFFT_PWR=MAX_RFFT_PWR \
+    -fdata-sections \
+    -ffunction-sections \
     -fmessage-length=0
 
   TARGET_TOOLCHAIN_PREFIX := xt-
@@ -23,6 +25,8 @@ ifeq ($(TARGET), xtensa-xpg)
 
   CXXFLAGS = $(PLATFORM_ARGS) -std=c++11
   CCFLAGS = $(PLATFORM_ARGS) -std=c11
+
+  LDFLAGS += -Wl,-gc-sections
 
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_xpg_binary.sh
 

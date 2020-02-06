@@ -765,6 +765,10 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
+// Note: There is no HLO_CallOp because the standard call operation mlir::CallOp
+// is used instead. A mlir::CallOp is exported to a HLO call instruction
+// directly.
+
 def HLO_CholeskyOp : HLO_Op<"cholesky",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_CholeskyOp {
   let arguments = (ins
@@ -1238,6 +1242,25 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   );
 
   let results = (outs HLO_FpTensor);
+
+  let hasCustomHLOConverter = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// XLA Quantize Operator.
+//===----------------------------------------------------------------------===//
+def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]>,
+    BASE_HLO_DequantizeOp {
+  let arguments = (ins
+    TensorOf<[I32]>:$input,
+    F32Attr:$min_range,
+    F32Attr:$max_range,
+    HLO_DequantizeModeAttr:$mode,
+    BoolAttr:$transpose_output,
+    DefaultValuedAttr<BoolAttr, "false">:$is_16bits
+  );
+
+  let results = (outs TensorOf<[BF16]>:$output);
 
   let hasCustomHLOConverter = 1;
 }

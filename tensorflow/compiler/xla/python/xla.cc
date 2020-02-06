@@ -589,54 +589,6 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return result;
            })
-      // TODO(phawkins): delete these methods in favor of the versions on Device
-      .def("TransferToInfeed",
-           [](PyLocalClient* client, const LiteralSlice& literal,
-              int device_ordinal) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
-                                 LookupDeviceOrdinal(client, device_ordinal,
-                                                     "TransferToInfeed"));
-             return client->TransferToInfeed(literal, device);
-           })
-      .def("TransferToInfeed",
-           [](PyLocalClient* client, const LiteralSlice& literal,
-              std::shared_ptr<Device> device) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             return client->TransferToInfeed(literal, device);
-           })
-      // TODO(phawkins): delete these methods in favor of the versions on Device
-      .def("TransferFromOutfeed",
-           [](PyLocalClient* client, const Shape& shape,
-              int device_ordinal) -> StatusOr<py::object> {
-             GlobalPyRefManager()->CollectGarbage();
-             std::shared_ptr<Literal> literal_shared;
-             {
-               py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
-                                   LookupDeviceOrdinal(client, device_ordinal,
-                                                       "TransferFromOutfeed"));
-               TF_ASSIGN_OR_RETURN(Literal literal,
-                                   client->TransferFromOutfeed(shape, device));
-               literal_shared = std::make_shared<Literal>(std::move(literal));
-             }
-             return LiteralToPython(std::move(literal_shared));
-           })
-      .def("TransferFromOutfeed",
-           [](PyLocalClient* client, const Shape& shape,
-              std::shared_ptr<Device> device) -> StatusOr<py::object> {
-             GlobalPyRefManager()->CollectGarbage();
-             std::shared_ptr<Literal> literal_shared;
-             {
-               py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(Literal literal,
-                                   client->TransferFromOutfeed(shape, device));
-               literal_shared = std::make_shared<Literal>(std::move(literal));
-             }
-             return LiteralToPython(std::move(literal_shared));
-           })
       .def("CreateChannelHandle",
            [](PyLocalClient* client) {
              return client->client()->CreateChannelHandle();

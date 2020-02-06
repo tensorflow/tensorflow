@@ -746,6 +746,15 @@ Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleRngBitGenerator(const HloInstruction* random) {
+  // TODO(b/26346211): Implement better estimates for the RNG cost, since the
+  // cost changes with the implementation and the distribution. For now, assume
+  // the cost of each RNG is same as a transcendental operation.
+  current_properties_[kTranscendentalsKey] =
+      ShapeUtil::ElementsIn(random->shape());
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleRngGetAndUpdateState(
     const HloInstruction* random) {
   return Status::OK();

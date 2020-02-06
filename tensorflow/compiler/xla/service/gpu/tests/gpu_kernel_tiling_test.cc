@@ -766,6 +766,30 @@ TEST_F(GpuKernelTilingTest, RowReductionRequiring64BitIndex) {
                      /*match_optimized_ir=*/true);
 }
 
+TEST_F(GpuKernelTilingTest, ColumnReductionVectorization) {
+  const char *const kHloString = R"(
+HloModule column_reduce_powerof2
+
+reduction {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+}
+
+ENTRY kernel_entry {
+    constant0 = f32[] constant(0)
+    arg1 = f32[1024,512]{1,0} parameter(0)
+    ROOT reduce = f32[512]{0} reduce(arg1, constant0), dimensions={0}, to_apply=reduction
+}
+  )";
+  auto expected_ir = R"(
+; CHECK: load <2 x float>, <2 x float>
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
