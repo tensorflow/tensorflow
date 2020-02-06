@@ -59,7 +59,8 @@ struct PropagateQuantPass : public FunctionPass<PropagateQuantPass> {
 
 void PropagateQuantPass::runOnFunction() {
   FuncOp func = getFunction();
-  ApplyQuantizationParamsPropagation(func, /*is_signed*/ true,
+  // XLA only support uint8/uint16 quantization for now.
+  ApplyQuantizationParamsPropagation(func, /*is_signed*/ false,
                                      disable_per_channel, GetOpQuantSpec);
 }
 

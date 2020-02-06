@@ -510,9 +510,15 @@ static LogicalResult Verify(BroadcastToOp op) {
 // CastOp
 //===----------------------------------------------------------------------===//
 
-void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.insert<CastSameType>(context);
+//===----------------------------------------------------------------------===//
+// LeakyReluOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  // Cast with the same type is a no-op.
+  Value operand = getOperand();
+  if (getType() == operand.getType()) return operand;
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1531,6 +1537,34 @@ static LogicalResult Verify(ParseExampleV2Op op) {
   if (ragged_value_types_count != ragged_split_types_count) {
     return op.emitError() << "attribute 'ragged_value_types' should have same "
                           << "length as attribute 'ragged_split_types'";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PartitionedCallOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(PartitionedCallOp op) {
+  auto module = op.getParentOfType<ModuleOp>();
+  FlatSymbolRefAttr func = op.getAttr("f").cast<FlatSymbolRefAttr>();
+
+  auto function = module.lookupSymbol<FuncOp>(func.getValue());
+
+  if (!function) {
+    return op.emitError("f attribute refers to an undefined function: ")
+           << func.getValue();
+  }
+
+  FunctionType function_ty = function.getType();
+  int func_arg_count = function_ty.getNumInputs();
+  int arg_count = op.args().size();
+
+  if (arg_count != func_arg_count) {
+    return op.emitError() << "argument count mismatch: args has " << arg_count
+                          << " arguments, but " << func.getValue()
+                          << " expects " << func_arg_count;
   }
 
   return success();

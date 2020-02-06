@@ -106,6 +106,7 @@ Status SelectConvolution(const Convolution2DAttributes& attr,
       return SelectConvolutionAdreno(attr, dst_shape, creation_context, op_def,
                                      hints, ptr);
     case Vendor::POWERVR:
+    case Vendor::AMD:
       return SelectConvolutionPowerVR(attr, creation_context, op_def, ptr);
     case Vendor::NVIDIA:
       return SelectConvolutionNVidia(attr, creation_context, op_def, ptr);

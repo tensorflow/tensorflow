@@ -22,6 +22,8 @@ option java_outer_classname = "DeviceFiltersProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+
 // This file contains protos to be used when defining a TensorFlow
 // cluster.
 //

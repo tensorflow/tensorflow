@@ -201,10 +201,12 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       for (const auto& node : graph_def.node()) {
         if (node.name() == output_node) {
           node_def = &node;
+          break;
         }
       }
       if (node_def == nullptr) {
         VLOG(3) << "Failed to find node: " << output_node;
+        return;
       }
       uint64 hash = 0;
       Status s = HashNode(graph_def, *node_def, &hash);

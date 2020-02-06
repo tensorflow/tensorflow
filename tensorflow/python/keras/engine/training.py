@@ -75,7 +75,7 @@ _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
 
 
 @keras_export('keras.Model', 'keras.models.Model')
-class Model(network.Network, version_utils.VersionSelector):
+class Model(network.Network, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:
@@ -573,6 +573,8 @@ class Model(network.Network, version_utils.VersionSelector):
 
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
+            Note that `validation_data` does not support all the data types that
+            are supported in `x`, eg, dict, generator or `keras.utils.Sequence`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
             when `x` is a generator. 'batch' is a special option for dealing

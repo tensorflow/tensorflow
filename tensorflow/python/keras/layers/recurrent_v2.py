@@ -417,7 +417,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       self._maybe_reset_cell_dropout_mask(self.cell)
 
       def step(cell_inputs, cell_states):
-        return self.cell.call(cell_inputs, cell_states, **kwargs)
+        return self.cell(cell_inputs, cell_states, **kwargs)
 
       last_output, outputs, states = K.rnn(
           step,
@@ -1120,7 +1120,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       self._maybe_reset_cell_dropout_mask(self.cell)
 
       def step(inputs, states):
-        return self.cell.call(inputs, states, **kwargs)
+        return self.cell(inputs, states, **kwargs)
 
       last_output, outputs, states = K.rnn(
           step,

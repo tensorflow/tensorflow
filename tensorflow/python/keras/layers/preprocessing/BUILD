@@ -67,6 +67,31 @@ py_library(
 )
 
 py_library(
+    name = "index_lookup",
+    srcs = [
+        "index_lookup.py",
+        "index_lookup_v1.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/engine:base_preprocessing_layer",
+        "//tensorflow/python/ops/ragged",
+    ],
+)
+
+py_library(
     name = "normalization",
     srcs = [
         "normalization.py",
@@ -93,6 +118,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":categorical_encoding",
+        ":index_lookup",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -165,6 +191,22 @@ cuda_py_test(
         ":categorical",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "index_lookup_test",
+    size = "medium",
+    srcs = ["index_lookup_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":index_lookup",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )

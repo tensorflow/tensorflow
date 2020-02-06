@@ -486,8 +486,8 @@ class MirroredVariableCreationTest(test.TestCase):
       ]
       all_v_sum[replica_id] = v_sum
       all_v_mean[replica_id] = v_mean
-      c_sum = v_sum.get()
-      c_mean = v_mean.get()
+      c_sum = v_sum._get()
+      c_mean = v_mean._get()
       components_sum[replica_id] = c_sum
       components_mean[replica_id] = c_mean
       self.assertIsNot(v_sum, c_sum)
@@ -537,8 +537,8 @@ class MirroredVariableCreationTest(test.TestCase):
           distribution.extended.read_var(ret_v_sum)))
       self.assertEqual(expected_mean, self.evaluate(
           distribution.extended.read_var(ret_v_mean)))
-      self.assertEqual(expected_sum, self.evaluate(ret_v_sum.get()))
-      self.assertEqual(expected_mean, self.evaluate(ret_v_mean.get()))
+      self.assertEqual(expected_sum, self.evaluate(ret_v_sum._get()))
+      self.assertEqual(expected_mean, self.evaluate(ret_v_mean._get()))
       self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
       self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
 

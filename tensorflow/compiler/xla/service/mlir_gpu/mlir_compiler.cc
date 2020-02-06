@@ -545,8 +545,8 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
       hlo_schedule->ThunkLaunchOrder());
 
   if (DumpingEnabledForHloModule(*emission_context.getHloModule())) {
-    DumpToFileInDirOrStdout(*emission_context.getHloModule(), "thunk_schedule",
-                            thunk_schedule->ToString());
+    DumpToFileInDirOrStdout(*emission_context.getHloModule(), "",
+                            "thunk_schedule", thunk_schedule->ToString());
   }
 
   // TODO(b/137624192): Add profiling support.

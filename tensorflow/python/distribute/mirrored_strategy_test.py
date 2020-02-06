@@ -293,8 +293,8 @@ class MirroredStrategyVariableCreatorStackTest(
     def model_fn():
       replica_id_str = str(self.evaluate(_replica_id()))
 
-      def thread_creator_fn(next_creator, *args, **kwargs):
-        return next_creator(*args, **kwargs) + ":thread_" + replica_id_str
+      def thread_creator_fn(next_creator, **kwargs):
+        return next_creator(**kwargs) + ":thread_" + replica_id_str
 
       with variable_scope.variable_creator_scope(thread_creator_fn):
         # Create a variable in this scope.
@@ -304,9 +304,9 @@ class MirroredStrategyVariableCreatorStackTest(
         ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
-    def main_thread_creator(next_creator, *args, **kwargs):
+    def main_thread_creator(next_creator, **kwargs):
       # We are not using the underlying next_creator for test purposes.
-      del next_creator, args, kwargs
+      del next_creator, kwargs
       return "main_thread"
 
     with context.graph_mode(), \
@@ -1054,7 +1054,7 @@ class MirroredStrategyDefunTest(test.TestCase):
       with backprop.GradientTape(persistent=True) as gtape:
         result = fn2(mock_model)
       grads = gtape.gradient(result,
-                             [v.get() for v in mock_model.variables])
+                             [v._get() for v in mock_model.variables])
       return grads
 
     self._call_and_check(distribution, model_fn, [], [2.0, 1.0], [fn1, fn2],
@@ -1340,7 +1340,7 @@ class FunctionTest(test.TestCase):
       def replica_fn():
         with backprop.GradientTape() as t:
           x = constant_op.constant([1.0], name="x")
-          loss = concrete_forward(x, w.get(), b.get()) - [1.0]
+          loss = concrete_forward(x, w._get(), b._get()) - [1.0]
           return t.gradient(loss, [w, b])
 
       def step_fn():

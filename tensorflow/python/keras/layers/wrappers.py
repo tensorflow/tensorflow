@@ -56,6 +56,7 @@ class Wrapper(Layer):
   def build(self, input_shape=None):
     if not self.layer.built:
       self.layer.build(input_shape)
+      self.layer.built = True
     self.built = True
 
   @property

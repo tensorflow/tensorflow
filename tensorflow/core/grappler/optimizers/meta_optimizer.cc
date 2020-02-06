@@ -299,8 +299,8 @@ Status MetaOptimizer::InitializeOptimizersByName(
 
     if (custom_optimizer) {
       VLOG(2) << "Registered custom graph optimizer: " << optimizer_name;
-      TF_RETURN_IF_ERROR(custom_optimizer->Init(
-          GetCustomGraphOptimizerConfig(optimizer_name)));
+      TF_RETURN_IF_ERROR(custom_optimizer->InitWithConfig(
+          config_proto_, GetCustomGraphOptimizerConfig(optimizer_name)));
       optimizers->push_back(std::move(custom_optimizer));
       initialized_custom_optimizers.insert(optimizer_name);
     } else {
@@ -326,7 +326,8 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
     if (custom_optimizer) {
       VLOG(2) << "Registered custom configurable graph optimizer: "
               << optimizer_config.name();
-      TF_RETURN_IF_ERROR(custom_optimizer->Init(&optimizer_config));
+      TF_RETURN_IF_ERROR(
+          custom_optimizer->InitWithConfig(config_proto_, &optimizer_config));
       optimizers->push_back(std::move(custom_optimizer));
     } else {
       // If there are no custom optimizers with given name, try to initialize a

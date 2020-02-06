@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define TPUDRIVER_CAPI_EXPORT __attribute__((visibility("default")))
@@ -23,6 +24,8 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// ------------------- TPU Driver Support -----------------------
 
 struct TpuDriverFn;
 
@@ -253,6 +256,16 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_EventAwait TpuDriver_EventAwait;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeEvent TpuDriver_FreeEvent;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeStatus TpuDriver_FreeStatus;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Version TpuDriver_Version;
+
+// ------------------- TensorFlow Support -----------------------
+
+typedef struct TfTpuDriver_CompileOp TfTpuDriver_CompileOp;
+
+TfTpuDriver_CompileOp* TfTpuDriver_CompileOpConstructor(void* ctx);
+
+void TfTpuDriver_CompileOpExecute(TfTpuDriver_CompileOp* op, void* ctx);
+
+void TfTpuDriver_CompileOpFree(TfTpuDriver_CompileOp* op);
 
 #ifdef __cplusplus
 }

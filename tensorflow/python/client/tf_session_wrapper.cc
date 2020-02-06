@@ -608,6 +608,8 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
           // Convert TF_OperationGetAttrInt int64_t* out-argument to Python
           // bool.
+          // Acquire GIL for returning output returning.
+          pybind11::gil_scoped_acquire acquire;
           return tensorflow::pyo(PyLong_FromLongLong(value));
         });
 
@@ -703,10 +705,8 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       [](const char* library_filename) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
-        // Release GIL.
-        py::gil_scoped_release release;
         auto output = TF_LoadLibrary(library_filename, status.get());
-        tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         return output;
       },
       py::return_value_policy::reference);

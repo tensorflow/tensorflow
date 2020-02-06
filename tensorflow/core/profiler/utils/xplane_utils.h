@@ -56,6 +56,10 @@ void CreateXEvent(
     HostEventType event_type, int64 offset_ps, int64 duration_ps,
     const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
 
+void RemovePlaneWithName(XSpace* space, absl::string_view name);
+void RemoveEmptyPlanes(XSpace* space);
+void RemoveEmptyLines(XPlane* plane);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

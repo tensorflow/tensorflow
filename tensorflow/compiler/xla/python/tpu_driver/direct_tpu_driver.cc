@@ -27,6 +27,11 @@
 namespace tpu_driver {
 namespace {
 
+// Enable the macro by default in the env where the libtpu.so is available.
+#ifdef PLATFORM_GOOGLE
+#define TPU_SHARED_LIBRARY_COMPILE_LINK 1
+#endif
+
 xla::Status CreateXlaStatus(::TpuStatus* status) {
   if (status->code == tensorflow::error::OK) {
     return xla::Status::OK();

@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -2392,6 +2393,8 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
                                 nvinfer1::ITensor** output) {
   const nvinfer1::Dims dims = input->getDimensions();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+  const bool is_dynamic =
+      absl::c_any_of(input_dims, [](int i) { return i == -1; });
   // Mark axes to remove by setting them to 0.
   for (int axis : trt_axes) {
     input_dims[axis] = 0;
@@ -2399,8 +2402,6 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // For dynamic input shapes, we need to use TRT ops to build the new shape.
-  const bool is_dynamic =
-      std::count(input_dims.begin(), input_dims.end(), -1) > 0;
   if (is_dynamic) {
     nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
     std::vector<nvinfer1::ITensor const*> concat_inputs;
@@ -2455,11 +2456,12 @@ Status ConvertSqueeze(OpConverterParams* params) {
   std::vector<int> trt_axes;
   trt_axes.reserve(squeeze_dims.size());
   for (int tf_axis : squeeze_dims) {
-    // Make sure axis is valid.
+    // If the axis is valid, then convert it to TRT axis, otherwise abort
+    // conversion.
     int trt_axis;
     TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
                                    params->use_implicit_batch, &trt_axis));
-    // Make sure target dimension is size 1.
+    // Make sure target dimension is size 1 or unknown size (-1)
     if (input_dims[trt_axis] != -1 && input_dims[trt_axis] != 1) {
       return errors::InvalidArgument(
           "Dimension ", tf_axis, " with size ", input_dims[trt_axis],
@@ -2709,8 +2711,7 @@ Status ConvertSlice(OpConverterParams* params) {
   // undefined, we don't convert to be safe.
   const bool batch_size_is_defined = input_dims[0] > 0;
   const bool size_is_modified =
-      size[0] != -1 && (!batch_size_is_defined ||
-                        (batch_size_is_defined && size[0] != input_dims[0]));
+      size[0] != -1 && (!batch_size_is_defined || size[0] != input_dims[0]);
   if (begin_is_modified || size_is_modified) {
     return errors::Unimplemented(
         "TensorRT does not allow modifications to the batch dimension, at ",
@@ -2807,8 +2808,7 @@ Status ConvertStridedSlice(OpConverterParams* params) {
     // the batch size is undefined, we don't convert to be safe.
     const bool batch_size_is_defined = (input_dims[0] > 0);
     const bool end_is_modified =
-        !(end_mask & 1) && (!batch_size_is_defined ||
-                            (batch_size_is_defined && end[0] != input_dims[0]));
+        !(end_mask & 1) && (!batch_size_is_defined || end[0] != input_dims[0]);
     if (begin_is_modified || stride_is_modified || end_is_modified) {
       return errors::Unimplemented(
           "TensorRT does not allow modifications to the batch dimension, at ",

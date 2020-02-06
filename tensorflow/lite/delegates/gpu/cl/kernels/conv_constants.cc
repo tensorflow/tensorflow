@@ -165,7 +165,6 @@ std::string GenerateConvolutionConstantCode(
     c += "  }\n";
   }
   c += "}\n";
-
   return c;
 }
 
@@ -277,6 +276,12 @@ Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
 bool IsConvConstantsSupported(const CLDevice& device,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
+  if (device.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
+      definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
+    // BUG, some AMD gpus crashe without it
+    return false;
+  }
+
   const auto& w_shape = attr.weights.shape;
   const int dst_channels = AlignByN(w_shape.o, 4);
   const int filters_count = w_shape.i * dst_channels * w_shape.h * w_shape.w;

@@ -140,14 +140,14 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
     for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
       AllocationInfo* current = &allocation_info[tensor_index];
-      if (((current->last_used == -1) || (current->last_used > i))) {
+      if (((current->last_used == -1) || (current->last_used < i))) {
         current->last_used = i;
       }
     }
     for (size_t n = 0; n < op->outputs()->size(); ++n) {
       const int tensor_index = op->outputs()->Get(n);
       AllocationInfo* current = &allocation_info[tensor_index];
-      if ((current->first_created == -1) || (current->first_created < i)) {
+      if ((current->first_created == -1) || (current->first_created > i)) {
         current->first_created = i;
       }
     }

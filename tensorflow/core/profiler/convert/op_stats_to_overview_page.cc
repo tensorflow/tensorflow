@@ -86,9 +86,9 @@ void ComputeFaqTips(OverviewPageRecommendation* re) {
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
   *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
-      "https://www.tensorflow.org/versions/master/api_docs/python/tf/data/"
-      "Dataset",
-      "TensorFlow Input Pipeline API");
+      "https://www.tensorflow.org/guide/"
+      "data_performance",
+      "Better performance with the tf.data API");
 }
 
 }  // namespace

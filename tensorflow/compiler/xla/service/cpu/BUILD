@@ -746,9 +746,11 @@ cc_library(
     hdrs = ["cpu_instruction_fusion.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla/service:fusion_node_indexing_evaluation",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

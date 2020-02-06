@@ -129,11 +129,6 @@ class PyLocalClient {
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator);
   virtual ~PyLocalClient() = default;
 
-  Status TransferToInfeed(const LiteralSlice& literal,
-                          std::shared_ptr<Device> device);
-  StatusOr<Literal> TransferFromOutfeed(const Shape& shape,
-                                        std::shared_ptr<Device> device);
-
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const;
 

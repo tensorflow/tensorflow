@@ -63,6 +63,7 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   if (options.enable_inliner) {
     pm.addPass(createInlinerPass());
   }
+  pm.addPass(createSymbolDCEPass());
   pm.addPass(CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
   pm.addNestedPass<FuncOp>(createCSEPass());
