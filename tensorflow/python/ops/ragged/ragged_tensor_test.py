@@ -36,6 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorSpec
@@ -114,6 +115,10 @@ EXAMPLE_RAGGED_TENSOR_4D_SPLITS2 = [0, 3, 6, 9, 10]
 EXAMPLE_RAGGED_TENSOR_4D_VALUES = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10],
                                    [11, 12], [13, 14], [15, 16], [17, 18],
                                    [19, 20]]
+
+
+def int32array(values):
+  return np.array(values, dtype=np.int32)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1733,6 +1738,63 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
           dtype=dtypes.int32,
           output_ragged_rank=1,
           input_ragged_rank=1)
+
+  def assertNumpyObjectTensorsRecursivelyEqual(self, a, b, msg):
+    """Check that two numpy arrays are equal.
+
+    For arrays with dtype=object, check values recursively to see if a and b
+    are equal.  (c.f. `np.array_equal`, which checks dtype=object values using
+    object identity.)
+
+    Args:
+      a: A numpy array.
+      b: A numpy array.
+      msg: Message to display if a != b.
+    """
+    if isinstance(a, np.ndarray) and a.dtype == object:
+      self.assertEqual(a.dtype, b.dtype, msg)
+      self.assertEqual(a.shape, b.shape, msg)
+      self.assertLen(a, len(b), msg)
+      for a_val, b_val in zip(a, b):
+        self.assertNumpyObjectTensorsRecursivelyEqual(a_val, b_val, msg)
+    else:
+      self.assertAllEqual(a, b, msg)
+
+  @parameterized.named_parameters([
+      ('Shape_2_R',
+       [[1, 2], [3, 4, 5]],
+       np.array([int32array([1, 2]), int32array([3, 4, 5])])),
+      ('Shape_2_2',
+       [[1, 2], [3, 4]],
+       np.array([[1, 2], [3, 4]])),
+      ('Shape_2_R_2',
+       [[[1, 2], [3, 4]], [[5, 6]]],
+       np.array([int32array([[1, 2], [3, 4]]), int32array([[5, 6]])])),
+      ('Shape_3_2_R',
+       [[[1], []], [[2, 3], [4]], [[], [5, 6, 7]]],
+       np.array([[int32array([1]), int32array([])],
+                 [int32array([2, 3]), int32array([4])],
+                 [int32array([]), int32array([5, 6, 7])]])),
+      ('Shape_0_R',
+       ragged_factory_ops.constant_value([], ragged_rank=1, dtype=np.int32),
+       np.zeros([0, 0], dtype=np.int32)),
+      ('Shape_0_R_2',
+       ragged_factory_ops.constant_value([], ragged_rank=1,
+                                         inner_shape=(2,), dtype=np.int32),
+       np.zeros([0, 0, 2], dtype=np.int32)),
+  ])  # pyformat: disable
+  def testRaggedTensorNumpy(self, rt, expected):
+    if isinstance(rt, list):
+      rt = ragged_factory_ops.constant(rt, dtype=dtypes.int32)
+    else:
+      rt = ragged_tensor.convert_to_tensor_or_ragged_tensor(rt)
+    if context.executing_eagerly():
+      actual = rt.numpy()
+      self.assertNumpyObjectTensorsRecursivelyEqual(
+          expected, actual, 'Expected %r, got %r' % (expected, actual))
+    else:
+      with self.assertRaisesRegexp(ValueError, 'only supported in eager mode'):
+        rt.numpy()
 
 
 @test_util.run_all_in_graph_and_eager_modes
