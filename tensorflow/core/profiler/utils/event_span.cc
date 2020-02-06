@@ -119,6 +119,7 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
   std::vector<EventBoundary> event_boundaries =
       GenerateEventBoundaries(overlapped_events);
   std::vector<EventTypeSpan> result;
+  if (event_boundaries.empty()) return result;
   result.reserve(event_boundaries.size());
   PriorityTracker priority_tracker;
   for (int64 i = 0; i < (event_boundaries.size() - 1); i++) {

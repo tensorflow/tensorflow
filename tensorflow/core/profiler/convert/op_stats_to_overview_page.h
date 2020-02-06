@@ -21,18 +21,20 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
+#include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-void SetCommonRecommendation(const CommonBottleneck& bottleneck,
+void SetCommonRecommendation(const string& input_classification,
+                             const string& input_statement,
                              HardwareType hardware_type,
                              OverviewPageRecommendation* re);
 
 OverviewPageRecommendation ComputeGenericRecommendation(
-    const GenericBottleneck& bottleneck);
+    const BottleneckAnalysis& bottleneck);
 
 OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats);
 

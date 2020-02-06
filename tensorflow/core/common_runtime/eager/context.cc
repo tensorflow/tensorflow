@@ -702,6 +702,21 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   return status;
 }
 
+Status EagerContext::FindCustomDeviceFromName(const string& device_name,
+                                              CustomDevice** dev) const {
+  auto dev_it = custom_devices_.find(device_name);
+  if (dev_it == custom_devices_.end()) {
+    return errors::InvalidArgument(device_name, " unknown device.");
+  }
+  *dev = dev_it->second.get();
+  return Status::OK();
+}
+
+void EagerContext::RegisterCustomDevice(const string& device_name,
+                                        std::unique_ptr<CustomDevice> device) {
+  custom_devices_[device_name] = std::move(device);
+}
+
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {
   if (first == nullptr) first = HostCPU();
   if (second == nullptr) second = HostCPU();

@@ -565,6 +565,9 @@ class XlaBuilder {
 
   XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
 
+  XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
+                        const Shape& shape);
+
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
 
@@ -985,6 +988,8 @@ class XlaBuilder {
                    absl::Span<const XlaOp> static_operands);
   friend XlaOp RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape);
   friend XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
+  friend XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
+                               const Shape& shape);
   friend XlaOp While(const XlaComputation& condition,
                      const XlaComputation& body, XlaOp init);
   friend XlaOp Conditional(XlaOp predicate, XlaOp true_operand,
@@ -1855,6 +1860,11 @@ XlaOp RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape);
 // Enqueues a U(a, b) random number generation instruction onto the
 // computation. Returns values in the semi-open interval [a, b).
 XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
+
+// Enqueues a B(initial_state) random bit generation instruction onto the
+// computation. Resturns the new key and random bits with the specified shape.
+XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
+                      const Shape& shape);
 
 // Enqueues a while node onto the computation.
 XlaOp While(const XlaComputation& condition, const XlaComputation& body,

@@ -463,6 +463,57 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
 TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
                                                 TF_Buffer* buf);
 
+#define TFE_CUSTOM_DEVICE_VERSION 0
+
+// Struct to be filled in
+typedef struct TFE_CustomDevice {
+  int version = TFE_CUSTOM_DEVICE_VERSION;
+  // Method to copy a tensor to the custom device.
+  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_TensorHandle* tensor,
+                                             TF_Status* status,
+                                             void* device_info) = nullptr;
+
+  // Method to copy a tensor from the custom device to a target device.
+  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_TensorHandle* tensor,
+                                               const char* target_device_name,
+                                               TF_Status* status,
+                                               void* device_info);
+
+  // Method to execute an operation.
+  // TODO(allenl) figure out a generic way of passing attrs here
+  void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
+                  const char* operation_name, int* num_outputs,
+                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
+
+  // Method to delete a device.
+  void (*delete_device)(void* device_info);
+} TFE_CustomDevice;
+
+// Registers a custom device for use with eager execution.
+//
+// Eager operations may be placed on this device, e.g.  `with
+// tf.device("CUSTOM"):` from Python if `device_name` for this call is
+// "/job:localhost/replica:0/task:0/device:CUSTOM:0".
+//
+// The custom device defines copy operations for moving TensorHandles on and
+// off, and an an execution operation for named operations. Often execution will
+// simply wrap op execution on one or more physical devices.
+//
+// device_info is an opaque caller-defined type stored with the custom device
+// which is passed to the functions referenced in the TFE_CustomDevice struct
+// `device` (execute, delete_device, etc.). It can for example contain the
+// names of wrapped devices.
+//
+// There are currently no graph semantics implemented for registered custom
+// devices, so executing tf.functions which contain operations placed on custom
+// devices will fail.
+//
+// This API is highly experimental, and in particular is expected to change when
+// it starts supporting operations with attributes and when tf.function support
+// is added.
+void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
+                              const char* device_name, void* device_info);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

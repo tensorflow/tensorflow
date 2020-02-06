@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_INPUT_PIPELINE_ANALYSIS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_INPUT_PIPELINE_ANALYSIS_H_
 
+#include "google/protobuf/any.pb.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
@@ -25,31 +27,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-
-// Common performance bottleneck.
-struct CommonBottleneck {
-  // Indicates if input is a bottleneck. Possible values:  "host", "device",
-  // "both", or "unknown"
-  string input_classification;
-  // A human-readable description of the input bottleneck.
-  string input_statement;
-};
-
-// Generic hardware bottleneck.
-struct GenericBottleneck {
-  // Bottleneck that exists on all hardware.
-  CommonBottleneck common;
-  // Indicates if kernel launching is a bottleneck. Possible values: "no",
-  // "moderate", "high".
-  string kernel_launch_classification;
-  // A human-readable description of the kernel launching overhead.
-  string kernel_launch_statement;
-  // Indicates if all other is a bottleneck. Possible values: "no", "moderate",
-  // "high".
-  string all_other_classification;
-  // A human-readable description of the all other overhead.
-  string all_other_statement;
-};
 
 // Computes the summary of step time in milliseconds.
 StepSummary ComputeStepTimeSummaryInMs(
@@ -62,14 +39,18 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
 InputPipelineAnalysisRecommendation GenerateRecommendation();
 
 // Returns the performance bottleneck of the program executed.
-GenericBottleneck GenericOverallBottleneck(
-    const InputPipelineAnalysisResult& result);
+BottleneckAnalysis ComputeBottleneckAnalysis(
+    const ::tensorflow::protobuf::RepeatedPtrField<::google::protobuf::Any>&
+        any_step_details);
 
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
     const OpStats& op_stats, const HardwareType& hardware_type);
 
 void InfeedAnalysis(double infeed_percent, int* observation_index,
                     string* input_classification, string* input_statement);
+
+string GetSummaryNextStep(absl::string_view input_classification,
+                          const InputTimeBreakdown& breakdown);
 
 }  // namespace profiler
 }  // namespace tensorflow

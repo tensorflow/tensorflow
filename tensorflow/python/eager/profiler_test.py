@@ -27,15 +27,17 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
+from tensorflow.python.profiler import traceme
 
 
 class ProfilerTest(test_util.TensorFlowTestCase):
 
   def test_profile(self):
     profiler.start()
-    three = constant_op.constant(3)
-    five = constant_op.constant(5)
-    product = three * five
+    with traceme.TraceMe('three_times_five'):
+      three = constant_op.constant(3)
+      five = constant_op.constant(5)
+      product = three * five
     self.assertAllEqual(15, product)
     with self.assertRaises(profiler.ProfilerAlreadyRunningError):
       profiler.start()
@@ -48,6 +50,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     if config.list_physical_devices('GPU'):
       self.assertIn('/device:GPU:0', devices)
     events = frozenset(event.name for event in profile_pb.trace_events)
+    self.assertIn('three_times_five', events)
     self.assertIn('Mul:Mul', events)
     with self.assertRaises(profiler.ProfilerNotRunningError):
       profiler.stop()

@@ -95,7 +95,7 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
     if (call->eager) {
       TensorHandle* handle;
       TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-          t, ctx->CanonicalDevice(device), ctx, &handle));
+          t, ctx->CanonicalDevice(device), nullptr, ctx, &handle));
       arg = EagerTensorFromHandle(new TFE_TensorHandle{
           std::make_unique<tensorflow::TensorHandleInterface>(handle)});
       if (arg == nullptr) {
@@ -149,7 +149,11 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
   auto handle = down_cast<tensorflow::TensorHandleInterface*>(
                     EagerTensor_Handle(eager_tensor)->handle.get())
                     ->Handle();
-  Device* actual_device = handle->device();
+  if (VariantDeviceIsCustom(handle->device())) {
+    return errors::Unimplemented(
+        "Custom devices are currently not supported with PyFuncs.");
+  }
+  Device* actual_device = absl::get<Device*>(handle->device());
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.
   if (expected_device == actual_device) return Status::OK();

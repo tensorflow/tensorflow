@@ -155,8 +155,6 @@ void RunCudnnBatchNormForwardInferenceImpl(
       /*saved_mean=*/nullptr,               //
       /*saved_inv_var=*/nullptr,            //
       /*is_training=*/false,                //
-      /*var_to_inv_var=*/nullptr,           //
-      /*inv_var_to_var=*/nullptr,           //
       /*reserve_space_allocator=*/nullptr,  //
       /*workspace_allocator=*/nullptr);
 }
@@ -186,8 +184,6 @@ void RunCudnnBatchNormForwardTrainingImpl(
       /*saved_mean=*/&params->output_mean,           //
       /*saved_inv_var=*/&params->output_inv_stddev,  //
       /*is_training=*/true,                          //
-      /*var_to_inv_var=*/nullptr,                    //
-      /*inv_var_to_var=*/nullptr,                    //
       /*reserve_space_allocator=*/nullptr,           //
       /*workspace_allocator=*/nullptr);
 }
