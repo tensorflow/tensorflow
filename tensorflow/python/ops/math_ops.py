@@ -2880,8 +2880,16 @@ def matmul(a,
       multiplication.
     adjoint_b: If `True`, `b` is conjugated and transposed before
       multiplication.
-    a_is_sparse: If `True`, `a` is treated as a sparse matrix.
-    b_is_sparse: If `True`, `b` is treated as a sparse matrix.
+    a_is_sparse: If `True`, `a` is treated as a sparse matrix. Notice, this
+      **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
+      that assume most values in `a` are zero.
+      See `tf.sparse.sparse_dense_matmul`
+      for some support for `tf.SparseTensor` multiplication.
+    b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
+      **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
+      that assume most values in `a` are zero.
+      See `tf.sparse.sparse_dense_matmul`
+      for some support for `tf.SparseTensor` multiplication.
     name: Name for the operation (optional).
 
   Returns:
