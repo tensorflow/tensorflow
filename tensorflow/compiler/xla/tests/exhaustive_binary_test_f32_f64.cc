@@ -23,171 +23,6 @@ namespace xla {
 namespace exhaustive_op_test {
 namespace {
 
-template <PrimitiveType T>
-using ExhaustiveBinaryTest = ExhaustiveOpTestBase<T, 2>;
-
-// Exhaustive test for binary operations for 16 bit floating point types,
-// including float16 and bfloat.
-//
-// Test parameter is a pair of (begin, end) for range under test.
-template <
-    PrimitiveType T,
-    typename std::enable_if<
-        std::is_same<typename primitive_util::PrimitiveTypeToNative<T>::type,
-                     half>::value ||
-        std::is_same<typename primitive_util::PrimitiveTypeToNative<T>::type,
-                     bfloat16>::value>::type* = nullptr>
-class Exhaustive16BitBinaryTest
-    : public ExhaustiveBinaryTest<T>,
-      public ::testing::WithParamInterface<std::pair<int64, int64>> {
- public:
-  int64 GetInputSize() override {
-    int64 begin, end;
-    std::tie(begin, end) = GetParam();
-    return end - begin;
-  }
-
-  // Given a range of uint64 representation, uses bits 0..15 and bits 16..31 for
-  // the values of src0 and src1 for a 16 bit binary operation being tested,
-  // and generates the cartesian product of the two sets as the two inputs for
-  // the test.
-  void FillInput(std::array<Literal, 2>* input_literals) override {
-    int64 input_size = GetInputSize();
-    CHECK_EQ(input_size, (*input_literals)[0].element_count());
-    CHECK_EQ(input_size, (*input_literals)[1].element_count());
-
-    int64 begin, end;
-    std::tie(begin, end) = GetParam();
-    VLOG(2) << "Checking range [" << begin << ", " << end << "]";
-
-    absl::Span<NativeT> input_arr_0 = (*input_literals)[0].data<NativeT>();
-    absl::Span<NativeT> input_arr_1 = (*input_literals)[1].data<NativeT>();
-    for (int64 i = 0; i < input_size; i++) {
-      uint32 input_val = i + begin;
-      // Convert the lower 16 bits to the NativeT and replaced known incorrect
-      // input values with 0.
-      input_arr_0[i] = ConvertAndReplaceKnownIncorrectValueWith(input_val, 0);
-      input_arr_1[i] =
-          ConvertAndReplaceKnownIncorrectValueWith(input_val >> 16, 0);
-    }
-  }
-
- protected:
-  using typename ExhaustiveBinaryTest<T>::NativeT;
-  using ExhaustiveBinaryTest<T>::ConvertAndReplaceKnownIncorrectValueWith;
-};
-
-using ExhaustiveF16BinaryTest = Exhaustive16BitBinaryTest<F16>;
-using ExhaustiveBF16BinaryTest = Exhaustive16BitBinaryTest<BF16>;
-
-// Returns a wrapper of the given build method, which build an HLO operation
-// with an empty broadcast dimension.
-inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
-    std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64>)> build_method) {
-  return [&](XlaOp src0, XlaOp src1) -> XlaOp {
-    return build_method(src0, src1, {});
-  };
-}
-
-#if defined(BINARY_TEST_TARGET_F16) && defined(BINARY_TEST_TARGET_BF16)
-#error "Can't define both BINARY_TEST_TARGET_F16 and BINARY_TEST_TARGET_BF16"
-#endif
-
-#if defined(BINARY_TEST_TARGET_F16) && \
-    !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-#define BINARY_TEST_16BIT(test_name, ...)        \
-  XLA_TEST_P(ExhaustiveF16BinaryTest, test_name) \
-  __VA_ARGS__
-#elif defined(BINARY_TEST_TARGET_BF16) && defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
-#define BINARY_TEST_16BIT(test_name, ...)         \
-  XLA_TEST_P(ExhaustiveBF16BinaryTest, test_name) \
-  __VA_ARGS__
-#else
-#define BINARY_TEST_16BIT(test_name, ...)
-#endif
-
-BINARY_TEST_16BIT(Add, {
-  auto host_add = [](float x, float y) { return x + y; };
-  Run(AddEmptyBroadcastDimension(Add), host_add);
-})
-
-BINARY_TEST_16BIT(Sub, {
-  auto host_sub = [](float x, float y) { return x - y; };
-  Run(AddEmptyBroadcastDimension(Sub), host_sub);
-})
-
-// TODO(bixia): Mul fails with bfloat16 on CPU.
-BINARY_TEST_16BIT(DISABLED_ON_CPU(Mul), {
-  auto host_mul = [](float x, float y) { return x * y; };
-  Run(AddEmptyBroadcastDimension(Mul), host_mul);
-})
-
-// TODO(bixia): Div fails with bfloat16 on CPU.
-BINARY_TEST_16BIT(DISABLED_ON_CPU(Div), {
-  auto host_div = [](float x, float y) { return x / y; };
-  Run(AddEmptyBroadcastDimension(Div), host_div);
-})
-
-template <typename T, typename std::enable_if<
-                          std::is_same<T, float>::value ||
-                          std::is_same<T, double>::value>::type* = nullptr>
-T ReferenceMax(T x, T y) {
-  // We need to propagate NAN here because std::max may not propagate NAN.
-  if (std::fpclassify(x) == FP_NAN) {
-    return x;
-  }
-  if (std::fpclassify(y) == FP_NAN) {
-    return y;
-  }
-
-  return std::max<T>(x, y);
-}
-
-template <typename T, typename std::enable_if<
-                          std::is_same<T, float>::value ||
-                          std::is_same<T, double>::value>::type* = nullptr>
-T ReferenceMin(T x, T y) {
-  // We need to propagate NAN here because std::max may not propagate NAN.
-  if (std::fpclassify(x) == FP_NAN) {
-    return x;
-  }
-  if (std::fpclassify(y) == FP_NAN) {
-    return y;
-  }
-
-  return std::min<T>(x, y);
-}
-
-BINARY_TEST_16BIT(Max, {
-  Run(AddEmptyBroadcastDimension(Max), ReferenceMax<float>);
-})
-
-BINARY_TEST_16BIT(Min, {
-  Run(AddEmptyBroadcastDimension(Min), ReferenceMin<float>);
-})
-
-// TODO(bixia): Pow fails with bfloat16 on CPU.
-BINARY_TEST_16BIT(DISABLED_ON_CPU(Pow),
-                  { Run(AddEmptyBroadcastDimension(Pow), std::powf); })
-
-// TODO(bixia): Atan2 fails with bfloat16 on CPU.
-BINARY_TEST_16BIT(DISABLED_ON_CPU(Atan2),
-                  { Run(AddEmptyBroadcastDimension(Atan2), std::atan2f); })
-
-#if defined(BINARY_TEST_TARGET_F16)
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-INSTANTIATE_TEST_SUITE_P(F16, ExhaustiveF16BinaryTest,
-                         ::testing::ValuesIn(CreateExhaustiveF32Ranges()));
-#endif
-#endif
-
-#if defined(BINARY_TEST_TARGET_BF16)
-#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
-INSTANTIATE_TEST_SUITE_P(BF16, ExhaustiveBF16BinaryTest,
-                         ::testing::ValuesIn(CreateExhaustiveF32Ranges()));
-#endif
-#endif
-
 // Exhaustive test for binary operations for float and double.
 //
 // Test parameter is a tuple of (FpValues, FpValues) describing the possible
@@ -236,20 +71,10 @@ class Exhaustive32BitOrMoreBinaryTest
 };
 
 using ExhaustiveF32BinaryTest = Exhaustive32BitOrMoreBinaryTest<F32>;
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
-    ExhaustiveF32BinaryTest);  // TODO(b/139702016) go/are-your-tests-running
 
-using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
-    ExhaustiveF64BinaryTest);  // TODO(b/139702016) go/are-your-tests-running
-
-#if defined(BINARY_TEST_TARGET_F32)
 #define BINARY_TEST_FLOAT_32(test_name, ...)     \
   XLA_TEST_P(ExhaustiveF32BinaryTest, test_name) \
   __VA_ARGS__
-#else
-#define BINARY_TEST_FLOAT_32(test_name, ...)
-#endif
 
 BINARY_TEST_FLOAT_32(Add, {
   auto host_add = [](float x, float y) { return x + y; };
@@ -332,8 +157,8 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<float>(40000, 2000))));
 
-#if defined(BINARY_TEST_TARGET_F64) && \
-    !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
 #define BINARY_TEST_FLOAT_64(test_name, ...)     \
   XLA_TEST_P(ExhaustiveF64BinaryTest, test_name) \
   __VA_ARGS__
@@ -381,6 +206,7 @@ BINARY_TEST_FLOAT_64(DISABLED_ON_CPU(AbsComplex), {
   Run(device_abs_complex, host_abs_complex);
 })
 
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 INSTANTIATE_TEST_SUITE_P(
     SpecialValues, ExhaustiveF64BinaryTest,
     ::testing::Combine(
@@ -414,6 +240,7 @@ INSTANTIATE_TEST_SUITE_P(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000)),
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000))));
+#endif  // !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 
 }  // namespace
 }  // namespace exhaustive_op_test

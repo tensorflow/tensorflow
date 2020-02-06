@@ -1004,6 +1004,45 @@ typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator() {
   return DefaultSpecGenerator<T, N>;
 }
 
+template <typename T, typename std::enable_if<
+                          std::is_same<T, float>::value ||
+                          std::is_same<T, double>::value>::type* = nullptr>
+T ReferenceMax(T x, T y) {
+  // We need to propagate NAN here because std::max may not propagate NAN.
+  if (std::fpclassify(x) == FP_NAN) {
+    return x;
+  }
+  if (std::fpclassify(y) == FP_NAN) {
+    return y;
+  }
+
+  return std::max<T>(x, y);
+}
+
+template <typename T, typename std::enable_if<
+                          std::is_same<T, float>::value ||
+                          std::is_same<T, double>::value>::type* = nullptr>
+T ReferenceMin(T x, T y) {
+  // We need to propagate NAN here because std::max may not propagate NAN.
+  if (std::fpclassify(x) == FP_NAN) {
+    return x;
+  }
+  if (std::fpclassify(y) == FP_NAN) {
+    return y;
+  }
+
+  return std::min<T>(x, y);
+}
+
+// Returns a wrapper of the given build method, which build an HLO operation
+// with an empty broadcast dimension.
+inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
+    std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64>)> build_method) {
+  return [&](XlaOp src0, XlaOp src1) -> XlaOp {
+    return build_method(src0, src1, {});
+  };
+}
+
 template <PrimitiveType T>
 class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
  public:
@@ -1012,6 +1051,9 @@ class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
     return exhaustive_op_test::GetDefaultSpecGenerator<T, 1>();
   }
 };
+
+template <PrimitiveType T>
+using ExhaustiveBinaryTest = ExhaustiveOpTestBase<T, 2>;
 
 }  // namespace exhaustive_op_test
 }  // namespace xla

@@ -836,14 +836,12 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_binary_test_f16",
-    srcs = ["exhaustive_binary_test.cc"],
+    name = "exhaustive_binary_16_bit_test",
+    srcs = ["exhaustive_binary_16_bit_test.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DBINARY_TEST_TARGET_F16"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
@@ -857,56 +855,12 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_binary_test_bf16",
-    srcs = ["exhaustive_binary_test.cc"],
+    name = "exhaustive_binary_test_f32_f64",
+    srcs = ["exhaustive_binary_test_f32_f64.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DBINARY_TEST_TARGET_BF16"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f32",
-    srcs = ["exhaustive_binary_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    copts = ["-DBINARY_TEST_TARGET_F32"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f64",
-    srcs = ["exhaustive_binary_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    copts = ["-DBINARY_TEST_TARGET_F64"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
