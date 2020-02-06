@@ -739,10 +739,9 @@ def cast(x, dtype, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([1.8, 2.2], dtype=tf.float32)
-  tf.dtypes.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
-  ```
+  >>> x = tf.constant([1.8, 2.2], dtype=tf.float32)
+  >>> tf.dtypes.cast(x, tf.int32)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], dtype=int32)>
 
   The operation supports data types (for `x` and `dtype`) of
   `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
