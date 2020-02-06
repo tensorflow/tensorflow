@@ -74,6 +74,16 @@ class ArenaPlanner : public MemoryPlanner {
   // tensors.
   TfLiteStatus Commit();
 
+  // Returns vector of tensor number ordered by the following algorithm.
+  // Comparator to sort tensors for the allocation algorithm:
+  // - Tensors that have lifespan through the whole model inference time go
+  // first;
+  // - Other tensors (e.g. intermediate and temporary ones) are sorted in
+  // non-increasing order of their size. If sizes of two tensors are equal, the
+  // one that needs to be allocated earlier goes first.
+  std::vector<int32_t> CreateTensorAllocationVector(int first_node,
+                                                    int last_node);
+
   // Traverse the allocation queue and reserve space in the appropriate arena
   // for all tensors affected by ops in the interval [first_node, last_node].
   TfLiteStatus CalculateAllocations(int first_node, int last_node);
@@ -81,12 +91,6 @@ class ArenaPlanner : public MemoryPlanner {
   // Assign absolute memory location to a tensor, based on its relative
   // position inside the corresponding arena buffer.
   TfLiteStatus ResolveTensorAllocation(int tensor_index);
-
-  // Register an allocation for the given tensor.
-  TfLiteStatus CalculateTensorAllocation(int tensor_index, int node_index);
-
-  // Register a deallocation for the given tensor.
-  TfLiteStatus CalculateTensorDeallocation(int tensor_index);
 
   // Register an allocation for all internal (temporary) tensors of
   // 'node_index'.
@@ -100,11 +104,15 @@ class ArenaPlanner : public MemoryPlanner {
   std::unique_ptr<GraphInfo> graph_info_;
 
   // Stores allocation data for all tensors.
-  std::vector<ArenaAlloc> allocs_;
+  std::vector<ArenaAllocWithUsageInterval> allocs_;
 
-  // A chronological list of instructions to allocate and deallocate tensors,
-  // reflecting the way they are used in the graph.
-  std::vector<AllocationInfo> alloc_queue_;
+  // First node, that uses the tensor. It needs to be allocated before
+  // execution of the node's operation.
+  std::vector<int32_t> alloc_node_;
+
+  // Last node, that uses the tensor. It can be deallocated after execution of
+  // the node's operation.
+  std::vector<int32_t> dealloc_node_;
 
   // Raw memory buffer that is allocated for all temporary and graph outputs
   // that are declared kTfLiteArenaRw.

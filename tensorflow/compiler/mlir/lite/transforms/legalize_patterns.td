@@ -49,6 +49,10 @@ def convertIntAttrTo32Bit : NativeCodeCall<
 def ExtractSingleElementAsInteger : NativeCodeCall<
     "ExtractSingleElementAsInteger($_self.cast<ElementsAttr>())">;
 
+// Extracts the single int32 element from $_self.
+def ExtractSingleElementAsInt32 : NativeCodeCall<
+    "$_builder.getI32IntegerAttr(ExtractSingleElementAsInteger($_self.cast<ElementsAttr>()).getInt())">;
+
 // Checks whether the given operation has static shapes and same shapes of all inputs.
 def HasSameStaticShapesPred : CPred<"HasSameStaticShapes($0.getDefiningOp())">;
 def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have static same input shapes">;
@@ -190,7 +194,7 @@ def : Pat<(TF_GatherV2Op $params, $indices,
                          (ConstantOp ElementsAttr:$axis),
                          ConstantAttr<I64Attr, "0">:$batch_dims),
           (TFL_GatherOp $params, $indices,
-                        ExtractSingleElementAsInteger:$axis)>;
+                        ExtractSingleElementAsInt32:$axis)>;
 
 def : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 

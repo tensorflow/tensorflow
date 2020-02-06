@@ -107,16 +107,8 @@ def _add_tfcore_prefix(src):
         return src
     return "//tensorflow/core:" + src
 
-# List of proto files for android builds
-def tf_android_core_proto_sources(core_proto_sources_relative):
-    return [
-        _add_tfcore_prefix(p)
-        for p in core_proto_sources_relative
-    ]
-
-# Returns the list of pb.h and proto.h headers that are generated for
-# tf_android_core_proto_sources().
 def tf_android_core_proto_headers(core_proto_sources_relative):
+    """Returns the list of pb.h and proto.h headers that are generated for the provided sources."""
     return ([
         _add_tfcore_prefix(p).replace(":", "/").replace(".proto", ".pb.h")
         for p in core_proto_sources_relative
@@ -1630,12 +1622,12 @@ def _py_wrap_cc_impl(ctx):
     ]
     args += ["-l" + f.path for f in ctx.files.swig_includes]
     args += ["-I" + i for i in swig_include_dirs.to_list()]
-    args += [src.path]
+    args.append(src.path)
     outputs = [ctx.outputs.cc_out, ctx.outputs.py_out]
     ctx.actions.run(
         executable = ctx.executable._swig,
         arguments = args,
-        inputs = inputs.to_list(),
+        inputs = inputs,
         outputs = outputs,
         mnemonic = "PythonSwig",
         progress_message = "SWIGing " + src.path,

@@ -854,6 +854,41 @@ func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 
 // -----
 
+// Test valid tf.PartitionedCall
+// CHECK-LABEL: func @testValidPartitionedCall
+func @testValidPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+// Test invalid tf.PartitionedCall
+func @testUndefinedPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{f attribute refers to an undefined function: nonexistant_pcall_func}}
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @nonexistant_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+// -----
+
+// Test invalid tf.PartitionedCall
+func @testInvalidPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{argument count mismatch: args has 1 arguments, but pcall_func_2 expects 2}}
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func_2} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
 // Test valid tf.Softmax
 // CHECK-LABEL: func @testSoftmax
 func @testSoftmax(tensor<8x16xf32>) -> tensor<8x16xf32> {

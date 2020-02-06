@@ -77,12 +77,14 @@ def main(_):
   parser = argparse.ArgumentParser(
       description='Strips all nonessential strings from a tflite file.')
   parser.add_argument(
-      'input_tflite_file',
+      '--input_tflite_file',
       type=str,
+      required=True,
       help='Full path name to the input tflite file.')
   parser.add_argument(
-      'output_tflite_file',
+      '--output_tflite_file',
       type=str,
+      required=True,
       help='Full path name to the stripped output tflite file.')
   args = parser.parse_args()
 

@@ -568,6 +568,27 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
 }
 
 //===----------------------------------------------------------------------===//
+// PartitionedCall op utilities.
+//===----------------------------------------------------------------------===//
+
+// Verify that the arguments to be passed into the function are the same types
+// as the function paramter types.
+static bool ArgTypesMatchCallee(mlir::Operation *op, OperandRange args,
+                                FlatSymbolRefAttr func) {
+  auto module = op->getParentOfType<ModuleOp>();
+  auto function = module.lookupSymbol<FuncOp>(func.getValue());
+  FunctionType function_ty = function.getType();
+
+  for (auto arg_in : llvm::zip(args, function_ty.getInputs())) {
+    if (std::get<0>(arg_in).getType() != std::get<1>(arg_in)) {
+      // Argument type and input type mismatch.
+      return false;
+    }
+  }
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // Slice op utilities.
 //===----------------------------------------------------------------------===//
 
@@ -937,7 +958,7 @@ class ConvertFusedBatchNormGradBase
     // Gets the result values.
     Value x_backprop, scale_backprop, offset_backprop;
     if (op.is_training()) {  // training
-      // TODO(b/145536565): handle GPU logic seperately.
+      // TODO(b/145536565): handle GPU logic separately.
       // Infers the output type with the converted `act`.
       Type feature_type = RankedTensorType::get(
           {GetDimSize(act_type, feature_dim)}, kernel_type);
@@ -1953,6 +1974,52 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
     auto scaled = rewriter.create<MulOp>(
         op.getLoc(), result_type, iota, op.delta(),
         xla::getBroadcastDimensionsAttr(&rewriter, iota, op.delta()));
+    rewriter.replaceOpWithNewOp<AddOp>(
+        op, result_type, scaled, op.start(),
+        xla::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
+    return matchSuccess();
+  }
+};
+
+/// Converts the LinSpace tensorflow op to a xla_hlo.iota op with a scaling
+/// and offset applied to generate the linspace values. The output tensor needs
+/// to have a static shape.  The implementation is defined in C++ because there
+/// is no type inference for the iota op.
+class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
+  using OpRewritePattern<TF::LinSpaceOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::LinSpaceOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto result = op.getResult();
+    auto result_type = result.getType().dyn_cast<ShapedType>();
+    if (!result_type || !result_type.hasStaticShape()) {
+      return matchFailure();
+    }
+
+    // Calculate the scaling that needs to be applied to the iota.
+    auto step_numerator = rewriter.create<SubOp>(
+        op.getLoc(), op.start().getType(), op.stop(), op.start(),
+        xla::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
+    Value step_denominator = rewriter.create<ConvertOp>(
+        op.getLoc(), op.num(), result_type.getElementType());
+    if (op.num() > 1) {
+      Value one = GetScalarConstOfType(result_type.getElementType(),
+                                       op.getLoc(), 1, &rewriter);
+      step_denominator = rewriter.create<SubOp>(
+          op.getLoc(), step_denominator.getType(), step_denominator, one,
+          xla::getBroadcastDimensionsAttr(&rewriter, step_denominator, one));
+    }
+    auto step = rewriter.create<DivOp>(
+        op.getLoc(), step_numerator.getType(), step_numerator, step_denominator,
+        xla::getBroadcastDimensionsAttr(&rewriter, step_numerator,
+                                        step_denominator));
+
+    // Scale the iota and add the offset.
+    auto iota = rewriter.create<IotaOp>(op.getLoc(), result_type,
+                                        rewriter.getI64IntegerAttr(0));
+    auto scaled = rewriter.create<MulOp>(
+        op.getLoc(), result_type, iota, step,
+        xla::getBroadcastDimensionsAttr(&rewriter, iota, step));
     rewriter.replaceOpWithNewOp<AddOp>(
         op, result_type, scaled, op.start(),
         xla::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
@@ -3422,11 +3489,11 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertConv2DBackpropInputOp, ConvertEinsumOp,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp,
-      ConvertMaxPoolOp, ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
-      ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertRangeOp,
-      ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
-      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp, ConvertMaxOp,
+      ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp,
+      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
+      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
+      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
@@ -3436,11 +3503,11 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
+  target.addLegalOp<CallOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as xla_hlo dialect also defines a ReturnOp.
-    target.addLegalOp<CallOp, ModuleOp, FuncOp, ModuleTerminatorOp,
-                      ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
     return applyFullConversion(op, target, patterns);
   }
 

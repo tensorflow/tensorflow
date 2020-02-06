@@ -46,6 +46,14 @@ gentbl(
             "ir/tfl_ops.cc.inc",
         ),
         (
+            "-gen-struct-attr-decls",
+            "ir/tfl_structs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "ir/tfl_structs.cc.inc",
+        ),
+        (
             "-gen-op-doc",
             "g3doc/tfl_ops.md",
         ),
@@ -391,6 +399,24 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "tensorflow_lite_d2s",
+    srcs = [
+        "transforms/dense_to_sparse.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+    alwayslink = 1,
+)
+
 filegroup(
     name = "generated_op_quant_spec_getters",
     srcs = [
@@ -651,6 +677,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":tensorflow_lite_d2s",
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
@@ -553,6 +554,21 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   value_map[op] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
       xla::TypeToShape(op.getType()), std::string(op.backend_config()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
+  xla::QuantizedRange range(ConvertAPFloat(op.min_range()),
+                            ConvertAPFloat(op.max_range()));
+  auto& value_map = *ctx.values;
+  auto casted = xla::ConvertElementType(value_map[op.input()], xla::U32);
+  if (op.is_16bits()) {
+    value_map[op] = xla::Dequantize<uint16>(
+        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+  } else {
+    value_map[op] = xla::Dequantize<uint8>(
+        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+  }
   return success();
 }
 

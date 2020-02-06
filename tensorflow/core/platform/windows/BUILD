@@ -1,7 +1,6 @@
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_windows",
     "tf_copts",
 )
 load(
@@ -39,6 +38,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        ":error_windows",
         ":wide_char",
         "//tensorflow/core/lib/core:blocking_counter",
         "//tensorflow/core/lib/core:error_codes_proto_cc",
@@ -86,6 +86,21 @@ cc_library(
 )
 
 cc_library(
+    name = "error_windows",
+    srcs = ["error_windows.cc"],
+    hdrs = ["error_windows.h"],
+    linkopts = ["-DEFAULTLIB:ws2_32.lib"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    # This code is highly windows specific and should only be used with care
+    # from this package.
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
     name = "intrinsics_port",
     srcs = ["intrinsics_port.h"],
     tags = [
@@ -116,13 +131,14 @@ cc_library(
     name = "net",
     srcs = ["net.cc"],
     hdrs = ["//tensorflow/core/platform:net.h"],
-    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
+    linkopts = ["-DEFAULTLIB:ws2_32.lib"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
+        ":error_windows",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:logging",
     ],

@@ -434,13 +434,23 @@ def create_autocast_variable(variable):
   Returns:
     An AutoCastVariable that wraps the variable.
   """
-  if not isinstance(variable, distribute_values.DistributedVariable):
+  if not isinstance(variable, (distribute_values.DistributedVariable,
+                               distribute_values.AggregatingVariable)):
     return AutoCastVariable(variable)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
-    """An AutoCastVariable that also subclasses from DistributedVariable."""
+    """An AutoCastVariable that also subclasses from variable.__class__.
+
+    variable.__class__ is either a DistributedVariable or an
+    AggregatingVariable.
+    """
 
     def __repr__(self):
+      if issubclass(distribute_values.AggregatingVariable, variable.__class__):
+        # AggregatingVariable's __repr__ simply calls super.__repr__. So we do
+        # the same here for consistency, which calls AutoCastVariable.__repr__.
+        return super(AutoCastDistributedVariable, self).__repr__()
+
       # pylint: disable=missing-format-attribute
       return ('<AutoCastDistributedVariable dtype={v.dtype.name} '
               'true_dtype={v.true_dtype.name} inner_variable={v._variable}>'

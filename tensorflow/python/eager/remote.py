@@ -49,9 +49,8 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
   Using the default job_name of worker, you can schedule ops to run remotely as
   follows:
   ```python
-  # Enable eager execution, and connect to the remote host.
-  tf.compat.v1.enable_eager_execution()
-  tf.contrib.eager.connect_to_remote_host("exampleaddr.com:9876")
+  # When eager execution is enabled, connect to the remote host.
+  tf.config.experimental_connect_to_host("exampleaddr.com:9876")
 
   with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
     # The following tensors should be resident on the remote device, and the op

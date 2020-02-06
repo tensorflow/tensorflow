@@ -2369,9 +2369,10 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util/ctc:ctc_beam_search_lib",
         "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":gpu_utils",
         ":conv_ops_gpu_hdrs",
+    ]) + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]),
 )
@@ -5954,6 +5955,7 @@ tf_kernel_library(
         ":random_ops",
         ":resource_variable_ops",
         ":stateful_random_ops",
+        ":stateless_random_ops",
         ":training_op_helpers",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

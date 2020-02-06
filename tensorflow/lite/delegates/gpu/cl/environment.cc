@@ -205,7 +205,7 @@ bool Environment::IsSupported(TensorStorageType storage_type) const {
     case TensorStorageType::TEXTURE_ARRAY:
       return !device_.IsAMD() && device_.SupportsTextureArray();
     case TensorStorageType::IMAGE_BUFFER:
-      return (device_.IsAdreno() || device_.IsAMD()) &&
+      return (device_.IsAdreno() || device_.IsAMD() || device_.IsNvidia()) &&
              device_.SupportsImageBuffer();
     case TensorStorageType::TEXTURE_3D:
       return !device_.IsAMD() && device_.SupportsImage3D();
@@ -224,10 +224,13 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
     } else {
       return TensorStorageType::TEXTURE_2D;
     }
-  } else if (gpu.IsPowerVR() || gpu.IsNvidia()) {
+  } else if (gpu.IsPowerVR()) {
     return TensorStorageType::TEXTURE_2D;
   } else if (gpu.IsMali()) {
     return TensorStorageType::BUFFER;
+  } else if (gpu.IsNvidia()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
   } else if (gpu.IsAMD()) {
     return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
                                      : TensorStorageType::BUFFER;

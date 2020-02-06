@@ -1543,6 +1543,34 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PartitionedCallOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(PartitionedCallOp op) {
+  auto module = op.getParentOfType<ModuleOp>();
+  FlatSymbolRefAttr func = op.getAttr("f").cast<FlatSymbolRefAttr>();
+
+  auto function = module.lookupSymbol<FuncOp>(func.getValue());
+
+  if (!function) {
+    return op.emitError("f attribute refers to an undefined function: ")
+           << func.getValue();
+  }
+
+  FunctionType function_ty = function.getType();
+  int func_arg_count = function_ty.getNumInputs();
+  int arg_count = op.args().size();
+
+  if (arg_count != func_arg_count) {
+    return op.emitError() << "argument count mismatch: args has " << arg_count
+                          << " arguments, but " << func.getValue()
+                          << " expects " << func_arg_count;
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReciprocalOp
 //===----------------------------------------------------------------------===//
 

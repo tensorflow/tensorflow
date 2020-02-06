@@ -20,6 +20,14 @@ a corresponding CFG counterpart.
 
 Once built, the CFG itself is immutable, but the values it holds need not be;
 they are usually annotated with information extracted by walking the graph.
+
+Note: the CFG tries to include all code paths that MAY be taken, with the
+follwing exceptions:
+ * function calls do not generate edges corresponding to exceptions they may
+   raise (i.e. a function call in the middle of a block does not exit or jump
+   to an except block)
+ * raise never generates an edge to an except block
+(TODO:mdan): Remove this last bullet.
 """
 
 # TODO(mdan): The notion of 'statements' below is inaccurate.
@@ -439,19 +447,6 @@ class GraphBuilder(object):
     node = self._add_jump_node(ast_node, guards)
     self.continues[section_id].add(node)
 
-  def add_error_node(self, ast_node, guards):
-    """Grows the graph by adding an error node.
-
-    This node becomes an exit for the entire graph.
-
-    Args:
-      ast_node: ast.AST
-      guards: Tuple[ast.AST, ...], the finally sections that guard ast_node
-    """
-    node = self._add_jump_node(ast_node, guards)
-    self.errors.add(node)
-    self.leaves = set()
-
   def enter_section(self, section_id):
     """Enters a regular section.
 
@@ -743,10 +738,8 @@ class AstToCfg(gast.NodeVisitor):
     self._process_basic_statement(node)
 
   def visit_Raise(self, node):
-    try_node, guards = self._get_enclosing_finally_scopes((gast.FunctionDef,))
-    if try_node is None:
-      raise ValueError('%s that is not enclosed by any FunctionDef' % node)
-    self.builder.add_error_node(node, guards)
+    self._process_exit_statement(node, gast.FunctionDef)
+    self.builder.errors.add(node)
 
   def visit_Assert(self, node):
     # Ignoring the effect of exceptions.

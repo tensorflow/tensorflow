@@ -5729,54 +5729,58 @@ tf_py_wrap_cc(
 # ** Targets for Windows build (start) **
 # We need the following targets to expose symbols from _pywrap_tensorflow.dll
 
-WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
-    ":cpp_python_util",  # util
-    ":py_func_lib",  # py_func
-    ":model_analyzer_lib",  # model_analyzer
-    ":cost_analyzer_lib",  # cost_analyzer
-    "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
-    "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
-    "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-    "//tensorflow/core/util:port",  # util_port
-    "//tensorflow/core:framework_internal_impl",  # op_def_registry
-    "//tensorflow/core:lib_internal_impl",  # device_lib
-    "//tensorflow/core:core_cpu_impl",  # device_lib
-    ":py_exception_registry",  # py_exception_registry
-    ":kernel_registry",  # kernel_registry
-    "//tensorflow/lite/toco/python:toco_python_api",  # toco
-    "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-    "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
-    ":ndarray_tensor",  # checkpoint_reader
-    ":numpy_lib",  # checkpoint_reader
-    ":safe_ptr",  # checkpoint_reader
-    ":python_op_gen",  # python_op_gen
-    ":bfloat16_lib",  # bfloat16
-    "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
-    "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
-    "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
-    "//tensorflow/core/common_runtime/eager:context",  # tfe
-    "//tensorflow/core/profiler/lib:profiler_session",  # tfe
-    "//tensorflow/c:tf_status_helper",  # tfe
-    "//tensorflow/compiler/mlir/python:mlir",  # mlir
-    "//tensorflow/core:op_gen_lib",  # tf_session
-    "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
-    "//tensorflow/c:python_api",  # tf_session
-    "//tensorflow/python:tf_session_helper",  # tf_session
-    "//tensorflow/core/grappler:grappler_item",  # tf_item
-    "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
-    "//tensorflow/core/grappler:grappler_item_builder",  # tf_item
-    "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
-    "//tensorflow/core/grappler/costs:utils",  # tf_cluster
-    "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
-    "//tensorflow/core/grappler/clusters:cluster",  # tf_cluster
-    "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
-    "//tensorflow/core/grappler/costs:op_level_cost_estimator",  # tf_cluster
-    "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
-    "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
-    "//tensorflow/core/grappler:devices",  # tf_cluster
-    "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
-    "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
-]
+filegroup(
+    name = "win_lib_files_for_exported_symbols",
+    srcs = [
+        ":bfloat16_lib",  # bfloat16
+        ":cost_analyzer_lib",  # cost_analyzer
+        ":cpp_python_util",  # util
+        ":kernel_registry",  # kernel_registry
+        ":model_analyzer_lib",  # model_analyzer
+        ":ndarray_tensor",  # checkpoint_reader
+        ":numpy_lib",  # checkpoint_reader
+        ":py_exception_registry",  # py_exception_registry
+        ":py_func_lib",  # py_func
+        ":python_op_gen",  # python_op_gen
+        ":safe_ptr",  # checkpoint_reader
+        "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
+        "//tensorflow/c:python_api",  # tf_session
+        "//tensorflow/c:tf_status_helper",  # tfe
+        "//tensorflow/compiler/mlir/python:mlir",  # mlir
+        "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
+        "//tensorflow/core:core_cpu_impl",  # device_lib
+        "//tensorflow/core:framework_internal_impl",  # op_def_registry
+        "//tensorflow/core:lib_internal_impl",  # device_lib
+        "//tensorflow/core:op_gen_lib",  # tf_session
+        "//tensorflow/core/common_runtime/eager:context",  # tfe
+        "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
+        "//tensorflow/core/grappler:devices",  # tf_cluster
+        "//tensorflow/core/grappler:grappler_item",  # tf_item
+        "//tensorflow/core/grappler:grappler_item_builder",  # tf_item
+        "//tensorflow/core/grappler/clusters:cluster",  # tf_cluster
+        "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
+        "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
+        "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
+        "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
+        "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
+        "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
+        "//tensorflow/core/grappler/costs:op_level_cost_estimator",  # tf_cluster
+        "//tensorflow/core/grappler/costs:utils",  # tf_cluster
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
+        "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
+        "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
+        "//tensorflow/core/profiler/lib:profiler_session",  # tfe
+        "//tensorflow/core/util:port",  # util_port
+        "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
+        "//tensorflow/lite/toco/python:toco_python_api",  # toco
+        "//tensorflow/python:tf_session_helper",  # tf_session
+        "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
+        "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+    ],
+    visibility = ["//visibility:private"],
+)
 
 # Filter the DEF file to reduce the number of symbols to 64K or less.
 # Note that we also write the name of the pyd file into DEF file so that
@@ -5785,10 +5789,11 @@ genrule(
     name = "pywrap_tensorflow_filtered_def_file",
     srcs = select({
         "//tensorflow:windows": [
-            "//tensorflow:tensorflow_def_file",
             ":pybind_symbol_target_libs_file",
+            ":win_lib_files_for_exported_symbols",
+            "//tensorflow:tensorflow_def_file",
             "//tensorflow/tools/def_file_filter:symbols_pybind",
-        ] + WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS,
+        ],
         "//conditions:default": [],
     }),
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
@@ -5810,7 +5815,7 @@ genrule(
 # Write to a file a list of all cc_library targets that we need for exporting symbols on Windows.
 genrule(
     name = "pybind_symbol_target_libs_file",
-    srcs = WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS,
+    srcs = [":win_lib_files_for_exported_symbols"],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
         "//tensorflow:windows": """

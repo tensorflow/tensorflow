@@ -25,6 +25,7 @@ import weakref
 
 import numpy as np
 
+from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
@@ -499,6 +500,56 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           yield
     finally:
       self._logical_device_stack.pop()
+
+  def _experimental_assign_to_logical_device(self, tensor, logical_device_id):
+    """See `DistributionStrategy.experimental_assign_to_logical_device`."""
+    num_logical_devices_per_replica = self._tpu_devices.shape[1]
+    if (logical_device_id < 0 or
+        logical_device_id >= num_logical_devices_per_replica):
+      raise ValueError("`logical_core_id` to assign must be lower then total "
+                       "number of logical devices per replica. Received "
+                       "logical device id {} but there are only total of {} "
+                       "logical devices in replica.".format(
+                           logical_device_id, num_logical_devices_per_replica))
+    return xla_sharding.assign_device(tensor, logical_device_id)
+
+  def _experimental_split_to_logical_devices(self, tensor,
+                                             partition_dimensions):
+    """See `DistributionStrategy.experimental_split_to_logical_devices`."""
+    num_logical_devices_per_replica = self._tpu_devices.shape[1]
+    num_partition_splits = np.prod(partition_dimensions)
+    input_shape = tensor.shape
+    tensor_rank = len(input_shape)
+
+    if tensor_rank != len(partition_dimensions):
+      raise ValueError("Length of `partition_dimensions` ({}) must be  "
+                       "equal to the rank of `x` ({}).".format(
+                           len(partition_dimensions), tensor_rank))
+
+    for dim_index, dim_size in enumerate(input_shape):
+      if dim_size is None:
+        continue
+
+      split_size = partition_dimensions[dim_index]
+      if dim_size % split_size != 0:
+        raise ValueError("Tensor shape at dimension ({}) must be "
+                         "divisible by corresponding value specified "
+                         "by `partition_dimensions` ({}).".format(
+                             dim_index, split_size))
+
+    if num_partition_splits != num_logical_devices_per_replica:
+      raise ValueError("Number of logical devices ({}) does not match the "
+                       "number of partition splits specified ({}).".format(
+                           num_logical_devices_per_replica,
+                           num_partition_splits))
+
+    tile_assignment = np.arange(num_partition_splits).reshape(
+        partition_dimensions)
+    return xla_sharding.tile(tensor, tile_assignment, use_sharding_op=True)
+
+  def _experimental_replicate_to_logical_devices(self, tensor):
+    """See `DistributionStrategy.experimental_replicate_to_logical_devices`."""
+    return xla_sharding.replicate(tensor, use_sharding_op=True)
 
   def _experimental_initialize_system(self):
     """Experimental method added to be used by Estimator.
