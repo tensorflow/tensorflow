@@ -1004,6 +1004,15 @@ typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator() {
   return DefaultSpecGenerator<T, N>;
 }
 
+template <PrimitiveType T>
+class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
+ public:
+  using typename ExhaustiveOpTestBase<T, 1>::ErrorSpecGen;
+  static ErrorSpecGen GetDefaultSpecGenerator() {
+    return exhaustive_op_test::GetDefaultSpecGenerator<T, 1>();
+  }
+};
+
 }  // namespace exhaustive_op_test
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_

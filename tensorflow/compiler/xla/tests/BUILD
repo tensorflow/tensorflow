@@ -777,8 +777,7 @@ cc_library(
 
 xla_test(
     name = "exhaustive_unary_test_f32_or_smaller",
-    srcs = ["exhaustive_unary_test.cc"],
-    copts = ["-DUNARY_TEST_TARGET_F32_OR_SMALLER"],
+    srcs = ["exhaustive_unary_test_f32_or_smaller.cc"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
@@ -796,13 +795,11 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_test_f64",
-    srcs = ["exhaustive_unary_test.cc"],
+    srcs = ["exhaustive_unary_test_f64.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DUNARY_TEST_TARGET_F64"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
@@ -819,13 +816,11 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_test_complex",
-    srcs = ["exhaustive_unary_test.cc"],
+    srcs = ["exhaustive_unary_test_complex.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DUNARY_TEST_TARGET_COMPLEX"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
