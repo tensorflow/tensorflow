@@ -22,6 +22,7 @@ limitations under the License.
 #endif
 
 namespace xla {
+namespace exhaustive_op_test {
 
 using Eigen::half;
 
@@ -158,7 +159,13 @@ float HostDigamma(float x) {
 }
 
 template <PrimitiveType T>
-using ExhaustiveUnaryTest = ExhaustiveOpTestBase<T, 1>;
+class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
+ public:
+  using typename ExhaustiveOpTestBase<T, 1>::ErrorSpecGen;
+  static ErrorSpecGen GetDefaultSpecGenerator() {
+    return exhaustive_op_test::GetDefaultSpecGenerator<T, 1>();
+  }
+};
 
 // Exhaustive test for unary operations for <= 32bit floating point types.
 //
@@ -977,4 +984,5 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000))));
 
+}  // namespace exhaustive_op_test
 }  // namespace xla

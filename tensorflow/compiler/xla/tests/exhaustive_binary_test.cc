@@ -20,6 +20,7 @@ limitations under the License.
 #endif
 
 namespace xla {
+namespace exhaustive_op_test {
 namespace {
 
 template <PrimitiveType T>
@@ -415,4 +416,5 @@ INSTANTIATE_TEST_SUITE_P(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000))));
 
 }  // namespace
+}  // namespace exhaustive_op_test
 }  // namespace xla
