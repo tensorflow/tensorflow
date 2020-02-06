@@ -363,13 +363,18 @@ TEST(CAPI, TensorHandleCopyBetweenTwoGPUDevicesAsync) {
   TensorHandleCopyBetweenTwoGPUDevices(true);
 }
 
-void TensorHandleSilentCopy(bool async) {
+void TensorHandleSilentCopy(bool async,
+                            TFE_ContextDevicePlacementPolicy global_policy,
+                            TFE_ContextDevicePlacementPolicy thread_policy) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, global_policy);
   TFE_Context* ctx = TFE_NewContext(opts, status.get());
+  if (thread_policy != global_policy) {
+    TFE_ContextSetThreadLocalDevicePlacementPolicy(ctx, thread_policy);
+  }
   TFE_DeleteContextOptions(opts);
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
@@ -404,57 +409,21 @@ void TensorHandleSilentCopy(bool async) {
   TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
 }
-
-TEST(CAPI, TensorHandleSilentCopy) { TensorHandleSilentCopy(false); }
-TEST(CAPI, TensorHandleSilentCopyAsync) { TensorHandleSilentCopy(true); }
-
-void TensorHandleSilentCopyLocal(bool async) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
-  TFE_ContextOptionsSetDevicePlacementPolicy(opts,
-                                             TFE_DEVICE_PLACEMENT_EXPLICIT);
-  TFE_Context* ctx = TFE_NewContext(opts, status.get());
-  TFE_ContextSetThreadLocalDevicePlacementPolicy(ctx,
-                                                 TFE_DEVICE_PLACEMENT_SILENT);
-  TFE_DeleteContextOptions(opts);
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-
-  TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
-  TF_Tensor* t = TFE_TensorHandleResolve(hcpu, status.get());
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-
-  // Disable the test if no GPU is present.
-  string gpu_device_name;
-  if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
-    TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
-        hcpu, ctx, gpu_device_name.c_str(), status.get());
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-
-    TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
-    TFE_OpSetDevice(matmul, gpu_device_name.c_str(), status.get());
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-    TFE_TensorHandle* retvals[1];
-    int num_retvals = 1;
-    TFE_Execute(matmul, &retvals[0], &num_retvals, status.get());
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-    TFE_DeleteOp(matmul);
-    TFE_DeleteTensorHandle(retvals[0]);
-    TFE_DeleteTensorHandle(hgpu);
-  }
-
-  TF_DeleteTensor(t);
-  TFE_DeleteTensorHandle(hcpu);
-  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
-  TFE_ExecutorWaitForAllPendingNodes(executor, status.get());
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  TFE_DeleteExecutor(executor);
-  TFE_DeleteContext(ctx);
+TEST(CAPI, TensorHandleSilentCopy) {
+  TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_SILENT,
+                         TFE_DEVICE_PLACEMENT_SILENT);
 }
-TEST(CAPI, TensorHandleSilentCopyLocal) { TensorHandleSilentCopyLocal(false); }
-TEST(CAPI, TensorHandleSilentCopyLocalAsync) {
-  TensorHandleSilentCopyLocal(true);
+TEST(CAPI, TensorHandleSilentCopyAsync) {
+  TensorHandleSilentCopy(true, TFE_DEVICE_PLACEMENT_SILENT,
+                         TFE_DEVICE_PLACEMENT_SILENT);
+}
+TEST(CAPI, TensorHandleSilentCopyLocalPolicy) {
+  TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_EXPLICIT,
+                         TFE_DEVICE_PLACEMENT_SILENT);
+}
+TEST(CAPI, TensorHandleSilentCopyLocalPolicyAsync) {
+  TensorHandleSilentCopy(true, TFE_DEVICE_PLACEMENT_EXPLICIT,
+                         TFE_DEVICE_PLACEMENT_SILENT);
 }
 
 void SetAndGetOpDevices(bool async) {
