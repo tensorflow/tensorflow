@@ -324,6 +324,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
 
+// CHECK-LABEL:  func @test_dynamic_slice
+// CHECK-SAME:  [[OPERAND:%.*]]: tensor<2x2x258xi32>, [[START_INDICES:%.*]]: tensor<3xi32>
+%test_dynamic_slice (operand: s32[2,2,258], start_indices: s32[3]) -> s32[1,1,32] {
+  %operand = s32[2,2,258] parameter(0)
+  %start_indices = s32[3] parameter(1)
+  // CHECK:  "xla_hlo.dynamic-slice"([[OPERAND]], [[START_INDICES]])
+  // CHECK-SAME:  slice_sizes = dense<[1, 1, 32]> : tensor<3xi64>
+  ROOT %dynamic-slice = s32[1,1,32] dynamic-slice(s32[2,2,258] %operand, s32[3] %start_indices), dynamic_slice_sizes={1,1,32}
+}
+
 // CHECK-LABEL:  func @test_dynamic_update_slice_1(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<4x4xf32> {
 %test_dynamic_update_slice_1 (Arg_0.1: f32[4, 4], Arg_1.2: f32[1, 4], Arg_2.3: f32[], Arg_3.4: f32[]) -> f32[4, 4] {
   %Arg_0.1 = f32[4, 4] parameter(0)
