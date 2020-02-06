@@ -299,3 +299,8 @@ tensorflow::grappler::MeasuringCostEstimator::PredictCosts
 tensorflow::grappler::GetNumAvailableGPUs
 tensorflow::grappler::GetNumAvailableLogicalCPUCores
 
+[traceme_recorder_impl] # profiler
+tensorflow::profiler::TraceMeRecorder::Record
+
+[annotation_stack_impl] # profiler
+tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
