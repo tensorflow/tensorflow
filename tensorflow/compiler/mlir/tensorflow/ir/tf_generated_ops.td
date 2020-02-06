@@ -6939,6 +6939,43 @@ array([[1, 2, 3, 1, 2, 3],
   // input.rank()
 }
 
+def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
+  let summary = "Converts a tensor to a scalar predicate.";
+
+  let description = [{
+Converts a tensor to a scalar predicate with the following rules:
+
+- For 0D tensors, truthiness is determined by comparing against a "zero"
+  value. For numerical types it is the obvious zero. For strings it is the
+  empty string.
+
+- For >0D tensors, truthiness is determined by looking at the number of
+  elements. If has zero elements, then the result is false. Otherwise the
+  result is true.
+
+This matches the behavior of If and While for determining if a tensor counts
+as true/false for a branch condition.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value value", [{
+      build(builder, result, RankedTensorType::get({}, builder->getI1Type()),
+            value);
+    }]>];
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {
   let summary = [{
 Finds values and indices of the `k` largest elements for the last dimension.
