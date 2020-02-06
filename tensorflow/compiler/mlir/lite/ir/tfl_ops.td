@@ -550,14 +550,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins Variadic<TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, TFL_Uint8]>>:$values,
+      [F32, I64, I32, I16, I8, QI8, QUI8, QI16, TFL_Uint8]>>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, TFL_Uint8]>:$output
+      [F32, I64, I32, I16, I8, QI8, QUI8, QI16, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -2658,12 +2658,12 @@ def TFL_SplitOp : TFL_Op<"split", [
 
   let arguments = (ins
     TensorOf<[I32]>:$split_dim,
-    TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
+    TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
     PositiveI32Attr:$num_splits
   );
 
   let results = (outs
-    Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8]>>:$outputs
+    Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2681,14 +2681,14 @@ def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect, SameOperandsAndResultsScale]
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
+    TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
     1DTensorOf<[I32]>:$size_splits,
     0DTensorOf<[I32]>:$split_dim,
     PositiveI32Attr:$num_splits
   );
 
   let results = (outs
-    Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8]>>:$outputs
+    Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
