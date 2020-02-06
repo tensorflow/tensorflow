@@ -415,6 +415,23 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
   return Status::OK();
 }
 
+Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
+  if (!hlo->shape().IsTuple() || hlo->shape().tuple_shapes_size() != 2) {
+    return InternalError(
+        "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
+        hlo->shape().ToString());
+  }
+  if (!ShapeUtil::Compatible(hlo->operand(0)->shape(),
+                             hlo->shape().tuple_shapes(0))) {
+    return InternalError(
+        "Expected state shape to match between input and output for "
+        "RngBitGenerator. Got %s vs. %s",
+        hlo->operand(0)->shape().ToString(),
+        hlo->shape().tuple_shapes(0).ToString());
+  }
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleRngGetAndUpdateState(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
   const Shape& result_shape = instruction->shape();

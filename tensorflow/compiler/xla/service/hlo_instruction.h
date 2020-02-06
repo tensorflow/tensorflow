@@ -512,6 +512,11 @@ class HloInstruction {
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
 
+  // Creates a stateless random bit generator instruction that fills a shape
+  // with random bits.
+  static std::unique_ptr<HloInstruction> CreateRngBitGenerator(
+      const Shape& shape, HloInstruction* state, RandomAlgorithm algorithm);
+
   // Creates an instruction to update the random number generator state to
   // reflect the new state after `delta` units of 32 random bits are generated
   // and returns the old state.
@@ -2025,12 +2030,14 @@ string PaddingConfigToString(const PaddingConfig& padding);
 string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
 string OpMetadataToString(const OpMetadata& metadata);
+string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 
+StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
 

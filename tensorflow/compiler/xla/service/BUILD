@@ -4493,6 +4493,25 @@ cc_library(
 )
 
 cc_library(
+    name = "rng_bit_generator_expander",
+    srcs = ["rng_bit_generator_expander.cc"],
+    hdrs = ["rng_bit_generator_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:prng",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "slow_operation_alarm",
     srcs = ["slow_operation_alarm.cc"],
     hdrs = ["slow_operation_alarm.h"],
