@@ -16,7 +16,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -197,6 +201,66 @@ void SortXPlane(XPlane* plane) {
   }
   std::sort(plane->mutable_lines()->pointer_begin(),
             plane->mutable_lines()->pointer_end(), XLinesComparator());
+}
+
+void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
+  XPlaneVisitor src(&src_plane);
+  XPlaneBuilder dst(dst_plane);
+  RemoveEmptyLines(dst_plane);
+  src.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+    XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
+    XStat* new_stat = dst.FindOrAddMutableStat(stat_metadata->id());
+    // Add or override the existing stat value except the metadata id.
+    *new_stat = stat.RawStat();
+    new_stat->set_metadata_id(stat_metadata->id());
+  });
+  src.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
+    int64 time_offset_ps = 0LL;
+    if (dst_line.NumEvents() == 0) {
+      // Since we RemoveEmptyLines above, this could only mean that current
+      // line only exist in src plane.
+      dst_line.SetTimestampNs(line.TimestampNs());
+      dst_line.SetName(line.Name());
+      dst_line.SetDisplayNameIfEmpty(line.DisplayName());
+    } else {
+      if (line.TimestampNs() <= dst_line.TimestampNs()) {
+        dst_line.SetTimestampNsAndAdjustEventOffsets(line.TimestampNs());
+      } else {
+        time_offset_ps = (line.TimestampNs() - dst_line.TimestampNs()) *
+                         EnvTime::kNanosToPicos;
+      }
+      dst_line.SetNameIfEmpty(line.Name());
+      if (!line.DisplayName().empty()) {
+        dst_line.SetDisplayNameIfEmpty(line.DisplayName());
+      }
+    }
+
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      const XEventMetadata* src_event_metadata = event.metadata();
+      XEventMetadata* dst_event_metadata =
+          dst.GetOrCreateEventMetadata(event.Name());
+      if (dst_event_metadata->display_name().empty() &&
+          !src_event_metadata->display_name().empty()) {
+        dst_event_metadata->set_display_name(
+            src_event_metadata->display_name());
+      }
+      if (dst_event_metadata->metadata().empty() &&
+          !src_event_metadata->metadata().empty()) {
+        dst_event_metadata->set_metadata(src_event_metadata->metadata());
+      }
+      XEventBuilder dst_event = dst_line.AddEvent(*dst_event_metadata);
+      dst_event.SetOffsetPs(event.OffsetPs() + time_offset_ps);
+      dst_event.SetDurationPs(event.DurationPs());
+      if (event.NumOccurrences()) {
+        dst_event.SetNumOccurrences(event.NumOccurrences());
+      }
+      event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+        dst_event.AddStat(*dst.GetOrCreateStatMetadata(stat.Name()),
+                          stat.RawStat());
+      });
+    });
+  });
 }
 
 }  // namespace profiler

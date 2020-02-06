@@ -159,6 +159,8 @@ cc_library(
         ":timespan",
         ":xplane_builder",
         ":xplane_schema",
+        ":xplane_visitor",
+        "//tensorflow/core:platform_base",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -170,10 +172,15 @@ tf_cc_test(
     name = "xplane_utils_test",
     srcs = ["xplane_utils_test.cc"],
     deps = [
+        ":time_utils",
+        ":xplane_builder",
         ":xplane_utils",
+        ":xplane_visitor",
+        "//tensorflow/core:platform_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
