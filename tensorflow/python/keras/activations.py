@@ -458,11 +458,10 @@ def get(identifier):
   if isinstance(identifier, six.string_types):
     identifier = str(identifier)
     return deserialize(identifier)
+  elif isinstance(identifier, dict):
+    return deserialize(identifier)
   elif callable(identifier):
     return identifier
-  elif isinstance(identifier, dict):
-    return deserialize_keras_object(
-        identifier, printable_module_name='activation')
   else:
     raise TypeError(
         'Could not interpret activation function identifier: {}'.format(
