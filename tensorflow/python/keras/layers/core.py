@@ -236,6 +236,39 @@ class SpatialDropout1D(Dropout):
     input_shape = array_ops.shape(inputs)
     noise_shape = (input_shape[0], 1, input_shape[2])
     return noise_shape
+  
+  
+  @keras_export('keras.layers.TemporalDropout1D')
+class TemporalDropout1D(Dropout):
+  """Temporal 1D version of Dropout.
+
+  This version performs the same function as Dropout, however it drops
+  entire 1D temporal elements instead of individual elements. 
+
+  Arguments:
+    rate: Float between 0 and 1. Fraction of the input units to drop.
+
+  Call arguments:
+    inputs: A 3D tensor.
+    training: Python boolean indicating whether the layer should behave in
+      training mode (adding dropout) or in inference mode (doing nothing).
+
+  Input shape:
+    3D tensor with shape:
+    `(samples, timesteps, channels)`
+
+  Output shape:
+    Same as input.
+  """
+
+  def __init__(self, rate, **kwargs):
+    super(TemporalDropout1D, self).__init__(rate, **kwargs)
+    self.input_spec = InputSpec(ndim=3)
+
+  def _get_noise_shape(self, inputs):
+    input_shape = array_ops.shape(inputs)
+    noise_shape = (input_shape[0], input_shape[2], 1)
+    return noise_shape
 
 
 @keras_export('keras.layers.SpatialDropout2D')
