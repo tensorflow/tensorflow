@@ -125,7 +125,7 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass();
 // A pass that decomposes composite resource operations into primitive ones like
 // ReadVariableOp, AssignVariableOp and other computations to facilitate
 // transformations like resource op lifting.
-std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass();
+std::unique_ptr<OpPassBase<ModuleOp>> CreateDecomposeResourceOpsPass();
 
 // Creates a pass that lifts operations on external resource variables from
 // device computation nested in `tf_device::LaunchOp` out so that resource
