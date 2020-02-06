@@ -29,12 +29,12 @@ cc_library(
         ]),
         "//conditions:default": [],
     }) + glob([
-        "source/*.c",
-        "include/aws/common/*.h",
+        "source/**/*.c",
         "include/**/*.h",
+        "include/**/*.inl"
     ]),
     hdrs = [
-    "include/aws/common/config.h",
+        "include/aws/common/config.h",
     ],
     includes = [
         "include/",
