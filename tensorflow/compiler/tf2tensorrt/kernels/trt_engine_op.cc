@@ -690,7 +690,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     // Allocate output tensor of TRTEngineOp
     Tensor* output_tensor = nullptr;
     TensorShape output_shape;
-    auto status = TensorShapeUtils::MakeShape(trt_shape.data(),
+    status = TensorShapeUtils::MakeShape(trt_shape.data(),
                                               trt_shape.size(), &output_shape);
     if (!status.ok()) {
       LOG(ERROR) << "Failed to get output shape: " << status;
