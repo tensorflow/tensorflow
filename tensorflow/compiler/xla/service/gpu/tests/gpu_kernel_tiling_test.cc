@@ -790,6 +790,31 @@ ENTRY kernel_entry {
                      /*match_optimized_ir=*/true);
 }
 
+TEST_F(GpuKernelTilingTest, Hlo021CopyNoOobAccess) {
+  const char *const kHloString = R"(
+HloModule primitive_computation_svd.38
+
+%fused_computation (param_0.7: f32[3,29,29], param_1.10: pred[3]) -> f32[3,29,29] {
+  %param_1.10 = pred[3]{0} parameter(1)
+  %broadcast.7 = pred[3,29,29]{2,1,0} broadcast(pred[3]{0} %param_1.10), dimensions={0}
+  %param_0.7 = f32[3,29,29]{1,2,0} parameter(0)
+  %copy.6 = f32[3,29,29]{2,1,0} copy(f32[3,29,29]{1,2,0} %param_0.7)
+  %constant_1 = f32[] constant(nan)
+  %broadcast.6 = f32[3,29,29]{2,1,0} broadcast(f32[] %constant_1), dimensions={}
+  ROOT %select.0 = f32[3,29,29]{2,1,0} select(pred[3,29,29]{2,1,0} %broadcast.7, f32[3,29,29]{2,1,0} %copy.6, f32[3,29,29]{2,1,0} %broadcast.6)
+}
+
+ENTRY %primitive_computation_svd.38 (constant_5: f32[3,29,29], fusion.3: pred[3]) -> f32[3,29,29] {
+  %constant_5 = f32[3,29,29]{1,2,0} parameter(0)
+  %fusion.3 = pred[3]{0} parameter(1)
+  ROOT %fusion = f32[3,29,29]{2,1,0} fusion(f32[3,29,29]{1,2,0} %constant_5, pred[3]{0} %fusion.3), kind=kLoop, calls=%fused_computation
+}
+  )";
+
+  // Test against the OOB read due to a ptxas bug.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
