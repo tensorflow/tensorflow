@@ -265,6 +265,7 @@ cc_library(
     name = "xnnpack_delegate_provider",
     srcs = ["xnnpack_delegate_provider.cc"],
     copts = tflite_copts(),
+    linkstatic = True,
     visibility = ["//visibility:public"],
     deps = [
         ":benchmark_model_lib",
