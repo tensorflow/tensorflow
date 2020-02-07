@@ -15,6 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/random_op_cpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
@@ -25,10 +26,14 @@ namespace tensorflow {
 template <typename Distribution>
 struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& device,
-                  Distribution dist, int64 output_size, int64 alg_tag_skip,
-                  ScopedUnlockUnrefVar* state_var_guard, Tensor* state_tensor,
+                  Distribution dist, UpdateVariableAndFill_Philox_Arg* arg,
                   typename Distribution::ResultElementType* output_data)
       UNLOCK_FUNCTION() {
+    int64 output_size = arg->output_size;
+    int64 alg_tag_skip = arg->alg_tag_skip;
+    ScopedUnlockUnrefVar* state_var_guard = arg->not_used;
+    Tensor* state_tensor = arg->state_tensor;
+
     auto state_tensor_flat = state_tensor->flat<StateElementType>();
     auto state_data = state_tensor_flat.data();
     // Delegates to PhiloxRandom to do the actual increasing.
@@ -96,9 +101,14 @@ Status UpdateVariableAndFill(
     TF_RETURN_IF_ERROR(CheckPhiloxState(*var_tensor, alg_tag_skip));
     TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, StateElementType>(
         ctx, var_tensor, var->copy_on_read_mode.load()));
+
+    UpdateVariableAndFill_Philox_Arg arg;
+    arg.output_size = output_size;
+    arg.alg_tag_skip = alg_tag_skip;
+    arg.not_used = &state_var_guard;
+    arg.state_tensor = var_tensor;
     UpdateVariableAndFill_Philox<Device, Distribution>()(
-        ctx, ctx->eigen_device<Device>(), dist, output_size, alg_tag_skip,
-        &state_var_guard, var_tensor, output_data);
+        ctx, ctx->eigen_device<Device>(), dist, &arg, output_data);
     return Status::OK();
   } else {
     return errors::InvalidArgument("Unsupported algorithm id: ", alg);
@@ -113,7 +123,7 @@ void StatefulRandomCompute(OpKernelContext* ctx, Distribution dist,
   using T = typename Distribution::ResultElementType;
   const Tensor& shape_t = ctx->input(shape_input_idx);
   TensorShape shape;
-  OP_REQUIRES_OK(ctx, ctx->op_kernel().MakeShape(shape_t, &shape));
+  OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
   auto output_flat = output->flat<T>();
@@ -265,7 +275,7 @@ class NonDeterministicIntsOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& shape_t = ctx->input(0);
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->op_kernel().MakeShape(shape_t, &shape));
+    OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
     if (shape.num_elements() == 0) return;
@@ -393,7 +403,7 @@ TF_CALL_uint64(REGISTER_StatefulUniformFullInt_CPU);
 
 REGISTER_RngSkip(CPU);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_half(REGISTER_FloatOps_GPU);
 TF_CALL_float(REGISTER_FloatOps_GPU);

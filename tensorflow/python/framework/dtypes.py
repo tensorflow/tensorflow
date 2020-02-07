@@ -91,7 +91,7 @@ class DType(_dtypes.DType):
 
   @property
   def real_dtype(self):
-    """Returns the dtype correspond to this dtype's real part."""
+    """Returns the `DType` corresponding to this `DType`'s real part."""
     base = self.base_dtype
     if base == complex64:
       return float32
@@ -102,7 +102,7 @@ class DType(_dtypes.DType):
 
   @property
   def as_numpy_dtype(self):
-    """Returns a `numpy.dtype` based on this `DType`."""
+    """Returns a Python `type` object based on this `DType`."""
     return _TF_TO_NP[self._type_enum]
 
   @property

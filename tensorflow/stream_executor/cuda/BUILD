@@ -63,6 +63,7 @@ cc_library(
             "//tensorflow/stream_executor/platform",
         ],
     ) + tf_additional_cuda_platform_deps() + [
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

@@ -29,6 +29,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import sparse_tensor
@@ -536,6 +537,8 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           y = layer(x)
         grad_v1, grad_v2 = tape.gradient(y, [layer.v1, layer.v2])
         return grad_v1, grad_v2
+      if context.executing_eagerly():
+        run_fn = def_function.function(run_fn)
       grad_v1, grad_v2 = distribution.experimental_run_v2(run_fn)
       self.assertIsNotNone(grad_v1)
       self.assertIsNotNone(grad_v2)

@@ -80,7 +80,7 @@ class OpOrArgNameMapper {
 // to a specific name, a name based on the location of the operation or
 // value.
 class OpOrArgLocNameMapper : public OpOrArgNameMapper {
- private:
+ protected:
   std::string GetName(OpOrVal op_or_val) override;
 };
 

@@ -253,7 +253,8 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
   for (int node_index : nodes_) {
     TF_LITE_ENSURE_STATUS(
         context->GetNodeAndRegistration(context, node_index, &node, &reg));
-    auto* op_builder = builder_->AddNodeFromTfLiteOp(reg->builtin_code, node);
+    auto* op_builder =
+        builder_->AddNodeFromTfLiteOp(reg->builtin_code, node, node_index);
     TF_LITE_ENSURE_STATUS(
         op_builder->PopulateSubGraph(node->inputs, node->outputs, context));
     TF_LITE_ENSURE_STATUS(op_builder->RegisterOutputs(node->outputs, context));

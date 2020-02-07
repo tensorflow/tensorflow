@@ -553,49 +553,58 @@ Status DirectSession::RunInternal(
   }
 #endif
 
+  thread::ThreadPool* pool;
   // Use std::unique_ptr to ensure garbage collection
   std::unique_ptr<thread::ThreadPool> threadpool_wrapper;
-  thread::ThreadPool* pool = nullptr;
 
-  if (run_options.inter_op_thread_pool() < -1 ||
-      run_options.inter_op_thread_pool() >=
-          static_cast<int32>(thread_pools_.size())) {
-    return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
-                                   run_options.inter_op_thread_pool());
-  }
+  const bool inline_execution_requested =
+      run_in_caller_thread_ || run_options.inter_op_thread_pool() == -1;
 
-  if (run_in_caller_thread_) {
-    pool = nullptr;
-  } else if (threadpool_options.inter_op_threadpool != nullptr) {
-    threadpool_wrapper = absl::make_unique<thread::ThreadPool>(
-        threadpool_options.inter_op_threadpool);
-    pool = threadpool_wrapper.get();
-  } else if (run_options.inter_op_thread_pool() >= 0) {
-    pool = thread_pools_[run_options.inter_op_thread_pool()].first;
-  }
-
-  if (pool == nullptr) {
+  if (inline_execution_requested) {
     // We allow using the caller thread only when having a single executor
     // specified.
     if (executors_and_keys->items.size() > 1) {
       pool = thread_pools_[0].first;
     } else {
       VLOG(1) << "Executing Session::Run() synchronously!";
+      pool = nullptr;
     }
+  } else if (threadpool_options.inter_op_threadpool != nullptr) {
+    threadpool_wrapper = absl::make_unique<thread::ThreadPool>(
+        threadpool_options.inter_op_threadpool);
+    pool = threadpool_wrapper.get();
+  } else {
+    if (run_options.inter_op_thread_pool() < -1 ||
+        run_options.inter_op_thread_pool() >=
+            static_cast<int32>(thread_pools_.size())) {
+      return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
+                                     run_options.inter_op_thread_pool());
+    }
+
+    pool = thread_pools_[run_options.inter_op_thread_pool()].first;
   }
+
+  const int64 call_timeout = run_options.timeout_in_ms() > 0
+                                 ? run_options.timeout_in_ms()
+                                 : operation_timeout_in_ms_;
 
   std::unique_ptr<RunHandler> handler;
   if (ShouldUseRunHandlerPool(run_options) &&
       run_options.experimental().use_run_handler_pool()) {
     VLOG(1) << "Using RunHandler to scheduler inter-op closures.";
-    handler = GetOrCreateRunHandlerPool(options_)->Get(step_id);
+    handler = GetOrCreateRunHandlerPool(options_)->Get(step_id, call_timeout);
+    if (!handler) {
+      return errors::DeadlineExceeded(
+          "Could not obtain RunHandler for request after waiting for ",
+          call_timeout, "ms.");
+    }
   }
   auto* handler_ptr = handler.get();
 
   Executor::Args::Runner default_runner = nullptr;
 
   if (pool == nullptr) {
-    default_runner = [](Executor::Args::Closure c) { c(); };
+    default_runner = [](const Executor::Args::Closure& c) { c(); };
   } else if (handler_ptr != nullptr) {
     default_runner = [handler_ptr](Executor::Args::Closure c) {
       handler_ptr->ScheduleInterOpClosure(std::move(c));
@@ -607,10 +616,15 @@ Status DirectSession::RunInternal(
   }
 
   // Start parallel Executors.
-  const int64 call_timeout = run_options.timeout_in_ms() > 0
-                                 ? run_options.timeout_in_ms()
-                                 : operation_timeout_in_ms_;
-  const bool can_execute_synchronously = pool == nullptr && call_timeout == 0;
+
+  // We can execute this step synchronously on the calling thread whenever
+  // there is a single device and the timeout mechanism is not used.
+  //
+  // When timeouts are used, we must execute the graph(s) asynchronously, in
+  // order to invoke the cancellation manager on the calling thread if the
+  // timeout expires.
+  const bool can_execute_synchronously =
+      executors_and_keys->items.size() == 1 && call_timeout == 0;
 
   Executor::Args args;
   args.step_id = step_id;
@@ -624,6 +638,7 @@ Status DirectSession::RunInternal(
   args.step_container = &run_state.step_container;
   args.sync_on_finish = sync_on_finish_;
   args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
+  args.run_all_kernels_inline = pool == nullptr;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 

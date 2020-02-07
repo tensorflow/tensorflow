@@ -46,24 +46,28 @@ func @merge_same_device_variables(
 // Tests that the pass do not check devices for replicated region.
 
 // CHECK-LABEL: func @merge_replicated_variables
-// CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>
-// CHECK-SAME: %[[ARG_1:.*]]: tensor<!tf.string>
+// CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<!tf.string>,
+// CHECK-SAME: %[[ARG_2:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>,
+// CHECK-SAME: %[[ARG_3:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>
 func @merge_replicated_variables(
   %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
-  %arg1: tensor<!tf.string>) {
+  %arg1: tensor<!tf.string>,
+  %arg2: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg3: tensor<*x!tf.resource<tensor<32xf32>>>) {
   tf_executor.graph {
     // CHECK: tf_executor.island
     %island = tf_executor.island {
-      // CHECK-NEXT: tf_device.replicate {n = 2 : i32} {
-      tf_device.replicate {n = 2 : i32} {
-        %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
-        // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ARG_0]], %[[ARG_1]])
-        // CHECK-SAME: device_var_reads_indices = [0],
+      // CHECK-NEXT: %[[READ_0:.*]] = "tf.ReadVariableOp"(%[[ARG_0]])
+      %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      // CHECK-NEXT: tf_device.replicate([%[[ARG_2]], %[[ARG_3]]] as %[[R_ARG:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>)
+      tf_device.replicate([%arg2, %arg3] as %r: tensor<*x!tf.resource<tensor<32xf32>>>) {n = 2 : i32} {
+        // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[READ_0]], %[[R_ARG]], %[[ARG_1]])
+        // CHECK-SAME: device_var_reads_indices = [1],
         // CHECK-SAME: device_var_updates_indices = [0]
-        %execute = "tf.TPUExecute"(%read0, %arg1)
-          {Targs = [tensor<32xf32>], Tresults = [tensor<32xf32>]}
-          : (tensor<32xf32>, tensor<!tf.string>) -> tensor<32xf32>
-        "tf.AssignVariableOp"(%arg0, %execute) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        %read1 = "tf.ReadVariableOp"(%r) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        %execute = "tf.TPUExecute"(%read0, %read1, %arg1)
+          : (tensor<32xf32>, tensor<32xf32>, tensor<!tf.string>) -> tensor<32xf32>
+        "tf.AssignVariableOp"(%r, %execute) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
         // CHECK-NEXT: tf_device.return
         tf_device.return
       // CHECK-NEXT: }

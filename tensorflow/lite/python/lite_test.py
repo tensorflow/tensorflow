@@ -59,12 +59,8 @@ class LiteTest(test_util.TensorFlowTestCase):
   """Base class of all the tests in this module."""
 
   def setUp(self):
-    # Some cases are broken when we enable the new converter by default.
-    # Explicitly disabling it for now.
-    # TODO(b/145763157): Investigate if these are real issues.
     self._original_use_experimental_new_converter = (
         lite._USE_EXPERIMENTAL_NEW_CONVERTER)
-    lite._USE_EXPERIMENTAL_NEW_CONVERTER = False
     super(LiteTest, self).setUp()
 
   def tearDown(self):
@@ -157,6 +153,25 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testForgottenCallToAllocateTensors(self):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_index = interpreter.get_input_details()[0]['index']
+    dummy_tensor = np.ones(shape=[1, 16, 16, 3], dtype=np.float32)
+    with self.assertRaises(ValueError):
+      interpreter.set_tensor(input_index, dummy_tensor)
 
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
@@ -303,9 +318,11 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       out_tensor = in_tensor + in_tensor
       sess = session.Session()
 
-    # Test None as shape.
+    # Test None as shape when dynamic shapes are disabled. Run with TOCO in
+    # order to invoke shape checking code.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
+    converter.experimental_new_converter = False
     with self.assertRaises(ValueError) as error:
       converter.convert()
     self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
@@ -360,15 +377,55 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       out_tensor = in_tensor + in_tensor
       sess = session.Session()
 
-    # Test invalid shape. None after 1st dimension.
+    # Test invalid shape. None after 1st dimension. Run with TOCO in order to
+    # invoke shape checking code.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
+    converter.experimental_new_converter = False
     with self.assertRaises(ValueError) as error:
       converter.convert()
     self.assertEqual(
         'None is only supported in the 1st dimension. Tensor '
         '\'Placeholder\' has invalid shape \'[1, None, 16, 3]\'.',
         str(error.exception))
+
+  def testSizeNone(self):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, None, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Test None after 1st dimension.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 1, 16, 3] == input_details[0]['shape']).all())
+    self.assertTrue(([1, -1, 16,
+                      3] == input_details[0]['shape_signature']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    # Resize tensor and invoke.
+    interpreter.resize_tensor_input(0, [1, 16, 16, 3])
+    interpreter.allocate_tensors()
+    interpreter.invoke()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertTrue(([1, -1, 16,
+                      3] == input_details[0]['shape_signature']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertFalse(output_details[0]['shape_signature'])
 
   def testBatchSizeValid(self):
     with ops.Graph().as_default():
@@ -512,6 +569,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       # Convert model and ensure model is not None.
       converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                     [out_tensor])
+      converter.experimental_new_converter = enable_mlir
       graphviz_dir = self.get_temp_dir()
       converter.dump_graphviz_dir = graphviz_dir
       converter.dump_graphviz_video = True
@@ -552,6 +610,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
+    converter.experimental_new_converter = False
     log_dir = self.get_temp_dir()
     converter.conversion_summary_dir = log_dir
     tflite_model = converter.convert()
@@ -1469,33 +1528,6 @@ class FromFrozenGraphObjectDetection(LiteTest):
     self.assertEqual('TFLite_Detection_PostProcess:3',
                      output_details[3]['name'])
     self.assertTrue(([1] == output_details[3]['shape']).all())
-
-  def testTFLiteGraphDefMissingShape(self):
-    # Tests invalid cases for the model that cannot be loaded in TensorFlow.
-    self._initObjectDetectionArgs()
-
-    # Missing `input_shapes`.
-    with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
-                                             self._input_arrays,
-                                             self._output_arrays)
-    self.assertEqual('input_shapes must be defined for this model.',
-                     str(error.exception))
-
-  def testTFLiteGraphDefInvalidShape(self):
-    # Tests invalid cases for the model that cannot be loaded in TensorFlow.
-    self._initObjectDetectionArgs()
-
-    # `input_shapes` does not contain the names in `input_arrays`.
-    with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter.from_frozen_graph(
-          self._graph_def_file,
-          self._input_arrays,
-          self._output_arrays,
-          input_shapes={'invalid-value': [1, 19]})
-    self.assertEqual(
-        'input_shapes must contain a value for each item in input_array.',
-        str(error.exception))
 
 
 class FromSavedModelTest(TestModels):

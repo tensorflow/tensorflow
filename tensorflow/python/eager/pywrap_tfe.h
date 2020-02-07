@@ -257,7 +257,6 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
 // correctly formatted (i.e. EagerTensors). If it doesn't find EagerTensors,
 // it will simply fail with a NotImplementedError.
 //
-// The first PyObject* is unused.
 // The "args" PyObject* is meant to be a tuple with the following structure:
 //  Item 1: The TFE Context
 //  Item 2: device_name: Name of the device on which to execute the operation,
@@ -272,7 +271,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
 // This is named _C since there doesn't seem to be any way to make it visible
 // in the SWIG interface without renaming due to the use of the %native
 // directive.
-PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
+PyObject* TFE_Py_FastPathExecute_C(PyObject* args);
 
 // Record the gradient for a given op.
 PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,

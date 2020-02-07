@@ -35,7 +35,7 @@ def _forward_over_back_hvp(model, images, labels, vector):
       model.trainable_variables, vector) as acc:
     with tf.GradientTape() as grad_tape:
       logits = model(images, training=True)
-      loss = tf.losses.softmax_cross_entropy(
+      loss = tf.compat.v1.losses.softmax_cross_entropy(
           logits=logits, onehot_labels=labels)
     grads = grad_tape.gradient(loss, model.trainable_variables)
   return acc.jvp(grads)
@@ -47,7 +47,7 @@ def _back_over_forward_hvp(model, images, labels, vector):
     with forwardprop.ForwardAccumulator(
         model.trainable_variables, vector) as acc:
       logits = model(images, training=True)
-      loss = tf.losses.softmax_cross_entropy(
+      loss = tf.compat.v1.losses.softmax_cross_entropy(
           logits=logits, onehot_labels=labels)
   return grad_tape.gradient(acc.jvp(loss), model.trainable_variables)
 
@@ -55,7 +55,7 @@ def _back_over_forward_hvp(model, images, labels, vector):
 def _tf_gradients_forward_over_back_hvp(model, images, labels, vector):
   with tf.GradientTape() as grad_tape:
     logits = model(images, training=True)
-    loss = tf.losses.softmax_cross_entropy(
+    loss = tf.compat.v1.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
   variables = model.trainable_variables
   grads = grad_tape.gradient(loss, variables)
@@ -68,7 +68,7 @@ def _back_over_back_hvp(model, images, labels, vector):
   with tf.GradientTape() as outer_tape:
     with tf.GradientTape() as inner_tape:
       logits = model(images, training=True)
-      loss = tf.losses.softmax_cross_entropy(
+      loss = tf.compat.v1.losses.softmax_cross_entropy(
           logits=logits, onehot_labels=labels)
     grads = inner_tape.gradient(loss, model.trainable_variables)
   return outer_tape.gradient(

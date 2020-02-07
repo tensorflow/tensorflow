@@ -49,17 +49,23 @@ inline void RunCpuid(std::uint32_t eax, std::uint32_t ecx,
 }  // namespace
 
 bool DetectCpuSse42() {
-  constexpr std::uint32_t kEcxSse42 = 1u << 20;
-  constexpr std::uint32_t kEcxAbm = 1u << 5;
-
   std::uint32_t abcd[4];
 
+  constexpr std::uint32_t kEcxSse42 = 1u << 20;
   RunCpuid(1, 0, abcd);
   const bool has_sse4_2_base = (abcd[2] & kEcxSse42) == kEcxSse42;
-  RunCpuid(0x80000001, 0, abcd);
-  const bool has_abm = (abcd[2] & kEcxAbm) == kEcxAbm;
 
-  return has_sse4_2_base && has_abm;
+#ifdef RUY_ENABLE_AMD_CPUID_CHECKS
+  constexpr std::uint32_t kEcxAbm = 1u << 5;
+  RunCpuid(0x80000001, 0, abcd);
+  const bool has_extras = (abcd[2] & kEcxAbm) == kEcxAbm;
+#else
+  constexpr std::uint32_t kEcxPopcnt = 1u << 23;
+  RunCpuid(1, 0, abcd);
+  const bool has_extras = (abcd[2] & kEcxPopcnt) == kEcxPopcnt;
+#endif
+
+  return has_sse4_2_base && has_extras;
 }
 
 bool DetectCpuAvx2() {

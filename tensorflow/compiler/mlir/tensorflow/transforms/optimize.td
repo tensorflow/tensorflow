@@ -22,10 +22,12 @@ def BroadcastableElements :
 def F32ElementsAttr : ElementsAttrBase<
     CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 def DefinedByConv2D : Constraint<CPred<"llvm::isa_and_nonnull<mlir::TF::Conv2DOp>($0.getDefiningOp())">>;
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 // If we see a Conv2D op followed by Mul, then multiply the filter
 // with the value in Mul.
-def FuseMulAndConv2D : Pat<(TF_MulOp (TF_Conv2DOp $input,
+def FuseMulAndConv2D : Pat<(TF_MulOp (TF_Conv2DOp:$output $input,
                           (ConstantOp F32ElementsAttr:$filter),
                           $strides,
                           $use_cudnn,
@@ -41,7 +43,7 @@ def FuseMulAndConv2D : Pat<(TF_MulOp (TF_Conv2DOp $input,
                        $use_cudnn,
                        $padding, $explicit_padding, $data_format,
                        $dilations),
-          [(BroadcastableElements $filter, $value)]>;
+          [(BroadcastableElements $filter, $value), (HasOneUse $output)]>;
 
 // This rule does the following pattern match and rewrite:
 //
@@ -57,13 +59,13 @@ def FuseMulAndConv2D : Pat<(TF_MulOp (TF_Conv2DOp $input,
 // to AddV2 op.
 def PassthroughMulAndBiasAdd :
   Pat<(TF_MulOp
-        (TF_BiasAddOp $input,
+        (TF_BiasAddOp:$output $input,
           (ConstantOp F32ElementsAttr:$bias), IsDataFormatNHWC:$format),
         (ConstantOp F32ElementsAttr:$value)),
       (TF_AddV2Op
           (TF_MulOp $input, (ConstantOp $value)),
           (TF_MulOp (ConstantOp $bias), (ConstantOp $value))),
-      [(DefinedByConv2D $input)]>;
+      [(DefinedByConv2D $input), (HasOneUse $output)]>;
 
 
 // This rule does the following pattern match and rewrite:
@@ -76,9 +78,9 @@ def PassthroughMulAndBiasAdd :
 // This is to enable the FuseMulAndConv2D pattern.
 def PassthroughMulAndAddV2 :
   Pat<(TF_MulOp
-        (TF_AddV2Op $input, (ConstantOp F32ElementsAttr:$bias)),
+        (TF_AddV2Op:$output $input, (ConstantOp F32ElementsAttr:$bias)),
         (ConstantOp F32ElementsAttr:$value)),
       (TF_AddV2Op
           (TF_MulOp $input, (ConstantOp $value)),
           (TF_MulOp (ConstantOp $bias), (ConstantOp $value))),
-      [(DefinedByConv2D $input)]>;
+      [(DefinedByConv2D $input), (HasOneUse $output)]>;

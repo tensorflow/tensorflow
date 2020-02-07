@@ -62,7 +62,7 @@ class ResourceAliasAnalysis {
 
 // An analysis that runs on a function and infers the control predecessors and
 // successors for each op, based on side-effects on known and unknown resources.
-// Side-effecting ops on uknown resources are conservatively treated as
+// Side-effecting ops on unknown resources are conservatively treated as
 // interfering with all known resource op accesses. It distinguishes accesses
 // based on whether they are read-only, and read-only ops do not interfer with
 // each other.

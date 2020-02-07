@@ -53,6 +53,19 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "cluster.h",
+        "single_machine.h",
+        "utils.h",
+        "virtual_cluster.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "cluster",
     srcs = ["cluster.cc"],

@@ -40,8 +40,9 @@ import threading
 
 from tensorflow.python import _pywrap_events_writer
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import eager_util as c_api_util
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -101,7 +102,7 @@ def stop():
       context.context().executor.wait()
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_ProfilerSerializeToString(_profiler, buffer_)
-      result = pywrap_tfe.TF_GetBuffer(buffer_)
+      result = pywrap_tf_session.TF_GetBuffer(buffer_)
     pywrap_tfe.TFE_DeleteProfiler(_profiler)
     _profiler = None
     _run_num += 1

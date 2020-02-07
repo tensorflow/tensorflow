@@ -355,10 +355,8 @@ func @testConv2DNoBias(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf3
 // CHECK-LABEL: testFakeQuant
 func @testFakeQuant(tensor<? x f32>, f32, f32) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: f32, %arg2: f32):
-  // CHECK: %0 = "tfl.fake_quant"(%arg0)  {minmax = [], narrow_range = true, num_bits = 2 : i32} : (tensor<?xf32>) -> tensor<?xf32>
-  %0 = "tfl.fake_quant"(%arg0) {minmax = [], num_bits = 2 : i32, narrow_range = true} : (tensor<? x f32>) -> tensor<? x f32>
-  // CHECK: %1 = "tfl.fake_quant"(%0)  {minmax = [3.000000e-01, 1.400000e+00], narrow_range = false, num_bits = 6 : i32} : (tensor<?xf32>) -> tensor<?xf32>
-  %1 = "tfl.fake_quant"(%0) {num_bits = 6 : i32, narrow_range = false, minmax = [0.3, 1.4]} : (tensor<? x f32>) -> tensor<? x f32>
+  // CHECK: "tfl.fake_quant"(%arg0)  {max = 1.400000e+00 : f32, min = 3.000000e-01 : f32, narrow_range = false, num_bits = 6 : i32} : (tensor<?xf32>) -> tensor<?xf32>
+  %1 = "tfl.fake_quant"(%arg0) {num_bits = 6 : i32, narrow_range = false, min = 0.3:f32, max = 1.4:f32} : (tensor<? x f32>) -> tensor<? x f32>
   return %1 : tensor<? x f32>
 }
 
@@ -1085,8 +1083,8 @@ func @testConcatBenignDynamicDimSizeOperand(%arg0: tensor<1x?xi32>, %arg1: tenso
 
 // CHECK-LABEL: testResizeBilinear
 func @testResizeBilinear(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xf32> {
-  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false}
-  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false}
+  %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -1976,4 +1974,13 @@ func @testTransposeConvBadOutputShape(%arg1: tensor<32x4x4x128xf32>, %arg2: tens
   // expected-error @+1 {{expect output type tensor<1x64x84x32xf32>, got tensor<1x64x84x31xf32>}}
   %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<1x64x84x31xf32>
   return %0 : tensor<1x64x84x31xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testDensify
+func @testDensify(%arg0: tensor<? x f32>) -> tensor<? x f32> {
+  // CHECK: "tfl.densify"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tfl.densify"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
+  return %0 : tensor<? x f32>
 }

@@ -28,7 +28,7 @@ import wrapt
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import pywrap_tensorflow as tf_session
+from tensorflow.python.client import pywrap_tf_session as tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device

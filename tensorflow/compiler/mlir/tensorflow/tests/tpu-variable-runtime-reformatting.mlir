@@ -64,7 +64,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: [%[[STATE_ARG0]], %[[STATE_ARG1]]] as %[[R_STATE:.*]]: tensor<!tf.resource<tensor<2x!tf.string>>>
     tf_device.replicate([%arg1, %arg2] as %arg30: tensor<*x!tf.resource<tensor<f32>>>,
                         [%arg3, %arg4] as %arg31: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
-            {_mirrored_variable_indices = [0, 1], devices = ["/device:TPU:0", "/device:TPU:1"], n = 2 : i32} {
+            {_mirrored_variable_indices = [0, 1], devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}, n = 2 : i32} {
       // CHECK: %[[ID:.*]] = "tf.Identity"(%[[R0]])
       %id = "tf.Identity"(%arg30) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>>
       // CHECK: "tf.TPUReshardVariables"(%[[ID]], %[[R1]], %[[COMPILE]]#1, %[[R_STATE]])
@@ -135,7 +135,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %new_var = "tf._UnknownOp0_"(%arg3) : (tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>) -> tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>
     tf_device.replicate([%arg1, %arg2] as %arg30: tensor<*x!tf.resource<tensor<f32>>>,
                         [%new_var, %arg4] as %arg31: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
-            {_mirrored_variable_indices = [0, 1], devices = ["/device:TPU:0", "/device:TPU:1"], n = 2 : i32} {
+            {_mirrored_variable_indices = [0, 1], devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}, n = 2 : i32} {
       // %arg30 is used in the cond function, and %arg31 is not pass-through of
       // while inputs, so neither should be formatted.
       "tf.TPUExecuteAndUpdateVariables"(%arg30, %arg31, %2#1)

@@ -46,20 +46,18 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // An easier approach is to just use the AllOpsResolver, but this will
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
-  static tflite::MicroMutableOpResolver micro_mutable_op_resolver;  // NOLINT
-  micro_mutable_op_resolver.AddBuiltin(
+  static tflite::MicroOpResolver<5> micro_op_resolver;  // NOLINT
+  micro_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_MAX_POOL_2D,
-      tflite::ops::micro::Register_MAX_POOL_2D());
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                                       tflite::ops::micro::Register_CONV_2D());
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_FULLY_CONNECTED,
-      tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                                       tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_MAX_POOL_2D,
+                               tflite::ops::micro::Register_MAX_POOL_2D());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
+                               tflite::ops::micro::Register_CONV_2D());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
+                               tflite::ops::micro::Register_FULLY_CONNECTED());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
+                               tflite::ops::micro::Register_SOFTMAX());
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   // Finding the minimum value for your model may require some trial and error.
@@ -67,9 +65,8 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   uint8_t tensor_arena[tensor_arena_size];
 
   // Build an interpreter to run the model with
-  tflite::MicroInterpreter interpreter(model, micro_mutable_op_resolver,
-                                       tensor_arena, tensor_arena_size,
-                                       error_reporter);
+  tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
+                                       tensor_arena_size, error_reporter);
 
   // Allocate memory from the tensor_arena for the model's tensors
   interpreter.AllocateTensors();

@@ -115,6 +115,11 @@ class BFCAllocator : public Allocator {
   bool MergeTimestampedChunks(size_t required_bytes)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+  // Add TraceMe (in memory allocation and deallocation) for memory stats
+  // profiling.
+  void AddTraceMe(absl::string_view traceme_name)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
   typedef size_t ChunkHandle;
@@ -405,10 +410,6 @@ class BFCAllocator : public Allocator {
   // contiguous in their allocation.
   void Merge(ChunkHandle h, ChunkHandle h2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  // Frees the memory represented by 'h', coalescing the chunk if
-  // possible.
-  void FreeAndMaybeCoalesce(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
   // Adds the chunk 'h' to the proper free bin.
   void InsertFreeChunkIntoBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
@@ -441,6 +442,10 @@ class BFCAllocator : public Allocator {
 
   ChunkHandle TryToCoalesce(ChunkHandle h, bool ignore_freed_at)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Fragmentation is calculated as the reverse ratio of the largest free chunk
+  // size over total free memory, and returns a value within [0, 1].
+  double GetFragmentation() EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Information about a Bin that is useful for debugging.
   struct BinDebugInfo {

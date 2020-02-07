@@ -47,7 +47,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, affine_quantization->scale);
   TF_LITE_ENSURE(context, affine_quantization->scale->size == 1);
 
-  TF_LITE_ENSURE(context, input->type == kTfLiteFloat32);
+  TF_LITE_ENSURE(context,
+                 input->type == kTfLiteFloat32 || input->type == kTfLiteInt16);
   TF_LITE_ENSURE(context,
                  output->type == kTfLiteUInt8 || output->type == kTfLiteInt8);
 
@@ -60,22 +61,45 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   tflite::QuantizationParams op_params;
   op_params.zero_point = output->params.zero_point;
-  op_params.scale = output->params.scale;
-  switch (output->type) {
-    case kTfLiteInt8:
-      reference_ops::AffineQuantize(
-          op_params, GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
-      break;
-    case kTfLiteUInt8:
-      reference_ops::AffineQuantize(
-          op_params, GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
-      break;
-    default:
-      context->ReportError(context, "Output type %s (%d) not supported",
-                           TfLiteTypeGetName(input->type), output->type);
-      return kTfLiteError;
+  op_params.scale = static_cast<double>(output->params.scale);
+
+  if (input->type == kTfLiteFloat32) {
+    switch (output->type) {
+      case kTfLiteInt8:
+        reference_ops::AffineQuantize(
+            op_params, GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+        break;
+      case kTfLiteUInt8:
+        reference_ops::AffineQuantize(
+            op_params, GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+        break;
+      default:
+        context->ReportError(context, "Input %s, output %s not supported.",
+                             TfLiteTypeGetName(input->type),
+                             TfLiteTypeGetName(output->type));
+        return kTfLiteError;
+    }
+  } else if (input->type == kTfLiteInt16) {
+    switch (output->type) {
+      case kTfLiteInt8:
+        reference_ops::AffineQuantize(
+            op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+        break;
+
+      default:
+        context->ReportError(context, "Input %s, output %s not supported.",
+                             TfLiteTypeGetName(input->type),
+                             TfLiteTypeGetName(output->type));
+        return kTfLiteError;
+    }
+  } else {
+    context->ReportError(context, "Input %s, output %s not supported.",
+                         TfLiteTypeGetName(input->type),
+                         TfLiteTypeGetName(output->type));
+    return kTfLiteError;
   }
 
   return kTfLiteOk;
@@ -87,8 +111,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {quantize::Init, quantize::Free,
-                                 quantize::Prepare, quantize::Eval};
+  static TfLiteRegistration r = {};
+  r.init = quantize::Init;
+  r.free = quantize::Free;
+  r.prepare = quantize::Prepare;
+  r.invoke = quantize::Eval;
   return &r;
 }
 

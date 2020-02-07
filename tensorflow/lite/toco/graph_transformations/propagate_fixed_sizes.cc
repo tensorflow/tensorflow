@@ -2442,6 +2442,8 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
       // MatrixSetDiagV3 operators are converted to MatrixSetDiag, after which
       // their shapes are propagated.
       break;
+    case OperatorType::kSegmentSum:
+      break;
     default:
       // Unimplemented, another graph transformation should drop it.
       LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(op->type);

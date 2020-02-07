@@ -559,16 +559,43 @@ TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
   return kTfLiteOk;
 }
 
+namespace {
+// Multiply two sizes and return true if overflow occurred;
+// This is based off tensorflow/overflow.h but is simpler as we already
+// have unsigned numbers. It is also generalized to work where sizeof(size_t)
+// is not 8.
+TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
+  // Multiplying a * b where a and b are size_t cannot result in overflow in a
+  // size_t accumulator if both numbers have no non-zero bits in their upper
+  // half.
+  constexpr size_t size_t_bits = 8 * sizeof(size_t);
+  constexpr size_t overflow_upper_half_bit_position = size_t_bits / 2;
+  *product = a * b;
+  // If neither integers have non-zero bits past 32 bits can't overflow.
+  // Otherwise check using slow devision.
+  if (TFLITE_EXPECT_FALSE((a | b) >> overflow_upper_half_bit_position != 0)) {
+    if (a != 0 && *product / a != b) return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+}  // namespace
+
 TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
                                      size_t dims_size, size_t* bytes) {
-  // TODO(aselle): Check for overflow here using overflow.h in TensorFlow
-  // MultiplyWithoutOverflow.
   TF_LITE_ENSURE(&context_, bytes != nullptr);
   size_t count = 1;
-  for (int k = 0; k < dims_size; k++) count *= dims[k];
+  for (int k = 0; k < dims_size; k++) {
+    size_t old_count = count;
+    TF_LITE_ENSURE_MSG(
+        &context_,
+        MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
+        "BytesRequired number of elements overflowed.\n");
+  }
   size_t type_size = 0;
   TF_LITE_ENSURE_OK(&context_, GetSizeOfType(&context_, type, &type_size));
-  *bytes = type_size * count;
+  TF_LITE_ENSURE_MSG(
+      &context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
+      "BytesRequired number of bytes overflowed.\n");
   return kTfLiteOk;
 }
 
@@ -893,16 +920,13 @@ TfLiteStatus Subgraph::Invoke() {
       // This happens when an intermediate dynamic tensor is resized.
       // We don't have to prepare all the ops, but we need to recompute
       // the allocation plan.
-      //
-      // This is a workaround for b/127354079. It relies on the property that
-      // ArenaPlanner's behavior is deterministic. A better solution is being
-      // able to "Rewind" to a specific index in ArenaPlanner.
-      // TODO(b/127354079): Improve ArenaPlanner and remove this mechanism.
       if (next_execution_plan_index_to_plan_allocation_ >
           next_execution_plan_index_to_prepare_) {
-        next_execution_plan_index_to_plan_allocation_ = 0;
+        next_execution_plan_index_to_plan_allocation_ =
+            next_execution_plan_index_to_prepare_;
         if (memory_planner_) {
-          TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
+          TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocationsAfter(
+              next_execution_plan_index_to_plan_allocation_ - 1));
         }
       }
     }
@@ -1050,7 +1074,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 // to Interpreter.
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantization quantization, bool is_variable) {
+    const int* dims, TfLiteQuantization quantization, bool is_variable,
+    const size_t rank_dims_signature, const int* dims_signature) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
@@ -1090,6 +1115,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
   // if there are other required callers.
   tensor.quantization = *scoped_quantization.release();
+  tensor.dims_signature =
+      ConvertArrayToTfLiteIntArray(rank_dims_signature, dims_signature);
   return kTfLiteOk;
 }
 

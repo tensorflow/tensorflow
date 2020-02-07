@@ -121,7 +121,7 @@ Reshapex4& Reshapex4::operator=(Reshapex4&& operation) {
 }
 
 Status Reshapex4::Compile(const CreationContext& creation_context) {
-  const auto code = definition_.batch_support
+  const auto code = definition_.IsBatchSupported()
                         ? GetReshapeBatchedCode(definition_, linked_operations_)
                         : GetReshapeCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(

@@ -174,6 +174,35 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self,))
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_early_stopping(self, mode):
+
+    def proc_early_stopping(test_obj):
+
+      class EpochCounterCallback(callbacks.Callback):
+
+        def on_epoch_begin(self, epoch, logs):
+          self.last_epoch = epoch
+
+      model, _, train_ds, steps = _model_setup(test_obj, file_format='')
+      epoch_counter_cbk = EpochCounterCallback()
+      cbks = [
+          callbacks.EarlyStopping(
+              monitor='loss', min_delta=0.05, patience=1, verbose=1),
+          epoch_counter_cbk
+      ]
+
+      # Empirically, it is expected that `model.fit()` terminates around the
+      # 22th epoch. Asserting that it should have been stopped before the 50th
+      # epoch to avoid flakiness and be more predictable.
+      model.fit(x=train_ds, epochs=100, steps_per_epoch=steps, callbacks=cbks)
+      test_obj.assertLess(epoch_counter_cbk.last_epoch, 50)
+
+    multi_process_runner.run(
+        proc_early_stopping,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self,))
+
 
 if __name__ == '__main__':
   multi_process_runner.test_main()

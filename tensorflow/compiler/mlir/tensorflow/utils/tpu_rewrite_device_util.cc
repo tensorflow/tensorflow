@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -31,6 +32,7 @@ namespace tensorflow {
 
 constexpr char kDeviceTPUSystem[] = "TPU_SYSTEM";
 constexpr char kDeviceTPU[] = "TPU";
+constexpr char kTPUReplicatedCore[] = "TPU_REPLICATED_CORE";
 
 using Device = DeviceNameUtils::ParsedName;
 using Devices = llvm::ArrayRef<DeviceNameUtils::ParsedName>;
@@ -188,6 +190,10 @@ Status GetTPUCompilationAndExecutionDevices(
   }
 
   return Status::OK();
+}
+
+std::string GetDeviceAliasForLogicalCore(int core_index) {
+  return llvm::formatv("{0}_{1}", kTPUReplicatedCore, core_index);
 }
 
 }  // namespace tensorflow

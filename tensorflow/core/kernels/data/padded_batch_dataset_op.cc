@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -58,7 +59,10 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         padded_shapes_(std::move(padded_shapes)),
         padding_values_(std::move(padding_values)),
         input_(input),
-        op_version_(op_version) {
+        op_version_(op_version),
+        traceme_metadata_(
+            {{"batch_size", strings::Printf("%lld", batch_size)},
+             {"drop_remainder", drop_remainder ? "true" : "false"}}) {
     input_->Ref();
 
     // NOTE(mrry): Currently we implement "batch up to" semantics. If we could
@@ -175,14 +179,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    string BuildTraceMeName() override {
-      return strings::StrCat(prefix(), "#batch_size=", dataset()->batch_size_,
-                             ",drop_remainder=", dataset()->drop_remainder_,
-                             "#");
-    }
-
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -360,10 +358,14 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         input_impl_.reset();
       } else {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
       return Status::OK();
+    }
+
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
     }
 
    private:
@@ -379,6 +381,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
   const DatasetBase* const input_;
   const int op_version_;
   std::vector<PartialTensorShape> output_shapes_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 PaddedBatchDatasetOp::PaddedBatchDatasetOp(OpKernelConstruction* ctx)

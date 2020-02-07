@@ -23,17 +23,17 @@ namespace tflite {
 namespace optimize {
 namespace calibration {
 
-TfLiteStatus MinMax::Update(const float* values, size_t tensor_size) {
+TfLiteStatus MinMax::Update(const float* values, size_t tensor_size,
+                            ErrorReporter* error_reporter) {
   if (tensor_size <= 0) return kTfLiteOk;
 
   // TODO(shashishekhar): Make it possible to use weighted/moving average.
   for (size_t i = 0; i < tensor_size; ++i) {
     if (std::isnan(values[i])) {
-      // TODO(suharshs): Propagate ErrorReporter here.
-      TFLITE_LOG(tflite::TFLITE_LOG_ERROR,
-                 "Model resulted in Nan value during calibration. Please "
-                 "make sure model results in all real-values during "
-                 "inference with provided dataset.");
+      error_reporter->Report(
+          "Model resulted in Nan value during calibration. Please "
+          "make sure model results in all real-values during "
+          "inference with provided dataset.");
       return kTfLiteError;
     }
   }

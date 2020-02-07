@@ -55,6 +55,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
@@ -2496,6 +2497,7 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Conj", math_ops.conj)
 @RegisterPForWithArgs("Cos", math_ops.cos)
 @RegisterPForWithArgs("Cosh", math_ops.cosh)
+@RegisterPForWithArgs("Dawsn", special_math_ops.dawsn)
 @RegisterPForWithArgs("Digamma", math_ops.digamma)
 @RegisterPForWithArgs("Div", math_ops.div)
 @RegisterPForWithArgs("DivNoNan", math_ops.div_no_nan)
@@ -2504,10 +2506,13 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Erfc", math_ops.erfc)
 @RegisterPForWithArgs("Erfinv", math_ops.erfinv)
 @RegisterPForWithArgs("Exp", math_ops.exp)
+@RegisterPForWithArgs("Expint", special_math_ops.expint)
 @RegisterPForWithArgs("Expm1", math_ops.expm1)
 @RegisterPForWithArgs("Floor", math_ops.floor)
 @RegisterPForWithArgs("FloorDiv", math_ops.floor_div)
 @RegisterPForWithArgs("FloorMod", math_ops.floor_mod)
+@RegisterPForWithArgs("FresnelCos", special_math_ops.fresnel_cos)
+@RegisterPForWithArgs("FresnelSin", special_math_ops.fresnel_sin)
 @RegisterPForWithArgs("Greater", math_ops.greater)
 @RegisterPForWithArgs("GreaterEqual", math_ops.greater_equal)
 @RegisterPForWithArgs("Igamma", math_ops.igamma)
@@ -2554,6 +2559,7 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Sinh", math_ops.sinh)
 @RegisterPForWithArgs("Softplus", nn_ops.softplus)
 @RegisterPForWithArgs("Softsign", nn_ops.softsign)
+@RegisterPForWithArgs("Spence", special_math_ops.spence)
 @RegisterPForWithArgs("Sqrt", math_ops.sqrt)
 @RegisterPForWithArgs("Square", math_ops.square)
 @RegisterPForWithArgs("SquaredDifference", math_ops.squared_difference)
@@ -2564,6 +2570,7 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("TruncateMod", math_ops.truncate_mod)
 @RegisterPForWithArgs("Xdivy", math_ops.xdivy)
 @RegisterPForWithArgs("Xlogy", math_ops.xlogy)
+@RegisterPForWithArgs("Xlog1py", math_ops.xlog1py)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
 def _convert_cwise(pfor_input, op_type, op_func):
   # Note that ops handled here do not have attributes except those listed below
@@ -2871,9 +2878,9 @@ def _convert_log_matrix_determinant(pfor_input):
 
 @RegisterPFor("MatrixTriangularSolve")
 def _convert_matrix_triangular_solve(pfor_input):
-  pfor_input.stack_inputs()
-  matrix = pfor_input.stacked_input(0)
-  rhs = pfor_input.stacked_input(1)
+  pfor_input.expanddim_inputs_for_broadcast()
+  matrix = pfor_input.input(0)[0]
+  rhs = pfor_input.input(1)[0]
   lower = pfor_input.get_attr("lower")
   adjoint = pfor_input.get_attr("adjoint")
   output = linalg_ops.matrix_triangular_solve(
