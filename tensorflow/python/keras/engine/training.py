@@ -28,7 +28,6 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -36,7 +35,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
@@ -52,6 +50,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
@@ -285,7 +284,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             dictionary or a list of modes.
         weighted_metrics: List of metrics to be evaluated and weighted
             by sample_weight or class_weight during training and testing.
-        **kwargs: Any additional arguments. For eager execution, pass 
+        **kwargs: Any additional arguments. For eager execution, pass
             `run_eagerly=True`.
 
     Raises:
@@ -2232,21 +2231,14 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         converted_x.append(_convert_scipy_sparse_tensor(a, b))
       x = nest.pack_sequence_as(x, converted_x, expand_composites=False)
 
-      def _type_spec_from_value(value):
-        """Grab type_spec without converting array-likes to tensors."""
-        if isinstance(value, composite_tensor.CompositeTensor):
-          return value._type_spec  # pylint: disable=protected-access
-        # Get a TensorSpec for array-like data without
-        # converting the data to a Tensor
-        if hasattr(value, 'shape') and hasattr(value, 'dtype'):
-          return tensor_spec.TensorSpec(value.shape, value.dtype)
-        else:
-          return type_spec.type_spec_from_value(value)
-
-      x_shapes = nest.map_structure(_type_spec_from_value, x)
+      x_shapes = nest.map_structure(tf_utils.type_spec_from_value, x)
 
     flat_inputs = nest.flatten(x_shapes, expand_composites=False)
-    flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
+
+    x_expected_shapes = nest.map_structure(tf_utils.type_spec_from_value,
+                                           self.inputs)
+    flat_expected_inputs = nest.flatten(
+        x_expected_shapes, expand_composites=False)
     for (a, b) in zip(flat_inputs, flat_expected_inputs):
       nest.assert_same_structure(a, b, expand_composites=True)
 

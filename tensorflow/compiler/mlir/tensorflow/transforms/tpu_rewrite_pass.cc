@@ -469,10 +469,14 @@ LogicalResult Rewrite(
   // replicate. Otherwise there is only one execution device and the device is
   // assigned to the execute op.
   if (replicate) {
-    llvm::SmallVector<llvm::StringRef, 8> execution_device_refs(
-        execution_devices.begin(), execution_devices.end());
-    replicate.setAttr(kDevicesAttr,
-                      builder->getStrArrayAttr(execution_device_refs));
+    // Model parallelism is not support for now. Therefore, assign all ops
+    // in replicate op with virtual device alias specifying that ops will be
+    // executed on the zeroth core.
+    auto device_attr = builder->getNamedAttr(
+        tensorflow::GetDeviceAliasForLogicalCore(0),
+        builder->getStrArrayAttr(llvm::SmallVector<llvm::StringRef, 4>{
+            execution_devices.begin(), execution_devices.end()}));
+    replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attr));
   } else {
     execute_op->setAttr(kDeviceAttr,
                         builder->getStringAttr(execution_devices.front()));

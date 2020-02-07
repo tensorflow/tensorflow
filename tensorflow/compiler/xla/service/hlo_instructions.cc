@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -2900,6 +2901,42 @@ HloRngGetAndUpdateStateInstruction::CloneWithNewOperandsImpl(
     LOG(FATAL) << "expects 0 operand";
   }
   return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta());
+}
+
+HloRngBitGeneratorInstruction::HloRngBitGeneratorInstruction(
+    const Shape& shape, HloInstruction* state, RandomAlgorithm algorithm)
+    : HloInstruction(HloOpcode::kRngBitGenerator, shape),
+      algorithm_(algorithm) {
+  AppendOperand(state);
+}
+
+HloInstructionProto HloRngBitGeneratorInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_rng_algorithm(algorithm_);
+  return proto;
+}
+
+std::vector<string> HloRngBitGeneratorInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("algorithm=", RandomAlgorithmToString(algorithm_))};
+}
+
+bool HloRngBitGeneratorInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloRngBitGeneratorInstruction&>(other);
+  return algorithm() == casted_other.algorithm();
+}
+
+std::unique_ptr<HloInstruction>
+HloRngBitGeneratorInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloRngBitGeneratorInstruction>(
+      shape, new_operands[0], algorithm());
 }
 
 }  // namespace xla

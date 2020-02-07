@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"
 
 namespace mlir {
 namespace TF {
@@ -82,6 +83,7 @@ class TensorFlowDialect : public Dialect {
 // both mutex.h and this header file.
 #undef mutex_lock
 
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h.inc"
 

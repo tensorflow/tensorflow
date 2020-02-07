@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
+
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -60,15 +62,20 @@ namespace tensorflow {
 // of the TFE_TensorHandle struct and the python EagerTensor class
 // (unrelated to python TensorHandle).
 class TensorHandle : public core::RefCounted {
+  // Custom devices do many of the same things as physical Devices, but have a
+  // much more restricted interface. We pass around ambiguous pointers since
+  // TensorHandles may be placed either on custom or physical devices.
+  using VariantDevice = absl::variant<Device*, CustomDevice*>;
+
   // TensorHandle for dtype != DT_RESOURCE
   TensorHandle(std::unique_ptr<LocalTensorHandleData> t, DataType dtype,
-               Device* d, Device* op_device, EagerContext* ctx);
+               VariantDevice d, Device* op_device, EagerContext* ctx);
   // TensorHandle for dtype == DT_RESOURCE
   TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
-               const ResourceHandle& resource_handle, Device* d,
+               const ResourceHandle& resource_handle, VariantDevice d,
                Device* op_device, EagerContext* ctx);
   TensorHandle(std::unique_ptr<EmptyLocalTensorHandleData> t, bool async,
-               Device* d, Device* op_device, Device* resource_device,
+               VariantDevice d, Device* op_device, Device* resource_device,
                DataType dtype, EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -82,9 +89,9 @@ class TensorHandle : public core::RefCounted {
   // TensorHandle with no assigned device
   static Status CreateLocalHandle(const class Tensor& t, TensorHandle** h);
   // TensorHandle with device == op_device
-  static Status CreateLocalHandle(const class Tensor& t, Device* d,
+  static Status CreateLocalHandle(const class Tensor& t, VariantDevice d,
                                   EagerContext* ctx, TensorHandle** h);
-  static Status CreateLocalHandle(const class Tensor& t, Device* d,
+  static Status CreateLocalHandle(const class Tensor& t, VariantDevice d,
                                   Device* op_device, EagerContext* ctx,
                                   TensorHandle** h);
   static Status CreateEmptyLocalHandle(bool async, Device* d, Device* op_device,
@@ -117,11 +124,11 @@ class TensorHandle : public core::RefCounted {
 
   Status TensorValue(tensorflow::TensorValue* t);
 
-  Device* device() const { return device_; }
+  VariantDevice device() const { return device_; }
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
 
-  Device* DeviceOrHostCPU(const EagerContext& ctx) const;
+  VariantDevice DeviceOrHostCPU(const EagerContext& ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
   Status NumDims(int* num_dims) const;
@@ -188,8 +195,10 @@ class TensorHandle : public core::RefCounted {
 
   // TODO(b/136608821): Move away from nullptr
   bool OnHostCPU() const {
-    return device_ == nullptr ||
-           (ctx_ != nullptr && ctx_->HostCPU() == device_);
+    return (
+        device_.index() == 0 &&
+        (absl::get<Device*>(device_) == nullptr ||
+         (ctx_ != nullptr && ctx_->HostCPU() == absl::get<Device*>(device_))));
   }
 
   bool IsRemote() const { return is_remote_; }
@@ -216,7 +225,7 @@ class TensorHandle : public core::RefCounted {
   // done and the handle is "ready".
   Status WaitReady(const char* caller) const;
 
-  // TODO(b/136608821): device_ == nullptr iff Host CPU:0
+  // TODO(b/136608821): device_ == nullptr (Device*) iff Host CPU:0
   // This was expedient, but perhaps worth revisiting ('device_' should always
   // be a valid pointer?)
   // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are
@@ -224,7 +233,7 @@ class TensorHandle : public core::RefCounted {
   //
   // TODO(ashankar): Reference count TFE_Context to ensure that 'device_' of a
   // TFE_TensorHandle does not outlive the TFE_Context from which it came?
-  tensorflow::Device* const device_;
+  VariantDevice const device_;
 
   // Device in which the op producing this tensor was executed. Equals to
   // device_ for constant tensors.
@@ -285,6 +294,12 @@ class TensorHandle : public core::RefCounted {
 
   PartialTensorShape inference_shape_;
 };
+
+// Checks whether a VariantDevice contains a custom device.
+bool VariantDeviceIsCustom(absl::variant<Device*, CustomDevice*> device);
+
+// Wraps device->DebugString() or CustomDevice->name().
+string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

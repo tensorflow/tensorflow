@@ -104,6 +104,10 @@ tf_class {
     argspec: "args=[\'self\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "numpy"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "row_lengths"
     argspec: "args=[\'self\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }

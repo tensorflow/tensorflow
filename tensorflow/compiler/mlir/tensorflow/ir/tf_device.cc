@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -297,10 +298,26 @@ LogicalResult Verify(ReplicateOp op) {
     return op.emitOpError() << "expects 'n' to be at least 2, got " << n;
 
   // Check number of devices, if set, matches `n`.
-  if (op.devices().hasValue() && op.devices().getValue().size() != n)
-    return op.emitOpError()
-           << "expects number of devices (" << op.devices().getValue().size()
-           << ") to be equal to 'n' (" << n << ")";
+  if (op.devices().hasValue()) {
+    for (auto device_attr : op.devices().getValue().getValue()) {
+      auto device_list = device_attr.second.dyn_cast_or_null<ArrayAttr>();
+      if (!device_list)
+        return op.emitError()
+               << "expects 'devices' to be a map alias and device name list.";
+
+      bool is_device_string = llvm::all_of(device_list, [](Attribute attr) {
+        return attr.dyn_cast_or_null<StringAttr>();
+      });
+      if (!is_device_string)
+        return op.emitOpError() << "expects 'devices' to be a consists of "
+                                   "string list as values.";
+
+      if (device_list.size() != n)
+        return op.emitOpError()
+               << "expects number of devices (" << device_list.size()
+               << ") to be equal to 'n' (" << n << ")";
+    }
+  }
 
   Block& block = op.body().front();
 
@@ -348,15 +365,22 @@ LogicalResult Verify(ReplicateOp op) {
 template <typename OperandsTy, typename ResultsTy>
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
-    llvm::ArrayRef<llvm::StringRef> devices,
+    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
+        devices,
     llvm::ArrayRef<std::pair<OperandsTy, Type>> replicated_inputs,
     ResultsTy replica_output_types) {
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
-  if (!devices.empty()) {
-    DCHECK_EQ(devices.size(), n);
-    state->addAttribute("devices", builder->getStrArrayAttr(devices));
+
+  llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
+  device_list.reserve(devices.size());
+  for (auto alias_and_devices : devices) {
+    NamedAttribute device_name_attr = builder->getNamedAttr(
+        alias_and_devices.getFirst(),
+        builder->getStrArrayAttr(alias_and_devices.getSecond()));
+    device_list.emplace_back(device_name_attr);
   }
+  state->addAttribute("devices", builder->getDictionaryAttr(device_list));
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -379,7 +403,8 @@ void BuildReplicateOp(
 
 void ReplicateOp::build(
     Builder* builder, OperationState& state, int n,
-    llvm::ArrayRef<llvm::StringRef> devices,
+    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
+        devices,
     llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs,
     llvm::ArrayRef<Type> replica_output_types) {
   BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
@@ -388,7 +413,8 @@ void ReplicateOp::build(
 
 void ReplicateOp::build(
     Builder* builder, OperationState& state, int n,
-    llvm::ArrayRef<llvm::StringRef> devices,
+    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
+        devices,
     llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs,
     Operation::result_type_range replica_output_types) {
   BuildReplicateOp(builder, &state, n, devices, replicated_inputs,

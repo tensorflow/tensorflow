@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/* SWIG wrapper for all of TensorFlow native functionality.
- * The includes are intentionally not alphabetically sorted, as the order of
- * includes follows dependency order */
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-%include "tensorflow/python/platform/base.i"
+#define EIGEN_USE_GPU
 
-%{
-#include "tensorflow/core/lib/core/status.h"
-%}
+#include <algorithm>
+#include <array>
+#include <limits>
+#include <utility>
 
-// TODO(slebedev): This is a temporary workaround for projects implicitly
-// relying on TensorFlow exposing tensorflow::Status.
-%unignoreall
+#include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/conv_2d_gpu.h"
 
-%ignore tensorflow::Status::operator=;
-%include "tensorflow/core/platform/status.h"
+namespace tensorflow {
+
+namespace functor {
+
+template struct SpatialConvolution<Eigen::GpuDevice, int32>;
+
+}  // namespace functor
+}  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

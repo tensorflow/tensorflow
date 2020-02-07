@@ -467,6 +467,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return output;
   });
+  m.def("TFE_ContextClearRemoteExecutors", [](py::handle& ctx) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextClearRemoteExecutors(tensorflow::InputTFE_Context(ctx),
+                                    status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  });
 
   // TFE_Executor logic
   m.def(

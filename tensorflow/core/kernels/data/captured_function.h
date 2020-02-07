@@ -40,6 +40,14 @@ class CapturedFunction;
 class InstantiatedCapturedFunction;
 
 Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator);
+
+// TODO(jsimsa): Remove this overload once all callers are migrated to the API
+// that passes in the parent iterator pointer.
+Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
     int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
     StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);

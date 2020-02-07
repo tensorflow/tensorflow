@@ -18,104 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
-
-
-class CategoryLookup(Layer):
-  """Category lookup layer.
-
-  This layer looks up tokens (int or string) in a vocabulary table,
-  and return their indices (int). It converts a sequence of int or string to a
-  sequence of int.
-
-  Attributes:
-    max_tokens: The maximum size of the vocabulary for this layer. If None,
-      there is no cap on the size of the vocabulary. This is used when `adapt`
-      is called.
-    num_oov_tokens: Non-negative integer. The number of out-of-vocab tokens. All
-      out-of-vocab inputs will be assigned IDs in the range of [0,
-      num_oov_tokens) based on a hash.
-    vocabulary: The vocabulary to lookup the input. If it is a file, it
-      represents the source vocab file; If it is a list/tuple, it represents the
-      source vocab list. If it is None, the vocabulary can later be set.
-    name: Name to give to the layer.
-    **kwargs: Keyword arguments to construct a layer.
-  Input shape: A string or int tensor of shape `[batch_size, d1, ..., dm]`
-  Output shape: An int tensor of shape `[batch_size, d1, .., dm]`
-  Example: Consider a batch of a single input sample, `[["a", "c", "d", "a",
-    "x"]]`. Let's say the vocabulary is `["a", "b", "c", "d"]` and a single OOV
-    token is used (`num_oov_tokens=1`). Then the corresponding output is `[[1,
-    3, 4, 1, 0]]`. 0 stands for an OOV token.
-  """
-
-  def __init__(self,
-               max_tokens=None,
-               num_oov_tokens=1,
-               vocabulary=None,
-               name=None,
-               **kwargs):
-    if max_tokens is not None:
-      raise ValueError('`max_tokens` and `adapt` is not supported yet.')
-    if vocabulary is None:
-      raise ValueError('for now, you must pass a `vocabulary` argument')
-    self.max_tokens = max_tokens
-    self.num_oov_tokens = num_oov_tokens
-    self.vocabulary = vocabulary
-    super(CategoryLookup, self).__init__(name=name, **kwargs)
-
-  def __call__(self, inputs, *args, **kwargs):
-    if isinstance(inputs, (np.ndarray, float, int)):
-      inputs = ops.convert_to_tensor(inputs)
-    self._input_dtype = inputs.dtype
-    return super(CategoryLookup, self).__call__(inputs, *args, **kwargs)
-
-  def build(self, input_shape):
-    # categorical with vocabulary list.
-    if isinstance(self.vocabulary, (tuple, list, np.ndarray)):
-      self.table = lookup_ops.index_table_from_tensor(
-          vocabulary_list=self.vocabulary,
-          num_oov_buckets=self.num_oov_tokens,
-          dtype=self._input_dtype)
-    # categorical with vocabulary file.
-    elif self.vocabulary:
-      self.table = lookup_ops.index_table_from_file(
-          vocabulary_file=self.vocabulary,
-          num_oov_buckets=self.num_oov_tokens,
-          key_dtype=self._input_dtype)
-
-  def call(self, inputs):
-    return self.table.lookup(inputs)
-
-  def compute_output_shape(self, input_shape):
-    return input_shape
-
-  def compute_output_signature(self, input_spec):
-    output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = dtypes.int64
-    if isinstance(input_spec, sparse_tensor.SparseTensorSpec):
-      return sparse_tensor.SparseTensorSpec(
-          shape=output_shape, dtype=output_dtype)
-    else:
-      return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
-
-  def get_config(self):
-    config = {
-        'max_tokens': self.max_tokens,
-        'num_oov_tokens': self.num_oov_tokens,
-        'vocabulary': self.vocabulary
-    }
-    base_config = super(CategoryLookup, self).get_config()
-    return dict(list(base_config.items()) + list(config.items()))
+from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 
 
 class CategoryCrossing(Layer):
@@ -190,11 +101,26 @@ class CategoryCrossing(Layer):
     # TODO(tanzheny): Consider making seperator configurable.
     if depth is not None:
       raise NotImplementedError('`depth` is not supported yet.')
+    super(CategoryCrossing, self).__init__(name=name, **kwargs)
     self.num_bins = num_bins
     self.depth = depth
-    super(CategoryCrossing, self).__init__(name=name, **kwargs)
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
+    # (b/144500510) ragged.map_flat_values(sparse_cross_hashed, inputs) will
+    # cause kernel failure. Investigate and find a more efficient implementation
+    if all([ragged_tensor.is_ragged(inp) for inp in inputs]):
+      inputs = [inp.to_sparse() if ragged_tensor.is_ragged(inp) else inp
+                for inp in inputs]
+      if self.num_bins is not None:
+        output = sparse_ops.sparse_cross_hashed(
+            inputs, num_buckets=self.num_bins)
+      else:
+        output = sparse_ops.sparse_cross(inputs)
+      return ragged_tensor.RaggedTensor.from_sparse(output)
+    if any([ragged_tensor.is_ragged(inp) for inp in inputs]):
+      raise ValueError('Inputs must be either all `RaggedTensor`, or none of '
+                       'them should be `RaggedTensor`, got {}'.format(inputs))
     sparse_output = False
     if any([isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs]):
       sparse_output = True
@@ -270,23 +196,30 @@ class Hashing(Layer):
 
   def __init__(self, num_bins, name=None, **kwargs):
     # TODO(tanzheny): consider adding strong hash variant.
-    self._num_bins = num_bins
     super(Hashing, self).__init__(name=name, **kwargs)
+    self._num_bins = num_bins
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
-    # TODO(tanzheny): Add ragged support.
     # TODO(tanzheny): Add int support.
-    if isinstance(inputs, sparse_tensor.SparseTensor):
+    # string_to_hash_bucket_fast uses FarmHash as hash function.
+    if ragged_tensor.is_ragged(inputs):
+      return ragged_functional_ops.map_flat_values(
+          string_ops.string_to_hash_bucket_fast,
+          inputs,
+          num_buckets=self._num_bins,
+          name='hash')
+    elif isinstance(inputs, sparse_tensor.SparseTensor):
       sparse_values = inputs.values
       sparse_hashed_values = string_ops.string_to_hash_bucket_fast(
-          sparse_values, self._num_bins, name='lookup')
+          sparse_values, self._num_bins, name='hash')
       return sparse_tensor.SparseTensor(
           indices=inputs.indices,
           values=sparse_hashed_values,
           dense_shape=inputs.dense_shape)
-    # string_to_hash_bucket_fast uses FarmHash as hash function.
-    return string_ops.string_to_hash_bucket_fast(
-        inputs, self._num_bins, name='lookup')
+    else:
+      return string_ops.string_to_hash_bucket_fast(
+          inputs, self._num_bins, name='hash')
 
   def compute_output_shape(self, input_shape):
     return input_shape

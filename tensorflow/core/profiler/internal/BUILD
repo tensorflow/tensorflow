@@ -407,7 +407,10 @@ cc_library(
         "traceme_recorder.cc",
         "traceme_recorder.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -478,7 +481,10 @@ cc_library(
         "annotation_stack.cc",
         "annotation_stack.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",

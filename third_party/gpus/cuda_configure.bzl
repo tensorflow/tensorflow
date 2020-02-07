@@ -606,11 +606,11 @@ def _cudart_static_linkopt(cpu_value):
 
 # TODO(csigg): Only call once instead of from here, tensorrt_configure.bzl,
 # and nccl_configure.bzl.
-def find_cuda_config(repository_ctx, cuda_libraries):
+def find_cuda_config(repository_ctx, script_path, cuda_libraries):
     """Returns CUDA config dictionary from running find_cuda_config.py"""
     exec_result = raw_exec(repository_ctx, [
         get_python_bin(repository_ctx),
-        repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py")),
+        script_path,
     ] + cuda_libraries)
     if exec_result.return_code:
         auto_configure_fail("Failed to run find_cuda_config.py: %s" % exec_result.stderr)
@@ -618,7 +618,7 @@ def find_cuda_config(repository_ctx, cuda_libraries):
     # Parse the dict from stdout.
     return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])
 
-def _get_cuda_config(repository_ctx):
+def _get_cuda_config(repository_ctx, find_cuda_config_script):
     """Detects and returns information about the CUDA installation on the system.
 
       Args:
@@ -633,7 +633,7 @@ def _get_cuda_config(repository_ctx):
           compute_capabilities: A list of the system's CUDA compute capabilities.
           cpu_value: The name of the host operating system.
       """
-    config = find_cuda_config(repository_ctx, ["cuda", "cudnn"])
+    config = find_cuda_config(repository_ctx, find_cuda_config_script, ["cuda", "cudnn"])
     cpu_value = get_cpu_value(repository_ctx)
     toolkit_path = config["cuda_toolkit_path"]
 
@@ -853,9 +853,28 @@ def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
     # TODO(csigg): Make this consistent with cuda clang and pass unconditionally.
     return "if_cuda_clang(%s)" % str(capability_flags)
 
+def _tpl_path(repository_ctx, filename):
+    return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
+
 def _create_local_cuda_repository(repository_ctx):
     """Creates the repository containing files set up to build with CUDA."""
-    cuda_config = _get_cuda_config(repository_ctx)
+
+    # Resolve all labels before doing any real work. Resolving causes the
+    # function to be restarted with all previous state being lost. This
+    # can easily lead to a O(n^2) runtime in the number of labels.
+    # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
+    tpl_paths = {filename: _tpl_path(repository_ctx, filename) for filename in [
+        "cuda:build_defs.bzl",
+        "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        "crosstool:windows/msvc_wrapper_for_nvcc.py",
+        "crosstool:BUILD",
+        "crosstool:cc_toolchain_config.bzl",
+        "cuda:cuda_config.h",
+    ]}
+    tpl_paths["cuda:BUILD"] = _tpl_path(repository_ctx, "cuda:BUILD.windows" if is_windows(repository_ctx) else "cuda:BUILD")
+    find_cuda_config_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"))
+
+    cuda_config = _get_cuda_config(repository_ctx, find_cuda_config_script)
 
     cuda_include_path = cuda_config.config["cuda_include_dir"]
     cublas_include_path = cuda_config.config["cublas_include_dir"]
@@ -939,9 +958,9 @@ def _create_local_cuda_repository(repository_ctx):
     ))
 
     # Set up BUILD file for cuda/
-    _tpl(
-        repository_ctx,
-        "cuda:build_defs.bzl",
+    repository_ctx.template(
+        "cuda/build_defs.bzl",
+        tpl_paths["cuda:build_defs.bzl"],
         {
             "%{cuda_is_configured}": "True",
             "%{cuda_extra_copts}": _compute_cuda_extra_copts(
@@ -950,9 +969,10 @@ def _create_local_cuda_repository(repository_ctx):
             ),
         },
     )
-    _tpl(
-        repository_ctx,
-        "cuda:BUILD.windows" if is_windows(repository_ctx) else "cuda:BUILD",
+
+    repository_ctx.template(
+        "cuda/BUILD",
+        tpl_paths["cuda:BUILD"],
         {
             "%{cuda_driver_lib}": cuda_libs["cuda"].basename,
             "%{cudart_static_lib}": cuda_libs["cudart_static"].basename,
@@ -967,7 +987,6 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cusparse_lib}": cuda_libs["cusparse"].basename,
             "%{copy_rules}": "\n".join(copy_rules),
         },
-        "cuda/BUILD",
     )
 
     is_cuda_clang = _use_cuda_clang(repository_ctx)
@@ -1070,14 +1089,14 @@ def _create_local_cuda_repository(repository_ctx):
             ),
             "%{nvcc_tmp_dir}": _get_nvcc_tmp_dir_for_windows(repository_ctx),
         }
-        _tpl(
-            repository_ctx,
-            "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        repository_ctx.template(
+            "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+            tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc"],
             wrapper_defines,
         )
-        _tpl(
-            repository_ctx,
-            "crosstool:windows/msvc_wrapper_for_nvcc.py",
+        repository_ctx.template(
+            "crosstool/windows/msvc_wrapper_for_nvcc.py",
+            tpl_paths["crosstool:windows/msvc_wrapper_for_nvcc.py"],
             wrapper_defines,
         )
 
@@ -1086,17 +1105,25 @@ def _create_local_cuda_repository(repository_ctx):
     verify_build_defines(cuda_defines)
 
     # Only expand template variables in the BUILD file
-    _tpl(repository_ctx, "crosstool:BUILD", cuda_defines)
+    repository_ctx.template(
+        "crosstool/BUILD",
+        tpl_paths["crosstool:BUILD"],
+        cuda_defines,
+    )
 
     # No templating of cc_toolchain_config - use attributes and templatize the
     # BUILD file.
-    _file(repository_ctx, "crosstool:cc_toolchain_config.bzl")
+    repository_ctx.template(
+        "crosstool/cc_toolchain_config.bzl",
+        tpl_paths["crosstool:cc_toolchain_config.bzl"],
+        {},
+    )
 
     # Set up cuda_config.h, which is used by
     # tensorflow/stream_executor/dso_loader.cc.
-    _tpl(
-        repository_ctx,
-        "cuda:cuda_config.h",
+    repository_ctx.template(
+        "cuda/cuda/cuda_config.h",
+        tpl_paths["cuda:cuda_config.h"],
         {
             "%{cuda_version}": cuda_config.cuda_version,
             "%{cuda_lib_version}": cuda_config.cuda_lib_version,
@@ -1107,7 +1134,6 @@ def _create_local_cuda_repository(repository_ctx):
             ]),
             "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
         },
-        "cuda/cuda/cuda_config.h",
     )
 
 def _create_remote_cuda_repository(repository_ctx, remote_config_repo):

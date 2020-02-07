@@ -929,7 +929,7 @@ ops.register_tensor_conversion_function(MirroredVariable,
 
 def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
   return ops.convert_to_tensor(
-      value.get(), dtype=dtype, name=name, as_ref=as_ref)
+      value._get(), dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
 ops.register_tensor_conversion_function(Mirrored,
@@ -1218,7 +1218,8 @@ def regroup(values, wrap_class=PerReplica):
       assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
       assert set(v.keys()) == v0keys, ("v[0].keys: %s  v[i].keys: %s" %
                                        (v0keys, set(v.keys())))
-    return type(v0)(**{
+    # Use the actual type in case it is a class inherited from a dict.
+    return type(v0)({
         key: regroup(tuple(v[key] for v in values), wrap_class)
         for key in v0keys
     })

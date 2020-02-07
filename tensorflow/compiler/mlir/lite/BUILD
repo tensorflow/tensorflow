@@ -46,6 +46,14 @@ gentbl(
             "ir/tfl_ops.cc.inc",
         ),
         (
+            "-gen-struct-attr-decls",
+            "ir/tfl_structs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "ir/tfl_structs.cc.inc",
+        ),
+        (
             "-gen-op-doc",
             "g3doc/tfl_ops.md",
         ),
@@ -296,6 +304,7 @@ cc_library(
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/unroll_batch_matmul.cc",
+        "transforms/while_loop_outline.cc",
     ],
     hdrs = [
         "transforms/dilated_conv.h",
@@ -308,6 +317,7 @@ cc_library(
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
@@ -387,6 +397,24 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tensorflow_lite_d2s",
+    srcs = [
+        "transforms/dense_to_sparse.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
 )
@@ -651,6 +679,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":tensorflow_lite_d2s",
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",

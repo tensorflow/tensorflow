@@ -391,6 +391,29 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   return Status::OK();
 }
 
+Status DatasetBase::MakeIterator(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const string& output_prefix,
+    std::unique_ptr<IteratorBase>* iterator) const {
+  *iterator = MakeIteratorInternal(output_prefix);
+  if (parent) {
+    (*iterator)->SetParent(parent);
+  }
+  if (const auto& model = ctx->model()) {
+    const string& prefix = (*iterator)->prefix();
+    (*iterator)->SetNode(model->AddNode(MakeNodeFactory(ctx, iterator->get()),
+                                        prefix, output_prefix));
+    (*iterator)->AddCleanupFunction(
+        [model, prefix]() { model->RemoveNode(prefix); });
+  }
+  Status s = (*iterator)->Initialize(ctx);
+  if (!s.ok()) {
+    // Reset the iterator to avoid returning an uninitialized iterator.
+    iterator->reset();
+  }
+  return s;
+}
+
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
@@ -411,6 +434,31 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     return Status::OK();
   }
   return status;
+}
+
+DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
+    : params_(params) {
+  params_.dataset->Ref();
+  VLOG(2) << prefix() << " constructor";
+}
+
+DatasetBaseIterator::~DatasetBaseIterator() {
+  VLOG(2) << prefix() << " destructor";
+  params_.dataset->Unref();
+}
+
+string DatasetBaseIterator::BuildTraceMeName() {
+  string result = strings::StrCat(params_.prefix, "#id=", id_);
+  if (parent_) {
+    strings::StrAppend(&result, ",parent_id=", parent_id_);
+  }
+
+  TraceMeMetadata metadata = GetTraceMeMetadata();
+  for (const auto& pair : metadata) {
+    strings::StrAppend(&result, ",", pair.first, "=", pair.second);
+  }
+  strings::StrAppend(&result, "#");
+  return result;
 }
 
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
