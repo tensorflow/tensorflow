@@ -5744,10 +5744,7 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
-        "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
-        "//tensorflow/compiler/xla:status_macros",  # tfcompile
-        "//tensorflow/compiler/xla/service:hlo",  # tfcompile
         "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
         "//tensorflow/core:core_cpu_impl",  # device_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
@@ -5762,7 +5759,6 @@ filegroup(
         "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
         "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
         "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
-        "//tensorflow/core/grappler/costs:analytical_cost_estimator",  # cost analyzer
         "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
         "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
         "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
