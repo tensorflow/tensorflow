@@ -1,9 +1,9 @@
 #ifndef XCORE_PAR_H_
 #define XCORE_PAR_H_
 
-extern "C" {
-    #include <xcore/parallel.h>
-}
+// extern "C" {
+//     #include <xcore/parallel.h>
+// }
 
 namespace tflite {
 namespace ops {
