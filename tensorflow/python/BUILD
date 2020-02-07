@@ -5759,6 +5759,7 @@ filegroup(
         "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
         "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
         "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
+        "//tensorflow/core/grappler/costs:analytical_cost_estimator",  # cost analyzer
         "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
         "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
         "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
@@ -5778,7 +5779,11 @@ filegroup(
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-    ],
+    ] + if_xla_available([
+        "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
+        "//tensorflow/compiler/xla:status_macros",  # tfcompile
+        "//tensorflow/compiler/xla/service:hlo",  # tfcompile
+    ]),
     visibility = ["//visibility:private"],
 )
 
