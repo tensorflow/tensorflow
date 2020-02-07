@@ -182,9 +182,6 @@ TFE_Py_SetEagerContext
 tensorflow::EagerExecutor::~EagerExecutor
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
-[profiler_session] # tfe
-tensorflow::ProfilerSession::~ProfilerSession
-
 [tf_status_helper] # tfe
 tensorflow::Set_TF_Status_from_Status
 
@@ -304,3 +301,9 @@ tensorflow::profiler::TraceMeRecorder::Record
 
 [annotation_stack_impl] # profiler
 tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
+
+[profiler_session_impl] # profiler
+tensorflow::ProfilerSession::Create
+tensorflow::ProfilerSession::SerializeToString
+tensorflow::ProfilerSession::Status
+tensorflow::ProfilerSession::~ProfilerSession

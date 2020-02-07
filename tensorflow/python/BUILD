@@ -5770,7 +5770,7 @@ filegroup(
         "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
-        "//tensorflow/core/profiler/lib:profiler_session",  # tfe
+        "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
@@ -7950,8 +7950,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/framework:pywrap_required_hdrs",
-        "//tensorflow/core/profiler/internal:pywrap_required_hdrs",
-        "//tensorflow/core/profiler/lib:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
     ],
     module_name = "_pywrap_tfe",
@@ -7971,7 +7969,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:platform",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ] + if_static(
         extra_deps = [
             "//tensorflow/compiler/jit:flags",
