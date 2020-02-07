@@ -400,7 +400,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_Strided2) {
 }
 
 TYPED_TEST(StridedSliceOpTest, In4D_Identity) {
-  StridedSliceOpModel<> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
+  StridedSliceOpModel<TypeParam> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
   m.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   m.SetBegin({0, 0, 0, 0});
@@ -415,7 +415,7 @@ TYPED_TEST(StridedSliceOpTest, In4D_Identity) {
 }
 
 TYPED_TEST(StridedSliceOpTest, In4D_NegStride) {
-  StridedSliceOpModel<> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
+  StridedSliceOpModel<TypeParam> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
   m.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   m.SetBegin({-1, -1, -1, -1});
@@ -429,7 +429,7 @@ TYPED_TEST(StridedSliceOpTest, In4D_NegStride) {
 }
 
 TYPED_TEST(StridedSliceOpTest, In4D_Strided2) {
-  StridedSliceOpModel<> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
+  StridedSliceOpModel<TypeParam> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
   m.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   m.SetBegin({0, 0, 0, 0});
