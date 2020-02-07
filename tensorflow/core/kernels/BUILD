@@ -5133,6 +5133,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         ":random_op",
+        ":random_poisson_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -6465,6 +6466,7 @@ filegroup(
         "pad_op.h",
         "pooling_ops_3d.h",
         "random_op.h",
+        "random_poisson_op.h",
         "reduction_ops.h",
         "reduction_ops_common.h",
         "relu_op.h",
@@ -6658,6 +6660,7 @@ filegroup(
         "queue_ops.cc",
         "random_op.cc",
         "random_op_cpu.h",
+        "random_poisson_op.cc",
         "reduction_ops_all.cc",
         "reduction_ops_any.cc",
         "reduction_ops_common.cc",

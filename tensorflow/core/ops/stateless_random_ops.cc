@@ -105,6 +105,17 @@ REGISTER_OP("StatelessRandomBinomial")
     .Attr("dtype: {half, float, double, int32, int64} = DT_INT64")
     .SetShapeFn(StatelessShape);
 
+REGISTER_OP("StatelessRandomPoisson")
+    .Input("shape: T")
+    .Input("seed: Tseed")
+    .Input("lam: Rtype")
+    .Output("output: dtype")
+    .Attr("Rtype: {float16, float32, float64, int32, int64}")
+    .Attr("dtype: {float16, float32, float64, int32, int64}")
+    .Attr("T: {int32, int64}")
+    .Attr("Tseed: {int32, int64} = DT_INT64")
+    .SetShapeFn(StatelessShape);
+
 REGISTER_OP("StatelessRandomGammaV2")
     .Input("shape: T")
     .Input("seed: Tseed")
