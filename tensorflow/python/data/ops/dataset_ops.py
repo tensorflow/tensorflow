@@ -400,8 +400,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Raises:
       RuntimeError: If not inside of tf.function and not executing eagerly.
     """
-    if (context.executing_eagerly()
-        or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+    if context.executing_eagerly() or ops.inside_function():
       return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
@@ -3446,8 +3445,7 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
-    if tf2.enabled() and (context.executing_eagerly() or
-                          ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+    if tf2.enabled() and (context.executing_eagerly() or ops.inside_function()):
       self._cache = _MemoryCache()
       variant_tensor = gen_dataset_ops.cache_dataset_v2(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -3542,8 +3540,7 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
       self._reshuffle_each_iteration = reshuffle_each_iteration
 
     if tf2.enabled() and self._reshuffle_each_iteration and (
-        context.executing_eagerly() or
-        ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+        context.executing_eagerly() or ops.inside_function()):
       self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
       variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
