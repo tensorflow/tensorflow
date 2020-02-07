@@ -3530,8 +3530,9 @@ tf_kernel_library(
         "//tensorflow/stream_executor/platform:dso_loader",
         "//tensorflow/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
+    ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
-    ],
+    ]),
 )
 
 tf_kernel_library(
