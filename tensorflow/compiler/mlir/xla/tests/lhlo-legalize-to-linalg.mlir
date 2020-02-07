@@ -411,3 +411,21 @@ func @tanh(%input: memref<2x2xf32>,
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[RESULT:.*]] = tanh %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+
+// -----
+
+// CHECK: func @slice(%[[arg0:.*]]: memref<?x?xf32>, %[[arg1:.*]]: memref<?x?xf32>)
+func @slice(%opearnd: memref<?x?xf32>, %result: memref<?x?xf32>) {
+  "xla_lhlo.slice"(%opearnd, %result)
+    {start_indices = dense<[0,0]> : tensor<2xi64>,
+     limit_indices = dense<[2,2]> : tensor<2xi64>,
+     strides = dense<[1,1]> : tensor<2xi64>}
+    : (memref<?x?xf32>, memref<?x?xf32>) -> ()
+  return
+}
+
+// CHECK: %[[LHS:.*]] = linalg.range
+// CHECK: %[[RHS:.*]] = linalg.range
+// CHECK: %[[RST:.*]] = linalg.slice %[[arg0]][%[[LHS]], %[[RHS]]]
+// CHECK: linalg.copy(%[[RST]], %[[arg1]])

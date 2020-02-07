@@ -339,6 +339,53 @@ class ConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
   }
 };
 
+class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
+ public:
+  using OpConversionPattern<xla_lhlo::SliceOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      xla_lhlo::SliceOp sliceOp, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = sliceOp.getLoc();
+    auto argType =
+        sliceOp.getOperand(0).getType().template dyn_cast<ShapedType>();
+    if (!argType || !argType.hasRank()) {
+      emitError(loc,
+                "lhlo to linalg conversion expects statically shaped args");
+      return ConversionPattern::matchFailure();
+    }
+
+    int rank = argType.getRank();
+    SmallVector<mlir::ConstantOp, 3> start_indices;
+    SmallVector<mlir::ConstantOp, 3> limit_indices;
+    SmallVector<mlir::ConstantOp, 3> strides;
+
+    auto to_const_ops = [&] (const Attribute& attr,
+                            SmallVector<mlir::ConstantOp, 3>& ops) {
+      for (auto value :  attr.cast<DenseIntElementsAttr>().getIntValues()) {
+        ops.push_back(rewriter.create<ConstantIndexOp>(loc, value.getSExtValue()));
+      }
+    };
+
+    to_const_ops(sliceOp.start_indices(), start_indices);
+    to_const_ops(sliceOp.limit_indices(), limit_indices);
+    to_const_ops(sliceOp.strides(), strides);
+
+    SmallVector<Value, 3> ranges;
+    for (int i = 0; i < rank; ++i) {
+      ranges.push_back(rewriter.create<linalg::RangeOp>(
+          loc, start_indices[i], limit_indices[i], strides[i]).getResult());
+    }
+
+    auto linalg_slice = rewriter.create<linalg::SliceOp>(
+        loc, sliceOp.getOperand(0), ranges);
+    auto copy = rewriter.create<linalg::CopyOp>(
+        loc, linalg_slice, sliceOp.getOperand(1));
+    rewriter.eraseOp(sliceOp);
+    return matchSuccess();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -364,7 +411,8 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::SignOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
                    PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
-                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>
+                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>,
+                   SliceConverter
                   >(context);
   // clang-format on
 }
