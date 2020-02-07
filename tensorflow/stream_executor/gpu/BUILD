@@ -200,6 +200,7 @@ cc_library(
     name = "gpu_asm_opts",
     hdrs = ["gpu_asm_opts.h"],
     visibility = [
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = ["@com_google_absl//absl/strings"],
