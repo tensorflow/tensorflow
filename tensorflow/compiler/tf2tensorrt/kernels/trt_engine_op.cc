@@ -504,8 +504,8 @@ Status TRTEngineOp::GetEngineInputShapes(
   // VerifyInputShapes() already ensured that all input shapes have same
   // batch size, and are not scalars, if we are in implicit batch mode.
   //
-  // In explicit batch mode we plan to have single engine in the cache,
-  // and we return with its shape if it is compatible.
+  // In explicit batch mode we plan to have single engine in the cache, and we
+  // return with its shape if it is compatible.
   *engine_input_shapes = actual_input_shapes;
   int64 min_matched_batch_size = kint64max;
   for (const auto& pair : cache) {

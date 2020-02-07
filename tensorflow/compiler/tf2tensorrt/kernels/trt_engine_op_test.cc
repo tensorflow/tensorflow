@@ -177,14 +177,14 @@ TEST_F(TRTEngineOpTestBase, DynamicEngines) {
 }
 
 TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
-  // Test inference in explicit batch mode with static input shapes
-  // Static shapes in this context means that the TensorRT knows all the
-  // input shapes during engine creation time.
+  // Test inference in explicit batch mode with static input shapes. Static
+  // shapes in this context means that the TensorRT knows all the input shapes
+  // during engine creation time.
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/1,
                                       /*shape=*/PartialTensorShape({1, 2}),
                                       /*use_implicit_batch=*/false);
 
-  TensorShape input_shape({1,2});
+  TensorShape input_shape({1, 2});
   TRTEngineOpTestBase::AddSimpleInput<float>(input_shape);
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
 
@@ -203,22 +203,23 @@ TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
 }
 
 TEST_F(TRTEngineOpTestBase, DynamicShapes) {
-  // Test inference in explicit batch mode with dynamic input shapes.
-  // Dynamic shapes in this context means that some input shapes for TensorRT
-  // are unknown during engine creation time. When we create the network, the
-  // unknow shapes are repsesented as -1. Before we run inference, these
-  // shapes have to be specified by calling setBindingDimensions.
+  // Test inference in explicit batch mode with dynamic input shapes. Dynamic
+  // shapes in this context means that some input shapes for TensorRT are
+  // unknown during engine creation time. When we create the network, the
+  // unknow shapes are repsesented as -1. Before we run inference, these shapes
+  // have to be specified by calling setBindingDimensions.
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/1,
                                       /*shape=*/PartialTensorShape({-1, -1}),
                                       /*use_implicit_batch=*/false);
 
-  TensorShape input_shape({1,2});
+  TensorShape input_shape({1, 2});
   TRTEngineOpTestBase::AddSimpleInput<float>(input_shape);
 
   // We expect that TensorRT engine creation fails: we would need to configure
-  // the engine with optimization profiles to use dynamic input shapes, but
-  // that feature is not yet implemented.
-  // Since TRT engine creation has failed, we falls back to native segment.
+  // the engine with optimization profiles to use dynamic input shapes, but that
+  // feature is not yet implemented.
+  //
+  // Since TRT engine creation has failed, we fall back to native segment.
   // Calling the native segment fails for the same reason that is investigated
   // in https://github.com/tensorflow/tensorflow/pull/34919. This is irrelevant
   // for the current test, here we want to just check wether TRT engine creation
