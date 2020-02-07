@@ -9,9 +9,12 @@
 load(
     "//third_party/gpus:cuda_configure.bzl",
     "find_cuda_config",
-    "get_cpu_value",
     "lib_name",
     "make_copy_files_rule",
+)
+load(
+    "//third_party/remote_config:common.bzl",
+    "get_cpu_value",
 )
 
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
