@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import os
 import subprocess
 import re
@@ -240,7 +239,7 @@ class SlurmClusterResolver(ClusterResolver):
       # User can pass a fixed number of tasks per node
       hostlist = self._resolve_hostlist()
       self._task_configuration = {
-        host: int(tasks_per_node) for host in hostlist
+          host: int(tasks_per_node) for host in hostlist
       }
 
     max_tasks_per_node = max(self._task_configuration.values())
@@ -266,7 +265,7 @@ class SlurmClusterResolver(ClusterResolver):
 
     if sum(self._jobs.values()) != num_tasks:
       raise RuntimeError('Requested {} tasks but only {} were assigned.'.format(
-                sum(self._jobs.values()), num_tasks))
+          sum(self._jobs.values()), num_tasks))
 
   def _resolve_own_rank(self):
     """Return the rank of the current task in range [0, num_tasks)"""
@@ -289,9 +288,10 @@ class SlurmClusterResolver(ClusterResolver):
     Returns a dictionary mapping each hostname to the number of tasks.
     """
     hostlist = self._resolve_hostlist()
-    tasks_per_node = expand_tasks_per_node(_get_slurm_var('STEP_TASKS_PER_NODE'))
+    tasks_per_node = expand_tasks_per_node(
+        _get_slurm_var('STEP_TASKS_PER_NODE'))
     return {
-      host: num_tasks for (host, num_tasks) in zip(hostlist, tasks_per_node)
+        host: num_tasks for (host, num_tasks) in zip(hostlist, tasks_per_node)
     }
 
   def cluster_spec(self):

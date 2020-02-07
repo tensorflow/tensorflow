@@ -59,12 +59,12 @@ class SlurmClusterResolverTest(test.TestCase):
         server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
 
   @mock.patch.dict(os.environ, {
-    'SLURM_PROCID': '0',
-    'SLURM_STEP_NUM_TASKS': '3',
-    'SLURM_STEP_TASKS_PER_NODE': '1(x3)',
-    'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
-    'CUDA_VISIBLE_DEVICES': '0',
-    })
+      'SLURM_PROCID': '0',
+      'SLURM_STEP_NUM_TASKS': '3',
+      'SLURM_STEP_TASKS_PER_NODE': '1(x3)',
+      'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
+      'CUDA_VISIBLE_DEVICES': '0',
+      })
   def testSimpleRetrievalFromEnv(self):
     slurm_cluster_resolver = SlurmClusterResolver()
 
@@ -82,10 +82,10 @@ class SlurmClusterResolverTest(test.TestCase):
     self.assertEqual(os.environ['CUDA_VISIBLE_DEVICES'], '0')
 
   @mock.patch.dict(os.environ, {
-    'SLURM_PROCID': '0',
-    'SLURM_STEP_NUM_TASKS': '3',
-    'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
-    })
+      'SLURM_PROCID': '0',
+      'SLURM_STEP_NUM_TASKS': '3',
+      'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
+      })
   def testSimpleSuccessfulRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
         jobs={
@@ -107,10 +107,10 @@ class SlurmClusterResolverTest(test.TestCase):
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
   @mock.patch.dict(os.environ, {
-    'SLURM_PROCID': '0',
-    'SLURM_STEP_NUM_TASKS': '3',
-    'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
-    })
+      'SLURM_PROCID': '0',
+      'SLURM_STEP_NUM_TASKS': '3',
+      'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
+      })
   def testSimpleMasterRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
         jobs={
@@ -134,11 +134,11 @@ class SlurmClusterResolverTest(test.TestCase):
         'test://t02n13:8888')
 
   @mock.patch.dict(os.environ, {
-    'SLURM_PROCID': '0',
-    'SLURM_STEP_NUM_TASKS': '3',
-    'SLURM_STEP_TASKS_PER_NODE': '1(x3)',
-    'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
-    })
+      'SLURM_PROCID': '0',
+      'SLURM_STEP_NUM_TASKS': '3',
+      'SLURM_STEP_TASKS_PER_NODE': '1(x3)',
+      'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
+      })
   def testTaskPerNodeNotSetRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
         jobs={
@@ -159,12 +159,12 @@ class SlurmClusterResolverTest(test.TestCase):
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
   @mock.patch.dict(os.environ, {
-    'SLURM_PROCID': '1',
-    'SLURM_STEP_NUM_TASKS': '5',
-    'SLURM_STEP_TASKS_PER_NODE': '2(x2),1',
-    'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
-    'CUDA_VISIBLE_DEVICES': '',
-    })
+      'SLURM_PROCID': '1',
+      'SLURM_STEP_NUM_TASKS': '5',
+      'SLURM_STEP_TASKS_PER_NODE': '2(x2),1',
+      'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
+      'CUDA_VISIBLE_DEVICES': '',
+      })
   def testMultiTaskPerNodeRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
         jobs={
@@ -189,12 +189,12 @@ class SlurmClusterResolverTest(test.TestCase):
     assert os.environ['CUDA_VISIBLE_DEVICES'] == '1'
 
   @mock.patch.dict(os.environ, {
-    'SLURM_PROCID': '1',
-    'SLURM_STEP_NUM_TASKS': '5',
-    'SLURM_STEP_TASKS_PER_NODE': '2(x2),1',
-    'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
-    'CUDA_VISIBLE_DEVICES': '',
-    })
+      'SLURM_PROCID': '1',
+      'SLURM_STEP_NUM_TASKS': '5',
+      'SLURM_STEP_TASKS_PER_NODE': '2(x2),1',
+      'SLURM_STEP_NODELIST': 't02n13,t02n41,t02n43',
+      'CUDA_VISIBLE_DEVICES': '',
+      })
   def testMultipleGpusPerTaskRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
         jobs={
