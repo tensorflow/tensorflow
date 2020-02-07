@@ -2864,6 +2864,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 // TF Dialect
 //===----------------------------------------------------------------------===//
 
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.cc.inc"
+
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context) {
   addOperations<

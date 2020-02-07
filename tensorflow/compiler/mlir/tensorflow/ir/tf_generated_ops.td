@@ -456,7 +456,7 @@ reverse of SpaceToBatch.  See below for a precise description.
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect]> {
+def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = "Adds `bias` to `value`.";
 
   let description = [{
@@ -479,6 +479,12 @@ Broadcasting is supported, so `value` may have any number of dimensions.
 
   let verifier = [{
     return Verify(*this);
+  }];
+
+  let extraClassDeclaration = [{
+    // TF_LayoutSensitiveInterface:
+    SmallVector<int64_t, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<int64_t, 4> GetLayoutDependentResults() { return {0}; }
   }];
 }
 
