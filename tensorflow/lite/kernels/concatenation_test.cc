@@ -273,7 +273,7 @@ struct ConcatenationOpTestTyped : public testing::Test {
   using TestType = Type;
 
   enum TensorType tensor_type =
-      std::is_same<Type, int16_t>::value ? TensorType_INT16 : TensorType_INT8;
+      (std::is_same<Type, int16_t>::value ? TensorType_INT16 : TensorType_INT8);
 };
 
 using TestTypes = testing::Types<int8_t, int16_t>;
