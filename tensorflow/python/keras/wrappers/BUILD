@@ -20,8 +20,8 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:generic_utils",
         "//tensorflow/python/keras:losses",
+        "//tensorflow/python/keras/utils:generic_utils",
         "//third_party/py/numpy",
     ],
 )
@@ -35,7 +35,6 @@ tf_py_test(
     deps = [
         ":wrappers",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:extra_py_tests_deps",
         "//third_party/py/numpy",
     ],
 )

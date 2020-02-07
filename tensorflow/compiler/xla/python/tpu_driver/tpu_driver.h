@@ -42,7 +42,7 @@
 
 namespace tpu_driver {
 
-uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape);
+int64_t ComputeBytesFromShape(const xla::ShapeProto& shape);
 
 // Represents the deferred completion of a scheduled operation.
 //
@@ -120,10 +120,10 @@ class TpuLinearizer {
  public:
   virtual ~TpuLinearizer() {}
 
-  uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {
+  int64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {
     return ::tpu_driver::ComputeBytesFromShape(shape);
   }
-  virtual uint64_t ComputeLinearizedBytesFromShape(
+  virtual int64_t ComputeLinearizedBytesFromShape(
       const xla::ShapeProto& shape) = 0;
 
   virtual xla::Status LinearizeShape(void* dst, const void* src,

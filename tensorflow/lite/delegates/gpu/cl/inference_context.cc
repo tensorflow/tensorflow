@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -112,16 +113,18 @@ TensorStorageType SelectBestStorageType(const CLContext& context,
                                         const CLDevice& device,
                                         const BHWC& shape,
                                         const TensorStorageType& desired,
-                                        const DataType& data_type) {
+                                        const DataType& data_type,
+                                        const Layout& layout) {
   if (CanCreateTensorWithShape(context, device, shape,
-                               TensorDescriptor{data_type, desired})) {
+                               TensorDescriptor{data_type, desired, layout})) {
     return desired;
   }
   auto GetBestTypeAfterTextureArray = [&]() {
     if (device.SupportsImageBuffer() &&
         CanCreateTensorWithShape(
             context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::IMAGE_BUFFER})) {
+            TensorDescriptor{data_type, TensorStorageType::IMAGE_BUFFER,
+                             layout})) {
       return TensorStorageType::IMAGE_BUFFER;
     } else {
       return TensorStorageType::BUFFER;
@@ -131,7 +134,8 @@ TensorStorageType SelectBestStorageType(const CLContext& context,
     if (device.SupportsTextureArray() &&
         CanCreateTensorWithShape(
             context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY})) {
+            TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
+                             layout})) {
       return TensorStorageType::TEXTURE_ARRAY;
     } else {
       return GetBestTypeAfterTextureArray();
@@ -140,7 +144,8 @@ TensorStorageType SelectBestStorageType(const CLContext& context,
   auto GetBestTypeAfterTexture3D = [&]() {
     if (CanCreateTensorWithShape(
             context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::TEXTURE_2D})) {
+            TensorDescriptor{data_type, TensorStorageType::TEXTURE_2D,
+                             layout})) {
       return TensorStorageType::TEXTURE_2D;
     } else {
       return GetBestTypeAfterTexture2D();
@@ -256,20 +261,21 @@ void InferenceContext::ReserveGraphTensors(
   for (auto& t : tensors) {
     TensorStorageType storage_type = create_info.storage_type;
     const auto shape = graph.GetValue(t->id)->tensor.shape;
+    Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
     if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
       if (shape.c < 4 &&
           CanCreateTensorWithShape(
               *creation_context.context, *creation_context.device, shape,
-              TensorDescriptor{data_type,
-                               TensorStorageType::SINGLE_TEXTURE_2D})) {
+              TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
+                               layout})) {
         storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
     }
     storage_type = SelectBestStorageType(*creation_context.context,
                                          *creation_context.device, shape,
-                                         storage_type, data_type);
-    tensor_reserver_.Add(t->id,
-                         {shape, TensorDescriptor{data_type, storage_type}});
+                                         storage_type, data_type, layout);
+    tensor_reserver_.Add(
+        t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
     max_id = std::max(max_id, t->id);
   }
   tensor_reserver_.SetNext(max_id + 1);
@@ -317,14 +323,10 @@ Status InferenceContext::ConvertOperations(
     OperationDef op_def;
     op_def.precision = precision_;
     for (int j = 0; j < inputs.size(); ++j) {
-      op_def.batch_support =
-          op_def.batch_support || inputs[j]->tensor.shape.b != 1;
       op_def.src_tensors.push_back(
           tensor_reserver_.Get(inputs[j]->id).descriptor);
     }
     for (int j = 0; j < outputs.size(); ++j) {
-      op_def.batch_support =
-          op_def.batch_support || outputs[j]->tensor.shape.b != 1;
       op_def.dst_tensors.push_back(
           tensor_reserver_.Get(outputs[j]->id).descriptor);
     }

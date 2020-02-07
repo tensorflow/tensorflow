@@ -716,7 +716,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
   VLOG(1) << "Merged bundles to:" << merged_prefix;
 
   // Cleanup: best effort based and ignores errors.
-  for (const string& prefix : prefixes) {
+  for (const tstring& prefix : prefixes) {
     env->DeleteFile(MetaFilename(prefix)).IgnoreError();
   }
   return status;

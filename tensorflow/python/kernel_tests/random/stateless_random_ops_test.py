@@ -129,6 +129,16 @@ class StatelessOpsTest(test.TestCase):
           yield (functools.partial(stateless.stateless_multinomial, **kwds),
                  functools.partial(random_ops.multinomial, **kwds))
 
+  def _gamma_cases(self):
+    for dtype in np.float16, np.float32, np.float64:
+      for alpha in ([[.5, 1., 2.]], [[0.5, 0.5], [0.8, 0.2], [0.25, 0.75]]):
+        kwds = dict(alpha=constant_op.constant(alpha, dtype=dtype), dtype=dtype)
+        yield (functools.partial(
+            stateless.stateless_random_gamma,
+            shape=(10,) + tuple(np.shape(alpha)),
+            **kwds),
+               functools.partial(random_ops.random_gamma, shape=(10,), **kwds))
+
   @test_util.run_deprecated_v1
   def testMatchFloat(self):
     self._test_match(self._float_cases())
@@ -140,6 +150,10 @@ class StatelessOpsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testMatchMultinomial(self):
     self._test_match(self._multinomial_cases())
+
+  @test_util.run_deprecated_v1
+  def testMatchGamma(self):
+    self._test_match(self._gamma_cases())
 
   @test_util.run_deprecated_v1
   def testDeterminismFloat(self):
@@ -154,6 +168,10 @@ class StatelessOpsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testDeterminismMultinomial(self):
     self._test_determinism(self._multinomial_cases())
+
+  @test_util.run_deprecated_v1
+  def testDeterminismGamma(self):
+    self._test_determinism(self._gamma_cases())
 
 
 if __name__ == '__main__':

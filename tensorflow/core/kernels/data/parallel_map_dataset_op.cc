@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -50,6 +51,9 @@ namespace data {
 /* static */ constexpr const char* const ParallelMapDatasetOp::kSloppy;
 /* static */ constexpr const char* const
     ParallelMapDatasetOp::kPreserveCardinality;
+
+// Period between reporting dataset statistics.
+constexpr int kStatsReportingPeriodMillis = 1000;
 
 class ParallelMapDatasetOp::Dataset : public DatasetBase {
  public:
@@ -277,19 +281,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
     if (deregister_fn_) deregister_fn_();
   }
 
-  string BuildTraceMeName() override {
-    int64 parallelism = -1;
-    // NOTE: We only set the parallelism value if the lock can be acquired right
-    // away to avoid introducing tracing overhead.
-    if (mu_->try_lock()) {
-      parallelism = num_parallel_calls_->value;
-      mu_->unlock();
-    }
-    return strings::StrCat(this->prefix(), "#parallelism=", parallelism,
-                           ",autotune=", autotune_, ",deterministic=", !sloppy_,
-                           "#");
-  }
-
   Status Initialize(IteratorContext* ctx) override {
     mutex_lock l(*mu_);
     if (num_parallel_calls_->value == model::kAutotune) {
@@ -299,7 +290,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
         ctx->cancellation_manager(),
         [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
     TF_RETURN_IF_ERROR(
-        input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
+        input_dataset_->MakeIterator(ctx, this, prefix(), &input_impl_));
     return parallel_map_functor_->InitFunc(ctx);
   }
 
@@ -308,7 +299,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
     std::shared_ptr<InvocationResult> result;
     {
       mutex_lock l(*mu_);
-      EnsureRunnerThreadStarted(ctx);
+      EnsureThreadsStarted(ctx);
       while (ShouldWait(&result)) {
         RecordStop(ctx);
         cond_var_->wait(l);
@@ -414,6 +405,23 @@ class ParallelMapIterator : public DatasetBaseIterator {
     return Status::OK();
   }
 
+  TraceMeMetadata GetTraceMeMetadata() const override {
+    int64 parallelism = -1;
+    // NOTE: We only set the parallelism value if the lock can be acquired
+    // right away to avoid introducing tracing overhead.
+    if (mu_->try_lock()) {
+      parallelism = num_parallel_calls_->value;
+      mu_->unlock();
+    }
+    data::TraceMeMetadata result;
+    result.push_back(std::make_pair("autotune", autotune_ ? "true" : "false"));
+    result.push_back(
+        std::make_pair("deterministic", sloppy_ ? "false" : "true"));
+    result.push_back(
+        std::make_pair("parallelism", strings::Printf("%lld", parallelism)));
+    return result;
+  }
+
  private:
   struct InvocationResult {
     Notification notification;
@@ -432,13 +440,18 @@ class ParallelMapIterator : public DatasetBaseIterator {
     }
   }
 
-  void EnsureRunnerThreadStarted(IteratorContext* ctx)
+  void EnsureThreadsStarted(IteratorContext* ctx)
       EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
     if (!runner_thread_) {
       auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
       runner_thread_ = ctx->StartThread(
           "tf_data_parallel_map",
           std::bind(&ParallelMapIterator::RunnerThread, this, ctx_copy));
+      if (ctx->stats_aggregator()) {
+        stats_thread_ = ctx->StartThread(
+            "tf_data_parallel_map_stats",
+            std::bind(&ParallelMapIterator::StatsThread, this, ctx_copy));
+      }
     }
   }
 
@@ -447,14 +460,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
       LOCKS_EXCLUDED(*mu_) {
     mutex_lock l(*mu_);
     num_calls_--;
-    const auto& stats_aggregator = ctx->stats_aggregator();
-    if (stats_aggregator) {
-      stats_aggregator->AddScalar(
-          stats_utils::ThreadUtilizationScalarName(key_prefix_),
-          static_cast<float>(num_calls_) /
-              static_cast<float>(num_parallel_calls_->value),
-          num_elements());
-    }
     RecordBufferEnqueue(ctx.get(), result->return_values);
     result->notification.Notify();
     cond_var_->notify_all();
@@ -543,14 +548,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
           new_calls.push_back(invocation_results_.back());
           num_calls_++;
         }
-        const auto& stats_aggregator = ctx->stats_aggregator();
-        if (stats_aggregator) {
-          stats_aggregator->AddScalar(
-              stats_utils::ThreadUtilizationScalarName(key_prefix_),
-              static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value),
-              num_elements());
-        }
         cond_var_->notify_all();
       }
       for (const auto& call : new_calls) {
@@ -585,6 +582,34 @@ class ParallelMapIterator : public DatasetBaseIterator {
       return false;
     }
     return true;
+  }
+
+  void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
+    for (int64 step = 0;; ++step) {
+      int num_calls;
+      int num_parallel_calls;
+      {
+        mutex_lock l(*mu_);
+        if (step != 0 && !cancelled_) {
+          cond_var_->wait_for(
+              l, std::chrono::milliseconds(kStatsReportingPeriodMillis));
+        }
+        if (cancelled_) {
+          return;
+        }
+        num_calls = num_calls_;
+        num_parallel_calls = num_parallel_calls_->value;
+      }
+      if (num_parallel_calls == 0) {
+        // Avoid division by zero.
+        num_parallel_calls = 1;
+      }
+      ctx->stats_aggregator()->AddScalar(
+          stats_utils::ThreadUtilizationScalarName(key_prefix_),
+          static_cast<float>(num_calls) /
+              static_cast<float>(num_parallel_calls),
+          step);
+    }
   }
 
   Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
@@ -651,6 +676,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
       GUARDED_BY(*mu_);
 
   std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
+  std::unique_ptr<Thread> stats_thread_ GUARDED_BY(*mu_);
   bool cancelled_ GUARDED_BY(*mu_) = false;
 
   // Method for deregistering the cancellation callback.

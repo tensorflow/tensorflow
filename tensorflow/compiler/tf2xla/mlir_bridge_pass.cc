@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
@@ -86,35 +87,53 @@ static void DumpModule(mlir::ModuleOp module, llvm::StringRef file_prefix) {
 // and attached to a "compile" operation, whose result is fed to an "execute"
 // operation. The kernel for these operations is responsible to lower the
 // encapsulated graph to a particular device.
-Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
-  if (!options.session_options->config.experimental().enable_mlir_bridge()) {
+Status MlirBridgePass::Run(const DeviceSet& device_set,
+                           const ConfigProto& config_proto,
+                           std::unique_ptr<Graph>* graph,
+                           FunctionLibraryDefinition* flib_def,
+                           std::vector<std::string>* control_ret_node_names,
+                           bool* control_rets_updated) {
+  if (!config_proto.experimental().enable_mlir_bridge()) {
     VLOG(1) << "Skipping MLIR Bridge Pass, session flag not enabled";
     return Status::OK();
   }
+
+  VLOG(1) << "Running MLIR Bridge Pass";
+
   GraphDebugInfo debug_info;
   mlir::MLIRContext context;
-  GraphImportConfig specs;
-  specs.graph_as_function = true;
+  GraphImportConfig import_config;
+  import_config.graph_as_function = true;
+  import_config.control_outputs = *control_ret_node_names;
 
-  GraphExportConfig confs;
-  confs.graph_as_function = true;
-  TF_ASSIGN_OR_RETURN(auto module,
-                      ConvertGraphToMlir(**options.graph, debug_info,
-                                         *options.flib_def, specs, &context));
+  TF_ASSIGN_OR_RETURN(auto module_ref,
+                      ConvertGraphToMlir(**graph, debug_info, *flib_def,
+                                         import_config, &context));
 
-  AddDevicesToOp(*module, options.device_set);
+  AddDevicesToOp(*module_ref, &device_set);
 
-  if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_before_");
+  if (VLOG_IS_ON(1)) DumpModule(*module_ref, "mlir_bridge_before_");
 
   // Run the bridge now
   TF_RETURN_IF_ERROR(
-      mlir::TFTPU::TPUBridge(*module, /*enable_logging=*/VLOG_IS_ON(1)));
+      mlir::TFTPU::TPUBridge(*module_ref, /*enable_logging=*/VLOG_IS_ON(1)));
 
-  if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_after_");
+  if (VLOG_IS_ON(1)) DumpModule(*module_ref, "mlir_bridge_after_");
 
+  GraphExportConfig export_config;
+  export_config.graph_as_function = true;
+  absl::flat_hash_set<Node*> control_ret_nodes;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertMlirToGraph(*module, confs, options.graph, options.flib_def),
+      ConvertMlirToGraph(*module_ref, export_config, graph, flib_def,
+                         &control_ret_nodes),
       "Error converting MLIR module back to graph");
+
+  control_ret_node_names->clear();
+  control_ret_node_names->reserve(control_ret_nodes.size());
+  for (const auto* node : control_ret_nodes)
+    control_ret_node_names->push_back(node->name());
+
+  *control_rets_updated = true;
 
   return Status::OK();
 }

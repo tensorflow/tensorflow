@@ -4,6 +4,10 @@ load(
     "tf_proto_library",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
@@ -35,7 +39,6 @@ exports_files(
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
-        "env_var.h",
         "equal_graph_def.h",
         "events_writer.h",
         "example_proto_fast_parsing.h",
@@ -85,30 +88,77 @@ exports_files(
     ],
 )
 
-# The following filegroups are needed since globbing across packages boundaries
-# will just fail silently (see 3rd caveat at
-# https://docs.bazel.build/versions/master/be/functions.html#glob).
-# Files needed for core:framework_internal_impl.
+# Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "mobile_srcs_no_runtime",
-    srcs = glob(
-        [
-            "*.cc",
-            "*.h",
-        ],
-        exclude = [
-            "*_test.*",
-            "debug_events_writer.*",
-            "stats_calculator.*",
-            "events_writer.*",
-            "reporter.*",
-        ],
-    ),
+    srcs = [
+        "overflow.h",
+    ],
 )
 
 filegroup(
-    name = "lib_internal_impl_srcs",
-    srcs = ["env_var.cc"],
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "batch_util.cc",
+        "batch_util.h",
+        "bcast.cc",
+        "bcast.h",
+        "command_line_flags.cc",
+        "command_line_flags.h",
+        "device_name_utils.cc",
+        "device_name_utils.h",
+        "dump_graph.cc",
+        "dump_graph.h",
+        "einsum_op_util.cc",
+        "einsum_op_util.h",
+        "env_var.cc",
+        "env_var.h",
+        "equal_graph_def.cc",
+        "equal_graph_def.h",
+        "example_proto_fast_parsing.cc",
+        "example_proto_fast_parsing.h",
+        "example_proto_helper.cc",
+        "example_proto_helper.h",
+        "guarded_philox_random.cc",
+        "guarded_philox_random.h",
+        "matmul_autotune.cc",
+        "matmul_autotune.h",
+        "matmul_bcast.cc",
+        "matmul_bcast.h",
+        "mirror_pad_mode.cc",
+        "mirror_pad_mode.h",
+        "padding.cc",
+        "padding.h",
+        "port.cc",
+        "port.h",
+        "presized_cuckoo_map.h",
+        "ptr_util.h",
+        "reffed_status_callback.h",
+        "saved_tensor_slice_util.cc",
+        "saved_tensor_slice_util.h",
+        "stat_summarizer.cc",
+        "stat_summarizer.h",
+        "strided_slice_op.cc",
+        "strided_slice_op.h",
+        "tensor_format.cc",
+        "tensor_format.h",
+        "tensor_ops_util.h",
+        "tensor_slice_reader.cc",
+        "tensor_slice_reader.h",
+        "tensor_slice_reader_cache.cc",
+        "tensor_slice_reader_cache.h",
+        "tensor_slice_set.cc",
+        "tensor_slice_set.h",
+        "tensor_slice_util.h",
+        "tensor_slice_writer.cc",
+        "tensor_slice_writer.h",
+        "use_cudnn.cc",
+        "use_cudnn.h",
+        "util.cc",
+        "util.h",
+        "work_sharder.cc",
+        "work_sharder.h",
+    ],
 )
 
 filegroup(
@@ -394,8 +444,9 @@ cc_library(
     srcs = ["tensor_format.cc"],
     hdrs = ["tensor_format.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/lib/gtl:array_slice",
+        "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -418,10 +469,26 @@ cc_library(
     srcs = ["einsum_op_util.cc"],
     hdrs = ["einsum_op_util.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/gtl:inlined_vector",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "env_var",
+    srcs = ["env_var.cc"],
+    hdrs = ["env_var.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
     ],
 )
 

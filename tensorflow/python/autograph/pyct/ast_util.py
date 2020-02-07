@@ -86,7 +86,11 @@ class SymbolRenamer(gast.NodeTransformer):
   def _process_name_node(self, node):
     qn = anno.getanno(node, anno.Basic.QN)
     if qn in self.name_map:
-      new_node = gast.Name(str(self.name_map[qn]), node.ctx, None)
+      new_node = gast.Name(
+          str(self.name_map[qn]),
+          ctx=node.ctx,
+          annotation=None,
+          type_comment=None)
       # All annotations get carried over.
       for k in anno.keys(node):
         anno.copyanno(node, new_node, k)
@@ -133,7 +137,7 @@ def keywords_to_dict(keywords):
   keys = []
   values = []
   for kw in keywords:
-    keys.append(gast.Str(kw.arg))
+    keys.append(gast.Constant(kw.arg, kind=None))
     values.append(kw.value)
   return gast.Dict(keys=keys, values=values)
 

@@ -170,7 +170,7 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
       xla::DebugOptions::STEP_MARK_AT_ENTRY;
   if (!step_marker_location.getValue().empty() &&
       !xla::DebugOptions::StepMarkerLocation_Parse(
-          step_marker_location.getValue(), &location))
+          std::string(step_marker_location.getValue()), &location))
     return op.emitOpError(llvm::formatv("bad '{0}' attribute with value '{1}'",
                                         kStepMarkerLocationAttr,
                                         step_marker_location.getValue()));
@@ -191,7 +191,7 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
 
     tensorflow::tpu::PaddingMap* padding =
         metadata->mutable_padding_maps()->Add();
-    if (!padding->ParseFromString(padding_attr_str.getValue()))
+    if (!padding->ParseFromString(std::string(padding_attr_str.getValue())))
       return op.emitOpError(llvm::formatv(
           "bad '{0}' attribute at index {1} with value '{2}'", kPaddingMapAttr,
           padding_and_idx.index(), padding_attr_str.getValue()));
@@ -339,10 +339,9 @@ Operation* BuildExecuteOp(Operation* compile_op,
   // follow-up CLs.
 
   // TPUExecute has same output types as launch_func.
-  llvm::SmallVector<Type, 4> output_types(launch_func.getResultTypes());
-  return builder->create<TF::TPUExecuteOp>(launch_func.getLoc(), output_types,
-                                           tensor_inputs,
-                                           llvm::ArrayRef<NamedAttribute>{});
+  return builder->create<TF::TPUExecuteOp>(
+      launch_func.getLoc(), launch_func.getResultTypes(), tensor_inputs,
+      llvm::ArrayRef<NamedAttribute>{});
 }
 
 // Creates a `tf.TPUCompileSucceededAssert` operation that parses compilation
@@ -470,10 +469,14 @@ LogicalResult Rewrite(
   // replicate. Otherwise there is only one execution device and the device is
   // assigned to the execute op.
   if (replicate) {
-    llvm::SmallVector<llvm::StringRef, 8> execution_device_refs(
-        execution_devices.begin(), execution_devices.end());
-    replicate.setAttr(kDevicesAttr,
-                      builder->getStrArrayAttr(execution_device_refs));
+    // Model parallelism is not support for now. Therefore, assign all ops
+    // in replicate op with virtual device alias specifying that ops will be
+    // executed on the zeroth core.
+    auto device_attr = builder->getNamedAttr(
+        tensorflow::GetDeviceAliasForLogicalCore(0),
+        builder->getStrArrayAttr(llvm::SmallVector<llvm::StringRef, 4>{
+            execution_devices.begin(), execution_devices.end()}));
+    replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attr));
   } else {
     execute_op->setAttr(kDeviceAttr,
                         builder->getStringAttr(execution_devices.front()));

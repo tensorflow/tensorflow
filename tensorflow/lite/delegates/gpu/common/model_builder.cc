@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
@@ -1394,8 +1395,11 @@ class MulOperationParser : public TFLiteOperationParser {
     const bool runtime_tensor0 = !constant_tensor0;
     const bool runtime_tensor1 = !constant_tensor1;
 
-    // Parse for APPLY_MASK.  The "larger" input tensor must be bound to 1st
-    // input and the "smaller" input tensor ("mask") must be bound to 2nd input.
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::MUL);
+
+    // The "larger" input tensor must be bound to 1st input and the "smaller"
+    // input tensor ("mask") must be bound to 2nd input.
     if (runtime_tensor0 && runtime_tensor1) {
       BHWC shape0;
       RETURN_IF_ERROR(ExtractTensorShape(*input0, &shape0));
@@ -1408,11 +1412,11 @@ class MulOperationParser : public TFLiteOperationParser {
         input_tensor0 = 1;
         input_tensor1 = 0;
       }
-      return ParseApplyMask(input_tensor0, input_tensor1, graph, reader);
+      return ParseApplyMask(node, input_tensor0, input_tensor1, graph, reader);
     }
 
-    // Parse for MULTIPLY_SCALAR.  The runtime input tensor must be bound to 1st
-    // input and the constant input tensor must be bound to 2nd input.
+    // The runtime input tensor must be bound to 1st input and the constant
+    // input tensor must be bound to 2nd input.
     int runtime_tensor = 0;
     int constant_tensor = 1;
     TfLiteIntArray* constant_dims = input1->dims;
@@ -1421,27 +1425,24 @@ class MulOperationParser : public TFLiteOperationParser {
       constant_tensor = 0;
       constant_dims = input0->dims;
     }
-    return ParseMultiplyScalar(runtime_tensor, constant_tensor, constant_dims,
-                               graph, reader);
+    return ParseMultiplyScalar(node, runtime_tensor, constant_tensor,
+                               constant_dims, graph, reader);
   }
 
  private:
-  Status ParseApplyMask(int input_tensor0, int input_tensor1,
+  Status ParseApplyMask(Node* node, int input_tensor0, int input_tensor1,
                         GraphFloat32* graph, ObjectReader* reader) {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::APPLY_MASK);
     RETURN_IF_ERROR(reader->AddInput(node, input_tensor0));
     RETURN_IF_ERROR(reader->AddInput(node, input_tensor1));
     return reader->AddOutputs(node);
   }
 
-  Status ParseMultiplyScalar(int runtime_tensor, int constant_tensor,
+  Status ParseMultiplyScalar(Node* node, int runtime_tensor,
+                             int constant_tensor,
                              const TfLiteIntArray* constant_dims,
                              GraphFloat32* graph, ObjectReader* reader) {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::MULTIPLY_SCALAR);
     RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
-    MultiplyScalarAttributes attr;
+    MultiplyAttributes attr;
     if (constant_dims->size <= 0) {
       Tensor<Scalar, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
@@ -1499,9 +1500,20 @@ class PReLUOperationParser : public TFLiteOperationParser {
 
 class PadOperationParser : public TFLiteOperationParser {
  public:
+  explicit PadOperationParser(bool mirror_pad) : mirror_pad_(mirror_pad) {}
+
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
+    if (mirror_pad_) {
+      auto* tf_options = reinterpret_cast<const TfLiteMirrorPaddingParams*>(
+          tflite_node->builtin_data);
+      if (tf_options->mode !=
+          TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect) {
+        return InvalidArgumentError(
+            "Only Reflective padding is supported for Mirror Pad operation.");
+      }
+    }
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
     RETURN_IF_ERROR(
         CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
@@ -1518,7 +1530,12 @@ class PadOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     PadAttributes attr;
-    attr.type = PaddingContentType::ZEROS;
+    if (mirror_pad_) {
+      attr.type = PaddingContentType::REFLECT;
+    } else /*zero pad*/ {
+      attr.type = PaddingContentType::ZEROS;
+    }
+
     Tensor<HW, DataType::INT32> paddings;
     RETURN_IF_ERROR(reader->ReadTensor(1, &paddings));
 
@@ -1533,6 +1550,9 @@ class PadOperationParser : public TFLiteOperationParser {
     node->operation.attributes = attr;
     return OkStatus();
   }
+
+ private:
+  bool mirror_pad_ = false;
 };
 
 class Pooling2DOperationParser : public TFLiteOperationParser {
@@ -1673,8 +1693,11 @@ class ReshapeOperationParser : public TFLiteOperationParser {
   }
 };
 
-class ResizeBilinearOperationParser : public TFLiteOperationParser {
+class Resize2DOperationParser : public TFLiteOperationParser {
  public:
+  explicit Resize2DOperationParser(SamplingType sampling_type)
+      : sampling_type_(sampling_type) {}
+
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
@@ -1682,9 +1705,9 @@ class ResizeBilinearOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(
         CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
 
-    // TODO(eignasheva): check shapes.
-    TfLiteResizeBilinearParams* tf_options = nullptr;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    RETURN_IF_ERROR(CheckOnlyUpsamplingIsSupported(context, tflite_node));
+    bool align_corners;
+    RETURN_IF_ERROR(GetAlignCornersValue(tflite_node, &align_corners));
     return OkStatus();
   }
 
@@ -1692,26 +1715,71 @@ class ResizeBilinearOperationParser : public TFLiteOperationParser {
                const TfLiteRegistration* registration, GraphFloat32* graph,
                ObjectReader* reader) final {
     Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::UPSAMPLE_2D);
+    node->operation.type = ToString(OperationType::RESIZE);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
     // Here we may have extra inputs. Other tensors were supposed to
     // define new shape, but in TFLite these are ignored.
 
-    const auto* tf_options =
-        reinterpret_cast<const TfLiteResizeBilinearParams*>(
-            tflite_node->builtin_data);
-    if (!tf_options) {
-      return InternalError("Missing tflite params");
-    }
-    Upsample2DAttributes attr;
-    attr.align_corners = tf_options->align_corners;
-    attr.type = UpsamplingType::BILINEAR;
+    Resize2DAttributes attr;
+    RETURN_IF_ERROR(GetAlignCornersValue(tflite_node, &attr.align_corners));
+    attr.type = sampling_type_;
     attr.new_shape.CopyAllDefinedAxis(
         graph->FindOutputs(node->id)[0]->tensor.shape);
     node->operation.attributes = attr;
     return OkStatus();
   }
+
+ private:
+  Status GetAlignCornersValue(const TfLiteNode* tflite_node,
+                              bool* align_corners) {
+    switch (sampling_type_) {
+      case SamplingType::BILINEAR:
+        return GetAlignCornersValueForType<TfLiteResizeBilinearParams>(
+            tflite_node, align_corners);
+      case SamplingType::NEAREST:
+        return GetAlignCornersValueForType<TfLiteResizeNearestNeighborParams>(
+            tflite_node, align_corners);
+      case SamplingType::UNKNOWN:
+        return InternalError("Sampling type is not specified");
+    }
+    return OkStatus();
+  }
+
+  template <class T>
+  Status GetAlignCornersValueForType(const TfLiteNode* tflite_node,
+                                     bool* align_corners) {
+    const auto* tf_options =
+        reinterpret_cast<const T*>(tflite_node->builtin_data);
+    if (!tf_options) {
+      return InternalError("Missing tflite params");
+    }
+    *align_corners = tf_options->align_corners;
+    return OkStatus();
+  }
+
+  Status CheckOnlyUpsamplingIsSupported(const TfLiteContext* context,
+                                        const TfLiteNode* tflite_node) {
+    const auto* input = context->tensors + tflite_node->inputs->data[0];
+    const auto* output = context->tensors + tflite_node->outputs->data[0];
+
+    if (!input->dims || input->dims->size != 4) {
+      return InvalidArgumentError("input.dims.size != 4");
+    }
+    if (!output->dims || output->dims->size != 4) {
+      return InvalidArgumentError("output.dims.size != 4");
+    }
+    if (output->dims->data[1] < input->dims->data[1] ||
+        output->dims->data[2] < input->dims->data[2]) {
+      return InvalidArgumentError(absl::StrCat(
+          "Only upsampling is supported, received output h,w = ",
+          output->dims->data[1], ",", output->dims->data[2],
+          " input h,w = ", input->dims->data[1], ",", input->dims->data[2]));
+    }
+    return OkStatus();
+  }
+
+  SamplingType sampling_type_ = SamplingType::UNKNOWN;
 };
 
 class SoftmaxOperationParser : public TFLiteOperationParser {
@@ -2365,6 +2433,51 @@ class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
  private:
 };
 
+class MeanOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    return CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+                              /*outputs=*/1);
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    auto* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::MEAN);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    MeanAttributes attr;
+    Tensor<Linear, DataType::INT32> channel;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &channel));
+    for (int i = 0; i < channel.data.size(); i++) {
+      std::string unsupported;
+      switch (channel.data[i]) {
+        case 1:
+          attr.dims.insert(Axis::HEIGHT);
+          break;
+        case 2:
+          attr.dims.insert(Axis::WIDTH);
+          break;
+        case 0:
+          unsupported = unsupported.empty() ? "batch" : unsupported;
+          ABSL_FALLTHROUGH_INTENDED;
+        case 3:
+          unsupported = unsupported.empty() ? "channels" : unsupported;
+          ABSL_FALLTHROUGH_INTENDED;
+        default:
+          return UnimplementedError(
+              absl::StrCat("Unsupported mean dimension: ", unsupported));
+      }
+    }
+    node->operation.attributes = attr;
+    return OkStatus();
+  }
+};
+
 class UnsupportedOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -2413,10 +2526,14 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<LSTMOperationParser>();
     case kTfLiteBuiltinMaxPool2d:
       return absl::make_unique<Pooling2DOperationParser>(PoolingType::MAX);
+    case kTfLiteBuiltinMean:
+      return absl::make_unique<MeanOperationParser>();
+    case kTfLiteBuiltinMirrorPad:
+      return absl::make_unique<PadOperationParser>(/*mirror_pad=*/true);
     case kTfLiteBuiltinMul:
       return absl::make_unique<MulOperationParser>();
     case kTfLiteBuiltinPad:
-      return absl::make_unique<PadOperationParser>();
+      return absl::make_unique<PadOperationParser>(/*mirror_pad=*/false);
     case kTfLiteBuiltinPow:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::POW);
     case kTfLiteBuiltinRelu:
@@ -2430,7 +2547,9 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinReshape:
       return absl::make_unique<ReshapeOperationParser>();
     case kTfLiteBuiltinResizeBilinear:
-      return absl::make_unique<ResizeBilinearOperationParser>();
+      return absl::make_unique<Resize2DOperationParser>(SamplingType::BILINEAR);
+    case kTfLiteBuiltinResizeNearestNeighbor:
+      return absl::make_unique<Resize2DOperationParser>(SamplingType::NEAREST);
     case kTfLiteBuiltinRsqrt:
       return absl::make_unique<ElementwiseOperationParser>(
           OperationType::RSQRT);
@@ -2746,6 +2865,20 @@ Status BuildModel(TfLiteContext* context,
       return InternalError(absl::StrCat(GetOpNameByRegistration(registration),
                                         ": ", status.error_message()));
     }
+  }
+  return OkStatus();
+}
+
+Status BuildFinalModel(TfLiteContext* context,
+                       const TfLiteDelegateParams* delegate_params,
+                       GraphFloat32* graph) {
+  RETURN_IF_ERROR(BuildModel(context, delegate_params, graph));
+
+  // Apply general transformations on the graph.
+  NullTransformationReporter reporter;
+  ModelTransformer transformer(graph, &reporter);
+  if (!ApplyGeneralTransformations(&transformer)) {
+    return InternalError("Graph general transformations failed");
   }
   return OkStatus();
 }

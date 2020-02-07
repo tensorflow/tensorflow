@@ -19,7 +19,6 @@ limitations under the License.
 #include <direct.h>
 #include <stdlib.h>
 #include <WinSock2.h>
-#pragma comment(lib, "Ws2_32.lib")
 #else
 #include <errno.h>
 #include <unistd.h>

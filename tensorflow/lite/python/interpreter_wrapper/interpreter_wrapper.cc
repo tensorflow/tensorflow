@@ -90,13 +90,17 @@ std::unique_ptr<tflite_api_dispatcher::Interpreter> CreateInterpreter(
 PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(float));
   memcpy(pydata, data, size * sizeof(float));
-  return PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
+  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
+  return obj;
 }
 
 PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(int));
   memcpy(pydata, data, size * sizeof(int));
-  return PyArray_SimpleNewFromData(1, &size, NPY_INT32, pydata);
+  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_INT32, pydata);
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
+  return obj;
 }
 
 PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {
@@ -301,6 +305,23 @@ PyObject* InterpreterWrapper::TensorSize(int i) const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
+PyObject* InterpreterWrapper::TensorSizeSignature(int i) const {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+
+  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const int32_t* size_signature_data = nullptr;
+  int32_t size_signature_size = 0;
+  if (tensor->dims_signature != nullptr) {
+    size_signature_data = tensor->dims_signature->data;
+    size_signature_size = tensor->dims_signature->size;
+  }
+  PyObject* np_array =
+      PyArrayFromIntVector(size_signature_data, size_signature_size);
+
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
+}
+
 PyObject* InterpreterWrapper::TensorQuantization(int i) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
@@ -388,6 +409,14 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
   }
 
   if (tensor->type != kTfLiteString) {
+    if (tensor->data.raw == nullptr) {
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor:"
+                   " Tensor is unallocated. Try calling allocate_tensors()"
+                   " first");
+      return nullptr;
+    }
+
     size_t size = PyArray_NBYTES(array);
     if (size != tensor->bytes) {
       PyErr_Format(PyExc_ValueError,
@@ -475,7 +504,9 @@ PyObject* CheckGetTensorArgs(tflite_api_dispatcher::Interpreter* interpreter_,
   }
 
   if (!(*tensor)->data.raw) {
-    PyErr_SetString(PyExc_ValueError, "Tensor data is null.");
+    PyErr_SetString(PyExc_ValueError,
+                    "Tensor data is null."
+                    " Run allocate_tensors() first");
     return nullptr;
   }
 

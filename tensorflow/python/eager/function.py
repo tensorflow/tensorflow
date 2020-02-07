@@ -33,8 +33,8 @@ from six.moves import map
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import _pywrap_utils
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -482,7 +482,7 @@ class _EagerDefinedFunction(object):
         output_names = []
     else:
       output_names = []
-    fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
+    fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
         graph._c_graph,  # pylint: disable=protected-access
         compat.as_str(name),
         False,
@@ -499,14 +499,14 @@ class _EagerDefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(iga): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use status.
-      pywrap_tensorflow.TF_FunctionSetAttrValueProto(
-          fn, compat.as_str(name), serialized)
+      pywrap_tf_session.TF_FunctionSetAttrValueProto(fn, compat.as_str(name),
+                                                     serialized)
 
     # TODO(apassos) avoid creating a FunctionDef (specially to grab the
     # signature, but also in general it's nice not to depend on it.
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tensorflow.TF_FunctionToFunctionDef(fn, buffer_)
-      proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
+      pywrap_tf_session.TF_FunctionToFunctionDef(fn, buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
     self._name = compat.as_bytes(function_def.signature.name)
@@ -2357,7 +2357,8 @@ class Function(object):
                autograph=True,
                autograph_options=None,
                experimental_relax_shapes=False,
-               capture_by_value=None):
+               capture_by_value=None,
+               experimental_compile=None):
     """Initializes a `Function`.
 
     Args:
@@ -2379,6 +2380,8 @@ class Function(object):
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
+      experimental_compile: Force-compile the function with XLA, cf.
+        def_function.Function doc on experimental_compile.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -2402,6 +2405,7 @@ class Function(object):
     # `Function`, used to make sure defun-decorated methods create different
     # functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
+    self._experimental_compile = experimental_compile
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
@@ -3151,6 +3155,7 @@ def defun_with_attributes(func=None,
                           attributes=None,
                           autograph=True,
                           experimental_autograph_options=None,
+                          experimental_compile=None,
                           experimental_relax_shapes=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
@@ -3171,6 +3176,7 @@ def defun_with_attributes(func=None,
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
+    experimental_compile: same as defun()'s experimental_compile.
     experimental_relax_shapes: same as defun()'s experimental_relax_shapes
 
   Returns:
@@ -3198,6 +3204,7 @@ def defun_with_attributes(func=None,
             attributes=attributes,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
+            experimental_compile=experimental_compile,
             experimental_relax_shapes=experimental_relax_shapes))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
@@ -3222,6 +3229,8 @@ def defun_with_attributes(func=None,
 class TfMethodTarget(object):
   """Binding target for methods replaced by function and defun."""
 
+  __slots__ = ("weakrefself_target__", "weakrefself_func__")
+
   def __init__(self, target, original_python_function):
     self.weakrefself_target__ = target
     self.weakrefself_func__ = weakref.ref(original_python_function)
@@ -3229,6 +3238,15 @@ class TfMethodTarget(object):
   @property
   def target(self):
     return self.weakrefself_target__()
+
+  @property
+  def target_class(self):
+    true_self = self.weakrefself_target__()
+    if tf_inspect.isclass(true_self):
+      # Class method
+      return true_self
+    else:
+      return true_self.__class__
 
   def call(self, args, kwargs):
     wrapped_fn = self.weakrefself_func__()
@@ -3284,7 +3302,8 @@ def class_method_to_instance_method(original_function, instance):
       name=original_function._name,
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
-      experimental_relax_shapes=original_function._experimental_relax_shapes)
+      experimental_relax_shapes=original_function._experimental_relax_shapes,
+      experimental_compile=original_function._experimental_compile)
   # pylint: enable=protected-access
 
   # And we wrap the function with tf_decorator so inspection works correctly

@@ -15,6 +15,7 @@ cc_library(
     name = "rocm_headers",
     hdrs = [
         "rocm/rocm_config.h",
+        ":hipsparse-include",
         ":miopen-include",
         ":rccl-include",
         ":rocblas-include",
@@ -141,6 +142,13 @@ cc_library(
     ],
 )
 
+cc_import(
+    name = "hipsparse",
+    hdrs = glob(["rocm/include/hipsparse/**"]),
+    shared_library = "rocm/lib/libhipsparse.so",
+    visibility = ["//visibility:public"],
+)
+
 genrule(
     name = "rocm-include",
     outs = [
@@ -175,6 +183,7 @@ genrule(
         "rocm/include/hcc/clang-c/CXErrorCode.h",
         "rocm/include/hcc/clang-c/CXString.h",
         "rocm/include/hcc/clang-c/Documentation.h",
+        "rocm/include/hcc/clang-c/FatalErrorHandler.h",
         "rocm/include/hcc/clang-c/Index.h",
         "rocm/include/hcc/clang-c/Platform.h",
         "rocm/include/hcc/coordinate",
@@ -275,12 +284,14 @@ genrule(
         "rocm/include/hip/hcc_detail/hip_prof_str.h",
         "rocm/include/hip/hcc_detail/hip_runtime.h",
         "rocm/include/hip/hcc_detail/hip_runtime_api.h",
+        "rocm/include/hip/hcc_detail/hip_runtime_prof.h",
         "rocm/include/hip/hcc_detail/hip_surface_types.h",
         "rocm/include/hip/hcc_detail/hip_texture_types.h",
         "rocm/include/hip/hcc_detail/hip_vector_types.h",
         "rocm/include/hip/hcc_detail/hiprtc.h",
         "rocm/include/hip/hcc_detail/host_defines.h",
         "rocm/include/hip/hcc_detail/hsa_helpers.hpp",
+        "rocm/include/hip/hcc_detail/library_types.h",
         "rocm/include/hip/hcc_detail/llvm_intrinsics.h",
         "rocm/include/hip/hcc_detail/macro_based_grid_launch.hpp",
         "rocm/include/hip/hcc_detail/math_functions.h",
@@ -292,6 +303,7 @@ genrule(
         "rocm/include/hip/hip_common.h",
         "rocm/include/hip/hip_complex.h",
         "rocm/include/hip/hip_cooperative_groups.h",
+        "rocm/include/hip/hip_ext.h",
         "rocm/include/hip/hip_fp16.h",
         "rocm/include/hip/hip_hcc.h",
         "rocm/include/hip/hip_profile.h",
@@ -300,6 +312,7 @@ genrule(
         "rocm/include/hip/hip_texture_types.h",
         "rocm/include/hip/hip_vector_types.h",
         "rocm/include/hip/hiprtc.h",
+        "rocm/include/hip/library_types.h",
         "rocm/include/hip/math_functions.h",
         "rocm/include/hip/nvcc_detail/channel_descriptor.h",
         "rocm/include/hip/nvcc_detail/hip_complex.h",
@@ -441,7 +454,6 @@ genrule(
         "rocm/include/ocml.h",
         "rocm/include/opencl1.2-c.pch",
         "rocm/include/opencl2.0-c.pch",
-        "rocm/include/profiler/CXLActivityLogger/CXLActivityLogger.h",
         "rocm/include/rccl.h",
         "rocm/include/rocalution.hpp",
         "rocm/include/rocblas-auxiliary.h",
@@ -583,6 +595,7 @@ genrule(
         "rocm/include/rocrand/rocrand_xorwow.h",
         "rocm/include/rocrand/rocrand_xorwow_precomputed.h",
         "rocm/include/rocsparse-auxiliary.h",
+        "rocm/include/rocsparse-complex-types.h",
         "rocm/include/rocsparse-export.h",
         "rocm/include/rocsparse-functions.h",
         "rocm/include/rocsparse-types.h",
@@ -1469,6 +1482,16 @@ genrule(
 )
 
 genrule(
+    name = "hipsparse-include",
+    outs = [
+        "rocm/include/hipsparse/hipsparse-export.h",
+        "rocm/include/hipsparse/hipsparse-version.h",
+        "rocm/include/hipsparse/hipsparse.h",
+    ],
+    cmd = """cp -rLf "/opt/rocm/hipsparse/include/." "$(@D)/rocm/include/hipsparse/" """,
+)
+
+genrule(
     name = "rocm-lib",
     outs = [
         "rocm/lib/libhip_hcc.so",
@@ -1477,11 +1500,13 @@ genrule(
         "rocm/lib/libhiprand.so",
         "rocm/lib/libMIOpen.so",
         "rocm/lib/librccl.so",
+        "rocm/lib/libhipsparse.so",
     ],
     cmd = """cp -f "/opt/rocm/hip/lib/libhip_hcc.so" "$(location rocm/lib/libhip_hcc.so)" && \
 cp -f "/opt/rocm/rocblas/lib/librocblas.so.0.1" "$(location rocm/lib/librocblas.so)" && \
 cp -f "/opt/rocm/rocfft/lib/librocfft.so.0.1" "$(location rocm/lib/librocfft.so)" && \
 cp -f "/opt/rocm/hiprand/lib/libhiprand.so.1.1" "$(location rocm/lib/libhiprand.so)" && \
 cp -f "/opt/rocm/miopen/lib/libMIOpen.so.1" "$(location rocm/lib/libMIOpen.so)" && \
-cp -f "/opt/rocm/rccl/lib/librccl.so" "$(location rocm/lib/librccl.so)" """,
+cp -f "/opt/rocm/rccl/lib/librccl.so" "$(location rocm/lib/librccl.so)" && \
+cp -f "/opt/rocm/hipsparse/lib/libhipsparse.so.0.1" "$(location rocm/lib/libhipsparse.so)" """,
 )

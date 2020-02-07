@@ -618,7 +618,7 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
 
 REGISTER_OP("BoostedTreesUpdateEnsembleV2")
     .Input("tree_ensemble_handle: resource")
-    .Input("feature_ids: int32")
+    .Input("feature_ids: num_groups * int32")
     .Input("dimension_ids: num_features * int32")
     .Input("node_ids: num_features * int32")
     .Input("gains: num_features * float")
@@ -631,55 +631,68 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
     .Input("pruning_mode: int32")
     .Attr("num_features: int >= 0")  // Inferred.
     .Attr("logits_dimension: int = 1")
+    .Attr("num_groups: int = 1")  // Inferred; number of groups to process.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle shape_handle;
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
-
-      // Feature_ids, should be one for each feature.
-      shape_inference::ShapeHandle feature_ids_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &feature_ids_shape));
-      TF_RETURN_IF_ERROR(
-          c->Merge(c->input(1), c->Vector(num_features), &shape_handle));
-
       int logits_dimension;
+      int num_groups;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
       TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
-      for (int i = 0; i < num_features; ++i) {
+      TF_RETURN_IF_ERROR(c->GetAttr("num_groups", &num_groups));
+      // num_features was kept for backwards compatibility reasons. It now
+      // represents number of groups.
+      DCHECK_EQ(num_features, num_groups);
+      shape_inference::ShapeHandle shape_handle;
+      for (int i = 0; i < num_groups; ++i) {
+        int offset = i + 1;
+
+        // Feature ids
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(offset), 1, &shape_handle));
+        // TODO(nponomareva): replace this with input("name",vector of shapes).
+        auto shape_rank_1 = c->MakeShape({c->Dim(shape_handle, 0)});
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(offset), shape_rank_1, &shape_handle));
+
         // Dimension ids.
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 2), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(offset + num_features), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(offset), shape_rank_1, &shape_handle));
 
         // Node ids.
         TF_RETURN_IF_ERROR(
-            c->WithRank(c->input(i + num_features + 2), 1, &shape_handle));
-        auto shape_rank_1 = c->MakeShape({c->Dim(shape_handle, 0)});
-        auto shape_rank_2 =
-            c->MakeShape({c->Dim(shape_handle, 0), logits_dimension});
+            c->WithRank(c->input(offset + num_features * 2), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(offset), shape_rank_1, &shape_handle));
 
         // Gains.
         TF_RETURN_IF_ERROR(
-            c->WithRank(c->input(i + num_features * 2 + 2), 1, &shape_handle));
-        // TODO(nponomareva): replace this with input("name",vector of shapes).
-        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 2 + 2),
+            c->WithRank(c->input(offset + num_features * 3), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(offset + num_features * 3),
                                     shape_rank_1, &shape_handle));
+
         // Thresholds.
         TF_RETURN_IF_ERROR(
-            c->WithRank(c->input(i + num_features * 3 + 2), 1, &shape_handle));
-        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 3 + 2),
+            c->WithRank(c->input(offset + num_features * 4), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(offset + num_features * 4),
                                     shape_rank_1, &shape_handle));
+
         // Left and right node contribs.
+        auto shape_rank_2 =
+            c->MakeShape({c->Dim(shape_handle, 0), logits_dimension});
         TF_RETURN_IF_ERROR(
-            c->WithRank(c->input(i + num_features * 4 + 2), 2, &shape_handle));
-        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 4 + 2),
+            c->WithRank(c->input(offset + num_features * 5), 2, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(offset + num_features * 5),
                                     shape_rank_2, &shape_handle));
         TF_RETURN_IF_ERROR(
-            c->WithRank(c->input(i + num_features * 5 + 2), 2, &shape_handle));
-        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 5 + 2),
+            c->WithRank(c->input(offset + num_features * 6), 2, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(offset + num_features * 6),
                                     shape_rank_2, &shape_handle));
 
         // Split types.
         TF_RETURN_IF_ERROR(
-            c->WithRank(c->input(i + num_features * 6 + 2), 1, &shape_handle));
-        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 6 + 2),
+            c->WithRank(c->input(offset + num_features * 7), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(offset + num_features * 7),
                                     shape_rank_1, &shape_handle));
       }
       return Status::OK();

@@ -171,7 +171,7 @@ class DistributedDumpingCallbackTest(
 
       if tensor_debug_mode == "NO_TENSOR":
         for trace in traces:
-          self.assertEqual(trace.debug_tensor_value, [])
+          self.assertIsNone(trace.debug_tensor_value)
       elif tensor_debug_mode == "FULL_TENSOR":
         device_0_matmul_values = [
             reader.graph_execution_trace_to_tensor_value(trace)
@@ -273,7 +273,7 @@ class DistributedDumpingCallbackTest(
 
       if tensor_debug_mode == "NO_TENSOR":
         for trace in traces:
-          self.assertEqual(trace.debug_tensor_value, [])
+          self.assertIsNone(trace.debug_tensor_value)
       elif tensor_debug_mode == "FULL_TENSOR":
         gpu_0_relu_values = [
             reader.graph_execution_trace_to_tensor_value(trace)

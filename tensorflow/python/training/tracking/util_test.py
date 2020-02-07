@@ -1577,7 +1577,8 @@ class CheckpointCompatibilityTests(test.TestCase):
         root = self._initialized_model()
         name_saver = saver_lib.Saver()
         return name_saver.save(
-            sess=session, save_path=checkpoint_prefix,
+            sess=session,
+            save_path=checkpoint_prefix,
             global_step=root.optimizer.iterations)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1651,6 +1652,29 @@ class CheckpointCompatibilityTests(test.TestCase):
         self._set_sentinels(root)
         root.restore(save_path).assert_consumed().run_restore_ops()
         self._check_sentinels(root)
+
+  def testIgnoreSaveCounter(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    with self.cached_session() as session:
+      # Create and save a model using Saver() before using a Checkpoint. This
+      # generates a snapshot without the Checkpoint's `save_counter`.
+      model = sequential.Sequential()
+      model.add(core.Flatten(input_shape=(1,)))
+      model.add(core.Dense(1))
+      name_saver = saver_lib.Saver(model.trainable_variables)
+      save_path = name_saver.save(
+          sess=session, save_path=checkpoint_prefix, global_step=1)
+      # Checkpoint.restore must successfully load that checkpoint.
+      ckpt = trackable_utils.Checkpoint(model=model)
+      status = ckpt.restore(save_path)
+      status.assert_existing_objects_matched()
+      # It should, however, refuse to load a checkpoint where an unrelated
+      # `save_counter` variable is missing.
+      model.layers[1].var = variables_lib.Variable(0., name="save_counter")
+      status = ckpt.restore(save_path)
+      with self.assertRaises(AssertionError):
+        status.assert_existing_objects_matched()
 
 
 if __name__ == "__main__":

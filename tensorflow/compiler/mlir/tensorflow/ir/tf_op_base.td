@@ -23,6 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions
@@ -70,7 +71,7 @@ class TF_Op<string mnemonic, list<OpTrait> traits = []> :
 
 // Any tensor element type defined in the TensorFlow dialect
 def TF_TFDialectType :
-    Type<CPred<"$_self.isa<TensorFlowType>()">, "TensorFlow type">;
+    Type<CPred<"$_self.isa<mlir::TF::TensorFlowType>()">, "TensorFlow type">;
 
 // Class for any TensorFlow dialect specific type
 class TF_TensorFlowType <string name, string description> :
@@ -227,7 +228,7 @@ class TF_DerivedOperandTypeAttr<int idx> : DerivedTypeAttr<
   "return mlir::getElementTypeOrSelf(*getODSOperands(" # idx # ").begin());">;
 
 // A derived attribute that returns the element types of the tensors in the
-// dynamic value pack that corresponds to the `idx`-th ODS-declared variadic
+// actual value pack that corresponds to the `idx`-th ODS-declared variadic
 // operand. This returns a list of element types so it is used for variadic
 // operands that can have different element types.
 class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
@@ -235,6 +236,17 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "auto values = getODSOperands(" # idx # ");\n"
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};"
+>;
+
+// A derived attribute that returns the shapes of the tensors in the actual
+// value pack that corresponds to the `idx`-th ODS-declared variadic operand.
+// This returns a list of shapes so it is used for variadic operands that
+// can have different shapes.
+class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
+  "mlir::TF::OperandShapeRange",
+  "auto values = getODSOperands(" # idx # ");\n"
+  "return {mlir::TF::OperandShapeIterator(values.begin()), "
+          "mlir::TF::OperandShapeIterator(values.end())};"
 >;
 
 // A derived attribute that returns the size of `idx`-th ODS-declared variadic
@@ -253,7 +265,7 @@ class TF_DerivedResultTypeAttr<int idx> : DerivedTypeAttr<
   "return mlir::getElementTypeOrSelf(*getODSResults(" # idx # ").begin());">;
 
 // A derived attribute that returns the element types of the tensors in the
-// dynamic value pack that corresponds to the `idx`-th ODS-declared variadic
+// actual value pack that corresponds to the `idx`-th ODS-declared variadic
 // result. This returns a list of element types so it is used for variadic
 // results that can have different element types.
 class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
@@ -261,6 +273,17 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "auto values = getODSResults(" # idx # ");\n"
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};"
+>;
+
+// A derived attribute that returns the shapes of the tensors in the actual
+// value pack that corresponds to the `idx`-th ODS-declared variadic result.
+// This returns a list of shapes so it is used for variadic results that
+// can have different shapes.
+class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
+  "mlir::TF::ResultShapeRange",
+  "auto values = getODSResults(" # idx # ");\n"
+  "return {mlir::TF::ResultShapeIterator(values.begin()), "
+          "mlir::TF::ResultShapeIterator(values.end())};"
 >;
 
 // A derived attribute that returns the shape of the first result type.

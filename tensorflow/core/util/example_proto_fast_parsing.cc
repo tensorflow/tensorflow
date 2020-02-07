@@ -135,9 +135,10 @@ class Feature {
       // parse string
       uint32 bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
-      string bytes;
-      if (!stream.ReadString(&bytes, bytes_length)) return false;
-      bytes_list->push_back(std::move(bytes));
+      bytes_list->push_back({});
+      tstring& bytes = bytes_list->back();
+      bytes.resize_uninitialized(bytes_length);
+      if (!stream.ReadRaw(bytes.data(), bytes_length)) return false;
     }
     stream.PopLimit(limit);
     return true;
@@ -400,12 +401,11 @@ bool TestFastParse(const string& serialized, Example* example) {
       case DT_INVALID:
         break;
       case DT_STRING: {
-        SmallVector<string> list;
+        SmallVector<tstring> list;
         if (!name_and_feature.second.ParseBytesList(&list)) return false;
         auto* result_list = value.mutable_bytes_list();
         for (auto& bytes : list) {
-          auto* new_value = result_list->add_value();
-          new_value->swap(bytes);
+          result_list->add_value(bytes.data(), bytes.size());
         }
         break;
       }
@@ -504,6 +504,10 @@ class LimitedArraySlice {
     if (EndDistance() > 0) *current_ = std::move(value);
     ++current_;
   }
+
+  // Returns a mutable reference to the last element in the slice.
+  // REQUIRES: size() > 0.
+  T& back() { return *(current_ - 1); }
 
   // Returns the number of elements in the slice.
   size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
@@ -1835,16 +1839,10 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
       if (out == nullptr) {
         stream->Skip(bytes_length);
       } else {
-#ifdef USE_TSTRING
         out->resize_uninitialized(bytes_length);
         if (!stream->ReadRaw(out->data(), bytes_length)) {
           return -1;
         }
-#else   // USE_TSTRING
-        if (!stream->ReadString(out, bytes_length)) {
-          return -1;
-        }
-#endif  // USE_TSTRING
         out++;
       }
       num_elements++;

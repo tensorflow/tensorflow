@@ -3918,7 +3918,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(32.0, self.evaluate(r))
 
   @test_util.run_deprecated_v1
-  @test_util.disable_control_flow_v2("b/118712257")
   def testWhileGrad_StopGradInside(self):
     with self.cached_session():
       x = constant_op.constant(3.0, name="x")
@@ -3939,7 +3938,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(156.0, self.evaluate(r))
 
   @test_util.run_deprecated_v1
-  @test_util.disable_control_flow_v2("b/118712257")
   def testWhileGrad_StopGradInsideNoShape(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
@@ -3954,11 +3952,11 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       rx, _ = control_flow_ops.while_loop(c, b, [x, y])
 
-      r = gradients_impl.gradients(rx, y)[0]
+      grad_y = gradients_impl.gradients(rx, y)[0]
+      grad_x = gradients_impl.gradients(rx, x)[0]
       feed_dict = {x: [3.0, 4.0], y: [2.0, 3.0]}
-      self.assertAllClose([0.0, 0.0], sess.run(r, feed_dict=feed_dict))
-      r = gradients_impl.gradients(rx, x)[0]
-      self.assertAllClose([156.0, 400.0], sess.run(r, feed_dict=feed_dict))
+      self.assertAllClose([0.0, 0.0], sess.run(grad_y, feed_dict=feed_dict))
+      self.assertAllClose([156.0, 400.0], sess.run(grad_x, feed_dict=feed_dict))
       name = "gradients/while/stopped_grad"
       all_ops = x.graph.get_operations()
       self.assertFalse(any(name in op.name for op in all_ops))

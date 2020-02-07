@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
-#include "absl/strings/numbers.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-XPlaneBuilder::XPlaneBuilder(XPlane* plane) : plane_(plane) {
+XPlaneBuilder::XPlaneBuilder(XPlane* plane)
+    : XStatsBuilder<XPlane>(plane), plane_(plane) {
   for (auto& iter : *plane->mutable_event_metadata()) {
     last_event_metadata_id_ =
         std::max<int64>(last_event_metadata_id_, iter.second.id());
@@ -50,10 +50,6 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
     metadata =
         XPlaneBuilder::GetOrCreateEventMetadata(++last_event_metadata_id_);
     metadata->set_name(std::string(name));
-    std::string event_name = TfOpEventName(name);
-    if (event_name != name) {
-      metadata->set_display_name(std::move(event_name));
-    }
   }
   return metadata;
 }
@@ -95,25 +91,13 @@ XEventBuilder XLineBuilder::AddEvent(const XEventMetadata& metadata) {
   return XEventBuilder(line_, event);
 }
 
-XStat* XEventBuilder::AddStat(const XStatMetadata& metadata) {
-  XStat* stat = event_->add_stats();
-  stat->set_metadata_id(metadata.id());
-  return stat;
-}
-
-void XEventBuilder::ParseAndAddStatValue(const XStatMetadata& metadata,
-                                         absl::string_view value) {
-  int64 int_value;
-  uint64 uint_value;
-  double double_value;
-  if (absl::SimpleAtoi(value, &int_value)) {
-    AddStatValue(metadata, int_value);
-  } else if (absl::SimpleAtoi(value, &uint_value)) {
-    AddStatValue(metadata, uint_value);
-  } else if (absl::SimpleAtod(value, &double_value)) {
-    AddStatValue(metadata, double_value);
-  } else {
-    AddStatValue(metadata, value);
+void XLineBuilder::SetTimestampNsAndAdjustEventOffsets(int64 timestamp_ns) {
+  int64 offset_ps = NanosToPicos(line_->timestamp_ns() - timestamp_ns);
+  line_->set_timestamp_ns(timestamp_ns);
+  if (offset_ps) {
+    for (auto& event : *line_->mutable_events()) {
+      event.set_offset_ps(event.offset_ps() + offset_ps);
+    }
   }
 }
 

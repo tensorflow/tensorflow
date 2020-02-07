@@ -55,7 +55,6 @@ DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y) {
 DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
 
-  DenseElementsAttr attr;
   if (auto float_ty = ty.dyn_cast<FloatType>()) {
     APFloat value(float_ty.getFloatSemantics(), raw_value);
     return DenseElementsAttr::get(scalar_ty, value);

@@ -107,7 +107,7 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
       # Calculate the expected occurrence of individual batch sizes.
       expected_batch_sizes[length] = \
           [batch_size] * (bucket_elements // batch_size)
-      # Calculate the expected occurence of individual sequence lengths.
+      # Calculate the expected occurrence of individual sequence lengths.
       expected_lengths.extend([length] * (bucket_elements // batch_size))
 
     def build_dataset(sparse):

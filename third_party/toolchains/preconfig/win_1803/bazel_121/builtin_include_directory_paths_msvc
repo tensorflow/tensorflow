@@ -4,7 +4,7 @@ changes to it will be reflected in the action cache key. When some of these
 paths change, Bazel will make sure to rerun the action, even though none of
 declared action inputs or the action commandline changes.
 
-"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.24.28314\\include"
+"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Preview\\VC\\Tools\\MSVC\\14.25.28508\\include"
 "C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\include\\um"
 "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\ucrt"
 "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.17763.0\\shared"

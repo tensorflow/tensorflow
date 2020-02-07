@@ -150,7 +150,7 @@ class QNTest(test.TestCase):
     d = {QN('a'): 'a', QN('b'): 'b'}
     self.assertEqual(d[QN('a')], 'a')
     self.assertEqual(d[QN('b')], 'b')
-    self.assertTrue(QN('c') not in d)
+    self.assertNotIn(QN('c'), d)
 
   def test_literals(self):
     a = QN('a')
@@ -161,7 +161,7 @@ class QNTest(test.TestCase):
     self.assertNotEqual(hash(a_sub_str_b), hash(a_sub_b))
 
     a_sub_three = QN(a, subscript=QN(qual_names.NumberLiteral(3)))
-    self.assertEqual(a_sub_three.ast().slice.value.n, 3)
+    self.assertEqual(a_sub_three.ast().slice.value.value, 3)
 
   def test_support_set(self):
     a = QN('a')

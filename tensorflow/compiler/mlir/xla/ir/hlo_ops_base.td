@@ -631,6 +631,33 @@ class BASE_HLO_CompareOp {
 }
 
 //===----------------------------------------------------------------------===//
+// Quantize op definitions.
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA ComparisonDirection enum.
+def HLO_MIN_COMBINED : StrEnumAttrCase<"MIN_COMBINED">;
+
+def HLO_DequantizeModeAttr : StrEnumAttr<"DequantizeMode",
+  "Dequantization mode. Only MIN_COMBINED is supported.",
+  [HLO_MIN_COMBINED]>;
+
+class BASE_HLO_DequantizeOp {
+  string summary = "Dequantize operator";
+
+  string description = [{
+    Dequantize the quantized input of packed uint32 to bfloat16. Only uint8 or
+    uint16 is supported for the original unpacked input.
+
+    Returns a tensor of shape [d0,..., dn * unpack_size] if unpacked input shape
+    is [d0, ..., dn], where unpack_size = sizeof(unit32) / sizeof(T), where T is
+    the unpacked input type. If transpose_output is true, will return a tensor
+    of shape [dn * unpack_size, dn-1, ..., d1, d0]. transpose_output is faster
+    when input's rank higher than 1. The input needs to be transposed to use
+    transpose_output feature.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // XLA Slice definitions.
 //===----------------------------------------------------------------------===//
 
@@ -849,6 +876,24 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+class BASE_HLO_ConvOp {
+  string summary = "Convolution operator";
+
+  string description = [{
+    Computes a convolution of the kind used in neural networks.
+
+    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
+  }];
+}
+
+class BASE_HLO_CopyOp {
+  string summary = "Copy operator";
+
+  string description = [{
+    Returns a copy of `operand`.
+  }];
+}
+
 class BASE_HLO_CrossReplicaSumOp {
    string summary = "Sums input across replicated instances.";
 
@@ -865,15 +910,6 @@ class BASE_HLO_CrossReplicaSumOp {
    }];
 }
 
-class BASE_HLO_ConvOp {
-  string summary = "Convolution operator";
-
-  string description = [{
-    Computes a convolution of the kind used in neural networks.
-
-    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
-  }];
-}
 
 class BASE_HLO_CustomCallOp {
   string summary = "CustomCall operator";
@@ -931,6 +967,23 @@ class BASE_HLO_GatherOp{
     Stitches together several slices of an input array.
 
     See https://www.tensorflow.org/xla/operation_semantics#gather.
+  }];
+}
+
+class BASE_HLO_MapOp {
+  string summary = "Map operator";
+
+  string description = [{
+  Applies a scalar function over the given operands arrays, producing an array
+  of the same dimensions where each element is the result of the mapped function
+  applied to the corresponding elements in the input arrays.
+
+  The mapped function is an arbitrary computation with the restriction that it
+  has N inputs of scalar type T and a single output with type S. The output has
+  the same dimensions as the operands except that the element type T is replaced
+  with S.
+
+  See https://www.tensorflow.org/xla/operation_semantics#map.
   }];
 }
 
@@ -1027,6 +1080,14 @@ class BASE_HLO_PadOp {
   }];
 }
 
+class BASE_HLO_TraceOp {
+  string summary = "Trace operator";
+
+  string description = [{
+    Emits a logging message `tag` with the `operand`.
+  }];
+}
+
 class BASE_HLO_TransposeOp {
   string summary = "Transpose operator";
 
@@ -1037,6 +1098,46 @@ class BASE_HLO_TransposeOp {
 
     See https://www.tensorflow.org/xla/operation_semantics#transpose.
   }];
+}
+
+// These mirror the XLA Transpose enum in Triangular Solve options.
+def HLO_TRANSPOSE_INVALID : StrEnumAttrCase<"TRANSPOSE_INVALID">;
+def HLO_NO_TRANSPOSE : StrEnumAttrCase<"NO_TRANSPOSE">;
+def HLO_TRANSPOSE : StrEnumAttrCase<"TRANSPOSE">;
+def HLO_ADJOINT : StrEnumAttrCase<"ADJOINT">;
+
+def HLO_TransposeAttr : StrEnumAttr<"Transpose",
+    "Transpose options",
+    [
+      HLO_TRANSPOSE_INVALID,
+      HLO_NO_TRANSPOSE,
+      HLO_TRANSPOSE,
+      HLO_ADJOINT
+    ]>;
+
+class BASE_HLO_TriangularSolveOp {
+  string summary = "TriangularSolve operator";
+
+  string description = [{
+    Solves systems of linear equations with lower or upper triangular
+    coefficient matrices by forward- or back-substitution. Broadcasting along
+    leading dimensions, this routine solves one of the matrix systems
+    op(a) * x = b, or x * op(a) = b, for the variable x, given a and b, where
+    op(a) is either op(a) = a, or op(a) = Transpose(a), or
+    op(a) = Conj(Transpose(a)).
+
+    Input data is read only from the lower/upper triangle of a, depending on the
+    value of lower. Values from the other triangle are ignored. Output data is
+    returned in the same triangle; the values in the other triangle are
+    implementation-defined and may be anything.
+
+    If the rank of a and b are greater than 2, they are treated as batches of
+    matrices, where all except the minor 2 dimensions are batch dimensions. a
+    and b must have equal batch dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#triangularsolve.
+  }];
+
 }
 
 class BASE_HLO_RngUniformOp {
