@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_par.h"
 
 namespace tflite {
 namespace ops {
@@ -20,6 +21,7 @@ namespace conv2d {
         int32_t C_out;
         int32_t K_h;
         int32_t K_w;
+        ParPlan par_plan;
         ParamsPtrUnion params;
     } UserData;
 
@@ -51,6 +53,20 @@ namespace conv2d {
                 data->K_h = vec[1].AsInt32();
                 data->K_w = vec[2].AsInt32();
                 data->C_in = vec[3].AsInt32();
+            }
+            else if (key.compare("par_plan") == 0)
+            {
+                auto jobs = values[i].AsVector();
+                data->par_plan.n_regions = jobs.size();
+                for (int i=0; i<jobs.size(); ++i)
+                {
+                    auto region = jobs[i].AsVector();
+                    data->par_plan.regions[i].top = region[0].AsInt32();
+                    data->par_plan.regions[i].left = region[1].AsInt32();
+                    data->par_plan.regions[i].rows = region[2].AsInt32();
+                    data->par_plan.regions[i].cols = region[3].AsInt32();
+                }
+
             }
         }
     }
