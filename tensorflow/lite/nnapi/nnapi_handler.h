@@ -74,6 +74,10 @@ class NnApiHandler {
     };
   }
 
+  void StubGetDeviceWith(int(stub)(uint32_t, ANeuralNetworksDevice**)) {
+    nnapi_->ANeuralNetworks_getDevice = stub;
+  }
+
   template <int Value>
   void GetDeviceNameReturns() {
     nnapi_->ANeuralNetworksDevice_getName =
@@ -84,6 +88,11 @@ class NnApiHandler {
   }
 
   void GetDeviceNameReturnsName(const std::string& name);
+
+  void StubGetDeviceNameWith(int(stub)(const ANeuralNetworksDevice*,
+                                       const char**)) {
+    nnapi_->ANeuralNetworksDevice_getName = stub;
+  }
 
   // Configure all the functions related to device browsing to support
   // a device with the given name and the cpu fallback nnapi-reference.
@@ -244,6 +253,8 @@ class NnApiHandler {
   }
 
   void SetAndroidSdkVersion(int version);
+
+  const NnApi* GetNnApi() { return nnapi_; }
 
  protected:
   explicit NnApiHandler(NnApi* nnapi) : nnapi_(nnapi) { DCHECK(nnapi); }
