@@ -27,7 +27,9 @@ cc_library(
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
-            "//tensorflow/core/profiler/convert:run_metadata_to_trace_events",
+            "//tensorflow/core/profiler/convert:xplane_to_trace_events",
+            "//tensorflow/core/profiler/utils:derived_timeline",
+            "//tensorflow/core/profiler/utils:group_events",
         ],
     }),
 )
@@ -45,7 +47,7 @@ tf_cuda_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "profiler_session.h",
     ],

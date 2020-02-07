@@ -50,7 +50,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateQuantizePass();
 std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareQuantizePass(
     const QuantizationSpecs& quant_specs);
 
-// Creates a instance of the TensorFlow Lite dialect PostQuantize pass.
+// Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OpPassBase<FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops);
 
@@ -70,14 +70,20 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateExtractOphintPass();
 // pass. The composite op is created from the ophint extraction pass.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeOphintFuncOpPass();
 
-// Creates an instance of TensorFlow Lite dialect SplitMergedOperandsPass.
+// Creates an instance of the TensorFlow Lite dialect SplitMergedOperandsPass.
 std::unique_ptr<OpPassBase<FuncOp>> CreateSplitMergedOperandsPass();
 
+// Creates an instance of the TensorFlow Lite dialect OptimizeFunctionalOpsPass.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeFunctionalOpsPass();
 
-// Creates an instance pass to add default quantization parameters.
+// Creates an instance of the TensorFlow Lite dialect pass to add default
+// quantization parameters.
 std::unique_ptr<OpPassBase<FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max);
+
+// Creates an instance of the TensorFlow Lite dialect pass to convert dense
+// tensor to sparse format.
+std::unique_ptr<OpPassBase<FuncOp>> CreateDenseToSparsePass();
 }  // namespace TFL
 
 }  // namespace mlir

@@ -89,11 +89,12 @@ def load_data(path='reuters.npz',
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      x_train, x_test: lists of sequences, which are lists of indexes
+      **x_train, x_test**: lists of sequences, which are lists of indexes
         (integers). If the num_words argument was specific, the maximum
         possible index value is num_words-1. If the `maxlen` argument was
         specified, the largest possible sequence length is `maxlen`.
-      y_train, y_test: lists of integer labels (1 or 0).
+
+      **y_train, y_test**: lists of integer labels (1 or 0).
 
   Note: The 'out of vocabulary' character is only used for
   words that were present in the training set but are not included

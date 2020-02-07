@@ -823,7 +823,10 @@ class Huber(LossFunctionWrapper):
 def mean_squared_error(y_true, y_pred):
   """Computes the mean squared error between labels and predictions.
 
-  `loss = square(y_true - y_pred)`
+  After computing the squared distance between the inputs, the mean value over
+  the last dimension is returned.
+
+  `loss = mean(square(y_true - y_pred), axis=-1)`
 
   Args:
     y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`.
@@ -1043,7 +1046,7 @@ def logcosh(y_true, y_pred):
   y_true = math_ops.cast(y_true, y_pred.dtype)
 
   def _logcosh(x):
-    return x + nn.softplus(-2. * x) - math_ops.log(2.)
+    return x + nn.softplus(-2. * x) - math_ops.cast(math_ops.log(2.), x.dtype)
 
   return K.mean(_logcosh(y_pred - y_true), axis=-1)
 

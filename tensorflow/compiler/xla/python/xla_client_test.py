@@ -471,15 +471,16 @@ class BufferTest(ComputationTest):
       compiled_c.Execute([arg_buffer])
 
   def testDestructureTupleEmpty(self):
-    t = ()
-    local_buffer = xla_client.Buffer.from_pyval(t)
+    device = xla_client.get_local_backend().devices()[0]
+    local_buffer = xla_client.Buffer.make_tuple((), device=device)
     pieces = local_buffer.destructure()
     self.assertFalse(local_buffer.is_deleted())
     self.assertEmpty(pieces)
 
   def testDestructureTupleOneArrayElement(self):
-    t = (np.array([1, 2, 3, 4], dtype=np.int32),)
-    local_buffer = xla_client.Buffer.from_pyval(t)
+    device = xla_client.get_local_backend().devices()[0]
+    t = xla_client.Buffer.from_pyval(np.array([1, 2, 3, 4], dtype=np.int32))
+    local_buffer = xla_client.Buffer.make_tuple((t,), device)
     pieces = local_buffer.destructure()
     self.assertFalse(local_buffer.is_deleted())
     self.assertLen(pieces, 1)
@@ -489,11 +490,13 @@ class BufferTest(ComputationTest):
     np.testing.assert_equal(want, got)
 
   def testDestructureTupleTwoArrayElementDifferentType(self):
+    device = xla_client.get_local_backend().devices()[0]
     t = (
-        np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
-        np.array([2, 3, 4, 5], dtype=np.int32),
+        xla_client.Buffer.from_pyval(
+            np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)),
+        xla_client.Buffer.from_pyval(np.array([2, 3, 4, 5], dtype=np.int32)),
     )
-    local_buffer = xla_client.Buffer.from_pyval(t)
+    local_buffer = xla_client.Buffer.make_tuple(t, device)
     # Run the test twice to verify that the original tuple buffer remains valid
     # even after destructuring.
     for _ in range(2):
@@ -509,8 +512,12 @@ class BufferTest(ComputationTest):
       np.testing.assert_equal(want, got)
 
   def testDestructureTupleNested(self):
-    t = ((NumpyArrayF32([1.0, 2.0]), NumpyArrayS32([3, 4])), NumpyArrayS32([5]))
-    local_buffer = xla_client.Buffer.from_pyval(t)
+    device = xla_client.get_local_backend().devices()[0]
+    t = xla_client.Buffer.make_tuple(
+        (xla_client.Buffer.from_pyval(NumpyArrayF32([1.0, 2.0])),
+         xla_client.Buffer.from_pyval(NumpyArrayS32([3, 4]))), device)
+    local_buffer = xla_client.Buffer.make_tuple(
+        (t, xla_client.Buffer.from_pyval(NumpyArrayS32([5]))), device)
     pieces = local_buffer.destructure()
     self.assertFalse(local_buffer.is_deleted())
     self.assertLen(pieces, 2)
@@ -547,6 +554,23 @@ class BufferTest(ComputationTest):
     xla_shape = local_buffer.shape()
     self.assertEqual(xla_shape.dimensions(), (1, 2))
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
+
+  def testTupleShape(self):
+    t = (
+        np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),
+        np.array([2, 3, 4, 5], dtype=np.int32),
+    )
+    b0 = xla_client.Buffer.from_pyval(t[0])
+    b1 = xla_client.Buffer.from_pyval(t[1])
+    device = xla_client.get_local_backend().local_devices()[0]
+    tuple_buffer = xla_client.Buffer.make_tuple([b0, b1], device=device)
+    tuple_shape = tuple_buffer.shape()
+    self.assertEqual(tuple_shape.leaf_count(), 2)
+    shapes = tuple_shape.tuple_shapes()
+    self.assertLen(shapes, 2)
+    shape1, shape2 = shapes
+    self.assertEqual(shape1.dimensions(), (1, 4))
+    self.assertEqual(shape2.dimensions(), (4,))
 
   def testBlockHostUntilReadyWorks(self):
     arg = np.array([[1., 2.]], np.float32)
@@ -2032,23 +2056,41 @@ class SetShardingTest(ComputationTest):
     np.testing.assert_allclose(ans, 4.14)
 
 
-dlpack_dtypes = [
+int_dtypes = [
     np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32,
-    np.uint64, np.float16, np.float32, np.float64, bfloat16
+    np.uint64
 ]
+float_dtypes = [np.float16, np.float32, np.float64]
+complex_dtypes = [np.complex64, np.complex128]
+dlpack_dtypes = int_dtypes + float_dtypes + [bfloat16]
+standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+
+testcase_shapes = [
+    (),
+    (1,),
+    (2, 3),
+    (2, 0),
+    (0, 7),
+    (4, 1, 2),
+    (2, 1, 3),
+    (2, 4, 1),
+    (3, 1),
+    (1, 3),
+]
+
+
+def FormatShapeAndDtype(shape, dtype):
+  return "_{}[{}]".format(np.dtype(dtype).name, ",".join(map(str, shape)))
 
 
 class DLPackTest(parameterized.TestCase):
 
   # pylint: disable=g-complex-comprehension
   @parameterized.named_parameters({
-      "testcase_name":
-          "_{}[{}]".format(dtype.__name__, ",".join(map(str, shape))),
-      "dtype":
-          dtype,
-      "shape":
-          shape
-  } for dtype in dlpack_dtypes for shape in [(), (1,), (2, 3), (4, 1, 2)])
+      "testcase_name": FormatShapeAndDtype(shape, dtype),
+      "dtype": dtype,
+      "shape": shape
+  } for dtype in dlpack_dtypes for shape in testcase_shapes)
   def testRoundTrip(self, dtype, shape):
     x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
     backend = xla_client.get_local_backend()
@@ -2072,6 +2114,43 @@ class DLPackTest(parameterized.TestCase):
     self.assertRaisesRegex(RuntimeError,
                            ".*a DLPack tensor may be consumed at most once.*",
                            ConsumeDLPackTensor)
+
+
+class BufferProtocolTest(parameterized.TestCase):
+
+  # pylint: disable=g-complex-comprehension
+  @parameterized.named_parameters({
+      "testcase_name": FormatShapeAndDtype(shape, dtype),
+      "dtype": dtype,
+      "shape": shape
+  } for dtype in standard_dtypes for shape in testcase_shapes)
+  def testRoundTrip(self, dtype, shape):
+    x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
+    x_ptr = x.__array_interface__["data"][0]
+    backend = xla_client.get_local_backend("cpu")
+    buffer = xla_client.Buffer.from_pyval(x, backend=backend)
+    y = np.array(buffer, copy=False)
+    y_ptr = y.__array_interface__["data"][0]
+    np.testing.assert_array_equal(x, y)
+    # If the input was sufficiently aligned, the input and output should alias.
+    self.assertTrue((x_ptr & 63) != 0 or x_ptr == y_ptr)
+    self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
+
+    buffer2 = xla_client.Buffer.from_pyval(x, backend=backend, force_copy=True)
+    z = np.array(buffer2, copy=False)
+    self.assertNotEqual(x.__array_interface__["data"][0],
+                        z.__array_interface__["data"][0])
+
+  def testDeleteWithActiveView(self):
+    x = np.random.randn(20, 10)
+    backend = xla_client.get_local_backend("cpu")
+    buffer = xla_client.Buffer.from_pyval(x, backend=backend)
+    buffer_ptr = buffer.unsafe_buffer_pointer()
+    y = np.array(buffer, copy=False)
+    buffer.delete()
+    # It is still legal to access `y`; the array view must keep it alive.
+    np.testing.assert_array_equal(x, y)
+    self.assertEqual(y.__array_interface__["data"][0], buffer_ptr)
 
 
 if __name__ == "__main__":

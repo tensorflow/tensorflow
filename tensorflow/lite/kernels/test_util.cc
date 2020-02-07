@@ -344,4 +344,32 @@ int SingleOpModel::CountOpsExecutedByCpuKernel() {
 
 SingleOpModel::~SingleOpModel() { ValidateAcceleration(); }
 
+void MultiOpModel::AddBuiltinOp(
+    BuiltinOperator type, BuiltinOptions builtin_options_type,
+    const flatbuffers::Offset<void>& builtin_options,
+    const std::vector<int32_t>& inputs, const std::vector<int32_t>& outputs) {
+  opcodes_.push_back(CreateOperatorCode(builder_, type, 0));
+  const int opcode_index = opcodes_.size() - 1;
+  operators_.push_back(CreateOperator(
+      builder_, opcode_index, builder_.CreateVector<int32_t>(inputs),
+      builder_.CreateVector<int32_t>(outputs), builtin_options_type,
+      builtin_options,
+      /*custom_options=*/0, CustomOptionsFormat_FLEXBUFFERS));
+}
+
+void MultiOpModel::AddCustomOp(
+    const string& name, const std::vector<uint8_t>& custom_option,
+    const std::function<TfLiteRegistration*()>& registration,
+    const std::vector<int32_t>& inputs, const std::vector<int32_t>& outputs) {
+  custom_registrations_[name] = registration;
+  opcodes_.push_back(
+      CreateOperatorCodeDirect(builder_, BuiltinOperator_CUSTOM, name.data()));
+  const int opcode_index = opcodes_.size() - 1;
+  operators_.push_back(CreateOperator(
+      builder_, opcode_index, builder_.CreateVector<int32_t>(inputs),
+      builder_.CreateVector<int32_t>(outputs), BuiltinOptions_NONE, 0,
+      builder_.CreateVector<uint8_t>(custom_option),
+      CustomOptionsFormat_FLEXBUFFERS));
+}
+
 }  // namespace tflite

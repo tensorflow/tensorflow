@@ -34,6 +34,8 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
+*   `use_xnnpack`: `bool` (default=false) \
+    Whether to use the XNNPack delegate.
 *   `use_hexagon`: `bool` (default=false) \
     Whether to use the Hexagon delegate. Not all devices may support the Hexagon
     delegate, refer to the TensorFlow Lite documentation for more information
@@ -84,7 +86,6 @@ and the following optional parameters:
 ```
 bazel build -c opt \
   --config=android_arm \
-  --cxxopt='--std=c++11' \
   tensorflow/lite/tools/benchmark:benchmark_model
 ```
 

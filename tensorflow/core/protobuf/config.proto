@@ -2,18 +2,18 @@ syntax = "proto3";
 
 package tensorflow;
 
-option cc_enable_arenas = true;
-option java_outer_classname = "ConfigProtos";
-option java_multiple_files = true;
-option java_package = "org.tensorflow.framework";
-
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "ConfigProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 message GPUOptions {
   // Fraction of the available GPU memory to allocate for each process.
@@ -578,7 +578,7 @@ message ConfigProto {
     // The XLA fusion autotuner can improve performance by executing a heuristic
     // search on the compiler parameters.
     int64 xla_fusion_autotuner_thresh = 15;
-  };
+  }
 
   Experimental experimental = 16;
 
@@ -636,7 +636,7 @@ message RunOptions {
     // and tail) latency.
     // Consider using this option for CPU-bound workloads like inference.
     bool use_run_handler_pool = 2;
-  };
+  }
 
   Experimental experimental = 8;
 

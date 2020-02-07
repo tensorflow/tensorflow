@@ -75,8 +75,15 @@ Status RemoteMgr::GetMirroredResourceShape(
 
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
                                         int64* op_id, int32* output_num) {
+  // TODO(allenl): Consider supporting remote handles on custom devices.
+  absl::variant<Device*, CustomDevice*> device = handle->device();
+  if (VariantDeviceIsCustom(device)) {
+    return errors::Unimplemented(
+        "Custom devices and remote execution are currently not supported "
+        "together.");
+  }
   TF_RETURN_IF_ERROR(
-      handle->RemoteAddress(handle->device(), op_id, output_num));
+      handle->RemoteAddress(absl::get<Device*>(device), op_id, output_num));
   tensorflow::TensorHandle* h;
   TF_RETURN_IF_ERROR(
       GetTensorHandleImpl(RemoteTensorHandleInternal(*op_id, *output_num), &h));

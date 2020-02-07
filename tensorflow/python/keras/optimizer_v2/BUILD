@@ -38,8 +38,8 @@ py_library(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:backend_config",
-        "//tensorflow/python/keras:base_layer_utils",
         "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras/engine:base_layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )

@@ -42,7 +42,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.layers import core
+from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
@@ -402,10 +402,6 @@ class ParameterServerStrategyTestBase(
       x, y, z, train_op = d.extended.call_for_each_replica(model_fn)
       train_op = d.group(train_op)
 
-      if context.num_gpus() < sum(
-          1 for d in d.extended.worker_devices if 'GPU' in d.upper()):
-        return True
-
       if task_id == 0:
         variables.global_variables_initializer().run()
 
@@ -491,10 +487,6 @@ class ParameterServerStrategyTestBase(
         return before_list, after_list
 
       before_out, after_out = step()
-
-      if context.num_gpus() < sum(
-          1 for d in d.extended.worker_devices if 'GPU' in d.upper()):
-        return True
 
       if (not task_type or
           multi_worker_util.is_chief(
@@ -620,31 +612,26 @@ class ParameterServerStrategyTest(
                                     self._cluster_spec, context.num_gpus())
 
   @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testLocalSimpleIncrement(self, num_gpus):
-    self._test_simple_increment(None, 0, num_gpus)
+      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
+  def testLocalSimpleIncrement(self, required_gpus):
+    self._test_simple_increment(None, 0, required_gpus)
 
   @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testMinimizeLossGraphDistributed(self, num_gpus):
+      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
+  def testMinimizeLossGraphDistributed(self, required_gpus):
     self._run_between_graph_clients(self._test_minimize_loss_graph,
-                                    self._cluster_spec, num_gpus)
+                                    self._cluster_spec, required_gpus)
 
   @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testMinimizeLossGraphLocal(self, num_gpus):
-    self._test_minimize_loss_graph(None, None, num_gpus)
+      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
+  def testMinimizeLossGraphLocal(self, required_gpus):
+    self._test_minimize_loss_graph(None, None, required_gpus)
 
   # TODO(priyag): Refactor this and other multi worker tests.
   @combinations.generate(
       combinations.combine(
-          mode=['graph'],
-          num_gpus=[1, 2],
-          required_gpus=1,
-          use_dataset=[True, False]))
-  def testMakeInputFnIteratorDistributed(self, num_gpus, use_dataset):
-    if context.num_gpus() < num_gpus:
-      self.skipTest('Not enough GPUs')
+          mode=['graph'], required_gpus=[1, 2], use_dataset=[True, False]))
+  def testMakeInputFnIteratorDistributed(self, required_gpus, use_dataset):
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(100)
     else:
@@ -652,18 +639,20 @@ class ParameterServerStrategyTest(
         dataset = dataset_ops.Dataset.range(100)
         it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
-    expected_values = [[i+j for j in range(num_gpus)]
-                       for i in range(0, 100, num_gpus)]
+
+    expected_values = [[i + j
+                        for j in range(required_gpus)]
+                       for i in range(0, 100, required_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
         fn,
-        expected_num_replicas_in_sync=num_gpus,
+        expected_num_replicas_in_sync=required_gpus,
         expected_num_input_pipelines=3,
         expected_input_pipeline_id=1)  # because task_id = 1
     self._test_input_fn_iterator(
         'worker',
         1,
-        num_gpus,
+        required_gpus,
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
@@ -671,32 +660,30 @@ class ParameterServerStrategyTest(
 
   @combinations.generate(
       combinations.combine(
-          mode=['graph'],
-          num_gpus=[1, 2],
-          required_gpus=1,
-          use_dataset=[True, False]))
-  def testMakeInputFnIteratorLocal(self, num_gpus, use_dataset):
-    if context.num_gpus() < num_gpus:
-      self.skipTest('Not enough GPUs')
+          mode=['graph'], required_gpus=[1, 2], use_dataset=[True, False]))
+  def testMakeInputFnIteratorLocal(self, required_gpus, use_dataset):
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(100)
     else:
+
       def fn():
         dataset = dataset_ops.Dataset.range(100)
         it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
-    expected_values = [[i+j for j in range(num_gpus)]
-                       for i in range(0, 100, num_gpus)]
+
+    expected_values = [[i + j
+                        for j in range(required_gpus)]
+                       for i in range(0, 100, required_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
         fn,
-        expected_num_replicas_in_sync=num_gpus,
+        expected_num_replicas_in_sync=required_gpus,
         expected_num_input_pipelines=1,
         expected_input_pipeline_id=0)  # only one worker and pipeline for local.
     self._test_input_fn_iterator(
         None,
         None,
-        num_gpus,
+        required_gpus,
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
@@ -746,10 +733,11 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
         num_workers=3, num_ps=2, has_chief=True)
     cls._default_target = 'grpc://' + cls._cluster_spec[CHIEF][0]
 
-  @combinations.generate(combinations.combine(mode=['graph']))
-  def testSimpleBetweenGraph(self):
+  @combinations.generate(
+      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
+  def testSimpleBetweenGraph(self, required_gpus):
     self._run_between_graph_clients(self._test_simple_increment,
-                                    self._cluster_spec, context.num_gpus())
+                                    self._cluster_spec, required_gpus)
 
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
@@ -788,7 +776,7 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
       self.assertFalse(hasattr(strategy, 'distribute_strategy'))
       self.assertIs(strategy, created_step._distribute_strategy)
 
-  @combinations.generate(combinations.combine(mode=['graph']))
+  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
   def testValueContainer(self):
     strategy, _, _ = create_test_objects(num_gpus=2)
     with ops.Graph().as_default(), strategy.scope():

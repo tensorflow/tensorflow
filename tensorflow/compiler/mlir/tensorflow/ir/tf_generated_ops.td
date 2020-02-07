@@ -456,7 +456,7 @@ reverse of SpaceToBatch.  See below for a precise description.
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect]> {
+def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = "Adds `bias` to `value`.";
 
   let description = [{
@@ -479,6 +479,12 @@ Broadcasting is supported, so `value` may have any number of dimensions.
 
   let verifier = [{
     return Verify(*this);
+  }];
+
+  let extraClassDeclaration = [{
+    // TF_LayoutSensitiveInterface:
+    SmallVector<int64_t, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<int64_t, 4> GetLayoutDependentResults() { return {0}; }
   }];
 }
 
@@ -702,7 +708,7 @@ def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
   TF_DerivedOperandTypeAttr SrcT = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr DstT = TF_DerivedResultTypeAttr<0>;
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def TF_CeilOp : TF_Op<"Ceil", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2572,6 +2578,24 @@ tf.math.is_finite(x) ==> [True, True, True, False, False]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_IteratorGetNextOp : TF_Op<"IteratorGetNext", []> {
+  let summary = "Gets the next output from the given iterator .";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$iterator
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
   let summary = "L2 Loss.";
 
@@ -2759,6 +2783,35 @@ tf.math.less_equal(x, y) ==> [True, True, True]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_LinSpaceOp : TF_Op<"LinSpace", [NoSideEffect]> {
+  let summary = "Generates values in an interval.";
+
+  let description = [{
+A sequence of `num` evenly-spaced values are generated beginning at `start`.
+If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
+so that the last one is exactly `stop`.
+
+For example:
+
+```
+tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$start,
+    TF_FpTensor:$stop,
+    TF_I32OrI64Tensor:$num
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_LogOp : TF_Op<"Log", [NoSideEffect, SameOperandsAndResultType]> {
@@ -4383,6 +4436,28 @@ The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RandomStandardNormalOp : TF_Op<"RandomStandardNormal", []> {
+  let summary = "Outputs random values from a normal distribution.";
+
+  let description = [{
+The generated values will have mean 0 and standard deviation 1.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {
   let summary = "Outputs random values from a uniform distribution.";
 
@@ -4838,6 +4913,73 @@ var += accum
   let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_ResourceGatherOp : TF_Op<"ResourceGather", []> {
+  let summary = [{
+Gather slices from the variable pointed to by `resource` according to `indices`.
+  }];
+
+  let description = [{
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
+
+```python
+    # Scalar indices
+    output[:, ..., :] = params[indices, :, ... :]
+
+    # Vector indices
+    output[i, :, ..., :] = params[indices[i], :, ... :]
+
+    # Higher rank indices
+    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+```
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_I32OrI64Tensor:$indices,
+
+    DefaultValuedAttr<I64Attr, "0">:$batch_dims,
+    DefaultValuedAttr<BoolAttr, "true">:$validate_indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_ResourceScatterUpdateOp : TF_Op<"ResourceScatterUpdate", []> {
+  let summary = [{
+Assigns sparse updates to the variable referenced by `resource`.
+  }];
+
+  let description = [{
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] = updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] = updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
@@ -6154,7 +6296,6 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
     // `begin_indices`, `end_indices`, and `strides` with their canonical
     // values, respectively.
     bool GetSlicedBoundRanges(
-      ::llvm::ArrayRef<int64_t> shape,
       ::llvm::SmallVectorImpl<int64_t> *begin_indices,
       ::llvm::SmallVectorImpl<int64_t> *end_indices,
       ::llvm::SmallVectorImpl<int64_t> *strides);
@@ -6280,6 +6421,25 @@ occurred during compilation.
   );
 }
 
+def TF_TPUCopyWithLayoutOp : TF_Op<"TPUCopyWithLayout", [NoSideEffect]> {
+  let summary = "Op that copies host tensor to device with specified layout.";
+
+  let description = [{
+For internal use only.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    I64Tensor:$layout
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TPUExecuteOp : TF_Op<"TPUExecute", []> {
   let summary = "Op that loads and executes a TPU program on a TPU device.";
 
@@ -6329,6 +6489,27 @@ output. For the internal use of the distributed TPU compiler.
 
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_TPUGetLayoutOp : TF_Op<"TPUGetLayoutOp", [NoSideEffect]> {
+  let summary = [{
+Op that retrieves the layout of an input or output determined by TPUCompile.
+  }];
+
+  let description = [{
+For internal use only.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$cache_key,
+
+    I64Attr:$index,
+    BoolAttr:$is_output
+  );
+
+  let results = (outs
+    I64Tensor:$layout
+  );
 }
 
 def TF_TPUReplicatedInputOp : TF_Op<"TPUReplicatedInput", [NoSideEffect]> {
@@ -6705,6 +6886,14 @@ On GPU, if an out of bound index is found, the index is ignored.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{ return Verify(*this); }];
+
+  let builders = [
+    OpBuilder<
+      "Builder* builder, OperationState& result, "
+      "Value tensor, Value indices, Value updates",
+      [{build(builder, result, tensor.getType(), tensor, indices, updates);}]
+    >
+  ];
 }
 
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
@@ -6754,6 +6943,43 @@ array([[1, 2, 3, 1, 2, 3],
   // TODO(parkers): Add folds for multiples = [1,...].
   // TODO(parkers): Add errors for negative multiples and multiples.size() !=
   // input.rank()
+}
+
+def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
+  let summary = "Converts a tensor to a scalar predicate.";
+
+  let description = [{
+Converts a tensor to a scalar predicate with the following rules:
+
+- For 0D tensors, truthiness is determined by comparing against a "zero"
+  value. For numerical types it is the obvious zero. For strings it is the
+  empty string.
+
+- For >0D tensors, truthiness is determined by looking at the number of
+  elements. If has zero elements, then the result is false. Otherwise the
+  result is true.
+
+This matches the behavior of If and While for determining if a tensor counts
+as true/false for a branch condition.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value value", [{
+      build(builder, result, RankedTensorType::get({}, builder->getI1Type()),
+            value);
+    }]>];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {

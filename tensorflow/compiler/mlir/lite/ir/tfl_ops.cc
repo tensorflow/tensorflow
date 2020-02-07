@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
 
 //===----------------------------------------------------------------------===//
@@ -797,8 +798,7 @@ struct RemoveAdjacentReshape : public RewritePattern {
     // With
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
-        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand(0),
-        thisOp.getOperand(1));
+        op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
   }
 };
 
@@ -1303,6 +1303,19 @@ OpFoldResult AbsOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// NegOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult NegOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat { return llvm::neg(value); };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
 // SinOp
 //===----------------------------------------------------------------------===//
 
@@ -1720,6 +1733,67 @@ static LogicalResult Verify(TransposeOp op) {
                                           expected_output_type, output_type));
     }
   }
+
+  return success();
+}
+
+namespace {
+struct WhileResultOperandsMatch : public OpRewritePattern<WhileOp> {
+  using OpRewritePattern<WhileOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(WhileOp while_op,
+                                     PatternRewriter &rewriter) const override {
+    auto size = while_op.body().front().getArguments().size();
+    Operation *op = while_op.getOperation();
+    auto old_size = op->getNumResults();
+    // No change needed as the number of operands match the number of results.
+    if (size == old_size) return matchFailure();
+
+    // Collect the new types by combining results of old op with additional
+    // operand results.
+    llvm::SmallVector<Type, 4> types;
+    types.reserve(size);
+    for (auto type : while_op.getResultTypes()) types.push_back(type);
+    for (auto arg : while_op.body().front().getArguments().drop_front(old_size))
+      types.push_back(arg.getType());
+    // Collect operands.
+    llvm::SmallVector<Value, 8> operands;
+    operands.reserve(while_op.getNumOperands());
+    for (auto operand : while_op.getOperands()) operands.push_back(operand);
+
+    // Replace with new While with matching operands and results.
+    Operation *new_op = rewriter.insert(
+        Operation::create(op->getLoc(), op->getName(), types, operands,
+                          op->getAttrs(), {}, /*numRegions=*/2,
+                          /*resizableOperandList=*/true));
+    for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
+    rewriter.replaceOp(op,
+                       new_op->getResults().take_front(op->getNumResults()));
+
+    return matchSuccess();
+  }
+};
+}  // namespace
+
+void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<WhileResultOperandsMatch>(context);
+}
+
+Region &WhileOp::getLoopBody() { return body(); }
+
+bool WhileOp::isDefinedOutsideOfLoop(Value value) {
+  // TODO(jpienaar): This is to overly conservative and disables anything other
+  // than constant hoisting initially.
+  return false;
+}
+
+LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
+  if (ops.empty()) return success();
+
+  // Move the hoisted value to just before the while.
+  Operation *while_op = this->getOperation();
+  for (auto op : ops) op->moveBefore(while_op);
 
   return success();
 }

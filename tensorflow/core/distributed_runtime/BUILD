@@ -788,7 +788,7 @@ tf_cc_test(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "call_options.h",
         "message_wrappers.h",

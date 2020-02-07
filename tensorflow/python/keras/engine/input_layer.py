@@ -132,6 +132,7 @@ class InputLayer(base_layer.Layer):
     self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
+    self._supports_ragged_inputs = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
@@ -190,7 +191,7 @@ class InputLayer(base_layer.Layer):
     return layer_serialization.InputLayerSavedModelSaver(self)
 
 
-@keras_export('keras.layers.Input', 'keras.Input')
+@keras_export('keras.Input', 'keras.layers.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,

@@ -81,6 +81,13 @@ class _RNNCellWithConstants(keras.layers.Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+class _ResidualLSTMCell(keras.layers.LSTMCell):
+
+  def call(self, inputs, states, training=None):
+    output, states = super(_ResidualLSTMCell, self).call(inputs, states)
+    return output + inputs, states
+
+
 class TimeDistributedTest(keras_parameterized.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
@@ -198,8 +205,6 @@ class TimeDistributedTest(keras_parameterized.TestCase):
       # Assert that mean and variance changed.
       assert not np.array_equal(td.get_weights()[2], np.array([0, 0]))
       assert not np.array_equal(td.get_weights()[3], np.array([1, 1]))
-      # Verify input_map has one mapping from inputs to reshaped inputs.
-      self.assertEqual(len(td._input_map.keys()), 1)
 
   def test_TimeDistributed_trainable(self):
     # test layers that need learning_phase to be set
@@ -452,43 +457,43 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 @tf_test_util.run_all_in_graph_and_eager_modes
 class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
-  def test_bidirectional(self):
+  @parameterized.parameters(['sum', 'concat', 'ave', 'mul'])
+  def test_bidirectional(self, mode):
     rnn = keras.layers.SimpleRNN
     samples = 2
     dim = 2
     timesteps = 2
     output_dim = 2
     with self.cached_session():
-      for mode in ['sum', 'concat', 'ave', 'mul']:
-        x = np.random.random((samples, timesteps, dim))
-        target_dim = 2 * output_dim if mode == 'concat' else output_dim
-        y = np.random.random((samples, target_dim))
+      x = np.random.random((samples, timesteps, dim))
+      target_dim = 2 * output_dim if mode == 'concat' else output_dim
+      y = np.random.random((samples, target_dim))
 
-        # test with Sequential model
-        model = keras.models.Sequential()
-        model.add(
-            keras.layers.Bidirectional(
-                rnn(output_dim), merge_mode=mode, input_shape=(timesteps, dim)))
-        model.compile(optimizer='rmsprop', loss='mse')
-        model.fit(x, y, epochs=1, batch_size=1)
+      # test with Sequential model
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Bidirectional(
+              rnn(output_dim), merge_mode=mode, input_shape=(timesteps, dim)))
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.fit(x, y, epochs=1, batch_size=1)
 
-        # check whether the model variables are present in the
-        # trackable list of objects
-        checkpointed_objects = object_identity.ObjectIdentitySet(
-            trackable_util.list_objects(model))
-        for v in model.variables:
-          self.assertIn(v, checkpointed_objects)
+      # check whether the model variables are present in the
+      # trackable list of objects
+      checkpointed_objects = object_identity.ObjectIdentitySet(
+          trackable_util.list_objects(model))
+      for v in model.variables:
+        self.assertIn(v, checkpointed_objects)
 
-        # test compute output shape
-        ref_shape = model.layers[-1].output.shape
-        shape = model.layers[-1].compute_output_shape(
-            (None, timesteps, dim))
-        self.assertListEqual(shape.as_list(), ref_shape.as_list())
+      # test compute output shape
+      ref_shape = model.layers[-1].output.shape
+      shape = model.layers[-1].compute_output_shape(
+          (None, timesteps, dim))
+      self.assertListEqual(shape.as_list(), ref_shape.as_list())
 
-        # test config
-        model.get_config()
-        model = keras.models.model_from_json(model.to_json())
-        model.summary()
+      # test config
+      model.get_config()
+      model = keras.models.model_from_json(model.to_json())
+      model.summary()
 
   def test_bidirectional_invalid_init(self):
     x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
@@ -577,7 +582,8 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       model.compile(loss='mse', optimizer='sgd')
       model.fit(x, y, epochs=1, batch_size=1)
 
-  def test_Bidirectional_merged_value(self):
+  @parameterized.parameters(['sum', 'mul', 'ave', 'concat', None])
+  def test_Bidirectional_merged_value(self, merge_mode):
     rnn = keras.layers.LSTM
     samples = 2
     dim = 5
@@ -586,59 +592,58 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     x = [np.random.rand(samples, timesteps, dim)]
 
     with self.cached_session():
-      for merge_mode in ['sum', 'mul', 'ave', 'concat', None]:
-        if merge_mode == 'sum':
-          merge_func = lambda y, y_rev: y + y_rev
-        elif merge_mode == 'mul':
-          merge_func = lambda y, y_rev: y * y_rev
-        elif merge_mode == 'ave':
-          merge_func = lambda y, y_rev: (y + y_rev) / 2
-        elif merge_mode == 'concat':
-          merge_func = lambda y, y_rev: np.concatenate((y, y_rev), axis=-1)
-        else:
-          merge_func = lambda y, y_rev: [y, y_rev]
+      if merge_mode == 'sum':
+        merge_func = lambda y, y_rev: y + y_rev
+      elif merge_mode == 'mul':
+        merge_func = lambda y, y_rev: y * y_rev
+      elif merge_mode == 'ave':
+        merge_func = lambda y, y_rev: (y + y_rev) / 2
+      elif merge_mode == 'concat':
+        merge_func = lambda y, y_rev: np.concatenate((y, y_rev), axis=-1)
+      else:
+        merge_func = lambda y, y_rev: [y, y_rev]
 
-        # basic case
-        inputs = keras.Input((timesteps, dim))
-        layer = keras.layers.Bidirectional(
-            rnn(units, return_sequences=True), merge_mode=merge_mode)
-        f_merged = keras.backend.function([inputs], _to_list(layer(inputs)))
-        f_forward = keras.backend.function([inputs],
-                                           [layer.forward_layer(inputs)])
-        f_backward = keras.backend.function(
-            [inputs],
-            [keras.backend.reverse(layer.backward_layer(inputs), 1)])
+      # basic case
+      inputs = keras.Input((timesteps, dim))
+      layer = keras.layers.Bidirectional(
+          rnn(units, return_sequences=True), merge_mode=merge_mode)
+      f_merged = keras.backend.function([inputs], _to_list(layer(inputs)))
+      f_forward = keras.backend.function([inputs],
+                                         [layer.forward_layer(inputs)])
+      f_backward = keras.backend.function(
+          [inputs],
+          [keras.backend.reverse(layer.backward_layer(inputs), 1)])
 
-        y_merged = f_merged(x)
-        y_expected = _to_list(merge_func(f_forward(x)[0], f_backward(x)[0]))
-        assert len(y_merged) == len(y_expected)
-        for x1, x2 in zip(y_merged, y_expected):
-          self.assertAllClose(x1, x2, atol=1e-5)
+      y_merged = f_merged(x)
+      y_expected = _to_list(merge_func(f_forward(x)[0], f_backward(x)[0]))
+      assert len(y_merged) == len(y_expected)
+      for x1, x2 in zip(y_merged, y_expected):
+        self.assertAllClose(x1, x2, atol=1e-5)
 
-        # test return_state
-        inputs = keras.Input((timesteps, dim))
-        layer = keras.layers.Bidirectional(
-            rnn(units, return_state=True), merge_mode=merge_mode)
-        f_merged = keras.backend.function([inputs], layer(inputs))
-        f_forward = keras.backend.function([inputs],
-                                           layer.forward_layer(inputs))
-        f_backward = keras.backend.function([inputs],
-                                            layer.backward_layer(inputs))
-        n_states = len(layer.layer.states)
+      # test return_state
+      inputs = keras.Input((timesteps, dim))
+      layer = keras.layers.Bidirectional(
+          rnn(units, return_state=True), merge_mode=merge_mode)
+      f_merged = keras.backend.function([inputs], layer(inputs))
+      f_forward = keras.backend.function([inputs],
+                                         layer.forward_layer(inputs))
+      f_backward = keras.backend.function([inputs],
+                                          layer.backward_layer(inputs))
+      n_states = len(layer.layer.states)
 
-        y_merged = f_merged(x)
-        y_forward = f_forward(x)
-        y_backward = f_backward(x)
-        y_expected = _to_list(merge_func(y_forward[0], y_backward[0]))
-        assert len(y_merged) == len(y_expected) + n_states * 2
-        for x1, x2 in zip(y_merged, y_expected):
-          self.assertAllClose(x1, x2, atol=1e-5)
+      y_merged = f_merged(x)
+      y_forward = f_forward(x)
+      y_backward = f_backward(x)
+      y_expected = _to_list(merge_func(y_forward[0], y_backward[0]))
+      assert len(y_merged) == len(y_expected) + n_states * 2
+      for x1, x2 in zip(y_merged, y_expected):
+        self.assertAllClose(x1, x2, atol=1e-5)
 
-        y_merged = y_merged[-n_states * 2:]
-        y_forward = y_forward[-n_states:]
-        y_backward = y_backward[-n_states:]
-        for state_birnn, state_inner in zip(y_merged, y_forward + y_backward):
-          self.assertAllClose(state_birnn, state_inner, atol=1e-5)
+      y_merged = y_merged[-n_states * 2:]
+      y_forward = y_forward[-n_states:]
+      y_backward = y_backward[-n_states:]
+      for state_birnn, state_inner in zip(y_merged, y_forward + y_backward):
+        self.assertAllClose(state_birnn, state_inner, atol=1e-5)
 
   def test_Bidirectional_dropout(self):
     rnn = keras.layers.LSTM
@@ -864,7 +869,6 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_Bidirectional_output_shape_return_types(self):
 
     class TestLayer(keras.layers.SimpleRNN):
@@ -926,8 +930,8 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       self.assertLen(y, 5)
       self.assertAllClose(y[0], np.concatenate([y[1], y[3]], axis=1))
 
-  def test_Bidirectional_sequence_output_with_masking(self):
-    rnn = keras.layers.LSTM
+  @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
+  def test_Bidirectional_sequence_output_with_masking(self, rnn):
     samples = 2
     dim = 5
     timesteps = 3
@@ -954,7 +958,6 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(y[0][0, 2], np.zeros(units * 2))
 
   @parameterized.parameters(['sum', 'concat'])
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_custom_backward_layer(self, mode):
     rnn = keras.layers.SimpleRNN
     samples = 2
@@ -996,7 +999,6 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     model = keras.models.model_from_json(model.to_json())
     model.summary()
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_custom_backward_layer_error_check(self):
     rnn = keras.layers.LSTM
     units = 2
@@ -1067,13 +1069,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     units = 5
     merge_mode = 'sum'
 
-    class ResidualLSTMCell(keras.layers.LSTMCell):
-
-      def call(self, inputs, states, training=None):
-        output, states = super(ResidualLSTMCell, self).call(inputs, states)
-        return output + inputs, states
-
-    cell = ResidualLSTMCell(units)
+    cell = _ResidualLSTMCell(units)
     forward_layer = keras.layers.RNN(cell)
     inputs = keras.Input((timesteps, dim))
     bidirectional_rnn = keras.layers.Bidirectional(
@@ -1088,8 +1084,14 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         epochs=1,
         batch_size=10)
 
-    # Test stacking
-    cell = [ResidualLSTMCell(units), ResidualLSTMCell(units)]
+  def test_rnn_with_customized_cell_stacking(self):
+    batch = 20
+    dim = 5
+    timesteps = 3
+    units = 5
+    merge_mode = 'sum'
+
+    cell = [_ResidualLSTMCell(units), _ResidualLSTMCell(units)]
     forward_layer = keras.layers.RNN(cell)
     inputs = keras.Input((timesteps, dim))
     bidirectional_rnn = keras.layers.Bidirectional(
@@ -1129,8 +1131,8 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         epochs=1,
         batch_size=10)
 
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_Bidirectional_ragged_input(self):
+  @parameterized.parameters(['ave', 'concat', 'mul'])
+  def test_Bidirectional_ragged_input(self, merge_mode):
     np.random.seed(100)
     rnn = keras.layers.LSTM
     units = 3
@@ -1143,34 +1145,33 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
     # pylint: disable=g-long-lambda
     with self.cached_session():
-      for merge_mode in ['ave', 'concat', 'mul']:
-        if merge_mode == 'ave':
-          merge_func = lambda y, y_rev: (y + y_rev) / 2
-        elif merge_mode == 'concat':
-          merge_func = lambda y, y_rev: ragged_concat_ops.concat(
-              (y, y_rev), axis=-1)
-        elif merge_mode == 'mul':
-          merge_func = lambda y, y_rev: (y * y_rev)
+      if merge_mode == 'ave':
+        merge_func = lambda y, y_rev: (y + y_rev) / 2
+      elif merge_mode == 'concat':
+        merge_func = lambda y, y_rev: ragged_concat_ops.concat(
+            (y, y_rev), axis=-1)
+      elif merge_mode == 'mul':
+        merge_func = lambda y, y_rev: (y * y_rev)
+        # pylint: enable=g-long-lambda
 
-        inputs = keras.Input(
-            shape=(None, 3), batch_size=4, dtype='float32', ragged=True)
-        layer = keras.layers.Bidirectional(
-            rnn(units, return_sequences=True), merge_mode=merge_mode)
-        f_merged = keras.backend.function([inputs], layer(inputs))
-        f_forward = keras.backend.function([inputs],
-                                           layer.forward_layer(inputs))
-        f_backward = keras.backend.function(
-            [inputs],
-            array_ops.reverse(layer.backward_layer(inputs), axis=[1]))
+      inputs = keras.Input(
+          shape=(None, 3), batch_size=4, dtype='float32', ragged=True)
+      layer = keras.layers.Bidirectional(
+          rnn(units, return_sequences=True), merge_mode=merge_mode)
+      f_merged = keras.backend.function([inputs], layer(inputs))
+      f_forward = keras.backend.function([inputs],
+                                         layer.forward_layer(inputs))
+      f_backward = keras.backend.function(
+          [inputs],
+          array_ops.reverse(layer.backward_layer(inputs), axis=[1]))
 
-        y_merged = f_merged(x)
-        y_expected = merge_func(
-            ragged_tensor.convert_to_tensor_or_ragged_tensor(f_forward(x)),
-            ragged_tensor.convert_to_tensor_or_ragged_tensor(f_backward(x)))
+      y_merged = f_merged(x)
+      y_expected = merge_func(
+          ragged_tensor.convert_to_tensor_or_ragged_tensor(f_forward(x)),
+          ragged_tensor.convert_to_tensor_or_ragged_tensor(f_backward(x)))
 
-        y_merged = ragged_tensor.convert_to_tensor_or_ragged_tensor(y_merged)
-        self.assertAllClose(y_merged.flat_values, y_expected.flat_values)
-    # pylint: enable=g-long-lambda
+      y_merged = ragged_tensor.convert_to_tensor_or_ragged_tensor(y_merged)
+      self.assertAllClose(y_merged.flat_values, y_expected.flat_values)
 
 
 class ExampleWrapper(keras.layers.Wrapper):

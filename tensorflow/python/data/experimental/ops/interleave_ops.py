@@ -153,7 +153,7 @@ def sample_from_datasets_v2(datasets, weights=None, seed=None):
       `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
 
   Returns:
     A dataset that interleaves elements from `datasets` at random, according to

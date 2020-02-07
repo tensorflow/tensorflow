@@ -256,9 +256,9 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
       f.write(b"import tensorflow as tf\nx = tf.constant(42.0)\n")
     par_path = os.path.join(self.get_temp_dir(), "train_model.par")
     with zipfile.ZipFile(par_path, "w") as zf:
-      zf.write(temp_file_path, "tensorflow_models/model.py")
+      zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
 
-    source_path = os.path.join(par_path, "tensorflow_models/model.py")
+    source_path = os.path.join(par_path, "tensorflow_models", "model.py")
     source_lines, _ = source_utils.load_source(source_path)
     self.assertEqual(
         source_lines, ["import tensorflow as tf", "x = tf.constant(42.0)", ""])
@@ -270,9 +270,9 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
       f.write(b"import tensorflow as tf\nx = tf.constant(42.0)\n")
     par_path = os.path.join(self.get_temp_dir(), "train_model.par")
     with zipfile.ZipFile(par_path, "w") as zf:
-      zf.write(temp_file_path, "tensorflow_models/model.py")
+      zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
 
-    source_path = os.path.join(par_path, "tensorflow_models/nonexistent.py")
+    source_path = os.path.join(par_path, "tensorflow_models", "nonexistent.py")
     with self.assertRaisesRegexp(
         IOError, "neither exists nor can be loaded.*par.*"):
       source_utils.load_source(source_path)

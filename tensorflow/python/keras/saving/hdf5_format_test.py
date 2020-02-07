@@ -752,6 +752,22 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
     model = keras.models.load_model(saved_model_dir)
 
+  def test_saving_group_naming_h5py(self):
+    # Test saving model with layer which name is prefix to a previous layer
+    # name.
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    input_layer = keras.layers.Input((None, None, 3), name='test_input')
+    x = keras.layers.Conv2D(1, 1, name='conv1/conv')(input_layer)
+    x = keras.layers.Activation('relu', name='conv1')(x)
+    model = keras.models.Model(inputs=input_layer, outputs=x)
+
+    model.save_weights(h5_path)
+    model.load_weights(h5_path)
+
   def test_primitive_attrs_contain_no_extraneous_strings(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')

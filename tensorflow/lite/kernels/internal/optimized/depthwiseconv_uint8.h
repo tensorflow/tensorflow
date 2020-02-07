@@ -2023,7 +2023,7 @@ inline void DepthwiseConvWithRounding(
     using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
     DotProduct3x3KernelType kernel_type =
         optimized_ops::depthwise_conv::CategorizeDotProductKernel(
-            input_shape, filter_shape, params);
+            input_shape, filter_shape, output_shape, params);
     if (kernel_type != DotProduct3x3KernelType::kNone) {
       ruy::profiler::ScopeLabel specialized_label(
           "DepthwiseConv/8bit/3x3XDotProduct");

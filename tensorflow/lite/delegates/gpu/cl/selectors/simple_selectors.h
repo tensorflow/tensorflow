@@ -27,10 +27,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
-                     const BHWC& mask_shape,
-                     std::unique_ptr<GPUOperation>* ptr);
-
 void SelectLSTM(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
 
 void SelectReLU(const CreationContext& creation_context,
@@ -70,7 +66,10 @@ void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
 void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
+                  std::unique_ptr<GPUOperation>* ptr);
+
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr);

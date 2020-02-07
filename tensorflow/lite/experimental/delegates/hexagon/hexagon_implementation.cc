@@ -31,7 +31,7 @@ void* LoadFunction(void* dl_handle, const char* name) {
   TFLITE_DCHECK(dl_handle != nullptr);
   auto* func_pt = dlsym(dl_handle, name);
   if (func_pt == nullptr) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Function %s is  NULL", name);
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Function %s is NULL", name);
   }
   return func_pt;
 }
@@ -74,6 +74,7 @@ HexagonNN CreateNewHexagonInterface() {
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_global_init, hexagon_nn);
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_is_device_supported,
                 hexagon_nn);
+  LOAD_FUNCTION(libhexagon_interface, hexagon_nn_version, hexagon_nn);
   hexagon_nn.interface_loaded = true;
   return hexagon_nn;
 }

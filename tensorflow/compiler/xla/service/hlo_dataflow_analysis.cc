@@ -380,6 +380,19 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateCopyStartValueSet(HloInstruction* copy_start) {
+  CHECK_EQ(copy_start->opcode(), HloOpcode::kCopyStart);
+  bool changed = false;
+  // CopyStart forwards the operand value to element {1} of its output.
+  const HloValueSet& operand_value_set = GetValueSet(copy_start->operand(0));
+  HloValueSet& value_set = GetValueSet(copy_start, {1});
+  if (value_set != operand_value_set) {
+    value_set = operand_value_set;
+    changed = true;
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateCopyDoneValueSet(HloInstruction* copy_done) {
   CHECK_EQ(copy_done->opcode(), HloOpcode::kCopyDone);
   bool changed = false;
@@ -682,6 +695,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateSendValueSet(instruction);
     case HloOpcode::kRecvDone:
       return UpdateRecvDoneValueSet(instruction);
+    case HloOpcode::kCopyStart:
+      return UpdateCopyStartValueSet(instruction);
     case HloOpcode::kCopyDone:
       return UpdateCopyDoneValueSet(instruction);
     case HloOpcode::kConditional:
@@ -863,9 +878,16 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // values flow from their operands.
           define_value_at(/*index=*/{});
           break;
+        case HloOpcode::kCopyStart:
+          // CopyStart produces a tuple of {destination buffer, aliased operand,
+          // U32 context}.
+          define_value_at(/*index=*/{});
+          define_value_at(/*index=*/{0});
+          define_value_at(/*index=*/{2});
+          break;
         case HloOpcode::kCopyDone:
-          // CopyDone produces an element. Its output aliases its input tuple
-          // element {0}; element one is a context.
+          // CopyDone consumes a tuple produced by CopyStart and produces an
+          // element. Its output aliases its input tuple element {0}.
           break;
         case HloOpcode::kRecvDone:
           // RecvDone produces a two-element tuple. Element zero aliases its

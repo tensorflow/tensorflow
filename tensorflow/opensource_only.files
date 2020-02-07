@@ -146,6 +146,8 @@ tensorflow/third_party/py/numpy/BUILD
 tensorflow/third_party/py/python_configure.bzl
 tensorflow/third_party/pybind11.BUILD
 tensorflow/third_party/python_runtime/BUILD
+tensorflow/third_party/remote_config/BUILD
+tensorflow/third_party/remote_config/common.bzl
 tensorflow/third_party/repo.bzl
 tensorflow/third_party/rules_closure.patch
 tensorflow/third_party/six.BUILD
@@ -271,6 +273,7 @@ tensorflow/third_party/toolchains/preconfig/win_1803/bazel_026/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_121/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
+tensorflow/third_party/toolchains/preconfig/win_1803/py38/BUILD
 tensorflow/third_party/toolchains/remote/BUILD
 tensorflow/third_party/toolchains/remote/BUILD.tpl
 tensorflow/third_party/toolchains/remote/configure.bzl

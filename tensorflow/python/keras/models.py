@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
@@ -450,7 +451,8 @@ def _in_place_subclassed_model_reset(model):
   """
   assert not model._is_graph_network  # Only makes sense for subclassed networks
   # Select correct base class for new Model.
-  version_utils.swap_class(model.__class__, training.Model, training_v1.Model)
+  version_utils.swap_class(model.__class__, training.Model, training_v1.Model,
+                           ops.executing_eagerly_outside_functions())
   # Retrieve all layers tracked by the model as well as their attribute names
   attributes_cache = {}
   for name in dir(model):

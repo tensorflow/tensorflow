@@ -32,9 +32,10 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
-from tensorflow.python.eager import eager_util as c_api_util
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
@@ -619,6 +620,22 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
+  def clear_remote_executors(self):
+    """Clear executors on remote workers.
+
+    After receiving errors from remote workers, additional requests on the fly
+    could further taint the status on the remote workers due to the async nature
+    of remote execution. Calling this method block on waiting for all pending
+    nodes in remote executors to finish and clear their error statuses.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    if self._context_handle:
+      pywrap_tfe.TFE_ContextClearRemoteExecutors(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
 
@@ -789,7 +806,7 @@ class Context(object):
     self.ensure_initialized()
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_HostAddressSpace(self._context_handle, buffer_)
-      address_space = pywrap_tfe.TF_GetBuffer(buffer_).decode("utf-8")
+      address_space = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
     return address_space
 
   # TODO(fishx): remove this property.
@@ -1537,7 +1554,7 @@ class Context(object):
       return None
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_ContextExportRunMetadata(self._context_handle, buffer_)
-      proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     run_metadata = config_pb2.RunMetadata()
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
     return run_metadata
@@ -1637,8 +1654,10 @@ def _reset_context():
   global _context
   with _context_lock:
     if _context is not None:
+      _context._clear_caches()
       _context = None
   _create_context()
+  pywrap_tfe.TFE_ClearScalarCache()
 
 
 def context():

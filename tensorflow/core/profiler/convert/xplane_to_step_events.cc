@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/profiler/utils/metadata_matcher.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"

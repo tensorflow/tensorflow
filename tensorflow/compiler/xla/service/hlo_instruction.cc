@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/human_readable_json.h"
@@ -346,6 +348,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kRng:
       instruction = CreateRng(shape, proto.distribution(), all_operands());
       break;
+    case HloOpcode::kRngBitGenerator:
+      instruction =
+          CreateRngBitGenerator(shape, operands(0), proto.rng_algorithm());
+      break;
     case HloOpcode::kRngGetAndUpdateState:
       instruction = CreateRngGetAndUpdateState(shape, proto.delta());
       break;
@@ -409,12 +415,21 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
+      absl::optional<int64> split_dimension;
+      if (proto.dimensions_size() > 0) {
+        TF_RET_CHECK(proto.dimensions_size() == 1)
+            << "AllToAll cannot have more than 1 dimension (split dimension)";
+        TF_RET_CHECK(all_operands().size() == 1)
+            << "AllToAll must have a single operand when the split dimension "
+               "is specified";
+        split_dimension = proto.dimensions(0);
+      }
       instruction = CreateAllToAll(
           shape, all_operands(),
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
-          /*channel_id=*/channel_id);
+          /*channel_id=*/channel_id, split_dimension);
       break;
     }
     case HloOpcode::kCollectivePermute: {
@@ -734,6 +749,13 @@ HloInstruction::CreateRngGetAndUpdateState(const Shape& shape, int64 delta) {
   return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta);
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
+                                      RandomAlgorithm algorithm) {
+  return absl::make_unique<HloRngBitGeneratorInstruction>(shape, state,
+                                                          algorithm);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateNary(
     const Shape& shape, HloOpcode opcode,
     absl::Span<HloInstruction* const> operands) {
@@ -911,9 +933,10 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     const std::vector<ReplicaGroup>& replica_groups,
-    const absl::optional<int64>& channel_id) {
-  return absl::make_unique<HloAllToAllInstruction>(shape, operands,
-                                                   replica_groups, channel_id);
+    const absl::optional<int64>& channel_id,
+    const absl::optional<int64>& split_dimension) {
+  return absl::make_unique<HloAllToAllInstruction>(
+      shape, operands, replica_groups, channel_id, split_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1470,6 +1493,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
@@ -1940,6 +1964,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
@@ -2872,6 +2897,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleOutfeed(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this);
+    case HloOpcode::kRngBitGenerator:
+      return visitor->HandleRngBitGenerator(this);
     case HloOpcode::kRngGetAndUpdateState:
       return visitor->HandleRngGetAndUpdateState(this);
     case HloOpcode::kWhile:
@@ -3347,6 +3374,9 @@ string OpMetadataToString(const OpMetadata& metadata) {
 string RandomDistributionToString(const RandomDistribution& distribution) {
   return absl::AsciiStrToLower(RandomDistribution_Name(distribution));
 }
+string RandomAlgorithmToString(const RandomAlgorithm& algorithm) {
+  return absl::AsciiStrToLower(RandomAlgorithm_Name(algorithm));
+}
 
 string PrecisionToString(const PrecisionConfig::Precision& precision) {
   return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
@@ -3389,6 +3419,24 @@ string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups) {
         StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
   }
   return StrCat("{", StrJoin(replica_group_str, ","), "}");
+}
+
+StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name) {
+  static std::unordered_map<string, RandomAlgorithm>* map = [] {
+    static auto* map = new std::unordered_map<string, RandomAlgorithm>;
+    for (int i = 0; i < RandomAlgorithm_ARRAYSIZE; i++) {
+      if (RandomAlgorithm_IsValid(i)) {
+        auto value = static_cast<RandomAlgorithm>(i);
+        (*map)[RandomAlgorithmToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(absl::AsciiStrToLower(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown algorithm");
+  }
+  return found->second;
 }
 
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {

@@ -1395,8 +1395,11 @@ class MulOperationParser : public TFLiteOperationParser {
     const bool runtime_tensor0 = !constant_tensor0;
     const bool runtime_tensor1 = !constant_tensor1;
 
-    // Parse for APPLY_MASK.  The "larger" input tensor must be bound to 1st
-    // input and the "smaller" input tensor ("mask") must be bound to 2nd input.
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::MUL);
+
+    // The "larger" input tensor must be bound to 1st input and the "smaller"
+    // input tensor ("mask") must be bound to 2nd input.
     if (runtime_tensor0 && runtime_tensor1) {
       BHWC shape0;
       RETURN_IF_ERROR(ExtractTensorShape(*input0, &shape0));
@@ -1409,11 +1412,11 @@ class MulOperationParser : public TFLiteOperationParser {
         input_tensor0 = 1;
         input_tensor1 = 0;
       }
-      return ParseApplyMask(input_tensor0, input_tensor1, graph, reader);
+      return ParseApplyMask(node, input_tensor0, input_tensor1, graph, reader);
     }
 
-    // Parse for MULTIPLY_SCALAR.  The runtime input tensor must be bound to 1st
-    // input and the constant input tensor must be bound to 2nd input.
+    // The runtime input tensor must be bound to 1st input and the constant
+    // input tensor must be bound to 2nd input.
     int runtime_tensor = 0;
     int constant_tensor = 1;
     TfLiteIntArray* constant_dims = input1->dims;
@@ -1422,27 +1425,24 @@ class MulOperationParser : public TFLiteOperationParser {
       constant_tensor = 0;
       constant_dims = input0->dims;
     }
-    return ParseMultiplyScalar(runtime_tensor, constant_tensor, constant_dims,
-                               graph, reader);
+    return ParseMultiplyScalar(node, runtime_tensor, constant_tensor,
+                               constant_dims, graph, reader);
   }
 
  private:
-  Status ParseApplyMask(int input_tensor0, int input_tensor1,
+  Status ParseApplyMask(Node* node, int input_tensor0, int input_tensor1,
                         GraphFloat32* graph, ObjectReader* reader) {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::APPLY_MASK);
     RETURN_IF_ERROR(reader->AddInput(node, input_tensor0));
     RETURN_IF_ERROR(reader->AddInput(node, input_tensor1));
     return reader->AddOutputs(node);
   }
 
-  Status ParseMultiplyScalar(int runtime_tensor, int constant_tensor,
+  Status ParseMultiplyScalar(Node* node, int runtime_tensor,
+                             int constant_tensor,
                              const TfLiteIntArray* constant_dims,
                              GraphFloat32* graph, ObjectReader* reader) {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::MULTIPLY_SCALAR);
     RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
-    MultiplyScalarAttributes attr;
+    MultiplyAttributes attr;
     if (constant_dims->size <= 0) {
       Tensor<Scalar, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));

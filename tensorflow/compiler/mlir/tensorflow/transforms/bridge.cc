@@ -27,11 +27,13 @@ namespace mlir {
 namespace TFTPU {
 
 void CreateTPUBridge(OpPassManager &pm) {
+  // Run island coarsening before shape inference to allow more exact shape
+  // inference using constant folding within islands.
+  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorIslandCoarseningPass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
   OpPassManager &func_pm = pm.nest<FuncOp>();
-  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateTPUClusterFormationPass());
   func_pm.addPass(createCanonicalizerPass());
   // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
@@ -39,19 +41,18 @@ void CreateTPUBridge(OpPassManager &pm) {
   // changed constants out of tf_device.Launch.
   func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
 
-  // Run another shape inference pass because resource ecomposition might have
+  // Run another shape inference pass because resource decomposition might have
   // created new partial types.
   pm.addPass(TF::CreateTFShapeInferencePass());
-  OpPassManager &func_pm2 = pm.nest<FuncOp>();
-  func_pm2.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
-  func_pm2.addPass(TFDevice::CreateResourceOpLiftingPass());
-
+  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
+  pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUDynamicPaddingMapperPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addPass(CreateTPURewritePass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
+  pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   // TODO(b/147020076): Enable this pass.
   // pm.addPass(CreateTPUVariableReformattingPass());

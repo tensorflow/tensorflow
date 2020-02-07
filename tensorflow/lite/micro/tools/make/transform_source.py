@@ -48,7 +48,7 @@ def replace_arduino_includes(line, supplied_headers_list):
 
 
 def replace_arduino_main(line):
-  """Updates any occurences of a bare main definition to the Arduino equivalent."""
+  """Updates any occurrences of a bare main definition to the Arduino equivalent."""
   main_match = re.match(r'(.*int )(main)(\(.*)', line)
   if main_match:
     line = main_match.group(1) + 'tflite_micro_main' + main_match.group(3)

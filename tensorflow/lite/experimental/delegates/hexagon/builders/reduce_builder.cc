@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/hexagon_nn.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -77,7 +76,7 @@ TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     const auto& reduce_out_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
     const auto& reduce_out_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
-    auto* quantize_output_op = graph_builder_->AddNode();
+    auto* quantize_output_op = graph_builder_->AddNode(GetTFLiteNodeID());
     quantize_output_op->SetOpType(OP_QuantizeDownAndShrinkRange_32to8);
     quantize_output_op->AddInput(reduce_out);
     quantize_output_op->AddInput(reduce_out_min);
