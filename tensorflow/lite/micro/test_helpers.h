@@ -25,11 +25,20 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-// Returns an example flatbuffer TensorFlow Lite model.
-const Model* GetMockModel();
+// Returns a simple example flatbuffer TensorFlow Lite model. Contains 1 input,
+// 1 layer of weights, 1 output Tensor, and 1 operator.
+const Model* GetSimpleMockModel();
+
+// Returns a flatbuffer TensorFlow Lite model with more inputs, variable
+// tensors, and operators.
+const Model* GetComplexMockModel();
 
 // Builds a one-dimensional flatbuffer tensor of the given size.
-const Tensor* Create1dFlatbufferTensor(int size);
+const Tensor* Create1dFlatbufferTensor(int size, bool is_variable = false);
+
+// Builds a one-dimensional flatbuffer tensor of the given size with
+// quantization metadata.
+const Tensor* CreateQuantizedFlatbufferTensor(int size);
 
 // Creates a one-dimensional tensor with no quantization metadata.
 const Tensor* CreateMissingQuantizationFlatbufferTensor(int size);

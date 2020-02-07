@@ -322,6 +322,23 @@ void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
   }
 }
 
+int DebugEventsWriter::RegisterDeviceAndGetId(const string& device_name) {
+  mutex_lock l(device_mu_);
+  int& device_id = device_name_to_id_[device_name];
+  if (device_id == 0) {
+    device_id = device_name_to_id_.size();
+    DebugEvent debug_event;
+    MaybeSetDebugEventTimestamp(&debug_event, env_);
+    DebuggedDevice* debugged_device = debug_event.mutable_debugged_device();
+    debugged_device->set_device_name(device_name);
+    debugged_device->set_device_id(device_id);
+    string serialized;
+    debug_event.SerializeToString(&serialized);
+    graphs_writer_->WriteSerializedDebugEvent(serialized);
+  }
+  return device_id;
+}
+
 Status DebugEventsWriter::FlushNonExecutionFiles() {
   TF_RETURN_IF_ERROR(Init());
   if (source_files_writer_ != nullptr) {
@@ -448,7 +465,9 @@ DebugEventsWriter::DebugEventsWriter(const string& dump_root,
       execution_buffer_(),
       execution_buffer_mu_(),
       graph_execution_trace_buffer_(),
-      graph_execution_trace_buffer_mu_() {}
+      graph_execution_trace_buffer_mu_(),
+      device_name_to_id_(),
+      device_mu_() {}
 
 Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;

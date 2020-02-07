@@ -577,7 +577,7 @@ class CheckpointManager(object):
     self._save_counter_assign = None
     if max_to_keep is not None and max_to_keep <= 0:
       raise ValueError(
-          ("Expected a positive integer or `None` for `max_to_max_to_keep`, "
+          ("Expected a positive integer or `None` for `max_to_keep`, "
            "got %d.")
           % (max_to_keep,))
     self._max_to_keep = max_to_keep

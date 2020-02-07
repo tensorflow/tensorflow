@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_ACTIVATION_UTILS_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_ACTIVATION_UTILS_H_
 
-#include <algorithm>
 #include <cmath>
-#include <cstdlib>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 
@@ -32,19 +30,17 @@ inline float ActivationValFloat(TfLiteFusedActivation act, float a) {
     case kTfLiteActNone:
       return a;
     case kTfLiteActRelu:
-      return a < 0.f ? 0.f : a;
+      return std::fmax(0.0f, a);
     case kTfLiteActRelu1:
-      return a < 0.f ? 0.f : ((a > 1.f) ? 1.f : a);
+      return std::fmax(-1.0f, std::fmin(a, 1.0f));
     case kTfLiteActRelu6:
-      return a < 0.f ? 0.f : ((a > 6.f) ? 6.f : a);
+      return std::fmax(0.0f, std::fmin(a, 6.0f));
     case kTfLiteActTanh:
-      return (expf(a) - expf(-a)) / (expf(a) + expf(-a));
+      return std::tanh(a);
     case kTfLiteActSignBit:
       return std::signbit(a);
     case kTfLiteActSigmoid:
-      return 1.f / (1.f + expf(-a));
-    default:
-      return a;
+      return 1.0f / (1.0f + std::exp(-a));
   }
 }
 

@@ -102,7 +102,9 @@ Status HloCostAnalysis::HandleElementwiseOp(
   if (opcode == HloOpcode::kExp || opcode == HloOpcode::kLog ||
       opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
       opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
-      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos) {
+      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos ||
+      opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog1p ||
+      opcode == HloOpcode::kAtan2) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -736,6 +738,15 @@ Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
 }
 
 Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
+  // TODO(b/26346211): Implement better estimates for the RNG cost, since the
+  // cost changes with the implementation and the distribution. For now, assume
+  // the cost of each RNG is same as a transcendental operation.
+  current_properties_[kTranscendentalsKey] =
+      ShapeUtil::ElementsIn(random->shape());
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleRngBitGenerator(const HloInstruction* random) {
   // TODO(b/26346211): Implement better estimates for the RNG cost, since the
   // cost changes with the implementation and the distribution. For now, assume
   // the cost of each RNG is same as a transcendental operation.

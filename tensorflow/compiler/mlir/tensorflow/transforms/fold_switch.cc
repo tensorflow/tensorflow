@@ -30,24 +30,24 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/IR/Visitors.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/IR/Visitors.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -65,13 +65,13 @@ class SwitchFoldPass : public mlir::FunctionPass<SwitchFoldPass> {
 }  // namespace
 
 // Returns the defining op for a value looking through islands.
-static Operation* GetDefiningOp(Value* val) {
-  Operation* op = val->getDefiningOp();
+static Operation* GetDefiningOp(Value val) {
+  Operation* op = val.getDefiningOp();
   auto island_op = dyn_cast<tf_executor::IslandOp>(op);
   if (!island_op) return op;
   auto yield_op = island_op.GetYield();
-  auto index = cast<mlir::OpResult>(val)->getResultNumber();
-  return yield_op.getOperand(index)->getDefiningOp();
+  auto index = val.cast<mlir::OpResult>().getResultNumber();
+  return yield_op.getOperand(index).getDefiningOp();
 }
 
 // Returns either the value or input to an IdentityOp.
@@ -81,7 +81,7 @@ static Operation* GetDefiningOp(Value* val) {
 // identity nodes are common so handle them specially when considering
 // predicate in a minimally invasive way until identity's are handled more
 // generally.
-static Value* LookThroughIdentityOp(Value* pred_val) {
+static Value LookThroughIdentityOp(Value pred_val) {
   if (!pred_val) return pred_val;
   auto op = GetDefiningOp(pred_val);
   if (auto id_op = dyn_cast<TF::IdentityOp>(op)) pred_val = id_op.input();
@@ -114,7 +114,7 @@ class DeadQueue {
       // feeding into the Merge then we could have a null value here.
       count = 0;
       for (auto operand : op->getOperands()) {
-        if (operand && !operand->getType().isa<tf_executor::ControlType>())
+        if (operand && !operand.getType().isa<tf_executor::ControlType>())
           ++count;
       }
     }
@@ -124,9 +124,9 @@ class DeadQueue {
   }
 
   // Enqueue users of a value.
-  void EnqueueUsers(Value* val) {
-    for (auto user : val->getUsers()) {
-      Enqueue(user, val->getType().isa<tf_executor::ControlType>());
+  void EnqueueUsers(Value val) {
+    for (auto user : val.getUsers()) {
+      Enqueue(user, val.getType().isa<tf_executor::ControlType>());
     }
   }
 
@@ -175,7 +175,7 @@ class DeadQueue {
 // Enqueues values of foldable switch ops.
 static void MatchSwitchFoldOps(tf_executor::SwitchOp switch_op,
                                DeadQueue* queue) {
-  Value* pred_val = LookThroughIdentityOp(switch_op.predicate());
+  Value pred_val = LookThroughIdentityOp(switch_op.predicate());
 
   // If predicate or input is null then enqueue entire op for deletion.
   if (pred_val == nullptr || switch_op.data() == nullptr) {
@@ -187,9 +187,9 @@ static void MatchSwitchFoldOps(tf_executor::SwitchOp switch_op,
   if (!matchPattern(pred_val, m_Constant(&pred))) return;
 
   bool taken = pred.getSplatValue<bool>();
-  Value* dead = taken ? switch_op.falseOutput() : switch_op.trueOutput();
-  Value* live = !taken ? switch_op.falseOutput() : switch_op.trueOutput();
-  live->replaceAllUsesWith(switch_op.data());
+  Value dead = taken ? switch_op.falseOutput() : switch_op.trueOutput();
+  Value live = !taken ? switch_op.falseOutput() : switch_op.trueOutput();
+  live.replaceAllUsesWith(switch_op.data());
   queue->EnqueueUsers(dead);
 
   // Delete switch op.
@@ -210,15 +210,15 @@ static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
 
   for (auto it : queue.merge_nodes()) {
     // Find the valid input to merge node.
-    Value* val = nullptr;
+    Value val = nullptr;
     int index = -1;
     auto* merge = it.first;
     auto merge_op = cast<tf_executor::MergeOp>(merge);
     for (auto e : llvm::enumerate(merge->getOperands())) {
-      Value* operand = e.value();
+      Value operand = e.value();
       if (!operand) continue;
       // Skip control operands.
-      if (operand->getType().isa<tf_executor::ControlType>()) break;
+      if (operand.getType().isa<tf_executor::ControlType>()) break;
       if (val != nullptr) {
         return merge->emitOpError("multiple valid inputs post switch folding");
       }
@@ -226,26 +226,26 @@ static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
       index = e.index();
     }
     assert(val != nullptr && "merge node should have been deleted");
-    merge_op.output()->replaceAllUsesWith(val);
+    merge_op.output().replaceAllUsesWith(val);
 
     // Build and insert value_index only if needed.
-    if (!merge_op.value_index()->use_empty()) {
-      merge_op.value_index()->replaceAllUsesWith(
+    if (!merge_op.value_index().use_empty()) {
+      merge_op.value_index().replaceAllUsesWith(
           build_index(merge->getLoc(), index));
     }
 
     // Propagate control dependencies if used.
-    if (!merge_op.control()->use_empty()) {
+    if (!merge_op.control().use_empty()) {
       // Change control dependencies from the merge to being on the parent of
       // the value being propagated.
-      auto def_op = val->getDefiningOp();
+      auto def_op = val.getDefiningOp();
 #ifndef NDEBUG
       auto exec_dialect =
           function.getContext()->getRegisteredDialect("tf_executor");
       assert(def_op->getDialect() == exec_dialect &&
              "unable to forward control dependencies");
 #endif
-      merge_op.control()->replaceAllUsesWith(
+      merge_op.control().replaceAllUsesWith(
           def_op->getResult(def_op->getNumResults() - 1));
     }
 

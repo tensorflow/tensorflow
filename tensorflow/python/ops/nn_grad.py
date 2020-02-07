@@ -1138,4 +1138,4 @@ def _NthElementGrad(op, grad):
   grad = array_ops.expand_dims(grad, -1)
   num_selected = array_ops.expand_dims(math_ops.reduce_sum(indicators, -1), -1)
 
-  return [math_ops.div(indicators, num_selected) * grad, None]
+  return [math_ops.divide(indicators, num_selected) * grad, None]

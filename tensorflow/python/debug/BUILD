@@ -26,6 +26,7 @@ py_library(
     deps = [
         ":check_numerics_callback",
         ":debug_data",
+        ":debug_events_monitors",
         ":debug_events_reader",
         ":debug_events_writer",
         ":debug_gradients",
@@ -120,6 +121,20 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:lib",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "debug_events_monitors",
+    srcs = ["lib/debug_events_monitors.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:lib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -250,6 +265,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tf_session",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -643,6 +659,28 @@ py_test(
 )
 
 py_test(
+    name = "debug_events_monitors_test",
+    size = "medium",
+    srcs = ["lib/debug_events_monitors_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # b/142475891
+    ],
+    deps = [
+        ":debug_events_monitors",
+        ":debug_events_reader",
+        ":debug_events_writer",
+        ":dumping_callback",
+        ":dumping_callback_test_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "debug_events_writer_test",
     size = "medium",
     srcs = ["lib/debug_events_writer_test.py"],
@@ -715,13 +753,13 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        "no_rocm",
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":check_numerics_callback",
+        ":debug_events_reader",
         ":debug_events_writer",
         ":dumping_callback",
         ":dumping_callback_test_lib",
@@ -1111,6 +1149,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_tf_session",
         "//third_party/py/numpy",
     ],
 )

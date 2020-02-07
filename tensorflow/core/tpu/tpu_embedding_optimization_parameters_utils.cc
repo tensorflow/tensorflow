@@ -265,7 +265,7 @@ Status GetOptimizationAlgorithmStateVariables(
     }
     case OptimizationAlgorithm::kProximalYogi: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("v", 0.0));
+          MakeStandardStateVariableSpecification("v", 0.1));
       state_variables->push_back(
           MakeStandardStateVariableSpecification("m", 0.0));
       break;

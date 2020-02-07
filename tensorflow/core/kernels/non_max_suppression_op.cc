@@ -246,6 +246,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
         // Suppression has not occurred, so select next_candidate
         selected.push_back(next_candidate.box_index);
         selected_scores.push_back(next_candidate.score);
+        continue;
       }
       if (next_candidate.score > score_threshold) {
         // Soft suppression has occurred and current score is still greater than

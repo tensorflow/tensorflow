@@ -178,16 +178,40 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   }
 
   const int total_dims = sparsity->traversal_order()->size();
+  const int original_rank = tensor.shape()->size();
 
-  if (total_dims < tensor.shape()->size() ||
+  if (total_dims < original_rank ||
       sparsity->dim_metadata()->size() != total_dims) {
     return absl::nullopt;
   }
 
-  const int block_rank = total_dims - tensor.shape()->size();
+  const int block_rank = total_dims - original_rank;
   if (block_rank > 0 && (sparsity->block_map() == nullptr ||
                          sparsity->block_map()->size() != block_rank)) {
     return absl::nullopt;
+  }
+
+  // For a n-dimensional tensor (d0, ..., dn-1) with k-dimensional block (dn,
+  // ..., dn+k-1), the first n elements in the traversal order should be a
+  // permutation of (d0, ..., dn-1), and the last k elements should be a
+  // permutation of (dn, ..., dn+k-1).
+  std::vector<int> traversal_order(total_dims);
+  for (int i = 0; i < total_dims; i++) {
+    traversal_order[i] = sparsity->traversal_order()->Get(i);
+  }
+
+  std::sort(traversal_order.begin(), traversal_order.begin() + original_rank);
+  for (int i = 0; i < original_rank; i++) {
+    if (traversal_order[i] != i) {
+      return absl::nullopt;
+    }
+  }
+
+  std::sort(traversal_order.begin() + original_rank, traversal_order.end());
+  for (int i = original_rank; i < total_dims; i++) {
+    if (traversal_order[i] != i) {
+      return absl::nullopt;
+    }
   }
 
   // For a n-dimensional tensor (d0, ..., dn-1) with k-dimensional block (dn,
@@ -197,7 +221,6 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   // 2}.
   std::vector<int> expanded_dim_sizes;
   expanded_dim_sizes.resize(total_dims);
-  const int original_rank = tensor.shape()->size();
   // First go through the original tensor dimensions, populate their sizes.
   for (int i = 0; i < original_rank; i++) {
     expanded_dim_sizes[i] = tensor.shape()->Get(i);

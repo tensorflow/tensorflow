@@ -68,6 +68,9 @@ void RecordGraphOutputTensors(const size_t size);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
 
+// Records that one output of an op of type `op_name` was unused.
+void RecordUnusedOutput(const string& op_name);
+
 // Updates the metrics stored about time spent building graphs.
 //
 // By "GraphBuild", we refer to building a client graph, which is a sub-graph of

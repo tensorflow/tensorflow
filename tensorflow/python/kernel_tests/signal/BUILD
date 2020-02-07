@@ -25,7 +25,6 @@ cuda_py_tests(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -70,7 +69,6 @@ cuda_py_tests(
     name = "mfcc_ops_test",
     srcs = ["mfcc_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",

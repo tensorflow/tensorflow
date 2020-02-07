@@ -143,11 +143,11 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
     }
     string message = absl::StrCat(
         "Function invoked by the following node is not compilable: ",
-        node_def.ShortDebugString(), ".\n");
-    absl::StrAppend(&message, "Uncompilable nodes:\n");
+        SummarizeNodeDef(node_def), ".\n");
+    absl::StrAppend(&message, "Uncompilable nodes:");
     for (const auto& node_info : uncompilable_node_info) {
       string node_message =
-          absl::StrCat("\t", node_info.name, ": ",
+          absl::StrCat("\n", node_info.name, ": ",
                        node_info.uncompilable_reason, "\n", "\tStacktrace:\n");
       for (const auto& stack_frame : node_info.stack_trace) {
         absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
@@ -156,7 +156,6 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
       absl::StrAppend(&message, node_message);
     }
     VLOG(1) << message;
-    // node_def is calling a function that XLA can't compile.
     return errors::InvalidArgument(message);
   }
 
@@ -222,8 +221,9 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   OpKernelConstruction construction(
       DeviceType(dev->device_type()), dev,
       dev->GetAllocator(AllocatorAttributes()), &node_def,
-      &fbody->fdef.signature(), flr, fbody->arg_types, input_memory_types,
-      fbody->ret_types, output_memory_types, flr->graph_def_version(), &s);
+      &fbody->fdef.signature(), flr, dev->resource_manager(), fbody->arg_types,
+      input_memory_types, fbody->ret_types, output_memory_types,
+      flr->graph_def_version(), &s);
 
   *kernel = absl::make_unique<XlaLocalLaunchBase>(
       &construction, constant_arg_indices, resource_arg_indices, function);

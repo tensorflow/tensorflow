@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {

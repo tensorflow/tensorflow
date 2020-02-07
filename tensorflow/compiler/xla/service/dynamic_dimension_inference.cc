@@ -215,11 +215,6 @@ Status DynamicDimensionInferenceVisitor::HandleSort(HloInstruction* hlo) {
                int64 dynamic_dimension, int64 operand_index,
                HloInstruction* dynamic_size, DimensionConstraint constraint) {
         HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
-        int64 sort_dimension = sort->sort_dimension();
-        if (sort_dimension == dynamic_dimension) {
-          return Unimplemented(
-              "Dynamic dimension on sorting dimension is not supported");
-        }
         if (sort->values_count() == 0) {
           parent_->SetDynamicSize(hlo, {}, dynamic_dimension, dynamic_size,
                                   constraint);

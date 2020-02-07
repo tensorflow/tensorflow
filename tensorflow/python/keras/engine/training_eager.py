@@ -146,6 +146,16 @@ def _model_loss(model,
     loss_fns = [
         loss_fn for loss_fn in model.loss_functions if loss_fn is not None
     ]
+    custom_losses = model.losses  # Regularization losses
+
+    if not loss_fns and not custom_losses:
+      if training:
+        raise ValueError('The model cannot be trained '
+                         'because it has no loss to optimize.')
+      else:
+        raise ValueError('The model cannot be evaluated '
+                         'because it has no loss to compute.')
+
     for i, loss_fn in enumerate(loss_fns):
       weights = sample_weights[i] if sample_weights else None
       mask = masks[i]
@@ -203,11 +213,9 @@ def _model_loss(model,
       total_loss += model._loss_weights_list[i] * output_loss
 
     # Add regularization losses
-    custom_losses = model.losses
     if custom_losses:
       total_loss += losses_utils.scale_loss_for_distribution(
           math_ops.add_n(custom_losses))
-
   return outs, total_loss, output_losses, masks
 
 
@@ -250,9 +258,6 @@ def _process_single_batch(model,
               output_loss_metrics=output_loss_metrics,
               sample_weights=sample_weights,
               training=training))
-      if total_loss is None:
-        raise ValueError('The model cannot be run '
-                         'because it has no loss to optimize.')
       if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
         scaled_total_loss = model.optimizer.get_scaled_loss(total_loss)
       else:

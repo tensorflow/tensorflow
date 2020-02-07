@@ -72,12 +72,12 @@ zip -r $$origdir/$(location :{1}.aar) jni/*/*.so
         for src in headers:
             if flatten_headers:
                 cmd += """
-                    cp -rL $$origdir/$(location {0}) headers/$$(basename $(location {0}))
+                    cp -RL $$origdir/$(location {0}) headers/$$(basename $(location {0}))
                 """.format(src)
             else:
                 cmd += """
                     mkdir -p headers/$$(dirname $(location {0}))
-                    cp -rL $$origdir/$(location {0}) headers/$(location {0})
+                    cp -RL $$origdir/$(location {0}) headers/$(location {0})
                 """.format(src)
         cmd += "zip -r $$origdir/$(location :{0}.aar) headers".format(name)
 

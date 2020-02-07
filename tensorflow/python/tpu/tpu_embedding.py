@@ -257,12 +257,16 @@ VariablesAndOps = collections.namedtuple(
 class _OptimizationParameters(object):
   """Parameters common to all optimizations."""
 
-  def __init__(self, learning_rate, use_gradient_accumulation,
-               clip_weight_min, clip_weight_max):
+  def __init__(self, learning_rate, use_gradient_accumulation, clip_weight_min,
+               clip_weight_max, weight_decay_factor,
+               multiply_weight_decay_factor_by_learning_rate):
     self.learning_rate = learning_rate
     self.use_gradient_accumulation = use_gradient_accumulation
     self.clip_weight_min = clip_weight_min
     self.clip_weight_max = clip_weight_max
+    self.weight_decay_factor = weight_decay_factor
+    self.multiply_weight_decay_factor_by_learning_rate = (
+        multiply_weight_decay_factor_by_learning_rate)
 
 
 @tf_export(v1=['tpu.experimental.AdagradParameters'])
@@ -290,7 +294,9 @@ class AdagradParameters(_OptimizationParameters):
                initial_accumulator=0.1,
                use_gradient_accumulation=True,
                clip_weight_min=None,
-               clip_weight_max=None):
+               clip_weight_max=None,
+               weight_decay_factor=None,
+               multiply_weight_decay_factor_by_learning_rate=None):
     """Optimization parameters for Adagrad.
 
     Args:
@@ -302,10 +308,15 @@ class AdagradParameters(_OptimizationParameters):
         for details.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
     """
     super(AdagradParameters,
           self).__init__(learning_rate, use_gradient_accumulation,
-                         clip_weight_min, clip_weight_max)
+                         clip_weight_min, clip_weight_max, weight_decay_factor,
+                         multiply_weight_decay_factor_by_learning_rate)
     if initial_accumulator <= 0:
       raise ValueError('Adagrad initial_accumulator must be positive')
     self.initial_accumulator = initial_accumulator
@@ -340,7 +351,9 @@ class AdamParameters(_OptimizationParameters):
                sum_inside_sqrt=True,
                use_gradient_accumulation=True,
                clip_weight_min=None,
-               clip_weight_max=None):
+               clip_weight_max=None,
+               weight_decay_factor=None,
+               multiply_weight_decay_factor_by_learning_rate=None):
     """Optimization parameters for Adam.
 
     Args:
@@ -360,10 +373,15 @@ class AdamParameters(_OptimizationParameters):
         for details.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
     """
     super(AdamParameters,
           self).__init__(learning_rate, use_gradient_accumulation,
-                         clip_weight_min, clip_weight_max)
+                         clip_weight_min, clip_weight_max, weight_decay_factor,
+                         multiply_weight_decay_factor_by_learning_rate)
     if beta1 < 0. or beta1 >= 1.:
       raise ValueError('beta1 must be between 0. and 1; got {}.'.format(beta1))
     if beta2 < 0. or beta2 >= 1.:
@@ -409,7 +427,9 @@ class FtrlParameters(_OptimizationParameters):
                l2_regularization_strength=0.0,
                use_gradient_accumulation=True,
                clip_weight_min=None,
-               clip_weight_max=None):
+               clip_weight_max=None,
+               weight_decay_factor=None,
+               multiply_weight_decay_factor_by_learning_rate=None):
     """Optimization parameters for Ftrl.
 
     Args:
@@ -430,10 +450,15 @@ class FtrlParameters(_OptimizationParameters):
         for details.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
     """
     super(FtrlParameters,
           self).__init__(learning_rate, use_gradient_accumulation,
-                         clip_weight_min, clip_weight_max)
+                         clip_weight_min, clip_weight_max, weight_decay_factor,
+                         multiply_weight_decay_factor_by_learning_rate)
     if learning_rate_power > 0.:
       raise ValueError('learning_rate_power must be less than or equal to 0. '
                        'got {}.'.format(learning_rate_power))
@@ -477,17 +502,27 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self, learning_rate, clip_weight_min=None,
-               clip_weight_max=None):
+  def __init__(self,
+               learning_rate,
+               clip_weight_min=None,
+               clip_weight_max=None,
+               weight_decay_factor=None,
+               multiply_weight_decay_factor_by_learning_rate=None):
     """Optimization parameters for stochastic gradient descent.
 
     Args:
       learning_rate: a floating point value. The learning rate.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
     """
     super(StochasticGradientDescentParameters,
-          self).__init__(learning_rate, False, clip_weight_min, clip_weight_max)
+          self).__init__(learning_rate, False, clip_weight_min, clip_weight_max,
+                         weight_decay_factor,
+                         multiply_weight_decay_factor_by_learning_rate)
 
 
 DeviceConfig = collections.namedtuple('DeviceConfig',
@@ -557,6 +592,40 @@ class TPUEmbedding(object):
       sess.run(enqueue_ops)
       loss_val = sess.run(loss)
     ```
+
+  Example with weight decay:
+
+  >>> def learning_rate_fn(global_step):
+  ...   return tf.compat.v1.train.polynomial_decay(
+  ...     learning_rate=5e-5,
+  ...     global_step=global_step,
+  ...     decay_steps=100000,
+  ...     end_learning_rate=0.0)
+  >>> wordpiece_table_config = TableConfig(
+  ...   vocabulary_size=119547,
+  ...   dimension=768,
+  ...   learning_rate_fn=learning_rate_fn)
+  >>> wordpiece_feature_config = FeatureConfig(
+  ...   table_id='bert/embeddings/word_embeddings',
+  ...   max_sequence_length=512)
+  >>> optimization_parameters = AdamParameters(
+  ...   learning_rate=5e-5,
+  ...   epsilon=1e-6,
+  ...   weight_decay_factor=0.01,
+  ...   multiply_weight_decay_factor_by_learning_rate=True)
+  >>> tpu_embedding = TPUEmbedding(
+  ...  table_to_config_dict={
+  ...    'bert/embeddings/word_embeddings': wordpiece_table_config,
+  ...  },
+  ...  feature_to_config_dict={'input_ids': wordpiece_feature_config},
+  ...  batch_size=128,
+  ...  mode=TRAINING,
+  ...  optimization_parameters=optimization_parameters,
+  ...  device_config=DeviceConfig(
+  ...    num_cores=64, num_hosts=4, job_name='tpu_worker'))
+  >>> with tf.Graph().as_default():
+  ...   init_tpu_op = tf.compat.v1.tpu.initialize_system(
+  ...     embedding_config=tpu_embedding.config_proto, job='tpu_worker')
   """
 
   # TODO(shizhiw): Consider adding a field to FeatureConfig that indicates that
@@ -586,7 +655,8 @@ class TPUEmbedding(object):
                cluster_def=None,
                pipeline_execution_with_tensor_core=False,
                partition_strategy='div',
-               device_config=None):
+               device_config=None,
+               master_job_name=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -612,6 +682,8 @@ class TPUEmbedding(object):
         `tf.nn.embedding_lookup_sparse`.
       device_config: A DeviceConfig instance, used when `master` and
         `cluster_def` are both `None`.
+      master_job_name: if set, overrides the master job name used to schedule
+        embedding ops.
 
     Raises:
       ValueError: if any input is invalid.
@@ -660,7 +732,12 @@ class TPUEmbedding(object):
         raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
                          'TPUs.'.format(master))
       self._num_hosts = tpu_system_metadata.num_hosts
-      master_job_name = tpu_system_metadata_lib.master_job(master, cluster_def)
+      if master_job_name is None:
+        try:
+          master_job_name = tpu_system_metadata_lib.master_job(master,
+                                                               cluster_def)
+        except ValueError as e:
+          raise ValueError(str(e) + ' Please specify a master_job_name.')
       self._hosts = []
       for device in tpu_system_metadata.devices:
         if 'device:CPU:' in device.name and (
@@ -806,6 +883,12 @@ class TPUEmbedding(object):
       if self._optimization_parameters.clip_weight_max is not None:
         parameters.clipping_limits.upper.value = (
             self._optimization_parameters.clip_weight_max)
+      if self._optimization_parameters.weight_decay_factor:
+        parameters.weight_decay_factor = (
+            self._optimization_parameters.weight_decay_factor)
+        if (self._optimization_parameters
+            .multiply_weight_decay_factor_by_learning_rate):
+          parameters.multiply_weight_decay_factor_by_learning_rate = True
       if table_config.hot_id_replication:
         parameters.hot_id_replication_configuration.status = (
             optimization_parameters_pb2.HotIdReplicationConfiguration.ENABLED)
@@ -827,6 +910,19 @@ class TPUEmbedding(object):
   def create_variables_and_ops(self, embedding_variable_name_by_table=None,
                                slot_variable_names_by_table=None):
     """Create embedding and slot variables, with ops to load and retrieve them.
+
+    N.B.: the retrieve embedding variables (including slot variables) ops are
+    returned as lambda fn, as the call side might want to impose control
+    dependencies between the TPU computation and retrieving actions. For
+    example, the following code snippet ensures the TPU computation finishes
+    first, and then we pull the variables back from TPU to CPU.
+
+    ```
+    updates_ops = []
+    with ops.control_dependencies([loss]):
+      for op_fn in retrieve_parameters_op_fns:
+        update_ops.append(op_fn())
+    ```
 
     Args:
       embedding_variable_name_by_table: A dictionary mapping from string of
@@ -917,7 +1013,7 @@ class TPUEmbedding(object):
                            slot_variables_by_table,
                            load_ops, retrieve_ops)
 
-  def generate_enqueue_ops(self, enqueue_datas_list):
+  def generate_enqueue_ops(self, enqueue_datas_list, mode_override=None):
     """Generate enqueue ops.
 
     Args:
@@ -925,15 +1021,22 @@ class TPUEmbedding(object):
         of feature names to EnqueueData. Each dictionary is for one
         TPU core. Dictionaries for the same host should be contiguous
         on the list.
+      mode_override: A string input that overrides the mode specified in the
+        TPUEmbeddingConfiguration. Supported values are {'unspecified',
+        'inference', 'training', 'backward_pass_only'}. When set to
+        'unspecified', the mode set in TPUEmbeddingConfiguration is used,
+        otherwise mode_override is used (optional).
 
     Returns:
       Ops to enqueue to TPU for embedding.
     """
     self._validate_generate_enqueue_ops_enqueue_datas_list(enqueue_datas_list)
     return [
-        self._generate_enqueue_op(
-            enqueue_datas, device_ordinal=i % self._num_cores_per_host)
-        for i, enqueue_datas in enumerate(enqueue_datas_list)
+        self._generate_enqueue_op(  # pylint: disable=g-complex-comprehension
+            enqueue_datas,
+            device_ordinal=i % self._num_cores_per_host,
+            mode_override=mode_override,
+        ) for i, enqueue_datas in enumerate(enqueue_datas_list)
     ]
 
   def _validate_generate_enqueue_ops_enqueue_datas_list(self,
@@ -1008,12 +1111,14 @@ class TPUEmbedding(object):
       else:
         contiguous_device = device
 
-  def _generate_enqueue_op(self, enqueue_datas, device_ordinal):
+  def _generate_enqueue_op(
+      self, enqueue_datas, device_ordinal, mode_override=None):
     enqueue_data0 = list(enqueue_datas.values())[0]
     with ops.colocate_with(enqueue_data0.embedding_indices):
       return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
           device_ordinal=device_ordinal,
           combiners=self._combiners,
+          mode_override=mode_override,
           **self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas)
       )
 

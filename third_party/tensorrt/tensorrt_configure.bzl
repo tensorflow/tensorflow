@@ -70,6 +70,13 @@ def enable_tensorrt(repository_ctx):
 
 def _tensorrt_configure_impl(repository_ctx):
     """Implementation of the tensorrt_configure repository rule."""
+
+    # Resolve all labels before doing any real work. Resolving causes the
+    # function to be restarted with all previous state being lost. This
+    # can easily lead to a O(n^2) runtime in the number of labels.
+    # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
+    find_cuda_config_path = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"))
+
     if _TF_TENSORRT_CONFIG_REPO in repository_ctx.os.environ:
         # Forward to the pre-configured remote repository.
         remote_config_repo = repository_ctx.os.environ[_TF_TENSORRT_CONFIG_REPO]
@@ -102,7 +109,7 @@ def _tensorrt_configure_impl(repository_ctx):
         _create_dummy_repository(repository_ctx)
         return
 
-    config = find_cuda_config(repository_ctx, ["tensorrt"])
+    config = find_cuda_config(repository_ctx, find_cuda_config_path, ["tensorrt"])
     trt_version = config["tensorrt_version"]
     cpu_value = get_cpu_value(repository_ctx)
 

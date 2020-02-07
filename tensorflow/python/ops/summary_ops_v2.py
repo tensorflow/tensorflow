@@ -223,13 +223,19 @@ class SummaryWriter(object):
 class ResourceSummaryWriter(SummaryWriter):
   """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
 
-  def  __init__(self, shared_name, init_op_fn, name=None, v2=False):
+  def __init__(self,
+               shared_name,
+               init_op_fn,
+               name=None,
+               v2=False,
+               metadata=None):
     self._resource = gen_summary_ops.summary_writer(
         shared_name=shared_name, name=name)
     # TODO(nickfelt): cache other constructed ops in graph mode
     self._init_op_fn = init_op_fn
     self._init_op = init_op_fn(self._resource)
     self._v2 = v2
+    self._metadata = {} if metadata is None else metadata
     self._closed = False
     if context.executing_eagerly():
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
@@ -406,7 +412,8 @@ def create_file_writer_v2(logdir,
               flush_millis=flush_millis,
               filename_suffix=filename_suffix),
           name=name,
-          v2=True)
+          v2=True,
+          metadata={"logdir": logdir})
 
 
 def create_file_writer(logdir,
@@ -1204,15 +1211,15 @@ def trace_export(name, step=None, profiler_outdir=None):
     step: Explicit `int64`-castable monotonic step value for this summary. If
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
-    profiler_outdir: Output directory for profiler. It is required when profiler
-      is enabled when trace was started. Otherwise, it is ignored.
+    profiler_outdir: Output directory for profiler. This is only used when the
+      profiler was enabled when the trace was started. In that case, if there is
+      a logdir-based default SummaryWriter, this defaults to the same directory,
+      but otherwise the argument must be passed.
 
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  # TODO(stephanlee): See if we can remove profiler_outdir and infer it from
-  # the SummaryWriter's logdir.
   global _current_trace_context
 
   if ops.inside_function():
@@ -1226,8 +1233,14 @@ def trace_export(name, step=None, profiler_outdir=None):
     if _current_trace_context is None:
       raise ValueError("Must enable trace before export.")
     graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
+    if profiler_outdir is None \
+        and isinstance(_summary_state.writer, ResourceSummaryWriter):
+      logdir = _summary_state.writer._metadata.get("logdir")  # pylint: disable=protected-access
+      if logdir is not None:
+        profiler_outdir = logdir
     if profiler and profiler_outdir is None:
-      raise ValueError("Required profiler_outdir is not specified")
+      raise ValueError("Must set profiler_outdir or "
+                       "enable summary writer with logdir.")
 
   run_meta = context.context().export_run_metadata()
 

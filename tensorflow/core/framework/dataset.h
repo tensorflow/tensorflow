@@ -70,24 +70,47 @@ class DatasetBase;
 class SerializationContext;
 
 // Interface for reading values from a key-value store.
-// Used for restoring iterator state.
+// Used for restoring iterator state. This class is thread safe.
+// Please see comment on IteratorStateWriter for guidance around using the
+// Read*(key, val) vs Read*(name, key, val).
 class IteratorStateReader {
  public:
   virtual Status ReadScalar(StringPiece key, int64* val) = 0;
   virtual Status ReadScalar(StringPiece key, tstring* val) = 0;
   virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
+
+  virtual Status ReadScalar(StringPiece name, StringPiece key, int64* val) = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            tstring* val) = 0;
+  virtual Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) = 0;
+
   virtual bool Contains(StringPiece key) = 0;
+  virtual bool Contains(StringPiece name, StringPiece key) = 0;
 
   virtual ~IteratorStateReader() {}
 };
 
 // Interface for writing values to a key-value store.
-// Used for saving iterator state.
+// Used for saving iterator state. Not thread safe.
+// The IteratorStateWriter creates a tensor for each unique iterator name it
+// sees. For the Write*(key, val) API's the key is expected to encode this
+// name as keys are required to be produced using the full_name() method.
+// Each tensor has an upper limit of 2 GB and so if the state for an iterator
+// might exceed the 2 GB limit, you can pass an explicit name in via the
+// Write*(name, key, val) APIs allowing you to further split up the state
+// into more manageable chunks.
 class IteratorStateWriter {
  public:
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
   virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
   virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
+
+  virtual Status WriteScalar(StringPiece name, StringPiece key,
+                             const int64 val) = 0;
+  virtual Status WriteScalar(StringPiece name, StringPiece key,
+                             const tstring& val) = 0;
+  virtual Status WriteTensor(StringPiece name, StringPiece key,
+                             const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
 };
@@ -131,9 +154,6 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-#ifdef USE_TSTRING
-  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
-  // migration.
   Status AddVector(const std::vector<string>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(),
                           TensorShape({static_cast<int64>(val.size())}));
@@ -146,7 +166,6 @@ class GraphDefBuilderWrapper {
     }
     return Status::OK();
   }
-#endif  // USE_TSTRING
 
   // Adds a `Const` node for the given tensor value to the graph.
   //
@@ -1121,7 +1140,7 @@ class BinaryDatasetOpKernel : public DatasetOpKernel {
 // overhead is tolerable.
 class BackgroundWorker {
  public:
-  BackgroundWorker(Env* env, const string& name);
+  BackgroundWorker(Env* env, const char* name);
 
   ~BackgroundWorker();
 
@@ -1129,6 +1148,9 @@ class BackgroundWorker {
 
  private:
   void WorkerLoop();
+
+  Env* const env_;
+  const char* const name_;
 
   std::unique_ptr<Thread> thread_;
   mutex mu_;

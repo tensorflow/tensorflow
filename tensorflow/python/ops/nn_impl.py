@@ -1512,6 +1512,7 @@ def fused_batch_norm(
       name=name)
   return y, batch_mean, batch_var
 
+
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])
 def batch_norm_with_global_normalization(t=None,
                                          m=None,

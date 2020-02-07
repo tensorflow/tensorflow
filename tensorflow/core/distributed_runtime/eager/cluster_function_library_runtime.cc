@@ -35,25 +35,16 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle,
     FunctionLibraryRuntime::DoneCallback done) {
-  const tensorflow::AttrTypeMap* attr_types;
-  bool is_function = false;
-  Status s;
-  s = tensorflow::AttrTypeMapForOp(function_name.c_str(), &attr_types,
-                                   &is_function);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
-  if (!is_function) {
-    done(errors::Internal(function_name, " is not a function."));
-    return;
-  }
   auto target = options.target;
-  auto* released_op =
-      new EagerOperation(ctx_, function_name.c_str(), is_function, attr_types);
-  s = released_op->SetDeviceName(target.c_str());
+  auto released_op = std::make_unique<EagerOperation>(ctx_);
+  Status s =
+      released_op->Reset(function_name.c_str(), target.c_str(), true, nullptr);
   if (!s.ok()) {
     done(s);
+    return;
+  }
+  if (!released_op->is_function()) {
+    done(errors::Internal(function_name, " is not a function."));
     return;
   }
 
@@ -95,21 +86,20 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
       func_lib_def.ReachableDefinitions(register_function->function_def())
           .ToProto();
 
-  eager_client->EnqueueAsync(request, response,
-                             [this, request, response, handle, released_op,
-                              target, eager_client = eager_client.get(),
-                              done](const Status& s) {
-                               {
-                                 mutex_lock l(mu_);
-                                 *handle = function_data_.size();
-                                 function_data_.emplace_back(
-                                     target, eager_client,
-                                     absl::WrapUnique(released_op));
-                               }
-                               done(s);
-                               delete request;
-                               delete response;
-                             });
+  eager_client->EnqueueAsync(
+      request, response,
+      [this, request, response, handle, released_op = released_op.release(),
+       target, eager_client = eager_client.get(), done](const Status& s) {
+        {
+          mutex_lock l(mu_);
+          *handle = function_data_.size();
+          function_data_.emplace_back(target, eager_client,
+                                      absl::WrapUnique(released_op));
+        }
+        done(s);
+        delete request;
+        delete response;
+      });
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(
@@ -131,7 +121,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
     function_data = &function_data_[handle];
   }
 
-  EagerClient* eager_client = function_data->eager_client;
+  EagerClient* eager_client = function_data->eager_client.get();
   if (eager_client == nullptr) {
     done(errors::Internal("Could not find eager client"));
     return;
@@ -195,7 +185,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
     function_data = &function_data_[handle];
   }
 
-  EagerClient* eager_client = function_data->eager_client;
+  EagerClient* eager_client = function_data->eager_client.get();
   if (eager_client == nullptr) {
     done(errors::Internal("Could not find eager client"));
     return;

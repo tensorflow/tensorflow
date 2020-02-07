@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -671,6 +673,26 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       function_name, function_key, ret_node_names.size(),
       lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
+  // Mapping from a function body node name to the control output name.
+  std::unordered_map<string, string> node_name_to_control_ret;
+
+  bool control_rets_updated = false;
+  TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
+      device_set_, options.config_proto, &graph, &data->lib_def_,
+      &control_ret_node_names, &control_rets_updated));
+
+  if (control_rets_updated) {
+    // Function graph pass may have resulted in different nodes/node names for
+    // control rets.
+    for (const auto& control_ret : control_ret_node_names) {
+      node_name_to_control_ret.emplace(control_ret, control_ret);
+    }
+  } else {
+    for (const auto& control_ret : fdef->control_ret()) {
+      node_name_to_control_ret.emplace(control_ret.second, control_ret.first);
+    }
+  }
+
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
@@ -724,8 +746,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     options.graph_collector->CollectOptimizedGraph(def);
   }
 
-  VLOG(2) << "Main function graph to be partitioned:";
-  VLOG(2) << DebugString(graph->ToGraphDefDebug());
+  VLOG(4) << "Main function graph to be partitioned:";
+  VLOG(4) << DebugString(graph->ToGraphDefDebug());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
@@ -765,12 +787,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
       options.graph_collector->CollectPartitionedGraph(def);
     }
-  }
-
-  // Mapping from a function body node name to the control output name.
-  std::unordered_map<string, string> node_name_to_control_ret;
-  for (const auto& control_ret : fdef->control_ret()) {
-    node_name_to_control_ret.emplace(control_ret.second, control_ret.first);
   }
 
   // We must preserve control returns in each of the function components,

@@ -375,7 +375,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
 ::testing::AssertionResult HloTestBase::RunMultipleTimes(
     string_view hlo_string, bool run_hlo_passes,
-    std::vector<ExecutionProfile>* profiles, string backend_config) {
+    std::vector<ExecutionProfile>* profiles, string backend_config,
+    bool assert_determinism) {
   int n = profiles->size();
   std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
   std::vector<std::vector<Literal>> fake_arguments(n);
@@ -425,12 +426,25 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     executables[i] = std::move(executable.ValueOrDie());
   }
 
+  absl::optional<Literal> canonical_output;
   for (int i = 0; i < n; ++i) {
-    auto output =
+    StatusOr<Literal> output =
         test_runner_.Execute(std::move(executables[i]), fake_argument_ptrs[i],
                              /*profile=*/&((*profiles)[i]));
     if (!output.ok()) {
       return ::testing::AssertionFailure() << output.status().error_message();
+    }
+
+    if (assert_determinism) {
+      if (!canonical_output.has_value()) {
+        canonical_output = output.ConsumeValueOrDie();
+      } else {
+        if (*canonical_output != output.ValueOrDie()) {
+          return ::testing::AssertionFailure()
+                 << "Successive runs have returned different results: "
+                 << *canonical_output << " vs. " << output.ValueOrDie();
+        }
+      }
     }
   }
 

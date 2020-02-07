@@ -21,21 +21,29 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-class Node;
-struct NodeDebugInfo;
-
-// We forward declare protos so that kernels don't need to depend on them
-class NodeDef;
-class OpDef;
 class AttrSlice;
+// We forward declare protos so that kernels don't need to depend on them
+class OpDef;
+class AttrValue;
+class NameAttrList;
+class TensorProto;
+class TensorShapeProto;
 
 // Name of the attribute used to encode node colocation constraints.
 //
@@ -49,7 +57,6 @@ extern const char* const kColocationGroupPrefix;
 
 // Produce a human-readable version of a Node or NodeDef that is more concise
 // than a text-format proto.
-string SummarizeNode(const Node& node);
 string SummarizeNodeDef(const NodeDef& node_def);
 string SummarizeAttrs(const NodeDef& node_def);
 string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device);
@@ -57,17 +64,10 @@ string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device);
 // Produces a formatted string pattern from the node which can uniquely identify
 // this node upstream to produce an informative error message. The pattern
 // followed is: {{node <node_name>}}
-string FormatNodeForError(const Node& node);
 string FormatNodeDefForError(const NodeDef& node_def);
 string FormatNodeDefForError(
     StringPiece node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info);
-
-// Merges the original node names from the debug information of 'from' to the
-// debug information of 'to'.
-void MergeDebugInfo(const NodeDebugInfo& from, Node* to);
-void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to);
-void MergeDebugInfo(const NodeDef& from, NodeDef* to);
 
 typedef protobuf::Map<string, AttrValue> AttrValueMap;
 
@@ -351,9 +351,6 @@ typedef gtl::FlatMap<StringPiece, std::pair<int, int>, hash<StringPiece>>
     NameRangeMap;
 Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs);
-Status NameRangesForNode(const Node& node, const OpDef& op_def,
-                         NameRangeMap* inputs, NameRangeMap* outputs);
-
 // Adds default values to *node_def for unspecified attrs from op_def.
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def);
 
@@ -376,9 +373,6 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def);
 // of the NodeDef instead of the formatted string.
 Status AttachDef(const Status& status, const NodeDef& node_def,
                  bool allow_multiple_formatted_node = false);
-Status AttachDef(const Status& status, const Node& node,
-                 bool allow_multiple_formatted_node = false);
-
 // Appends the given prefix and suffix to the original node name in order to
 // make the name unique. If it's an "Enter" node and uniquify_frame_name is
 // true, use the same way to reset attribute "frame_name".

@@ -607,7 +607,7 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
   // so the factor 0.01 (i.e. 1/100) with a max of 10000, was chosen to limit
   // the work unit cost to an operating range in which it emperically performed
   // best.
-  const int64 work_unit_cost = std::max(int64{10000}, work_unit_size / 100LL);
+  const int64 work_unit_cost = std::max(int64{10000}, work_unit_size / 100);
   const DeviceBase::CpuWorkerThreads& worker_threads =
       *(context->device()->tensorflow_cpu_worker_threads());
   Shard(worker_threads.num_threads, worker_threads.workers,

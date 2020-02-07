@@ -552,4 +552,20 @@ typedef int (*ANeuralNetworksExecution_getDuration_fn)(
     const ANeuralNetworksExecution* execution, int32_t durationCode,
     uint64_t* duration);
 
+typedef int (*ANeuralNetworksDevice_getExtensionSupport_fn)(
+    const ANeuralNetworksDevice* device, const char* extensionName,
+    bool* isExtensionSupported);
+
+typedef int (*ANeuralNetworksModel_getExtensionOperandType_fn)(
+    ANeuralNetworksModel* model, const char* extensionName,
+    uint16_t operandCodeWithinExtension, int32_t* type);
+
+typedef int (*ANeuralNetworksModel_getExtensionOperationType_fn)(
+    ANeuralNetworksModel* model, const char* extensionName,
+    uint16_t operationCodeWithinExtension, ANeuralNetworksOperationType* type);
+
+typedef int (*ANeuralNetworksModel_setOperandExtensionData_fn)(
+    ANeuralNetworksModel* model, int32_t index, const void* data,
+    size_t length);
+
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

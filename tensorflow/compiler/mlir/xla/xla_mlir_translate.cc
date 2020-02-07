@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Translation.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Translation.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -153,10 +153,21 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     return mlir::failure();
   }
 
-  output << statusOrHloModule.ValueOrDie()->ToString(
-      HloPrintOptions()
-          // We don't interpret or use layouts
-          .set_include_layout_in_shapes(false));
+  HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
+
+  // We don't interpret or use layouts
+  output << hlo_module->ToString(
+      HloPrintOptions().set_include_layout_in_shapes(false));
+
+  // Output alias information as comments in the HLO text.
+  hlo_module->input_output_alias_config().ForEachAlias(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
+        output << "// OutputIndex " << output_index.ToString()
+               << " aliases with input " << alias.parameter_number << " at "
+               << alias.parameter_index.ToString() << "\n";
+      });
+
   return mlir::success();
 }
 

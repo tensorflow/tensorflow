@@ -110,7 +110,7 @@ class FlatBufferModel {
   /// and must ensure its lifetime is longer than the FlatBufferModel instance.
   /// Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromBuffer(
-      const char* buffer, size_t buffer_size,
+      const char* caller_owned_buffer, size_t buffer_size,
       TfLiteVerifier* extra_verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 

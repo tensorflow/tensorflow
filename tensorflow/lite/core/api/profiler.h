@@ -25,9 +25,15 @@ class Profiler {
   enum class EventType {
     // Default event type, the metadata field has no special significance.
     DEFAULT = 0,
+
     // The event is an operator invocation and the event_metadata field is the
     // index of operator node.
-    OPERATOR_INVOKE_EVENT = 1
+    OPERATOR_INVOKE_EVENT = 1,
+
+    // The event is an invocation for an internal operator of a TFLite delegate.
+    // The event_metadata field is the index of operator node that's specific to
+    // the delegate.
+    DELEGATE_OPERATOR_INVOKE_EVENT = 2
   };
 
   virtual ~Profiler() {}
@@ -81,6 +87,15 @@ class ScopedOperatorProfile : public ScopedProfile {
                       static_cast<uint32_t>(node_index)) {}
 };
 
+class ScopedDelegateOperatorProfile : public ScopedProfile {
+ public:
+  ScopedDelegateOperatorProfile(Profiler* profiler, const char* tag,
+                                int node_index)
+      : ScopedProfile(profiler, tag,
+                      Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT,
+                      static_cast<uint32_t>(node_index)) {}
+};
+
 }  // namespace tflite
 
 #define TFLITE_VARNAME_UNIQ(name, ctr) name##ctr
@@ -93,8 +108,8 @@ class ScopedOperatorProfile : public ScopedProfile {
   tflite::ScopedOperatorProfile TFLITE_VARNAME_UNIQ(_profile_, __COUNTER__)( \
       (profiler), (tag), (node_index))
 
-#define TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(profiler, node_index)   \
-  TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE((profiler), "DelegateOpInvoke", \
-                                        (node_index))
+#define TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(profiler, tag, node_index) \
+  tflite::ScopedDelegateOperatorProfile TFLITE_VARNAME_UNIQ(               \
+      _profile_, __COUNTER__)((profiler), (tag), (node_index))
 
 #endif  // TENSORFLOW_LITE_CORE_API_PROFILER_H_

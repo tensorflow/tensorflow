@@ -38,53 +38,49 @@ std::unique_ptr<SequenceTransformation> NewMergeMulWithConvolution();
 // Modify Convolution2DAttributes so that after making convolution with
 // modified attributes we will have the same result as convolution
 // with old attributes and following multiply operation.
-void FuseConvolution2DWithMultiply(const MultiplyScalarAttributes& mul_attr,
+void FuseConvolution2DWithMultiply(const MultiplyAttributes& mul_attr,
                                    Convolution2DAttributes* attr);
 
 // Modify DepthwiseConvolution2DAttributes so that after making depth wise
 // convolution with modified attributes we will have the same result as depth
 // wise convolution with old attributes and following multiply operation.
 void FuseDepthwiseConvolution2DWithMultiply(
-    const MultiplyScalarAttributes& mul_attr,
-    DepthwiseConvolution2DAttributes* attr);
+    const MultiplyAttributes& mul_attr, DepthwiseConvolution2DAttributes* attr);
 
 // Modify ConvolutionTransposedAttributes so that after making convolution
 // transposed with modified attributes we will have the same result as
 // convolution transposed with old attributes and following multiply operation.
 void FuseConvolutionTransposedWithMultiply(
-    const MultiplyScalarAttributes& mul_attr,
-    ConvolutionTransposedAttributes* attr);
+    const MultiplyAttributes& mul_attr, ConvolutionTransposedAttributes* attr);
 
 // Modify FullyConnectedAttributes so that after making fully connected with
 // modified attributes we will have the same result as fully connected
 // with old attributes and following multiply operation.
-void FuseFullyConnectedWithMultiply(const MultiplyScalarAttributes& mul_attr,
+void FuseFullyConnectedWithMultiply(const MultiplyAttributes& mul_attr,
                                     FullyConnectedAttributes* attr);
 
 // Modify Convolution2DAttributes so that after making convolution with
 // modified attributes we will have the same result as multiply operation and
 // convolution with old attributes
-void FuseMultiplyWithConvolution2D(const MultiplyScalarAttributes& mul_attr,
+void FuseMultiplyWithConvolution2D(const MultiplyAttributes& mul_attr,
                                    Convolution2DAttributes* attr);
 
 // Modify DepthwiseConvolution2DAttributes so that after making depth wise
 // convolution with modified attributes we will have the same result as multiply
 // operation and depth wise convolution with old attributes
 void FuseMultiplyWithDepthwiseConvolution2D(
-    const MultiplyScalarAttributes& mul_attr,
-    DepthwiseConvolution2DAttributes* attr);
+    const MultiplyAttributes& mul_attr, DepthwiseConvolution2DAttributes* attr);
 
 // Modify ConvolutionTransposedAttributes so that after making convolution
 // transposed with modified attributes we will have the same result as multiply
 // operation and convolution transposed with old attributes
 void FuseMultiplyWithConvolutionTransposed(
-    const MultiplyScalarAttributes& mul_attr,
-    ConvolutionTransposedAttributes* attr);
+    const MultiplyAttributes& mul_attr, ConvolutionTransposedAttributes* attr);
 
 // Modify FullyConnectedAttributes so that after making fully connected
 // with modified attributes we will have the same result as multiply
 // operation and fully connected with old attributes
-void FuseMultiplyWithFullyConnected(const MultiplyScalarAttributes& mul_attr,
+void FuseMultiplyWithFullyConnected(const MultiplyAttributes& mul_attr,
                                     FullyConnectedAttributes* attr);
 
 }  // namespace gpu

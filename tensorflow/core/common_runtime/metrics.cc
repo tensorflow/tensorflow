@@ -54,6 +54,10 @@ auto* graph_run_output_tensor_bytes = monitoring::Sampler<0>::New(
     // Power of 2 with bucket count 14 (256G)
     {monitoring::Buckets::Exponential(1, 4, 14)});
 
+auto* graph_unused_outputs = monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_unused_outputs",
+    "The number of unused outputs for ops of a given type.", "name");
+
 auto* tf_data_autotune_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
 
@@ -224,6 +228,10 @@ void IncrementMLIRImportFailureCount() {
   static auto* mlir_import_failure_count_cell =
       mlir_import_failure_count->GetCell();
   mlir_import_failure_count_cell->IncrementBy(1);
+}
+
+void RecordUnusedOutput(const string& op_name) {
+  graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
 }
 
 }  // namespace metrics

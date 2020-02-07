@@ -16,8 +16,8 @@ limitations under the License.
 // This transformation pass applies some clean up steps after quantization.
 
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -67,33 +67,33 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
     // In each iteration, a new argument is appended to the end of the list
     // and the current argument is erased, so here we always process the first
     // argument in the list.
-    auto* arg = bb.getArgument(0);
+    auto arg = bb.getArgument(0);
 
     auto remove_quantize_op = [&](QuantizeOp quantize_op) {
       auto quantize_output = quantize_op.output();
-      auto quantize_type = quantize_output->getType();
+      auto quantize_type = quantize_output.getType();
       input_types.push_back(quantize_type);
-      auto* new_arg = bb.addArgument(quantize_type);
-      quantize_output->replaceAllUsesWith(new_arg);
+      auto new_arg = bb.addArgument(quantize_type);
+      quantize_output.replaceAllUsesWith(new_arg);
       quantize_op.erase();
-      arg->dropAllUses();
+      arg.dropAllUses();
       bb.eraseArgument(0);
     };
 
     // This is looking for a pattern: arg -> tfl.quantize
-    if (arg->hasOneUse() && llvm::isa<QuantizeOp>(*arg->user_begin())) {
-      auto quantize_op = llvm::cast<QuantizeOp>(*arg->user_begin());
+    if (arg.hasOneUse() && llvm::isa<QuantizeOp>(*arg.user_begin())) {
+      auto quantize_op = llvm::cast<QuantizeOp>(*arg.user_begin());
       remove_quantize_op(quantize_op);
       continue;
     }
 
     // Make a copy of current argument and append it to the end of the list if
     // the pattern isn't found.
-    Type arg_type = arg->getType();
+    Type arg_type = arg.getType();
     input_types.push_back(arg_type);
-    auto* new_arg = bb.addArgument(arg_type);
-    arg->replaceAllUsesWith(new_arg);
-    arg->dropAllUses();
+    auto new_arg = bb.addArgument(arg_type);
+    arg.replaceAllUsesWith(new_arg);
+    arg.dropAllUses();
     bb.eraseArgument(0);
   }
 
@@ -102,16 +102,16 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
   llvm::SmallVector<Type, 4> output_types;
   output_types.reserve(num_return_operands);
   for (int i = 0; i != num_return_operands; ++i) {
-    auto* returned_value = terminator->getOperand(i);
-    Operation* returned_op = returned_value->getDefiningOp();
+    auto returned_value = terminator->getOperand(i);
+    Operation* returned_op = returned_value.getDefiningOp();
     if (returned_op && llvm::isa<DequantizeOp>(returned_op)) {
       auto dequantize_op = llvm::cast<DequantizeOp>(returned_op);
-      Value* dequantized_result = dequantize_op.input();
-      output_types.push_back(dequantized_result->getType());
+      Value dequantized_result = dequantize_op.input();
+      output_types.push_back(dequantized_result.getType());
       terminator->setOperand(i, dequantized_result);
       returned_op->erase();
     } else {
-      output_types.push_back(returned_value->getType());
+      output_types.push_back(returned_value.getType());
     }
   }
   auto new_func_type = builder.getFunctionType(input_types, output_types);

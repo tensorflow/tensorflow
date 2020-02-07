@@ -120,7 +120,6 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -285,6 +284,7 @@ cuda_py_test(
     name = "ctc_loss_op_test",
     size = "medium",
     srcs = ["ctc_loss_op_test.py"],
+    xla_enable_strict_auto_jit = False,  # b/148153828
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ctc_ops",
@@ -755,8 +755,9 @@ cuda_py_test(
 
 cuda_py_test(
     name = "matrix_triangular_solve_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matrix_triangular_solve_op_test.py"],
+    shard_count = 3,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:linalg_ops",
@@ -1213,7 +1214,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "@six_archive//:six",
     ],
 )
@@ -1287,7 +1288,6 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_oss",  # TODO(b/142818120): Re-enable.
-        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -2717,7 +2717,6 @@ cuda_py_test(
     srcs = ["tensor_array_ops_test.py"],
     flaky = 1,  # create_local_cluster sometimes times out.
     shard_count = 10,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3448,9 +3447,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["qr_op_test.py"],
     shard_count = 20,
-    tags = [
-        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

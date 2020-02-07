@@ -113,58 +113,42 @@ struct NNAPIOpMappingArgs {
 };
 
 // RAII NN API Model Destructor for use with std::unique_ptr
-struct NNFreeModel {
+class NNFreeModel {
+ public:
+  explicit NNFreeModel(const NnApi* nnapi) : nnapi_(nnapi) {}
   void operator()(ANeuralNetworksModel* model) {
-    NnApiImplementation()->ANeuralNetworksModel_free(model);
+    nnapi_->ANeuralNetworksModel_free(model);
   }
+
+ private:
+  const NnApi* nnapi_;
 };
 // RAII NN API Compilation Destructor for use with std::unique_ptr
-struct NNFreeCompilation {
+class NNFreeCompilation {
+ public:
+  explicit NNFreeCompilation(const NnApi* nnapi) : nnapi_(nnapi) {}
   void operator()(ANeuralNetworksCompilation* model) {
-    NnApiImplementation()->ANeuralNetworksCompilation_free(model);
+    nnapi_->ANeuralNetworksCompilation_free(model);
   }
+
+ private:
+  const NnApi* nnapi_;
 };
 
 // Manage NNAPI shared memory handle
 class NNMemory {
  public:
-#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
-  NNMemory(const NnApi* nnapi, const char* name, size_t size) {
-    if (name && size > 0) {
-      nnapi_ = nnapi;
-      byte_size_ = size;
-      fd_ = nnapi_->ASharedMemory_create(name, size);
-      data_ptr_ = reinterpret_cast<uint8_t*>(
-          mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
-      nnapi_->ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE,
-                                                 fd_, 0, &nn_memory_handle_);
-    }
-  }
-#else
-  NNMemory(const NnApi* /*nnapi*/, const char* /*name*/, size_t /*size*/) {}
-#endif
+  NNMemory(const NnApi* nnapi, const char* name, size_t size);
 
-  ~NNMemory() {
-#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
-    if (data_ptr_) {
-      munmap(data_ptr_, byte_size_);
-    }
-    if (nn_memory_handle_) {
-      nnapi_->ANeuralNetworksMemory_free(nn_memory_handle_);
-    }
-    if (fd_ > 0) close(fd_);
-#endif
-  }
+  ~NNMemory();
 
   ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
   uint8_t* get_data_ptr() { return data_ptr_; }
 
  private:
-#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
   const NnApi* nnapi_;
   int fd_ = 0;
   size_t byte_size_ = 0;
-#endif
   uint8_t* data_ptr_ = nullptr;
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
 };
@@ -239,7 +223,12 @@ struct NNAPIValidationFailure {
 // The kernel that represents the node sub set of TF Lite being run on NN API.
 class NNAPIDelegateKernel {
  public:
-  NNAPIDelegateKernel() { nnapi_ = NnApiImplementation(); }
+  explicit NNAPIDelegateKernel(const NnApi* nnapi)
+      : initialised_(false),
+        nnapi_(nnapi),
+        nn_model_(nullptr, NNFreeModel(nnapi_)),
+        nn_compilation_(nullptr, NNFreeCompilation(nnapi_)) {}
+  NNAPIDelegateKernel() : NNAPIDelegateKernel(NnApiImplementation()) {}
   ~NNAPIDelegateKernel() {
     for (auto content : allocation_memory_mapping_) {
       nnapi_->ANeuralNetworksMemory_free(content.second);
@@ -267,27 +256,47 @@ class NNAPIDelegateKernel {
       // the given node
       std::vector<NNAPIValidationFailure>* map_failures = nullptr);
 
-  // Initialize the kernel (a NN model).
+  // Initialize the kernel (a NN model) and builds the NN Model.
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params,
                     int* nnapi_errno);
 
+  // Creates the NNAPI Compilation for the NN model. It assumes that Init has
+  // been called and completed successfully.
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        int* nnapi_errno);
 
+  // Invoke the NN Model. Expects Init and Prepare to have been completed
+  // successfully.
   // Any NNAPI Related error causing this method to fail will have the
   // associated error number stored in nnapi_errno
   TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node,
                       int* nnapi_errno);
 
+  // Returns the list of operations supported by the current NNAPI model as
+  // built in Prepare. Every operation is identified by the index as provided
+  // in the delegate parameters given to the delegate during the Init call.
+  // It expects the Init method has been called and completed successfully and
+  // returns kTfLiteError if not. Returns an error if any of the NNAPI
+  // operations fails or if the
+  // ANeuralNetworksModel_getSupportedOperationsForDevices function is not
+  // available in the NnApi object.
+  TfLiteStatus GetOperationsSupportedByTargetNnApiDevices(
+      TfLiteContext* context, std::vector<int>* supported_nodes,
+      int* nnapi_errno);
+
  private:
+  // True if initialization has been completed successfully
+  bool initialised_;
   // Access to NNApi.
   const NnApi* nnapi_;
   // ANN device handle.
   std::vector<ANeuralNetworksDevice*> nnapi_devices_;
+  // Name of the nnapi device, empty if nnapi_devices_ is empty;
+  std::string device_name_;
   // ANN API state.
   std::unique_ptr<ANeuralNetworksModel, NNFreeModel> nn_model_;
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>
@@ -311,6 +320,8 @@ class NNAPIDelegateKernel {
 
   std::unique_ptr<NNMemory> nn_input_memory_;
   std::unique_ptr<NNMemory> nn_output_memory_;
+
+  std::vector<uint8_t> nn_compilation_cache_token_;
 
   void AddDequantizeOperatorsWhereNeeded(const TfLiteContext* context,
                                          int builtin_code,

@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -126,8 +126,10 @@ Status CreateFileForDumping(llvm::StringRef name,
                  << "' directory for dumping: " << status;
     return Status(error::Code::UNAVAILABLE, "(unavailable)");
   }
-  *filepath =
-      llvm::Twine(dir).concat("/").concat(MakeUniqueFilename(name)).str();
+  *filepath = llvm::Twine(dir)
+                  .concat("/")
+                  .concat(MakeUniqueFilename(std::string(name)))
+                  .str();
 
   // Try to open the file and generate a raw_ostream.
   std::unique_ptr<WritableFile> file;

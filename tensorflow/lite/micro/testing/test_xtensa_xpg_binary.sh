@@ -26,8 +26,7 @@ declare -r MICRO_LOG_PATH=${TEST_TMPDIR}/$1
 declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}/logs.txt
 mkdir -p ${MICRO_LOG_PATH}
 
-# TODO(kreeger): Enable the ability to pass a different core:
-xt-run --xtensa-core=hifi3_bd5 $1 2>&1 | tee ${MICRO_LOG_FILENAME}
+xt-run --xtensa-core=${XTENSA_CORE} $1 2>&1 | tee ${MICRO_LOG_FILENAME}
 
 if grep -q "$2" ${MICRO_LOG_FILENAME}
 then

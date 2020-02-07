@@ -458,7 +458,7 @@ static void TF_Run_Helper(
           EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
       continue;
     }
-    c_outputs[i] = TF_TensorFromTensor(src, status);
+    c_outputs[i] = TF_TensorFromTensor(src, &status->status);
     if (!status->status.ok()) return;
   }
 }
@@ -1493,7 +1493,7 @@ void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
   Tensor t;
   status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &t);
   if (!status->status.ok()) return;
-  *value = TF_TensorFromTensor(t, status);
+  *value = TF_TensorFromTensor(t, &status->status);
 }
 
 void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
@@ -1504,7 +1504,7 @@ void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
   if (!status->status.ok()) return;
   const auto len = std::min(max_values, static_cast<int>(ts.size()));
   for (int i = 0; i < len; ++i) {
-    values[i] = TF_TensorFromTensor(ts[i], status);
+    values[i] = TF_TensorFromTensor(ts[i], &status->status);
   }
 }
 
@@ -2398,7 +2398,7 @@ unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
       graph->graph.versions().producer(), &evaluated, &result_tensor);
   if (evaluated) {
     DCHECK(status->status.ok());
-    *result = TF_TensorFromTensor(result_tensor, status);
+    *result = TF_TensorFromTensor(result_tensor, &status->status);
     if (!status->status.ok()) evaluated = false;
   }
   return evaluated;

@@ -16,6 +16,75 @@ message PerfEnv {
   double ridge_point = 3;
 }
 
+// Result proto for host-independent job information.
+message HostIndependentJobInfoResult {
+  // The change-list number of this build.
+  int64 change_list = 1;
+  // The time of this build (nanoseconds since the Unix epoch).
+  int64 build_time = 2;
+  // The target of this build.
+  string build_target = 3;
+  // Profiling duration (in ms).
+  uint32 profile_duration_ms = 4;
+}
+
+// Result proto for host-dependent job information.
+message HostDependentJobInfoResult {
+  // This ID of the host where the job was run on.
+  string host_id = 1;
+  // The command line used to run the job.
+  string command_line = 2;
+  // The start time of this run (nanoseconds since the Unix epoch).
+  int64 start_time = 3;
+  // BNS address specified by client at time of profiling request.
+  string bns_address = 4;
+  // Profiling start walltime (in ns).
+  uint64 profile_time_ns = 5;
+}
+
+// System topology, which describes the number of chips in a pod
+// and the connectivity style.
+message SystemTopology {
+  // The X, Y, and Z dimensions of this topology. 0 means that dimension does
+  // not exist.
+  int64 x_dimension = 1;
+  int64 y_dimension = 2;
+  int64 z_dimension = 3;
+  // The number of expected bad chips in this system.
+  int64 num_expected_reduced_chips = 4;
+}
+
+// The run environment of a profiling session.
+message RunEnvironment {
+  // Number of hosts used.
+  int32 host_count = 1;
+  // Number of tasks used.
+  int32 task_count = 2;
+  // Distinct hostnames seen.
+  map<string, bool> hostnames = 3;
+  // The type of device used.
+  string device_type = 4;
+  // The number of device cores used.
+  //   In TPU case, this corresponds to the number of TPU cores
+  //   In GPU case, this corresponds to the number of GPUs (not the number of
+  //   SMs).
+  int32 device_core_count = 5;
+  // The per-device-core batch size.
+  int32 per_core_batch_size = 6;
+  // Host-independent information about this job.
+  HostIndependentJobInfoResult host_independent_job_info = 7;
+  // Host-dependent information about this job.
+  repeated HostDependentJobInfoResult host_dependent_job_info = 8;
+  // The number of replicas, corresponds to input parallelism.
+  // If there is no model parallelism, replica_count = device_core_count
+  int32 replica_count = 9;
+  // The number of cores used for a single replica, e.g. model parallelism.
+  // If there is no model parallelism, then num_cores_per_replica = 1
+  int32 num_cores_per_replica = 10;
+  // The chip interconnection topology.
+  SystemTopology topology = 11;
+}
+
 // Operator Statistics.
 message OpStats {
   // The database for the op metrics collected from the host over the entire
@@ -28,4 +97,6 @@ message OpStats {
   PerfEnv perf_env = 3;
   // The database of step sequences.
   StepDatabaseResult step_db = 4;
+  // The run environment of this profiling session.
+  RunEnvironment run_environment = 5;
 }

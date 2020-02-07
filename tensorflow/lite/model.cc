@@ -129,23 +129,23 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
-    const char* buffer, size_t buffer_size, TfLiteVerifier* extra_verifier,
-    ErrorReporter* error_reporter) {
+    const char* caller_owned_buffer, size_t buffer_size,
+    TfLiteVerifier* extra_verifier, ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
-  flatbuffers::Verifier base_verifier(reinterpret_cast<const uint8_t*>(buffer),
-                                      buffer_size);
+  flatbuffers::Verifier base_verifier(
+      reinterpret_cast<const uint8_t*>(caller_owned_buffer), buffer_size);
   if (!VerifyModelBuffer(base_verifier)) {
     error_reporter->Report("The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 
-  if (extra_verifier &&
-      !extra_verifier->Verify(buffer, buffer_size, error_reporter)) {
+  if (extra_verifier && !extra_verifier->Verify(caller_owned_buffer,
+                                                buffer_size, error_reporter)) {
     return nullptr;
   }
 
-  return BuildFromBuffer(buffer, buffer_size, error_reporter);
+  return BuildFromBuffer(caller_owned_buffer, buffer_size, error_reporter);
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
@@ -563,6 +563,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       status = kTfLiteError;
     }
 
+    size_t dims_signature_rank = 0;
+    const int* dims_signature_data = nullptr;
+    if (tensor->shape_signature()) {
+      dims_signature_rank = tensor->shape_signature()->Length();
+      dims_signature_data = tensor->shape_signature()->data();
+    }
+
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
       if (is_variable) {
@@ -590,9 +597,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
-                                                 dims, quantization,
-                                                 is_variable) != kTfLiteOk) {
+      if (subgraph->SetTensorParametersReadWrite(
+              i, type, get_name(tensor), dims, quantization, is_variable,
+              dims_signature_rank, dims_signature_data) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;

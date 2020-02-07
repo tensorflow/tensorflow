@@ -1992,7 +1992,7 @@ def _pool_seed_transformer(parent, node, full_name, name, logs):
 def _extract_glimpse_transformer(parent, node, full_name, name, logs):
 
   def _replace_uniform_noise_node(parent, old_value):
-    """Replaces old_value with 'uniform' or 'guassian'."""
+    """Replaces old_value with 'uniform' or 'gaussian'."""
     uniform = ast.Str(s="uniform")
     gaussian = ast.Str(s="gaussian")
     new_value = ast.IfExp(body=uniform, test=old_value, orelse=gaussian)

@@ -80,7 +80,7 @@ class CPUAllocator : public Allocator {
       ++single_allocation_warning_count_;
       LOG(WARNING) << "Allocation of " << num_bytes << " exceeds "
                    << 100 * kLargeAllocationWarningThreshold
-                   << "% of system memory.";
+                   << "% of free system memory.";
     }
 
     void* p = port::AlignedMalloc(num_bytes, alignment);
@@ -99,7 +99,7 @@ class CPUAllocator : public Allocator {
         ++total_allocation_warning_count_;
         LOG(WARNING) << "Total allocated memory " << stats_.bytes_in_use
                      << "exceeds " << 100 * kTotalAllocationWarningThreshold
-                     << "% of system memory";
+                     << "% of free system memory";
       }
     }
     return p;

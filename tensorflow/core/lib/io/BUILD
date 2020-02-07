@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 package(
     default_visibility = [
         "//tensorflow/c/experimental/filesystem:__pkg__",
@@ -275,6 +280,45 @@ cc_library(
     alwayslink = True,
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "block.cc",
+        "block.h",
+        "block_builder.cc",
+        "block_builder.h",
+        "buffered_inputstream.cc",
+        "buffered_inputstream.h",
+        "compression.cc",
+        "compression.h",
+        "format.cc",
+        "format.h",
+        "inputbuffer.cc",
+        "inputbuffer.h",
+        "inputstream_interface.cc",
+        "inputstream_interface.h",
+        "iterator.cc",
+        "iterator.h",
+        "path.h",
+        "random_inputstream.cc",
+        "random_inputstream.h",
+        "record_reader.cc",
+        "record_reader.h",
+        "table.cc",
+        "table.h",
+        "table_builder.cc",
+        "table_builder.h",
+        "table_options.h",
+        "two_level_iterator.cc",
+        "two_level_iterator.h",
+        "zlib_compression_options.cc",
+        "zlib_compression_options.h",
+        "zlib_inputstream.cc",
+        "zlib_inputstream.h",
+    ],
+)
+
 filegroup(
     name = "legacy_lib_io_all_headers",
     srcs = [
@@ -300,32 +344,6 @@ filegroup(
         "zlib_compression_options.h",
         "zlib_inputstream.h",
         "zlib_outputbuffer.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_io_all_srcs",
-    srcs = [
-        "block.cc",
-        "block_builder.cc",
-        "buffered_inputstream.cc",
-        "compression.cc",
-        "format.cc",
-        "inputbuffer.cc",
-        "inputstream_interface.cc",
-        "iterator.cc",
-        "random_inputstream.cc",
-        "record_reader.cc",
-        "record_writer.cc",
-        "snappy/snappy_inputbuffer.cc",
-        "snappy/snappy_outputbuffer.cc",
-        "table.cc",
-        "table_builder.cc",
-        "two_level_iterator.cc",
-        "zlib_compression_options.cc",
-        "zlib_inputstream.cc",
-        "zlib_outputbuffer.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

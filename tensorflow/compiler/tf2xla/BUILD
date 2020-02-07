@@ -5,6 +5,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
     "tf_proto_library_cc",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
@@ -62,7 +63,7 @@ tf_cc_binary(
     deps = [":tf2xla_supported_ops_lib"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,
@@ -140,6 +141,7 @@ cc_library(
         ":tf2xla_proto_cc",
         ":tf2xla_util",
         ":xla_compiler",
+        "//tensorflow/compiler/aot:aot_only_var_handle_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -160,6 +162,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf2xla_proto_cc",
+        ":tf2xla_util",
         ":xla_compiler",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
@@ -173,10 +176,7 @@ cc_library(
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -625,9 +625,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:session_options",
-        "@llvm//:support",
+        "//tensorflow/core:core_cpu",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:support",
     ],
     alwayslink = 1,
 )
@@ -639,6 +639,7 @@ cc_library(
     ],
     deps = [
         ":mlir_bridge_pass",
+        "//tensorflow/core:core_cpu",
     ],
     alwayslink = 1,
 )
@@ -829,6 +830,8 @@ tf_cuda_cc_test(
     srcs = ["fused_batchnorm_reserve_space_test.cc"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/compiler/jit",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -839,9 +842,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 

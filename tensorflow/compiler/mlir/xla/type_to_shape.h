@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_TYPE_TO_SHAPE_H_
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Types.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"

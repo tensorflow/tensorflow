@@ -228,18 +228,18 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
+          writer->WriteScalar(prefix(), kBufferSize, buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
         auto& buffer_element = buffer_[i];
         TF_RETURN_IF_ERROR(WriteStatus(writer, i, buffer_element.status));
         if (buffer_element.status.ok()) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
-              buffer_element.value.size()));
+              absl::StrCat(prefix(), "::", i),
+              absl::StrCat(kBuffer, kSizeSuffix), buffer_element.value.size()));
           for (size_t j = 0; j < buffer_element.value.size(); j++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
-                buffer_element.value[j]));
+                absl::StrCat(prefix(), "::", i),
+                absl::StrCat(kBuffer, "[", j, "]"), buffer_element.value[j]));
           }
         }
       }
@@ -255,7 +255,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       size_t buffer_size;
       {
         int64 temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBufferSize), &temp));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kBufferSize, &temp));
         buffer_size = static_cast<size_t>(temp);
       }
       for (size_t i = 0; i < buffer_size; i++) {
@@ -266,17 +266,18 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           size_t value_size;
           {
             int64 temp;
-            TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
-                &temp));
+            TF_RETURN_IF_ERROR(
+                reader->ReadScalar(absl::StrCat(prefix(), "::", i),
+                                   absl::StrCat(kBuffer, kSizeSuffix), &temp));
             value_size = static_cast<size_t>(temp);
           }
           buffer_element.value.reserve(value_size);
           for (size_t j = 0; j < value_size; j++) {
             buffer_element.value.emplace_back();
-            TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
-                &buffer_element.value.back()));
+            TF_RETURN_IF_ERROR(
+                reader->ReadTensor(absl::StrCat(prefix(), "::", i),
+                                   absl::StrCat(kBuffer, "[", j, "]"),
+                                   &buffer_element.value.back()));
           }
         }
       }
@@ -435,11 +436,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status WriteStatus(IteratorStateWriter* writer, size_t index,
                        const Status& status) EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      TF_RETURN_IF_ERROR(writer->WriteScalar(
-          CodeKey(index), static_cast<int64>(status.code())));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(absl::StrCat(prefix(), "::", index), CodeKey(),
+                              static_cast<int64>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
-                                               status.error_message()));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(absl::StrCat(prefix(), "::", index),
+                                ErrorMessageKey(), status.error_message()));
       }
       return Status::OK();
     }
@@ -447,13 +450,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status ReadStatus(IteratorStateReader* reader, size_t index, Status* status)
         EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64 code_int;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
+                                            CodeKey(), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
         tstring error_message;
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar(ErrorMessageKey(index), &error_message));
+            reader->ReadScalar(absl::StrCat(prefix(), "::", index),
+                               ErrorMessageKey(), &error_message));
         *status = Status(code, error_message);
       } else {
         *status = Status::OK();
@@ -461,13 +466,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    string CodeKey(size_t index) {
-      return full_name(strings::StrCat(kStatus, "[", index, "]", kCodeSuffix));
-    }
+    string CodeKey() { return absl::StrCat(kStatus, kCodeSuffix); }
 
-    string ErrorMessageKey(size_t index) {
-      return full_name(
-          strings::StrCat(kStatus, "[", index, "]", kErrorMessageSuffix));
+    string ErrorMessageKey() {
+      return absl::StrCat(kStatus, kErrorMessageSuffix);
     }
 
     // This mutex is used to ensure exclusivity between multiple threads

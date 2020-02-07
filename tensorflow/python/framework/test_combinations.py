@@ -39,7 +39,7 @@ The execution of generated tests can be customized in a number of ways:
 -  The test can be skipped if it is not running in the correct environment.
 -  The arguments that are passed to the test can be additionaly transformed.
 -  The test can be run with specific Python context managers.
-These behaviors can customized by providing instances of `TestCombination` to
+These behaviors can be customized by providing instances of `TestCombination` to
 `generate()`.
 """
 

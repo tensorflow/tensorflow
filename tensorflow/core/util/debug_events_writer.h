@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -177,6 +178,11 @@ class DebugEventsWriter {
   void WriteSerializedExecutionDebugEvent(const string& debug_event_str,
                                           DebugEventFileType type);
 
+  // Given name of the device, retrieve a unique integer ID. As a side effect,
+  // if this is the first time this object encounters the device name,
+  // writes a DebuggedDevice proto to the .graphs file in the file set.
+  int RegisterDeviceAndGetId(const string& device_name);
+
   // EventWriter automatically flushes and closes on destruction, but
   // this method is provided for users who want to write to disk sooner
   // and/or check for success.
@@ -232,6 +238,9 @@ class DebugEventsWriter {
   std::deque<string> graph_execution_trace_buffer_
       GUARDED_BY(graph_execution_trace_buffer_mu_);
   mutex graph_execution_trace_buffer_mu_;
+
+  absl::flat_hash_map<string, int> device_name_to_id_ GUARDED_BY(device_mu_);
+  mutex device_mu_;
 
   std::unique_ptr<SingleDebugEventFileWriter> metadata_writer_;
   std::unique_ptr<SingleDebugEventFileWriter> source_files_writer_;

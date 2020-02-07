@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_OPENCL_WRAPPER_H_
 
 #include <CL/cl.h>
+#include <CL/cl_ext.h>
 #include <CL/cl_gl.h>
 #include <CL/cl_platform.h>
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -623,6 +624,13 @@ extern PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
 // It uses clCreateImage if it available (clCreateImage available since cl 1.2)
 // otherwise it will use legacy clCreateImage2D
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
+                           const cl_image_format *image_format,
+                           const cl_image_desc *image_desc, void *host_ptr,
+                           cl_int *errcode_ret);
+
+// It uses clCreateImage if it available (clCreateImage available since cl 1.2)
+// otherwise it will use legacy clCreateImage3D
+cl_mem CreateImage3DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_format *image_format,
                            const cl_image_desc *image_desc, void *host_ptr,
                            cl_int *errcode_ret);

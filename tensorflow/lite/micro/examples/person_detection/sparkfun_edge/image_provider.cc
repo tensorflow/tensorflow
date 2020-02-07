@@ -19,12 +19,12 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_RAW8_QVGA_8bits_lsb_5fps.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_debug.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_optimized.h"
-#include "tensorflow/lite/micro/examples/person_detection/himax_driver/platform_Sparkfun_Edge.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
 #include "am_bsp.h"         // NOLINT
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
+#include "platform.h"       // TARGET specific implementation
 
 // #define DEMO_HM01B0_FRAMEBUFFER_DUMP_ENABLE
 
@@ -140,12 +140,13 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   burst_mode_enable(error_reporter, true);
 
   // Turn on the 1.8V regulator for DVDD on the camera.
-  am_hal_gpio_pinconfig(HM01B0_PIN_DVDD_EN, g_AM_HAL_GPIO_OUTPUT_12);
-  am_hal_gpio_output_set(HM01B0_PIN_DVDD_EN);
+  am_hal_gpio_pinconfig(AM_BSP_GPIO_CAMERA_HM01B0_DVDDEN,
+                        g_AM_HAL_GPIO_OUTPUT_12);
+  am_hal_gpio_output_set(AM_BSP_GPIO_CAMERA_HM01B0_DVDDEN);
 
   // Configure Red LED for debugging.
-  am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_RED, g_AM_HAL_GPIO_OUTPUT_12);
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_RED);
+  am_devices_led_init((am_bsp_psLEDs + AM_BSP_LED_RED));
+  am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_RED);
 
   hm01b0_power_up(&s_HM01B0Cfg);
 

@@ -512,6 +512,11 @@ class HloInstruction {
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
 
+  // Creates a stateless random bit generator instruction that fills a shape
+  // with random bits.
+  static std::unique_ptr<HloInstruction> CreateRngBitGenerator(
+      const Shape& shape, HloInstruction* state, RandomAlgorithm algorithm);
+
   // Creates an instruction to update the random number generator state to
   // reflect the new state after `delta` units of 32 random bits are generated
   // and returns the old state.
@@ -641,7 +646,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       const std::vector<ReplicaGroup>& replica_groups,
-      const absl::optional<int64>& channel_id);
+      const absl::optional<int64>& channel_id,
+      const absl::optional<int64>& split_dimension = absl::nullopt);
 
   // Creates a communication instructions that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
@@ -1792,6 +1798,10 @@ class HloInstruction {
   // Delegates to HloCholeskyInstruction::cholesky_options().
   const CholeskyOptions& cholesky_options() const;
 
+  // Appends operand to the list of operands and adds this instruction as a user
+  // of the operand.
+  void AppendOperand(HloInstruction* operand);
+
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1830,10 +1840,6 @@ class HloInstruction {
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
-
-  // Appends operand to the list of operands and adds this instruction as a user
-  // of the operand.
-  void AppendOperand(HloInstruction* operand);
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);
@@ -2024,12 +2030,14 @@ string PaddingConfigToString(const PaddingConfig& padding);
 string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
 string OpMetadataToString(const OpMetadata& metadata);
+string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 
+StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
 

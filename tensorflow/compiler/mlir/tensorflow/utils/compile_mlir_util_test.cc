@@ -120,7 +120,7 @@ TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
   // only be lowered when tf.Shape is folded into a constant.
   string mlir_module = R"(
     module attributes {tf.versions = {producer = 179 : i32}} {
-      func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32>) -> tensor<10x19xf32> {
+      func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32> {tf_device.is_same_data_across_replicas = true}) -> tensor<10x19xf32> {
         %0 = "tf.Shape"(%arg0) : (tensor<10x19xf32>) -> tensor<2xi64>
         %1 = "tf.Reshape"(%arg1, %0) : (tensor<19x10xf32>, tensor<2xi64>) -> tensor<10x19xf32>
         return %1 : tensor<10x19xf32>
@@ -144,7 +144,7 @@ TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
   string expected_hlo_module_string = R"(HloModule main.6
 
 ENTRY %main.6 (arg_tuple.1: (f32[10,19], f32[19,10])) -> (f32[10,19]) {
-  %arg_tuple.1 = (f32[10,19]{1,0}, f32[19,10]{1,0}) parameter(0)
+  %arg_tuple.1 = (f32[10,19]{1,0}, f32[19,10]{1,0}) parameter(0), parameter_replication={false,true}
   %get-tuple-element.2 = f32[10,19]{1,0} get-tuple-element((f32[10,19]{1,0}, f32[19,10]{1,0}) %arg_tuple.1), index=0
   %get-tuple-element.3 = f32[19,10]{1,0} get-tuple-element((f32[10,19]{1,0}, f32[19,10]{1,0}) %arg_tuple.1), index=1
   %reshape.4 = f32[10,19]{1,0} reshape(f32[19,10]{1,0} %get-tuple-element.3)

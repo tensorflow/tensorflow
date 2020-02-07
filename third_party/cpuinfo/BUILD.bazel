@@ -16,6 +16,7 @@ C99OPTS = [
 # Source code common to all platforms.
 COMMON_SRCS = [
     "src/api.c",
+    "src/cache.c",
     "src/init.c",
 ]
 

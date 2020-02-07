@@ -479,8 +479,26 @@ TfLiteStatus QuantizeOpInput(
         return utils::SymmetricPerLayerBiasQuantize(model, tensor, scale,
                                                     error_reporter);
 
+      } else if (tensor_property.number_of_bits == 10) {
+        // When the number of bits is 10 (instead of 16), quantize the tensor to
+        // [-512, 512], instead of [-32767, 32767].
+        TensorT* tensor = subgraph->tensors[tensor_idx].get();
+        int total_size = 1;
+        for (int i = 0; i < tensor->shape.size(); ++i) {
+          total_size *= tensor->shape[i];
+        }
+        BufferT* buffer = model->buffers[tensor->buffer].get();
+        float* buffer_data = reinterpret_cast<float*>(buffer->data.data());
+        auto minmax =
+            std::minmax_element(buffer_data, buffer_data + total_size);
+        const float range =
+            std::max(std::abs(*minmax.first), std::abs(*minmax.second));
+        const float quantized_range = 512.0;
+        const float scale = range / quantized_range;
+        return utils::SymmetricQuantizeFloatsToInt16(model, tensor, scale,
+                                                     error_reporter);
       } else {
-        // Only 8, 16, 32 are supported.
+        // Only 8, 16, 32, 10 are supported.
         // TODO(jianlijianli): extend this to support arbitrary bits.
         error_reporter->Report(
             "Unable to quantize buffer or min/max value for input %d "
@@ -499,14 +517,15 @@ TfLiteStatus QuantizeOpInput(
           utils::QuantizeActivation(tensor);
         } else if (tensor_property.number_of_bits == 16) {
           TensorT* tensor = subgraph->tensors[tensor_idx].get();
+          float quantized_range = 32767.0;
           float range = std::max(std::abs(tensor->quantization->min[0]),
                                  std::abs(tensor->quantization->max[0]));
           if (tensor_property.extend_to_power_of_two) {
             const int power_of_two_scale = utils::GetPowerOfTwoScale(
                 tensor->quantization->min[0], tensor->quantization->max[0]);
             range = std::pow(2, power_of_two_scale);
+            quantized_range = 32768.0;
           }
-          const float quantized_range = 32768.0;
           const float scale = range / quantized_range;
           utils::QuantizeActivationToInt16(tensor, scale);
         }

@@ -29,7 +29,8 @@ def make_softmax_tests(options):
 
   test_parameters = [{
       "dtype": [tf.float32],
-      "input_shape": [[1, 3, 4, 3], [2, 3]],
+      "input_shape": [[1, 3, 4, 3], [2, 3], [3], [1, 4], [1, 1, 5],
+                      [1, 1, 1, 6]],
       "dim": [-1, 0],
       "fully_quantize": [False, True],
   }, {

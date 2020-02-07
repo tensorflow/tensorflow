@@ -79,6 +79,11 @@ class MultiOutputFusion : public HloModulePass {
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);
 
+  // Test if it's legal to fuse instr1 and instr2 into one fusion instruction
+  // using main constraints.
+  bool LegalToFuseMainConstraints(HloInstruction* instr1,
+                                  HloInstruction* instr2);
+
   // Fuse HloInstruction instr1 and instr2 and return the fused instruction.
   // The other instruction is removed from its parent computation.
   virtual HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
@@ -105,6 +110,18 @@ class MultiOutputFusion : public HloModulePass {
   // InstructionFusion instead.
   virtual bool DoProducerConsumerMultiOutputFusion();
 
+  // Return a list of fusible instructions that can be fused into the fusion of
+  // instr1 and instr2. The second entry in the vector is an old profit value
+  // from fusing the corresponding instruction and the base op of the new
+  // fusion.
+  std::vector<std::pair<HloInstruction*, int64>> GetNewFusibles(
+      HloInstruction* instr1, HloInstruction* instr2);
+
+  // Create a new fusion instruction and add `base' into it.
+  // Prepare for fusing `to_fuse' into the created fusion by updating
+  // reachability, worklist, and fusion candidates.
+  HloInstruction* CreateFusion(HloInstruction* base, HloInstruction* to_fuse);
+
  private:
   // An internal data structure for each instruction in current computation.
   // When an instruction is removed, member 'hlo' is set to nullptr.
@@ -124,9 +141,16 @@ class MultiOutputFusion : public HloModulePass {
     bool operator<(const ToBeFused& rhs) const { return score < rhs.score; }
   };
 
-  // Update the internal data structures after instr1 and instr2 are fused into
+  // Update the internal data structures before instr1 and instr2 are fused into
   // one fusion instruction.
-  void Update(HloInstruction* instr1, HloInstruction* instr2);
+  void UpdateBeforeFuse(HloInstruction* instr1, HloInstruction* instr2);
+
+  // Update the internal data structures after instructions are fused into
+  // one fusion instruction.
+  void UpdateAfterFuse(
+      HloInstruction* fusion,
+      const std::vector<std::pair<HloInstruction*, int64>>& new_fusibles,
+      bool new_fusion_node);
 
   int64 get_candidate_id(HloInstruction* instr) {
     return FindOrDie(candidates_index_, instr);

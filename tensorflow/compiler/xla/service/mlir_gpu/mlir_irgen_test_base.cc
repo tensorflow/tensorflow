@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/inject_errors_pass.h"

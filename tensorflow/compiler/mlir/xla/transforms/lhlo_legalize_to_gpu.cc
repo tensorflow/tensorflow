@@ -19,23 +19,23 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:local_config_mlir
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
+#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
+#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -49,13 +49,13 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      ReduceOp reduce_op, ArrayRef<Value*> args,
+      ReduceOp reduce_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = reduce_op.getLoc();
     // Only support 1d reductions for now.
     int64_t size = 0;
     for (auto result : reduce_op.out()) {
-      auto shaped_type = result->getType().dyn_cast<ShapedType>();
+      auto shaped_type = result.getType().dyn_cast<ShapedType>();
       if (!shaped_type || shaped_type.getRank() != 1) {
         return matchFailure();
       }
@@ -71,7 +71,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     // Require all inputs to have the same shape.
     int64_t reduce_dim_size = 0;
     for (auto input : reduce_op.operands()) {
-      auto shaped_type = input->getType().dyn_cast<ShapedType>();
+      auto shaped_type = input.getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasStaticShape()) {
         return matchFailure();
       }
@@ -87,13 +87,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
         loc, rewriter.getIndexType(),
         rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
     auto launch_op = rewriter.create<mlir::gpu::LaunchOp>(
-        loc, one, one, one, block_size_x, one, one, reduce_op.getOperands());
-    // Map reduce operands and correspondign launch values.
-    BlockAndValueMapping mapping;
-    for (auto pair :
-         llvm::zip(reduce_op.getOperands(), launch_op.getKernelArguments())) {
-      mapping.map(std::get<0>(pair), std::get<1>(pair));
-    }
+        loc, one, one, one, block_size_x, one, one);
     {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointToEnd(&launch_op.body().front());
@@ -101,11 +95,9 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Load the initial value and store it to the output.
       for (auto pair : llvm::zip(reduce_op.init_values(), reduce_op.out())) {
-        auto init_value = rewriter.create<mlir::LoadOp>(
-            loc, mapping.lookup(std::get<0>(pair)));
-        rewriter.create<mlir::StoreOp>(loc, init_value,
-                                       mapping.lookup(std::get<1>(pair)),
-                                       ArrayRef<Value*>{index});
+        auto init_value = rewriter.create<mlir::LoadOp>(loc, std::get<0>(pair));
+        rewriter.create<mlir::StoreOp>(loc, init_value, std::get<1>(pair),
+                                       ArrayRef<Value>{index});
       }
 
       // Insert a loop into the body to compute the reduction. The loop ranges
@@ -125,25 +117,25 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       rewriter.setInsertionPointToStart(loop.getBody());
       // Compute memrefs for the value to reduce. This makes it easier to just
       // inline the body.
-      auto output = mapping.lookup(*reduce_op.out().begin());
+      auto output = *reduce_op.out().begin();
       // TODO(herhut) Move this to the SliceOp builder.
       auto resType = MemRefType::get(
-          llvm::None, output->getType().cast<MemRefType>().getElementType(),
+          llvm::None, output.getType().cast<MemRefType>().getElementType(),
           makeStridedLinearLayoutMap(llvm::None,
                                      MemRefType::getDynamicStrideOrOffset(),
                                      rewriter.getContext()));
       auto accumulator = rewriter.create<mlir::linalg::SliceOp>(
-          loc, resType, output, ArrayRef<Value*>{launch_op.getThreadIds().x});
-      llvm::SmallVector<Value*, 4> indexings;
+          loc, resType, output, ArrayRef<Value>{launch_op.getThreadIds().x});
+      llvm::SmallVector<Value, 4> indexings;
       auto input_buffer = *reduce_op.operands().begin();
-      auto input_type = input_buffer->getType().cast<MemRefType>();
+      auto input_type = input_buffer.getType().cast<MemRefType>();
       for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
         indexings.push_back(dim == reducing_dimension
                                 ? loop.getInductionVar()
                                 : launch_op.getThreadIds().x);
       }
       // TODO(herhut) Move this to the SliceOp builder.
-      auto input = mapping.lookup(*reduce_op.operand_begin());
+      auto input = *reduce_op.operand_begin();
       auto rhs = rewriter.create<mlir::linalg::SliceOp>(
           loc,
           MemRefType::get(
@@ -155,6 +147,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
+      BlockAndValueMapping mapping;
       mapping.map(reduce_op.body().front().getArgument(0), accumulator);
       mapping.map(reduce_op.body().front().getArgument(1), rhs);
       mapping.map(reduce_op.body().front().getArgument(2), accumulator);
@@ -167,7 +160,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Finally, insert the terminator for the launchOp.
       rewriter.setInsertionPointToEnd(&launch_op.body().front());
-      rewriter.create<mlir::gpu::ReturnOp>(loc);
+      rewriter.create<mlir::gpu::TerminatorOp>(loc);
     }
 
     rewriter.eraseOp(reduce_op);

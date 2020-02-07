@@ -25,15 +25,15 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -170,7 +170,7 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
       xla::DebugOptions::STEP_MARK_AT_ENTRY;
   if (!step_marker_location.getValue().empty() &&
       !xla::DebugOptions::StepMarkerLocation_Parse(
-          step_marker_location.getValue(), &location))
+          std::string(step_marker_location.getValue()), &location))
     return op.emitOpError(llvm::formatv("bad '{0}' attribute with value '{1}'",
                                         kStepMarkerLocationAttr,
                                         step_marker_location.getValue()));
@@ -191,7 +191,7 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
 
     tensorflow::tpu::PaddingMap* padding =
         metadata->mutable_padding_maps()->Add();
-    if (!padding->ParseFromString(padding_attr_str.getValue()))
+    if (!padding->ParseFromString(std::string(padding_attr_str.getValue())))
       return op.emitOpError(llvm::formatv(
           "bad '{0}' attribute at index {1} with value '{2}'", kPaddingMapAttr,
           padding_and_idx.index(), padding_attr_str.getValue()));
@@ -277,7 +277,7 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
   // TODO(b/139377366): When shape inference is ready, we can use compile time
   // shape inference to get inputs that have static shapes and only use shape
   // ops for the rest.
-  llvm::SmallVector<Value*, 4> compile_op_operands;
+  llvm::SmallVector<Value, 4> compile_op_operands;
   compile_op_operands.reserve(launch_func.getNumOperands());
 
   for (auto operand_and_idx : llvm::enumerate(launch_func.getOperands())) {
@@ -332,17 +332,16 @@ Operation* BuildExecuteOp(Operation* compile_op,
                           OpBuilder* builder) {
   // TPUExecute inherits all launch_func inputs, and takes an additional input
   // for compilation cache key.
-  llvm::SmallVector<Value*, 4> tensor_inputs(launch_func.getOperands());
+  llvm::SmallVector<Value, 4> tensor_inputs(launch_func.getOperands());
   tensor_inputs.push_back(compile_op->getResult(1));
 
   // TODO(b/139377366): Need to snapshot all resource variable inputs in
   // follow-up CLs.
 
   // TPUExecute has same output types as launch_func.
-  llvm::SmallVector<Type, 4> output_types(launch_func.getResultTypes());
-  return builder->create<TF::TPUExecuteOp>(launch_func.getLoc(), output_types,
-                                           tensor_inputs,
-                                           llvm::ArrayRef<NamedAttribute>{});
+  return builder->create<TF::TPUExecuteOp>(
+      launch_func.getLoc(), launch_func.getResultTypes(), tensor_inputs,
+      llvm::ArrayRef<NamedAttribute>{});
 }
 
 // Creates a `tf.TPUCompileSucceededAssert` operation that parses compilation
@@ -457,7 +456,7 @@ LogicalResult Rewrite(
   // the other ops that are intended to consume the compile result.
   Block* block = launch_func.getOperation()->getBlock();
   for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
-    compile_result_op.output()->replaceAllUsesWith(compile_op->getResult(0));
+    compile_result_op.output().replaceAllUsesWith(compile_op->getResult(0));
 
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
 
@@ -470,10 +469,14 @@ LogicalResult Rewrite(
   // replicate. Otherwise there is only one execution device and the device is
   // assigned to the execute op.
   if (replicate) {
-    llvm::SmallVector<llvm::StringRef, 8> execution_device_refs(
-        execution_devices.begin(), execution_devices.end());
-    replicate.setAttr(kDevicesAttr,
-                      builder->getStrArrayAttr(execution_device_refs));
+    // Model parallelism is not support for now. Therefore, assign all ops
+    // in replicate op with virtual device alias specifying that ops will be
+    // executed on the zeroth core.
+    auto device_attr = builder->getNamedAttr(
+        tensorflow::GetDeviceAliasForLogicalCore(0),
+        builder->getStrArrayAttr(llvm::SmallVector<llvm::StringRef, 4>{
+            execution_devices.begin(), execution_devices.end()}));
+    replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attr));
   } else {
     execute_op->setAttr(kDeviceAttr,
                         builder->getStringAttr(execution_devices.front()));

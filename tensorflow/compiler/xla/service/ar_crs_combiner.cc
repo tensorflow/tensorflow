@@ -366,12 +366,13 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
 }
 
 Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
-  for (auto it : all_reduce_map_) {
-    auto channel_id = it.first;
+  for (auto it = all_reduce_map_.begin(); it != all_reduce_map_.end();) {
+    auto copy_it = it++;  // Advance `it` before invalidation from erase.
+    auto channel_id = copy_it->first;
     VLOG(2)
         << "KeepProvablyEqualInstructionGroups. Checking AllReduce channel id: "
         << channel_id << "\n";
-    auto pairs_vec = it.second;
+    auto pairs_vec = copy_it->second;
     TF_RET_CHECK(pairs_vec.size() == num_spatial_partitions_);
     auto instr_0 = pairs_vec[0].ar;
     for (int i = 1; i < pairs_vec.size(); ++i) {
@@ -381,7 +382,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
       absl::flat_hash_map<int64, int64> visited_pairs;
       while (true) {
         if (!InstructionsComputeSameValue(next_0, next_i, &visited_pairs)) {
-          all_reduce_map_.erase(channel_id);
+          all_reduce_map_.erase(copy_it);
           VLOG(2) << "KeepProvablyEqualInstructionGroups. Erased AllReduce "
                      "channel id: "
                   << channel_id << "\n";
@@ -406,12 +407,13 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
-  for (auto it : all_reduce_map_) {
-    auto channel_id = it.first;
+  for (auto it = all_reduce_map_.begin(); it != all_reduce_map_.end();) {
+    auto copy_it = it++;  // Advance `it` before invalidation from erase.
+    auto channel_id = copy_it->first;
     VLOG(2)
         << "KeepProvablyEqualInstructionGroups. Checking AllReduce channel id: "
         << channel_id << "\n";
-    auto pairs_vec = it.second;
+    auto pairs_vec = copy_it->second;
     TF_RET_CHECK(pairs_vec.size() == 1);
     auto instr = pairs_vec[0].ar;
     auto next = instr->users()[0];
@@ -420,7 +422,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
       // guarantee that the HLO produces an array.
       TF_RET_CHECK(next->shape().IsArray());
       if (!replication_analysis->HloInstructionIsReplicatedAt(next, {})) {
-        all_reduce_map_.erase(channel_id);
+        all_reduce_map_.erase(copy_it);
         VLOG(2) << "KeepProvablyEqualInstructionGroups. Erased AllReduce "
                    "channel id: "
                 << channel_id << "\n";

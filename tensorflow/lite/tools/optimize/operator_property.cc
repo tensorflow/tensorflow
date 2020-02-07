@@ -871,6 +871,29 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     }
+    case BuiltinOperator_SVDF: {
+      TensorProperty tensor_property_time;
+      // Only 10bits are needed because 6bits are reserved for the reduce
+      // operation after elemement-wise multiplication between state and time
+      // weights.
+      tensor_property_time.number_of_bits = 10;
+      TensorProperty tensor_property_bias;
+      tensor_property_bias.use_derived_scale = true;
+      tensor_property_bias.number_of_bits = 32;
+      tensor_property_bias.derived_scale = {{2, 4}, {}, {}};
+      TensorProperty tensor_property_state;
+      tensor_property_state.number_of_bits = 16;
+      tensor_property_state.state_tensor = true;
+
+      property.inputs = {{0, {}},
+                         {1, {}},
+                         {2, tensor_property_time},
+                         {4, tensor_property_state},
+                         {3, tensor_property_bias}};
+      property.outputs = {{0, {}}};
+      property.version = 3;
+      break;
+    }
     case BuiltinOperator_TRANSPOSE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
