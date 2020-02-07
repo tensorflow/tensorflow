@@ -150,7 +150,7 @@ class LeakyReluGradOp
                Tensor* output) {
     if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
     functor::LeakyReluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(), alpha,
+    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(), alpha_,
             output->flat<T>());
   }
 
