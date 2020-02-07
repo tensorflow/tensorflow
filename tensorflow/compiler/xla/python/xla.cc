@@ -37,8 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
+#include "tensorflow/compiler/xla/python/cpu_device.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
+#include "tensorflow/compiler/xla/python/nvidia_gpu_device.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -535,20 +537,17 @@ PYBIND11_MODULE(xla_extension, m) {
   // Custom-call targets.
   m.def("RegisterCustomCallTarget", &PyRegisterCustomCallTarget);
 
-  py::class_<AllocatorConfig> alloc_config(m, "AllocatorConfig");
+  py::class_<GpuAllocatorConfig> alloc_config(m, "GpuAllocatorConfig");
   alloc_config.def(py::init<>())
-      .def_readwrite("kind", &AllocatorConfig::kind)
-      .def_readwrite("memory_fraction", &AllocatorConfig::memory_fraction)
-      .def_readwrite("preallocate", &AllocatorConfig::preallocate);
-  py::enum_<AllocatorConfig::Kind>(alloc_config, "Kind")
-      .value("DEFAULT", AllocatorConfig::Kind::kDefault)
-      .value("PLATFORM", AllocatorConfig::Kind::kPlatform)
-      .value("BFC", AllocatorConfig::Kind::kBFC);
+      .def_readwrite("kind", &GpuAllocatorConfig::kind)
+      .def_readwrite("memory_fraction", &GpuAllocatorConfig::memory_fraction)
+      .def_readwrite("preallocate", &GpuAllocatorConfig::preallocate);
+  py::enum_<GpuAllocatorConfig::Kind>(alloc_config, "Kind")
+      .value("DEFAULT", GpuAllocatorConfig::Kind::kDefault)
+      .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
+      .value("BFC", GpuAllocatorConfig::Kind::kBFC);
 
   py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>>(m, "LocalClient")
-      .def_static("Get", &PyLocalClient::Get, py::arg("platform"),
-                  py::arg("xla_platform_id"), py::arg("asynchronous"),
-                  py::arg("allocator_config") = AllocatorConfig())
       .def("device_count", &PyLocalClient::device_count)
       .def("local_device_count", &PyLocalClient::local_device_count)
       .def("devices", &PyLocalClient::devices)
@@ -600,6 +599,11 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("CreateHostToDeviceChannelHandle", [](PyLocalClient* client) {
         return client->client()->CreateHostToDeviceChannelHandle();
       });
+
+  m.def("get_cpu_client", &GetCpuClient, py::arg("asynchronous") = true);
+  m.def("get_nvidia_gpu_client", &GetNvidiaGpuClient,
+        py::arg("asynchronous") = true,
+        py::arg("allocator_config") = GpuAllocatorConfig());
 
   py::class_<PyLocalBuffer> buffer(m, "PyLocalBuffer");
   buffer
