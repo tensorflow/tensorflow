@@ -124,14 +124,8 @@ class FakeQuantWithMinMaxArgsGradientOp
     quant_max_ = (1 << num_bits) - 1;
   }
 
-  template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& gradient,
                const Tensor& input, Tensor* output) {
-    OperateNoTemplate(context, gradient, input, output);
-  }
-
-  void OperateNoTemplate(OpKernelContext* context, const Tensor& gradient,
-                         const Tensor& input, Tensor* output) {
     OP_REQUIRES(context, input.IsSameSize(gradient),
                 InvalidArgument("gradient and input must be the same size"));
     FakeQuantWithMinMaxArgsGradientFunctor<Device> functor;
