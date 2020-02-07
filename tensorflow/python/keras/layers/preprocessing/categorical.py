@@ -101,11 +101,26 @@ class CategoryCrossing(Layer):
     # TODO(tanzheny): Consider making seperator configurable.
     if depth is not None:
       raise NotImplementedError('`depth` is not supported yet.')
+    super(CategoryCrossing, self).__init__(name=name, **kwargs)
     self.num_bins = num_bins
     self.depth = depth
-    super(CategoryCrossing, self).__init__(name=name, **kwargs)
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
+    # (b/144500510) ragged.map_flat_values(sparse_cross_hashed, inputs) will
+    # cause kernel failure. Investigate and find a more efficient implementation
+    if all([ragged_tensor.is_ragged(inp) for inp in inputs]):
+      inputs = [inp.to_sparse() if ragged_tensor.is_ragged(inp) else inp
+                for inp in inputs]
+      if self.num_bins is not None:
+        output = sparse_ops.sparse_cross_hashed(
+            inputs, num_buckets=self.num_bins)
+      else:
+        output = sparse_ops.sparse_cross(inputs)
+      return ragged_tensor.RaggedTensor.from_sparse(output)
+    if any([ragged_tensor.is_ragged(inp) for inp in inputs]):
+      raise ValueError('Inputs must be either all `RaggedTensor`, or none of '
+                       'them should be `RaggedTensor`, got {}'.format(inputs))
     sparse_output = False
     if any([isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs]):
       sparse_output = True

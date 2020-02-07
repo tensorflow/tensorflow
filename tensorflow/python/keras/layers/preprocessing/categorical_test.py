@@ -73,6 +73,39 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
     self.assertEqual(output.values.numpy().max(), 1)
     self.assertEqual(output.values.numpy().min(), 0)
 
+  def test_crossing_hashed_ragged_inputs(self):
+    layer = categorical.CategoryCrossing(num_bins=2)
+    inputs_0 = ragged_factory_ops.constant(
+        [['omar', 'skywalker'], ['marlo']],
+        dtype=dtypes.string)
+    inputs_1 = ragged_factory_ops.constant(
+        [['a'], ['b']],
+        dtype=dtypes.string)
+    out_data = layer([inputs_0, inputs_1])
+    expected_output = [[0, 0], [0]]
+    self.assertAllClose(expected_output, out_data)
+    inp_0_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    inp_1_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    out_t = layer([inp_0_t, inp_1_t])
+    model = training.Model(inputs=[inp_0_t, inp_1_t], outputs=out_t)
+    self.assertAllClose(expected_output, model.predict([inputs_0, inputs_1]))
+
+    non_hashed_layer = categorical.CategoryCrossing()
+    out_t = non_hashed_layer([inp_0_t, inp_1_t])
+    model = training.Model(inputs=[inp_0_t, inp_1_t], outputs=out_t)
+    expected_output = [[b'omar_X_a', b'skywalker_X_a'], [b'marlo_X_b']]
+    self.assertAllEqual(expected_output, model.predict([inputs_0, inputs_1]))
+
+  def test_invalid_mixed_sparse_and_ragged_input(self):
+    with self.assertRaises(ValueError):
+      layer = categorical.CategoryCrossing(num_bins=2)
+      inputs_0 = ragged_factory_ops.constant(
+          [['omar'], ['marlo']],
+          dtype=dtypes.string)
+      inputs_1 = sparse_tensor.SparseTensor(
+          indices=[[0, 1], [1, 2]], values=['d', 'e'], dense_shape=[2, 3])
+      layer([inputs_0, inputs_1])
+
   def test_crossing_with_dense_inputs(self):
     layer = categorical.CategoryCrossing()
     inputs_0 = np.asarray([[1, 2]])
