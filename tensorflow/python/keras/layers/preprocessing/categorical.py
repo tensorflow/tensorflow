@@ -25,6 +25,8 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 
 
 class CategoryCrossing(Layer):
@@ -179,23 +181,30 @@ class Hashing(Layer):
 
   def __init__(self, num_bins, name=None, **kwargs):
     # TODO(tanzheny): consider adding strong hash variant.
-    self._num_bins = num_bins
     super(Hashing, self).__init__(name=name, **kwargs)
+    self._num_bins = num_bins
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
-    # TODO(tanzheny): Add ragged support.
     # TODO(tanzheny): Add int support.
-    if isinstance(inputs, sparse_tensor.SparseTensor):
+    # string_to_hash_bucket_fast uses FarmHash as hash function.
+    if ragged_tensor.is_ragged(inputs):
+      return ragged_functional_ops.map_flat_values(
+          string_ops.string_to_hash_bucket_fast,
+          inputs,
+          num_buckets=self._num_bins,
+          name='hash')
+    elif isinstance(inputs, sparse_tensor.SparseTensor):
       sparse_values = inputs.values
       sparse_hashed_values = string_ops.string_to_hash_bucket_fast(
-          sparse_values, self._num_bins, name='lookup')
+          sparse_values, self._num_bins, name='hash')
       return sparse_tensor.SparseTensor(
           indices=inputs.indices,
           values=sparse_hashed_values,
           dense_shape=inputs.dense_shape)
-    # string_to_hash_bucket_fast uses FarmHash as hash function.
-    return string_ops.string_to_hash_bucket_fast(
-        inputs, self._num_bins, name='lookup')
+    else:
+      return string_ops.string_to_hash_bucket_fast(
+          inputs, self._num_bins, name='hash')
 
   def compute_output_shape(self, input_shape):
     return input_shape

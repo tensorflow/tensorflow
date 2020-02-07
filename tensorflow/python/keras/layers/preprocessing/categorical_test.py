@@ -26,7 +26,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers.preprocessing import categorical
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -145,6 +148,24 @@ class HashingTest(keras_parameterized.TestCase):
     output = layer(inp)
     self.assertEqual(output.values.numpy().max(), 1)
     self.assertEqual(output.values.numpy().min(), 0)
+
+  def test_hash_ragged_string_input(self):
+    layer = categorical.Hashing(num_bins=2)
+    inp_data = ragged_factory_ops.constant(
+        [['omar', 'stringer', 'marlo', 'wire'], ['marlo', 'skywalker', 'wire']],
+        dtype=dtypes.string)
+    out_data = layer(inp_data)
+    self.assertEqual(out_data.values.numpy().max(), 1)
+    self.assertEqual(out_data.values.numpy().min(), 0)
+    # hash of 'marlo' should be same.
+    self.assertAllClose(out_data[0][2], out_data[1][0])
+    # hash of 'wire' should be same.
+    self.assertAllClose(out_data[0][3], out_data[1][2])
+
+    inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    out_t = layer(inp_t)
+    model = training.Model(inputs=inp_t, outputs=out_t)
+    self.assertAllClose(out_data, model.predict(inp_data))
 
   def test_hash_compute_output_signature(self):
     input_shape = tensor_shape.TensorShape([2, 3])
