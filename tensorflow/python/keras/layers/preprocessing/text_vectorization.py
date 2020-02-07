@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat
@@ -301,6 +302,7 @@ class TextVectorization(CombinerPreprocessingLayer):
         combiner=_TextVectorizationCombiner(
             self._max_vocab_size, compute_idf=output_mode == TFIDF),
         **kwargs)
+    self._supports_ragged_inputs = True
 
     reserve_zero = output_mode in [None, INT]
     self._index_lookup_layer = self._get_index_lookup_class()(
@@ -542,7 +544,16 @@ class TextVectorization(CombinerPreprocessingLayer):
 
   def _preprocess(self, inputs):
     if self._standardize == LOWER_AND_STRIP_PUNCTUATION:
-      lowercase_inputs = gen_string_ops.string_lower(inputs)
+      if ragged_tensor.is_ragged(inputs):
+        lowercase_inputs = ragged_functional_ops.map_flat_values(
+            gen_string_ops.string_lower, inputs)
+        # Depending on configuration, we may never touch the non-data tensor
+        # in the ragged inputs tensor. If that is the case, and this is the
+        # only layer in the keras model, running it will throw an error.
+        # To get around this, we wrap the result in an identity.
+        lowercase_inputs = array_ops.identity(lowercase_inputs)
+      else:
+        lowercase_inputs = gen_string_ops.string_lower(inputs)
       inputs = string_ops.regex_replace(lowercase_inputs, DEFAULT_STRIP_REGEX,
                                         "")
     elif callable(self._standardize):
