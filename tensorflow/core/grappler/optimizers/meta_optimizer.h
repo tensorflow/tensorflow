@@ -47,7 +47,7 @@ class MetaOptimizer : public GraphOptimizer {
   void PrintResult();
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override;
+                const GraphDef& optimized_graph, double result) override {}
 
  private:
   std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
