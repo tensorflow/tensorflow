@@ -43,8 +43,6 @@ package(
 
 exports_files(["LICENSE"])
 
-exports_files(["platform/base.i"])
-
 # Description:
 
 py_library(
@@ -5665,12 +5663,11 @@ py_library(
     deps = [":pywrap_tensorflow_internal"],
 )
 
+# TODO(b/137885063): This macro should be cleaned up to be just
+# a py_binary/library shared object. We have removed the source
+# SWIG file to prevent people from adding SWIG code.
 tf_py_wrap_cc(
     name = "pywrap_tensorflow_internal",
-    srcs = ["tensorflow.i"],
-    swig_includes = [
-        "platform/base.i",
-    ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
