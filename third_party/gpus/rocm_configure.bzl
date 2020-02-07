@@ -637,21 +637,6 @@ def _genrule(src_dir, genrule_name, command, outs):
         ")\n"
     )
 
-def _read_dir(repository_ctx, src_dir):
-    """Returns a string with all files in a directory.
-
-    Finds all files inside a directory, traversing subfolders and following
-    symlinks. The returned string contains the full path of all files
-    separated by line breaks.
-    """
-    find_result = _execute(
-        repository_ctx,
-        ["find", src_dir, "-follow", "-type", "f"],
-        empty_stdout_fine = True,
-    )
-    result = find_result.stdout
-    return result
-
 def _compute_rocm_extra_copts(repository_ctx, amdgpu_targets):
     if False:
         amdgpu_target_flags = ["--amdgpu-target=" +
