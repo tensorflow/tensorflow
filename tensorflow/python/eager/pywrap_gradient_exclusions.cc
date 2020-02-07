@@ -745,7 +745,7 @@ bool OpGradientDoesntRequireOutputIndices(
           {"SparseSegmentSum", {true, {}}},
           {"SparseSegmentSumWithNumSegments", {true, {}}},
           {"SparseSlice", {false, {1, 2}}},
-          {"SparseSoftmaxCrossEntropyWithLogits", {false, {}}},
+          {"SparseSoftmaxCrossEntropyWithLogits", {false, {0}}},
           {"SparseSparseMaximum", {true, {}}},
           {"SparseSparseMinimum", {true, {}}},
           {"SparseTensorDenseAdd", {true, {}}},
