@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 using System;
 using System.Runtime.InteropServices;
+using System.Linq;
 
 using TfLiteInterpreter = System.IntPtr;
 using TfLiteInterpreterOptions = System.IntPtr;
@@ -48,7 +49,7 @@ namespace TensorFlowLite
         return string.Format("name: {0}, type: {1}, dimensions: {2}, quantizationParams: {3}",
           name,
           type,
-          "[" + string.Join(",", dimensions) + "]",
+          "[" + string.Join(",", dimensions.Select(d => d.ToString()).ToArray()) + "]",
           "{" + quantizationParams + "}");
       }
     }
