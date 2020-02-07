@@ -721,6 +721,8 @@ PYBIND11_MODULE(xla_extension, m) {
                   py::call_guard<py::gil_scoped_release>())
       .def_static("Compile", &PyLocalExecutable::CompileForDevices,
                   py::call_guard<py::gil_scoped_release>())
+      .def("local_logical_device_ids",
+           &PyLocalExecutable::local_logical_device_ids)
       .def("local_devices", &PyLocalExecutable::local_devices)
       .def("SizeOfGeneratedCodeInBytes",
            &PyLocalExecutable::SizeOfGeneratedCodeInBytes)
