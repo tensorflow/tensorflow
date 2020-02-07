@@ -1,7 +1,7 @@
 // Test to verify translation & export work as intended with runtime.
 
 // RUN: not mlir-tflite-runner --dump-interpreter-state %s 2>&1 | FileCheck %s --check-prefix ERROR --dump-input-on-failure
-// RUN: tf-opt --mlir-print-debuginfo -canonicalize %s | mlir-tflite-runner --dump-interpreter-state 2>&1 | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt --mlir-print-debuginfo --canonicalize --tfl-while-loop-outline %s | mlir-tflite-runner --dump-interpreter-state 2>&1 | FileCheck %s --dump-input-on-failure
 
 // ERROR: number of operands and results don't match
 
@@ -14,9 +14,11 @@
 // CHECK: Tensor 0 dec kTfLiteInt32 kTfLiteMmapRo 4 bytes
 // CHECK-NEXT: Tensor 1 N kTfLiteInt32 kTfLiteMmapRo 4 bytes
 // CHECK-NEXT: Tensor 2 val kTfLiteFloat32 kTfLiteMmapRo 4 bytes
-// CHECK-NEXT: Tensor 3 result2 kTfLiteInt32 kTfLiteArenaRw 4 bytes
-// CHECK-NEXT: Tensor 4 result kTfLiteFloat32 kTfLiteArenaRw 4 bytes
-// CHECK-NEXT: Tensor 5 result3 kTfLiteInt32 kTfLiteArenaRw 4 bytes
+// CHECK-NEXT: Tensor 3 std.constant kTfLiteInt32 kTfLiteMmapRo 4 bytes
+// CHECK-NEXT: Tensor 4 tfl.while kTfLiteInt32 kTfLiteArenaRw 4 bytes
+// CHECK-NEXT: Tensor 5 result kTfLiteFloat32 kTfLiteArenaRw 4 bytes
+// CHECK-NEXT: Tensor 6 tfl.while:2 kTfLiteInt32 kTfLiteArenaRw 4 bytes
+// CHECK-NEXT: Tensor 7 tfl.while:3 kTfLiteInt32 kTfLiteArenaRw 4 bytes
 
 // Verify while was not folded away:
 // ------------------------------------
@@ -38,7 +40,7 @@ func @main() -> tensor<1xf32>
         (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
       %2 = tfl.add %arg3, %arg3 {fused_activation_function = "NONE"} : tensor<*xf32>
       "tfl.yield"(%1, %2, %arg4) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> ()
-  }) : (tensor<i32>, tensor<1xf32>, tensor<i32>) -> (tensor<i32>, tensor<1xf32>) loc("result")
+  }) : (tensor<i32>, tensor<1xf32>, tensor<i32>) -> (tensor<i32>, tensor<1xf32>)
   return %0#1 : tensor<1xf32>
 }
 

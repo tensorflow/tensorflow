@@ -43,8 +43,6 @@ package(
 
 exports_files(["LICENSE"])
 
-exports_files(["platform/base.i"])
-
 # Description:
 
 py_library(
@@ -5665,12 +5663,11 @@ py_library(
     deps = [":pywrap_tensorflow_internal"],
 )
 
+# TODO(b/137885063): This macro should be cleaned up to be just
+# a py_binary/library shared object. We have removed the source
+# SWIG file to prevent people from adding SWIG code.
 tf_py_wrap_cc(
     name = "pywrap_tensorflow_internal",
-    srcs = ["tensorflow.i"],
-    swig_includes = [
-        "platform/base.i",
-    ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
@@ -5712,6 +5709,7 @@ tf_py_wrap_cc(
         "//tensorflow/core:reader_base",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
@@ -5769,7 +5767,9 @@ filegroup(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
+        "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
+        "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session",  # tfe
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader

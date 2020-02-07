@@ -55,4 +55,20 @@ def TFL_ChannelDimIndexInterface : OpInterface<"ChannelDimIndexInterface"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// TFL op interface for sparse operands.
+
+def TFL_SparseOp : OpInterface<"SparseOpInterface"> {
+  let description = [{
+    Interface for ops that support sparse computation.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the indices of sparse operands.}],
+      "std::vector<int>", "GetSparseOperands", (ins)
+    >,
+  ];
+}
+
 #endif // TFL_OP_INTERFACES

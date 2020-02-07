@@ -532,6 +532,7 @@ py_library(
         ":numpy_dataset",
         ":reduce_util",
         ":values",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",

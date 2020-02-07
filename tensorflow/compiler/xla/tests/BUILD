@@ -740,9 +740,7 @@ cc_library(
     name = "exhaustive_op_test_utils",
     testonly = True,
     srcs = ["exhaustive_op_test_utils.cc"],
-    hdrs = [
-        "exhaustive_op_test_utils.h",
-    ],
+    hdrs = ["exhaustive_op_test_utils.h"],
     tags = ["no_pip"],
     deps = [
         ":client_library_test_base",
@@ -753,6 +751,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -778,8 +777,7 @@ cc_library(
 
 xla_test(
     name = "exhaustive_unary_test_f32_or_smaller",
-    srcs = ["exhaustive_unary_test.cc"],
-    copts = ["-DUNARY_TEST_TARGET_F32_OR_SMALLER"],
+    srcs = ["exhaustive_unary_test_f32_or_smaller.cc"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
@@ -797,13 +795,11 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_test_f64",
-    srcs = ["exhaustive_unary_test.cc"],
+    srcs = ["exhaustive_unary_test_f64.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DUNARY_TEST_TARGET_F64"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
@@ -820,13 +816,11 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_test_complex",
-    srcs = ["exhaustive_unary_test.cc"],
+    srcs = ["exhaustive_unary_test_complex.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DUNARY_TEST_TARGET_COMPLEX"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
@@ -842,14 +836,12 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_binary_test_f16",
-    srcs = ["exhaustive_binary_test.cc"],
+    name = "exhaustive_binary_16_bit_test",
+    srcs = ["exhaustive_binary_16_bit_test.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DBINARY_TEST_TARGET_F16"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
@@ -863,56 +855,12 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_binary_test_bf16",
-    srcs = ["exhaustive_binary_test.cc"],
+    name = "exhaustive_binary_test_f32_f64",
+    srcs = ["exhaustive_binary_test_f32_f64.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DBINARY_TEST_TARGET_BF16"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f32",
-    srcs = ["exhaustive_binary_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    copts = ["-DBINARY_TEST_TARGET_F32"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f64",
-    srcs = ["exhaustive_binary_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    copts = ["-DBINARY_TEST_TARGET_F64"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",

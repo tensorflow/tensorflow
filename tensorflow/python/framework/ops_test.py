@@ -107,7 +107,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     with self.assertRaisesRegexp(TypeError, "Cannot iterate"):
-      next(iter(t))
+      iter(t)
 
   def testIterableGraph(self):
     if context.executing_eagerly():

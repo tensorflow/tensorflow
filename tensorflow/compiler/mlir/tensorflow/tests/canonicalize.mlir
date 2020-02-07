@@ -389,3 +389,10 @@ func @addN(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.AddN"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
+
+// CHECK-LABEL: func @ToBool_0DScalar
+func @ToBool_0DScalar(%arg0: tensor<i1>) -> tensor<i1> {
+  // CHECK: return %arg0
+  %0 = "tf.ToBool"(%arg0) : (tensor<i1>) -> tensor<i1>
+  return %0 : tensor<i1>
+}

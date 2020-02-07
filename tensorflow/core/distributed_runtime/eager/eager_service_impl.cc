@@ -430,8 +430,11 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
       s = SendTensor(item.send_tensor(), context->Context());
     } else if (item.has_register_function()) {
       s = RegisterFunction(item.register_function(), context->Context());
-    } else {
+    } else if (item.has_cleanup_function()) {
       s = CleanupFunction(item.cleanup_function());
+    } else {
+      DCHECK(item.has_clear_remote_executor_for_stream());
+      s = executor.WaitForAllPendingNodes();
     }
 
     if (!s.ok()) {

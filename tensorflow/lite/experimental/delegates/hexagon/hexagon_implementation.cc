@@ -31,7 +31,7 @@ void* LoadFunction(void* dl_handle, const char* name) {
   TFLITE_DCHECK(dl_handle != nullptr);
   auto* func_pt = dlsym(dl_handle, name);
   if (func_pt == nullptr) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Function %s is  NULL", name);
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Function %s is NULL", name);
   }
   return func_pt;
 }

@@ -294,7 +294,8 @@ struct Converter {
     }
     tensorflow::TensorHandle* handle = nullptr;
     auto status = tensorflow::TensorHandle::CreateLocalHandle(
-        result, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
+        result, /*d=*/ctx->context->HostCPU(), /*op_device=*/nullptr,
+        ctx->context, &handle);
     if (!status.ok()) {
       return status;
     }
@@ -609,7 +610,8 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
   auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
   if (cppstatus.ok()) {
     cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
-        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
+        t, /*d=*/ctx->context->HostCPU(), /*op_device=*/nullptr, ctx->context,
+        &handle);
   }
   if (!cppstatus.ok()) {
     PyErr_SetString(PyExc_ValueError,
@@ -806,7 +808,8 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
       Tensor tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
                     TensorShape(state.inferred_shape));
       status = tensorflow::TensorHandle::CreateLocalHandle(
-          tensor, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &h);
+          tensor, /*d=*/ctx->context->HostCPU(), /*op_device=*/nullptr,
+          ctx->context, &h);
       if (!status.ok()) {
         PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
         return nullptr;

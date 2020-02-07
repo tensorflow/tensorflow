@@ -79,6 +79,10 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 std::unique_ptr<OpPassBase<ModuleOp>>
 CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
 
+// Create a simple device assignment pass on TF dialect for CoreRT use case.
+std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
+    llvm::StringRef default_device);
+
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -128,7 +132,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass();
 // variable load operations are all before device computation while resource
 // variable store operations are all after device computation. After this pass,
 // device computation no longer interacts with external resource variables.
-std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
+std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass();
 
 // Lifts resource operations from tf_device.launch_func ops nested in `op`
 // outside. Returns a failure if there are remaining resource-type values that

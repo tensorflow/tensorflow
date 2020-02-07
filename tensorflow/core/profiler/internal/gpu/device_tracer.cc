@@ -55,13 +55,13 @@ bool IsHostEvent(const CuptiTracerEvent& event) {
   return event.thread_id != CuptiTracerEvent::kInvalidThreadId;
 }
 
-void CreateXEvent(const CuptiTracerEvent& event, uint64 offset_ns,
-                  XPlaneBuilder* plane, XLineBuilder* line) {
+void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
+                  XLineBuilder* line) {
   std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
   XEventMetadata* event_metadata = plane->GetOrCreateEventMetadata(kernel_name);
   XEventBuilder xevent = line->AddEvent(*event_metadata);
-  xevent.SetTimestampNs(event.start_time_ns + offset_ns);
-  xevent.SetEndTimestampNs(event.end_time_ns + offset_ns);
+  xevent.SetTimestampNs(event.start_time_ns);
+  xevent.SetEndTimestampNs(event.end_time_ns);
   if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kCorrelationId)),
@@ -197,17 +197,19 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events.";
-    XPlaneBuilder host_plane(GetOrCreatePlane(space, kHostThreads));
-    host_plane.SetId(kHostPlaneId);
+    XPlaneBuilder host_plane(GetOrCreatePlane(space, kCuptiDriverApiPlaneName));
+    host_plane.SetId(kCuptiDriverApiPlaneId);
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
       std::string name = absl::StrCat(kGpuPlanePrefix, device_ordinal);
       XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
       device_plane.SetId(kGpuPlaneBaseId + device_ordinal);
-      per_device_collector_[device_ordinal].Flush(
-          start_walltime_ns_, start_gpu_ns_, &device_plane, &host_plane);
+      per_device_collector_[device_ordinal].Flush(start_gpu_ns_, &device_plane,
+                                                  &host_plane);
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
           device_ordinal, &device_plane);
+      NormalizeTimeStamps(&device_plane, start_walltime_ns_);
     }
+    NormalizeTimeStamps(&host_plane, start_walltime_ns_);
   }
 
  private:
@@ -216,6 +218,18 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   uint64 start_walltime_ns_;
   uint64 start_gpu_ns_;
   int num_gpus_;
+
+  // Set the all XLines of specified XPlane to starting walltime.
+  // Events time in both host and device planes are CUTPI timestamps.
+  // We set initial CUPTI timestamp as start time for all lines to reflect
+  // this fact. Eventually we change line start time to corresponding
+  // start_walltime_ns to normalize with CPU wall time.
+  static void NormalizeTimeStamps(XPlaneBuilder* plane,
+                                  uint64 start_walltime_ns) {
+    plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
+      line.SetTimestampNs(start_walltime_ns);
+    });
+  }
 
   struct CorrelationInfo {
     CorrelationInfo(uint32 t, uint32 e) : thread_id(t), enqueue_time_ns(e) {}
@@ -328,14 +342,13 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       events.clear();
     }
 
-    void Flush(uint64 start_walltime_ns, uint64 start_gpu_ns,
-               XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
+    void Flush(uint64 start_gpu_ns, XPlaneBuilder* device_plane,
+               XPlaneBuilder* host_plane) {
       absl::MutexLock lock(&mutex);
 
       // Tracking event types per line.
       absl::flat_hash_map<int64, absl::flat_hash_set<CuptiTracerEventType>>
           events_types_per_line;
-      const uint64 offset_ns = start_walltime_ns - start_gpu_ns;
       for (auto& event : events) {
         bool is_host_event = IsHostEvent(event);
         int64 line_id = is_host_event ? static_cast<int64>(event.thread_id)
@@ -345,8 +358,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
           continue;
         auto* plane = is_host_event ? host_plane : device_plane;
         XLineBuilder line = plane->GetOrCreateLine(line_id);
-        if (!is_host_event) line.SetTimestampNs(start_gpu_ns);
-        CreateXEvent(event, offset_ns, plane, &line);
+        line.SetTimestampNs(start_gpu_ns);
+        CreateXEvent(event, plane, &line);
         events_types_per_line[line_id].emplace(event.type);
       }
       device_plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {

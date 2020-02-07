@@ -219,6 +219,7 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python/profiler:traceme",
     ],
 )
 

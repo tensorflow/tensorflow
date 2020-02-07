@@ -572,8 +572,7 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
   // binding index according to the following formula:
   // binding_index_within_engine = binding_index_within_profile +
   //                               profile_index * bindings_per_profile
-  const int bindings_per_profile =
-      cuda_engine->getNbBindings() / n_profiles;
+  const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
   *binding_index = *binding_index + profile_index * bindings_per_profile;
   return Status::OK();
 }
@@ -610,8 +609,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string input_name = StrCat(IONamePrefixes::kInputPHName, i);
     int binding_index;
-    auto status = GetTrtBindingIndex(input_name.c_str(), 0,
-                                     cuda_engine.get(), &binding_index);
+    auto status = GetTrtBindingIndex(input_name.c_str(), 0, cuda_engine.get(),
+                                     &binding_index);
     if (!status.ok()) {
       ctx->SetStatus(status);
       return !kRetry;
@@ -681,8 +680,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   for (int i = 0; i < ctx->num_outputs(); i++) {
     const string output_name = StrCat(IONamePrefixes::kOutputPHName, i);
     int binding_index;
-    auto status = GetTrtBindingIndex(output_name.c_str(), 0,
-                                     cuda_engine.get(), &binding_index);
+    auto status = GetTrtBindingIndex(output_name.c_str(), 0, cuda_engine.get(),
+                                     &binding_index);
     if (!status.ok()) {
       ctx->SetStatus(status);
       return !kRetry;
@@ -715,8 +714,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     // Allocate output tensor of TRTEngineOp
     Tensor* output_tensor = nullptr;
     TensorShape output_shape;
-    status = TensorShapeUtils::MakeShape(trt_shape.data(),
-                                         trt_shape.size(), &output_shape);
+    status = TensorShapeUtils::MakeShape(trt_shape.data(), trt_shape.size(),
+                                         &output_shape);
     if (!status.ok()) {
       LOG(ERROR) << "Failed to get output shape: " << status;
       return kRetry;

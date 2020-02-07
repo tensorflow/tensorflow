@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
 
 //===----------------------------------------------------------------------===//
@@ -1788,37 +1789,12 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
 }
 
 LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
-  // TODO(jpienaar): This can be removed post the resizable trait is added.
-  Operation &while_op = *this->getOperation();
-  if (!while_op.hasResizableOperandsList()) return failure();
   if (ops.empty()) return success();
 
-  // Operands to the while op.
-  llvm::SmallVector<Value, 4> operands(getOperands());
-  // Results that have to be returned by the body.
-  llvm::SmallVector<Value, 4> results(
-      body().front().getTerminator()->getOperands());
-  for (auto op : ops) {
-    // Move the hoisted value to just before the while.
-    op->moveBefore(&while_op);
+  // Move the hoisted value to just before the while.
+  Operation *while_op = this->getOperation();
+  for (auto op : ops) op->moveBefore(while_op);
 
-    // Each result of the hoisted op becomes an input to while, cond and body.
-    for (auto result : op->getResults()) {
-      operands.push_back(result);
-      auto type = result.getType();
-      auto arg = body().front().addArgument(type);
-      // Loop invariant value passes through the body function unchanged.
-      result.replaceAllUsesWith(arg);
-      results.push_back(arg);
-      // Operand types match for body and cond. The value is hoisted out of the
-      // body and so not necessarily used in cond. This could be expanded to
-      // consider common usage across cond and body.
-      cond().front().addArgument(type);
-    }
-  }
-
-  body().front().getTerminator()->setOperands(results);
-  while_op.setOperands(operands);
   return success();
 }
 

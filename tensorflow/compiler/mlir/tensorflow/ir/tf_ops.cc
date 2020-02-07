@@ -2526,6 +2526,33 @@ static LogicalResult Verify(TopKV2Op op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ToBoolOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// If the input to ToBoolOp is a `tensor<i1>`, then the ToBoolOp is an identity
+// function and can be removed.
+class ToBoolOfZeroDBoolTensor : public OpRewritePattern<ToBoolOp> {
+  using OpRewritePattern<ToBoolOp>::OpRewritePattern;
+  PatternMatchResult matchAndRewrite(ToBoolOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (auto type = op.getOperand().getType().dyn_cast<RankedTensorType>()) {
+      if (type.getRank() == 0 && type.getElementType().isInteger(1)) {
+        rewriter.replaceOp(op, op.getOperand());
+        return matchSuccess();
+      }
+    }
+    return matchFailure();
+  }
+};
+}  // namespace
+
+void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ToBoolOfZeroDBoolTensor>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
@@ -2836,6 +2863,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 //===----------------------------------------------------------------------===//
 // TF Dialect
 //===----------------------------------------------------------------------===//
+
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.cc.inc"
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context) {

@@ -607,5 +607,115 @@ class RandomZoomTest(keras_parameterized.TestCase):
     self.assertEqual(layer_1.name, layer.name)
 
 
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomHeightTest(keras_parameterized.TestCase):
+
+  def _run_test(self, factor):
+    np.random.seed(1337)
+    num_samples = 2
+    orig_height = 5
+    orig_width = 8
+    channels = 3
+    with tf_test_util.use_gpu():
+      img = np.random.random((num_samples, orig_height, orig_width, channels))
+      layer = image_preprocessing.RandomHeight(factor)
+      img_out = layer(img, training=True)
+      self.assertEqual(img_out.shape[0], 2)
+      self.assertEqual(img_out.shape[2], 8)
+      self.assertEqual(img_out.shape[3], 3)
+
+  @parameterized.named_parameters(('random_height_4_by_6', (.4, .6)),
+                                  ('random_height_3_by_2', (.3, 1.2)),
+                                  ('random_height_3', .3))
+  def test_random_height_basic(self, factor):
+    self._run_test(factor)
+
+  def test_valid_random_height(self):
+    # need (maxval - minval) * rnd + minval = 0.6
+    mock_factor = 0
+    with test.mock.patch.object(
+        gen_stateful_random_ops, 'stateful_uniform', return_value=mock_factor):
+      with tf_test_util.use_gpu():
+        img = np.random.random((12, 5, 8, 3))
+        layer = image_preprocessing.RandomHeight(.4)
+        img_out = layer(img, training=True)
+        self.assertEqual(img_out.shape[1], 3)
+
+  def test_random_height_invalid_factor(self):
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomHeight((-1.5, .4))
+
+  def test_random_height_inference(self):
+    with CustomObjectScope({'RandomHeight': image_preprocessing.RandomHeight}):
+      input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+      expected_output = input_images
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomHeight(.5)
+        actual_output = layer(input_images, training=0)
+        self.assertAllClose(expected_output, actual_output)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.RandomHeight(.5, name='image_preproc')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.RandomHeight.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomWidthTest(keras_parameterized.TestCase):
+
+  def _run_test(self, factor):
+    np.random.seed(1337)
+    num_samples = 2
+    orig_height = 5
+    orig_width = 8
+    channels = 3
+    with tf_test_util.use_gpu():
+      img = np.random.random((num_samples, orig_height, orig_width, channels))
+      layer = image_preprocessing.RandomWidth(factor)
+      img_out = layer(img, training=True)
+      self.assertEqual(img_out.shape[0], 2)
+      self.assertEqual(img_out.shape[1], 5)
+      self.assertEqual(img_out.shape[3], 3)
+
+  @parameterized.named_parameters(('random_width_4_by_6', (.4, .6)),
+                                  ('random_width_3_by_2', (.3, 1.2)),
+                                  ('random_width_3', .3))
+  def test_random_width_basic(self, factor):
+    self._run_test(factor)
+
+  def test_valid_random_width(self):
+    # need (maxval - minval) * rnd + minval = 0.6
+    mock_factor = 0
+    with test.mock.patch.object(
+        gen_stateful_random_ops, 'stateful_uniform', return_value=mock_factor):
+      with tf_test_util.use_gpu():
+        img = np.random.random((12, 8, 5, 3))
+        layer = image_preprocessing.RandomWidth(.4)
+        img_out = layer(img, training=True)
+        self.assertEqual(img_out.shape[2], 3)
+
+  def test_random_width_invalid_factor(self):
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomWidth((-1.5, .4))
+
+  def test_random_width_inference(self):
+    with CustomObjectScope({'RandomWidth': image_preprocessing.RandomWidth}):
+      input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+      expected_output = input_images
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomWidth(.5)
+        actual_output = layer(input_images, training=0)
+        self.assertAllClose(expected_output, actual_output)
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.RandomWidth(.5, name='image_preproc')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.RandomWidth.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
 if __name__ == '__main__':
   test.main()

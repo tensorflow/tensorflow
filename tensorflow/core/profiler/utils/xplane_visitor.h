@@ -132,6 +132,8 @@ class XEventVisitor : public XStatsOwner<XEvent> {
     return GetTimespan() < other.GetTimespan();
   }
 
+  const XEventMetadata* metadata() const { return metadata_; }
+
  private:
   Timespan GetTimespan() const { return Timespan(TimestampPs(), DurationPs()); }
 
