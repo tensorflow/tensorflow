@@ -87,16 +87,22 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_mem_allocator.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace xla {
 
@@ -107,8 +113,123 @@ StatusOr<LocalDeviceState*> Device::GetLocalDeviceState() const {
   return InvalidArgument("Device %s is not a local device.", DebugString());
 }
 
-std::string Device::DebugString() const {
-  return absl::StrCat(platform_name(), ":", id());
+std::string CpuDevice::DebugString() const {
+  return absl::StrCat("CPU_", id());
+}
+
+std::string GpuDevice::DebugString() const {
+  return absl::StrCat("GPU_", id());
+}
+
+static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
+    se::Platform* platform,
+    absl::Span<const std::shared_ptr<Device>> local_devices,
+    LocalClient* client, double memory_fraction, bool preallocate) {
+  CHECK_GT(client->backend().device_count(), 0);
+  std::vector<se::MultiDeviceAdapter::AllocatorWithStream> allocators;
+  for (se::StreamExecutor* executor : client->backend().stream_executors()) {
+    int device_ordinal = executor->device_ordinal();
+    auto sub_allocator = absl::make_unique<tensorflow::GPUMemAllocator>(
+        executor, tensorflow::PlatformGpuId(device_ordinal),
+        /*use_unified_memory=*/false,
+        /*alloc_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>(),
+        /*free_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>());
+
+    int64 free_memory;
+    int64 total_memory;
+    if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+      return Unavailable("Failed to query available memory from device %i",
+                         device_ordinal);
+    }
+    size_t allocator_memory = free_memory * memory_fraction;
+    if (preallocate) {
+      LOG(INFO) << "XLA backend allocating " << allocator_memory
+                << " bytes on device " << device_ordinal
+                << " for BFCAllocator.";
+    } else {
+      LOG(INFO) << "XLA backend will use up to " << allocator_memory
+                << " bytes on device " << device_ordinal
+                << " for BFCAllocator.";
+    }
+    auto gpu_bfc_allocator = absl::make_unique<tensorflow::BFCAllocator>(
+        sub_allocator.release(), allocator_memory,
+        /*allow_growth=*/!preallocate,
+        absl::StrCat("GPU_", device_ordinal, "_bfc"));
+    allocators.emplace_back(std::move(gpu_bfc_allocator),
+                            local_devices.at(device_ordinal)
+                                ->local_device_state()
+                                ->compute_stream());
+  }
+  return absl::make_unique<se::MultiDeviceAdapter>(platform,
+                                                   std::move(allocators));
+}
+
+static std::shared_ptr<Device> MakeDevice(
+    const std::string& platform_name, int id,
+    std::unique_ptr<LocalDeviceState> local_device_state) {
+  if (platform_name == "cpu") {
+    return std::make_shared<CpuDevice>(id, std::move(local_device_state),
+                                       platform_name);
+  } else {
+    CHECK_EQ(platform_name, "gpu");
+    return std::make_shared<GpuDevice>(id, std::move(local_device_state),
+                                       platform_name);
+  }
+}
+
+StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
+    const std::string& platform_name, const std::string& xla_platform_name,
+    bool asynchronous, const AllocatorConfig& allocator_config) {
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      PlatformUtil::GetPlatform(xla_platform_name));
+  if (platform->VisibleDeviceCount() <= 0) {
+    return InvalidArgument("Platform %s (%s) has no visible devices.",
+                           platform_name, xla_platform_name);
+  }
+  LocalClientOptions options;
+  options.set_platform(platform);
+  TF_ASSIGN_OR_RETURN(LocalClient * client,
+                      ClientLibrary::GetOrCreateLocalClient(options));
+
+  bool gpu_platform = platform_name == "gpu";
+  std::vector<std::shared_ptr<Device>> devices;
+  bool synchronous_deallocation = platform_name == "cpu";
+  for (int i = 0; i < client->device_count(); ++i) {
+    se::StreamExecutor* executor =
+        client->backend().stream_executor(i).ValueOrDie();
+    auto device_state = absl::make_unique<LocalDeviceState>(
+        executor, client, synchronous_deallocation, asynchronous,
+        /*allow_event_reuse=*/gpu_platform);
+    devices.push_back(MakeDevice(platform_name, i, std::move(device_state)));
+  }
+
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator;
+  std::unique_ptr<tensorflow::Allocator> host_memory_allocator;
+  if (gpu_platform) {
+    if (allocator_config.kind != AllocatorConfig::Kind::kPlatform) {
+      TF_ASSIGN_OR_RETURN(allocator,
+                          CreateBFCAllocator(platform, devices, client,
+                                             allocator_config.memory_fraction,
+                                             allocator_config.preallocate));
+    }
+
+    tensorflow::SubAllocator* sub_allocator = new tensorflow::GpuHostAllocator(
+        client->backend().stream_executor(0).ValueOrDie(), /*numa_node=*/0,
+        /*alloc_visitors=*/{},
+        /*free_visitors=*/{});
+    // TODO(phawkins): allow the user to tune this.
+    const int64 kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+    host_memory_allocator = absl::make_unique<tensorflow::BFCAllocator>(
+        sub_allocator, kGpuHostMemoryLimitBytes, /*allow_growth=*/true,
+        /*name=*/"xla_gpu_host_bfc");
+
+  } else if (allocator_config.kind == AllocatorConfig::Kind::kBFC) {
+    return Unimplemented("BFCAllocator only available for GPU.");
+  }
+
+  return std::make_shared<PyLocalClient>(
+      platform_name, client, std::move(devices), /*host_id=*/0,
+      std::move(allocator), std::move(host_memory_allocator));
 }
 
 PyLocalClient::PyLocalClient(

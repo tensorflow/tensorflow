@@ -170,7 +170,10 @@ xla_platform_names = {
 
 
 def _cpu_backend_factory():
-  client = _xla.get_cpu_client(asynchronous=True)
+  client = _xla.LocalClient.Get(
+      platform='cpu',
+      xla_platform_id=xla_platform_names['cpu'],
+      asynchronous=True)
   return LocalBackend(platform='cpu', client=client)
 
 
@@ -183,19 +186,22 @@ def _gpu_backend_factory():
     raise ValueError(
         'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
         '"bfc", got "%s"' % allocator)
-  config = _xla.GpuAllocatorConfig()
+  config = _xla.AllocatorConfig()
   if allocator == 'default':
-    config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
+    config.kind = _xla.AllocatorConfig.Kind.DEFAULT
   if allocator == 'platform':
-    config.kind = _xla.GpuAllocatorConfig.Kind.PLATFORM
+    config.kind = _xla.AllocatorConfig.Kind.PLATFORM
   if allocator == 'bfc':
-    config.kind = _xla.GpuAllocatorConfig.Kind.BFC
+    config.kind = _xla.AllocatorConfig.Kind.BFC
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  client = _xla.get_nvidia_gpu_client(asynchronous=True,
-                                      allocator_config=config)
+  client = _xla.LocalClient.Get(
+      platform='gpu',
+      xla_platform_id=xla_platform_names['gpu'],
+      asynchronous=True,
+      allocator_config=config)
   return LocalBackend(platform='gpu', client=client)
 
 
