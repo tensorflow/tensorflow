@@ -1014,6 +1014,29 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
                      loss_metric_2.result().numpy())
     self.assertEqual(loss_metric.result().numpy(), 5.0)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_update_keras_metric_declared_in_strategy_scope(self, distribution):
+    with distribution.scope():
+      metric = keras.metrics.Mean("test_metric", dtype=np.float32)
+
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = distribution.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(i):
+      metric.update_state(i)
+
+    for i in dataset:
+      distribution.experimental_run_v2(step_fn, args=(i,))
+
+    # This should be the mean of integers 0-9 which has a sum of 45 and a count
+    # of 10 resulting in mean of 4.5.
+    self.assertEqual(metric.result().numpy(), 4.5)
+
 
 if __name__ == "__main__":
   test.main()
