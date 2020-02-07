@@ -285,7 +285,14 @@ tf_py_test(
     name = "resource_loader_test",
     size = "small",
     srcs = ["platform/resource_loader_test.py"],
+    data = [
+        "platform/resource_loader.py",
+    ],
     python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":platform",
         ":platform_test",
