@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // !IS_MOBILE_PLATFORM
 
-#include "tensorflow/core/platform/nvtx.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 
 namespace tensorflow {
 

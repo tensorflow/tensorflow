@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 
-#include "tensorflow/core/platform/nvtx.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"

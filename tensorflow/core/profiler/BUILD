@@ -108,6 +108,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "nvtx_utils",
+    srcs = ["nvtx_utils.cc",],
+    hdrs = ["nvtx_utils.h"],
+    # visibility = ["//visibility:public"],
+    deps = [
+      "//tensorflow/core:bfc_allocator",
+      "//tensorflow/core:graph",
+      "//tensorflow/core:framework",
+      "//tensorflow/core:framework_internal",
+      "//tensorflow/core:lib",
+      "//tensorflow/core:lib_internal",
+      "//tensorflow/core:protos_all_cc",
+      "@nvtx_archive//:nvtx",
+    ],
+)
+
 filegroup(
     name = "mobile_srcs",
     srcs = [

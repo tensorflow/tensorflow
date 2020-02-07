@@ -2361,6 +2361,7 @@ alias(
 # TODO(mrry): Refactor graph_constructor.cc so that it does not depend on code
 # in "common_runtime/", and then the entire "graph/" directory can be included
 # in this library.
+
 tf_cuda_library(
     name = "graph",
     srcs = ["//tensorflow/core/graph:graph_srcs"],
@@ -2592,6 +2593,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
+        "//tensorflow/core/profiler:nvtx_utils",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
