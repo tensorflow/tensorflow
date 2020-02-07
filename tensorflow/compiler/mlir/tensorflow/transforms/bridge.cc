@@ -54,8 +54,7 @@ void CreateTPUBridge(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
-  // TODO(b/147020076): Enable this pass.
-  // pm.addPass(CreateTPUVariableReformattingPass());
+  pm.addPass(CreateTPUVariableReformattingPass());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
