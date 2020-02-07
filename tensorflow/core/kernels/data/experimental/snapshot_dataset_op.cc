@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <random>
 
-#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -48,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 #include "tensorflow/core/util/batch_util.h"
@@ -1195,7 +1195,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         Status Initialize(IteratorContext* ctx) override {
           thread_pool_ = ctx->CreateThreadPool(kSnapshotWriterWorkerPool,
                                                dataset()->num_writer_threads_);
-          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+          return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                                 &input_impl_);
         }
 
         Status GetNextInternal(IteratorContext* ctx,
@@ -1470,7 +1471,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         string GetSnapshotFilename() {
           mutex_lock l(mu_);
           string snapshot_data_filename = io::JoinPath(
-              run_dir_, absl::StrFormat("%08u.snapshot", next_file_index_));
+              run_dir_, strings::Printf("%08llu.snapshot", next_file_index_));
           next_file_index_++;
           return snapshot_data_filename;
         }
@@ -1737,7 +1738,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             : DatasetIterator<Dataset>(params) {}
 
         Status Initialize(IteratorContext* ctx) override {
-          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+          return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                                 &input_impl_);
         }
 
         Status GetNextInternal(IteratorContext* ctx,
