@@ -867,19 +867,6 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     self.assertEqual(variable_scope.VariableAggregation.SUM,
                      replica_local.aggregation)
 
-  def testTensorConversion(self):
-    with context.graph_mode():
-      _, replica_local = _make_replica_local(
-          variable_scope.VariableAggregation.SUM)
-      converted = ops.convert_to_tensor(replica_local, as_ref=False)
-      self.assertIsInstance(converted, ops.Tensor)
-      self.assertEqual(converted.dtype, replica_local.dtype)
-
-      converted = ops.convert_to_tensor(replica_local, as_ref=True)
-      # Resources variable are converted to tensors as well when as_ref is True.
-      self.assertIsInstance(converted, ops.Tensor)
-      self.assertEqual(converted.dtype, replica_local.dtype)
-
   @test_util.run_v2_only
   def testCanPassToDefFun(self):
     @def_function.function
@@ -936,6 +923,20 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   def _save(self, sess, var):
     save_path, _ = self._save_return_saver(sess, var)
     return save_path
+
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testTensorConversion(self, distribution):
+    with context.graph_mode():
+      _, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM, distribution)
+      converted = ops.convert_to_tensor(replica_local, as_ref=False)
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, replica_local.dtype)
+
+      converted = ops.convert_to_tensor(replica_local, as_ref=True)
+      # Resources variable are converted to tensors as well when as_ref is True.
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, replica_local.dtype)
 
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):
@@ -1240,7 +1241,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     ]
     for aggregation in aggregations:
       if isinstance(distribution, _TPU_STRATEGIES):
-        resolver = tpu_cluster_resolver.TPUClusterResolver('')
+        resolver = tpu_cluster_resolver.TPUClusterResolver("")
         tpu_strategy_util.initialize_tpu_system(resolver)
       with distribution.scope():
         v = variable_scope.variable(
@@ -1270,6 +1271,8 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(expected, self.evaluate(v.read_value()), aggregation)
       self.assertEqual(expected, self.evaluate(v.value()), aggregation)
       self.assertEqual(expected, self.evaluate(v), aggregation)
+      self.assertEqual(expected, self.evaluate(array_ops.identity(v)),
+                       aggregation)
 
   # TODO(b/145574622): Re-enable this test once ReduceOp argument is
   # respected on GPUs.

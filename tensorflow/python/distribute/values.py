@@ -1139,8 +1139,9 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
-    return ops.convert_to_tensor(
-        self._get(), dtype=dtype, name=name, as_ref=as_ref)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      return ops.convert_to_tensor(
+          self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to
