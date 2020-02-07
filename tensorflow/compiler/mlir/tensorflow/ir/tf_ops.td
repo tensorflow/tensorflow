@@ -314,9 +314,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     }
   }];
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let verifier = [{ return VerifyPartitionedCall(*this); }];
 }
 
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
@@ -390,6 +388,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
       return getAttrOfType<SymbolRefAttr>("f");
     }
   }];
+
+  let verifier = [{ return VerifyPartitionedCall(*this); }];
 }
 
 def TF_WhileOp : TF_Op<"While", []> {
