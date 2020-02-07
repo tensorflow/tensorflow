@@ -406,14 +406,11 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
-TfLiteStatus EvalQuantizedPerChannel16x8(TfLiteDepthwiseConvParams* params,
-                                         OpData* data,
-                                         const TfLiteTensor* input,
-                                         const TfLiteTensor* filter,
-                                         const TfLiteTensor* bias,
-                                         TfLiteTensor* output) {
+TfLiteStatus EvalQuantizedPerChannel16x8(
+    const TfLiteDepthwiseConvParams* params, const OpData* data,
+    const TfLiteTensor* input, const TfLiteTensor* filter,
+    const TfLiteTensor* bias, TfLiteTensor* output) {
   DepthwiseParams op_params;
-  // TODO: we support only PaddingType::kSame for now
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
   op_params.padding_values.height = data->padding.height;

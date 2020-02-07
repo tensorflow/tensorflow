@@ -1847,30 +1847,6 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
               ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 36, 54, 0, 0})));
 }
 
-class PerChannelQuantizedDepthwiseConvolutionOpModel16x8
-    : public BaseDepthwiseConvolutionOpModel {
- public:
-  using BaseDepthwiseConvolutionOpModel::BaseDepthwiseConvolutionOpModel;
-
-  void SetInput(std::initializer_list<float> data) {
-    QuantizeAndPopulate<int16_t>(input_, data);
-  }
-
-  void SetFilter(std::initializer_list<float> data) {
-    PerChannelSymmetricQuantizeAndPopulate(filter_, data);
-  }
-
-  void SetBias(std::initializer_list<float> data) {
-    PerChannelQuantizeBias(bias_, data);
-  }
-
-  std::vector<int16_t> GetOutput() { return ExtractVector<int16_t>(output_); }
-  std::vector<float> GetDequantizedOutput() {
-    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
-  }
-};
-
 TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
        Simple3x3FilterPaddingSameTest) {
   PerChannelQuantizedDepthwiseConvolutionOpModel m(
