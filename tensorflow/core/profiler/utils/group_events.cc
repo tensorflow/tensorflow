@@ -236,6 +236,9 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
        {HostEventType::kSessionRun,
         HostEventType::kExecutorStateProcess,
         {StatType::kStepId}},
+       {HostEventType::kExecutorStateProcess,
+        HostEventType::kIteratorGetNextOp,
+        {StatType::kStepId, kIterNum}},
        {HostEventType::kKernelLaunch,
         HostEventType::kKernelExecute,
         {StatType::kCorrelationId}}});

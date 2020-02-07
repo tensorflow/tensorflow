@@ -80,6 +80,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
       {"PartitionedCallOp", kPartitionedCallOp},
+      // tf.data related.
+      {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},

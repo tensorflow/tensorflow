@@ -74,6 +74,8 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
+  // tf.data related.
+  kIteratorGetNextOp,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
