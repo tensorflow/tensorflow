@@ -83,6 +83,7 @@ class HloPrintOptions {
         print_backend_config_(true),
         compact_operands_(false),
         include_layout_in_shapes_(true),
+        print_result_shape_(true),
         print_operand_shape_(true),
         print_operand_names_(true),
         print_program_shape_(true),
@@ -92,7 +93,8 @@ class HloPrintOptions {
         indent_amount_(0),
         is_in_nested_computation_(false),
         print_ids_(true),
-        canonicalize_computations_(false) {}
+        canonicalize_computations_(false),
+        print_extra_attributes_(true) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
@@ -163,6 +165,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, result shapes will be printed.
+  HloPrintOptions& set_print_result_shape(bool value) {
+    print_result_shape_ = value;
+    return *this;
+  }
+
   // If true, operands' shapes will be printed.
   HloPrintOptions& set_print_operand_shape(bool value) {
     print_operand_shape_ = value;
@@ -178,6 +186,12 @@ class HloPrintOptions {
   // If true, all printed names include unique identifiers.
   HloPrintOptions& set_print_ids(bool value) {
     print_ids_ = value;
+    return *this;
+  }
+
+  // If true, the HLO includes its attributes.
+  HloPrintOptions& set_print_extra_attributes(bool value) {
+    print_extra_attributes_ = value;
     return *this;
   }
 
@@ -286,6 +300,7 @@ class HloPrintOptions {
   bool print_backend_config() const { return print_backend_config_; }
   bool compact_operands() const { return compact_operands_; }
   bool include_layout_in_shapes() const { return include_layout_in_shapes_; }
+  bool print_result_shape() const { return print_result_shape_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
   bool print_ids() const { return print_ids_; }
@@ -294,6 +309,7 @@ class HloPrintOptions {
   bool print_control_dependencies() const {
     return print_control_dependencies_;
   }
+  bool print_extra_attributes() const { return print_extra_attributes_; }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
@@ -322,6 +338,7 @@ class HloPrintOptions {
   bool print_backend_config_;
   bool compact_operands_;
   bool include_layout_in_shapes_;
+  bool print_result_shape_;
   bool print_operand_shape_;
   bool print_operand_names_;
   bool print_program_shape_;
@@ -332,6 +349,7 @@ class HloPrintOptions {
   bool is_in_nested_computation_;
   bool print_ids_;
   bool canonicalize_computations_;
+  bool print_extra_attributes_;
   int leading_and_trailing_instructions_number_ = 3;
   FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
                                                  const string& instr_name,
