@@ -22,13 +22,4 @@ cc_library(
         "@aws-c-common",
         "@aws-checksums",
     ],
-    copts = [
-        "-std=c99",
-        "-D_POSIX_C_SOURCE=199309L",
-        "-D_GNU_SOURCE",
-    ],
-    linkopts = [
-        "-lrt",
-        "-pthread",
-    ],
 )
