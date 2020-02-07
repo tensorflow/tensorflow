@@ -70,6 +70,8 @@ XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
 // Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
 // (descending) so nested events are sorted from outer to innermost.
 void SortXPlane(XPlane* plane);
+// Sorts each plane of the XSpace.
+void SortXSpace(XSpace* space);
 
 // Merge Xplane src_plane into Xplane dst_plane, both plane level stats, lines,
 // events and event level stats are merged; If src_plane and dst_plane both have

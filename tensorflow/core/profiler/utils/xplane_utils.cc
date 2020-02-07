@@ -203,6 +203,10 @@ void SortXPlane(XPlane* plane) {
             plane->mutable_lines()->pointer_end(), XLinesComparator());
 }
 
+void SortXSpace(XSpace* space) {
+  for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
+}
+
 void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   XPlaneVisitor src(&src_plane);
   XPlaneBuilder dst(dst_plane);

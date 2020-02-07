@@ -30,6 +30,7 @@ cc_library(
             "//tensorflow/core/profiler/convert:xplane_to_trace_events",
             "//tensorflow/core/profiler/utils:derived_timeline",
             "//tensorflow/core/profiler/utils:group_events",
+            "//tensorflow/core/profiler/utils:xplane_utils",
         ],
     }),
 )
