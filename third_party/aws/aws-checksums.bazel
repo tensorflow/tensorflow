@@ -12,10 +12,10 @@ cc_library(
     srcs = glob([
         "source/intel/*.c",
         "source/*.c",
-        "include/**/*.h",
     ]),
-    hdrs = [
-    ],
+    hdrs = glob([
+        "include/**/*.h"
+    ]),
     includes = [
         "include/",
     ],

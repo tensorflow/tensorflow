@@ -11,10 +11,10 @@ cc_library(
     name = "aws-c-event-stream",
     srcs = glob([
         "source/*.c",
-        "include/**/*.h",
     ]),
-    hdrs = [
-    ],
+    hdrs = glob([
+        "include/**/*.h"
+    ]),
     includes = [
         "include/",
     ],

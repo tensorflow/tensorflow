@@ -14,6 +14,7 @@ cc_library(
     srcs = select({
         "@org_tensorflow//tensorflow:linux_aarch64": glob([
             "source/posix/*.c",
+            "source/arch/*.c"
         ]),
         "@org_tensorflow//tensorflow:linux_x86_64": glob([
             "source/posix/*.c",
@@ -29,13 +30,14 @@ cc_library(
         ]),
         "//conditions:default": [],
     }) + glob([
-        "source/**/*.c",
-        "include/**/*.h",
-        "include/**/*.inl",
+        "source/*.c",
     ]),
     hdrs = [
-        "include/aws/common/config.h",
-    ],
+        "include/aws/common/config.h" 
+    ] + glob([
+        "include/**/*.h",
+        "include/aws/common/**/*.inl"
+    ]),
     includes = [
         "include/",
     ],
