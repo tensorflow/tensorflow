@@ -1804,8 +1804,10 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
                          outputs[i]->handle.get())
                          ->Handle();
         retvals[i]->Ref();
+        delete outputs[i];
       }
     }
+
     for (auto inp : inputs) {
       delete inp;
     }
