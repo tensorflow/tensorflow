@@ -186,6 +186,10 @@ void AllocateAndParseFlags() {
             &build_ops_flags->tf_xla_check_cluster_output_numerics,
             "If true then insert CheckNumerics nodes to to check all cluster "
             "outputs."),
+       Flag("tf_xla_disable_constant_folding",
+            &build_ops_flags->tf_xla_disable_constant_folding,
+            "If true then disables constant folding on TF graph before XLA "
+            "compilation."),
 
        Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
             "Switch a device into 'on-demand' mode, where instead of "
