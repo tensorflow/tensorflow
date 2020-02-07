@@ -165,7 +165,7 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
   return Status::OK();
 }
 
-Status CheckForbiddenError(const Aws::Client::AWSError<Aws::S3::S3Errors>& error) {
+static Status CheckForbiddenError(const Aws::Client::AWSError<Aws::S3::S3Errors>& error) {
   if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
     return errors::FailedPrecondition("AWS Credentials have not been set properly. "
                                       "Unable to access the specified S3 location");
@@ -174,7 +174,7 @@ Status CheckForbiddenError(const Aws::Client::AWSError<Aws::S3::S3Errors>& error
   }
 }
 
-Status CreateStatusFromAwsError(const Aws::Client::AWSError<Aws::S3::S3Errors>& error) {
+static Status CreateStatusFromAwsError(const Aws::Client::AWSError<Aws::S3::S3Errors>& error) {
   TF_RETURN_IF_ERROR(CheckForbiddenError(error));
   return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
 }
