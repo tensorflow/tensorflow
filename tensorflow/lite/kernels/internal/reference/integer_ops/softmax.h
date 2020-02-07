@@ -20,8 +20,9 @@ limitations under the License.
 namespace tflite {
 namespace reference_integer_ops {
 
-// Quantized softmax with int8 input and int8/int16 output.
-// Quantized softmax with int16 input and int16 output, zero_point=0.
+// Quantized softmax with asymmetric int8 input and asymmetric int8/int16
+// output. Quantized softmax with symmetric int16 input and symmetric int16
+// output.
 template <typename InputT = int8_t, typename OutputT = int8_t>
 inline void Softmax(const SoftmaxParams& params,
                     const RuntimeShape& input_shape, const InputT* input_data,
@@ -52,6 +53,9 @@ inline void Softmax(const SoftmaxParams& params,
   const int depth =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
+  // if input type is int16, then kernel covers symmetric int16 input and
+  // symmetric int16 output; otherwise, kernel covers asymmetric int8 input and
+  // asymmetric int8/int16 output
   int32 min_num = std::is_same<InputT, int16_t>::value
                       ? 0
                       : std::numeric_limits<OutputT>::min();
@@ -60,7 +64,7 @@ inline void Softmax(const SoftmaxParams& params,
       std::is_same<InputT, int16_t>::value ? 15 : (sizeof(OutputT) * 8);
 
   for (int i = 0; i < outer_size; ++i) {
-    InputT max_in_row = min_num;
+    InputT max_in_row = std::numeric_limits<InputT>::min();
     for (int c = 0; c < depth; ++c) {
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
