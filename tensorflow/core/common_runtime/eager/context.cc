@@ -647,6 +647,36 @@ Status EagerContext::RemoveFunction(const string& func) {
   return Status::OK();
 }
 
+Status EagerContext::ClearRemoteExecutors() {
+#if !defined(IS_MOBILE_PLATFORM)
+  eager::EnqueueRequest request;
+  request.set_context_id(GetContextId());
+  request.add_queue()->mutable_clear_remote_executor_for_stream();
+  BlockingCounter counter(static_cast<int>(remote_contexts_.size()));
+
+  for (const auto& target : remote_contexts_) {
+    core::RefCountPtr<eager::EagerClient> eager_client;
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
+
+    eager::EnqueueResponse* response = new eager::EnqueueResponse();
+    eager_client->StreamingEnqueueAsync(
+        &request, response, [response, target, &counter](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Cleared remote executor on " << target
+                       << " with status: " << status.error_message();
+          }
+          delete response;
+          counter.DecrementCount();
+        });
+  }
+  // Currently we have to block since it appears that ops sent before the clear
+  // message returns can be cancelled unexpectedly.
+  // TODO(haoyuzhang): Remove the block.
+  counter.Wait();
+#endif  // !IS_MOBILE_PLATFORM
+  return Status::OK();
+}
+
 core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
     Fprint128 cache_key) {
   tf_shared_lock l(cache_mu_);

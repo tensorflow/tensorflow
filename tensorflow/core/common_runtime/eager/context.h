@@ -234,6 +234,9 @@ class EagerContext : public core::RefCounted {
 
   Status RemoveFunction(const string& func);
 
+  // Clear remote executors on all worker targets in `remote_contexts_`.
+  Status ClearRemoteExecutors();
+
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);

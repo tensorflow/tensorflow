@@ -434,6 +434,10 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
                                                  const char* worker_name,
                                                  TF_Status* status);
 
+// Clear pending streaming requests and error statuses on remote executors.
+TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
+                                                           TF_Status* status);
+
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer
 // returned will be on the device in which the TFE_TensorHandle resides (so e.g.
