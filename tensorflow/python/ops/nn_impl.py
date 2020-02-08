@@ -458,7 +458,7 @@ def scale_regularization_loss(regularization_loss):
           global_batch_size=GLOBAL_BATCH_SIZE)
 
       # Add scaled regularization losses.
-      loss += tf.scale_regularization_loss(tf.nn.l2_loss(weights))
+      loss += tf.nn.scale_regularization_loss(tf.nn.l2_loss(weights))
       return loss
   ```
 
