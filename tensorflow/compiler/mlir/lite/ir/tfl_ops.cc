@@ -53,10 +53,14 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  bool isLegalToInline(Operation *, Region *,
+  bool isLegalToInline(Operation *op, Region *dest,
                        BlockAndValueMapping &) const final {
     // No TFLite op restricts inlining today, revise as needed in the future.
     return true;
+  }
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    return isa<WhileOp>(dest->getParentOp());
   }
 };
 
