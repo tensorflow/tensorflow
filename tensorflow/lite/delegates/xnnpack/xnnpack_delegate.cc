@@ -459,6 +459,23 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTensorNonDynamicAllocation(
+      TfLiteContext* context, const TfLiteTensor& tensor, int tensor_index,
+      int node_index) {
+    // TODO(b/149120844): remove checks once dynamic tensors are supported
+    if (tensor.allocation_type == kTfLiteDynamic) {
+      if (context) {
+        context->ReportError(
+            context,
+            "invalid allocation type in tensor #%d in node #%d: "
+            "expected non-dynamic tensor",
+            tensor_index, node_index);
+      }
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckTensorStaticAllocation(TfLiteContext* context,
                                                   const TfLiteTensor& tensor,
                                                   int tensor_index,
@@ -527,6 +544,9 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
                                            node->inputs->data[0]));
 
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
     const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
 
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
@@ -556,6 +576,9 @@ class Subgraph {
 
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
                                            node->outputs->data[0]));
+
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
 
     const int output_channels = filter_tensor.dims->data[0];
     const int kernel_height = filter_tensor.dims->data[1];
@@ -617,6 +640,9 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
                                            node->inputs->data[0]));
 
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
     const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
 
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
@@ -646,6 +672,9 @@ class Subgraph {
 
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
                                            node->outputs->data[0]));
+
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
 
     const int kernel_height = filter_tensor.dims->data[1];
     const int kernel_width = filter_tensor.dims->data[2];
