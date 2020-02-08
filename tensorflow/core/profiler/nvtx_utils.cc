@@ -78,11 +78,11 @@ const NvtxDomain& GetNvtxTensorFlowCoreDomain() {
 // A helper function to decide whether to enable CUDA NVTX profiling ranges.
 bool NvtxRangesEnabled() {
   static bool is_enabled = [] {
-    bool is_disabled = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_NVTX_RANGES",
+    bool _is_enabled = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ENABLE_NVTX_RANGES",
                                                /*default_val=*/false,
-                                               &is_disabled));
-    return !is_disabled;
+                                               &_is_enabled));
+    return _is_enabled;
   }();
   return is_enabled;
 }
