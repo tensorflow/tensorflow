@@ -105,7 +105,7 @@ environment</a>, build the Android AAR with select TensorFlow ops as follows:
 ```sh
 bazel build --cxxopt='--std=c++11' -c opt \
   --config=android_arm --config=monolithic \
-  //tensorflow/lite/java:tensorflow-lite-with-select-tf-ops
+  //tensorflow/lite/java:tensorflow-lite-select-tf-ops
 ```
 
 This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. From there,
@@ -114,9 +114,9 @@ AAR to your local Maven repository:
 
 ```sh
 mvn install:install-file \
-  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite-with-select-tf-ops.aar \
+  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite-select-tf-ops.aar \
   -DgroupId=org.tensorflow \
-  -DartifactId=tensorflow-lite-with-select-tf-ops -Dversion=0.1.100 -Dpackaging=aar
+  -DartifactId=tensorflow-lite-select-tf-ops -Dversion=0.1.100 -Dpackaging=aar
 ```
 
 Finally, in your app's `build.gradle`, ensure you have the `mavenLocal()`
@@ -132,7 +132,7 @@ allprojects {
 }
 
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
+    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.1.100'
 }
 ```
 
