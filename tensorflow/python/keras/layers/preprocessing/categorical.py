@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
@@ -97,41 +100,64 @@ class CategoryCrossing(Layer):
   """
 
   def __init__(self, depth=None, num_bins=None, name=None, **kwargs):
-    # TODO(tanzheny): Add support for depth.
     # TODO(tanzheny): Consider making seperator configurable.
-    if depth is not None:
-      raise NotImplementedError('`depth` is not supported yet.')
     super(CategoryCrossing, self).__init__(name=name, **kwargs)
     self.num_bins = num_bins
     self.depth = depth
+    if isinstance(depth, (tuple, list)):
+      self._depth_tuple = depth
+    elif depth is not None:
+      self._depth_tuple = tuple([i for i in range(1, depth + 1)])
     self._supports_ragged_inputs = True
 
-  def call(self, inputs):
-    # (b/144500510) ragged.map_flat_values(sparse_cross_hashed, inputs) will
-    # cause kernel failure. Investigate and find a more efficient implementation
-    if all([ragged_tensor.is_ragged(inp) for inp in inputs]):
-      inputs = [inp.to_sparse() if ragged_tensor.is_ragged(inp) else inp
-                for inp in inputs]
-      if self.num_bins is not None:
-        output = sparse_ops.sparse_cross_hashed(
-            inputs, num_buckets=self.num_bins)
-      else:
-        output = sparse_ops.sparse_cross(inputs)
-      return ragged_tensor.RaggedTensor.from_sparse(output)
-    if any([ragged_tensor.is_ragged(inp) for inp in inputs]):
-      raise ValueError('Inputs must be either all `RaggedTensor`, or none of '
-                       'them should be `RaggedTensor`, got {}'.format(inputs))
-    sparse_output = False
-    if any([isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs]):
-      sparse_output = True
+  def partial_crossing(self, partial_inputs, ragged_out, sparse_out):
+    """Gets the crossed output from a partial list/tuple of inputs."""
     if self.num_bins is not None:
-      output = sparse_ops.sparse_cross_hashed(
-          inputs, num_buckets=self.num_bins)
+      partial_output = sparse_ops.sparse_cross_hashed(
+          partial_inputs, num_buckets=self.num_bins)
     else:
-      output = sparse_ops.sparse_cross(inputs)
-    if not sparse_output:
-      output = sparse_ops.sparse_tensor_to_dense(output)
-    return output
+      partial_output = sparse_ops.sparse_cross(partial_inputs)
+
+    # If ragged_out=True, convert output from sparse to ragged.
+    if ragged_out:
+      return ragged_tensor.RaggedTensor.from_sparse(partial_output)
+    elif sparse_out:
+      return partial_output
+    else:
+      return sparse_ops.sparse_tensor_to_dense(partial_output)
+
+  def call(self, inputs):
+
+    depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
+    ragged_out = sparse_out = False
+    if all([ragged_tensor.is_ragged(inp) for inp in inputs]):
+      # (b/144500510) ragged.map_flat_values(sparse_cross_hashed, inputs) will
+      # cause kernel failure. Investigate and find a more efficient
+      # implementation
+      inputs = [inp.to_sparse() for inp in inputs]
+      ragged_out = True
+    else:
+      if any([ragged_tensor.is_ragged(inp) for inp in inputs]):
+        raise ValueError(
+            'Inputs must be either all `RaggedTensor`, or none of them should '
+            'be `RaggedTensor`, got {}'.format(inputs))
+
+      if any([isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs]):
+        sparse_out = True
+
+    outputs = []
+    for depth in depth_tuple:
+      if len(inputs) < depth:
+        raise ValueError(
+            'Number of inputs cannot be less than depth, got {} input tensors, '
+            'and depth {}'.format(len(inputs), depth))
+      for partial_inps in itertools.combinations(inputs, depth):
+        partial_out = self.partial_crossing(
+            partial_inps, ragged_out, sparse_out)
+        outputs.append(partial_out)
+    if sparse_out:
+      return sparse_ops.sparse_concat_v2(axis=1, sp_inputs=outputs)
+    return array_ops.concat(outputs, axis=1)
 
   def compute_output_shape(self, input_shape):
     if not isinstance(input_shape, (tuple, list)):
