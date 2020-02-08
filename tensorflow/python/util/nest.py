@@ -138,21 +138,19 @@ def _sequence_like(instance, args):
     `args` with the type of `instance`.
   """
   if _is_mutable_mapping(instance):
-    result = dict(zip(_sorted(instance), args))
-    instance_type = type(instance)
-    if instance_type == _collections.OrderedDict:
-      d = _collections.OrderedDict(instance.default_factory)
-      for key in instance:
-        d[key] = result[key]
-      return d
-    else:
-      return instance_type((key, result[key]) for key in instance)
-  elif _is_mapping(instance):
     # Pack dictionaries in a deterministic order by sorting the keys.
     # Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
+    result = dict(zip(_sorted(instance), args))
+    instance_type = type(instance)
+    if instance_type == _collections.defaultdict:
+      d = instance_type()
+      for key in instance:
+        d[key] = result[key]
+      return d
+  elif _is_mapping(instance):
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
     if instance_type == _collections.defaultdict:
