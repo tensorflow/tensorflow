@@ -5937,32 +5937,6 @@ TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
               GmockMatch(m::Abs(m::Parameter(0))));
 }
 
-TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
-  const char* kModuleStr = R"(
-    HloModule m
-    a {
-      p0 = f32[] parameter(0)
-      p1 = f32[] parameter(1)
-      ROOT r = f32[] add(p0, p1)
-    }
-    test {
-      p0 = f32[32,8,5,6] parameter(0)
-      p1 = f32[32,8,6,7] parameter(1)
-      d = f32[32,8,5,7] dot(p0, p1),
-        lhs_batch_dims={0,1},
-        rhs_batch_dims={0,1},
-        rhs_contracting_dims={2},
-        lhs_contracting_dims={3}
-     c = f32[] constant(0)
-     ROOT r = f32[8,5,7] reduce(d,c), dimensions={0}, to_apply=a
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Dot(m::Parameter(0), m::Parameter(1))));
-}
-
 TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
   const char* kModuleStr = R"(
     HloModule m

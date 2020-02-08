@@ -3550,6 +3550,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
 Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   bool multi_output_reduce = reduce->shape().IsTuple();
+
   // For tuple reduce, we require all reduce shapes to be the same, up to the
   // element types, so we can just the first operand and the first result as a
   // representative.
@@ -3577,10 +3578,6 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
           reduce,
           HloInstruction::CreateBroadcast(reduce_result_shape, init_value, {}));
     }
-  }
-
-  if (options_.is_layout_sensitive()) {
-    return Status::OK();
   }
 
   // If the reduction results in the same number of elements, then the only
@@ -3721,55 +3718,6 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       old_reduce = new_reduce;
     }
     return ReplaceInstruction(reduce, old_reduce);
-  }
-
-  HloInstruction *dot, *lhs, *rhs;
-  // Convert Reduce(Dot(X,Y)) to Dot(X,Y) if any of the dimensions reduced were
-  // batch dimensions of the dot. The transformation supports reducing other
-  // dimensions as well.
-  if (Match(arg, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs)).WithOneUser()) &&
-      Match(reduce->to_apply()->root_instruction(),
-            m::Add(m::Parameter(), m::Parameter())) &&
-      absl::c_any_of(reduce->dimensions(), [&](int64 dim) {
-        return dim < dot->dot_dimension_numbers().lhs_batch_dimensions_size();
-      })) {
-    const auto& dnums = dot->dot_dimension_numbers();
-    DotDimensionNumbers new_dnums = dnums;
-    new_dnums.clear_lhs_batch_dimensions();
-    new_dnums.clear_rhs_batch_dimensions();
-    int64 removed_dims = 0;
-    for (int64 batch_dim = 0; batch_dim < dnums.lhs_batch_dimensions_size();
-         ++batch_dim) {
-      if (absl::c_linear_search(reduce->dimensions(), batch_dim)) {
-        new_dnums.add_rhs_contracting_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
-        new_dnums.add_lhs_contracting_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
-        ++removed_dims;
-      } else {
-        new_dnums.add_rhs_batch_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
-        new_dnums.add_lhs_batch_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
-      }
-    }
-    std::vector<int64> reduce_dims;
-    for (int64 dim : reduce->dimensions()) {
-      if (dim >= dnums.lhs_batch_dimensions_size()) {
-        reduce_dims.push_back(dim - removed_dims);
-      }
-    }
-    TF_ASSIGN_OR_RETURN(
-        auto new_dot, MakeDotHlo(lhs, rhs, new_dnums, dot->precision_config()));
-    dot->SetupDerivedInstruction(new_dot);
-    if (reduce_dims.empty()) {
-      return ReplaceInstruction(hlo, new_dot);
-    }
-    TF_ASSIGN_OR_RETURN(
-        auto new_reduce,
-        MakeReduceHlo(new_dot, init_value, reduce_dims, HloOpcode::kAdd));
-    reduce->SetupDerivedInstruction(new_reduce);
-    return ReplaceInstruction(hlo, new_reduce);
   }
   return Status::OK();
 }
