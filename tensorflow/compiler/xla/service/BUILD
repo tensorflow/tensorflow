@@ -2426,6 +2426,7 @@ tf_cc_test(
     deps = [
         ":dynamic_dimension_inference",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_matchers",
         ":hlo_runner",
         "//tensorflow/compiler/xla:debug_options_flags",
