@@ -137,6 +137,11 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
 // the given module. binary_opcode should represent a binary operation.
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
+                                        absl::Span<const int64> dimensions,
+                                        HloOpcode binary_opcode);
+
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
                                         HloOpcode binary_opcode,
                                         HloModule* module);
 
