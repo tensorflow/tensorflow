@@ -18,12 +18,8 @@ limitations under the License.
 
 #include "third_party/nvtx3/nvToolsExt.h"
 
-// #include "tensorflow/core/framework/attr_value.pb.h"
-// #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
-// #include "tensorflow/core/framework/types.pb.h"
-// #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -54,7 +50,8 @@ string AttrValueToJson(const AttrValue& attr_value);
 
 string MaybeGetNvtxDomainRangeMessage(const OpKernel* op_kernel,
                                       const int num_inputs,
-                                      std::vector<const TensorShape*> input_shape_array);
+                                      std::vector<const TensorShape*>
+                                              input_shape_array);
 
 nvtxRangeId_t MaybeNvtxDomainRangeStart(string node_op, string node_name);
 

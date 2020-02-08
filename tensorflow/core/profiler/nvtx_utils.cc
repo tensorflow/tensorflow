@@ -214,7 +214,8 @@ string AttrValueToJson(const AttrValue& attr_value) {
 
 string MaybeGetNvtxDomainRangeMessage(const OpKernel* kernel,
                                       const int num_inputs,
-                                      std::vector<const TensorShape*> input_shape_array){
+                                      std::vector<const TensorShape*>
+                                          input_shape_array){
   string msg;
   if (NvtxRangesEnabled()) {
     msg = kernel->def().op() + ": " + kernel->name();
