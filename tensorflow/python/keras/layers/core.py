@@ -422,6 +422,13 @@ class Reshape(Layer):
   # also supports shape inference using `-1` as dimension
   model.add(Reshape((-1, 2, 2)))
   # now: model.output_shape == (None, None, 2, 2)
+
+  # To get rid of the `None` at the second index of `model.output_shape` 
+  # in above example you can use,
+  # `model.compute_output_shape(model.input_shape)`. As follows,
+  out_shape = model.compute_output_shape(model.input_shape)
+  model.add(Reshape(out_shape[1:]))
+  # now: model.output_shape == (None, 4, 2, 2)
   ```
   """
 
