@@ -329,11 +329,19 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 			}
 		}
 
-		// Optimisation: if only one dimension is left we can use binary.Write() directly for this slice
+		// Optimisation: if only one dimension is left we can write the full
+		// slice or array in one go.
 		if len(shape) == 1 && v.Len() > 0 {
 			switch v.Index(0).Kind() {
-			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-				return binary.Write(w, nativeEndian, v.Interface())
+			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Bool:
+				elt := v.Index(0)
+				if !elt.CanAddr() {
+					// Very frustrating that Go won't give us an address at this
+					// point.
+					return binary.Write(w, nativeEndian, v.Interface())
+				}
+				ptr := unsafe.Pointer(elt.Addr().Pointer())
+				return copyPtr(w, ptr, v.Len()*int(elt.Type().Size()))
 			}
 		}
 
@@ -349,6 +357,30 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 		return fmt.Errorf("unsupported type %v", v.Type())
 	}
 	return nil
+}
+
+// sliceHeader is a safer version of reflect.SliceHeader. Using unsafe.Pointer
+// for Data reduces potential issues with the GC. The reflect package uses a
+// similar struct internally.
+type sliceHeader struct {
+	Data unsafe.Pointer
+	Len  int
+	Cap  int
+}
+
+// copyPtr copies the backing data for a slice or array directly into w. Note
+// we don't need to worry about byte ordering because we want the natural byte
+// order for the machine we're running on.
+func copyPtr(w *bytes.Buffer, ptr unsafe.Pointer, l int) error {
+	h := sliceHeader{
+		Data: ptr,
+		Len:  l,
+		Cap:  l,
+	}
+	// Convert our slice header into a []byte so we can call w.Write
+	b := *(*[]byte)(unsafe.Pointer(&h))
+	_, err := w.Write(b)
+	return err
 }
 
 // decodeTensor decodes the Tensor from the buffer to ptr using the format
