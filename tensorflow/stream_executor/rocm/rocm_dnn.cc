@@ -4357,7 +4357,7 @@ bool MIOpenSupport::DoPoolBackward(
   DeviceMemory<uint8> workspace;
   size_t workspace_size_in_bytes = 0;
   auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
-      pooling_desc.handle(), dest_desc.handle(), &workspace_size_in_bytes);
+      pooling_desc.handle(), src_desc.handle(), &workspace_size_in_bytes);
 
   if (status != miopenStatusSuccess) {
     LOG(ERROR)
@@ -4378,19 +4378,17 @@ bool MIOpenSupport::DoPoolBackward(
   }
 
   DeviceMemory<uint8> dest2;  // duplicated dest from forward:
-  int dest2_size = 0;
+  int64 dest2_size = 0;
 
   // miopen requires the strides and dims to be ordered as BDYX.
   std::vector<int64> dims64 =
-      input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-
+      output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
   // miopen does not use strides and must have 4D tensor.
-  std::vector<int> dims(4);
+  std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
-  std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
-                 &CheckedNarrowing<int64, int>);
-
-  dest2_size = dims[0] * dims[1] * dims[2] * dims[3] * sizeof(float);
+  dest2_size = sizeof(float);
+  for(auto& x: dims64)
+     dest2_size *= x;
 
   if (dest2_size > 0) {
     assert(workspace_allocator);
@@ -4453,7 +4451,7 @@ bool MIOpenSupport::DoPoolBackward(
   DeviceMemory<uint8> workspace;
   size_t workspace_size_in_bytes = 0;
   auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
-      pooling_desc.handle(), dest_desc.handle(), &workspace_size_in_bytes);
+      pooling_desc.handle(), src_desc.handle(), &workspace_size_in_bytes);
 
   if (status != miopenStatusSuccess) {
     LOG(ERROR)
@@ -4474,19 +4472,20 @@ bool MIOpenSupport::DoPoolBackward(
   }
 
   DeviceMemory<uint8> dest2;  // duplicated dest from forward:
-  int dest2_size = 0;
+  int64 dest2_size = 0;
 
   // miopen requires the strides and dims to be ordered as BDYX.
   std::vector<int64> dims64 =
-      input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-
+      output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
   // miopen does not use strides and must have 4D tensor.
-  std::vector<int> dims(4);
+  std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
   std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
                  &CheckedNarrowing<int64, int>);
 
-  dest2_size = dims[0] * dims[1] * dims[2] * dims[3] * sizeof(float);
+  dest2_size = 2;
+  for(auto& x: dims)
+     dest2_size *= x;
 
   if (dest2_size > 0) {
     assert(workspace_allocator);
