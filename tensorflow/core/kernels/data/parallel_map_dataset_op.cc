@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -280,19 +281,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
     if (deregister_fn_) deregister_fn_();
   }
 
-  string BuildTraceMeName() override {
-    int64 parallelism = -1;
-    // NOTE: We only set the parallelism value if the lock can be acquired right
-    // away to avoid introducing tracing overhead.
-    if (mu_->try_lock()) {
-      parallelism = num_parallel_calls_->value;
-      mu_->unlock();
-    }
-    return strings::StrCat(this->prefix(), "#parallelism=", parallelism,
-                           ",autotune=", autotune_, ",deterministic=", !sloppy_,
-                           "#");
-  }
-
   Status Initialize(IteratorContext* ctx) override {
     mutex_lock l(*mu_);
     if (num_parallel_calls_->value == model::kAutotune) {
@@ -302,7 +290,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
         ctx->cancellation_manager(),
         [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
     TF_RETURN_IF_ERROR(
-        input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
+        input_dataset_->MakeIterator(ctx, this, prefix(), &input_impl_));
     return parallel_map_functor_->InitFunc(ctx);
   }
 
@@ -415,6 +403,23 @@ class ParallelMapIterator : public DatasetBaseIterator {
       result.notification.Notify();
     }
     return Status::OK();
+  }
+
+  TraceMeMetadata GetTraceMeMetadata() const override {
+    int64 parallelism = -1;
+    // NOTE: We only set the parallelism value if the lock can be acquired
+    // right away to avoid introducing tracing overhead.
+    if (mu_->try_lock()) {
+      parallelism = num_parallel_calls_->value;
+      mu_->unlock();
+    }
+    data::TraceMeMetadata result;
+    result.push_back(std::make_pair("autotune", autotune_ ? "true" : "false"));
+    result.push_back(
+        std::make_pair("deterministic", sloppy_ ? "false" : "true"));
+    result.push_back(
+        std::make_pair("parallelism", strings::Printf("%lld", parallelism)));
+    return result;
   }
 
  private:

@@ -19,6 +19,10 @@ load(
     "make_copy_files_rule",
     "to_list_of_strings",
 )
+load(
+    "//third_party/remote_config:common.bzl",
+    "get_cpu_value",
+)
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
@@ -243,7 +247,7 @@ def _enable_rocm(repository_ctx):
     if "TF_NEED_ROCM" in repository_ctx.os.environ:
         enable_rocm = repository_ctx.os.environ["TF_NEED_ROCM"].strip()
         if enable_rocm == "1":
-            if _cpu_value(repository_ctx) != "Linux":
+            if get_cpu_value(repository_ctx) != "Linux":
                 auto_configure_warning("ROCm configure is only supported on Linux")
                 return False
             return True
@@ -361,23 +365,6 @@ def _crosstool_verbose(repository_ctx):
     if name in repository_ctx.os.environ:
         return repository_ctx.os.environ[name].strip()
     return "0"
-
-def _cpu_value(repository_ctx):
-    """Returns the name of the host operating system.
-
-    Args:
-      repository_ctx: The repository context.
-
-    Returns:
-      A string containing the name of the host operating system.
-    """
-    os_name = repository_ctx.os.name.lower()
-    if os_name.startswith("mac os"):
-        return "Darwin"
-    if os_name.find("windows") != -1:
-        return "Windows"
-    result = repository_ctx.execute(["uname", "-s"])
-    return result.stdout.strip()
 
 def _lib_name(lib, version = "", static = False):
     """Constructs the name of a library on Linux.
@@ -649,21 +636,6 @@ def _genrule(src_dir, genrule_name, command, outs):
         '\n   """,\n' +
         ")\n"
     )
-
-def _read_dir(repository_ctx, src_dir):
-    """Returns a string with all files in a directory.
-
-    Finds all files inside a directory, traversing subfolders and following
-    symlinks. The returned string contains the full path of all files
-    separated by line breaks.
-    """
-    find_result = _execute(
-        repository_ctx,
-        ["find", src_dir, "-follow", "-type", "f"],
-        empty_stdout_fine = True,
-    )
-    result = find_result.stdout
-    return result
 
 def _compute_rocm_extra_copts(repository_ctx, amdgpu_targets):
     if False:

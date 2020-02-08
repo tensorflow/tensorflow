@@ -19,11 +19,24 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":categorical",
+        ":discretization",
         ":image_preprocessing",
         ":normalization",
         ":preprocessing_test_utils",
         ":reduction",
         ":text_vectorization",
+    ],
+)
+
+py_library(
+    name = "discretization",
+    srcs = [
+        "discretization.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/keras/engine:base_layer",
     ],
 )
 
@@ -183,12 +196,28 @@ py_library(
     ],
 )
 
+tf_py_test(
+    name = "discretization_test",
+    size = "small",
+    srcs = ["discretization_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":discretization",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
     name = "categorical_test",
     size = "medium",
     srcs = ["categorical_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "no_windows",  # b/149031156
+    ],
     deps = [
         ":categorical",
         "//tensorflow/python:client_testlib",

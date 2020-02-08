@@ -20,13 +20,20 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers.preprocessing import categorical
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -57,6 +64,51 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
     self.assertAllClose(np.asarray([[0, 0], [1, 0], [1, 1]]), output.indices)
     self.assertAllClose([0, 0, 0], output.values)
 
+  def test_crossing_sparse_inputs_depth_int(self):
+    layer = categorical.CategoryCrossing(depth=1)
+    inputs_0 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [2, 0]],
+        values=['a', 'b', 'c'],
+        dense_shape=[3, 1])
+    inputs_1 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [2, 0]],
+        values=['d', 'e', 'f'],
+        dense_shape=[3, 1])
+    output = layer([inputs_0, inputs_1])
+    self.assertIsInstance(output, sparse_tensor.SparseTensor)
+    output = sparse_ops.sparse_tensor_to_dense(output)
+    expected_out = [[b'a', b'd'], [b'b', b'e'], [b'c', b'f']]
+    self.assertAllEqual(expected_out, output)
+
+  def test_crossing_sparse_inputs_depth_tuple(self):
+    layer = categorical.CategoryCrossing(depth=(2, 3))
+    inputs_0 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [2, 0]],
+        values=['a', 'b', 'c'],
+        dense_shape=[3, 1])
+    inputs_1 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [2, 0]],
+        values=['d', 'e', 'f'],
+        dense_shape=[3, 1])
+    inputs_2 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [2, 0]],
+        values=['g', 'h', 'i'],
+        dense_shape=[3, 1])
+    inp_0_t = input_layer.Input(shape=(1,), sparse=True, dtype=dtypes.string)
+    inp_1_t = input_layer.Input(shape=(1,), sparse=True, dtype=dtypes.string)
+    inp_2_t = input_layer.Input(shape=(1,), sparse=True, dtype=dtypes.string)
+    out_t = layer([inp_0_t, inp_1_t, inp_2_t])
+    model = training.Model([inp_0_t, inp_1_t, inp_2_t], out_t)
+    output = model.predict([inputs_0, inputs_1, inputs_2])
+    self.assertIsInstance(output, sparse_tensor.SparseTensor)
+    output = sparse_ops.sparse_tensor_to_dense(output)
+    expected_outputs_0 = [[b'a_X_d', b'a_X_g', b'd_X_g', b'a_X_d_X_g']]
+    expected_outputs_1 = [[b'b_X_e', b'b_X_h', b'e_X_h', b'b_X_e_X_h']]
+    expected_outputs_2 = [[b'c_X_f', b'c_X_i', b'f_X_i', b'c_X_f_X_i']]
+    expected_out = array_ops.concat(
+        [expected_outputs_0, expected_outputs_1, expected_outputs_2], axis=0)
+    self.assertAllEqual(expected_out, output)
+
   def test_crossing_hashed_two_bins(self):
     layer = categorical.CategoryCrossing(num_bins=2)
     inputs_0 = sparse_tensor.SparseTensor(
@@ -70,12 +122,116 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
     self.assertEqual(output.values.numpy().max(), 1)
     self.assertEqual(output.values.numpy().min(), 0)
 
+  def test_crossing_hashed_ragged_inputs(self):
+    layer = categorical.CategoryCrossing(num_bins=2)
+    inputs_0 = ragged_factory_ops.constant(
+        [['omar', 'skywalker'], ['marlo']],
+        dtype=dtypes.string)
+    inputs_1 = ragged_factory_ops.constant(
+        [['a'], ['b']],
+        dtype=dtypes.string)
+    out_data = layer([inputs_0, inputs_1])
+    expected_output = [[0, 0], [0]]
+    self.assertAllClose(expected_output, out_data)
+    inp_0_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    inp_1_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    out_t = layer([inp_0_t, inp_1_t])
+    model = training.Model(inputs=[inp_0_t, inp_1_t], outputs=out_t)
+    self.assertAllClose(expected_output, model.predict([inputs_0, inputs_1]))
+
+    non_hashed_layer = categorical.CategoryCrossing()
+    out_t = non_hashed_layer([inp_0_t, inp_1_t])
+    model = training.Model(inputs=[inp_0_t, inp_1_t], outputs=out_t)
+    expected_output = [[b'omar_X_a', b'skywalker_X_a'], [b'marlo_X_b']]
+    self.assertAllEqual(expected_output, model.predict([inputs_0, inputs_1]))
+
+  def test_crossing_ragged_inputs_depth_int(self):
+    layer = categorical.CategoryCrossing(depth=1)
+    inputs_0 = ragged_factory_ops.constant([['a'], ['b'], ['c']])
+    inputs_1 = ragged_factory_ops.constant([['d'], ['e'], ['f']])
+    output = layer([inputs_0, inputs_1])
+    expected_output = [[b'a', b'd'], [b'b', b'e'], [b'c', b'f']]
+    self.assertIsInstance(output, ragged_tensor.RaggedTensor)
+    self.assertAllEqual(expected_output, output)
+
+    layer = categorical.CategoryCrossing(depth=2)
+    inp_0_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    inp_1_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    out_t = layer([inp_0_t, inp_1_t])
+    model = training.Model([inp_0_t, inp_1_t], out_t)
+    expected_output = [[b'a', b'd', b'a_X_d'], [b'b', b'e', b'b_X_e'],
+                       [b'c', b'f', b'c_X_f']]
+    self.assertAllEqual(expected_output, model.predict([inputs_0, inputs_1]))
+
+  def test_crossing_ragged_inputs_depth_tuple(self):
+    layer = categorical.CategoryCrossing(depth=[2, 3])
+    inputs_0 = ragged_factory_ops.constant([['a'], ['b'], ['c']])
+    inputs_1 = ragged_factory_ops.constant([['d'], ['e'], ['f']])
+    inputs_2 = ragged_factory_ops.constant([['g'], ['h'], ['i']])
+    inp_0_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    inp_1_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    inp_2_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    out_t = layer([inp_0_t, inp_1_t, inp_2_t])
+    model = training.Model([inp_0_t, inp_1_t, inp_2_t], out_t)
+    expected_output = [[b'a_X_d', b'a_X_g', b'd_X_g', b'a_X_d_X_g'],
+                       [b'b_X_e', b'b_X_h', b'e_X_h', b'b_X_e_X_h'],
+                       [b'c_X_f', b'c_X_i', b'f_X_i', b'c_X_f_X_i']]
+    output = model.predict([inputs_0, inputs_1, inputs_2])
+    self.assertIsInstance(output, ragged_tensor.RaggedTensor)
+    self.assertAllEqual(expected_output, output)
+
+  def test_invalid_mixed_sparse_and_ragged_input(self):
+    with self.assertRaises(ValueError):
+      layer = categorical.CategoryCrossing(num_bins=2)
+      inputs_0 = ragged_factory_ops.constant(
+          [['omar'], ['marlo']],
+          dtype=dtypes.string)
+      inputs_1 = sparse_tensor.SparseTensor(
+          indices=[[0, 1], [1, 2]], values=['d', 'e'], dense_shape=[2, 3])
+      layer([inputs_0, inputs_1])
+
   def test_crossing_with_dense_inputs(self):
     layer = categorical.CategoryCrossing()
     inputs_0 = np.asarray([[1, 2]])
     inputs_1 = np.asarray([[1, 3]])
     output = layer([inputs_0, inputs_1])
     self.assertAllEqual([[b'1_X_1', b'1_X_3', b'2_X_1', b'2_X_3']], output)
+
+  def test_crossing_dense_inputs_depth_int(self):
+    layer = categorical.CategoryCrossing(depth=1)
+    inputs_0 = constant_op.constant([['a'], ['b'], ['c']])
+    inputs_1 = constant_op.constant([['d'], ['e'], ['f']])
+    output = layer([inputs_0, inputs_1])
+    expected_output = [[b'a', b'd'], [b'b', b'e'], [b'c', b'f']]
+    self.assertAllEqual(expected_output, output)
+
+    layer = categorical.CategoryCrossing(depth=2)
+    inp_0_t = input_layer.Input(shape=(1,), dtype=dtypes.string)
+    inp_1_t = input_layer.Input(shape=(1,), dtype=dtypes.string)
+    out_t = layer([inp_0_t, inp_1_t])
+    model = training.Model([inp_0_t, inp_1_t], out_t)
+    crossed_output = [[b'a_X_d'], [b'b_X_e'], [b'c_X_f']]
+    expected_output = array_ops.concat([expected_output, crossed_output],
+                                       axis=1)
+    self.assertAllEqual(expected_output, model.predict([inputs_0, inputs_1]))
+
+  def test_crossing_dense_inputs_depth_tuple(self):
+    layer = categorical.CategoryCrossing(depth=[2, 3])
+    inputs_0 = constant_op.constant([['a'], ['b'], ['c']])
+    inputs_1 = constant_op.constant([['d'], ['e'], ['f']])
+    inputs_2 = constant_op.constant([['g'], ['h'], ['i']])
+    inp_0_t = input_layer.Input(shape=(1,), dtype=dtypes.string)
+    inp_1_t = input_layer.Input(shape=(1,), dtype=dtypes.string)
+    inp_2_t = input_layer.Input(shape=(1,), dtype=dtypes.string)
+    out_t = layer([inp_0_t, inp_1_t, inp_2_t])
+    model = training.Model([inp_0_t, inp_1_t, inp_2_t], out_t)
+    expected_outputs_0 = [[b'a_X_d', b'a_X_g', b'd_X_g', b'a_X_d_X_g']]
+    expected_outputs_1 = [[b'b_X_e', b'b_X_h', b'e_X_h', b'b_X_e_X_h']]
+    expected_outputs_2 = [[b'c_X_f', b'c_X_i', b'f_X_i', b'c_X_f_X_i']]
+    expected_output = array_ops.concat(
+        [expected_outputs_0, expected_outputs_1, expected_outputs_2], axis=0)
+    self.assertAllEqual(expected_output,
+                        model.predict([inputs_0, inputs_1, inputs_2]))
 
   def test_crossing_hashed_with_dense_inputs(self):
     layer = categorical.CategoryCrossing(num_bins=2)
@@ -115,10 +271,6 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
     layer_1 = categorical.CategoryCrossing.from_config(config)
     self.assertEqual(layer_1.name, layer.name)
 
-  def test_incorrect_depth(self):
-    with self.assertRaises(NotImplementedError):
-      categorical.CategoryCrossing(depth=1)
-
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class HashingTest(keras_parameterized.TestCase):
@@ -145,6 +297,24 @@ class HashingTest(keras_parameterized.TestCase):
     output = layer(inp)
     self.assertEqual(output.values.numpy().max(), 1)
     self.assertEqual(output.values.numpy().min(), 0)
+
+  def test_hash_ragged_string_input(self):
+    layer = categorical.Hashing(num_bins=2)
+    inp_data = ragged_factory_ops.constant(
+        [['omar', 'stringer', 'marlo', 'wire'], ['marlo', 'skywalker', 'wire']],
+        dtype=dtypes.string)
+    out_data = layer(inp_data)
+    self.assertEqual(out_data.values.numpy().max(), 1)
+    self.assertEqual(out_data.values.numpy().min(), 0)
+    # hash of 'marlo' should be same.
+    self.assertAllClose(out_data[0][2], out_data[1][0])
+    # hash of 'wire' should be same.
+    self.assertAllClose(out_data[0][3], out_data[1][2])
+
+    inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    out_t = layer(inp_t)
+    model = training.Model(inputs=inp_t, outputs=out_t)
+    self.assertAllClose(out_data, model.predict(inp_data))
 
   def test_hash_compute_output_signature(self):
     input_shape = tensor_shape.TensorShape([2, 3])

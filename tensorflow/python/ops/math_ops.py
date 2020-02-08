@@ -1487,7 +1487,7 @@ def tensor_equals(self, other):
     return False
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
-      (g is None or g._building_function)):  # pylint: disable=protected-access
+      (g is None or g.building_function)):
     return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality

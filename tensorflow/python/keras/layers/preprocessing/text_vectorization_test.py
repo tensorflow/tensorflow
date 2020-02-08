@@ -41,6 +41,7 @@ from tensorflow.python.keras.saving import saved_model_experimental as saving
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import gen_string_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 
@@ -321,6 +322,24 @@ class TextVectorizationPreprocessingTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_normalization_ragged_inputs(self):
+    input_array = ragged_factory_ops.constant([["Earth", "wInD", "aNd", "firE"],
+                                               ["fire|", "an<>d", "{earth}"]])
+    expected_output = [[b"earth", b"wind", b"and", b"fire"],
+                       [b"fire", b"and", b"earth"]]
+
+    input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
+        split=None,
+        ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
   def test_custom_normalization(self):
     input_array = np.array([["Earth", "wInD", "aNd", "firE"],
                             ["fire|", "an<>d", "{earth}", "michigan@%$"]])
@@ -372,6 +391,30 @@ class TextVectorizationPreprocessingTest(
         standardize=None,
         split=custom_split,
         ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_single_ngram_value_ragged_inputs(self):
+    input_array = ragged_factory_ops.constant([["earth", "wind", "and", "fire"],
+                                               ["fire", "and", "earth"]])
+    # pyformat: disable
+    expected_output = [[b"earth", b"wind", b"and", b"fire",
+                        b"earth wind", b"wind and", b"and fire",
+                        b"earth wind and", b"wind and fire"],
+                       [b"fire", b"and", b"earth",
+                        b"fire and", b"and earth",
+                        b"fire and earth"]]
+    # pyformat: enable
+
+    input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        ngrams=3,
         output_mode=None)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -460,6 +503,17 @@ class TextVectorizationPreprocessingTest(
 
   def test_string_splitting_with_non_1d_array_fails(self):
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=text_vectorization.SPLIT_ON_WHITESPACE,
+        output_mode=None)
+    with self.assertRaisesRegex(RuntimeError,
+                                ".*tokenize strings, the first dimension.*"):
+      _ = layer(input_data)
+
+  def test_string_splitting_with_non_1d_raggedarray_fails(self):
+    input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
     layer = get_layer_class()(
         max_tokens=None,
         standardize=None,

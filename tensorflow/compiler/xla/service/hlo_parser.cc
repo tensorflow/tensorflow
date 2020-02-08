@@ -1583,6 +1583,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64> batch_group_count;
       optional<std::vector<Shape>> operand_layout_constraints;
       optional<bool> custom_call_has_side_effect;
+      optional<HloComputation*> to_apply;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -1596,6 +1597,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           /*required=*/false, AttrTy::kShapeList, &operand_layout_constraints};
       attrs["custom_call_has_side_effect"] = {/*required=*/false, AttrTy::kBool,
                                               &custom_call_has_side_effect};
+      attrs["to_apply"] = {/*required=*/false, AttrTy::kHloComputation,
+                           &to_apply};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1636,9 +1639,17 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
             shape, operands, *custom_call_target, *operand_layout_constraints,
             backend_config ? *backend_config : ""));
       } else {
-        instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
-            shape, operands, *custom_call_target,
-            backend_config ? *backend_config : ""));
+        if (to_apply.has_value()) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCustomCall(
+                  shape, operands, *to_apply, *custom_call_target,
+                  backend_config ? *backend_config : ""));
+        } else {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCustomCall(
+                  shape, operands, *custom_call_target,
+                  backend_config ? *backend_config : ""));
+        }
       }
       auto custom_call_instr = Cast<HloCustomCallInstruction>(instruction);
       if (window.has_value()) {

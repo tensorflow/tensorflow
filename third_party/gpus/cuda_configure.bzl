@@ -40,6 +40,7 @@ load(
 load(
     "//third_party/remote_config:common.bzl",
     "get_bash_bin",
+    "get_cpu_value",
     "get_python_bin",
     "is_windows",
     "raw_exec",
@@ -417,20 +418,6 @@ def compute_capabilities(repository_ctx):
         if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
             auto_configure_fail("Invalid compute capability: %s" % capability)
     return capabilities
-
-def get_cpu_value(repository_ctx):
-    """Returns the name of the host operating system.
-
-      Args:
-        repository_ctx: The repository context.
-
-      Returns:
-        A string containing the name of the host operating system.
-      """
-    if is_windows(repository_ctx):
-        return "Windows"
-    result = raw_exec(repository_ctx, ["uname", "-s"])
-    return result.stdout.strip()
 
 def lib_name(base_name, cpu_value, version = None, static = False):
     """Constructs the platform-specific name of a library.

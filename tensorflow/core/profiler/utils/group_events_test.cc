@@ -110,6 +110,7 @@ TEST(GroupEventsTest, ConnectInterThreadTest) {
 TEST(GroupEventsTest, GroupGpuTraceTest) {
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -123,7 +124,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
                HostEventType::kExecutorStateProcess, 20, 80,
                {{StatType::kStepId, 0}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
-               {{StatType::kCorrelationId, 100}, {StatType::kDeviceId, 1}});
+               {{StatType::kCorrelationId, 100}});
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);

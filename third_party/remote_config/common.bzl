@@ -166,6 +166,19 @@ def is_windows(repository_ctx):
 
     return os_name.lower().find("windows") != -1
 
+def get_cpu_value(repository_ctx):
+    """Returns the name of the host operating system.
+
+    Args:
+      repository_ctx: The repository context.
+    Returns:
+      A string containing the name of the host operating system.
+    """
+    if is_windows(repository_ctx):
+        return "Windows"
+    result = raw_exec(repository_ctx, ["uname", "-s"])
+    return result.stdout.strip()
+
 def execute(
         repository_ctx,
         cmdline,

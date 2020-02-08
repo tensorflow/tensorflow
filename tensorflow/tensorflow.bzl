@@ -1953,7 +1953,7 @@ _append_init_to_versionscript = rule(
 
 def tf_py_wrap_cc(
         name,
-        srcs,
+        srcs = [],
         swig_includes = [],
         deps = [],
         copts = [],
@@ -1973,6 +1973,19 @@ def tf_py_wrap_cc(
         name.split("/")[:-1] + ["_" + module_name + ".pyd"],
     )
     extra_deps = []
+
+    # TODO(amitpatankar): Migrate from py_wrap_cc to cc_shared_library.
+    # TensorFlow python does not use any SWIG sources so we create
+    # an empty SWIG file. This rule cannot be cleaned up until bazel shared
+    # library support lands.
+    if srcs == []:
+        srcs = ["default.swig"]
+        native.genrule(
+            name = "default_swig_rule",
+            outs = srcs,
+            cmd = "touch $@",
+        )
+
     _py_wrap_cc(
         name = name + "_py_wrap",
         srcs = srcs,

@@ -62,6 +62,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       there is no cap on the size of the vocabulary. Note that the vocabulary
       does include OOV buckets, so the effective number of unique values in the
       vocabulary is `(max_tokens - num_oov_tokens)` when this value is set.
+    vocabulary: An optional list of vocabulary terms.
     num_oov_tokens: The number of out-of-vocabulary tokens to use; defaults to
       1. If this value is more than 1, OOV inputs are hashed to determine their
       OOV value; if this value is 0, passing an OOV input will result in a
@@ -83,8 +84,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   # TODO(momernick): Add an examples section to the docstring.
 
   def __init__(self,
-               max_tokens,
+               max_tokens=None,
                num_oov_tokens=1,
+               vocabulary=None,
                reserve_zero=True,
                mask_zero=False,
                **kwargs):
@@ -167,6 +169,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           "Saving is not yet supported for IndexLookup layers.")
     self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
     self._inverse_table = None
+
+    if vocabulary is not None:
+      self._export_vocab = True
+      self.set_vocabulary(vocabulary)
+    else:
+      self._export_vocab = False
 
   def _get_table_data(self):
     keys, values = self._table.export()
@@ -255,9 +263,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     return [x for _, x in sorted(zip(values, keys))]
 
   def get_config(self):
+    vocabulary = self.get_vocabulary() if self._export_vocab else None
     config = {
         "max_tokens": self.max_tokens,
         "num_oov_tokens": self.num_oov_tokens,
+        "vocabulary": vocabulary,
         "reserve_zero": self.reserve_zero,
         "mask_zero": self.mask_zero,
     }

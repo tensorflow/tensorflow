@@ -706,6 +706,17 @@ func @squeezeToReshape(%arg0: tensor<1x1x2xf32>) -> tensor<2xf32> {
   // CHECK: return %[[RESULT]]
 }
 
+// CHECK-LABEL: expandDimsToReshape
+func @expandDimsToReshape(%arg0: tensor<6x6x256xf32>) -> tensor<6x6x256x1xf32> {
+  %cst = constant dense<-1> : tensor<i32>
+  %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<6x6x256xf32>, tensor<i32>) -> tensor<6x6x256x1xf32>
+  return %0 : tensor<6x6x256x1xf32>
+
+  // CHECK: [[CONST:.*]] = constant dense<[6, 6, 256, 1]> : tensor<4xi32>
+  // CHECK: %[[RESULT:.*]] = "tfl.reshape"(%arg0, %[[CONST:.*]]) : (tensor<6x6x256xf32>, tensor<4xi32>) -> tensor<6x6x256x1xf32>
+  // CHECK: return %[[RESULT]]
+}
+
 // CHECK-LABEL: Relu1
 func @Relu1(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %cst = constant dense<-1.0> : tensor<f32>

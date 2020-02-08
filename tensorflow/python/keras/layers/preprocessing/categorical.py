@@ -18,13 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 
 
 class CategoryCrossing(Layer):
@@ -95,26 +100,64 @@ class CategoryCrossing(Layer):
   """
 
   def __init__(self, depth=None, num_bins=None, name=None, **kwargs):
-    # TODO(tanzheny): Add support for depth.
     # TODO(tanzheny): Consider making seperator configurable.
-    if depth is not None:
-      raise NotImplementedError('`depth` is not supported yet.')
+    super(CategoryCrossing, self).__init__(name=name, **kwargs)
     self.num_bins = num_bins
     self.depth = depth
-    super(CategoryCrossing, self).__init__(name=name, **kwargs)
+    if isinstance(depth, (tuple, list)):
+      self._depth_tuple = depth
+    elif depth is not None:
+      self._depth_tuple = tuple([i for i in range(1, depth + 1)])
+    self._supports_ragged_inputs = True
+
+  def partial_crossing(self, partial_inputs, ragged_out, sparse_out):
+    """Gets the crossed output from a partial list/tuple of inputs."""
+    if self.num_bins is not None:
+      partial_output = sparse_ops.sparse_cross_hashed(
+          partial_inputs, num_buckets=self.num_bins)
+    else:
+      partial_output = sparse_ops.sparse_cross(partial_inputs)
+
+    # If ragged_out=True, convert output from sparse to ragged.
+    if ragged_out:
+      return ragged_tensor.RaggedTensor.from_sparse(partial_output)
+    elif sparse_out:
+      return partial_output
+    else:
+      return sparse_ops.sparse_tensor_to_dense(partial_output)
 
   def call(self, inputs):
-    sparse_output = False
-    if any([isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs]):
-      sparse_output = True
-    if self.num_bins is not None:
-      output = sparse_ops.sparse_cross_hashed(
-          inputs, num_buckets=self.num_bins)
+
+    depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
+    ragged_out = sparse_out = False
+    if all([ragged_tensor.is_ragged(inp) for inp in inputs]):
+      # (b/144500510) ragged.map_flat_values(sparse_cross_hashed, inputs) will
+      # cause kernel failure. Investigate and find a more efficient
+      # implementation
+      inputs = [inp.to_sparse() for inp in inputs]
+      ragged_out = True
     else:
-      output = sparse_ops.sparse_cross(inputs)
-    if not sparse_output:
-      output = sparse_ops.sparse_tensor_to_dense(output)
-    return output
+      if any([ragged_tensor.is_ragged(inp) for inp in inputs]):
+        raise ValueError(
+            'Inputs must be either all `RaggedTensor`, or none of them should '
+            'be `RaggedTensor`, got {}'.format(inputs))
+
+      if any([isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs]):
+        sparse_out = True
+
+    outputs = []
+    for depth in depth_tuple:
+      if len(inputs) < depth:
+        raise ValueError(
+            'Number of inputs cannot be less than depth, got {} input tensors, '
+            'and depth {}'.format(len(inputs), depth))
+      for partial_inps in itertools.combinations(inputs, depth):
+        partial_out = self.partial_crossing(
+            partial_inps, ragged_out, sparse_out)
+        outputs.append(partial_out)
+    if sparse_out:
+      return sparse_ops.sparse_concat_v2(axis=1, sp_inputs=outputs)
+    return array_ops.concat(outputs, axis=1)
 
   def compute_output_shape(self, input_shape):
     if not isinstance(input_shape, (tuple, list)):
@@ -179,23 +222,30 @@ class Hashing(Layer):
 
   def __init__(self, num_bins, name=None, **kwargs):
     # TODO(tanzheny): consider adding strong hash variant.
-    self._num_bins = num_bins
     super(Hashing, self).__init__(name=name, **kwargs)
+    self._num_bins = num_bins
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
-    # TODO(tanzheny): Add ragged support.
     # TODO(tanzheny): Add int support.
-    if isinstance(inputs, sparse_tensor.SparseTensor):
+    # string_to_hash_bucket_fast uses FarmHash as hash function.
+    if ragged_tensor.is_ragged(inputs):
+      return ragged_functional_ops.map_flat_values(
+          string_ops.string_to_hash_bucket_fast,
+          inputs,
+          num_buckets=self._num_bins,
+          name='hash')
+    elif isinstance(inputs, sparse_tensor.SparseTensor):
       sparse_values = inputs.values
       sparse_hashed_values = string_ops.string_to_hash_bucket_fast(
-          sparse_values, self._num_bins, name='lookup')
+          sparse_values, self._num_bins, name='hash')
       return sparse_tensor.SparseTensor(
           indices=inputs.indices,
           values=sparse_hashed_values,
           dense_shape=inputs.dense_shape)
-    # string_to_hash_bucket_fast uses FarmHash as hash function.
-    return string_ops.string_to_hash_bucket_fast(
-        inputs, self._num_bins, name='lookup')
+    else:
+      return string_ops.string_to_hash_bucket_fast(
+          inputs, self._num_bins, name='hash')
 
   def compute_output_shape(self, input_shape):
     return input_shape

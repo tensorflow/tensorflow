@@ -36,12 +36,11 @@ void* LoadFunction(void* dl_handle, const char* name) {
   return func_pt;
 }
 
-#define LOAD_FUNCTION(dl_handle, method_name, hexagon_obj)           \
-  hexagon_obj.method_name = reinterpret_cast<method_name##_fn*>(     \
-      LoadFunction(dl_handle, #method_name));                        \
-  if ((hexagon_obj.method_name) == nullptr) {                        \
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "%s is NULL", (#method_name)); \
-    return hexagon_obj;                                              \
+#define LOAD_FUNCTION(dl_handle, method_name, hexagon_obj)       \
+  hexagon_obj.method_name = reinterpret_cast<method_name##_fn*>( \
+      LoadFunction(dl_handle, #method_name));                    \
+  if ((hexagon_obj.method_name) == nullptr) {                    \
+    successfully_loaded = false;                                 \
   }
 
 HexagonNN CreateNewHexagonInterface() {
@@ -54,6 +53,8 @@ HexagonNN CreateNewHexagonInterface() {
                     dlerror());
     return hexagon_nn;
   }
+  // The flag will be set to false if a function cannot be loaded.
+  bool successfully_loaded = true;
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_config, hexagon_nn);
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_init, hexagon_nn);
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_prepare, hexagon_nn);
@@ -75,7 +76,7 @@ HexagonNN CreateNewHexagonInterface() {
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_is_device_supported,
                 hexagon_nn);
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_version, hexagon_nn);
-  hexagon_nn.interface_loaded = true;
+  hexagon_nn.interface_loaded = successfully_loaded;
   return hexagon_nn;
 }
 

@@ -227,13 +227,9 @@ cc_test(
     ],
 )
 
-# TODO(b/148289189): Remove RUY_GEMV flag.
 cc_library(
     name = "tflite_with_ruy_enabled",
-    defines = [
-        "TFLITE_WITH_RUY",
-        "TFLITE_WITH_RUY_GEMV",
-    ],
+    defines = ["TFLITE_WITH_RUY"],
     visibility = ["//visibility:private"],
 )
 

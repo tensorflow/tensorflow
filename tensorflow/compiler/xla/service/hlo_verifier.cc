@@ -46,6 +46,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kFusion:
+    case HloOpcode::kCustomCall:
       return true;
     default:
       return false;

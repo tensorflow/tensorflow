@@ -1864,7 +1864,9 @@ class AUC(Metric):
       self.label_weights = None
 
     self._built = False
-    if not self.multi_label:
+    if self.multi_label:
+      self._num_labels = None
+    else:
       self._build(None)
 
   def _build(self, shape):
@@ -1873,8 +1875,10 @@ class AUC(Metric):
       if shape.ndims != 2:
         raise ValueError('`y_true` must have rank=2 when `multi_label` is '
                          'True. Found rank %s.' % shape.ndims)
+      self._num_labels = shape[1]
       variable_shape = tensor_shape.TensorShape(
-          [tensor_shape.Dimension(self.num_thresholds), shape[1]])
+          [tensor_shape.Dimension(self.num_thresholds), self._num_labels])
+
     else:
       variable_shape = tensor_shape.TensorShape(
           [tensor_shape.Dimension(self.num_thresholds)])
@@ -2101,8 +2105,13 @@ class AUC(Metric):
           name=self.name)
 
   def reset_states(self):
-    K.batch_set_value(
-        [(v, np.zeros((self.num_thresholds,))) for v in self.variables])
+    if self.multi_label:
+      K.batch_set_value([(v, np.zeros((self.num_thresholds, self._num_labels)))
+                         for v in self.variables])
+    else:
+      K.batch_set_value([
+          (v, np.zeros((self.num_thresholds,))) for v in self.variables
+      ])
 
   def get_config(self):
     if is_tensor_or_variable(self.label_weights):
