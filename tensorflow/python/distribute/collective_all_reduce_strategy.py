@@ -111,7 +111,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
 
   @classmethod
   def _from_local_devices(cls, devices):
-    """A convenience method to create an obejct with a list of devices."""
+    """A convenience method to create an object with a list of devices."""
     obj = cls()
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
