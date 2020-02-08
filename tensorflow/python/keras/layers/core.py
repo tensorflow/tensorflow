@@ -432,7 +432,8 @@ class Reshape(Layer):
   >>> model.output_shape
   (None, None, 2, 2)
 
-  >>> # To get rid of the `None` at the index 1 of `model.output_shape`
+  >>> # To get same output for `keras.layers.Reshape` and `tf.keras.layers.Reshape`
+  >>> # OR to get rid of the `None` at the index 1 of `model.output_shape`
   >>> # in above example you can use,
   >>> # `model.compute_output_shape(model.input_shape)`. As follows,
   >>> out_shape = model.compute_output_shape(model.input_shape)
