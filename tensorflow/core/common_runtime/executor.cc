@@ -1796,46 +1796,22 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     Entry* first_input = input_tensors + item.input_start;
     outputs.clear();
 
-    string msg;
-    if (nvtx::NvtxRangesEnabled() || nvtx::NvtxRangesDetailedEnabled()) {
-      if (nvtx::NvtxRangesDetailedEnabled()) {
-        std::vector<string> args_pieces;
-        for (int i = 0; i < item.num_inputs; ++i) {
-          if (i == 10) {
-            // Truncate long arg lists and indicate with an ending null value.
-            args_pieces.push_back("null");
-            break;
-          }
-          const auto& shape = GetTensorValueForDump(first_input[i])->shape();
-          string shape_str =
-              shape.unknown_rank() ? "null" : shape.DebugString();
-          args_pieces.push_back(
-              strings::StrCat("{\"name\":\"", item.kernel->def().input(i),
-                              "\",\"shape\":", shape_str, "}"));
-        }
-        std::vector<string> attrs_pieces;
-        const auto& attrs = item.kernel->def().attr();
-        for (auto it = attrs.begin(); it != attrs.end(); ++it) {
-          const string& key = it->first;
-          const AttrValue& value = it->second;
-          // Exclude types that aren't useful for profiling.
-          if (value.value_case() == AttrValue::kFunc ||
-              value.value_case() == AttrValue::kPlaceholder ||
-              value.value_case() == AttrValue::VALUE_NOT_SET) {
-            continue;
-          }
-          string value_str = nvtx::AttrValueToJson(value);
-          attrs_pieces.push_back(strings::StrCat("\"", key, "\":", value_str));
-        }
-        msg = strings::StrCat("{\"op\":\"", item.kernel->def().op(), "\",\"name\":\"",
-                              item.kernel->name(), "\",\"args\":[",
-                              str_util::Join(args_pieces, ","), "],\"attrs\":{",
-                              str_util::Join(attrs_pieces, ","), "}}");
-      } else {
-        msg = item.kernel->def().op() + ": " + item.kernel->name();
+    std::vector<const TensorShape*> input_shape_array;
+
+    if (nvtx::NvtxRangesDetailedEnabled()) {
+      for (int i = 0; i < item.num_inputs; ++i) {
+        input_shape_array.push_back(
+            &GetTensorValueForDump(first_input[i])->shape());
       }
     }
-    auto nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(msg, item.kernel->def().op());
+
+    auto nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
+            nvtx::MaybeGetNvtxDomainRangeMessage(
+                item.kernel,
+                item.num_inputs,
+                input_shape_array),
+            item.kernel->def().op()
+    );
 
     TensorReferenceVector accessed_tensors;
     DeviceContext* device_context = nullptr;

@@ -14,9 +14,60 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/nvtx_utils.h"
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/util/env_var.h"
+
 
 namespace tensorflow {
 namespace nvtx {
+
+namespace detail {
+
+inline unsigned hash_string(const char* c) {
+  enum { M = 33 };
+  unsigned hash = 5381;
+  while (*c) {
+    hash = hash * M + *c++;
+  }
+  return hash;
+}
+
+inline uint32_t get_color(unsigned hash) {
+  const uint32_t colors[] = {0x00aedb, 0xa200ff, 0xf47835, 0xd41243, 0x8ec127,
+                             0xffb3ba, 0xffdfba, 0xffffba, 0xbaffc9, 0xbae1ff,
+                             0xbbcbdb, 0x9ebd9e, 0xdd855c, 0xf1e8ca, 0x745151,
+                             0x2e4045, 0x83adb5, 0xc7bbc9, 0x5e3c58, 0xbfb5b2,
+                             0xff77aa, 0xaaff77, 0x77aaff, 0xffffff, 0x000000};
+  const int ncolor = sizeof(colors) / sizeof(uint32_t);
+  return colors[hash % ncolor];
+}
+
+inline nvtxRangeId_t nvtxRangeStartHelper(const char* msg,
+                                          const char* type,
+                                          nvtxDomainHandle_t nvtx_domain,
+                                          bool set_category = true) {
+  unsigned h = hash_string(type);
+  uint32_t color = get_color(h);
+  uint32_t category = set_category ? h : 0;
+
+  nvtxEventAttributes_t attrs = {};
+  attrs.version = NVTX_VERSION;
+  attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+  attrs.colorType = NVTX_COLOR_ARGB;
+  attrs.color = color;
+  attrs.messageType = NVTX_MESSAGE_TYPE_ASCII;
+  attrs.message.ascii = msg;
+  attrs.category = category;
+
+  if (nvtx_domain != NULL)
+    return ::nvtxDomainRangeStartEx(nvtx_domain, &attrs);
+
+  return ::nvtxRangeStartEx(&attrs);
+}
+
+}  // namespace detail
 
 const NvtxDomain& GetNvtxTensorFlowCoreDomain() {
   // Singleton because we want the same domain for the lifetime of the process.
@@ -159,6 +210,50 @@ string AttrValueToJson(const AttrValue& attr_value) {
       return "\"<Unknown AttrValue type>\"";
   }
   return "\"<Unknown AttrValue type>\"";  // Prevent missing return warning
+}
+
+string MaybeGetNvtxDomainRangeMessage(const OpKernel* kernel,
+                                      const int num_inputs,
+                                      std::vector<const TensorShape*> input_shape_array){
+  string msg;
+  if (NvtxRangesEnabled()) {
+    msg = kernel->def().op() + ": " + kernel->name();
+  }
+  else if (NvtxRangesDetailedEnabled()) {
+    std::vector<string> args_pieces;
+    for (int i = 0; i < num_inputs; ++i) {
+      if (i == 10) {
+        // Truncate long arg lists and indicate with an ending null value.
+        args_pieces.push_back("null");
+        break;
+      }
+      const TensorShape& shape = *(input_shape_array[i]);
+      string shape_str =
+          shape.unknown_rank() ? "null" : shape.DebugString();
+      args_pieces.push_back(
+          strings::StrCat("{\"name\":\"", kernel->def().input(i),
+                          "\",\"shape\":", shape_str, "}"));
+    }
+    std::vector<string> attrs_pieces;
+    const auto& attrs = kernel->def().attr();
+    for (auto it = attrs.begin(); it != attrs.end(); ++it) {
+    const string& key = it->first;
+    const AttrValue& value = it->second;
+    // Exclude types that aren't useful for profiling.
+    if (value.value_case() == AttrValue::kFunc ||
+        value.value_case() == AttrValue::kPlaceholder ||
+        value.value_case() == AttrValue::VALUE_NOT_SET) {
+      continue;
+    }
+    string value_str = AttrValueToJson(value);
+    attrs_pieces.push_back(strings::StrCat("\"", key, "\":", value_str));
+    }
+    msg = strings::StrCat("{\"op\":\"", kernel->def().op(), "\",\"name\":\"",
+                        kernel->name(), "\",\"args\":[",
+                        str_util::Join(args_pieces, ","), "],\"attrs\":{",
+                        str_util::Join(attrs_pieces, ","), "}}");
+  }
+  return msg;
 }
 
 nvtxRangeId_t MaybeNvtxDomainRangeStart(string node_op, string node_name) {
