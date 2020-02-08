@@ -141,9 +141,9 @@ PYBIND11_MODULE(_pywrap_utils, m) {
         True if `instance` is a `collections.Mapping`.
     )pbdoc");
     m.def(
-      "IsNestCompatibleMapping",
+      "IsMutableMapping",
       [](const py::handle& o) {
-        bool result = tensorflow::swig::IsNestCompatibleMapping(o.ptr());
+        bool result = tensorflow::swig::IsMutableMapping(o.ptr());
         if (PyErr_Occurred()) {
           throw py::error_already_set();
         }

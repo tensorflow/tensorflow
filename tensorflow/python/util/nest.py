@@ -122,7 +122,7 @@ _is_mapping_view = _pywrap_utils.IsMappingView
 _is_attrs = _pywrap_utils.IsAttrs
 _is_composite_tensor = _pywrap_utils.IsCompositeTensor
 _is_type_spec = _pywrap_utils.IsTypeSpec
-_is_mutable_mapping = _pywrap_utils.IsNestCompatibleMapping
+_is_mutable_mapping = _pywrap_utils.IsMutableMapping
 
 
 def _sequence_like(instance, args):

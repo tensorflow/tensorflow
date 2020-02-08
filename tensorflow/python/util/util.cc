@@ -221,7 +221,10 @@ int IsMappingHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
-int IsNestCompatibleMappingHelper(PyObject* o) {
+// Returns 1 if `o` is considered a mutable mapping for the purposes of Flatten().
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsMutableMappingHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     return IsInstanceOfRegisteredType(to_check, "MutableMapping");
   });
