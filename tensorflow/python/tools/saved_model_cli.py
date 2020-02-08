@@ -28,7 +28,6 @@ import collections
 import os
 import re
 import sys
-import warnings
 
 import numpy as np
 import six
@@ -44,10 +43,19 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import app  # pylint: disable=unused-import
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.tools import saved_model_aot_compile
 from tensorflow.python.tools import saved_model_utils
+
+
+_XLA_DEBUG_OPTIONS_URL = (
+    'https://github.com/tensorflow/tensorflow/blob/master/'
+    'tensorflow/compiler/xla/debug_options_flags.cc')
+
 
 # Set of ops to blacklist.
 _OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
@@ -653,7 +661,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
     if variable_name:
       # if file contains a single ndarray, ignore the input name
       if isinstance(data, np.ndarray):
-        warnings.warn(
+        logging.warn(
             'Input file %s contains a single ndarray. Name key \"%s\" ignored.'
             % (filename, variable_name))
         tensor_key_feed_dict[input_tensor_key] = data
@@ -680,7 +688,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   # When input is a python expression:
   for input_tensor_key, py_expr_evaluated in input_exprs.items():
     if input_tensor_key in tensor_key_feed_dict:
-      warnings.warn(
+      logging.warn(
           'input_key %s has been specified with both --inputs and --input_exprs'
           ' options. Value in --input_exprs will be used.' % input_tensor_key)
     tensor_key_feed_dict[input_tensor_key] = py_expr_evaluated
@@ -688,7 +696,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   # When input is a tf.Example:
   for input_tensor_key, example in input_examples.items():
     if input_tensor_key in tensor_key_feed_dict:
-      warnings.warn(
+      logging.warn(
           'input_key %s has been specified in multiple options. Value in '
           '--input_examples will be used.' % input_tensor_key)
     tensor_key_feed_dict[input_tensor_key] = example
@@ -776,20 +784,34 @@ def convert_with_tensorrt(args):
   converter.save(output_saved_model_dir=args.output_dir)
 
 
-def create_parser():
-  """Creates a parser that parse the command line arguments.
+def aot_compile_cpu(args):
+  """Function triggered by aot_compile_cpu command.
 
-  Returns:
-    A namespace parsed from command line arguments.
+  Args:
+    args: A namespace parsed from command line.
   """
-  parser = argparse.ArgumentParser(
-      description='saved_model_cli: Command-line interface for SavedModel')
-  parser.add_argument('-v', '--version', action='version', version='0.1.0')
+  checkpoint_path = (
+      args.checkpoint_path
+      or os.path.join(args.dir, 'variables/variables'))
+  if not args.variables_to_feed:
+    variables_to_feed = []
+  elif args.variables_to_feed.lower() == 'all':
+    variables_to_feed = None  # We will identify them after.
+  else:
+    variables_to_feed = args.variables_to_feed.split(',')
+  saved_model_aot_compile.aot_compile_cpu_meta_graph_def(
+      checkpoint_path=checkpoint_path,
+      meta_graph_def=saved_model_utils.get_meta_graph_def(
+          args.dir, args.tag_set),
+      signature_def_key=args.signature_def_key,
+      variables_to_feed=variables_to_feed,
+      output_prefix=args.output_prefix,
+      target_triple=args.target_triple,
+      cpp_class=args.cpp_class)
 
-  subparsers = parser.add_subparsers(
-      title='commands', description='valid commands', help='additional help')
 
-  # show command
+def add_show_subparser(subparsers):
+  """Add parser for `show`."""
   show_msg = (
       'Usage examples:\n'
       'To show all tag-sets in a SavedModel:\n'
@@ -833,7 +855,9 @@ def create_parser():
       help='key of SignatureDef to display input(s) and output(s) for')
   parser_show.set_defaults(func=show)
 
-  # run command
+
+def add_run_subparser(subparsers):
+  """Add parser for `run`."""
   run_msg = ('Usage example:\n'
              'To run input tensors from files through a MetaGraphDef and save'
              ' the output tensors to files:\n'
@@ -909,7 +933,9 @@ def create_parser():
            'This option should be only used if the worker is a TPU job.')
   parser_run.set_defaults(func=run)
 
-  # scan command
+
+def add_scan_subparser(subparsers):
+  """Add parser for `scan`."""
   scan_msg = ('Usage example:\n'
               'To scan for blacklisted ops in SavedModel:\n'
               '$saved_model_cli scan --dir /tmp/saved_model\n'
@@ -929,7 +955,9 @@ def create_parser():
       help='tag-set of graph in SavedModel to scan, separated by \',\'')
   parser_scan.set_defaults(func=scan)
 
-  # convert command
+
+def add_convert_subparser(subparsers):
+  """Add parser for `convert`."""
   convert_msg = ('Usage example:\n'
                  'To convert the SavedModel to one that have TensorRT ops:\n'
                  '$saved_model_cli convert \\\n'
@@ -983,10 +1011,131 @@ def create_parser():
             'in a TensorRT node'))
   parser_convert_with_tensorrt.set_defaults(func=convert_with_tensorrt)
 
+
+def add_aot_compile_cpu_subparser(subparsers):
+  """Add parser for `aot_compile_cpu`."""
+  compile_msg = '\n'.join(
+      ['Usage example:',
+       'To compile a SavedModel signature via (CPU) XLA AOT:',
+       '$saved_model_cli aot_compile_cpu \\',
+       '   --dir /tmp/saved_model \\',
+       '   --tag_set serve \\',
+       '   --output_dir /tmp/saved_model_xla_aot',
+       '', '',
+       'Note: Additional XLA compilation options are available by setting the ',
+       'XLA_FLAGS environment variable.  See the XLA debug options flags for ',
+       'all the options: ',
+       '  {}'.format(_XLA_DEBUG_OPTIONS_URL),
+       '',
+       'For example, to disable XLA fast math when compiling:',
+       '',
+       'XLA_FLAGS="--xla_cpu_enable_fast_math=false" $saved_model_cli '
+       'aot_compile_cpu ...',
+       '',
+       'Some possibly useful flags:',
+       '  --xla_cpu_enable_fast_math=false',
+       '  --xla_cpu_multi_thread_eigen=false',
+       '  --xla_force_host_platform_device_count=<num threads>',
+       '    (useful in conjunction with disabling eigen multi threading)'
+      ])
+
+  parser_compile = subparsers.add_parser(
+      'aot_compile_cpu',
+      description=compile_msg,
+      formatter_class=argparse.RawTextHelpFormatter)
+  parser_compile.add_argument(
+      '--dir',
+      type=str,
+      required=True,
+      help='directory containing the SavedModel to convert')
+  parser_compile.add_argument(
+      '--output_prefix',
+      type=str,
+      required=True,
+      help=('output directory + filename prefix for the resulting header(s) '
+            'and object file(s)'))
+  parser_compile.add_argument(
+      '--tag_set',
+      type=str,
+      required=True,
+      help='tag-set of graph in SavedModel to convert, separated by \',\'')
+  parser_compile.add_argument(
+      '--signature_def_key',
+      type=str,
+      default=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+      help=('signature_def key to use.  '
+            'default: DEFAULT_SERVING_SIGNATURE_DEF_KEY'))
+  parser_compile.add_argument(
+      '--target_triple',
+      type=str,
+      default='x86_64-pc-linux',
+      help=('Target triple for LLVM during AOT compilation.  Examples: '
+            'x86_64-none-darwin, x86_64-apple-ios, arm64-none-ios, '
+            'armv7-none-android.  More examples are available in tfcompile.bzl '
+            'in the tensorflow codebase.'))
+  parser_compile.add_argument(
+      '--checkpoint_path',
+      type=str,
+      default=None,
+      help='Custom checkpoint to use (default: use the SavedModel variables)')
+  parser_compile.add_argument(
+      '--cpp_class',
+      type=str,
+      required=True,
+      help=('The name of the generated C++ class, wrapping the generated '
+            'function.  The syntax of this flag is '
+            '[[<optional_namespace>::],...]<class_name>.  This mirrors the '
+            'C++ syntax for referring to a class, where multiple namespaces '
+            'may precede the class name, separated by double-colons.  '
+            'The class will be generated in the given namespace(s), or if no '
+            'namespaces are given, within the global namespace.'))
+  parser_compile.add_argument(
+      '--variables_to_feed',
+      type=str,
+      default='',
+      help=('The names of variables that will be fed into the network.  '
+            'Options are: empty (default; all variables are frozen, none may '
+            'be fed), \'all\' (all variables may be fed), or a '
+            'comma-delimited list of names of variables that may be fed.  In '
+            'the last case, the non-fed variables will be frozen in the graph.')
+  )
+
+  parser_compile.set_defaults(func=aot_compile_cpu)
+
+
+def create_parser():
+  """Creates a parser that parse the command line arguments.
+
+  Returns:
+    A namespace parsed from command line arguments.
+  """
+  parser = argparse.ArgumentParser(
+      description='saved_model_cli: Command-line interface for SavedModel')
+  parser.add_argument('-v', '--version', action='version', version='0.1.0')
+
+  subparsers = parser.add_subparsers(
+      title='commands', description='valid commands', help='additional help')
+
+  # show command
+  add_show_subparser(subparsers)
+
+  # run command
+  add_run_subparser(subparsers)
+
+  # scan command
+  add_scan_subparser(subparsers)
+
+  # tensorrt convert command
+  add_convert_subparser(subparsers)
+
+  # aot_compile_cpu command
+  add_aot_compile_cpu_subparser(subparsers)
+
   return parser
 
 
 def main():
+  logging.set_verbosity(logging.INFO)
   parser = create_parser()
   args = parser.parse_args()
   if not hasattr(args, 'func'):

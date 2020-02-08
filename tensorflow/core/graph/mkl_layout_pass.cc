@@ -701,10 +701,12 @@ rinfo_.push_back({csinfo_.tanh_grad,
     rinfo_.push_back({csinfo_.sub, mkl_op_registry::GetMklOpName(csinfo_.sub),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
+#endif  // !ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.transpose,
                       mkl_op_registry::GetMklOpName(csinfo_.transpose),
                       CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
 
+#ifndef ENABLE_MKLDNN_V1
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
     wsinfo_.push_back({csinfo_.max_pool, csinfo_.max_pool_grad, 0, 1, 1, 3});

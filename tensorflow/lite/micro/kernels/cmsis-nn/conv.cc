@@ -37,6 +37,10 @@ constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kMaxChannels = 256;
 
+// Conv is quantized along dimension 0:
+// https://www.tensorflow.org/lite/performance/quantization_spec
+constexpr int kConvQuantizedDimension = 0;
+
 const int kTensorNotAllocated = -1;
 
 struct OpData {
@@ -94,13 +98,14 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     const TfLiteTensor* bias =
         GetOptionalInputTensor(context, node, kBiasTensor);
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+    int num_channels = filter->dims->data[kConvQuantizedDimension];
 
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier,
-        reinterpret_cast<int*>(data->per_channel_output_shift)));
+        reinterpret_cast<int*>(data->per_channel_output_shift), num_channels));
   }
   return kTfLiteOk;
 }
@@ -162,9 +167,10 @@ TfLiteStatus EvalQuantizedPerChannel(
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
 
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
-
+#if defined(__ARM_FEATURE_DSP)
   RuntimeShape filter_shape = GetTensorShape(filter);
   RuntimeShape input_shape = GetTensorShape(input);
   RuntimeShape output_shape = GetTensorShape(output);
@@ -308,11 +314,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
-    // Conv is quantized along dimension 0:
-    // https://www.tensorflow.org/lite/performance/quantization_spec
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
-                      affine_quantization->scale->size);
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+    TF_LITE_ENSURE(context,
+                   affine_quantization->scale->size == 1 ||
+                       affine_quantization->scale->size ==
+                           filter->dims->data[kConvQuantizedDimension]);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                       affine_quantization->zero_point->size);
   }
 

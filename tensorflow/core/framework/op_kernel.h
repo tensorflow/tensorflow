@@ -195,35 +195,15 @@ class OpKernel {
   Status InputRange(StringPiece input_name, int* start, int* stop) const;
   Status OutputRange(StringPiece output_name, int* start, int* stop) const;
 
-  // We allow legacy scalars within Google up until GraphDef version 6.
-  // TODO(irving): Remove when we can drop support for GraphDef version 5.
-  bool allow_legacy_scalars() const {
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-    return graph_def_version_ < 6;
-#else
-    return false;
-#endif
-  }
-
-  // Allow either scalars or (if allowing legacy scalars) shape (1,).
-  bool IsLegacyScalar(const TensorShape& shape) const {
-    return shape.dims() == 0 || (allow_legacy_scalars() && shape.dims() == 1 &&
-                                 shape.dim_size(0) == 1);
-  }
-
-  // Allow rank 1 or (if allowing legacy scalars) rank 0.
-  bool IsLegacyVector(const TensorShape& shape) const {
-    return shape.dims() == 1 || (allow_legacy_scalars() && shape.dims() == 0);
-  }
-
-  // Turn a shape Tensor into a TensorShape
-  // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
-  Status MakeShape(const Tensor& shape, TensorShape* out) const;
-
-  static int DeviceNumaNode(const DeviceBase* device);
-
   // Returns `true` if and only if this kernel uses deferred execution.
   bool is_deferred() const { return is_deferred_; }
+
+  // Returns a trace string for current computation, op name/type and input
+  // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
+  // should use the default implementation.
+  // Override this function to add OpKernel specific attributes that are
+  // necessary for cost analysis.
+  virtual string TraceString(OpKernelContext* ctx, bool verbose);
 
  private:
   const std::unique_ptr<const NodeDef> def_;

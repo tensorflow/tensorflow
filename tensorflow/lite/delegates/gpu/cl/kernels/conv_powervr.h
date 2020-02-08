@@ -54,12 +54,14 @@ class ConvPowerVR : public GPUOperation {
     LOCAL_MEM_ASYNC_SUBGROUP,  // we use it for PowerVR with workgroup size = 32
     LOCAL_MEM_BY_THREADS,
     GLOBAL_MEM,
+    CONSTANT_MEM,
   };
 
   struct ConvParams {
     int3 block_size;
     int3 work_group_size;
     int3 work_group_launch_order;
+    bool fixed_work_group_size;
     int src_depth_loop_size;
     WeightsUploadType weights_upload_type;
     bool x_kernel_is_1;

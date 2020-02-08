@@ -26,6 +26,7 @@ load("//third_party/FXdiv:workspace.bzl", FXdiv = "repo")
 load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/clog:workspace.bzl", clog = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
+load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
@@ -48,6 +49,7 @@ def initialize_third_party():
     aws()
     clog()
     cpuinfo()
+    dlpack()
     flatbuffers()
     hexagon_nn()
     highwayhash()
@@ -142,11 +144,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "24b6285c679dece8805d2a7d63cc567413b7670279bc0c66a99e555123fe4700",
-        strip_prefix = "XNNPACK-9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5",
+        sha256 = "6d89aa7b967201f262211e0819c23fa079dac5a6d2a00e17da5f28b420ee213b",
+        strip_prefix = "XNNPACK-022c659288e3522bf0132d4a9464b4cfd88c20dc",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5.zip",
-            "https://github.com/google/XNNPACK/archive/9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/022c659288e3522bf0132d4a9464b4cfd88c20dc.zip",
+            "https://github.com/google/XNNPACK/archive/022c659288e3522bf0132d4a9464b4cfd88c20dc.zip",
         ],
     )
 
@@ -195,11 +197,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "e81b91b22f1c7155deea4c457548ecdbd698cfed493444fceb7f9b5d797bb9a9",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-b9362fb8f76fbba805b56afbc0f5de0a279631b5",
+        sha256 = "71905cca5553804beee85e9ab8b254931d3cbeda8df1a40e5af3773f5b657179",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-3fda850c46e5e589668a85d89299433e0686eec9",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/b9362fb8f76fbba805b56afbc0f5de0a279631b5/eigen-b9362fb8f76fbba805b56afbc0f5de0a279631b5.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/b9362fb8f76fbba805b56afbc0f5de0a279631b5/eigen-b9362fb8f76fbba805b56afbc0f5de0a279631b5.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/3fda850c46e5e589668a85d89299433e0686eec9/eigen-3fda850c46e5e589668a85d89299433e0686eec9.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/3fda850c46e5e589668a85d89299433e0686eec9/eigen-3fda850c46e5e589668a85d89299433e0686eec9.tar.gz",
         ],
     )
 
@@ -383,12 +385,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "gast_archive",
         build_file = clean_dep("//third_party:gast.BUILD"),
-        sha256 = "5c7617f1f6c8b8b426819642b16b9016727ddaecd16af9a07753e537eba8a3a5",
-        strip_prefix = "gast-0.3.2",
+        sha256 = "b881ef288a49aa81440d2c5eb8aeefd4c2bb8993d5f50edae7413a85bfdb3b57",
+        strip_prefix = "gast-0.3.3",
         system_build_file = clean_dep("//third_party/systemlibs:gast.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/files.pythonhosted.org/packages/1f/04/4e36c33f8eb5c5b6c622a1f4859352a6acca7ab387257d4b3c191d23ec1d/gast-0.3.2.tar.gz",
-            "https://files.pythonhosted.org/packages/1f/04/4e36c33f8eb5c5b6c622a1f4859352a6acca7ab387257d4b3c191d23ec1d/gast-0.3.2.tar.gz",
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
+            "https://files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
         ],
     )
 
@@ -593,8 +595,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "711a17afaff276f816aca5dc4a68fae4e17a2c12"
-    LLVM_SHA256 = "d58ca492e3311d3b305716c5d6b4047dec90656723db4ddba8156c4a63256498"
+    LLVM_COMMIT = "516f6f83ce6706cea1129e5dc8ecf96d93dc3ec4"
+    LLVM_SHA256 = "9d644b0ba093692977fb79022820a8acc7fe4006b096b35ab534a702df0451ff"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

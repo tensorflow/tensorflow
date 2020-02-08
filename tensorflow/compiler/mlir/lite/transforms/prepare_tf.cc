@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unroll_batch_matmul.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -69,11 +70,19 @@ namespace TFL {
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
+class PrepareTFPass : public FunctionPass<PrepareTFPass> {
+ public:
+  explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
+  explicit PrepareTFPass(bool unfold_batch_matmul)
+      : unfold_batch_matmul_(unfold_batch_matmul) {}
   void runOnFunction() override;
+
+ private:
+  bool unfold_batch_matmul_;
 };
 
 // TODO(fengliuai): move this rule to PreparePatterns.td
+// TODO(fengliuai): reuse the quantization/tensorflow/tf_to_quant pass.
 // TODO(b/140968741): propagate the sign from the command line. Currently all
 // the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
 // actually INT8.
@@ -142,9 +151,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
         rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
-    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_value,
-                                          max_value, quant_dim, num_bits,
-                                          narrow_range, /*is_signed=*/false);
+    TypeAttr qtype = quant::GetQuantizedTypeAttr(
+        rewriter, res_type, min_value, max_value, quant_dim, num_bits,
+        narrow_range, /*is_signed=*/false);
     if (!qtype) this->matchFailure();
 
     // Finally, use the quantization parameter to create the quantize and
@@ -496,6 +505,12 @@ void PrepareTFPass::runOnFunction() {
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+
+  // This pattern will try to identify and optimize for dilated convolution.
+  // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
+  // replaced with a single Conv op with dilation parameter.
+  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
+                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
   TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
@@ -508,17 +523,21 @@ void PrepareTFPass::runOnFunction() {
   // will be applied.
   patterns.clear();
   TFL::populateWithGenerated(ctx, &patterns);
-  patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
+  if (unfold_batch_matmul_) {
+    patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+                    ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
+  }
+  patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
+                  ConvertTFStridedSlice>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass() {
-  return std::make_unique<PrepareTFPass>();
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass(
+    bool unfold_batch_matmul) {
+  return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
 }
 
 static PassRegistration<PrepareTFPass> pass(

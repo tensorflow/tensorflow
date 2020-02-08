@@ -1,7 +1,7 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
-load("//tensorflow:tensorflow.bzl", "if_windows", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "if_windows", "if_xla_available", "transitive_hdrs")
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
@@ -82,11 +82,12 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
-    "//tensorflow/python/keras:model_subclassing_test_util",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+    "//tensorflow/python/keras/tests:model_subclassing_test_util",
+    "//tensorflow/python/keras/tests:model_architectures",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
     "//tensorflow/python/kernel_tests/random:util",
@@ -104,7 +105,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:generate_lib",
     "//tensorflow/tools/docs:parser",
     "//tensorflow/tools/docs:py_guide_parser",
-]
+] + if_xla_available([
+    "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+])
 
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
@@ -192,7 +195,7 @@ filegroup(
         "//conditions:default": [],
     }) + select({
         "//tensorflow:with_numa_support": [
-            "//third_party/hwloc:COPYING",
+            "@hwloc//:COPYING",
         ],
         "//conditions:default": [],
     }) + if_cuda([

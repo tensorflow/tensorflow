@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,10 +36,10 @@ class Adam(optimizer_v2.OptimizerV2):
   adaptive estimation of first-order and second-order moments.
   According to the paper
   [Adam: A Method for Stochastic Optimization. Kingma et al.,
-  2014](http://arxiv.org/abs/1412.6980),
-   the method is "*computationally efficient, has little memory
-  requirement, invariant to diagonal rescaling of gradients, and is well suited
-  for problems that are large in terms of data/parameters*".
+  2014](http://arxiv.org/abs/1412.6980), the method is "*computationally
+  efficient, has little memory requirement, invariant to diagonal rescaling of
+  gradients, and is well suited for problems that are large in terms of
+  data/parameters*".
 
   For AMSGrad see [On The Convergence Of Adam And Beyond.
   Reddi et al., 5-8](https://openreview.net/pdf?id=ryQu7f-RZ).
@@ -56,44 +56,35 @@ class Adam(optimizer_v2.OptimizerV2):
     r"""Construct a new Adam optimizer.
 
     If amsgrad = False:
-      Initialization:
 
-      $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
-      $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
-      $$t := 0 \text{(Initialize timestep)}$$
+      initialize $m_0$ as 1st moment vector
+      initialize $v_0$ as 2nd moment vector
 
-      The update rule for `variable` with gradient `g` uses an optimization
+      The update rule for $\theta$ with gradient $g$ uses an optimization
       described at the end of section 2 of the paper:
 
-      $$t := t + 1$$
-      $$\text{lr}_t := \mathrm{learning_rate} *
+      $$lr_t = \mathrm{learning\_rate} *
         \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
-
-      $$m_t := \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
-      $$v_t := \beta_2 * v_{t-1} + (1 - \beta_2) * g * g$$
-      $$\text{variable} := \text{variable} -
-        lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
+      $$m_t = \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
+      $$v_t = \beta_2 * v_{t-1} + (1 - \beta_2) * g^2$$
+      $$\theta_t = \theta_{t-1} - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
 
     If amsgrad = True:
-      Initialization:
 
-      $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
-      $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
-      $$\hat{v}_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
-      $$t := 0 \text{(Initialize timestep)}$$
+      initialize $m_0$ as 1st moment vector
+      initialize $v_0$ as 2nd moment vector
+      initialize $\hat{v}_0$ as 2nd moment vector
 
-      The update rule for `variable` with gradient `g` uses an optimization
+      The update rule for $\theta$ with gradient $g$ uses an optimization
       described at the end of section 2 of the paper:
 
-      $$t := t + 1$$
-      $$\text{lr}_t := \mathrm{learning_rate} *
+      $$lr_t = \mathrm{learning\_rate} *
         \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
 
-      $$m_t := \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
-      $$v_t := \beta_2 * v_{t-1} + (1 - \beta_2) * g * g$$
-      $$\hat{v}_t := \max(\hat{v}_{t-1}, v_t)$$
-      $$\text{variable} := \text{variable} -
-        \text{lr}_t * m_t / (\sqrt{\hat{v}_t} + \epsilon)$$
+      $$m_t = \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
+      $$v_t = \beta_2 * v_{t-1} + (1 - \beta_2) * g^2$$
+      $$\hat{v}_t = \max(\hat{v}_{t-1}, v_t)$$
+      $$\theta_t = \theta_{t-1} - lr_t * m_t / (\sqrt{\hat{v}_t} + \epsilon)$$
 
     The default value of 1e-7 for epsilon might not be a good default in
     general. For example, when training an Inception network on ImageNet a
@@ -111,18 +102,33 @@ class Adam(optimizer_v2.OptimizerV2):
     behavior (in contrast to some momentum implementations which ignore momentum
     unless a variable slice was actually used).
 
+    Usage:
+
+    >>> opt = tf.keras.optimizers.Adam(learning_rate=0.1)
+    >>> var1 = tf.Variable(10.0)
+    >>> loss = lambda: (var1 ** 2)/2.0       # d(loss)/d(var1) == var1
+    >>> step_count = opt.minimize(loss, [var1]).numpy()
+    >>> # The first step is `-learning_rate*sign(grad)`
+    >>> var1.numpy()
+    9.9
+
     Args:
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-      beta_1: A float value or a constant float tensor. The exponential decay
-        rate for the 1st moment estimates.
-      beta_2: A float value or a constant float tensor. The exponential decay
-        rate for the 2nd moment estimates.
+        `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
+        that takes no arguments and returns the actual value to use, The
+        learning rate. Defaults to 0.001.
+      beta_1: A float value or a constant float tensor, or a callable
+        that takes no arguments and returns the actual value to use. The
+        exponential decay rate for the 1st moment estimates. Defaults to 0.9.
+      beta_2: A float value or a constant float tensor, or a callable
+        that takes no arguments and returns the actual value to use, The
+        exponential decay rate for the 2nd moment estimates. Defaults to 0.999.
       epsilon: A small constant for numerical stability. This epsilon is
         "epsilon hat" in the Kingma and Ba paper (in the formula just before
-        Section 2.1), not the epsilon in Algorithm 1 of the paper.
-      amsgrad: boolean. Whether to apply AMSGrad variant of this algorithm from
-        the paper "On the Convergence of Adam and beyond".
+        Section 2.1), not the epsilon in Algorithm 1 of the paper. Defaults to
+        1e-7.
+      amsgrad: Boolean. Whether to apply AMSGrad variant of this algorithm from
+        the paper "On the Convergence of Adam and beyond". Defaults to `False`.
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adam".
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
@@ -131,12 +137,6 @@ class Adam(optimizer_v2.OptimizerV2):
         allow time inverse decay of learning rate. `lr` is included for backward
         compatibility, recommended to use `learning_rate` instead.
 
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate`, `beta_1`, `beta_2`,
-    and `epsilon` can each be a callable that takes no arguments and
-    returns the actual value to use. This can be useful for changing these
-    values across different invocations of optimizer functions.
-    @end_compatibility
     """
 
     super(Adam, self).__init__(name, **kwargs)

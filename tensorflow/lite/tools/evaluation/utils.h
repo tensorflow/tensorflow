@@ -62,7 +62,7 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
 #endif
 
 Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
-    const std::string& library_directory_path);
+    const std::string& library_directory_path, bool profiling);
 
 }  // namespace evaluation
 }  // namespace tflite

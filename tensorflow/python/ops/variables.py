@@ -584,8 +584,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the assignment has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -602,8 +602,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the addition has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -620,8 +620,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the subtraction has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -634,8 +634,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -651,8 +650,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered addition has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -669,8 +667,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered maximization has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -687,8 +684,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered minimization has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -704,8 +700,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered multiplication has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -721,8 +716,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered division has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -738,8 +732,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -785,8 +778,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -836,8 +828,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -884,8 +875,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered addition has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -932,8 +922,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
     """
     raise NotImplementedError
 

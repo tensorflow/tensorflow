@@ -36,13 +36,13 @@ void* LoadAndInitializeDriver(const char* shared_lib,
 
   PrototypeTpuDriver_Initialize* initialize_fn;
   *(void**)(&initialize_fn) = dlsym(handle, "TpuDriver_Initialize");
-  initialize_fn(driver_fn);
+  initialize_fn(driver_fn, true);
 
   return handle;
 }
 
 int main(int argc, char** argv) {
-  char* api_path = "./libtpu.so";
+  char* api_path = "libtpu.so";
   if (argc == 2) {
     api_path = argv[1];
   }
@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
         /*eventc=*/1, /*eventv=*/allocate_buf_b_events);
 
   fprintf(stdout, "------ Going to Execute a TPU program ------\n");
-  DeviceAssignment device_assignment = {1, 1};
+  DeviceAssignment device_assignment = {NULL, 0};
   TpuBufferHandle* input_buffer_handle[] = {buf_a_handle, buf_b_handle};
   TpuBufferHandle* output_buffer_handle[] = {buf_sum_handle};
   TpuEvent* transfer_events[] = {transfer_ev1, transfer_ev2};

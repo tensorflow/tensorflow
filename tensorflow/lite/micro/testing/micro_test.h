@@ -92,7 +92,7 @@ extern tflite::ErrorReporter* reporter;
 
 // TODO(petewarden): I'm going to hell for what I'm doing to this poor for loop.
 #define TF_LITE_MICRO_TEST(name)                                           \
-  micro_test::reporter->Report("Testing %s", #name);                       \
+  micro_test::reporter->Report("Testing " #name);                          \
   for (micro_test::is_test_complete = false,                               \
       micro_test::did_test_fail = false;                                   \
        !micro_test::is_test_complete; micro_test::is_test_complete = true, \
@@ -191,7 +191,7 @@ extern tflite::ErrorReporter* reporter;
 
 #define TF_LITE_MICRO_EXPECT_TRUE(x)                                   \
   do {                                                                 \
-    if (!x) {                                                          \
+    if (!(x)) {                                                        \
       micro_test::reporter->Report(#x " was not true failed at %s:%d", \
                                    __FILE__, __LINE__);                \
       micro_test::did_test_fail = true;                                \

@@ -66,13 +66,13 @@ class FilteredPassManager : public llvm::legacy::PassManager {
   explicit FilteredPassManager(bool disable_expensive_passes)
       : disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
-    if (disable_expensive_passes_) {
-      llvm::StringRef PassName = p->getPassName();
-      if (PassName.contains("Unroll loops")) {
-        return;
-      }
+    bool pass_disabled =
+        disable_expensive_passes_ && p->getPassName().contains("Unroll loops");
+    if (!pass_disabled) {
+      llvm::legacy::PassManager::add(p);
+    } else {
+      delete p;
     }
-    llvm::legacy::PassManager::add(p);
   }
 
  private:

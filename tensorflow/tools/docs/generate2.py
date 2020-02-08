@@ -1,3 +1,4 @@
+# lint as: python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,15 +41,14 @@ import tensorflow as tf
 from tensorflow_docs.api_generator import doc_controls
 from tensorflow_docs.api_generator import doc_generator_visitor
 from tensorflow_docs.api_generator import generate_lib
-from tensorflow_docs.api_generator import parser
+
 
 import tensorboard
 import tensorflow_estimator
+from tensorflow.python.framework import ops
+
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
-
-# Use tensorflow's `tf_inspect`, which is aware of `tf_decorator`.
-parser.inspect = tf_inspect
 
 # `tf` has an `__all__` that doesn't list important things like `keras`.
 # The doc generator recognizes `__all__` as the list of public symbols.
@@ -88,30 +88,58 @@ tf.__doc__ = """
   ```
   """
 
-_raw_ops_doc = textwrap.dedent("""\n
-  Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops. See \
-  [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
-  for details. Unless you are library writer, you likely do not need to use these
-  ops directly.""")
 
-tf.raw_ops.__doc__ += _raw_ops_doc
+def generate_raw_ops_doc():
+  """Generates docs for `tf.raw_ops`."""
+
+  warning = textwrap.dedent("""\n
+    Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops.
+    See [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
+    for details. Unless you are library writer, you likely do not need to use
+    these ops directly.""")
+
+  table_header = textwrap.dedent("""
+
+      | Op Name | Has Gradient |
+      |---------|:------------:|""")
+
+  parts = [tf.raw_ops.__doc__, warning, table_header]
+
+  for op_name in sorted(dir(tf.raw_ops)):
+    try:
+      ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
+      has_gradient = "\N{HEAVY CHECK MARK}\N{VARIATION SELECTOR-16}"
+    except LookupError:
+      has_gradient = "\N{CROSS MARK}"
+
+    parts.append("| {} | {} |".format(op_name, has_gradient))
+
+  return "\n".join(parts)
+
+
+tf.raw_ops.__doc__ = generate_raw_ops_doc()
 
 
 # The doc generator isn't aware of tf_export.
 # So prefix the score tuples with -1 when this is the canonical name, +1
 # otherwise. The generator chooses the name with the lowest score.
-class TfExportAwareDocGeneratorVisitor(doc_generator_visitor.DocGeneratorVisitor
-                                      ):
-  """A `tf_export` aware doc_visitor."""
+class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
+  """A `tf_export`, `keras_export` and `estimator_export` aware doc_visitor."""
 
   def _score_name(self, name):
-    canonical = tf_export.get_canonical_name_for_symbol(self._index[name])
+    all_exports = [tf_export.TENSORFLOW_API_NAME, tf_export.ESTIMATOR_API_NAME]
+
+    for api_name in all_exports:
+      canonical = tf_export.get_canonical_name_for_symbol(
+          self._index[name], api_name=api_name)
+      if canonical is not None:
+        break
 
     canonical_score = 1
     if canonical is not None and name == "tf." + canonical:
       canonical_score = -1
 
-    scores = super(TfExportAwareDocGeneratorVisitor, self)._score_name(name)
+    scores = super()._score_name(name)
     return (canonical_score,) + scores
 
 
@@ -190,7 +218,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       search_hints=search_hints,
       code_url_prefix=code_url_prefixes,
       site_path=FLAGS.site_path,
-      visitor_cls=TfExportAwareDocGeneratorVisitor,
+      visitor_cls=TfExportAwareVisitor,
       private_map=_PRIVATE_MAP)
 
   doc_generator.build(output_dir)

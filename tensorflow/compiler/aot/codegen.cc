@@ -423,8 +423,7 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
       GenNameToIndexCode(config.fetch(), opts.gen_name_to_index);
   const string include_xla_data_proto =
       opts.gen_program_shape
-          ?
-          R"(#include "tensorflow/compiler/xla/xla_data.pb.h")"
+          ? R"(#include "tensorflow/compiler/xla/xla_data.pb.h")"
           : "";
 
   const string include_hlo_profile_printer_data_proto =

@@ -284,11 +284,13 @@ inline void FullyConnected(
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.rows = input_rows;
   rhs_params.cols = input_shape.FlatSize() / input_rows;
+  rhs_params.cacheable = params.rhs_cacheable;
   TFLITE_DCHECK_EQ(input_shape.FlatSize(), rhs_params.rows * rhs_params.cols);
   cpu_backend_gemm::MatrixParams<float> lhs_params;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.cols = weights_shape.Dims(dims_count - 1);
   lhs_params.rows = FlatSizeSkipDim(weights_shape, dims_count - 1);
+  lhs_params.cacheable = params.lhs_cacheable;
   cpu_backend_gemm::MatrixParams<float> dst_params;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.rows = output_shape.Dims(output_shape.DimensionsCount() - 1);
@@ -341,11 +343,13 @@ inline void FullyConnected(
   lhs_params.cols = filter_cols;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = -filter_offset;
+  lhs_params.cacheable = params.lhs_cacheable;
   cpu_backend_gemm::MatrixParams<uint8> rhs_params;
   rhs_params.rows = filter_cols;
   rhs_params.cols = batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = -input_offset;
+  rhs_params.cacheable = params.rhs_cacheable;
   cpu_backend_gemm::MatrixParams<uint8> dst_params;
   dst_params.rows = filter_rows;
   dst_params.cols = batches;
@@ -398,11 +402,13 @@ inline void FullyConnected(
   lhs_params.cols = accum_depth;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = -filter_offset;
+  lhs_params.cacheable = params.lhs_cacheable;
   cpu_backend_gemm::MatrixParams<uint8> rhs_params;
   rhs_params.rows = accum_depth;
   rhs_params.cols = batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = -input_offset;
+  rhs_params.cacheable = params.rhs_cacheable;
   cpu_backend_gemm::MatrixParams<int16> dst_params;
   dst_params.rows = output_depth;
   dst_params.cols = batches;
@@ -1240,8 +1246,10 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
                        const RuntimeShape& filter_shape,
                        const int8_t* filter_data,
                        const RuntimeShape& bias_shape, const float* bias_data,
-                       const RuntimeShape& output_shape, float* output_data,
-                       const RuntimeShape& im2col_shape, int8_t* im2col_data) {
+                       const RuntimeShape& accum_scratch_shape,
+                       int32_t* accum_scratch, const RuntimeShape& output_shape,
+                       float* output_data, const RuntimeShape& im2col_shape,
+                       int8_t* im2col_data, CpuBackendContext* context) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const float output_activation_min = params.float_activation_min;
@@ -1304,11 +1312,17 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
 
   std::fill_n(output_data, output_rows * output_cols, 0.0f);
 
+#ifdef TFLITE_WITH_RUY_GEMV
+  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+      filter_data, filter_rows, filter_cols, gemm_input_data,
+      scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,
+      output_data, /*result_stride=*/1, context);
+#else
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, output_data,
       /*result_stride=*/1);
-
+#endif
   AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
                                    bias_shape, bias_data, output_shape,
                                    output_data);
@@ -1585,7 +1599,7 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,
                             const RuntimeShape& output_shape,
-                            float* output_data) {
+                            float* output_data, float epsilon = 1e-6) {
   ruy::profiler::ScopeLabel label("L2Normalization");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -1598,7 +1612,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       const float val = input_data[c];
       squared_l2_norm += val * val;
     }
-    const float l2_norm = std::sqrt(squared_l2_norm);
+    float l2_norm = std::sqrt(squared_l2_norm);
+    l2_norm = std::max(l2_norm, epsilon);
     for (int c = 0; c < depth; ++c) {
       *output_data = *input_data / l2_norm;
       ++output_data;
@@ -2996,6 +3011,8 @@ inline void LstmCell(
   tflite::FullyConnectedParams fc_params;
   fc_params.float_activation_min = std::numeric_limits<float>::lowest();
   fc_params.float_activation_max = std::numeric_limits<float>::max();
+  fc_params.lhs_cacheable = false;
+  fc_params.rhs_cacheable = false;
   FullyConnected(fc_params, concat_temp_shape, concat_temp_data, weights_shape,
                  weights_data, bias_shape, bias_data, activ_temp_shape,
                  activ_temp_data, cpu_backend_context);

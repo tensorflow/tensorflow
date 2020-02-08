@@ -129,18 +129,26 @@ def TfDevice_ReplicateOp :
   let summary = "Wraps an N-way replicated computation.";
 
   let description = [{
-The region held by this operation represents a computation that is replicated
-across multiple devices. The number of replications is based on the `n`
-attribute. Explicit devices can be populated in the `devices` attribute, and its
-length must match `n`. Within a replica, the execution semantics follow standard
-sequential behavior. Ops in the replicate with no device assigned will have its
-device set to the associated replicate device from `devices`. Operands are
-replicated inputs: each group of `n` inputs corresponds to an input for a single
-individual replica and is mapped to a single region argument. Inside one group
-the operands are matching in order the `devices` attribute. Each replicated
-input must have compatible shapes and types. Operands not replicated can be
-implicitly captured by ops in the region. Results are replicated each from the
-regions terminator.
+The region held by this operation represents a computation that is
+replicated across multiple devices. The number of replications is based
+on the `n` attribute. Explicit devices can be populated in the `devices`
+attribute, and it must be a map of device alias and a list of explicit
+device names or aliased device names from outer scope. Device name list
+specifies devices on which replicated ops inside tf_device.replicate will
+be executed. If tf_device.parallel_execute is inside replicate op region,
+region inside replicate may represent computations across larger set of
+devices. In that case, device alias can be used to specify device assignment
+and replication of each concurrent execution (i.e. region) defined by
+parallel_execute op. The size of the device name list must match `n`.
+Within a replica, the execution semantics follow standard sequential behavior.
+Ops in the replicate with no device assigned will have its device set to the
+associated replicate device from `devices`. Operands are replicated inputs:
+each group of `n` inputs corresponds to an input for a single individual
+replica and is mapped to a single region argument. Inside one group the
+operands are matching in order the `devices` attribute. Each replicated
+input must have compatible shapes and types. Operands not replicated can
+be implicitly captured by ops in the region. Results are replicated each
+from the regions terminator.
 
 For example:
 ```
@@ -151,7 +159,8 @@ For example:
 %4 = "tf.opE"() : () -> tensor<i1>
 %output:4 = tf_device.replicate([%0, %1] as %input_0:tensor<i32>,
                                 [%2, %3] as %input_1:tensor<f32>)
-                {n = 2 : i32, devices = ["/DEVICE:0", "/DEVICE:1"]} {
+                {n = 2 : i32,
+                 devices = { DEVICE_ALIAS = ["/DEVICE:0", "/DEVICE:1"]}} {
   // Inside the region, %input_0 corresponds to %0 for "/DEVICE:0" and %1 for
   // "/DEVICE:1", and %input_1 corresponds to %2 for "/DEVICE:0" and %3 for
   // "/DEVICE:1".
@@ -169,7 +178,7 @@ For example:
   let arguments = (ins
     Variadic<AnyType>:$replicated_inputs,
     Confined<I32Attr, [IntMinValue<2>]>:$n,
-    OptionalAttr<StrArrayAttr>:$devices
+    OptionalAttr<DictionaryAttr>:$devices
   );
 
   let results = (outs
@@ -184,12 +193,12 @@ For example:
 
   let builders = [
     OpBuilder<"Builder* builder, OperationState& state, int n, "
-              "llvm::ArrayRef<llvm::StringRef> devices, "
+              "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
               "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>>"
               "    replicated_inputs, "
               "llvm::ArrayRef<Type> replica_output_types">,
     OpBuilder<"Builder* builder, OperationState& state, int n, "
-              "llvm::ArrayRef<llvm::StringRef> devices, "
+              "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
               "llvm::ArrayRef<std::pair<Operation::operand_range, Type>>"
               "    replicated_inputs, "
               "Operation::result_type_range replica_output_types">

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -1752,6 +1753,36 @@ XlaOp XlaBuilder::RngUniform(XlaOp a, XlaOp b, const Shape& shape) {
   return RngOp(RandomDistribution::RNG_UNIFORM, {a, b}, shape);
 }
 
+XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
+                                  XlaOp initial_state, const Shape& shape) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+    TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
+    Shape output_shape = shape;
+    switch (output_shape.element_type()) {
+      case PrimitiveType::F32:
+      case PrimitiveType::S32:
+      case PrimitiveType::U32:
+        output_shape.set_element_type(PrimitiveType::U32);
+        break;
+      case PrimitiveType::F64:
+      case PrimitiveType::S64:
+      case PrimitiveType::U64:
+        output_shape.set_element_type(PrimitiveType::U64);
+        break;
+      default:
+        return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
+                               PrimitiveType_Name(output_shape.element_type()));
+    }
+    *instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({state_shape, output_shape}).ToProto();
+    instr.set_rng_algorithm(algorithm);
+    return AddInstruction(std::move(instr), HloOpcode::kRngBitGenerator,
+                          {initial_state});
+  });
+}
+
 XlaOp XlaBuilder::While(const XlaComputation& condition,
                         const XlaComputation& body, XlaOp init) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -3458,6 +3489,12 @@ XlaOp RngNormal(const XlaOp mu, const XlaOp sigma, const Shape& shape) {
 
 XlaOp RngUniform(const XlaOp a, const XlaOp b, const Shape& shape) {
   return a.builder()->RngUniform(a, b, shape);
+}
+
+XlaOp RngBitGenerator(RandomAlgorithm algorithm, const XlaOp initial_state,
+                      const Shape& shape) {
+  return initial_state.builder()->RngBitGenerator(algorithm, initial_state,
+                                                  shape);
 }
 
 XlaOp While(const XlaComputation& condition, const XlaComputation& body,

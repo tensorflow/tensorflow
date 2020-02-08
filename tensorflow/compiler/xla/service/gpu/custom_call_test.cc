@@ -48,7 +48,8 @@ TEST_F(CustomCallTest, IsInvoked) {
 
 TEST_F(CustomCallTest, UnknownTarget) {
   XlaBuilder b(TestName());
-  CustomCall(&b, "UknownTarget", /*operands=*/{}, ShapeUtil::MakeShape(F32, {}),
+  CustomCall(&b, "UnknownTarget", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
              /*opaque=*/"");
   ASSERT_FALSE(Execute(&b, {}).ok());
 }

@@ -285,7 +285,7 @@ void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
   auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
                             left_node_id, right_node_id);
   auto* new_split = node->mutable_bucketized_split();
-  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_feature_id(candidate.feature_id);
   new_split->set_threshold(candidate.threshold);
   new_split->set_dimension_id(candidate.dimension_id);
   new_split->set_left_id(*left_node_id);
@@ -310,7 +310,7 @@ void BoostedTreesEnsembleResource::AddCategoricalSplitNode(
   auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
                             left_node_id, right_node_id);
   auto* new_split = node->mutable_categorical_split();
-  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_feature_id(candidate.feature_id);
   new_split->set_value(candidate.threshold);
   new_split->set_dimension_id(candidate.dimension_id);
   new_split->set_left_id(*left_node_id);

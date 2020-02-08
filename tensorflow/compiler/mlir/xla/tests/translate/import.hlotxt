@@ -82,6 +82,20 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT broadcast.4 = f32[3,1,2] broadcast(%Arg_0.1), dimensions={1, 2}
 }
 
+// CHECK-LABEL:  func @test_batch_norm_grad
+%test_batch_norm_grad (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], variance: f32[2], grad_output: f32[2,2,2,2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
+  %input = f32[2,2,2,2] parameter(0)
+  %scale = f32[2] parameter(1)
+  %mean = f32[2] parameter(2)
+  %variance = f32[2] parameter(3)
+  %grad_output = f32[2,2,2,2] parameter(4)
+
+  // CHECK:  "xla_hlo.batch_norm_grad"
+  // CHECK-SAME:  epsilon = 1.000000e-03 : f32
+  // CHECK-SAME:  feature_index = 1 : i64
+  ROOT %batch-norm-grad = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-grad(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %mean, f32[2] %variance, f32[2,2,2,2] %grad_output), epsilon=0.001, feature_index=1
+}
+
 // CHECK-LABEL:  func @call(%arg0: tensor<i64>) -> tensor<i64> {
 %call (arg_1: s64[]) -> s64[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
@@ -308,6 +322,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // TODO(b/129709049) consider making this default precision config inferred.
   // CHECK-NEXT:  "xla_hlo.dot_general"([[ARG0]], [[ARG1]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<[]> : tensor<0xi64>, lhs_contracting_dimensions = dense<0> : tensor<1xi64>, rhs_batching_dimensions = dense<[]> : tensor<0xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, name = "{{.*}}", precision_config = ["DEFAULT", "DEFAULT"]}
   ROOT %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+// CHECK-LABEL:  func @test_dynamic_slice
+// CHECK-SAME:  [[OPERAND:%.*]]: tensor<2x2x258xi32>, [[START_INDICES:%.*]]: tensor<3xi32>
+%test_dynamic_slice (operand: s32[2,2,258], start_indices: s32[3]) -> s32[1,1,32] {
+  %operand = s32[2,2,258] parameter(0)
+  %start_indices = s32[3] parameter(1)
+  // CHECK:  "xla_hlo.dynamic-slice"([[OPERAND]], [[START_INDICES]])
+  // CHECK-SAME:  slice_sizes = dense<[1, 1, 32]> : tensor<3xi64>
+  ROOT %dynamic-slice = s32[1,1,32] dynamic-slice(s32[2,2,258] %operand, s32[3] %start_indices), dynamic_slice_sizes={1,1,32}
 }
 
 // CHECK-LABEL:  func @test_dynamic_update_slice_1(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<4x4xf32> {

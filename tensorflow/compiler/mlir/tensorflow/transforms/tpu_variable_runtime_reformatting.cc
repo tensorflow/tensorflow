@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -167,7 +168,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   auto metadata_str = compile->getAttrOfType<StringAttr>("metadata");
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
-  metadata.ParseFromString(metadata_str.getValue());
+  metadata.ParseFromString(std::string(metadata_str.getValue()));
   int64_t num_replicas = replicate.n().getLimitedValue();
   // Find the formattable operands of `execute`, which must be mirrored
   // variables (arguments of `replicate`), and must be pass-throughs from while
@@ -243,12 +244,22 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
 }
 
 // Adds a new replicated input to the replicate op.
-tf_device::ReplicateOp AddInputsToReplicateOp(tf_device::ReplicateOp replicate,
-                                              ArrayRef<Value> new_inputs,
-                                              ArrayRef<StringRef> devices) {
+tf_device::ReplicateOp AddInputsToReplicateOp(
+    tf_device::ReplicateOp replicate, ArrayRef<Value> new_inputs,
+    const llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>&
+        devices) {
   int64_t num_replicas = replicate.n().getLimitedValue();
   assert(new_inputs.size() == num_replicas);
-  assert(devices.size() == num_replicas);
+
+  // As model parallelism is not yet supported, we assume that all ops are
+  // placed in logical core 0.
+  // TODO(b/148913020): Remove this constraint once model parallelism is
+  // supported.
+  assert(devices.size() == 1);
+  assert(devices.find(tensorflow::GetDeviceAliasForLogicalCore(0))
+             ->getSecond()
+             .size() == num_replicas);
+
   llvm::SmallVector<std::pair<llvm::ArrayRef<Value>, Type>, 8>
       new_replicated_inputs;
   llvm::SmallVector<llvm::SmallVector<Value, 8>, 8> replicated_inputs;
@@ -346,11 +357,21 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
 // Creates the per-device variables that represent the formatting state of each
 // device.
 llvm::SmallVector<TF::VarHandleOp, 4> CreateStateVars(
-    ArrayRef<llvm::StringRef> devices, Location loc, RankedTensorType key_type,
-    OpBuilder* builder) {
+    const llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>&
+        devices,
+    Location loc, RankedTensorType key_type, OpBuilder* builder) {
   llvm::SmallVector<TF::VarHandleOp, 4> state_vars;
+
+  // TODO(b/148913020): Remove this constraint once model parallelism is
+  // supported.
+  assert(devices.size() == 1 &&
+         "As model parallelism is not supported yet, tf_device.replicate "
+         "`devices` attribute should have one dictionary element.");
+  const auto& device_list =
+      devices.find(tensorflow::GetDeviceAliasForLogicalCore(0))->getSecond();
+
   // Create the state variable for each device.
-  for (llvm::StringRef device : devices) {
+  for (llvm::StringRef device : device_list) {
     state_vars.push_back(builder->create<TF::VarHandleOp>(
         loc,
         llvm::ArrayRef<Type>{RankedTensorType::get(
@@ -367,7 +388,7 @@ llvm::SmallVector<TF::VarHandleOp, 4> CreateStateVars(
   return state_vars;
 }
 
-// Performs the transformation for a replciate op inside a while loop.
+// Performs the transformation for a replicate op inside a while loop.
 void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
                        MLIRContext* context) {
   int64_t num_replicas = replicate.n().getLimitedValue();
@@ -401,11 +422,22 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   // Extract the replicated devices.
   auto devices_attr = replicate.devices();
   if (!devices_attr) return;
-  llvm::SmallVector<llvm::StringRef, 4> devices;
-  for (auto dev : *devices_attr) {
-    devices.push_back(dev.cast<StringAttr>().getValue());
+
+  auto device_map = devices_attr.getValue();
+  llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>> devices;
+  devices.reserve(device_map.size());
+
+  for (auto it : device_map) {
+    auto device_alias = it.first.strref();
+    auto device_list = it.second.cast<ArrayAttr>();
+    llvm::SmallVector<StringRef, 4> device_list_for_alias;
+    device_list_for_alias.reserve(device_list.size());
+
+    for (auto device : device_list)
+      device_list_for_alias.emplace_back(device.cast<StringAttr>().getValue());
+
+    devices.insert({device_alias, device_list_for_alias});
   }
-  assert(num_replicas == devices.size());
 
   OpBuilder builder(replicate);
   builder.setInsertionPoint(while_op);
@@ -423,8 +455,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
        i < new_while_operand_count; ++i) {
     inner_state_vars.push_back(body.front().getArgument(i));
   }
-  replicate = AddInputsToReplicateOp(replicate, inner_state_vars, devices);
 
+  replicate = AddInputsToReplicateOp(replicate, inner_state_vars, devices);
   // Build the reformat according to the compilation. Build it inside
   // `replicate`.
   llvm::SmallVector<Value, 8> reformat_operands;

@@ -21,6 +21,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
+
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -277,6 +279,44 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// DequantizeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DequantizeOp op) {
+  auto input_type = op.input().getType().dyn_cast<ShapedType>();
+  auto output_type = op.output().getType().dyn_cast<ShapedType>();
+  if (!input_type || !output_type) {
+    return op.emitError() << "ranked input and output.";
+  }
+  auto input_shape = input_type.getShape();
+  auto output_shape = output_type.getShape().vec();
+  if (op.transpose_output()) {
+    std::reverse(output_shape.begin(), output_shape.end());
+  }
+
+  // Check the input rank and output rank are same, and also the lower
+  // dimensions are same.
+  if (input_shape.size() != output_shape.size() ||
+      !std::equal(input_shape.begin(),
+                  std::next(input_shape.begin(), input_shape.size() - 1),
+                  output_shape.begin())) {
+    return op.emitError() << "mismatched dimensions.";
+  }
+
+  // Check that the last dimension of the output is 2x or 4x of that of the
+  // input depending on the unpacked input is 16 or 8 bits.
+  int input_last_dim = *input_shape.rbegin();
+  int output_last_dim = *output_shape.rbegin();
+  int scale_factor = op.is_16bits() ? 2 : 4;
+  if (output_last_dim != scale_factor * input_last_dim) {
+    return op.emitError() << "last dimension of output should be "
+                          << scale_factor << "x of the input.";
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -600,6 +640,25 @@ void DynamicSliceOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// InfeedOp
+//===----------------------------------------------------------------------===//
+
+// Checks that the result type is of the form `tuple< any_type, token >`.
+static LogicalResult Verify(InfeedOp op) {
+  auto result_ty = op.getResult().getType().cast<TupleType>();
+  auto subtypes = result_ty.getTypes();
+  if (subtypes.size() != 2)
+    return op.emitOpError()
+           << "result is expected to be a tuple of size 2, but got "
+           << subtypes.size();
+  if (!subtypes[1].isa<TokenType>())
+    return op.emitOpError() << "second element of result tuple is expected to "
+                               "be of token type, but got "
+                            << subtypes[1];
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MapOp
 //===----------------------------------------------------------------------===//
 
@@ -680,6 +739,25 @@ static LogicalResult Verify(MapOp op) {
              << ", requested map dimensions size = " << dimensions.size();
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RecvOp
+//===----------------------------------------------------------------------===//
+
+// Checks that the result type is of the form `tuple<any_type, xla_hlo::token>`
+static LogicalResult Verify(RecvOp op) {
+  auto result_ty = op.getResult().getType().cast<TupleType>();
+  auto subtypes = result_ty.getTypes();
+  if (subtypes.size() != 2)
+    return op.emitOpError()
+           << "result is expected to be a tuple of size 2, but got "
+           << subtypes.size();
+  if (!subtypes[1].isa<TokenType>())
+    return op.emitOpError() << "second element of result tuple is expected to "
+                               "be of token type, but got "
+                            << subtypes[1];
   return success();
 }
 

@@ -419,7 +419,7 @@ TEST(ModelBuilderTest, GetOpsToReplaceDoesNotPruneUint8) {
 
 class InterpreterMultiNode {
  public:
-  InterpreterMultiNode() {
+  explicit InterpreterMultiNode(bool add_op_first = true) {
     void* builtin_data = malloc(sizeof(int));
     EXPECT_EQ(interpreter_.AddTensors(8), kTfLiteOk);
     EXPECT_EQ(interpreter_.SetInputs({0, 1, 2}), kTfLiteOk);
@@ -440,46 +440,83 @@ class InterpreterMultiNode {
                 kTfLiteOk);
     }
 
-    // Add the ADD op node that GPU delegate supports.
-    const TfLiteRegistration reg_add0 = {
-        [](TfLiteContext* context, const char* buffer, size_t length) {
-          return reinterpret_cast<void*>(new int(1));
-        },
-        [](TfLiteContext* context, void* buffer) {
-          delete reinterpret_cast<int*>(buffer);
-        },
-        nullptr,
-        nullptr,
-        nullptr,
-        kTfLiteBuiltinAdd};
+    if (add_op_first) {
+      // Add the ADD op node that GPU delegate supports.
+      const TfLiteRegistration reg_add0 = {
+          [](TfLiteContext* context, const char* buffer, size_t length) {
+            return reinterpret_cast<void*>(new int(1));
+          },
+          [](TfLiteContext* context, void* buffer) {
+            delete reinterpret_cast<int*>(buffer);
+          },
+          nullptr,
+          nullptr,
+          nullptr,
+          kTfLiteBuiltinAdd};
+      EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                    /*inputs=*/{4, 5}, /*outputs=*/{7}, /*init_data=*/nullptr,
+                    /*init_data_size=*/0,
+                    /*builtin_data=*/builtin_data,
+                    /*registration=*/&reg_add0),
+                kTfLiteOk);
 
-    EXPECT_EQ(interpreter_.AddNodeWithParameters(
-                  /*inputs=*/{4, 5}, /*outputs=*/{7}, /*init_data=*/nullptr,
-                  /*init_data_size=*/0,
-                  /*builtin_data=*/builtin_data,
-                  /*registration=*/&reg_add0),
-              kTfLiteOk);
+      // Add the GREATER op node that GPU delegate doesn't support.
+      const TfLiteRegistration reg_greater = {
+          [](TfLiteContext* context, const char* buffer, size_t length) {
+            return reinterpret_cast<void*>(new int(1));
+          },
+          [](TfLiteContext* context, void* buffer) {
+            delete reinterpret_cast<int*>(buffer);
+          },
+          nullptr,
+          nullptr,
+          nullptr,
+          kTfLiteBuiltinGreater};
+      EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                    /*inputs=*/{3, 4}, /*outputs=*/{6}, /*init_data=*/nullptr,
+                    /*init_data_size=*/0,
+                    /*builtin_data=*/builtin_data,
+                    /*registration=*/&reg_greater),
+                kTfLiteOk);
+    } else {
+      // Add the GREATER op node that GPU delegate doesn't support.
+      const TfLiteRegistration reg_greater = {
+          [](TfLiteContext* context, const char* buffer, size_t length) {
+            return reinterpret_cast<void*>(new int(1));
+          },
+          [](TfLiteContext* context, void* buffer) {
+            delete reinterpret_cast<int*>(buffer);
+          },
+          nullptr,
+          nullptr,
+          nullptr,
+          kTfLiteBuiltinGreater};
+      EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                    /*inputs=*/{3, 4}, /*outputs=*/{6}, /*init_data=*/nullptr,
+                    /*init_data_size=*/0,
+                    /*builtin_data=*/builtin_data,
+                    /*registration=*/&reg_greater),
+                kTfLiteOk);
 
-    // Add the GreaterThan op node that GPU delegate doesn't support.
-    const TfLiteRegistration reg_greater = {
-        [](TfLiteContext* context, const char* buffer, size_t length) {
-          return reinterpret_cast<void*>(new int(1));
-        },
-        [](TfLiteContext* context, void* buffer) {
-          delete reinterpret_cast<int*>(buffer);
-        },
-        nullptr,
-        nullptr,
-        nullptr,
-        kTfLiteBuiltinGreater};
-
-    EXPECT_EQ(interpreter_.AddNodeWithParameters(
-                  /*inputs=*/{3, 4}, /*outputs=*/{6}, /*init_data=*/nullptr,
-                  /*init_data_size=*/0,
-                  /*builtin_data=*/builtin_data,
-                  /*registration=*/&reg_greater),
-              kTfLiteOk);
-
+      // Add the ADD op node that GPU delegate supports.
+      const TfLiteRegistration reg_add0 = {
+          [](TfLiteContext* context, const char* buffer, size_t length) {
+            return reinterpret_cast<void*>(new int(1));
+          },
+          [](TfLiteContext* context, void* buffer) {
+            delete reinterpret_cast<int*>(buffer);
+          },
+          nullptr,
+          nullptr,
+          nullptr,
+          kTfLiteBuiltinAdd};
+      EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                    /*inputs=*/{4, 5}, /*outputs=*/{7}, /*init_data=*/nullptr,
+                    /*init_data_size=*/0,
+                    /*builtin_data=*/builtin_data,
+                    /*registration=*/&reg_add0),
+                kTfLiteOk);
+    }
     const std::vector<int> dims = {1};
     TfLiteQuantization quantization;
     quantization.type = kTfLiteNoQuantization;
@@ -582,6 +619,56 @@ TEST(ModelBuilderTest, GetOpsToReplaceSelectsCorrectDequants) {
             TfLiteType::kTfLiteFloat16);
   EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
             TfLiteType::kTfLiteFloat16);
+  TfLiteIntArrayFree(ops_to_replace);
+}
+
+InterpreterMultiNode* interpreter_mn2 =
+    new InterpreterMultiNode(/*add_op_first=*/false);
+
+TEST(ModelBuilderTest, GetOpsToReplaceRestoresInputsOnErrors) {
+  // A graph with three Dequant nodes feeding two ops, 'Greater' and 'Add'.
+  // 'Add' can be replaced by the GPU delegate, but 'Greater' can not.
+  //   t0 (FP16) --> Dequant --> t3 (FP32) --> Greater -> t6
+  //   t1 (FP16) --> Dequant --> t4 (FP32) --/
+  //                                       --\
+  //   t3 (FP16) --> Dequant --> t5 (FP32) --> Add -> t7
+  //
+  // 'Greater' comes first in the execution plan though, so Add should not
+  // be scheduled to run on the Gpu. Further, it's inputs should remain t4
+  // and t5.
+  TfLiteContext* context = interpreter_mn->GetSubgraph()->context();
+
+  // These functions are meant to be called inside delegates. Swap out
+  // for similar functions to permit direct calling of GetOpsToReplace.
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_mn2->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    auto& node_and_reg =
+        interpreter_mn2->GetSubgraph()->nodes_and_registration()[node_index];
+    *node = &node_and_reg.first;
+    *registration = &node_and_reg.second;
+    return kTfLiteOk;
+  };
+
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
+
+  // Verify that no ops will be replaced.
+  EXPECT_EQ(ops_to_replace->size, 0);
+
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  // Verify that Add op has fp32 inputs.
+  context->GetNodeAndRegistration(context, 4, &node, &registration);
+  EXPECT_EQ(registration->builtin_code, kTfLiteBuiltinAdd);
+  EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
+            TfLiteType::kTfLiteFloat32);
+  EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
+            TfLiteType::kTfLiteFloat32);
   TfLiteIntArrayFree(ops_to_replace);
 }
 

@@ -160,16 +160,16 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_RELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, activations::ReluPrepare,
-                                 activations::ReluEval};
+  static TfLiteRegistration r = {};
+  r.prepare = activations::ReluPrepare;
+  r.invoke = activations::ReluEval;
   return &r;
 }
 
 TfLiteRegistration* Register_RELU6() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, activations::Relu6Prepare,
-                                 activations::Relu6Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = activations::Relu6Prepare;
+  r.invoke = activations::Relu6Eval;
   return &r;
 }
 

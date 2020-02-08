@@ -111,9 +111,7 @@ class InputBuffer {
 
 // Explicit instantiations defined in inputbuffer.cc.
 extern template Status InputBuffer::ReadLine<string>(string* result);
-#ifdef USE_TSTRING
 extern template Status InputBuffer::ReadLine<tstring>(tstring* result);
-#endif  // USE_TSTRING
 
 // Inlined for performance.
 inline Status InputBuffer::ReadVarint32(uint32* result) {

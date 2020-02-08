@@ -384,7 +384,8 @@ Status ConvTexture::Compile(const CreationContext& creation_context) {
       creation_context.device->IsAdreno4xx() &&
       storage_type == TensorStorageType::TEXTURE_ARRAY &&
       definition_.precision == CalculationsPrecision::F16;
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const std::string code = GenerateConvCode(
       definition_, block_size_, is1x1, adreno4xx_optimization,
       stride_correction, *creation_context.device, linked_operations_);

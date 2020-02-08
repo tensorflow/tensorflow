@@ -71,7 +71,7 @@ std::string GetAveragePoolingKernelCode(
   c += "    int y_c = ys + ky;\n";
   c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
   c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "      int x_c = xs + kx * src_size.w;\n";
   } else {
     c += "      int x_c = xs + kx;\n";
@@ -120,7 +120,7 @@ std::string GetAveragePooling3DKernelCode(
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size,             \n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "    int batch_size,          \n";
   }
   c += "    int4 kernel_size,          \n";
@@ -151,7 +151,7 @@ std::string GetAveragePooling3DKernelCode(
   c += "      int y_c = ys + ky;\n";
   c += "      if (y_c < 0 || y_c >= src_size.y) continue;\n";
   c += "      for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "        int x_c = xs + kx * batch_size;\n";
   } else {
     c += "        int x_c = xs + kx;\n";
@@ -226,7 +226,7 @@ std::string GetMaxPoolingKernelCode(
   c += "    int y_c = ys + ky;\n";
   c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
   c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "      int x_c = xs + kx * src_size.w;\n";
   } else {
     c += "      int x_c = xs + kx;\n";
@@ -297,7 +297,7 @@ std::string GetMaxPooling3DKernelCode(
   }
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size,             \n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "    int batch_size,          \n";
   }
   c += "    int4 kernel_size,          \n";
@@ -327,7 +327,7 @@ std::string GetMaxPooling3DKernelCode(
   c += "    int y_c = ys + ky;\n";
   c += "    if (y_c < 0 || y_c >= src_size.y) continue;\n";
   c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "      int x_c = xs + kx * batch_size;\n";
   } else {
     c += "      int x_c = xs + kx;\n";
@@ -410,7 +410,8 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
 
 Status Pooling::Compile(const CreationContext& creation_context) {
   std::string code;
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   switch (type_) {
     case PoolingType::AVERAGE:
       code = GetAveragePoolingKernelCode(definition_, stride_correction,
@@ -507,7 +508,8 @@ Pooling3D& Pooling3D::operator=(Pooling3D&& kernel) {
 
 Status Pooling3D::Compile(const CreationContext& creation_context) {
   std::string code;
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   switch (type_) {
     case PoolingType::AVERAGE:
       code = GetAveragePooling3DKernelCode(definition_, stride_correction,
@@ -538,7 +540,7 @@ Status Pooling3D::BindArguments() {
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDS()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDS()));
-  if (definition_.batch_support) {
+  if (definition_.IsBatchSupported()) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Batch()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(
