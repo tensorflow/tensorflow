@@ -94,9 +94,22 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	raw := tensorData(t.c)
 	buf := bytes.NewBuffer(raw[:0:len(raw)])
 	if dataType != String {
-		if err := encodeTensor(buf, val, shape); err != nil {
-			return nil, err
+		if isAllArray(val.Type()) {
+			// We have arrays all the way down, or just primitive types. We can
+			// just copy the memory in as it is all contiguous.
+			if err := copyPtr(buf, unpackEFace(value).data, int(val.Type().Size())); err != nil {
+				return nil, err
+			}
+		} else {
+			// When there are slices involved the memory for each leaf slice may
+			// not be contiguous with the others or in the order we might
+			// expect, so we need to work our way down to each slice of
+			// primitives and copy them individually
+			if err := encodeTensorWithSlices(buf, val, shape); err != nil {
+				return nil, err
+			}
 		}
+
 		if uintptr(buf.Len()) != nbytes {
 			return nil, bug("NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v", dataType, shape, nbytes, buf.Len())
 		}
@@ -110,6 +123,43 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		}
 	}
 	return t, nil
+}
+
+// isAllArray returns true if type is a primitive type or an array of primitive
+// types or an array of ... etc.. When this is true the data we want is
+// contiguous in RAM.
+func isAllArray(typ reflect.Type) bool {
+	switch typ.Kind() {
+	case reflect.Slice:
+		return false
+	case reflect.Array:
+		return isAllArray(typ.Elem())
+	default:
+		// We know the type is slices/arrays of slices/arrays of primitive types.
+		return true
+	}
+}
+
+// eface defines what an interface type actually is: a pointer to type
+// information about the encapsulated type and a pointer to the encapsulated
+// value.
+type eface struct {
+	rtype unsafe.Pointer
+	data  unsafe.Pointer
+}
+
+// unpackEFace gives us an effient way to get us a pointer to the value carried
+// in an interface. If you wrap a pointer type in an interface then the pointer
+// is directly stored in the interface struct. If you wrap a value type in an
+// interface then the compiler copies the value into a newly allocated piece of
+// memory and stores a pointer to that memory in the interface. So we're
+// guaranteed to get a pointer. Go reflection doesn't expose the pointer to
+// value types straightforwardly as it doesn't want you to think you have a
+// reference to the original value. But we just want a pointer to make it
+// efficient to read the value, so cheating like this should be safe and
+// reasonable.
+func unpackEFace(obj interface{}) *eface {
+	return (*eface)(unsafe.Pointer(&obj))
 }
 
 // ReadTensor constructs a Tensor with the provided type and shape from the
@@ -302,60 +352,38 @@ func byteSizeOfEncodedStrings(val interface{}) uintptr {
 	return size
 }
 
-// encodeTensor writes v to the specified buffer using the format specified in
+// encodeTensorWithSlices writes v to the specified buffer using the format specified in
 // c_api.h. Use stringEncoder for String tensors.
-func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
-	switch v.Kind() {
-	case reflect.Bool:
-		b := byte(0)
-		if v.Bool() {
-			b = 1
+func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) error {
+	// If current dimension is a slice, verify that it has the expected size
+	// Go's type system makes that guarantee for arrays.
+	if v.Kind() == reflect.Slice {
+		expected := int(shape[0])
+		if v.Len() != expected {
+			return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
 		}
-		if err := w.WriteByte(b); err != nil {
-			return err
-		}
-	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		if err := binary.Write(w, nativeEndian, v.Interface()); err != nil {
-			return err
-		}
-
-	case reflect.Array, reflect.Slice:
-		// If current dimension is a slice, verify that it has the expected size
-		// Go's type system makes that guarantee for arrays.
-		if v.Kind() == reflect.Slice {
-			expected := int(shape[0])
-			if v.Len() != expected {
-				return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
-			}
-		}
-
-		// Optimisation: if only one dimension is left we can write the full
-		// slice or array in one go.
-		if len(shape) == 1 && v.Len() > 0 {
-			switch v.Index(0).Kind() {
-			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Bool:
-				elt := v.Index(0)
-				if !elt.CanAddr() {
-					// Very frustrating that Go won't give us an address at this
-					// point.
-					return binary.Write(w, nativeEndian, v.Interface())
-				}
-				ptr := unsafe.Pointer(elt.Addr().Pointer())
-				return copyPtr(w, ptr, v.Len()*int(elt.Type().Size()))
-			}
-		}
-
-		subShape := shape[1:]
-		for i := 0; i < v.Len(); i++ {
-			err := encodeTensor(w, v.Index(i), subShape)
-			if err != nil {
-				return err
-			}
-		}
-
-	default:
+	} else if v.Kind() != reflect.Array {
 		return fmt.Errorf("unsupported type %v", v.Type())
 	}
+
+	// Once we have just a single dimension we can just copy the data
+	if len(shape) == 1 && v.Len() > 0 {
+		elt := v.Index(0)
+		if !elt.CanAddr() {
+			panic("cannot take address")
+		}
+		ptr := unsafe.Pointer(elt.Addr().Pointer())
+		return copyPtr(w, ptr, v.Len()*int(elt.Type().Size()))
+	}
+
+	subShape := shape[1:]
+	for i := 0; i < v.Len(); i++ {
+		err := encodeTensorWithSlices(w, v.Index(i), subShape)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

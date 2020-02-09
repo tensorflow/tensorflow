@@ -303,6 +303,7 @@ func BenchmarkTensor(b *testing.B) {
 	// Where input tensors correspond to a 224x224 RGB image
 	// flattened into a vector.
 	var vector [224 * 224 * 3]int32
+	var arrays [100][100][100]int32
 
 	l3 := make([][][]float32, 100)
 	l2 := make([][]float32, 100*100)
@@ -316,6 +317,7 @@ func BenchmarkTensor(b *testing.B) {
 
 	tests := []interface{}{
 		vector,
+		arrays,
 		l1,
 		l2,
 		l3,
