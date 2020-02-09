@@ -1361,8 +1361,8 @@ class VariableV1(Variable):
   the variable are fixed. The value can be changed using one of the assign
   methods.
 
-  If you want to change the shape of a variable later you have to use an
-  `assign` Op with `validate_shape=False`.
+  If you want to change the shape of a variable later, this is only possible
+  if the variable has been initialized with `shape=tf.TensorShape(None)`.
 
   Just like any `Tensor`, variables created with `Variable()` can be used as
   inputs for other Ops in the graph. Additionally, all the operators
