@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+import pytest
+
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
@@ -1227,6 +1229,13 @@ class PolyvalTest(test.TestCase):
     with self.cached_session():
       tf_val = math_ops.polyval(coeffs, x)
       self.assertAllClose(np_val, self.evaluate(tf_val))
+
+  def test_coeffs_raise(self):
+    x = np.random.rand(2, 2).astype(np.float32)
+    coeffs = {}
+    msg = "Argument coeffs must be list type."
+    with pytest.raises(ValueError, match=msg):
+      math_ops.polyval(coeffs, x)
 
 
 class SingularGradientOpTest(test.TestCase):
