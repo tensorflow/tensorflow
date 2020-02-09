@@ -20,6 +20,8 @@ from __future__ import print_function
 import os as _os
 import sys as _sys
 
+from rules_python.python.runfiles import runfiles
+
 from tensorflow.python.util import tf_inspect as _inspect
 from tensorflow.python.util.tf_export import tf_export
 
@@ -37,11 +39,7 @@ def load_resource(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  tensorflow_root = (_os.path.join(
-      _os.path.dirname(__file__), _os.pardir, _os.pardir))
-  path = _os.path.join(tensorflow_root, path)
-  path = _os.path.abspath(path)
-  with open(path, 'rb') as f:
+  with open(get_path_to_datafile(path), 'rb') as f:
     return f.read()
 
 
@@ -113,8 +111,17 @@ def get_path_to_datafile(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  data_files_path = _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
-  return _os.path.join(data_files_path, path)
+  # First, try finding in the new path.
+  r = runfiles.Create()
+  new_fpath = r.Rlocation(
+      _os.path.abspath(_os.path.join('tensorflow', path)))
+  if new_fpath is not None and _os.path.exists(new_fpath):
+    return new_fpath
+
+  # Then, the old style path, as people became dependent on this buggy call.
+  old_filepath = _os.path.join(
+      _os.path.dirname(_inspect.getfile(_sys._getframe(1))), path)
+  return old_filepath
 
 
 @tf_export(v1=['resource_loader.readahead_file_path'])
