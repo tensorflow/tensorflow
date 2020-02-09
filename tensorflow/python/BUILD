@@ -238,8 +238,8 @@ py_library(
         ":pywrap_tfe",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@rules_python//python/runfiles",
         "@six_archive//:six",
     ],
 )
