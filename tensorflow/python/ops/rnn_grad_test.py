@@ -22,6 +22,7 @@ import functools
 
 import numpy as np
 
+from tensorflow.contrib.rnn import LSTMBlockCell
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -29,7 +30,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import rnn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -65,6 +68,36 @@ class RNNGradTest(test.TestCase):
     self.assertAllEqual(all_h, all_h_ifco)
     self.assertAllEqual(w_grad, w_ifco_grad)
     self.assertAllEqual(b_grad, b_ifco_grad)
+
+  @test_util.deprecated_graph_mode_only
+  def testLSTMBlockCellLSTMCellConsistency(self):
+    num_units = np.random.randint(1, 32)
+    batch_size = np.random.randint(1, 32)
+    input_size = np.random.randint(1, 32)
+    block_cell = LSTMBlockCell(
+        num_units=num_units)
+    cell = rnn_cell_impl.LSTMCell(
+        num_units=num_units,
+        name=block_cell.name,
+        reuse=True)
+
+    state = [
+        deterministic_random_uniform([batch_size, num_units]) for _ in range(2)]
+    inputs = deterministic_random_uniform([batch_size, input_size])
+
+    to_compare = []
+    for rnn_fn in [block_cell, cell]:
+      output = rnn_fn(inputs, state)
+      inputs_grad = gradients.gradients(output, inputs)
+      state_grad = gradients.gradients(output, state)
+      to_compare.append((output, inputs_grad, state_grad))
+
+    init_op = variables.global_variables_initializer()
+    for use_gpu in [True, False]:
+      with self.cached_session(use_gpu=use_gpu) as sess:
+        sess.run(init_op)
+        for block_output, cell_output in zip(*to_compare):
+          self.assertAllClose(block_output, cell_output)
 
   def _lstm_block(self, op, w, b, x, cs_prev, h_prev):
     w_peephole = array_ops.zeros(cs_prev.shape[1:], dtype=w.dtype)

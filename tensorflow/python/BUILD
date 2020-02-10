@@ -3743,6 +3743,7 @@ py_test(
         ":math_ops",
         ":rnn_grad",
         ":rnn_ops_gen",
+        "//tensorflow/contrib/rnn:rnn_py",
         "//third_party/py/numpy",
     ],
 )
