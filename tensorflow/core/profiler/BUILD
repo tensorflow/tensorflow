@@ -42,7 +42,6 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [
-        ":op_profile_proto",
         ":profiler_service_monitor_result_proto",
     ] + tf_additional_all_protos(),
     use_grpc_namespace = True,

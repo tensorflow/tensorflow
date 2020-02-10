@@ -102,7 +102,8 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   gtl::InlinedVector<TensorValue, 4> input_vector(1);
-  TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
+  TF_RETURN_IF_ERROR(
+      src_->TensorValue(&input_vector[0], ctx_->CanonicalDevice(op->Device())));
 
   EagerKernelArgs args(std::move(input_vector));
   return kernel->Run(args, /*outputs=*/nullptr,
@@ -275,7 +276,8 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
       done(status);
       return;
     }
-    status = captured_state_->dst()->SetTensor(std::move(outputs[0]));
+    status = captured_state_->dst()->SetTensor(
+        std::move(outputs[0]), ctx_->CanonicalDevice(recv_device_));
     done(status);
   } else {
     // Handles captured_state_->dst_ internally.

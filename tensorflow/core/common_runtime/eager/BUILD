@@ -177,6 +177,7 @@ tf_cc_test(
     srcs = ["tensor_handle_test.cc"],
     deps = [
         ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",

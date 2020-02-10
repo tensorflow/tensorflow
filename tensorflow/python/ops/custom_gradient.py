@@ -311,14 +311,16 @@ def _graph_mode_decorator(f, args, kwargs):
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
   current_var_scope = variable_scope.get_variable_scope()
-  before_vars = set(
-      [v.experimental_ref() for v in current_var_scope.global_variables() +
-       current_var_scope.local_variables()])
+  before_vars = set([
+      v.ref() for v in current_var_scope.global_variables() +
+      current_var_scope.local_variables()
+  ])
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args)
-  after_vars = set(
-      [v.experimental_ref() for v in current_var_scope.global_variables() +
-       current_var_scope.local_variables()])
+  after_vars = set([
+      v.ref() for v in current_var_scope.global_variables() +
+      current_var_scope.local_variables()
+  ])
   new_vars = after_vars - before_vars
   new_vars_list = [v.deref() for v in new_vars]
   for v in new_vars_list:
@@ -330,11 +332,10 @@ def _graph_mode_decorator(f, args, kwargs):
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   inputs = args
-  variables_in_tape = frozenset([
-      v.experimental_ref() for v in tape.watched_variables()
-  ]) - frozenset(v.experimental_ref() for v in inputs)
+  variables_in_tape = frozenset([v.ref() for v in tape.watched_variables()
+                                ]) - frozenset(v.ref() for v in inputs)
   variables_in_subgraph = frozenset([
-      v.experimental_ref()
+      v.ref()
       for v in get_dependent_variables(input_ops=inputs, output_ops=result)
   ])
   variables = list(
@@ -411,7 +412,7 @@ def _eager_mode_decorator(f, args, kwargs):
   # variables used that are *not* part of the inputs.
   variables = [
       v.deref()  # pylint: disable=g-complex-comprehension
-      for v in set(v.experimental_ref() for v in tape.watched_variables())
+      for v in set(v.ref() for v in tape.watched_variables())
       if all(v.deref() is not i for i in all_inputs)
   ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)

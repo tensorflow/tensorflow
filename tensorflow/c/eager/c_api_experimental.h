@@ -421,6 +421,12 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
                                                            TF_Status* status);
 
+// If the TensorHandle is copied to another device as part of an op execution,
+// the copy is destroyed after the op has executed. Enabling implicit mirroring
+// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
+TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
+    TFE_TensorHandle*, TF_Status*);
+
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer
 // returned will be on the device in which the TFE_TensorHandle resides (so e.g.

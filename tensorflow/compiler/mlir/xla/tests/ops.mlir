@@ -869,3 +869,11 @@ func @dequantize_wrong_mode(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
   %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "hello", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
   return %0 : tensor<16x64xbf16>
 }
+
+// -----
+
+func @custom_call_invalid_sharding(%input0: tensor<16x16xf32>) -> tensor<16x16xf32> {
+  // expected-error @+1 {{Invalid sharding: some-invalid-sharding}}
+  %0 = "xla_hlo.custom_call"(%input0) {backend_config = "", call_target_name = "Sharding", xla_hlo.sharding = "some-invalid-sharding"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  return %0 : tensor<16x16xf32>
+}

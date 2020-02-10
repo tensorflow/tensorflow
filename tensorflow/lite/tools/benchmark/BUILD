@@ -128,7 +128,8 @@ cc_library(
         ":hexagon_delegate_provider",
         ":logging",
         ":nnapi_delegate_provider",
-        ":xnnpack_delegate_provider",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/ruy/profiler",
@@ -137,9 +138,12 @@ cc_library(
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        "//tensorflow:ios": [],
+        "//conditions:default": [
+            ":xnnpack_delegate_provider",
+        ],
+    }),
 )
 
 cc_library(

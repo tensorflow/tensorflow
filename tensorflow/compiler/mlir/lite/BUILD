@@ -297,6 +297,7 @@ cc_library(
         "transforms/generated_prepare_tf.inc",
         "transforms/legalize_ophint_func_op.cc",
         "transforms/legalize_tf.cc",
+        "transforms/legalize_tf_while.cc",
         "transforms/lower_static_tensor_list.cc",
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",

@@ -68,6 +68,23 @@ Status DumpToolDataToLogDirectory(StringPiece run_dir,
   return Status::OK();
 }
 
+// Creates an empty event file if not already exists, which indicates that we
+// have a plugins/profile/ directory in the current logdir.
+Status MaybeCreateEmptyEventFile(const string& logdir) {
+  // Suffix for an empty event file.  it should be kept in sync with
+  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
+  constexpr char kProfileEmptySuffix[] = ".profile-empty";
+  std::vector<string> children;
+  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
+  for (const string& child : children) {
+    if (absl::EndsWith(child, kProfileEmptySuffix)) {
+      return Status::OK();
+    }
+  }
+  EventsWriter event_writer(io::JoinPath(logdir, "events"));
+  return event_writer.InitWithSuffix(kProfileEmptySuffix);
+}
+
 }  // namespace
 
 Status SaveTensorboardProfile(const string& logdir, const string& run,
@@ -80,6 +97,9 @@ Status SaveTensorboardProfile(const string& logdir, const string& run,
   *os << "Creating directory: " << profile_run_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));
 
+  // Creates an empty event file so that TensorBoard plugin logic can find
+  // the logdir.
+  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
   // Ignore computation_graph for now.
   if (!response.encoded_trace().empty()) {
     TF_RETURN_IF_ERROR(DumpTraceToLogDirectory(profile_run_dir, host_prefix,

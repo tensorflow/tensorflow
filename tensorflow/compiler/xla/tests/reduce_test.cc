@@ -958,9 +958,9 @@ XLA_TEST_F(ReduceTest, ReduceIdentity) {
 
 XLA_TEST_F(ReduceTest, AndReduceU64) {
   XlaBuilder builder(TestName());
-  Array2D<uint64> initializer = {{0x123456789ABCDEF0LL, 0x3BCDEF12A4567890LL},
-                                 {0XFFFFFFFFFFFFFFD6LL, 101},
-                                 {1, 0XFFFFFFFFFFFFFFFFLL}};
+  Array2D<uint64> initializer = {{0x123456789ABCDEF0ULL, 0x3BCDEF12A4567890ULL},
+                                 {0XFFFFFFFFFFFFFFD6ULL, 101},
+                                 {1, 0XFFFFFFFFFFFFFFFFULL}};
   auto reducer = CreateScalarAndComputation(U64, &builder);
   auto m = ConstantR2FromArray2D(&builder, initializer);
   Reduce(m, ConstantR0<uint64>(&builder, 0xFFFFFFFFFFFFFFFFLL), reducer, {1});
@@ -971,15 +971,15 @@ XLA_TEST_F(ReduceTest, AndReduceU64) {
 
 XLA_TEST_F(ReduceTest, OrReduceU64) {
   XlaBuilder builder(TestName());
-  Array2D<uint64> initializer = {{0x123456789ABCDEF0LL, 0x3BCDEF12A4567890LL},
-                                 {0xFFFFFFFFFFFFFFD6LL, 101},
-                                 {1, 0xCAFEBEEFABABABABLL}};
+  Array2D<uint64> initializer = {{0x123456789ABCDEF0ULL, 0x3BCDEF12A4567890ULL},
+                                 {0xFFFFFFFFFFFFFFD6ULL, 101},
+                                 {1, 0xCAFEBEEFABABABABULL}};
   auto reducer = CreateScalarOrComputation(U64, &builder);
   auto m = ConstantR2FromArray2D(&builder, initializer);
   Reduce(m, ConstantR0<uint64>(&builder, 0), reducer, {1});
 
-  std::vector<uint64> expected = {0X3BFDFF7ABEFEFEF0LL, 0XFFFFFFFFFFFFFFF7LL,
-                                  0xCAFEBEEFABABABABLL};
+  std::vector<uint64> expected = {0X3BFDFF7ABEFEFEF0ULL, 0XFFFFFFFFFFFFFFF7ULL,
+                                  0xCAFEBEEFABABABABULL};
   ComputeAndCompareR1<uint64>(&builder, expected, {});
 }
 

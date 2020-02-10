@@ -309,8 +309,6 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   auto inst_it = instruction_iterators_.find(instruction);
   TF_RET_CHECK(inst_it != instruction_iterators_.end());
   (*inst_it->second)->set_parent(nullptr);
-  to_be_deleted_.emplace_back(inst_it->second->release());
-  to_be_deleted_.back()->DetachFromOperandsAndUsers();
   instructions_.erase(inst_it->second);
   instruction_iterators_.erase(inst_it);
   return Status::OK();

@@ -275,7 +275,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args);
 
 // Record the gradient for a given op.
 PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
-                                PyObject* attrs, PyObject* results);
+                                PyObject* attrs, PyObject* results,
+                                PyObject* forward_pass_name_scope);
 
 // Returns all variables watched by the given tape in the order those variables
 // were created.

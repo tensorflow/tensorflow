@@ -169,6 +169,34 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Generates code for reduction to contiguous dimensions.
   //
+  // TODO(cheshire): Pseudocode for row reduction.
+  // Column reduction uses the following algorithm described in CUDA-like
+  // pseudocode:
+  //
+  // ```
+  // void reduce(float** in, float* out) {
+  //   __shared__ float[32][33] cache;
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   int tile_size = 128;
+  //
+  //   float accum = 0;
+  //   for (int i=0; i<tile_size; i++) {
+  //     accum += in[thread_id.y * tile_size + i][block_id * 32 + thread_id.x];
+  //   }
+  //   cache[thread_id.x][thread_id.y] = accum;
+  //
+  //   __syncthreads();
+  //   accum = cache[thread_id.y][thread_id.x];
+  //   accum = warp_reduce(accum); // Sum all the values of `accum` in the same
+  //                               // warp.
+  //
+  //   if (thread_id.y % 32 == 0) {
+  //     out[block_id * 32 + thread_id.x] = accum;
+  //   }
+  // }
+  // ```
+  //
   // output_instructions: Output instructions in the computation: instruction
   // itself if it's not a fusion, fusion root if fusion is not multi-output, and
   // elements of the fusion multi-output tuple otherwise.
