@@ -69,7 +69,8 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
 
   // Colect new types.
   SmallVector<Type, 4> types;
-  types.reserve(extern_values.size() + while_op.getNumOperands());
+  types.reserve(extern_values.size() +
+                while_op.cond().front().getNumArguments());
   // Type of block arguments are used as these could differ from those of While
   // op, but has to match between cond and body.
   for (BlockArgument ba : while_op.cond().front().getArguments())
