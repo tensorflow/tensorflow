@@ -1,6 +1,7 @@
 ---
-name: Bug/Performance Issue
-about: Use this template for reporting a bug or a performance issue.
+name: Bug Issue
+about: Use this template for reporting an issue related to bug.
+labels: 'type:bug'
 
 ---
 
