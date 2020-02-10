@@ -1549,13 +1549,14 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 template <class OpClass>
 static LogicalResult VerifyPartitionedCall(OpClass op) {
   auto module = op.template getParentOfType<ModuleOp>();
-  FlatSymbolRefAttr func = op.getAttr("f").template cast<FlatSymbolRefAttr>();
+  SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
 
-  auto function = module.template lookupSymbol<FuncOp>(func.getValue());
+  auto function =
+      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
 
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
-           << func.getValue();
+           << func;
   }
 
   FunctionType function_ty = function.getType();
@@ -1564,8 +1565,8 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
 
   if (arg_count != func_arg_count) {
     return op.emitError() << "argument count mismatch: 'args' has " << arg_count
-                          << " arguments, but '" << func.getValue()
-                          << "' expects " << func_arg_count;
+                          << " arguments, but '" << func << "' expects "
+                          << func_arg_count;
   }
 
   return success();

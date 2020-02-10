@@ -575,9 +575,10 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
 // Verify that the arguments to be passed into the function are the same types
 // as the function paramter types.
 static bool ArgTypesMatchCallee(mlir::Operation *op, OperandRange args,
-                                FlatSymbolRefAttr func) {
+                                SymbolRefAttr func) {
   auto module = op->getParentOfType<ModuleOp>();
-  auto function = module.lookupSymbol<FuncOp>(func.getValue());
+  auto function =
+      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
   FunctionType function_ty = function.getType();
 
   for (auto arg_in : llvm::zip(args, function_ty.getInputs())) {

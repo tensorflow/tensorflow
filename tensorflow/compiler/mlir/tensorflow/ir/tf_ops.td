@@ -291,7 +291,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    FlatSymbolRefAttr:$f,
+    SymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
