@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import platform
 import tempfile
@@ -112,148 +113,59 @@ DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 
 
 @tf_export("experimental.tensorrt.ConversionParams", v1=[])
-class TrtConversionParams(object):
-  """A class to encapsulate parameters that are used for TF-TRT conversion."""
+class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
+    "rewriter_config_template", "max_workspace_size_bytes", "precision_mode",
+    "minimum_segment_size", "is_dynamic_op", "maximum_cached_engines",
+    "use_calibration", "max_batch_size"])):
+  """Parameters that are used for TF-TRT conversion.
 
-  def __init__(self,
-               rewriter_config_template=None,
-               max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
-               precision_mode=TrtPrecisionMode.FP32,
-               minimum_segment_size=3,
-               is_dynamic_op=True,
-               maximum_cached_engines=1,
-               use_calibration=True,
-               max_batch_size=1):
-    """Initialize TrtConversionParams.
+  Fields:
+    rewriter_config_template: a template RewriterConfig proto used to create a
+      TRT-enabled RewriterConfig. If None, it will use a default one.
+    max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
+      engine can use at execution time. This corresponds to the
+      'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
+    precision_mode: one the strings in
+      TrtPrecisionMode.supported_precision_modes().
+    minimum_segment_size: the minimum number of nodes required for a subgraph
+      to be replaced by TRTEngineOp.
+    is_dynamic_op: whether to generate dynamic TRT ops which will build the
+      TRT network and engine at run time. i.e. Since TensorRT version < 6.0
+      does not support dynamic dimensions other than the batch dimension, when
+      the TensorFlow graph has a non-batch dimension of dynamic size, we would
+      need to enable this option. This option should be set to True in TF 2.0.
+    maximum_cached_engines: max number of cached TRT engines for dynamic TRT
+      ops. Created TRT engines for a dynamic dimension are cached. This is the
+      maximum number of engines that can be cached. If the number of cached
+      engines is already at max but none of them supports the input shapes,
+      the TRTEngineOp will fall back to run the original TF subgraph that
+      corresponds to the TRTEngineOp.
+    use_calibration: this argument is ignored if precision_mode is not INT8.
+      If set to True, a calibration graph will be created to calibrate the
+      missing ranges. The calibration graph must be converted to an inference
+      graph by running calibration with calibrate(). If set to False,
+      quantization nodes will be expected for every tensor in the graph
+      (exlcuding those which will be fused). If a range is missing, an error
+      will occur. Please note that accuracy may be negatively affected if
+      there is a mismatch between which tensors TRT quantizes and which
+      tensors were trained with fake quantization.
+    max_batch_size: max size for the input batch. This parameter is only
+      effective when is_dynamic_op=False which is not supported in TF 2.0.
+  """
 
-    Args:
-      rewriter_config_template: a template RewriterConfig proto used to create a
-        TRT-enabled RewriterConfig. If None, it will use a default one.
-      max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
-        engine can use at execution time. This corresponds to the
-        'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
-      precision_mode: one the strings in
-        TrtPrecisionMode.supported_precision_modes().
-      minimum_segment_size: the minimum number of nodes required for a subgraph
-        to be replaced by TRTEngineOp.
-      is_dynamic_op: whether to generate dynamic TRT ops which will build the
-        TRT network and engine at run time. i.e. Since TensorRT version < 6.0
-        does not support dynamic dimensions other than the batch dimension, when
-        the TensorFlow graph has a non-batch dimension of dynamic size, we would
-        need to enable this option. This option should be set to True in TF 2.0.
-      maximum_cached_engines: max number of cached TRT engines for dynamic TRT
-        ops. Created TRT engines for a dynamic dimension are cached. This is the
-        maximum number of engines that can be cached. If the number of cached
-        engines is already at max but none of them supports the input shapes,
-        the TRTEngineOp will fall back to run the original TF subgraph that
-        corresponds to the TRTEngineOp.
-      use_calibration: this argument is ignored if precision_mode is not INT8.
-        If set to True, a calibration graph will be created to calibrate the
-        missing ranges. The calibration graph must be converted to an inference
-        graph by running calibration with calibrate(). If set to False,
-        quantization nodes will be expected for every tensor in the graph
-        (exlcuding those which will be fused). If a range is missing, an error
-        will occur. Please note that accuracy may be negatively affected if
-        there is a mismatch between which tensors TRT quantizes and which
-        tensors were trained with fake quantization.
-      max_batch_size: max size for the input batch. This parameter is only
-        effective when is_dynamic_op=False which is not supported in TF 2.0.
-    """
-    super(TrtConversionParams, self).__setattr__("rewriter_config_template",
-                                                 rewriter_config_template)
-    super(TrtConversionParams, self).__setattr__("max_workspace_size_bytes",
-                                                 max_workspace_size_bytes)
-    super(TrtConversionParams, self).__setattr__("precision_mode",
-                                                 precision_mode)
-    super(TrtConversionParams, self).__setattr__("minimum_segment_size",
-                                                 minimum_segment_size)
-    super(TrtConversionParams, self).__setattr__("is_dynamic_op", is_dynamic_op)
-    super(TrtConversionParams, self).__setattr__("maximum_cached_engines",
-                                                 maximum_cached_engines)
-    super(TrtConversionParams, self).__setattr__("use_calibration",
-                                                 use_calibration)
-    super(TrtConversionParams, self).__setattr__("max_batch_size",
-                                                 max_batch_size)
-
-  def __setattr__(self, key, value):
-    """Override __setattr__ to make class immutable."""
-    raise AttributeError(
-        "{} is immutable and thus cannot change its attributes".format(
-            self.__class__))
-
-  def _replace(self,
-               rewriter_config_template=None,
-               max_workspace_size_bytes=None,
-               precision_mode=None,
-               minimum_segment_size=None,
-               is_dynamic_op=None,
-               maximum_cached_engines=None,
-               use_calibration=None,
-               max_batch_size=None):
-    """Set value of class data members only if they are passed as arguments.
-
-    We need this function for backward compatibility with NamedTuple
-    TrtConversionParams which forced users to use the following syntax to
-    set parameters with `DEFAULT_TRT_CONVERSION_PARAMS._replace(...)`.
-
-    Args:
-      rewriter_config_template: The rewriter_config_template field of the
-        returned NamedTuple if not None.
-      max_workspace_size_bytes: The max_workspace_size_bytes field of the
-        returned NamedTuple if not None.
-      precision_mode: The precision_mode field of the returned NamedTuple if not
-        None.
-      minimum_segment_size: The minimum_segment_size field of the returned
-        NamedTuple if not None.
-      is_dynamic_op: The is_dynamic_op field of the returned NamedTuple if not
-        None.
-      maximum_cached_engines: The maximum_cached_engines field of the returned
-        NamedTuple if not None.
-      use_calibration: The use_calibration field of the returned NamedTuple if
-        not None.
-      max_batch_size: The max_batch_size field of the returned NamedTuple if not
-        None.
-
-    Returns:
-      Constructed instance of TrtConversionParams.
-    """
-
-    if rewriter_config_template is None:
-      rewriter_config_template = self.rewriter_config_template
-
-    if max_workspace_size_bytes is None:
-      max_workspace_size_bytes = self.max_workspace_size_bytes
-
-    if precision_mode is None:
-      precision_mode = self.precision_mode
-
-    if minimum_segment_size is None:
-      minimum_segment_size = self.minimum_segment_size
-
-    if is_dynamic_op is None:
-      is_dynamic_op = self.is_dynamic_op
-
-    if maximum_cached_engines is None:
-      maximum_cached_engines = self.maximum_cached_engines
-
-    if use_calibration is None:
-      use_calibration = self.use_calibration
-
-    if max_batch_size is None:
-      max_batch_size = self.max_batch_size
-
-    return TrtConversionParams(
-        rewriter_config_template=rewriter_config_template,
-        max_workspace_size_bytes=max_workspace_size_bytes,
-        precision_mode=precision_mode,
-        minimum_segment_size=minimum_segment_size,
-        is_dynamic_op=is_dynamic_op,
-        maximum_cached_engines=maximum_cached_engines,
-        use_calibration=use_calibration,
-        max_batch_size=max_batch_size)
-
-  def __repr__(self):
-    return "TrtConversionParams" + str(vars(self))
+  def __new__(cls,
+              rewriter_config_template=None,
+              max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
+              precision_mode=TrtPrecisionMode.FP32,
+              minimum_segment_size=3,
+              is_dynamic_op=True,
+              maximum_cached_engines=1,
+              use_calibration=True,
+              max_batch_size=1):
+    return super(TrtConversionParams, cls).__new__(
+        cls, rewriter_config_template, max_workspace_size_bytes, precision_mode,
+        minimum_segment_size, is_dynamic_op, maximum_cached_engines,
+        use_calibration, max_batch_size)
 
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams()
