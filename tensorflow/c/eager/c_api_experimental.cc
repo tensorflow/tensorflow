@@ -611,3 +611,9 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
     tensorflow::port::Free(data);
   };
 }
+
+void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
+                                             TF_Status* status) {
+  h->handle->EnableImplicitMirroring();
+  status->status = tensorflow::Status::OK();
+}

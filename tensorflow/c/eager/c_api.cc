@@ -1074,6 +1074,10 @@ AbstractTensorHandleInterface* tensorflow::TensorHandleInterface::Copy() {
   return new TensorHandleInterface(handle_);
 }
 
+void tensorflow::TensorHandleInterface::EnableImplicitMirroring() {
+  handle_->EnableImplicitMirroring();
+}
+
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
@@ -1212,14 +1216,13 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
                        tensorflow::TensorShape(dimvec), buf);
   buf->Unref();
   tensorflow::TensorHandle* ret_handle;
-  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> variant_device;
   if (custom_device == nullptr) {
-    variant_device = device;
+    status->status = tensorflow::TensorHandle::CreateLocalHandle(
+        t, device, context, &ret_handle);
   } else {
-    variant_device = custom_device;
+    status->status = tensorflow::TensorHandle::CreateLocalHandle(
+        t, custom_device, context, &ret_handle);
   }
-  status->status = tensorflow::TensorHandle::CreateLocalHandle(
-      t, variant_device, context, &ret_handle);
   if (!status->status.ok()) {
     return nullptr;
   }

@@ -143,9 +143,9 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
                             " to ", expected_input_device->name());
       },
       profiler::TraceMeLevel::kInfo);
-  Status status =
-      EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
-                        ctx->MirrorTensors(), &result_handle);
+  Status status = EagerCopyToDevice(
+      handle, ctx, &op->Executor(), expected_input_device,
+      handle->ImplicitMirroring() || ctx->MirrorTensors(), &result_handle);
   activity.Stop();
   if (!status.ok()) {
     return errors::Internal("Failed copying input tensor from ",
@@ -398,7 +398,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, &ctx, &executor, device == nullptr ? ctx.HostCPU() : device,
-            ctx.MirrorTensors(), &handle));
+            input->ImplicitMirroring() || ctx.MirrorTensors(), &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
         handle->Unref();
@@ -976,7 +976,7 @@ Status EagerKernelExecute(
   std::vector<Tensor> outputs(1);
 
   ExecuteNodeArgs inputs(op_inputs.size());
-  TF_RETURN_IF_ERROR(inputs.Init(ctx, op_inputs));
+  TF_RETURN_IF_ERROR(inputs.Init(ctx, op_inputs, kernel));
   // TODO(apassos) figure out how to record stats for ops which are a part of
   // functions.
   // TODO(b/111859745): When we support recovering from kernel/device errors, we
@@ -1022,7 +1022,8 @@ Status EagerKernelExecute(
     DCHECK_EQ(ctx->CanonicalDevice(kernel->OutputDevice(i)),
               absl::get<Device*>(retvals[i]->device()));
 
-    TF_RETURN_IF_ERROR(retvals[i]->SetTensor(std::move(outputs[i])));
+    TF_RETURN_IF_ERROR(retvals[i]->SetTensor(
+        std::move(outputs[i]), ctx->CanonicalDevice(kernel->OutputDevice(i))));
   }
   return Status::OK();
 }
@@ -1031,11 +1032,23 @@ namespace {
 
 Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                               EagerExecutor* executor, Device* dstd,
-                              TensorHandle** result) {
+                              bool mirror, TensorHandle** result) {
   TF_RETURN_IF_ERROR(executor->status());
-  TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
-      true, ctx->CanonicalDevice(dstd), dstd, h->resource_device(), h->dtype,
-      ctx, result));
+  Device* d = ctx->CanonicalDevice(dstd);
+  if (mirror && h->HasLocalMirror(d)) {
+    h->Ref();
+    *result = h;
+    return Status::OK();
+  }
+
+  if (mirror) {
+    TF_RETURN_IF_ERROR(h->AddEmptyLocalMirror(d));
+    h->Ref();
+    *result = h;
+  } else {
+    TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
+        true, d, dstd, h->resource_device(), h->dtype, ctx, result));
+  }
 
   // Note that `h` may not be currently ready. However execution order will
   // make sure that `h` is ready before the copy is actually done.
@@ -1071,7 +1084,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   }
 
   if (sender_is_local && recver_is_local) {
-    return LocalEagerCopyToDevice(h, ctx, executor, device, result);
+    return LocalEagerCopyToDevice(h, ctx, executor, device, mirror, result);
   } else {
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
@@ -1087,7 +1100,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     uint64 recv_op_id = 0;
     if (recver_is_local) {
       TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
-          true, /* d= */ device, /* op_device= */ device,
+          true, /* d= */ ctx->CanonicalDevice(device), /* op_device= */ device,
           /*resource_device=*/nullptr, h->dtype, ctx, result));
     } else {
       uint64 context_id = ctx->GetContextId();
