@@ -21,7 +21,10 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "execute",
     "get_cpu_value",
+    "raw_exec",
+    "which",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
@@ -79,7 +82,7 @@ def find_cc(repository_ctx):
     if cc_name.startswith("/"):
         # Absolute path, maybe we should make this supported by our which function.
         return cc_name
-    cc = repository_ctx.which(cc_name)
+    cc = which(repository_ctx, cc_name)
     if cc == None:
         fail(("Cannot find {}, either correct your path or set the {}" +
               " environment variable").format(target_cc_name, cc_path_envvar))
@@ -102,7 +105,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
     # TODO: We pass -no-canonical-prefixes here to match the compiler flags,
     #       but in rocm_clang CROSSTOOL file that is a `feature` and we should
     #       handle the case when it's disabled and no flag is passed
-    result = repository_ctx.execute([
+    result = raw_exec(repository_ctx, [
         cc,
         "-no-canonical-prefixes",
         "-E",
@@ -323,7 +326,7 @@ def _hipcc_is_hipclang(repository_ctx, rocm_config):
             return "True"
 
     # grep for "HIP_COMPILER=clang" in /opt/rocm/hip/lib/.hipInfo
-    grep_result = _execute(
+    grep_result = execute(
         repository_ctx,
         ["grep", "HIP_COMPILER=clang", rocm_config.rocm_toolkit_path + "/hip/lib/.hipInfo"],
         empty_stdout_fine = True,
@@ -582,35 +585,6 @@ def _create_dummy_repository(repository_ctx):
         _DUMMY_CROSSTOOL_BZL_FILE,
     )
     repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
-
-def _execute(
-        repository_ctx,
-        cmdline,
-        error_msg = None,
-        error_details = None,
-        empty_stdout_fine = False):
-    """Executes an arbitrary shell command.
-
-    Args:
-      repository_ctx: the repository_ctx object
-      cmdline: list of strings, the command to execute
-      error_msg: string, a summary of the error if the command fails
-      error_details: string, details about the error or steps to fix it
-      empty_stdout_fine: bool, if True, an empty stdout result is fine, otherwise
-        it's an error
-    Return:
-      the result of repository_ctx.execute(cmdline)
-    """
-    result = repository_ctx.execute(cmdline)
-    if result.stderr or not (empty_stdout_fine or result.stdout):
-        auto_configure_fail(
-            "\n".join([
-                error_msg.strip() if error_msg else "Repository command failed",
-                result.stderr.strip(),
-                error_details if error_details else "",
-            ]),
-        )
-    return result
 
 def _norm_path(path):
     """Returns a path with '/' and remove the trailing slash."""
