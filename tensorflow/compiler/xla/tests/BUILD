@@ -2127,10 +2127,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
-<<<<<<< HEAD
-        "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
-=======
->>>>>>> google-upstream/master
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:stream_executor_no_cuda",
