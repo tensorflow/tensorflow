@@ -1031,8 +1031,15 @@ class Dense(Layer):
   created by the layer, and `bias` is a bias vector created by the layer
   (only applicable if `use_bias` is `True`).
 
-  Note: If the input to the layer has a rank greater than 2, then
-  it is flattened prior to the initial dot product with `kernel`.
+  Note: If the input to the layer has a rank greater than 2, then `Dense`
+  computes the dot product between the `inputs` and the `kernel` along the
+  last axis of the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+  For example, if input has dimensions `(batch_size, d0, d1)`,
+  then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
+  along axis 2 of the `input`, on every sub-tensor of shape `(1, 1, d1)`
+  (there are `batch_size * d0` such sub-tensors).
+  The output in this case will have shape `(batch_size, d0, units)`.
+
   Besides, layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
 
