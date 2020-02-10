@@ -457,13 +457,12 @@ Status TRTEngineOp::VerifyInputShapes(
     }
   }
 
-  if (input_concrete_shapes[0].dims() < 1) {
-    return errors::InvalidArgument(
-        "Input shapes contain scalar, for ", name(), ": ",
-        TensorShapeUtils::ShapeListString(input_concrete_shapes));
-  }
-
   if (use_implicit_batch_) {
+    if (input_concrete_shapes[0].dims() < 1) {
+      return errors::InvalidArgument(
+          "Input shapes contain scalar, for ", name(), ": ",
+          TensorShapeUtils::ShapeListString(input_concrete_shapes));
+    }
     const int batch_size = input_concrete_shapes[0].dim_size(0);
     if (batch_size < 1) {
       return errors::InvalidArgument(
