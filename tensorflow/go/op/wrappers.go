@@ -15581,6 +15581,7 @@ func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, o
 // The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
 //
 // Examples:
+//
 // >>> tf.strings.regex_full_match(["TF lib", "lib TF"], ".*lib$")
 // <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
 // >>> tf.strings.regex_full_match(["TF lib", "lib TF"], ".*TF$")
@@ -19937,6 +19938,7 @@ func AsStringFill(value string) AsStringAttr {
 // tutorial.
 //
 // Examples:
+//
 // >>> tf.strings.as_string([3, 2])
 // <tf.Tensor: shape=(2,), dtype=string, numpy=array([b'3', b'2'], dtype=object)>
 // >>> tf.strings.as_string([3.1415926, 2.71828], precision=2).numpy()
@@ -38720,6 +38722,7 @@ func UnicodeTranscodeReplaceControlCharacters(value bool) UnicodeTranscodeAttr {
 // but as metadata, and so is not preserved in the output.
 //
 // Examples:
+//
 // >>> tf.strings.unicode_transcode(["Hello", "TensorFlow", "2.x"], "UTF-8", "UTF-16-BE")
 // <tf.Tensor: shape=(3,), dtype=string, numpy=
 // array([b'\x00H\x00e\x00l\x00l\x00o',
@@ -39049,6 +39052,7 @@ func DecodeCompressed(scope *Scope, bytes tf.Output, optional ...DecodeCompresse
 // time than `tf.string_to_hash_bucket_fast`.
 //
 // Examples:
+//
 // >>> tf.strings.to_hash_bucket_strong(["Hello", "TF"], 3, [1, 2]).numpy()
 // array([2, 0])
 //
@@ -39156,6 +39160,7 @@ func ResourceApplyAdadelta(scope *Scope, var_ tf.Output, accum tf.Output, accum_
 // `tf.string_to_hash_bucket_strong`.
 //
 // Examples:
+//
 // >>> tf.strings.to_hash_bucket_fast(["Hello", "TensorFlow", "2.x"], 3).numpy()
 // array([0, 2, 2])
 //
@@ -39198,6 +39203,7 @@ func StringJoinSeparator(value string) StringJoinAttr {
 // with the given separator (default is an empty separator).
 //
 // Examples:
+//
 // >>> s = ["hello", "world", "tensorflow"]
 // >>> tf.strings.join(s, " ")
 // <tf.Tensor: shape=(), dtype=string, numpy=b'hello world tensorflow'>
@@ -40021,6 +40027,7 @@ func OptionalGetValue(scope *Scope, optional tf.Output, output_types []tf.DataTy
 // match input shape.
 //
 // Examples:
+//
 // >>> tf.strings.unicode_script([1, 31, 38])
 // <tf.Tensor: shape=(3,), dtype=int32, numpy=array([0, 0, 0], dtype=int32)>
 //
@@ -43672,6 +43679,7 @@ func ResourceApplyMomentum(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.
 // Returns A string `Tensor` of the same shape as the input.
 //
 // Examples:
+//
 // >>> tf.strings.strip(["\nTensorFlow", "     The python library    "]).numpy()
 // array([b'TensorFlow', b'The python library'], dtype=object)
 func StringStrip(scope *Scope, input tf.Output) (output tf.Output) {
