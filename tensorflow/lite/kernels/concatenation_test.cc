@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
+#include <type_traits>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
@@ -271,9 +272,12 @@ TEST(ConcatenationOpTest, FourInputsQuantizedUint8) {
 template <typename Type>
 struct ConcatenationOpTestTyped : public testing::Test {
   using TestType = Type;
+  enum TensorType tensor_type;
 
-  enum TensorType tensor_type =
-      std::is_same<Type, int16_t>::value ? TensorType_INT16 : TensorType_INT8;
+  ConcatenationOpTestTyped() {
+    tensor_type =
+        std::is_same<Type, int16_t>::value ? TensorType_INT16 : TensorType_INT8;
+  }
 };
 
 using TestTypes = testing::Types<int8_t, int16_t>;

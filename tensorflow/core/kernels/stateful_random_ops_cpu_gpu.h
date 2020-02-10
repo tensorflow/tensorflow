@@ -93,13 +93,6 @@ struct UpdateVariableAndFill_Philox_Arg {
 
 using GPUDevice = Eigen::GpuDevice;
 
-struct UpdateVariableAndFill_Philox_Arg {
-  int64 output_size;
-  int64 alg_tag_skip;
-  ScopedUnlockUnrefVar* not_used;
-  Tensor* state_tensor;
-};
-
 // Declares the partially GPU-specialized functor structs.
 // must be kept at <=6 arguments because of a gcc/clang ABI incompatibility bug
 template <typename Distribution>
