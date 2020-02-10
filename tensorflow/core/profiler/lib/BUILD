@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_not_mobile", "tf_cuda_library")
 
 package(
     default_visibility = [
@@ -23,9 +23,6 @@ cc_library(
     ]),
 )
 
-# Linked directly into ":tensorflow_framework".
-# Unlike other "_impl" targets in the profiler, this one depends on "core:framework" so linking it
-# to "core:framework_internal_impl" causes a circular dependency.
 cc_library(
     name = "profiler_session_impl",
     srcs = [
@@ -33,34 +30,31 @@ cc_library(
         "profiler_session.h",
     ],
     visibility = [
-        "//tensorflow:__pkg__",
+        "//tensorflow/core/profiler:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [
-        ":profiler_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
-        "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/util:ptr_util",
-    ] + select({
-        "//tensorflow:android": [],
-        "//conditions:default": [
-            "//tensorflow/core/profiler/convert:xplane_to_trace_events",
-            "//tensorflow/core/profiler/utils:derived_timeline",
-            "//tensorflow/core/profiler/utils:group_events",
-            "//tensorflow/core/profiler/utils:xplane_utils",
-        ],
-    }),
+    ] + if_not_mobile([
+        ":profiler_utils",
+        "//tensorflow/core/profiler/internal:profiler_factory",
+        "//tensorflow/core/profiler/convert:xplane_to_trace_events",
+        "//tensorflow/core/profiler/utils:derived_timeline",
+        "//tensorflow/core/profiler/utils:group_events",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+    ]),
     alwayslink = True,
 )
 
 tf_cuda_library(
-    name = "profiler_lib",
+    name = "profiler_backends",
     cuda_deps = [
         "//tensorflow/core/profiler/internal/gpu:device_tracer",
     ],
@@ -76,11 +70,12 @@ cc_library(
     hdrs = ["traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+    ] + if_not_mobile([
         "//tensorflow/core/profiler/internal:traceme_recorder",
-        "@com_google_absl//absl/strings",
-    ],
+    ]),
 )
 
 cc_library(
@@ -100,11 +95,12 @@ cc_library(
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+    ] + if_not_mobile([
         "//tensorflow/core/profiler/internal:annotation_stack",
-        "@com_google_absl//absl/strings",
-    ],
+    ]),
 )
 
 cc_library(

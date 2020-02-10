@@ -72,6 +72,18 @@ tf_proto_library(
     visibility = [":friends"],
 )
 
+cc_library(
+    name = "profiler_impl",
+    visibility = ["//tensorflow:__pkg__"],
+    deps = [
+        "//tensorflow/core/profiler/internal:annotation_stack_impl",
+        "//tensorflow/core/profiler/internal:profiler_factory_impl",
+        "//tensorflow/core/profiler/internal:traceme_recorder_impl",
+        "//tensorflow/core/profiler/lib:profiler_session_impl",
+    ],
+    alwayslink = True,
+)
+
 # Libraries and binaries of TensorFlow profiler 1.x.
 tf_cc_binary(
     name = "profiler",
