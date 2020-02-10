@@ -1380,6 +1380,8 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
     # o is output gate weights.
     # c is cell gate weights.
     weights = [weights[x] for x in (0, 1, 3, 2, 4, 5, 7, 6)]
+    # full_bias is a tensor of shape (8*n,)
+    full_bias = array_ops.split(full_bias, 8, axis=0)
     full_bias = [full_bias[x] for x in (0, 1, 3, 2, 4, 5, 7, 6)]
 
   params = _canonical_to_params(
