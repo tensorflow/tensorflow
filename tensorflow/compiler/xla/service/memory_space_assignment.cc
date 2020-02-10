@@ -267,8 +267,8 @@ AlternateMemoryBestFitHeap::GetSortedColocatedIntervals(
     }
   }
 
-  absl::c_sort(colocated_intervals, [&](const BufferInterval* x,
-                                        const BufferInterval* y) {
+  absl::c_stable_sort(colocated_intervals, [&](const BufferInterval* x,
+                                               const BufferInterval* y) {
     return std::make_pair(x->start, x->end) < std::make_pair(y->start, y->end);
   });
   return colocated_intervals;
@@ -283,6 +283,13 @@ bool AlternateMemoryBestFitHeap::IsIntervalAllowedInAlternateMemory(
   if (interval.buffer->shape().IsTuple()) {
     VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
             << " in default mem because it is a tuple.";
+    return false;
+  }
+
+  // Don't place scalars in the alternate memory.
+  if (ShapeUtil::IsEffectiveScalar(interval.buffer->shape())) {
+    VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+            << " in default mem because it is a scalar.";
     return false;
   }
 
@@ -333,11 +340,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
-    // Skip if we have already allocated for this buffer.
-    if (allocation_map_->contains(interval.buffer)) {
-      continue;
-    }
-
     if (!IsIntervalAllowedInAlternateMemory(interval)) {
       continue;
     }
@@ -384,13 +386,14 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     for (const BufferInterval* colocated_interval : colocated_intervals) {
       const HloValue* value = colocated_interval->buffer;
       const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+      allocation_sequence_list_->push_back({value, {}});
       MemorySpaceAssignment::AllocationSequence* allocation_sequence =
-          &(*allocation_map_)[value];
+          &allocation_sequence_list_->back().sequence;
       int64 definition_time =
           instruction_schedule.at(value->defining_instruction());
       // Sort the uses by the use time.
       std::vector<HloUse> uses = value->uses();
-      absl::c_sort(uses, [&](HloUse use1, HloUse use2) {
+      absl::c_stable_sort(uses, [&](HloUse use1, HloUse use2) {
         return instruction_schedule.at(use1.instruction) <
                instruction_schedule.at(use2.instruction);
       });
@@ -474,9 +477,9 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
   }
 
   if (VLOG_IS_ON(3)) {
-    for (const auto& alloc_pair : *allocation_map_) {
-      VLOG(3) << "Allocation for " << alloc_pair.first->ToShortString();
-      for (const auto& alloc : alloc_pair.second) {
+    for (const auto& value_and_sequence : *allocation_sequence_list_) {
+      VLOG(3) << "Allocation for " << value_and_sequence.value->ToShortString();
+      for (const auto& alloc : value_and_sequence.sequence) {
         std::string addr_str = ": default";
         if (alloc->memory_space() == MemorySpace::kAlternate) {
           addr_str = absl::StrCat(": alt ", alloc->chunk().offset);
@@ -859,8 +862,8 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
       VLOG(4) << "This would violate the outstanding async copy limit.";
       continue;
     }
-    if (async_copy_ordering_.ViolatesOrdering(alternate_mem_interval.start,
-                                              alternate_mem_interval.end)) {
+    if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
+                                  alternate_mem_interval.end)) {
       VLOG(4) << "This would violate asynchronous copy ordering.";
       continue;
     }
@@ -935,6 +938,23 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
   // Add one because we are checking if adding an additional asynchronous copy
   // would violate the limit.
   return num_async_copies + 1 > options_.max_outstanding_async_copies;
+}
+
+bool AlternateMemoryBestFitHeap::ViolatesAsyncCopyOrdering(
+    int64 start_time, int64 end_time) const {
+  if (async_copy_ordering_.ViolatesOrdering(start_time, end_time)) {
+    return true;
+  }
+
+  // Also check pending async copies.
+  for (const auto& async_copy : pending_async_copies_) {
+    if (async_copy.destination == MemorySpace::kAlternate &&
+        async_copy.start_time <= end_time &&
+        start_time <= async_copy.end_time) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
@@ -1163,11 +1183,11 @@ MemorySpaceAssignment::Run(HloModule* module,
   VLOG(4) << "Module before memory space assignment: ";
   XLA_VLOG_LINES(4, module->ToString());
   VLOG(4) << "Schedule: " << module->schedule().ToString();
-  MemorySpaceAssignment memory_space_assignment(
-      module, options.alternate_memory_space, hlo_live_range);
+  MemorySpaceAssignment memory_space_assignment(module, options,
+                                                hlo_live_range);
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
-      &memory_space_assignment.allocation_map_, options, alias_analysis,
-      hlo_live_range);
+      &memory_space_assignment.allocation_sequence_list_, options,
+      alias_analysis, hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
@@ -1187,9 +1207,8 @@ MemorySpaceAssignment::Run(HloModule* module,
   VLOG(1) << "Maximum number of outstanding async copies: "
           << CountMaximumOutstandingAsyncCopies(*module);
 
-  if (options.verify || VLOG_IS_ON(1)) {
-    TF_RETURN_IF_ERROR(memory_space_assignment.Verify());
-  }
+  TF_RETURN_IF_ERROR(
+      memory_space_assignment.VerifyAndExportHeapSimulatorTrace());
 
   return std::move(memory_space_assignment.preset_assignments_);
 }
@@ -1297,7 +1316,7 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
     }
   }
   copy_start_ = computation->AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})}),
+      ShapeUtil::MakeTupleShape({shape, shape, ShapeUtil::MakeShape(U32, {})}),
       HloOpcode::kCopyStart, producing_instruction));
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
@@ -1339,8 +1358,8 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
 Status MemorySpaceAssignment::Process() {
   // Insert CopyStart/CopyDone pairs.
   int64 alternate_memory_size = 0;
-  for (auto& buffer_and_sequence : allocation_map_) {
-    for (auto& allocation : buffer_and_sequence.second) {
+  for (auto& value_and_sequence : allocation_sequence_list_) {
+    for (auto& allocation : value_and_sequence.sequence) {
       TF_RETURN_IF_ERROR(allocation->Process(this));
       // Add the offset and size of the allocation in the alternate memory to
       // the output map. Special case for bitcast: since bitcast doesn't define
@@ -1356,8 +1375,9 @@ Status MemorySpaceAssignment::Process() {
   }
 
   if (!preset_assignments_->chunks().empty()) {
-    preset_assignments_->add_size(alternate_memory_space_,
-                                  alternate_memory_size);
+    preset_assignments_
+        ->assignment_information_for_space(options_.alternate_memory_space)
+        ->size = alternate_memory_size;
   }
 
   if (VLOG_IS_ON(3)) {
@@ -1367,8 +1387,8 @@ Status MemorySpaceAssignment::Process() {
               << "] : " << pair.first.ToString();
     }
     VLOG(3) << "Exported alternate memory sizes:";
-    for (auto& pair : preset_assignments_->sizes()) {
-      VLOG(3) << "  space: " << pair.first << ", size: " << pair.second;
+    for (auto& pair : preset_assignments_->assignment_informations()) {
+      VLOG(3) << "  space: " << pair.first << ", size: " << pair.second.size;
     }
   }
 
@@ -1386,7 +1406,8 @@ Status MemorySpaceAssignment::Process() {
               position.instruction->mutable_shape(), position.index);
           CHECK(shape->IsArray()) << "Coloring a shape that is not an array: "
                                   << position.ToString();
-          shape->mutable_layout()->set_memory_space(alternate_memory_space_);
+          shape->mutable_layout()->set_memory_space(
+              options_.alternate_memory_space);
         }
       }
     }
@@ -1503,8 +1524,8 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
   for (MemorySpace memory_space :
        {MemorySpace::kDefault, MemorySpace::kAlternate}) {
     std::vector<CopyAllocation*> copy_allocations;
-    for (auto& buffer_and_sequence : allocation_map_) {
-      for (auto& allocation : buffer_and_sequence.second) {
+    for (auto& value_and_sequence : allocation_sequence_list_) {
+      for (auto& allocation : value_and_sequence.sequence) {
         if (allocation->is_copy_allocation()) {
           auto copy_allocation = static_cast<CopyAllocation*>(allocation.get());
           if (copy_allocation->memory_space() == memory_space) {
@@ -1622,7 +1643,7 @@ Status MemorySpaceAssignment::FixSchedule() {
   return Status::OK();
 }
 
-Status MemorySpaceAssignment::Verify() const {
+Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   VLOG(3) << "Verifying:";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module_));
@@ -1632,6 +1653,9 @@ Status MemorySpaceAssignment::Verify() const {
 
   BufferIntervalTree interval_tree;
   absl::flat_hash_set<int64> seen_buffers;
+  std::map<std::pair<int64, int64>,
+           std::tuple<const HloValue*, Chunk, HeapSimulatorTrace::Event::Kind>>
+      events;
 
   for (const auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;
@@ -1652,6 +1676,10 @@ Status MemorySpaceAssignment::Verify() const {
               << time_bound.start << ", " << time_bound.end << ")";
       start_time = std::min(start_time, time_bound.start);
       end_time = std::max(end_time, time_bound.end);
+      events[std::make_pair(time_bound.start, value->id())] =
+          std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
+      events[std::make_pair(time_bound.end, value->id())] =
+          std::make_tuple(value, chunk, HeapSimulatorTrace::Event::FREE);
     }
     CHECK_GE(start_time, 0);
     CHECK_GT(end_time, 0);
@@ -1661,14 +1689,17 @@ Status MemorySpaceAssignment::Verify() const {
     // really should check against end_time (inclusive) for cases where the
     // operand can't share buffer with user (see
     // HloDataflowAnalysis::CanShareOperandBufferWithUser).
-    for (const Chunk& overlapping_chunk :
-         interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
-      if (chunk.OverlapsWith(overlapping_chunk)) {
-        return InternalError(
-            ("Buffer %s (%d, %d) off: %d size: %d overlaps with another chunk"
-             " off: %d size: %d"),
-            buffer.ToString(), start_time, end_time, chunk.offset, chunk.size,
-            overlapping_chunk.offset, overlapping_chunk.size);
+    if (options_.verify || VLOG_IS_ON(1)) {
+      // Verify only if the option is set or if vlog is on.
+      for (const Chunk& overlapping_chunk :
+           interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
+        if (chunk.OverlapsWith(overlapping_chunk)) {
+          return InternalError(
+              ("Buffer %s (%d, %d) off: %d size: %d overlaps with another chunk"
+               " off: %d size: %d"),
+              buffer.ToString(), start_time, end_time, chunk.offset, chunk.size,
+              overlapping_chunk.offset, overlapping_chunk.size);
+        }
       }
     }
     interval_tree.Add(start_time, end_time - 1, chunk);
@@ -1676,6 +1707,37 @@ Status MemorySpaceAssignment::Verify() const {
             << end_time << ") off: " << position_and_chunk.second.offset
             << ", size: " << position_and_chunk.second.size;
   }
+
+  HeapSimulatorTrace* heap_trace =
+      &preset_assignments_
+           ->assignment_information_for_space(options_.alternate_memory_space)
+           ->heap_simulator_trace;
+  int64 memory_usage = 0;
+  int64 max_memory_usage = 0;
+  for (const auto& event : events) {
+    int64 time = event.first.first;
+    int64 buffer_id = event.first.second;
+    const HloValue* value;
+    Chunk chunk;
+    HeapSimulatorTrace::Event::Kind kind;
+    std::tie(value, chunk, kind) = event.second;
+    HeapSimulatorTrace::Event* heap_trace_event = heap_trace->add_events();
+    heap_trace_event->set_kind(kind);
+    heap_trace_event->set_buffer_id(buffer_id);
+    heap_trace_event->set_instruction_name(value->instruction()->name());
+    heap_trace_event->set_computation_name(
+        value->instruction()->parent()->name());
+
+    if (kind == HeapSimulatorTrace::Event::ALLOC) {
+      memory_usage += chunk.size;
+    } else {
+      CHECK_EQ(kind, HeapSimulatorTrace::Event::FREE);
+      memory_usage -= chunk.size;
+    }
+    max_memory_usage = std::max(max_memory_usage, memory_usage);
+    VLOG(3) << "Memory usage: " << memory_usage << " at time: " << time;
+  }
+  VLOG(1) << "Max memory usage ignoring fragmentation: " << max_memory_usage;
 
   return Status::OK();
 }

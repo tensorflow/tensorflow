@@ -29,6 +29,7 @@ from tensorflow.python.ops.linalg import solve_registrations as _solve_registrat
 from tensorflow.python.ops.linalg.linalg_impl import *
 from tensorflow.python.ops.linalg.linear_operator import *
 from tensorflow.python.ops.linalg.linear_operator_block_diag import *
+from tensorflow.python.ops.linalg.linear_operator_block_lower_triangular import *
 from tensorflow.python.ops.linalg.linear_operator_circulant import *
 from tensorflow.python.ops.linalg.linear_operator_composition import *
 from tensorflow.python.ops.linalg.linear_operator_diag import *

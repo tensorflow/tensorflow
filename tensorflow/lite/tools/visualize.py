@@ -29,7 +29,7 @@ import os
 import re
 import sys
 
-from tensorflow.lite.tools import schema_py_generated as schema_fb
+from tensorflow.lite.python import schema_py_generated as schema_fb
 
 # A CSS description for making the visualizer
 _CSS = """
@@ -291,18 +291,16 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
 
     for tensor_input_position, tensor_index in enumerate(op["inputs"]):
       if tensor_index not in first:
-        first[tensor_index] = (
-            (op_index - 0.5 + 1) * pixel_mult,
-            (tensor_input_position + 1) * width_mult)
+        first[tensor_index] = ((op_index - 0.5 + 1) * pixel_mult,
+                               (tensor_input_position + 1) * width_mult)
       edges.append({
           "source": TensorName(tensor_index),
           "target": OpName(op_index)
       })
     for tensor_output_position, tensor_index in enumerate(op["outputs"]):
       if tensor_index not in second:
-        second[tensor_index] = (
-            (op_index + 0.5 + 1) * pixel_mult,
-            (tensor_output_position + 1) * width_mult)
+        second[tensor_index] = ((op_index + 0.5 + 1) * pixel_mult,
+                                (tensor_output_position + 1) * width_mult)
       edges.append({
           "target": TensorName(tensor_index),
           "source": OpName(op_index)
@@ -317,9 +315,8 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
     })
   for tensor_index, tensor in enumerate(g["tensors"]):
     initial_y = (
-        first[tensor_index] if tensor_index in first
-        else second[tensor_index] if tensor_index in second
-        else (0, 0))
+        first[tensor_index] if tensor_index in first else
+        second[tensor_index] if tensor_index in second else (0, 0))
 
     nodes.append({
         "id": TensorName(tensor_index),
@@ -344,6 +341,7 @@ def GenerateTableHtml(items, keys_to_print, display_index=True):
       i.e. the displayed html cell will have the string returned by
       `mapping_fn(items[0][key])`.
     display_index: add a column which is the index of each row in `items`.
+
   Returns:
     An html table.
   """
@@ -424,8 +422,8 @@ def CreateHtmlFile(tflite_input, html_output):
   html += "<h1>TensorFlow Lite Model</h2>"
 
   data["filename"] = tflite_input  # Avoid special case
-  toplevel_stuff = [("filename", None), ("version", None), ("description",
-                                                            None)]
+  toplevel_stuff = [("filename", None), ("version", None),
+                    ("description", None)]
 
   html += "<table>\n"
   for key, mapping in toplevel_stuff:
@@ -446,8 +444,8 @@ def CreateHtmlFile(tflite_input, html_output):
     tensor_mapper = TensorMapper(g)
     opcode_mapper = OpCodeMapper(data)
     op_keys_to_display = [("inputs", tensor_mapper), ("outputs", tensor_mapper),
-                          ("builtin_options", None), ("opcode_index",
-                                                      opcode_mapper)]
+                          ("builtin_options", None),
+                          ("opcode_index", opcode_mapper)]
     tensor_keys_to_display = [("name", NameListToString),
                               ("type", TensorTypeToName),
                               ("shape", None),
@@ -457,12 +455,11 @@ def CreateHtmlFile(tflite_input, html_output):
 
     # Inputs and outputs.
     html += "<h3>Inputs/Outputs</h3>\n"
-    html += GenerateTableHtml(
-        [{
-            "inputs": g["inputs"],
-            "outputs": g["outputs"]
-        }], [("inputs", tensor_mapper), ("outputs", tensor_mapper)],
-        display_index=False)
+    html += GenerateTableHtml([{
+        "inputs": g["inputs"],
+        "outputs": g["outputs"]
+    }], [("inputs", tensor_mapper), ("outputs", tensor_mapper)],
+                              display_index=False)
 
     # Print the tensors.
     html += "<h3>Tensors</h3>\n"

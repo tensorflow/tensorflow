@@ -207,5 +207,40 @@ TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   ASSERT_TRUE(mutated);
 }
 
+TEST_F(CallInlinerTest, InlineSingleUseCalleesOnly) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  a {
+    ROOT tuple = () tuple()
+  }
+
+  b {
+    ROOT tuple.1 = () tuple()
+  }
+
+  ENTRY inline {
+    a = () call(), to_apply=a
+    b = () call(), to_apply=a
+    c = () call(), to_apply=b
+    ROOT tuple = ((), (), ()) tuple(a, b, c)
+  })";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  CallInliner call_inliner(/*single_call_site=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  ASSERT_EQ(module->entry_computation()->instruction_count(), 4);
+  auto inst = module->entry_computation()->instructions().begin();
+  EXPECT_THAT(*inst, op::Call());
+  ++inst;
+  EXPECT_THAT(*inst, op::Call());
+  ++inst;
+  EXPECT_THAT(*inst, op::Tuple());
+  ++inst;
+  EXPECT_THAT(*inst, op::Tuple());
+}
+
 }  // namespace
 }  // namespace xla

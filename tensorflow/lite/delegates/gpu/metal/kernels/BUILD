@@ -20,16 +20,17 @@ cc_library(
         ":elementwise",
         ":fully_connected",
         ":max_unpooling",
+        ":mean",
         ":mul",
         ":padding",
         ":pooling",
         ":prelu",
         ":relu",
         ":reshape",
+        ":resize",
         ":slice",
         ":softmax",
         ":transpose_conv",
-        ":upsample",
     ],
 )
 
@@ -314,6 +315,44 @@ ios_unit_test(
 )
 
 cc_library(
+    name = "mean",
+    srcs = ["mean.cc"],
+    hdrs = ["mean.h"],
+    deps = [
+        ":util",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+objc_library(
+    name = "mean_test_lib",
+    testonly = 1,
+    srcs = ["mean_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":mean",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "mean_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":mean_test_lib"],
+)
+
+cc_library(
     name = "mul",
     srcs = ["mul.cc"],
     hdrs = ["mul.h"],
@@ -507,6 +546,44 @@ ios_unit_test(
 )
 
 cc_library(
+    name = "resize",
+    srcs = ["resize.cc"],
+    hdrs = ["resize.h"],
+    deps = [
+        ":util",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+objc_library(
+    name = "resize_test_lib",
+    testonly = 1,
+    srcs = ["resize_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":resize",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "resize_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":resize_test_lib"],
+)
+
+cc_library(
     name = "reshape",
     srcs = ["reshape.cc"],
     hdrs = ["reshape.h"],
@@ -661,44 +738,6 @@ ios_unit_test(
 )
 
 cc_library(
-    name = "upsample",
-    srcs = ["upsample.cc"],
-    hdrs = ["upsample.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-objc_library(
-    name = "upsample_test_lib",
-    testonly = 1,
-    srcs = ["upsample_test.mm"],
-    sdk_frameworks = ["XCTest"],
-    deps = [
-        ":test_util",
-        ":upsample",
-    ],
-)
-
-ios_unit_test(
-    name = "upsample_test",
-    testonly = 1,
-    minimum_os_version = "10.0",
-    tags = tf_gpu_tests_tags() + [
-        "notap",
-        "tflite_not_portable_android",
-    ],
-    deps = [":upsample_test_lib"],
-)
-
-cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
@@ -733,6 +772,43 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@FP16",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+objc_library(
+    name = "kernel_tests_lib",
+    testonly = 1,
+    srcs = [
+        "add_test.mm",
+        "concat_test.mm",
+        "conv_test.mm",
+        "depthwise_conv_test.mm",
+        "elementwise_test.mm",
+        "fully_connected_test.mm",
+        "max_unpooling_test.mm",
+        "mul_test.mm",
+        "padding_test.mm",
+        "pooling_test.mm",
+        "prelu_test.mm",
+        "relu_test.mm",
+        "reshape_test.mm",
+        "resize_test.mm",
+        "slice_test.mm",
+        "softmax_test.mm",
+        "transpose_conv_test.mm",
+    ],
+    hdrs = [
+    ],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:common",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
+        "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
     ],
 )
 

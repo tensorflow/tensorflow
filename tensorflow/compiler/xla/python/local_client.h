@@ -39,8 +39,6 @@ limitations under the License.
 
 namespace xla {
 
-class PyLocalExecutable;
-
 class Device {
  public:
   explicit Device(int id, std::unique_ptr<LocalDeviceState> local_device_state,
@@ -131,11 +129,6 @@ class PyLocalClient {
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator);
   virtual ~PyLocalClient() = default;
 
-  Status TransferToInfeed(const LiteralSlice& literal,
-                          std::shared_ptr<Device> device);
-  StatusOr<Literal> TransferFromOutfeed(const Shape& shape,
-                                        std::shared_ptr<Device> device);
-
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const;
 
@@ -172,19 +165,6 @@ class PyLocalClient {
   // function specifies which one the platform expects.
   virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
 
-  // Returns a platform-specific serialization of `executable`. This is meant
-  // for transferring executables and not for storage, and the serialization is
-  // not guaranteed to be stable over time.
-  virtual StatusOr<std::string> SerializeExecutable(
-      const PyLocalExecutable& executable) const;
-
-  // Deserializes a serialized executable as produced by
-  // SerializeExecutable(). `serialized` must have been produced by client of
-  // the same platform. `this_shared` should point to this PyLocalClient.
-  virtual StatusOr<std::unique_ptr<PyLocalExecutable>> DeserializeExecutable(
-      const std::string& serialized,
-      std::shared_ptr<PyLocalClient> this_shared) const;
-
  protected:
   std::string platform_name_;
   LocalClient* client_;
@@ -217,9 +197,14 @@ class PyLocalClient {
 // Thread-safe.
 class PyLocalBuffer {
  public:
-  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromLiterals(
-      std::vector<BorrowingLiteral> leaves_literals, const Shape& tuple_shape,
-      std::shared_ptr<void> leaves_reference,
+  // If `force_copy` is true, forces a copy of the input buffer on CPU.
+  // Otherwise the library is free to alias the output buffer with `data`.
+  // `buffer_reference` is an optional shared pointer that should be kept alive
+  // by the runtime as long as the contents of `data` may still be accessed by
+  // the runtime (may be nullptr).
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromHostBuffer(
+      const void* data, const Shape& shape, bool force_copy,
+      std::shared_ptr<void> buffer_reference,
       std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device);
 
   static StatusOr<std::unique_ptr<PyLocalBuffer>> MakeTuple(
@@ -298,10 +283,21 @@ class PyLocalBuffer {
 };
 
 // Represents a compiled computation that can be executed given handles to
-// device-allocated literals. Wraps an XLA LocalExecutable.
+// device-allocated literals. Wraps one or more XLA LocalExecutables (one per
+// partition, as specified by the build options).
 class PyLocalExecutable {
  public:
   // Compiles a computation to an executable.
+  static StatusOr<std::unique_ptr<PyLocalExecutable>> CompileForDevices(
+      const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
+      const ExecutableBuildOptions* build_options,
+      std::shared_ptr<PyLocalClient> client,
+      const std::vector<std::vector<std::shared_ptr<Device>>>&
+          device_assignment);
+
+  // TODO(phawkins): Deprecated. Delete once all callers have been updated to
+  // use the newer form.
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
       const XlaComputation& computation,
       absl::optional<std::vector<Shape>> argument_layouts,
@@ -309,24 +305,32 @@ class PyLocalExecutable {
       std::shared_ptr<PyLocalClient> client,
       absl::optional<DeviceAssignment> device_assignment);
 
-  PyLocalExecutable(std::shared_ptr<LocalExecutable> executable,
+  PyLocalExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                     DeviceAssignment device_assignment,
                     std::shared_ptr<PyLocalClient> client);
 
   int num_replicas() const {
-    return executable_->build_options().num_replicas();
+    return executables_[0]->build_options().num_replicas();
   }
 
   int num_partitions() const {
-    return executable_->build_options().num_partitions();
+    return executables_[0]->build_options().num_partitions();
   }
 
   int64 SizeOfGeneratedCodeInBytes() const {
-    return executable_->executable()->SizeOfGeneratedCodeInBytes();
+    int64 size = 0;
+    for (auto& executable : executables_) {
+      size += executable->executable()->SizeOfGeneratedCodeInBytes();
+    }
+    return size;
   }
 
   const DeviceAssignment& device_assignment() const {
     return *device_assignment_;
+  }
+
+  const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
+    return local_logical_device_ids_;
   }
 
   const std::vector<std::shared_ptr<Device>>& local_devices() const {
@@ -351,9 +355,8 @@ class PyLocalExecutable {
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteOnLocalDevices(
       absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
 
-  void Delete() { executable_ = nullptr; }
+  void Delete() { executables_.clear(); }
 
-  LocalExecutable* executable() const { return executable_.get(); }
   const string& name() const;
 
  private:
@@ -365,18 +368,19 @@ class PyLocalExecutable {
   // asynchronous execution, the process being executed can outlive the
   // executable itself.
   std::shared_ptr<PyLocalClient> const client_;
-  std::shared_ptr<LocalExecutable> executable_;
+  // One executable per partition.
+  std::vector<std::shared_ptr<LocalExecutable>> executables_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. local_logical_devices_[i] = (i, 0)), but this may not be the case on
-  // multi-host platforms.
+  // (i.e. local_logical_device_ids_[i] = (i, 0)), but this may not be the case
+  // on multi-host platforms.
   // If there are 4 replicas and 2 partitions on a single host platform, size of
-  // local_logical_devices_ is 4*2 = 8.
-  std::vector<std::pair<int, int>> local_logical_devices_;
+  // local_logical_device_ids_ is 4*2 = 8.
+  std::vector<std::pair<int, int>> local_logical_device_ids_;
 
-  // local_devices_[i] is the Device to which local_logical_devices_[i] is
+  // local_devices_[i] is the Device to which local_logical_device_ids_[i] is
   // assigned.
   // shared_ptrs instead of unique_ptrs to play well with the Python bindings
   // (see xla.cc).

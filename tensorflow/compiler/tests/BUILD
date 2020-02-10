@@ -1382,16 +1382,17 @@ tf_cuda_cc_test(
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_kernel_creator",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -1548,5 +1549,19 @@ tf_xla_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "special_math_test",
+    size = "medium",
+    srcs = ["special_math_test.py"],
+    shard_count = 5,
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

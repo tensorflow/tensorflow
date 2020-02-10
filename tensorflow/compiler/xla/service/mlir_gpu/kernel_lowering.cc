@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // TF:llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:llvm-project
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // TF:llvm-project
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // TF:llvm-project
@@ -276,7 +277,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Transform lhlo operations to LinAlg.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeToLinalgPass());
+  pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations. This will yield a single tiled loop nest where
   // the inner loops are single trip.
   pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg());
@@ -317,14 +318,11 @@ namespace {
 
 /// A pass that does the final lowering to NVVM. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
-class LowerToNVVMPass : public ::mlir::ModulePass<LowerToNVVMPass> {
+class LowerToNVVMPass
+    : public ::mlir::OperationPass<LowerToNVVMPass, ::mlir::gpu::GPUModuleOp> {
  public:
-  void runOnModule() override {
-    ::mlir::ModuleOp m = getModule();
-    if (!m.getAttrOfType<::mlir::UnitAttr>(
-            ::mlir::gpu::GPUDialect::getKernelModuleAttrName())) {
-      return;
-    }
+  void runOnOperation() override {
+    ::mlir::gpu::GPUModuleOp m = getOperation();
 
     ::mlir::OwningRewritePatternList patterns;
     ::mlir::LinalgTypeConverter converter(m.getContext());
@@ -333,15 +331,16 @@ class LowerToNVVMPass : public ::mlir::ModulePass<LowerToNVVMPass> {
     ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
                                                    &getContext());
     ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
-
+    ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
     target.addIllegalDialect<::mlir::gpu::GPUDialect>();
     target.addIllegalOp<::mlir::LLVM::ExpOp>();
     target.addLegalDialect<::mlir::LLVM::LLVMDialect>();
     target.addLegalDialect<::mlir::NVVM::NVVMDialect>();
     // TODO(csigg): Remove once we support replacing non-root ops.
-    target.addLegalOp<::mlir::gpu::YieldOp>();
-    if (failed(applyPartialConversion(m, target, patterns, &converter))) {
+    target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
+                      ::mlir::gpu::YieldOp>();
+    if (failed(mlir::applyFullConversion(m, target, patterns, &converter))) {
       signalPassFailure();
     }
   }
@@ -355,12 +354,13 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   EnableIRPrinting(&pm);
 
   // Rewrite kernel functions to LLVM IR.
-  auto& kernelPm = pm.nest<::mlir::ModuleOp>();
+  auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createLowerToCFGPass());
   kernelPm.addPass(absl::make_unique<LowerToNVVMPass>());
   // Some basic cleanup.
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  kernelPm.addPass(::mlir::createStripDebugInfoPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering to NVVM IR failed.");
@@ -371,12 +371,9 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
 StatusOr<mlir::ModuleOp> ExtractKernelModule(mlir::ModuleOp module) {
   auto kernelModule = ::mlir::ModuleOp::create(module.getLoc());
   // TODO(b/137624192): This also needs to resolve naming conflicts.
-  module.walk([&kernelModule](mlir::ModuleOp nestedModule) {
-    if (nestedModule.getAttrOfType<mlir::UnitAttr>(
-            mlir::gpu::GPUDialect::getKernelModuleAttrName())) {
-      for (auto& fn : nestedModule) {
-        kernelModule.push_back(fn.clone());
-      }
+  module.walk([&kernelModule](mlir::gpu::GPUModuleOp nestedModule) {
+    for (auto& fn : nestedModule.body().front()) {
+      kernelModule.push_back(fn.clone());
     }
   });
   return kernelModule;

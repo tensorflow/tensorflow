@@ -51,14 +51,12 @@ class Wrapper(Layer):
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
-    # Tracks mapping of Wrapper inputs to inner layer inputs. Useful when
-    # the inner layer has update ops that depend on its inputs (as opposed
-    # to the inputs to the Wrapper layer).
     super(Wrapper, self).__init__(**kwargs)
 
   def build(self, input_shape=None):
     if not self.layer.built:
       self.layer.build(input_shape)
+      self.layer.built = True
     self.built = True
 
   @property
@@ -255,19 +253,20 @@ class TimeDistributed(Wrapper):
         if not input_length:
           input_length = array_ops.shape(inputs)[1]
         inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
-        # Shape: (num_samples * timesteps, ...).
+        # Shape: (num_samples * timesteps, ...). And track the
+        # transformation in self._input_map.
         inputs = array_ops.reshape(inputs, inner_input_shape)
         # (num_samples * timesteps, ...)
         if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
           inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
           kwargs['mask'] = K.reshape(mask, inner_mask_shape)
+
         y = self.layer(inputs, **kwargs)
 
         # Shape: (num_samples, timesteps, ...)
         output_shape = self.compute_output_shape(input_shape).as_list()
         output_shape = self._get_shape_tuple((-1, input_length), y, 1,
                                              output_shape[2:])
-
         y = array_ops.reshape(y, output_shape)
 
     return y
@@ -310,18 +309,18 @@ class TimeDistributed(Wrapper):
     # cases need to call the layer.compute_mask when input_mask is None:
     # Masking layer and Embedding layer with mask_zero
     input_shape = K.int_shape(inputs)
-    if input_shape[0]:
-      # batch size matters, we currently do not handle mask explicitly
+    if input_shape[0] and not self._always_use_reshape or isinstance(
+        inputs, ragged_tensor.RaggedTensor):
+      # batch size matters, we currently do not handle mask explicitly, or if
+      # the layer always uses reshape approach, or the input is a ragged tensor.
       return mask
     inner_mask = mask
     if inner_mask is not None:
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
-    #Reshape inputs because that's what call() does
-    #and we aren't saving the shape in an dict anymore
     inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
-    inputs = array_ops.reshape(inputs, inner_input_shape)
-    output_mask = self.layer.compute_mask(inputs, inner_mask)
+    inner_inputs = array_ops.reshape(inputs, inner_input_shape)
+    output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
       if mask is None:
         return None
@@ -354,21 +353,30 @@ class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
   Arguments:
-    layer: `Recurrent` instance.
-    merge_mode: Mode by which outputs of the
-      forward and backward RNNs will be combined.
-      One of {'sum', 'mul', 'concat', 'ave', None}.
-      If None, the outputs will not be combined,
-      they will be returned as a list.
-    backward_layer: Optional `Recurrent` instance to be used to handle
-      backwards input processing. If `backward_layer` is not provided,
-      the layer instance passed as the `layer` argument will be used to
-      generate the backward layer automatically.
+    layer: `keras.layers.RNN` instance, such as `keras.layers.LSTM` or
+      `keras.layers.GRU`. It could also be a `keras.layers.Layer` instance
+      that meets the following criteria:
+      1. Be a sequence-processing layer (accepts 3D+ inputs).
+      2. Have a `go_backwards`, `return_sequences` and `return_state`
+        attribute (with the same semantics as for the `RNN` class).
+      3. Have an `input_spec` attribute.
+      4. Implement serialization via `get_config()` and `from_config()`.
+      Note that the recommended way to create new RNN layers is to write a
+      custom RNN cell and use it with `keras.layers.RNN`, instead of
+      subclassing `keras.layers.Layer` directly.
+    merge_mode: Mode by which outputs of the forward and backward RNNs will be
+      combined. One of {'sum', 'mul', 'concat', 'ave', None}. If None, the
+      outputs will not be combined, they will be returned as a list. Default
+      value is 'concat'.
+    backward_layer: Optional `keras.layers.RNN`, or keras.layers.Layer` instance
+      to be used to handle backwards input processing. If `backward_layer` is
+      not provided, the layer instance passed as the `layer` argument will be
+      used to generate the backward layer automatically.
       Note that the provided `backward_layer` layer should have properties
       matching those of the `layer` argument, in particular it should have the
       same values for `stateful`, `return_states`, `return_sequence`, etc.
-      In addition, `backward_layer` and `layer` should have
-      different `go_backwards` argument values.
+      In addition, `backward_layer` and `layer` should have different
+      `go_backwards` argument values.
       A `ValueError` will be raised if these requirements are not met.
 
   Call arguments:

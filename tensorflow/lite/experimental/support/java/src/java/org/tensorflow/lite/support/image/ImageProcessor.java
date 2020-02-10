@@ -15,8 +15,11 @@ limitations under the License.
 
 package org.tensorflow.lite.support.image;
 
+import java.util.List;
 import org.tensorflow.lite.support.common.SequentialProcessor;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 import org.tensorflow.lite.support.common.TensorOperator;
+import org.tensorflow.lite.support.image.ops.Rot90Op;
 import org.tensorflow.lite.support.image.ops.TensorOperatorWrapper;
 
 /**
@@ -34,8 +37,14 @@ import org.tensorflow.lite.support.image.ops.TensorOperatorWrapper;
  *   TensorImage anotherTensorImage = processor.process(tensorImage);
  * </pre>
  *
- * @see ImageProcessor.Builder to build a {@link ImageProcessor} instance.
- * @see ImageProcessor#process(TensorImage) to apply the processor on a {@link TensorImage}.
+ * <p><b>WARNING:</b> Instances of an {@code ImageProcessor} are <b>not</b> thread-safe with {@link
+ * #updateNumberOfRotations}. Updating the number of rotations and then processing images (using
+ * {@link #process}) must be protected from concurrent access. It is recommended to create separate
+ * {@code ImageProcessor} instances for each thread. If multiple threads access a {@code
+ * ImageProcessor} concurrently, it must be synchronized externally.
+ *
+ * @see ImageProcessor.Builder to build a {@link ImageProcessor} instance
+ * @see ImageProcessor#process(TensorImage) to apply the processor on a {@link TensorImage}
  */
 public class ImageProcessor extends SequentialProcessor<TensorImage> {
   private ImageProcessor(Builder builder) {
@@ -45,9 +54,9 @@ public class ImageProcessor extends SequentialProcessor<TensorImage> {
   /**
    * The Builder to create an ImageProcessor, which could be executed later.
    *
-   * @see #add(TensorOperator) to add a general TensorOperator.
-   * @see #add(ImageOperator) to add an ImageOperator.
-   * @see #build() complete the building process and get a built Processor.
+   * @see #add(TensorOperator) to add a general TensorOperator
+   * @see #add(ImageOperator) to add an ImageOperator
+   * @see #build() complete the building process and get a built Processor
    */
   public static class Builder extends SequentialProcessor.Builder<TensorImage> {
     public Builder() {
@@ -57,7 +66,7 @@ public class ImageProcessor extends SequentialProcessor<TensorImage> {
     /**
      * Adds an {@link ImageOperator} into the Operator chain.
      *
-     * @param op the Operator instance to be executed then.
+     * @param op the Operator instance to be executed then
      */
     public Builder add(ImageOperator op) {
       super.add(op);
@@ -69,7 +78,7 @@ public class ImageProcessor extends SequentialProcessor<TensorImage> {
      * {@link TensorImage#getTensorBuffer()} to transform the {@link TensorImage} by transforming
      * the underlying {@link org.tensorflow.lite.support.tensorbuffer.TensorBuffer}.
      *
-     * @param op the Operator instance to be executed then.
+     * @param op the Operator instance to be executed then
      */
     public Builder add(TensorOperator op) {
       return add(new TensorOperatorWrapper(op));
@@ -80,6 +89,51 @@ public class ImageProcessor extends SequentialProcessor<TensorImage> {
     public ImageProcessor build() {
       return new ImageProcessor(this);
     }
+  }
 
+  /**
+   * Updates the number of rotations for the first {@link Rot90Op} in this {@link ImageProcessor}.
+   *
+   * <p><b>WARNING:</b>this method is <b>not</b> thread-safe. Updating the number of rotations and
+   * then processing images (using {@link #process}) must be protected from concurrent access with
+   * additional synchronization.
+   *
+   * @param k the number of rotations
+   * @throws IllegalStateException if {@link Rot90Op} has not been added to this {@link
+   *     ImageProcessor}
+   */
+  public void updateNumberOfRotations(int k) {
+    updateNumberOfRotations(k, /*occurrence=*/ 0);
+  }
+
+  /**
+   * Updates the number of rotations for the {@link Rot90Op} specified by {@code occurrence} in this
+   * {@link ImageProcessor}.
+   *
+   * <p><b>WARNING:</b>this method is <b>not</b> thread-safe. Updating the number of rotations and
+   * then processing images (using {@link #process}) must be protected from concurrent access with
+   * additional synchronization.
+   *
+   * @param k the number of rotations
+   * @param occurrence the index of perticular {@link Rot90Op} in this {@link ImageProcessor}. For
+   *     example, if the second {@link Rot90Op} needs to be updated, {@code occurrence} should be
+   *     set to 1.
+   * @throws IndexOutOfBoundsException if {@code occurrence} is negative or is not less than the
+   *     number of {@link Rot90Op} in this {@link ImageProcessor}
+   * @throws IllegalStateException if {@link Rot90Op} has not been added to this {@link
+   *     ImageProcessor}
+   */
+  public synchronized void updateNumberOfRotations(int k, int occurrence) {
+    SupportPreconditions.checkState(
+        operatorIndex.containsKey(Rot90Op.class.getName()),
+        "The Rot90Op has not been added to the ImageProcessor.");
+
+    List<Integer> indexes = operatorIndex.get(Rot90Op.class.getName());
+    SupportPreconditions.checkElementIndex(occurrence, indexes.size(), "occurrence");
+
+    // The index of the Rot90Op to be replaced in operatorList.
+    int index = indexes.get(occurrence);
+    Rot90Op newRot = new Rot90Op(k);
+    operatorList.set(index, newRot);
   }
 }

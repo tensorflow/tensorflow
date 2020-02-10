@@ -343,9 +343,8 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
                                      /*isSigned=*/true);
     }
     builder->CreateStore(
-        arguments[i],
-        builder->CreateGEP(arguments_ptr,
-                           {builder->getInt64(0), builder->getInt32(i)}));
+        value, builder->CreateGEP(arguments_ptr, {builder->getInt64(0),
+                                                  builder->getInt32(i)}));
   }
   llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
   return builder->CreateCall(

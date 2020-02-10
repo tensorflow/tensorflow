@@ -204,6 +204,7 @@ filegroup(
         "flatmap.h",
         "flatrep.h",
         "inlined_vector.h",
+        "top_n.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -221,7 +222,6 @@ filegroup(
         "optional.h",
         "priority_queue_util.h",
         "subtle/map_traits.h",
-        "top_n.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

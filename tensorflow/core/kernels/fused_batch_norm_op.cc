@@ -202,6 +202,7 @@ struct FusedBatchNorm<CPUDevice, T, U> {
       }
     };
     if (is_training) {
+      // TODO(b/137108598): Extend kernel to allow use of exponential averaging.
       mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
       auto x_centered =
           x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
@@ -514,9 +515,10 @@ struct FusedBatchNormFreezeGrad<CPUDevice, T, U> {
   }
 };
 
-#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#if !GOOGLE_CUDA
 namespace {
 // See implementation under GOOGLE_CUDA #ifdef below.
+// This is a CUDA specific feature, do not enable it for non-CUDA builds
 bool BatchnormSpatialPersistentEnabled() { return false; }
 }  // namespace
 #endif
@@ -535,6 +537,7 @@ se::dnn::ActivationMode AsDnnActivationMode(
   }
 }
 
+#if GOOGLE_CUDA
 // NOTE(ezhulenev): See `BatchnormSpatialPersistentEnabled` documentation in the
 // `cuda_dnn.cc` for details.
 bool BatchnormSpatialPersistentEnabled() {
@@ -551,6 +554,8 @@ bool BatchnormSpatialPersistentEnabled() {
   return false;
 #endif
 }
+#endif
+
 }  // namespace
 
 template <typename U, typename T>
@@ -679,6 +684,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     // If use_reserved_space we have reserve_space_3 output (only in
     // FusedBatchNormV3 op).
 
+#if GOOGLE_CUDA
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) In inference mode it's always fast.
     //   (2) Tensorflow enabled batchnorm spatial persistence, we are called
@@ -688,6 +694,10 @@ struct FusedBatchNorm<GPUDevice, T, U> {
         !is_training ||
         (BatchnormSpatialPersistentEnabled() &&
          DataTypeToEnum<T>::value == DT_HALF && use_reserved_space);
+#else
+    // fast NHWC implementation is a CUDA only feature
+    const bool fast_nhwc_batch_norm = false;
+#endif
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -817,33 +827,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     auto saved_inv_var_ptr =
         StreamExecutorUtil::AsDeviceMemory<U>(*saved_inv_var);
 
-    GPUDevice d = context->eigen_device<GPUDevice>();
-    using se::DeviceMemory;
-    Tensor inv_var;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(DataTypeToEnum<U>::value,
-                                        estimated_variance.shape(), &inv_var));
-    auto inv_var_ptr = StreamExecutorUtil::AsDeviceMemory<U>(inv_var);
-    std::function<const DeviceMemory<U>&()> var_to_inv_var =
-        [d, epsilon, estimated_variance,
-         &inv_var_ptr]() -> const DeviceMemory<U>& {
-      auto estimated_variance_ptr =
-          StreamExecutorUtil::AsDeviceMemory<U>(estimated_variance);
-      const U* variance =
-          static_cast<const U*>(estimated_variance_ptr.opaque());
-      U* inv_variance = static_cast<U*>(inv_var_ptr.opaque());
-      int channels = inv_var_ptr.ElementCount();
-      VarianceToInvVariance<U>()(d, variance, epsilon, channels, inv_variance);
-      return inv_var_ptr;
-    };
-    const int64 sample_size = batch_size * height * width;
-    std::function<void()> inv_var_to_var = [d, &batch_var_ptr, epsilon,
-                                            sample_size]() {
-      U* variance = static_cast<U*>(batch_var_ptr.opaque());
-      int channels = batch_var_ptr.ElementCount();
-      InvVarianceToVariance<U>()(d, epsilon, sample_size, channels, variance);
-    };
-
     std::unique_ptr<functor::CudnnBatchNormAllocatorInOutput<U>>
         reserve_space_allocator;
     std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
@@ -854,16 +837,18 @@ struct FusedBatchNorm<GPUDevice, T, U> {
       workspace_allocator.reset(
           new functor::CudnnBatchNormAllocatorInTemp<uint8>(context));
     }
+    // TODO(b/137108598): Extend kernel to allow use of exponential averaging.
+    const double exponential_average_factor = 1.0;
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationForward(
                 x_ptr, scale_ptr, offset_ptr, estimated_mean_ptr,
                 estimated_variance_ptr, side_input_ptr, x_desc,
                 scale_offset_desc, static_cast<double>(epsilon),
+                exponential_average_factor,
                 AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
                 &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr,
-                is_training, std::move(var_to_inv_var),
-                std::move(inv_var_to_var), reserve_space_allocator.get(),
+                is_training, reserve_space_allocator.get(),
                 workspace_allocator.get())
             .ok();
 
@@ -898,12 +883,17 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     const int64 height = GetTensorDim(x, tensor_format, 'H');
     const int64 width = GetTensorDim(x, tensor_format, 'W');
 
+#if GOOGLE_CUDA
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) Tensorflow enabled batchnorm spatial persistence, and
     //       FusedBatchNormGradV3 passed non-null reserve space and allocator.
     const bool fast_nhwc_batch_norm = BatchnormSpatialPersistentEnabled() &&
                                       DataTypeToEnum<T>::value == DT_HALF &&
                                       use_reserved_space;
+#else
+    // fast NHWC implementation is a CUDA only feature
+    const bool fast_nhwc_batch_norm = false;
+#endif
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -1317,12 +1307,12 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // They are filled with zeros so as to avoid NaN outputs.
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(3, TensorShape({}), &placeholder_1));
+        context, context->allocate_output(3, TensorShape({0}), &placeholder_1));
     functor::SetZeroFunctor<Device, float> f;
     f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(4, TensorShape({}), &placeholder_2));
+        context, context->allocate_output(4, TensorShape({0}), &placeholder_2));
     f(context->eigen_device<Device>(), placeholder_2->flat<U>());
 
     // If input is empty, set gradients w.r.t scale/offset to zero.

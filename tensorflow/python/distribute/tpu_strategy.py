@@ -25,6 +25,7 @@ import weakref
 
 import numpy as np
 
+from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
@@ -500,6 +501,56 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     finally:
       self._logical_device_stack.pop()
 
+  def _experimental_assign_to_logical_device(self, tensor, logical_device_id):
+    """See `DistributionStrategy.experimental_assign_to_logical_device`."""
+    num_logical_devices_per_replica = self._tpu_devices.shape[1]
+    if (logical_device_id < 0 or
+        logical_device_id >= num_logical_devices_per_replica):
+      raise ValueError("`logical_core_id` to assign must be lower then total "
+                       "number of logical devices per replica. Received "
+                       "logical device id {} but there are only total of {} "
+                       "logical devices in replica.".format(
+                           logical_device_id, num_logical_devices_per_replica))
+    return xla_sharding.assign_device(tensor, logical_device_id)
+
+  def _experimental_split_to_logical_devices(self, tensor,
+                                             partition_dimensions):
+    """See `DistributionStrategy.experimental_split_to_logical_devices`."""
+    num_logical_devices_per_replica = self._tpu_devices.shape[1]
+    num_partition_splits = np.prod(partition_dimensions)
+    input_shape = tensor.shape
+    tensor_rank = len(input_shape)
+
+    if tensor_rank != len(partition_dimensions):
+      raise ValueError("Length of `partition_dimensions` ({}) must be  "
+                       "equal to the rank of `x` ({}).".format(
+                           len(partition_dimensions), tensor_rank))
+
+    for dim_index, dim_size in enumerate(input_shape):
+      if dim_size is None:
+        continue
+
+      split_size = partition_dimensions[dim_index]
+      if dim_size % split_size != 0:
+        raise ValueError("Tensor shape at dimension ({}) must be "
+                         "divisible by corresponding value specified "
+                         "by `partition_dimensions` ({}).".format(
+                             dim_index, split_size))
+
+    if num_partition_splits != num_logical_devices_per_replica:
+      raise ValueError("Number of logical devices ({}) does not match the "
+                       "number of partition splits specified ({}).".format(
+                           num_logical_devices_per_replica,
+                           num_partition_splits))
+
+    tile_assignment = np.arange(num_partition_splits).reshape(
+        partition_dimensions)
+    return xla_sharding.tile(tensor, tile_assignment, use_sharding_op=True)
+
+  def _experimental_replicate_to_logical_devices(self, tensor):
+    """See `DistributionStrategy.experimental_replicate_to_logical_devices`."""
+    return xla_sharding.replicate(tensor, use_sharding_op=True)
+
   def _experimental_initialize_system(self):
     """Experimental method added to be used by Estimator.
 
@@ -508,21 +559,21 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     """
     tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
     if kwargs.pop("skip_mirrored_creator", False):
-      return next_creator(*args, **kwargs)
+      return next_creator(**kwargs)
 
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       devices = self._tpu_devices[:, self._logical_device_stack[-1]]
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
     else:
       devices = colocate_with.devices
 
-    def _real_mirrored_creator(*args, **kwargs):  # pylint: disable=g-missing-docstring
+    def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       initial_value = None
       value_list = []
       for i, d in enumerate(devices):
@@ -545,18 +596,17 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           kwargs["initial_value"] = initial_value
 
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
-            v = next_creator(*args, **kwargs)
+            v = next_creator(**kwargs)
 
           assert not isinstance(v, values.TPUMirroredVariable)
           value_list.append(v)
       return value_list
 
-    return values.create_mirrored_variable(
-        self._container_strategy(),
-        _real_mirrored_creator,
-        values.TPUMirroredVariable,
-        values.TPUSyncOnReadVariable,
-        *args, **kwargs)
+    return values.create_mirrored_variable(self._container_strategy(),
+                                           _real_mirrored_creator,
+                                           values.TPUMirroredVariable,
+                                           values.TPUSyncOnReadVariable,
+                                           **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations):
     if (isinstance(value, values.DistributedValues) or
@@ -886,12 +936,11 @@ def _set_last_step_outputs(ctx, last_step_tensor_outputs):
 
   for name, reduce_op in ctx._last_step_outputs_reduce_ops.items():  # pylint: disable=protected-access
     output = last_step_tensor_outputs_dict[name]
-    # For outputs that have already been reduced, take the first value
-    # from the list as each value should be the same. Else return the full
-    # list of values.
-    # TODO(josh11b): If reduce_op is NONE, we should return a PerReplica
-    # value.
-    if reduce_op is not None:
+    # For outputs that aren't reduced, return a PerReplica of all values. Else
+    # take the first value from the list as each value should be the same.
+    if reduce_op is None:
+      last_step_tensor_outputs_dict[name] = values.PerReplica(output)
+    else:
       # TODO(priyag): Should this return the element or a list with 1 element
       last_step_tensor_outputs_dict[name] = output[0]
   ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access

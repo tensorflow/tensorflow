@@ -106,6 +106,24 @@ class RunMetadataListener {
   virtual void BeforeClearRunMetadata() = 0;
 };
 
+class TensorHandle;
+class EagerOperation;
+
+class CustomDevice {
+ public:
+  virtual ~CustomDevice() {}
+  virtual const string& name() = 0;
+  virtual Status CopyTensorToDevice(TensorHandle* tensor,
+                                    TensorHandle** result) = 0;
+
+  virtual Status CopyTensorFromDevice(TensorHandle* tensor,
+                                      const string& target_device_name,
+                                      TensorHandle** result) = 0;
+
+  virtual Status Execute(EagerOperation* op, TensorHandle** retvals,
+                         int* num_retvals) = 0;
+};
+
 class EagerContext : public core::RefCounted {
  public:
   static const uint64 kInvalidContextId = 0;
@@ -156,6 +174,27 @@ class EagerContext : public core::RefCounted {
   // Returns the device placement policy for the current thread.
   ContextDevicePlacementPolicy GetDevicePlacementPolicy() const;
 
+  // Select an appropriate device for an operation.
+  //
+  // Given the preferred device for the operation, and the list of devices the
+  // operation supports, finds the best suitable device for the operation in
+  // this context.
+  //
+  // The preferred device is specified as a `ParsedName` containing the elements
+  // (details) that the resulting device should match. If there are no such
+  // devices, and the context currently allows soft device placement, a suitable
+  // device not matching `preferred` will be chosen.
+  //
+  // The `dtype` parameter specifies the operation's result data type, if
+  // known. Setting it to DT_INVALID will make this method not use the data type
+  // for its decisions.
+  //
+  // The chosen device is stored in the `device` argument. The argument is not
+  // modified unless this method returns `Status::OK()`.
+  Status SelectDevice(DeviceNameUtils::ParsedName preferred,
+                      const PrioritizedDeviceTypeVector& supported,
+                      const DataType dtype, Device** device) const;
+
   // Sets the implicit copy policy for the current thread.
   void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);
 
@@ -194,6 +233,9 @@ class EagerContext : public core::RefCounted {
                         const bool add_to_local_only = false);
 
   Status RemoveFunction(const string& func);
+
+  // Clear remote executors on all worker targets in `remote_contexts_`.
+  Status ClearRemoteExecutors();
 
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
@@ -275,6 +317,7 @@ class EagerContext : public core::RefCounted {
 
   uint64 GetContextId();
   uint64 GetContextViewId();
+  void IncrementContextViewId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
@@ -341,6 +384,24 @@ class EagerContext : public core::RefCounted {
       std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 
+  // For the specified remote worker, preprocess and set its device filters.
+  Status SetRemoteDeviceFilters(const string& remote_worker,
+                                const std::vector<string>& device_filters);
+
+  // For the specified remote worker, apply the stored device filters to the
+  // list of device attributes following these rules:
+  // (1) if the remote worker does not have device filters, all devices are
+  //     visible to the worker;
+  // (2) if the device is on the remote worker, then it is visible;
+  // (3) if the device matches at least one device filter, then it is visible.
+  // The result is saved as a boolean vector of the same length (i.e.,
+  // filtered_device_mask) indicating whether each of the devices is visible to
+  // the remote worker.
+  void FilterDevicesForRemoteWorkers(
+      const string& remote_worker,
+      const protobuf::RepeatedPtrField<DeviceAttributes>& device_attrs,
+      std::vector<bool>* filtered_device_mask);
+
   // TODO(fishx): Remove the custom deleter once we remove forward declaration.
   const std::unique_ptr<eager::RemoteMgr,
                         std::function<void(eager::RemoteMgr*)>>&
@@ -375,6 +436,12 @@ class EagerContext : public core::RefCounted {
   std::vector<const FunctionDef*> ListRegisteredFunctions();
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
+
+  Status FindCustomDeviceFromName(const string& device_name,
+                                  CustomDevice** dev) const;
+
+  void RegisterCustomDevice(const string& name,
+                            std::unique_ptr<CustomDevice> device);
 
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
@@ -452,6 +519,7 @@ class EagerContext : public core::RefCounted {
   std::vector<DeviceType> prioritized_device_type_list_;
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
+  std::unordered_map<string, std::unique_ptr<CustomDevice>> custom_devices_;
 
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
@@ -551,6 +619,11 @@ class EagerContext : public core::RefCounted {
   std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
       remote_mgr_;
   bool is_master_ GUARDED_BY(remote_state_mu_);
+
+  // Maps from a remote worker to a list of parsed device filters.
+  std::unordered_map<string, std::vector<DeviceNameUtils::ParsedName>>
+      cluster_device_filters_ GUARDED_BY(remote_state_mu_);
+
 #endif  // IS_MOBILE_PLATFORM
 
   // For a multi device function, the target device of each input is unknown

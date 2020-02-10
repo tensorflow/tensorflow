@@ -33,7 +33,7 @@ namespace TFDevice {
 
 namespace {
 
-constexpr char kRepicationAttr[] = "tf_device.is_same_data_across_replicas";
+constexpr char kReplicationAttr[] = "tf_device.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
 // Analyzes the inputs to LaunchFuncOps in the module, and annotates their
@@ -82,7 +82,7 @@ void AnnotateParameterReplication::runOnModule() {
         // Not a replication-invariant operand.
         continue;
       }
-      func.setArgAttr(entry.index(), kRepicationAttr,
+      func.setArgAttr(entry.index(), kReplicationAttr,
                       builder.getBoolAttr(true));
     }
   });

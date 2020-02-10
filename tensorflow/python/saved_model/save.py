@@ -159,7 +159,14 @@ class _SaveableView(object):
   ignored.
   """
 
-  def __init__(self, checkpoint_view):
+  def __init__(self, checkpoint_view, wrapped_functions=None):
+    """Initializes a SaveableView.
+
+    Args:
+      checkpoint_view: A GraphView object.
+      wrapped_functions: Dictionary that maps concrete functions to functions
+        that do not capture cached variable values.
+    """
     self.checkpoint_view = checkpoint_view
     trackable_objects, node_ids, slot_variables = (
         self.checkpoint_view.objects_ids_and_slot_variables())
@@ -168,6 +175,15 @@ class _SaveableView(object):
     self.captured_tensor_node_ids = object_identity.ObjectIdentityDictionary()
     self.slot_variables = slot_variables
     self.concrete_functions = []
+
+    # Maps functions -> wrapped functions that capture variables
+    self.wrapped_functions = wrapped_functions or {}
+    # Maps names of concrete functions in the object to names of wrapped
+    # functions. When writing the SavedFunction protos, the names of the
+    # wrapped functions should be used in place of the original functions.
+    self.function_name_map = {
+        compat.as_text(original.name): compat.as_text(wrapped.name)
+        for original, wrapped in self.wrapped_functions.items()}
 
     # Also add `Function`s as nodes.
     nodes_without_functions = list(self.nodes)
@@ -287,6 +303,14 @@ class _SaveableView(object):
         if (tensor_util.is_tensor(capture) and
             capture.dtype not in _UNCOPIABLE_DTYPES and
             capture not in self.captured_tensor_node_ids):
+          if hasattr(capture, "_cached_variable"):
+            if concrete_function not in self.wrapped_functions:
+              wrapped = self.wrapped_functions[concrete_function] = (
+                  function_serialization.wrap_cached_variables(
+                      concrete_function))
+              self.function_name_map[compat.as_text(concrete_function.name)] = (
+                  compat.as_text(wrapped.name))
+            continue
           capture_constant_value = tensor_util.constant_value(capture)
           if capture_constant_value is None:
             bad_functions.append(concrete_function)
@@ -302,7 +326,8 @@ class _SaveableView(object):
           resource_map[capture] = copied_tensor
 
     self.concrete_functions = [
-        x for x in self.concrete_functions if x not in bad_functions
+        self.wrapped_functions.get(x, x) for x in self.concrete_functions
+        if x not in bad_functions
     ]
     return object_map, resource_map, asset_info
 
@@ -465,8 +490,8 @@ def _generate_signatures(signature_functions, resource_map):
     mapped_inputs, exterior_argument_placeholders = (
         _map_function_arguments_to_created_inputs(argument_inputs,
                                                   signature_key, function.name))
-    outputs = _call_function_with_mapped_captures(function, mapped_inputs,
-                                                  resource_map)
+    outputs = _call_function_with_mapped_captures(
+        function, mapped_inputs, resource_map)
     signatures[signature_key] = signature_def_utils.build_signature_def(
         _tensor_dict_to_tensorinfo(exterior_argument_placeholders),
         _tensor_dict_to_tensorinfo(outputs),
@@ -657,17 +682,20 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
 
   coder = nested_structure_coder.StructureCoder()
   for concrete_function in saveable_view.concrete_functions:
+    name = compat.as_text(concrete_function.name)
+    name = saveable_view.function_name_map.get(name, name)
     serialized = function_serialization.serialize_concrete_function(
         concrete_function, saveable_view.captured_tensor_node_ids, coder)
     if serialized is not None:
-      proto.concrete_functions[concrete_function.name].CopyFrom(serialized)
+      proto.concrete_functions[name].CopyFrom(serialized)
 
   for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
-    _write_object_proto(obj, obj_proto, asset_file_def_index)
+    _write_object_proto(obj, obj_proto, asset_file_def_index,
+                        saveable_view.function_name_map)
   return proto
 
 
-def _write_object_proto(obj, proto, asset_file_def_index):
+def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
   """Saves an object into SavedObject proto."""
   if isinstance(obj, tracking.Asset):
     proto.asset.SetInParent()
@@ -684,10 +712,12 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.variable.aggregation = obj.aggregation.value
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
   elif isinstance(obj, def_function.Function):
-    proto.function.CopyFrom(function_serialization.serialize_function(obj))
+    proto.function.CopyFrom(function_serialization.serialize_function(
+        obj, function_name_map))
   elif isinstance(obj, defun.ConcreteFunction):
     proto.bare_concrete_function.CopyFrom(
-        function_serialization.serialize_bare_concrete_function(obj))
+        function_serialization.serialize_bare_concrete_function(
+            obj, function_name_map))
   elif isinstance(obj, _CapturedConstant):
     proto.constant.operation = obj.graph_tensor.op.name
   elif isinstance(obj, tracking.CapturableResource):
@@ -924,7 +954,8 @@ def save(obj, export_dir, signatures=None, options=None):
     signatures = signature_serialization.find_function_to_export(
         checkpoint_graph_view)
 
-  signatures = signature_serialization.canonicalize_signatures(signatures)
+  signatures, wrapped_functions = (
+      signature_serialization.canonicalize_signatures(signatures))
   signature_serialization.validate_saveable_view(checkpoint_graph_view)
   signature_map = signature_serialization.create_signature_map(signatures)
   checkpoint_graph_view.add_object(
@@ -936,7 +967,7 @@ def save(obj, export_dir, signatures=None, options=None):
   # Note we run this twice since, while constructing the view the first time
   # there can be side effects of creating variables.
   _ = _SaveableView(checkpoint_graph_view)
-  saveable_view = _SaveableView(checkpoint_graph_view)
+  saveable_view = _SaveableView(checkpoint_graph_view, wrapped_functions)
 
   # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
   # compatible (no sessions) and share it with this export API rather than

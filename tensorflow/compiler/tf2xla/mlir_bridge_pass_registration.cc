@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
+#include "tensorflow/core/common_runtime/function_optimization_registry.h"
 
 namespace tensorflow {
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
-                      MlirBridgePass);
+static function_optimization_registration::FunctionOptimizationPassRegistration
+    register_mlir_bridge_pass(std::make_unique<MlirBridgePass>());
 
 }  // namespace tensorflow

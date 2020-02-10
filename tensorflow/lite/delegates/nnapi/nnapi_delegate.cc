@@ -26,6 +26,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #ifdef __ANDROID__
@@ -38,6 +39,8 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
+#include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -300,25 +303,24 @@ static size_t getNumPaddingBytes(size_t byte_size) {
 // Return NNAPI device handle with the provided null-terminated device name.
 // Returns kTfLiteError in case of any NNAPI error and if no device with the
 // given name can be found.
-TfLiteStatus GetDeviceHandle(TfLiteContext* context,
+TfLiteStatus GetDeviceHandle(const NnApi* nnapi, TfLiteContext* context,
                              const char* device_name_ptr,
                              ANeuralNetworksDevice** result, int* nnapi_errno) {
   if (!device_name_ptr) return kTfLiteError;
   *result = nullptr;
   std::string device_name(device_name_ptr);
   uint32_t num_devices = 0;
-  NnApiImplementation()->ANeuralNetworks_getDeviceCount(&num_devices);
+  nnapi->ANeuralNetworks_getDeviceCount(&num_devices);
 
   for (uint32_t i = 0; i < num_devices; i++) {
     ANeuralNetworksDevice* device = nullptr;
     const char* buffer = nullptr;
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
-        context, NnApiImplementation()->ANeuralNetworks_getDevice(i, &device),
+        context, nnapi->ANeuralNetworks_getDevice(i, &device),
         "Searching for target device", nnapi_errno);
 
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
-        context,
-        NnApiImplementation()->ANeuralNetworksDevice_getName(device, &buffer),
+        context, nnapi->ANeuralNetworksDevice_getName(device, &buffer),
         "Searching for target device", nnapi_errno);
 
     if (device_name == buffer) {
@@ -403,9 +405,8 @@ TfLiteStatus GetTargetSdkVersion(
 // - NNAPI CPU implementation has been explicitly disabled.
 // If exclude_nnapi_reference is true this method will return false if the
 // accelerator_name in the delegate options is equal to "nnapi-reference"
-bool ShouldUseTargetDevices(TfLiteDelegate* delegate,
+bool ShouldUseTargetDevices(StatefulNnApiDelegate::Options delegate_options,
                             bool exclude_nnapi_reference = false) {
-  const auto delegate_options = StatefulNnApiDelegate::GetOptions(delegate);
   const char* device_name_ptr = delegate_options.accelerator_name;
   std::string nnapi_cpu("nnapi-reference");
   bool has_selected_accelerator = device_name_ptr != nullptr;
@@ -439,23 +440,22 @@ TfLiteStatus GetTargetDevices(TfLiteContext* context, TfLiteDelegate* delegate,
   if (device_name_ptr != nullptr) {
     // User specified an accelerator to use.
     ANeuralNetworksDevice* nnapi_device = nullptr;
-    TF_LITE_ENSURE_STATUS(
-        GetDeviceHandle(context, device_name_ptr, &nnapi_device, nnapi_errno));
+    TF_LITE_ENSURE_STATUS(GetDeviceHandle(nnapi, context, device_name_ptr,
+                                          &nnapi_device, nnapi_errno));
     result->push_back(nnapi_device);
   } else if (delegate_options.disallow_nnapi_cpu) {
     std::string nnapi_cpu("nnapi-reference");
     uint32_t num_devices = 0;
-    NnApiImplementation()->ANeuralNetworks_getDeviceCount(&num_devices);
+    nnapi->ANeuralNetworks_getDeviceCount(&num_devices);
 
     for (uint32_t i = 0; i < num_devices; i++) {
       ANeuralNetworksDevice* device = nullptr;
       const char* buffer = nullptr;
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
-          context, NnApiImplementation()->ANeuralNetworks_getDevice(i, &device),
+          context, nnapi->ANeuralNetworks_getDevice(i, &device),
           "Getting list of available devices", nnapi_errno);
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
-          context,
-          NnApiImplementation()->ANeuralNetworksDevice_getName(device, &buffer),
+          context, nnapi->ANeuralNetworksDevice_getName(device, &buffer),
           "Getting list of available devices", nnapi_errno);
       if (nnapi_cpu != buffer) {
         result->push_back(device);
@@ -500,13 +500,6 @@ NNMemory::~NNMemory() {
   if (fd_ > 0) close(fd_);
 #endif
 }
-
-// RAII NN API Execution Destructor for use with std::unique_ptr
-struct NNFreeExecution {
-  void operator()(ANeuralNetworksExecution* execution) {
-    NnApiImplementation()->ANeuralNetworksExecution_free(execution);
-  }
-};
 
 class DequantizeMapping {
  public:
@@ -1625,6 +1618,10 @@ bool NNAPIDelegateKernel::Validate(
       Expect(!builtin->align_corners,
              NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support align_corners == true.", &val_ctx);
+      // TODO(b/147696142): Update when NNAPI delegate can support TF2 behavior.
+      Expect(!builtin->half_pixel_centers,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support half_pixel_centers == true.", &val_ctx);
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(input.type == kTfLiteFloat32,
                NNAPIValidationFailureType::kUnsupportedInputType,
@@ -3042,7 +3039,7 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(params->delegate);
   if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
-      ShouldUseTargetDevices(params->delegate)) {
+      ShouldUseTargetDevices(delegate_options)) {
     TF_LITE_ENSURE_STATUS(GetTargetDevices(context, params->delegate, nnapi_,
                                            nnapi_errno, &nnapi_devices_));
 
@@ -3068,91 +3065,133 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
                                      params->output_tensors, nnapi_errno));
   }
 
-  if (!nn_compilation_) {
-    ANeuralNetworksCompilation* compilation = nullptr;
-    if (!nnapi_devices_.empty()) {
-      // Compile for the selected accelerator.
-      RETURN_TFLITE_ERROR_IF_NN_ERROR(
-          context,
-          nnapi_->ANeuralNetworksCompilation_createForDevices(
-              nn_model_.get(), nnapi_devices_.data(), nnapi_devices_.size(),
-              &compilation),
-          "creating NNAPI model for given devices", nnapi_errno);
-    } else {
-      RETURN_TFLITE_ERROR_IF_NN_ERROR(context,
-                                      nnapi_->ANeuralNetworksCompilation_create(
-                                          nn_model_.get(), &compilation),
-                                      "creating NNAPI compilation",
-                                      nnapi_errno);
+  // Calculating model compilation cache here since the value depends on
+  // some of the TfLiteDelegateParams
+  nn_compilation_cache_token_.clear();
+  const char* cache_dir = delegate_options.cache_dir;
+  const char* model_token = delegate_options.model_token;
+  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 && cache_dir &&
+      model_token) {
+    // Compilation caching could be enabled, try construct the uint8
+    // token.
+    // TODO(b/133342794): use a generic token generator class.
+    uint64_t token_parts[4];
+    // bits from model_token.
+    token_parts[0] = std::hash<std::string>{}(model_token);
+    // bits from params->nodes_to_replace.
+    token_parts[1] = GetHash(params->nodes_to_replace);
+    // bits from params->input_tensors.
+    token_parts[2] = GetHash(params->input_tensors);
+    // bits from params->output_tensors.
+    token_parts[3] = GetHash(params->output_tensors);
+    // NNAPI requires the token to be 256bit long.
+    std::vector<uint8_t> nnapi_cache_token(32, 0);
+    // Copy the token bits.
+    uint8_t* p = reinterpret_cast<uint8_t*>(token_parts);
+    for (int i = 0; i < 4 * sizeof(uint64_t); i++) {
+      nnapi_cache_token[i] = p[i];
     }
 
-    auto preference = delegate_options.execution_preference;
-    if (preference !=
-        StatefulNnApiDelegate::Options::ExecutionPreference::kUndefined) {
-      const int preference_result =
-          nnapi_->ANeuralNetworksCompilation_setPreference(compilation,
-                                                           preference);
-      if (preference_result != ANEURALNETWORKS_NO_ERROR) {
-        nnapi_->ANeuralNetworksCompilation_free(compilation);
-        compilation = nullptr;
-      }
-      RETURN_TFLITE_ERROR_IF_NN_ERROR(context, preference_result,
-                                      "setting compilation preferences",
-                                      nnapi_errno);
-    }
-
-    const char* cache_dir = delegate_options.cache_dir;
-    const char* model_token = delegate_options.model_token;
-    if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 && cache_dir &&
-        model_token) {
-      // Compilation caching could be enabled, try construct the uint8
-      // token.
-      // TODO(133342794): use a generic token generator class.
-      uint64_t token_parts[4];
-      // bits from model_token.
-      token_parts[0] = std::hash<std::string>{}(model_token);
-      // bits from params->nodes_to_replace.
-      token_parts[1] = GetHash(params->nodes_to_replace);
-      // bits from params->input_tensors.
-      token_parts[2] = GetHash(params->input_tensors);
-      // bits from params->output_tensors.
-      token_parts[3] = GetHash(params->output_tensors);
-      // NNAPI requires the token to be 256bit long.
-      std::vector<uint8_t> nnapi_cache_token(32, 0);
-      // Copy the token bits.
-      uint8_t* p = reinterpret_cast<uint8_t*>(token_parts);
-      for (int i = 0; i < 4 * sizeof(uint64_t); i++) {
-        nnapi_cache_token[i] = p[i];
-      }
-      const int set_caching_result =
-          nnapi_->ANeuralNetworksCompilation_setCaching(
-              compilation, cache_dir, nnapi_cache_token.data());
-      if (set_caching_result != ANEURALNETWORKS_NO_ERROR) {
-        nnapi_->ANeuralNetworksCompilation_free(compilation);
-        compilation = nullptr;
-      }
-      RETURN_TFLITE_ERROR_IF_NN_ERROR(context, set_caching_result,
-                                      "configuring NNAPI caching", nnapi_errno);
-    }
-    const int finish_result =
-        nnapi_->ANeuralNetworksCompilation_finish(compilation);
-    if (finish_result != ANEURALNETWORKS_NO_ERROR) {
-      nnapi_->ANeuralNetworksCompilation_free(compilation);
-      compilation = nullptr;
-    }
-    RETURN_TFLITE_ERROR_IF_NN_ERROR(
-        context, finish_result, "completing NNAPI compilation", nnapi_errno);
-    nn_compilation_.reset(compilation);
+    nn_compilation_cache_token_ = nnapi_cache_token;
   }
+
+  initialised_ = true;
+
   return kTfLiteOk;
 }
 
 TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
                                           TfLiteNode* node, int* nnapi_errno) {
-  if (!nn_compilation_) {
-    // Compilation failed earlier, return error.
+  if (!initialised_) {
     return kTfLiteError;
   }
+
+  if (nn_compilation_) {
+    return kTfLiteOk;
+  }
+
+  const auto delegate_options =
+      StatefulNnApiDelegate::GetOptions(node->delegate);
+  ANeuralNetworksCompilation* compilation = nullptr;
+  if (!nnapi_devices_.empty()) {
+    // Compile for the selected accelerator.
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(
+        context,
+        nnapi_->ANeuralNetworksCompilation_createForDevices(
+            nn_model_.get(), nnapi_devices_.data(), nnapi_devices_.size(),
+            &compilation),
+        "creating NNAPI model for given devices", nnapi_errno);
+  } else {
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(context,
+                                    nnapi_->ANeuralNetworksCompilation_create(
+                                        nn_model_.get(), &compilation),
+                                    "creating NNAPI compilation", nnapi_errno);
+  }
+
+  auto preference = delegate_options.execution_preference;
+  if (preference !=
+      StatefulNnApiDelegate::Options::ExecutionPreference::kUndefined) {
+    const int preference_result =
+        nnapi_->ANeuralNetworksCompilation_setPreference(compilation,
+                                                         preference);
+    if (preference_result != ANEURALNETWORKS_NO_ERROR) {
+      nnapi_->ANeuralNetworksCompilation_free(compilation);
+      compilation = nullptr;
+    }
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(context, preference_result,
+                                    "setting compilation preferences",
+                                    nnapi_errno);
+  }
+
+  if (!nn_compilation_cache_token_.empty()) {
+    const char* cache_dir = delegate_options.cache_dir;
+    const int set_caching_result =
+        nnapi_->ANeuralNetworksCompilation_setCaching(
+            compilation, cache_dir, nn_compilation_cache_token_.data());
+    if (set_caching_result != ANEURALNETWORKS_NO_ERROR) {
+      nnapi_->ANeuralNetworksCompilation_free(compilation);
+      compilation = nullptr;
+    }
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(context, set_caching_result,
+                                    "configuring NNAPI caching", nnapi_errno);
+  }
+  const int finish_result =
+      nnapi_->ANeuralNetworksCompilation_finish(compilation);
+  if (finish_result != ANEURALNETWORKS_NO_ERROR) {
+    nnapi_->ANeuralNetworksCompilation_free(compilation);
+    compilation = nullptr;
+  }
+  RETURN_TFLITE_ERROR_IF_NN_ERROR(context, finish_result,
+                                  "completing NNAPI compilation", nnapi_errno);
+  nn_compilation_.reset(compilation);
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus NNAPIDelegateKernel::GetOperationsSupportedByTargetNnApiDevices(
+    TfLiteContext* context, std::vector<int>* supported_nodes,
+    int* nnapi_errno) {
+  if (!nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices) {
+    return kTfLiteError;
+  }
+
+  // Determine the list of operations the device actually supports
+  auto support_flags = absl::make_unique<bool[]>(nodes_.size());
+
+  RETURN_TFLITE_ERROR_IF_NN_ERROR(
+      context,
+      nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
+          nn_model_.get(), nnapi_devices_.data(), nnapi_devices_.size(),
+          support_flags.get()),
+      "Checking supported operations for devices", nnapi_errno);
+
+  supported_nodes->clear();
+  for (int i = 0; i < nodes_.size(); i++) {
+    if (support_flags[i]) {
+      supported_nodes->push_back(nodes_[i]);
+    }
+  }
+
   return kTfLiteOk;
 }
 
@@ -3164,7 +3203,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                                       nn_compilation_.get(), &execution),
                                   "creating NNAPI execution", nnapi_errno);
   std::unique_ptr<ANeuralNetworksExecution, NNFreeExecution>
-      execution_unique_ptr(execution);
+      execution_unique_ptr(execution, NNFreeExecution(nnapi_));
 
   // Set the input tensor buffers. Note: we access tflite tensors using
   // absolute indices but NN api indices inputs by relative indices.
@@ -3294,7 +3333,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     TfLiteTensor* tensor = &context->tensors[state_tensor_idx];
     // Here we are using a deep copy for state_in tensors so that we are not
     // reading and writing into the same buffer during a invocation.
-    // TODO(110369471): using double shared buffer to minimize the copies.
+    // TODO(b/110369471): using double shared buffer to minimize the copies.
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context,
         nnapi_->ANeuralNetworksExecution_setOutput(
@@ -3764,10 +3803,46 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
 
 using ::tflite::delegate::nnapi::NNAPIDelegateKernel;
 
+StatefulNnApiDelegate::Data::~Data() {
+  std::for_each(std::begin(delegate_state_cache),
+                std::end(delegate_state_cache),
+                [](const std::pair<int, NNAPIDelegateKernel*>& entry) {
+                  delete entry.second;
+                });
+}
+
+void StatefulNnApiDelegate::Data::CacheDelegateKernel(
+    const TfLiteDelegateParams* delegate_params,
+    NNAPIDelegateKernel* delegate_state) {
+  const int cache_key = delegate_params->nodes_to_replace->data[0];
+  delegate_state_cache.emplace(cache_key, delegate_state);
+}
+
+absl::optional<NNAPIDelegateKernel*>
+StatefulNnApiDelegate::Data::GetCachedDelegateKernel(
+    const TfLiteDelegateParams* delegate_params) {
+  const int cache_key = delegate_params->nodes_to_replace->data[0];
+  const auto cached_state = delegate_state_cache.find(cache_key);
+  if (cached_state != std::end(delegate_state_cache)) {
+    auto result = absl::optional<NNAPIDelegateKernel*>(cached_state->second);
+    delegate_state_cache.erase(cached_state);
+    return result;
+  } else {
+    return absl::nullopt;
+  }
+}
+
+StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi)
+    : StatefulNnApiDelegate(nnapi, Options()) {}
+
 StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
+    : StatefulNnApiDelegate(NnApiImplementation(), options) {}
+
+StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
+                                             Options options)
     : TfLiteDelegate(TfLiteDelegateCreate()),
-      delegate_data_(
-          Data{.execution_preference = options.execution_preference}) {
+      delegate_data_(Data{.execution_preference = options.execution_preference,
+                          .nnapi = nnapi}) {
   if (options.accelerator_name) {
     delegate_data_.accelerator_name = options.accelerator_name;
   }
@@ -3873,7 +3948,9 @@ using ::tflite::delegate::nnapi::kMinSdkVersionForNNAPI12;
 
 TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                                               TfLiteDelegate* delegate) {
-  int* nnapi_errno = &(static_cast<Data*>(delegate->data_)->nnapi_errno);
+  auto* delegate_data = static_cast<Data*>(delegate->data_);
+  int* nnapi_errno = &(delegate_data->nnapi_errno);
+  const NnApi* nnapi = delegate_data->nnapi;
 
   // Resetting the error code when the delegate is initialized
   // by TFLite. This causes the error to be reset if reusing the same
@@ -3881,24 +3958,25 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   *nnapi_errno = 0;
 
   // Do not check nodes_ if NN API is unavailable.
-  const NnApi* nnapi = NnApiImplementation();
   if (nnapi->android_sdk_version < kMinSdkVersionForNNAPI ||
       !nnapi->nnapi_exists) {
     return kTfLiteOk;
   }
 
   int target_sdk_version = nnapi->android_sdk_version;
+  const StatefulNnApiDelegate::Options delegate_options =
+      StatefulNnApiDelegate::GetOptions(delegate);
   // For NNAPI 1.2+, check if there is any accelerator available.
   // If not, don't delegate to NNAPI's CPU reference implementation unless
   // it has been specified as target accelerator.
   if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
-    if (ShouldUseTargetDevices(delegate)) {
+    if (ShouldUseTargetDevices(delegate_options)) {
       std::vector<ANeuralNetworksDevice*> devices;
       TF_LITE_ENSURE_STATUS(
           GetTargetDevices(context, delegate, nnapi, nnapi_errno, &devices));
 
       if (devices.empty()) {
-        if (StatefulNnApiDelegate::GetOptions(delegate).accelerator_name) {
+        if (delegate_options.accelerator_name) {
           // There was a selected device and it is not available.
           return kTfLiteError;
         } else {
@@ -3933,13 +4011,13 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
 
   // Check for every node if it is supported
+  const bool is_accelerator_specified = ShouldUseTargetDevices(
+      delegate_options, /*exclude_nnapi_reference=*/true);
   for (int node_index : TfLiteIntArrayView(plan)) {
     TfLiteNode* node;
     TfLiteRegistration* registration;
     TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
         context, node_index, &node, &registration));
-    const bool is_accelerator_specified =
-        ShouldUseTargetDevices(delegate, /*exclude_nnapi_reference=*/true);
     if (NNAPIDelegateKernel::Validate(context, registration->builtin_code,
                                       registration->version, target_sdk_version,
                                       node, is_accelerator_specified)) {
@@ -3961,10 +4039,21 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                  size_t length) -> void* {
         const TfLiteDelegateParams* params =
             reinterpret_cast<const TfLiteDelegateParams*>(buffer);
-        int* nnapi_errno =
-            &(static_cast<Data*>(params->delegate->data_)->nnapi_errno);
-        NNAPIDelegateKernel* kernel_state = new NNAPIDelegateKernel;
-        kernel_state->Init(context, params, nnapi_errno);
+
+        auto* delegate_data = static_cast<Data*>(params->delegate->data_);
+        int* nnapi_errno = &(delegate_data->nnapi_errno);
+
+        auto delegate_state_maybe =
+            delegate_data->GetCachedDelegateKernel(params);
+
+        NNAPIDelegateKernel* kernel_state;
+        if (delegate_state_maybe.has_value()) {
+          kernel_state = *delegate_state_maybe;
+        } else {
+          kernel_state = new NNAPIDelegateKernel(delegate_data->nnapi);
+          kernel_state->Init(context, params, nnapi_errno);
+        }
+
         return kernel_state;
       },
 
@@ -3994,11 +4083,54 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       .version = 1,
   };
 
-  // Request TFLite to partition the graph and make kernels
-  // for each independent node sub set a new nnapi_delegate_kernel.
-  return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, nnapi_delegate_kernel,
-      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), delegate);
+  std::vector<int>& nodes_to_delegate = supported_nodes;
+  if (is_accelerator_specified) {
+    TfLiteDelegateParams* params_array;
+    int num_partitions = 0;
+    // The first entry in the array is the element count
+    std::vector<int> device_supported_nodes(1);
+    TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
+        context, reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()),
+        &params_array, &num_partitions));
+    // For each partition check if which nodes are actually supported by the
+    // target accelerators.
+    delegate_data->delegate_state_cache.clear();
+    for (int idx = 0; idx < num_partitions; idx++) {
+      const auto& partition_params = params_array[idx];
+      auto kernel_state = absl::make_unique<NNAPIDelegateKernel>(nnapi);
+      TfLiteDelegateParams params_with_delegate = partition_params;
+      params_with_delegate.delegate = delegate;
+      TF_LITE_ENSURE_STATUS(
+          kernel_state->Init(context, &params_with_delegate, nnapi_errno));
+      std::vector<int> supported_partition_nodes;
+      TF_LITE_ENSURE_STATUS(
+          kernel_state->GetOperationsSupportedByTargetNnApiDevices(
+              context, &supported_partition_nodes, nnapi_errno));
+      device_supported_nodes.insert(device_supported_nodes.end(),
+                                    supported_partition_nodes.begin(),
+                                    supported_partition_nodes.end());
+
+      bool model_fully_supported = (supported_partition_nodes.size() ==
+                                    partition_params.nodes_to_replace->size);
+      if (model_fully_supported) {
+        delegate_data->CacheDelegateKernel(&partition_params,
+                                           kernel_state.release());
+      }
+    }
+
+    device_supported_nodes[0] = device_supported_nodes.size() - 1;
+    nodes_to_delegate = device_supported_nodes;
+  }
+
+  if (nodes_to_delegate.empty()) {
+    return kTfLiteOk;
+  } else {
+    // Request TFLite to partition the graph and make kernels
+    // for each independent node sub set a new nnapi_delegate_kernel.
+    return context->ReplaceNodeSubsetsWithDelegateKernels(
+        context, nnapi_delegate_kernel,
+        reinterpret_cast<TfLiteIntArray*>(nodes_to_delegate.data()), delegate);
+  }
 }
 
 // Returns a singleton NNAPI Delegate that can check for support of ops.

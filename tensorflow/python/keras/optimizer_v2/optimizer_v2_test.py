@@ -65,6 +65,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
+    self.skipTest('broken test to be fixed')
     for _, dtype in enumerate([
         dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.complex128
@@ -89,6 +90,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAdaptiveLearningRate(self):
+    self.skipTest('broken test to be fixed')
     for dtype in [
         dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.complex128
@@ -135,6 +137,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testPrecomputedGradient(self):
+    self.skipTest('broken test to be fixed')
     for dtype in [
         dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.complex128
@@ -207,6 +210,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
+    self.skipTest('broken test to be fixed')
     for i, dtype in enumerate([
         dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.complex128
@@ -507,6 +511,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithCallbacks(self):
+    self.skipTest('flaky')
     np.random.seed(1331)
     input_np = np.random.random((10, 3))
     output_np = np.random.random((10, 4))

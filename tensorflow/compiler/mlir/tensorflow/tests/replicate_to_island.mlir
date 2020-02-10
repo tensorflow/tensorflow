@@ -52,7 +52,7 @@ func @no_devices() {
 func @no_override_device() {
   tf_executor.graph {
     %0 = tf_executor.island {
-      tf_device.replicate {n = 2 : i32, devices = ["/CPU:0", "/GPU:1"]} {
+      tf_device.replicate {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
         "tf.opA"() {device = "/TPU:2"} : () -> ()
         tf_device.return
       }
@@ -74,7 +74,7 @@ func @no_override_device() {
 func @no_device_non_tf_ops() {
   tf_executor.graph {
     %0 = tf_executor.island {
-      tf_device.replicate {n = 2 : i32, devices = ["/CPU:0", "/GPU:1"]} {
+      tf_device.replicate {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
         "test.opA"() {device = "/TPU:2"} : () -> ()
         "test.opB"() : () -> ()
         tf_device.return
@@ -104,7 +104,7 @@ func @unused_replica_control(%arg0: tensor<i1>, %arg1: tensor<i1>) {
   %0 = tf_executor.graph {
     %1 = tf_executor.ControlTrigger {}
     %2:2 = tf_executor.island(%1) {
-      %3:4 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i1>) {n = 2 : i32, devices = ["/CPU:0", "/GPU:1"]} {
+      %3:4 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i1>) {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
         %4 = "tf.opA"(%ri) : (tensor<i1>) -> tensor<i1>
         %5 = "tf.opB"(%4) : (tensor<i1>) -> tensor<i1>
         tf_device.return %4, %5 : tensor<i1>, tensor<i1>

@@ -102,7 +102,8 @@ Optional<llvm::SmallVector<mlir::Type, 4>> InferShapeForFunctionReturnType(
 bool IsSupportedNonTFOp(Operation* op) {
   return isa<tf_executor::YieldOp>(op) || isa<tf_executor::IslandOp>(op) ||
          isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
-         isa<ReturnOp>(op) || isa<tf_device::ReturnOp>(op);
+         isa<tf_executor::NextIterationSinkOp>(op) || isa<ReturnOp>(op) ||
+         isa<tf_device::ReturnOp>(op);
 }
 
 // Inserts tf.Cast operation when changing the type of a result if the user is
@@ -165,6 +166,13 @@ bool InferShapeForNonTFDialectOperation(Operation* op, Dialect* tf_dialect) {
   if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
     return InferShapeForPassThroughOps(island_op.GetYield().fetches(), op,
                                        tf_dialect);
+  }
+  if (auto iter_sink = dyn_cast<tf_executor::NextIterationSinkOp>(op)) {
+    auto iter_source = cast<tf_executor::NextIterationSourceOp>(
+        iter_sink.token().getDefiningOp());
+    return InferShapeForPassThroughOps(
+        iter_sink.getOperands().drop_front().take_front(), iter_source,
+        tf_dialect);
   }
   return false;
 }
@@ -376,7 +384,7 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
                                             int64_t graph_version,
                                             int64_t max_iteration) {
   ModuleOp module = func.getParentOfType<ModuleOp>();
-  auto func_uses = func.getSymbolUses(module);
+  auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   int num_uses = std::distance(func_uses->begin(), func_uses->end());
   if (num_uses != 1) {
     func.emitError(llvm::formatv(
@@ -408,22 +416,15 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
   return success();
 }
 
-template <typename OpTy>
-LogicalResult PropagateShapeToIfWhileOpFunctions(
-    OpTy op, llvm::ArrayRef<StringRef> func_names, int64_t graph_version,
+LogicalResult PropagateShapeToFunctions(
+    ModuleOp module, Operation::operand_type_range input_types,
+    llvm::ArrayRef<StringRef> func_names, int64_t graph_version,
     int64_t max_iteration) {
-  llvm::SmallVector<Type, 4> input_types;
-  input_types.reserve(std::distance(op.input().begin(), op.input().end()));
-  for (Value v : op.input()) {
-    input_types.push_back(v.getType());
-  }
-
-  ModuleOp module = op.template getParentOfType<ModuleOp>();
-
   bool success = true;
+  auto types = llvm::to_vector<4>(input_types);
   for (auto func_name : func_names) {
     FuncOp func = module.lookupSymbol<FuncOp>(func_name);
-    if (failed(RefineShapeForControlFlowFunc(func, input_types, graph_version,
+    if (failed(RefineShapeForControlFlowFunc(func, types, graph_version,
                                              max_iteration))) {
       success = false;
     }
@@ -434,14 +435,20 @@ LogicalResult PropagateShapeToIfWhileOpFunctions(
 LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
                                                   int64_t graph_version,
                                                   int64_t max_iteration) {
+  ModuleOp module = op->getParentOfType<ModuleOp>();
   if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-    return PropagateShapeToIfWhileOpFunctions<TF::IfOp>(
-        if_op, {if_op.then_branch(), if_op.else_branch()}, graph_version,
+    return PropagateShapeToFunctions(
+        module, llvm::drop_begin(if_op.getOperandTypes(), 1),
+        {if_op.then_branch(), if_op.else_branch()}, graph_version,
         max_iteration);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-    return PropagateShapeToIfWhileOpFunctions<TF::WhileOp>(
-        while_op, {while_op.cond(), while_op.body()}, graph_version,
-        max_iteration);
+    return PropagateShapeToFunctions(module, while_op.getOperandTypes(),
+                                     {while_op.cond(), while_op.body()},
+                                     graph_version, max_iteration);
+  } else if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
+    return PropagateShapeToFunctions(module, call_op.getOperandTypes(),
+                                     {call_op.f()}, graph_version,
+                                     max_iteration);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.

@@ -293,6 +293,8 @@ class FileWriter(SummaryToEventTransformer):
   instead forms a compatibility layer over new graph-based summaries
   (`tf.contrib.summary`) to facilitate the use of new summary writing with
   pre-existing code that expects a `FileWriter` instance.
+
+  This class is not thread-safe.
   """
 
   def __init__(self,

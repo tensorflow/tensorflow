@@ -31,7 +31,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -85,7 +84,6 @@ class EvaluateFrozenGraph(test.TestCase):
     model_coverage.test_frozen_graph(filename, ['inputA', 'inputB'],
                                      ['add', 'Mean'])
 
-  @test_util.run_in_graph_and_eager_modes
   def testFunctions(self):
     """Tests functions."""
 

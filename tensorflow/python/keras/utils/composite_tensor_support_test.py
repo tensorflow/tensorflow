@@ -35,6 +35,8 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import Dense
+from tensorflow.python.keras.layers import Embedding
 from tensorflow.python.keras.layers import Layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -681,6 +683,57 @@ class SparseTensorInputValidationTest(keras_parameterized.TestCase):
                                              ragged_rank=1)
     with self.assertRaisesRegex(ValueError, ".*got array with shape.*"):
       _ = model.predict(input_data)
+
+
+@keras_parameterized.run_with_all_model_types()
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class CompositeTensorModelPredictTest(keras_parameterized.TestCase):
+
+  def _normalize_shape(self, shape):
+    if not isinstance(shape, tuple):
+      shape = tuple(shape.as_list())
+    return shape
+
+  def test_sparse_tensor_model_predict(self):
+    # Create a model that accepts a sparse input and runs a "Dense" layer on it.
+    model_input = input_layer.Input(
+        shape=(3,), sparse=True, dtype=dtypes.float32)
+
+    self.assertEqual([None, 3], model_input.shape.as_list())
+
+    layers = [Dense(2)]
+    model = get_model_from_layers_with_input(layers, model_input=model_input)
+
+    sparse_input = sparse_tensor.SparseTensor(
+        # A two-row matrix
+        indices=[(0, 0), (0, 1), (0, 2), (5, 0), (5, 1), (5, 2)],
+        values=[1, 1, 1, 1, 1, 1],
+        dense_shape=(6, 3))
+
+    shape = model(sparse_input).shape
+    self.assertEqual((6, 2), self._normalize_shape(shape))
+
+    shape = model.predict(sparse_input, steps=1).shape
+    self.assertEqual((6, 2), self._normalize_shape(shape))
+
+  def test_ragged_tensor_model_predict(self):
+    # Create a model that accepts a sparse input and runs a "Dense" layer on it.
+    model_input = input_layer.Input(shape=(None,), ragged=True)
+    self.assertEqual([None, None], model_input.shape.as_list())
+
+    layers = [Embedding(input_dim=7, output_dim=5)]
+    model = get_model_from_layers_with_input(layers, model_input=model_input)
+
+    ragged_input = ragged_factory_ops.constant([
+        [1, 2, 3, 4, 5],
+        [2, 4],
+    ])
+
+    shape = model(ragged_input).shape
+    self.assertEqual((2, None, 5), self._normalize_shape(shape))
+
+    shape = model.predict(ragged_input, steps=1).shape
+    self.assertEqual((2, None, 5), self._normalize_shape(shape))
 
 
 @keras_parameterized.run_with_all_model_types(

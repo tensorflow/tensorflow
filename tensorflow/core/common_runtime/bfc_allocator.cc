@@ -445,18 +445,16 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name) {
   tensorflow::profiler::TraceMe trace_me(
       [&]() EXCLUSIVE_LOCKS_REQUIRED(lock_) {
         AllocatorStats stats = stats_;
-        double fragmentation = GetFragmentation();
         int64 bytes_available =
             memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;
         return absl::StrCat(traceme_name, "#allocator_name=", name_,
                             ",bytes_reserved=", stats.bytes_reserved,
                             ",bytes_allocated=", stats.bytes_in_use,
                             ",bytes_available=", bytes_available,
-                            ",fragmentation=", fragmentation,
                             ",peak_bytes_in_use=", stats.peak_bytes_in_use,
                             "#");
       },
-      /*level=*/3);
+      /*level=*/profiler::TraceMeLevel::kInfo);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
