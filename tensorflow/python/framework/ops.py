@@ -823,8 +823,6 @@ class Tensor(_TensorLike):
     # documentation here, please update tf.Variable.ref() as well.
     """Returns a hashable reference object to this Tensor.
 
-    Warning: Experimental API that could be changed or removed.
-
     The primary use case for this API is to put tensors in a set/dictionary.
     We can't put tensors in a set/dictionary as `tensor.__hash__()` is no longer
     available starting Tensorflow 2.0.

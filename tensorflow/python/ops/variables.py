@@ -1218,8 +1218,6 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     # documentation here, please update tf.Tensor.ref() as well.
     """Returns a hashable reference object to this Variable.
 
-    Warning: Experimental API that could be changed or removed.
-
     The primary use case for this API is to put variables in a set/dictionary.
     We can't put variables in a set/dictionary as `variable.__hash__()` is no
     longer available starting Tensorflow 2.0.
