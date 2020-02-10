@@ -158,22 +158,25 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     warnings.simplefilter("always")
 
   def _GetTensorSpec(self, shape, mask, dtype, name):
-    if mask is None:
-      # Unset the batch dim of the specs to make sure TRT can tolerate changes
-      # on that.
-      new_shape = [None] + shape[1:]
-    else:
-      # Unset shape where mask[i] == None
-      assert len(shape) == len(mask)
-      new_shape = [None if m is None else s for s, m in zip(shape, mask)]
-
+    # Unset shape where mask[i] == None
+    assert len(shape) == len(mask)
+    new_shape = [None if m is False else s for s, m in zip(shape, mask)]
     return tensor_spec.TensorSpec(new_shape, dtype, name)
 
   def BuildParams(self, graph_fn, dtype, input_shapes, output_shapes,
                   input_mask=None, output_mask=None):
-    """Build test parameters with static shapes (input_mask==None) or with
-       dynamic shapes. To define the first two dimension with dynamic shapes
-       use e.g. input_shapes=[[1,2,1,8]], input_mask=[[None, None, 1, 8]]
+    """Build test parameters with static or dynamic input shapes.
+
+    Implicit batch mode is assumed if input_mask==None (default). This means
+    that each input dimension is static, except of the batch dim which is set
+    to dynamic. To define dynamic shapes give a boolean mask that describes
+    which dimensions to treat as known. The values in input_mask are
+    interpreted the following way:
+    - True: known dim (use the corresponding value from input_shapes)
+    - False: unknown dim (replace the corresponding value from input_shapes
+             with None)
+    For example, to define the first two dimension with unknown size use
+    input_shapes=[[1,2,1,8]], input_mask=[[False, False, True, True]].
     """
 
     def _Validate(shapes):
@@ -185,12 +188,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     _Validate(output_shapes)
 
     if input_mask is None:
-      input_mask = [None]*len(input_shapes)
+      # Define mask for implicit batch mode: batch dim is set to unknown
+      input_mask = [[False] + [True]*(len(shape)-1) for shape in input_shapes]
     else:
       assert len(input_mask) == len(input_shapes)
 
     if output_mask is None:
-      output_mask = [None]*len(output_shapes)
+      output_mask = [[False] + [True]*(len(shape)-1)
+                     for shape in output_shapes]
     else:
       assert len(output_mask) == len(output_shapes)
 

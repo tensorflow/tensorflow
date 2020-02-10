@@ -95,8 +95,8 @@ class ExplicitBatchTest(TrtModeTestBase):
   def GetParams(self):
     """ We specify input/output mask with static (known) shapes """
     return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
-                            [[12, 5]], input_mask=[[1, 12, 5]],
-                            output_mask=[[12, 5]])
+                            [[12, 5]], input_mask=[[True, True, True]],
+                            output_mask=[[True, True]])
 
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch."""
@@ -130,8 +130,8 @@ class DynamicShapesTest(TrtModeTestBase):
   def GetParams(self):
     """ We specify input/output mask with dynamic (unknown) shapes. """
     return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
-                            [[12, 5]], input_mask=[[None, None, None]],
-                            output_mask=[[None, None]])
+                            [[12, 5]], input_mask=[[False, False, False]],
+                            output_mask=[[False, False]])
 
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch. """
