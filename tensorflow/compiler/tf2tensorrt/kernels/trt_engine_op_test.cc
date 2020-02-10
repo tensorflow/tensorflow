@@ -215,16 +215,7 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   TensorShape input_shape({1, 2});
   TRTEngineOpTestBase::AddSimpleInput<float>(input_shape);
 
-  // We expect that TensorRT engine creation fails: we would need to configure
-  // the engine with optimization profiles to use dynamic input shapes, but that
-  // feature is not yet implemented.
-  //
-  // Since TRT engine creation has failed, we fall back to native segment.
-  // Calling the native segment fails for the same reason that is investigated
-  // in https://github.com/tensorflow/tensorflow/pull/34919. This is irrelevant
-  // for the current test, here we want to just check wether TRT engine creation
-  // has failed.
-  OpsTestBase::RunOpKernel();
+  TF_ASSERT_OK(OpsTestBase::RunOpKernel());
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
@@ -237,9 +228,7 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  // Since engine creation failed, we expect to find nullptr. Finding a nullptr
-  // indicates that unknown shapes were used to define the TensorRT network.
-  EXPECT_EQ(ectx->cuda_engine, nullptr);
+  EXPECT_NE(ectx->cuda_engine, nullptr);
 }
 
 template <typename T>
