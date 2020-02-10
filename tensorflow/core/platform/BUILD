@@ -1215,6 +1215,7 @@ filegroup(
 
 filegroup(
     name = "test_hdrs",
+    testonly = 1,
     srcs = [
         "test.h",
         "test_benchmark.h",
@@ -1224,6 +1225,7 @@ filegroup(
 
 filegroup(
     name = "android_test_srcs",
+    testonly = 1,
     srcs = [
         "test.h",
     ],

@@ -1503,6 +1503,7 @@ filegroup(
 
 filegroup(
     name = "android_test_srcs",
+    testonly = 1,
     # TODO(andrewharp/nhua):
     # make more test-related sources portable e.g. "//tensorflow/core/platform:test.cc",
     srcs = [
@@ -1517,6 +1518,7 @@ filegroup(
 # This is like android_test_srcs, minus the things that are already in mobile_srcs.
 filegroup(
     name = "android_test_srcs_no_core",
+    testonly = 1,
     srcs = [
         "//tensorflow/core/framework:android_test_hdrs",
         "//tensorflow/core/framework:android_test_srcs_no_core",
