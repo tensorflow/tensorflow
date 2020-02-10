@@ -503,6 +503,9 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
   return true;
 }
 
+// This routine finds the engines with input shapes compatible with the
+// actual_input_shapes, and returns the input shapes of one of such engine that
+// has the smallest batch size
 Status TRTEngineOp::GetEngineInputShapes(
     const CacheType& cache, const std::vector<TensorShape>& actual_input_shapes,
     std::vector<TensorShape>* engine_input_shapes) {
@@ -878,11 +881,12 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   static EngineContext empty_context;
 
   mutex_lock lock(engine_mutex_);
-  // Using first input to get batch size is reliable - VerifyInputShapes() has
-  // verified that. Although this is not needed for explicit batch mode, but
-  // we still have to pass it to ConvertGraphDefToEngine until the requirement
-  // is removed from that function.
+  // Using first input to get batch size is reliable - VerifyInputShapes()
+  // guarantees that the first input is not a scalar. As such we can always use
+  // the first input to get the batch size for implicit batch mode. For explicit
+  // batch mode, this value is not used.
   const int batch_size = input_concrete_shapes[0].dim_size(0);
+  // TODO(Tamas): remove the need for batch_size in explicit_batch mode
   auto& cache = cache_res->cache_;
   auto allocator = cache_res->allocator_.get();
   if (allocator == nullptr) {
@@ -951,8 +955,8 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
               << " with input shapes: "
               << TensorShapeUtils::ShapeListString(input_concrete_shapes);
 
-    // Use concrete shapes for implicit batch mode and
-    // use partial shapes for explicit batch mode.
+    // Use concrete shapes for implicit batch mode and partial shapes for
+    // explicit batch mode.
     const std::vector<PartialTensorShape>& conversion_input_shapes =
         use_implicit_batch_
             ? std::vector<PartialTensorShape>(input_concrete_shapes.begin(),

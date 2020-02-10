@@ -194,7 +194,7 @@ TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
       device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
-  // It should contain only one engine.
+  // The cache should contain only one EngineContext, with a valid cuda_engine.
   auto cache = &cache_resource->cache_;
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
@@ -232,15 +232,14 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
       device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
-  // It should contain only one EngineContext.
+  // The cache should contain only one EngineContext.
   auto cache = &cache_resource->cache_;
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  // Since engine creation failed, we expect to find nullptr.
+  // Since engine creation failed, we expect to find nullptr. Finding a nullptr
+  // indicates that the unknown shapes were used to define the TensorRT network.
   EXPECT_EQ(ectx->cuda_engine, nullptr);
-  // Finding a nullptr indicates that the unknown shapes were used to define
-  // the TensorRT network.
 }
 
 template <typename T>
