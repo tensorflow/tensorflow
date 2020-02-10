@@ -62,6 +62,21 @@ ifeq ($(TARGET), stm32f4)
     tensorflow/lite/micro/micro_allocator_test.cc \
     tensorflow/lite/micro/memory_helpers_test.cc \
     tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
+    tensorflow/lite/micro/kernels/logistic_test.cc \
+    tensorflow/lite/micro/kernels/logical_test.cc \
+    tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
+    tensorflow/lite/micro/kernels/comparisons_test.cc \
+    tensorflow/lite/micro/kernels/reshape_test.cc \
+    tensorflow/lite/micro/kernels/arg_min_max_test.cc \
+    tensorflow/lite/micro/kernels/elementwise_test.cc \
+    tensorflow/lite/micro/kernels/strided_slice_test.cc \
+    tensorflow/lite/micro/kernels/prelu_test.cc \
+    tensorflow/lite/micro/kernels/pooling_test.cc \
+    tensorflow/lite/micro/kernels/pack_test.cc \
+    tensorflow/lite/micro/kernels/activations_test.cc \
+    tensorflow/lite/micro/kernels/dequantize_test.cc \
+    tensorflow/lite/micro/kernels/unpack_test.cc \
+    tensorflow/lite/micro/kernels/split_test.cc \
     tensorflow/lite/micro/kernels/conv_test.cc \
     tensorflow/lite/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
