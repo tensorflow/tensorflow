@@ -369,13 +369,11 @@ Status CreateTRTNode(const ConversionParams& params,
         out_types.at(conn.port_number) = conn.connection_type;
       } else {
         // Set the shapes and data types of input edge.
-        tensorflow::TensorShapeProto in_shape;
-        conn.outside_shape.AsProto(&in_shape);
         if (input_shapes.size() <= conn.port_number) {
           input_shape_protos.resize(conn.port_number + 1);
           input_shapes.resize(conn.port_number + 1);
         }
-        input_shape_protos.at(conn.port_number) = in_shape;
+        conn.outside_shape.AsProto(&input_shape_protos.at(conn.port_number));
         input_shapes.at(conn.port_number) = conn.outside_shape;
         // Shape must be fully defined (excluding batch dimension) for static
         // mode.
