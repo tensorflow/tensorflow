@@ -19,6 +19,7 @@ END
 with the given separator (default is an empty separator).
 
 Examples:
+
 >>> s = ["hello", "world", "tensorflow"]
 >>> tf.strings.join(s, " ")
 <tf.Tensor: shape=(), dtype=string, numpy=b'hello world tensorflow'>

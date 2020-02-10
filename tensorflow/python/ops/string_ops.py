@@ -475,6 +475,7 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
   results in a rounded value.)
 
   Examples:
+
   >>> tf.strings.to_number("1.55")
   <tf.Tensor: shape=(), dtype=float32, numpy=1.55>
   >>> tf.strings.to_number("3", tf.int32)
@@ -520,6 +521,7 @@ def string_to_hash_bucket(input, num_buckets, name=None):
   `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
 
   Examples:
+
   >>> tf.strings.to_hash_bucket(["Hello", "TensorFlow", "2.x"], 3)
   <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 0, 1])>
 

@@ -12,6 +12,7 @@ END
 A string `Tensor` of the same shape as the input.
 
 Examples:
+
 >>> tf.strings.strip(["\nTensorFlow", "     The python library    "]).numpy()
 array([b'TensorFlow', b'The python library'], dtype=object)
 END
