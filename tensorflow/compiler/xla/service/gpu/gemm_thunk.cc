@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/profiler/nvtx_utils.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
@@ -240,9 +240,10 @@ Status RunGemm(const HloInstruction *gemm,
   MatrixDescriptor rhs_matrix = make_descriptor(
       rhs_buffer, rhs_shape, dim_nums.rhs_contracting_dimensions(0) == col_dim);
   std::unique_ptr<ScopedInstructionProfiler> op_profiler =
-      profiler ? profiler->MakeScopedInstructionProfiler(
-                     implements_whole_instruction ? gemm : nullptr)
-               : nullptr;
+      profiler
+          ? profiler->MakeScopedInstructionProfiler(
+                implements_whole_instruction ? gemm : nullptr)
+          : nullptr;
 
   if (LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
     std::swap(lhs_matrix, rhs_matrix);

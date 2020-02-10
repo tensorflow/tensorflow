@@ -2602,7 +2602,6 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/lib:traceme",
-        "@nvtx_archive//:nvtx",
     ] + mkl_deps(),
     alwayslink = 1,
 )

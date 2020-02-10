@@ -48,10 +48,9 @@ string DataTypeToNumpyString(DataType dtype);
 // TODO(benbarsdell): This is a bit crude and hacky (and inefficient).
 string AttrValueToJson(const AttrValue& attr_value);
 
-string MaybeGetNvtxDomainRangeMessage(const OpKernel* op_kernel,
-                                      const int num_inputs,
-                                      std::vector<const TensorShape*>
-                                              input_shape_array);
+string MaybeGetNvtxDomainRangeMessage(
+    const OpKernel* op_kernel, const int num_inputs,
+    std::vector<const TensorShape*> input_shape_array);
 
 nvtxRangeId_t MaybeNvtxDomainRangeStart(string node_op, string node_name);
 

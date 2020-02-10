@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
-
 namespace tensorflow {
 namespace nvtx {
 
@@ -44,8 +43,7 @@ inline uint32_t get_color(unsigned hash) {
   return colors[hash % ncolor];
 }
 
-inline nvtxRangeId_t nvtxRangeStartHelper(const char* msg,
-                                          const char* type,
+inline nvtxRangeId_t nvtxRangeStartHelper(const char* msg, const char* type,
                                           nvtxDomainHandle_t nvtx_domain,
                                           bool set_category = true) {
   unsigned h = hash_string(type);
@@ -61,8 +59,7 @@ inline nvtxRangeId_t nvtxRangeStartHelper(const char* msg,
   attrs.message.ascii = msg;
   attrs.category = category;
 
-  if (nvtx_domain != NULL)
-    return ::nvtxDomainRangeStartEx(nvtx_domain, &attrs);
+  if (nvtx_domain != NULL) return ::nvtxDomainRangeStartEx(nvtx_domain, &attrs);
 
   return ::nvtxRangeStartEx(&attrs);
 }
@@ -212,15 +209,13 @@ string AttrValueToJson(const AttrValue& attr_value) {
   return "\"<Unknown AttrValue type>\"";  // Prevent missing return warning
 }
 
-string MaybeGetNvtxDomainRangeMessage(const OpKernel* kernel,
-                                      const int num_inputs,
-                                      std::vector<const TensorShape*>
-                                          input_shape_array){
+string MaybeGetNvtxDomainRangeMessage(
+    const OpKernel* kernel, const int num_inputs,
+    std::vector<const TensorShape*> input_shape_array) {
   string msg;
   if (NvtxRangesEnabled()) {
     msg = kernel->def().op() + ": " + kernel->name();
-  }
-  else if (NvtxRangesDetailedEnabled()) {
+  } else if (NvtxRangesDetailedEnabled()) {
     std::vector<string> args_pieces;
     for (int i = 0; i < num_inputs; ++i) {
       if (i == 10) {
@@ -229,30 +224,29 @@ string MaybeGetNvtxDomainRangeMessage(const OpKernel* kernel,
         break;
       }
       const TensorShape& shape = *(input_shape_array[i]);
-      string shape_str =
-          shape.unknown_rank() ? "null" : shape.DebugString();
-      args_pieces.push_back(
-          strings::StrCat("{\"name\":\"", kernel->def().input(i),
-                          "\",\"shape\":", shape_str, "}"));
+      string shape_str = shape.unknown_rank() ? "null" : shape.DebugString();
+      args_pieces.push_back(strings::StrCat("{\"name\":\"",
+                                            kernel->def().input(i),
+                                            "\",\"shape\":", shape_str, "}"));
     }
     std::vector<string> attrs_pieces;
     const auto& attrs = kernel->def().attr();
     for (auto it = attrs.begin(); it != attrs.end(); ++it) {
-    const string& key = it->first;
-    const AttrValue& value = it->second;
-    // Exclude types that aren't useful for profiling.
-    if (value.value_case() == AttrValue::kFunc ||
-        value.value_case() == AttrValue::kPlaceholder ||
-        value.value_case() == AttrValue::VALUE_NOT_SET) {
-      continue;
-    }
-    string value_str = AttrValueToJson(value);
-    attrs_pieces.push_back(strings::StrCat("\"", key, "\":", value_str));
+      const string& key = it->first;
+      const AttrValue& value = it->second;
+      // Exclude types that aren't useful for profiling.
+      if (value.value_case() == AttrValue::kFunc ||
+          value.value_case() == AttrValue::kPlaceholder ||
+          value.value_case() == AttrValue::VALUE_NOT_SET) {
+        continue;
+      }
+      string value_str = AttrValueToJson(value);
+      attrs_pieces.push_back(strings::StrCat("\"", key, "\":", value_str));
     }
     msg = strings::StrCat("{\"op\":\"", kernel->def().op(), "\",\"name\":\"",
-                        kernel->name(), "\",\"args\":[",
-                        str_util::Join(args_pieces, ","), "],\"attrs\":{",
-                        str_util::Join(attrs_pieces, ","), "}}");
+                          kernel->name(), "\",\"args\":[",
+                          str_util::Join(args_pieces, ","), "],\"attrs\":{",
+                          str_util::Join(attrs_pieces, ","), "}}");
   }
   return msg;
 }

@@ -292,9 +292,9 @@ Status KernelAndDeviceOp::Run(
         }
         const auto& shape = inputs.GetTensorValues()->at(i).tensor->shape();
         string shape_str = shape.unknown_rank() ? "null" : shape.DebugString();
-        args_pieces.push_back(
-            strings::StrCat("{\"name\":\"", kernel_->def().input(i),
-                            "\",\"shape\":", shape_str, "}"));
+        args_pieces.push_back(strings::StrCat("{\"name\":\"",
+                                              kernel_->def().input(i),
+                                              "\",\"shape\":", shape_str, "}"));
       }
       std::vector<string> attrs_pieces;
       const auto& attrs = kernel_->def().attr();
@@ -318,8 +318,8 @@ Status KernelAndDeviceOp::Run(
       msg = kernel_->def().op() + ": " + kernel_->name();
     }
   }
-  auto nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(msg,
-                                                       kernel_->def().op());
+  auto nvtx_range =
+      nvtx::MaybeNvtxDomainRangeStartMsg(msg, kernel_->def().op());
 
   {
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
@@ -403,8 +403,8 @@ Status KernelAndDeviceFunc::Run(
   {
     profiler::TraceMe activity(
         [&] {
-          return absl::StrCat("FunctionRun#name=", name(),
-                              ",id=", opts->step_id, "#");
+          return absl::StrCat("FunctionRun#name=", name(), ",id=",
+                              opts->step_id, "#");
         },
         profiler::TraceMeLevel::kInfo);
     pflr_->Run(*opts, handle_, inputs, outputs,

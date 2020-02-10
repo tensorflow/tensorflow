@@ -1861,7 +1861,8 @@ class HloInstruction {
     }
 
     UseKind(Kind kind)  // NOLINT intentionally nonexplicit
-        : kind(kind), permutation_instr(nullptr) {}
+        : kind(kind),
+          permutation_instr(nullptr) {}
 
     bool friend operator==(UseKind a, Kind b) { return a.kind == b; }
     bool friend operator==(Kind a, UseKind b) { return b == a; }

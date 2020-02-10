@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/profiler/nvtx_utils.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -67,7 +67,7 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Write the output tuple.
   const int kNumOutputs = 2;
-  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
+  auto ptrs = absl::make_unique<void* []>(kNumOutputs);
   ptrs[0] = result_buffer.opaque();
   ptrs[1] = scratch.opaque();
   se::DeviceMemory<void*> tuple_addr(
