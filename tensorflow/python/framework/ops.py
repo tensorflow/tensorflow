@@ -724,8 +724,8 @@ class Tensor(_TensorLike):
     g = getattr(self, "graph", None)
     if (Tensor._USE_EQUALITY and executing_eagerly_outside_functions() and
         (g is None or g.building_function)):
-      raise TypeError("Tensor is unhashable if Tensor equality is enabled. "
-                      "Instead, use tensor.experimental_ref() as the key.")
+      raise TypeError("Tensor is unhashable. "
+                      "Instead, use tensor.ref() as the key.")
     else:
       return id(self)
 
@@ -814,56 +814,50 @@ class Tensor(_TensorLike):
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
+  @deprecation.deprecated(None, "Use ref() instead.")
   def experimental_ref(self):
-    # tf.Variable also has the same experimental_ref() API.  If you update the
-    # documenation here, please update tf.Variable.experimental_ref() as well.
+    return self.ref()
+
+  def ref(self):
+    # tf.Variable also has the same ref() API.  If you update the
+    # documentation here, please update tf.Variable.ref() as well.
     """Returns a hashable reference object to this Tensor.
 
     Warning: Experimental API that could be changed or removed.
 
-    The primary usecase for this API is to put tensors in a set/dictionary.
+    The primary use case for this API is to put tensors in a set/dictionary.
     We can't put tensors in a set/dictionary as `tensor.__hash__()` is no longer
     available starting Tensorflow 2.0.
 
-    ```python
-    import tensorflow as tf
+    The following will raise an exception starting 2.0
 
-    x = tf.constant(5)
-    y = tf.constant(10)
-    z = tf.constant(10)
+    >>> x = tf.constant(5)
+    >>> y = tf.constant(10)
+    >>> z = tf.constant(10)
+    >>> tensor_set = {x, y, z}
+    Traceback (most recent call last):
+      ...
+    TypeError: Tensor is unhashable. Instead, use tensor.ref() as the key.
+    >>> tensor_dict = {x: 'five', y: 'ten'}
+    Traceback (most recent call last):
+      ...
+    TypeError: Tensor is unhashable. Instead, use tensor.ref() as the key.
 
-    # The followings will raise an exception starting 2.0
-    # TypeError: Tensor is unhashable if Tensor equality is enabled.
-    tensor_set = {x, y, z}
-    tensor_dict = {x: 'five', y: 'ten', z: 'ten'}
-    ```
+    Instead, we can use `tensor.ref()`.
 
-    Instead, we can use `tensor.experimental_ref()`.
-
-    ```python
-    tensor_set = {x.experimental_ref(),
-                  y.experimental_ref(),
-                  z.experimental_ref()}
-
-    print(x.experimental_ref() in tensor_set)
-    ==> True
-
-    tensor_dict = {x.experimental_ref(): 'five',
-                   y.experimental_ref(): 'ten',
-                   z.experimental_ref(): 'ten'}
-
-    print(tensor_dict[y.experimental_ref()])
-    ==> ten
-    ```
+    >>> tensor_set = {x.ref(), y.ref(), z.ref()}
+    >>> x.ref() in tensor_set
+    True
+    >>> tensor_dict = {x.ref(): 'five', y.ref(): 'ten', z.ref(): 'ten'}
+    >>> tensor_dict[y.ref()]
+    'ten'
 
     Also, the reference object provides `.deref()` function that returns the
     original Tensor.
 
-    ```python
-    x = tf.constant(5)
-    print(x.experimental_ref().deref())
-    ==> tf.Tensor(5, shape=(), dtype=int32)
-    ```
+    >>> x = tf.constant(5)
+    >>> x.ref().deref()
+    <tf.Tensor: shape=(), dtype=int32, numpy=5>
     """
     return object_identity.Reference(self)
 
@@ -4425,12 +4419,12 @@ class Graph(object):
 
     def add_op(self, op):
       if isinstance(op, Tensor):
-        op = op.experimental_ref()
+        op = op.ref()
       self._seen_nodes.add(op)
 
     def op_in_group(self, op):
       if isinstance(op, Tensor):
-        op = op.experimental_ref()
+        op = op.ref()
       return op in self._seen_nodes
 
   def _push_control_dependencies_controller(self, controller):

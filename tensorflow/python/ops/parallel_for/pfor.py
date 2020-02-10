@@ -1622,7 +1622,7 @@ def _channel_flatten_input(x, data_format):
   """
 
   graph = ops.get_default_graph()
-  cache_key = (graph, x.experimental_ref(), data_format)
+  cache_key = (graph, x.ref(), data_format)
   if cache_key not in _channel_flatten_input_cache:
     x_shape = array_ops.shape(x)
     if data_format == b"NCHW":

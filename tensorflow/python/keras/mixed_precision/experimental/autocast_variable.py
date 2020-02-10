@@ -149,7 +149,7 @@ class AutoCastVariable(variables.Variable):
   # reasons:
   #   * 'count_up_to': This method only applies to int variables, which cannot
   #     be wrapped with an AutoCastVariable.
-  #   * 'experimental_ref': Instead we inherit the definition from Variable.
+  #   * 'ref': Instead we inherit the definition from Variable.
   #     If we defined and delegated to Variable, the ref of an AutoCastVariable
   #     would be the same as the ref of the underlying variable, which would be
   #     strange as they are different Python objects.
