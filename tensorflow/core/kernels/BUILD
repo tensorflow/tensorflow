@@ -4483,7 +4483,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/proto:proto_utils",
-        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ] + select({
         ":xsmm_convolutions": [
