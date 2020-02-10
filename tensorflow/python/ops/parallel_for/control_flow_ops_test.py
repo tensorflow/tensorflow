@@ -50,6 +50,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
@@ -539,6 +540,30 @@ class NNTest(PForTestCase):
       return loss, g.gradient(total_loss, logits_i)
 
     self._test_loop_fn(loop_fn, 3)
+
+
+class StatelessRandomTest(PForTestCase):
+
+  # TODO(agarwal): add tests for other random functions
+  def test_multinomial(self):
+    seeds = [[1, 2], [3, 4]]
+    logits = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      logits_0 = array_ops.gather(logits, 0)
+      logits_i = array_ops.gather(logits, i)
+      seeds_0 = array_ops.gather(seeds, 0)
+      seeds_i = array_ops.gather(seeds, i)
+      return (stateless_random_ops.stateless_categorical(
+          logits=logits_i, num_samples=3, seed=seeds_i),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_i, num_samples=3, seed=seeds_0),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_0, num_samples=3, seed=seeds_i),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_0, num_samples=3, seed=seeds_0))
+
+    self._test_loop_fn(loop_fn, 2)
 
 
 class RandomTest(PForTestCase):

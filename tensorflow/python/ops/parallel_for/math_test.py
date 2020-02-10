@@ -448,7 +448,10 @@ class MathTest(PForTestCase, parameterized.TestCase):
             out_dtypes = out_dtypes + [dtypes.int32]
           self._test_loop_fn(loop_fn, 2)
 
-  def test_unsorted_segment_sum(self):
+  @parameterized.parameters(
+      (math_ops.unsorted_segment_sum,), (math_ops.unsorted_segment_min,),
+      (math_ops.unsorted_segment_max,), (math_ops.unsorted_segment_prod,))
+  def test_unsorted_segment_reduction(self, reduction_op):
     t = random_ops.random_uniform([3, 3, 2])
     for segment_ids_dtype in (dtypes.int32, dtypes.int64):
       for num_segments_dtype in (dtypes.int32, dtypes.int64):
@@ -462,9 +465,9 @@ class MathTest(PForTestCase, parameterized.TestCase):
           data_0 = array_ops.gather(t, 0)
           seg_ids = array_ops.gather(segment_ids, i)
           seg_ids_0 = array_ops.gather(segment_ids, 0)
-          return (math_ops.unsorted_segment_sum(data, seg_ids, num_segments),
-                  math_ops.unsorted_segment_sum(data_0, seg_ids, num_segments),
-                  math_ops.unsorted_segment_sum(data, seg_ids_0, num_segments))
+          return (reduction_op(data, seg_ids, num_segments),
+                  reduction_op(data_0, seg_ids, num_segments),
+                  reduction_op(data, seg_ids_0, num_segments))
 
         # pylint: enable=cell-var-from-loop
 

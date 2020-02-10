@@ -1845,6 +1845,21 @@ def _convert_reshape(pfor_input):
   return wrap(array_ops.reshape(t, new_shape), True)
 
 
+@RegisterPFor("Fill")
+def _convert_fill(pfor_input):
+  dims = pfor_input.unstacked_input(0)
+  value = pfor_input.stacked_input(1)
+  # Expand the rank of `value`
+  new_shape = array_ops.concat(
+      [[-1], array_ops.ones([array_ops.size(dims)], dtype=dtypes.int32)],
+      axis=0)
+  value = array_ops.reshape(value, new_shape)
+  # Compute the new output shape
+  new_dims = array_ops.concat([pfor_input.pfor.loop_len_vector, dims], axis=0)
+  # Broadcast
+  return wrap(array_ops.broadcast_to(value, new_dims), True)
+
+
 @RegisterPFor("BroadcastTo")
 def _convert_broadcast_to(pfor_input):
   t = pfor_input.stacked_input(0)
@@ -2399,8 +2414,11 @@ def _convert_biasadd(pfor_input):
     return wrap(nn_ops.bias_add(t, bias, data_format=data_format), True)
 
 
-@RegisterPFor("UnsortedSegmentSum")
-def _convert_unsortedsegmentsum(pfor_input):
+@RegisterPForWithArgs("UnsortedSegmentSum", math_ops.unsorted_segment_sum)
+@RegisterPForWithArgs("UnsortedSegmentMax", math_ops.unsorted_segment_max)
+@RegisterPForWithArgs("UnsortedSegmentMin", math_ops.unsorted_segment_min)
+@RegisterPForWithArgs("UnsortedSegmentProd", math_ops.unsorted_segment_prod)
+def _convert_unsortedsegmentsum(pfor_input, _, op_func):
   pfor_input.stack_inputs([0, 1])
   data = pfor_input.stacked_input(0)
   segment_ids = pfor_input.stacked_input(1)
@@ -2419,7 +2437,7 @@ def _convert_unsortedsegmentsum(pfor_input):
   segment_ids += segment_offset
   num_segments = math_ops.cast(num_segments, dtypes.int64) * math_ops.cast(
       n, dtypes.int64)
-  output = math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
+  output = op_func(data, segment_ids, num_segments)
   new_output_shape = array_ops.concat(
       [[n, -1], array_ops.shape(output)[1:]], axis=0)
   output = array_ops.reshape(output, new_output_shape)
@@ -2857,6 +2875,24 @@ def _convert_multinomial(pfor_input):
         array_ops.reshape(samples, [-1, n, num_samples]), [1, 0, 2])
 
   return wrap(stacked_samples, True)
+
+
+@RegisterPFor("StatelessMultinomial")
+@RegisterPFor("StatelessRandomBinomial")
+@RegisterPFor("StatelessRandomGammaV2")
+@RegisterPFor("StatelessRandomNormal")
+@RegisterPFor("StatelessRandomPoisson")
+@RegisterPFor("StatelessRandomUniform")
+@RegisterPFor("StatelessRandomUniformInt")
+@RegisterPFor("StatelessTruncatedNormal")
+def _convert_stateless_multinomial(pfor_input):
+  # Unlike stateful random ops, for stateless ones we want better
+  # reproducibility based on seed. Hence we don't want to use a similar strategy
+  # as used for stateful ones where we generate a possibly different set of
+  # random numbers under vectorization.
+  # Unfortunately, the kernels currently are not necessarily setup to do this
+  # efficiently and hence we fallback to a sequential loop for vectorization.
+  return _fallback_converter(pfor_input)
 
 
 # linalg_ops
