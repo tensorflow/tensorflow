@@ -56,6 +56,19 @@ static void UpdateFuncType(FuncOp func) {
   func.setType(updated_type);
 }
 
+// TODO(jpienaar): Remove when recursive side-effect modeling is added.
+static bool IsSideEffectFree(FuncOp func) {
+  bool is_side_effect_free = true;
+  func.walk([&](Operation* op) {
+    if (!op->hasNoSideEffect()) {
+      is_side_effect_free = op->isKnownTerminator();
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return is_side_effect_free;
+}
+
 // Folds TensorFlow If op with constant conditional operand by inlining the
 // function body based on the conditional value.
 class FoldIfOp : public OpRewritePattern<TF::IfOp> {
@@ -72,6 +85,23 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     FuncOp parent_op = op.getParentOfType<FuncOp>();
     if (parent_op.getBlocks().size() != 1) return matchFailure();
 
+    // Find the then and else branch functions.
+    SymbolTable table(op.getParentOfType<ModuleOp>());
+    FuncOp then_branch = table.lookup<FuncOp>(op.then_branch());
+    FuncOp else_branch = table.lookup<FuncOp>(op.else_branch());
+
+    // If the If has no uses and its functions are side-effect free, then
+    // remove.
+    // TODO(jpienaar): Remove once recusive side-effects are supported.
+    if (op.use_empty() &&
+        (op.is_stateless() ||
+         (IsSideEffectFree(then_branch) && IsSideEffectFree(else_branch)))) {
+      inlined_funcs_->insert(then_branch);
+      inlined_funcs_->insert(else_branch);
+      rewriter.eraseOp(op.getOperation());
+      return matchSuccess();
+    }
+
     // Extract the constant cond value.
     DenseElementsAttr cond;
     if (!matchPattern(op.cond(), m_Constant(&cond))) return matchFailure();
@@ -81,12 +111,9 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     if (!cond_type || !cond_type.getShape().equals({}) ||
         !cond_type.getElementType().isInteger(/*width=*/1))
       return matchFailure();
-    bool cond_value = (*cond.int_value_begin()).getSExtValue();
 
     // Identify the branch to inline.
-    SymbolTable table(op.getParentOfType<ModuleOp>());
-    FuncOp then_branch = table.lookup<FuncOp>(op.then_branch());
-    FuncOp else_branch = table.lookup<FuncOp>(op.else_branch());
+    bool cond_value = (*cond.int_value_begin()).getSExtValue();
     FuncOp func = cond_value ? then_branch : else_branch;
 
     // Make sure that the function has exactly one block to simplify inlining.
