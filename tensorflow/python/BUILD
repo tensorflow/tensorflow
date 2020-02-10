@@ -4371,7 +4371,7 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "rnn_grad_test",
     srcs = ["ops/rnn_grad_test.py"],
     python_version = "PY3",
