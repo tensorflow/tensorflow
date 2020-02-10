@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -38,11 +39,27 @@ namespace {
 
 xla::BitGeneratorTy BitGen(Algorithm alg) {
   if (alg == RNG_ALG_PHILOX) {
-    return [](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
-      return xla::PhiloxBitGenerator(key, state, shape, /*scramble=*/false);
+    return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+      state =
+          xla::ConcatInDim(key.builder(), {xla::Reshape(key, {1}), state}, 0);
+      xla::XlaOp result =
+          xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX, state, shape);
+      xla::XlaOp data = xla::GetTupleElement(result, 1);
+      xla::XlaOp new_state =
+          xla::Slice(xla::GetTupleElement(result, 0), {1}, {3}, {1});
+      return xla::RngOutput{data, new_state};
+    };
+  } else {
+    return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+      state = xla::ConcatScalars(key.builder(), {key, state});
+      xla::XlaOp result = xla::RngBitGenerator(
+          xla::RandomAlgorithm::RNG_THREE_FRY, state, shape);
+      xla::XlaOp data = xla::GetTupleElement(result, 1);
+      xla::XlaOp new_state = xla::Reshape(
+          xla::Slice(xla::GetTupleElement(result, 0), {1}, {2}, {1}), {});
+      return xla::RngOutput{data, new_state};
     };
   }
-  return xla::ThreeFryBitGenerator;
 }
 
 xla::RngOutput StatefulRngUniform(Algorithm alg, xla::XlaOp key,

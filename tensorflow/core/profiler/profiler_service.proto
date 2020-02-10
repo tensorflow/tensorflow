@@ -4,8 +4,8 @@ package tensorflow;
 
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/profiler/op_profile.proto";
-import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
+import "tensorflow/core/protobuf/config.proto";
 
 // The ProfilerService service retrieves performance information about
 // the programs running on connected devices over a period of time.
@@ -93,10 +93,7 @@ message ProfileResponse {
   // 'trace_events' refers to.
   bytes encoded_trace = 3;
 
-  // Assembles a hierarchical performance profile based on HLOs in trace events.
-  // If the trace covers multiple programs, the longest-running one is analyzed.
-  // See op_profile.proto for the detailed semantics of the returned profile.
-  profiler.op_profile.Profile op_profile = 4;
+  reserved 4;  // was op_profile.
 
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;

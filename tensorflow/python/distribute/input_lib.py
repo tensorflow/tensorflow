@@ -45,6 +45,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
+from tensorflow.python.util.deprecation import deprecated
 
 
 def get_distributed_dataset(dataset,
@@ -348,8 +349,7 @@ class DistributedIterator(object):
 class DistributedIteratorV1(DistributedIterator):
   """Input Iterator for tf.data.DatasetV1."""
 
-  # TODO(anjalisridhar): Move to using `initializer` instead to be consistent
-  # with tf.data iterator APIs.
+  @deprecated(None, "Use the iterator's `initializer` property instead.")
   def initialize(self):
     """Initialze underlying iterators.
 
@@ -360,6 +360,7 @@ class DistributedIteratorV1(DistributedIterator):
 
   @property
   def initializer(self):
+    """Returns a list of ops that initialize the iterator."""
     return self.initialize()
 
   # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
@@ -394,30 +395,6 @@ class _IterableInput(object):
 
   def __iter__(self):
     raise NotImplementedError("must be implemented in descendants")
-
-  def _autograph_for_loop(self, extra_test, body, init_state):
-    """Overload of for..in statement that iterates over the input."""
-
-    if extra_test is not None:
-      raise NotImplementedError(
-          "break and return statements are not yet supported in "
-          "for ... in distributed input loops.")
-
-    def reduce_body(state, iterate):
-      new_state = body(iterate, *state)
-      return new_state
-
-    if init_state:
-      return self.reduce(init_state, reduce_body)
-
-    # TODO(anjalisridhar): This is a workaround for Dataset.reduce not allowing
-    # empty state tensors - create a dummy state variable that remains unused.
-    # Identify if we need this workaround and remove if unnecessary.
-    def reduce_body_with_dummy_state(state, iterate):
-      reduce_body((), iterate)
-      return state
-    self.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
-    return ()
 
   def reduce(self, initial_state, reduce_fn):
     """Execute a `reduce_fn` over all the elements of the input."""

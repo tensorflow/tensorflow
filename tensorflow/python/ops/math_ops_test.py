@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -680,6 +681,18 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
       self.evaluate(a)
+
+
+class SignTest(test_util.TensorFlowTestCase):
+
+  def test_complex_sign_gradient(self):
+    with context.eager_mode():
+      x = math_ops.complex(1., 1.)
+      with backprop.GradientTape() as t:
+        t.watch(x)
+        y = math_ops.sign(x)
+      self.assertAllClose(
+          t.gradient(y, x), math_ops.complex(0.353553, -0.353553))
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -35,7 +35,6 @@ tf_py_test(
     deps = [
         ":wrappers",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:extra_py_tests_deps",
         "//third_party/py/numpy",
     ],
 )

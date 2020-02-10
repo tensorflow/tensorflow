@@ -29,3 +29,16 @@ cc_library(
         "@hexagon_nn//:hexagon_nn_header",
     ],
 )
+
+genrule(
+    name = "libhexagon_interface",
+    srcs = [] + select({
+        "//tensorflow:android_arm64": ["@hexagon_nn//:hexagon/arm64-v8a/libhexagon_interface.so"],
+        "//tensorflow:android_arm": ["@hexagon_nn//:hexagon/armeabi-v7a/libhexagon_interface.so"],
+        "//conditions:default": [],
+    }),
+    outs = ["libhexagon_interface.so"],
+    cmd = "cp $(SRCS) $(@D)",
+    local = 1,
+    output_to_bindir = 1,
+)

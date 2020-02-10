@@ -228,6 +228,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     layer.adapt(adapt_data)
 
   model = keras.models.Sequential()
+  model.add(keras.layers.Input(shape=input_shape[1:], dtype=input_dtype))
   model.add(layer)
   actual_output = model.predict(input_data)
   actual_output_shape = actual_output.shape

@@ -311,6 +311,28 @@ class Tests(test.TestCase):
     function_dtype = func_captured().numpy()
     self.assertEqual(fastpath_dtype, function_dtype)
 
+  def testConvertFromArrayInterface(self):
+    context.ensure_initialized()
+    ctx = context.context()
+
+    class MyArrayClass(object):
+
+      def __init__(self):
+        self.array = np.random.random(16)
+
+      def __array__(self):
+        return self.array
+
+    a = MyArrayClass()
+    t = ops.EagerTensor(a, device=ctx.device_name, dtype=None)
+    self.assertAllEqual(t, a)
+
+    # TODO(b/147830189): Converting from EagerTensor should work.
+    # _ = ops.EagerTensor(t, device=ctx.device_name, dtype=None)
+
+    # TODO(b/147828820): Converting with tensors should work.
+    # _ = ops.EagerTensor([[t]], device=ctx.device_name, dtype=None)
+
 
 if __name__ == "__main__":
   test.main()

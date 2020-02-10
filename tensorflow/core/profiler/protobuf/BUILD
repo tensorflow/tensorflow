@@ -30,7 +30,6 @@ tf_proto_library(
     name = "input_pipeline_proto",
     srcs = ["input_pipeline.proto"],
     cc_api_version = 2,
-    protodeps = [":hardware_types_proto"],
     visibility = [
         ":friends",
     ],

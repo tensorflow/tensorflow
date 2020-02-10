@@ -123,7 +123,9 @@ class RPCState : public GrpcClientCQTag {
     if (s.ok() && !ok) {
       // Since this function is only being used for processing the response
       // to Finish for client-side unary calls, ok should never be false
-      s.Update(errors::Internal("unexpected ok value at rpc completion"));
+      s.Update(
+          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
+                           "not.  This should never happen."));
     }
 
     if (s.ok()) {
@@ -453,8 +455,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     if (!ok) {
       // unlocks mu_
       MarkDoneAndCompleteExchanges(errors::Internal(
-          "Unexpected ok value at streaming rpc writing. ",
-          "Probably because the completion queue has been shut ",
+          "Not ok value returned by CompletionQueue when attempting streaming "
+          "rpc write. Probably because the completion queue has been shut "
           "down or the connection went down. ",
           context_->debug_error_string()));
       return;
@@ -511,7 +513,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     Status s = FromGrpcStatus(call_status_);
     if (s.ok() && !ok) {
       s.Update(
-          errors::Internal("unexpected ok value at streaming rpc completion. ",
+          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
+                           "not.  This should never happen.",
                            context_->debug_error_string()));
     }
     // unlocks mu_

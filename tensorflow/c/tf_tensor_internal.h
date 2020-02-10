@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 #define TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 
+#include <memory>
+
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,7 +31,7 @@ limitations under the License.
 // passed to or returned from C functions *by pointer*. Otherwise, changes to
 // its internal structure will break the C API's binary interface.
 typedef struct TF_Tensor {
-  tensorflow::TensorInterface tensor;
+  std::unique_ptr<AbstractTensorInterface> tensor;
 } TF_Tensor;
 
 class TF_ManagedBuffer : public tensorflow::TensorBuffer {

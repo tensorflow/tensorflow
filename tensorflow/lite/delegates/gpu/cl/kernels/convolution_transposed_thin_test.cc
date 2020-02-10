@@ -52,8 +52,8 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposedThinSimpleWeights) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConvolutionTransposedThin operation;
       ASSERT_OK(CreateConvolutionTransposedThin(creation_context_, op_def, attr,
@@ -91,8 +91,8 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposedThin) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConvolutionTransposedThin operation;
       ASSERT_OK(CreateConvolutionTransposedThin(creation_context_, op_def, attr,

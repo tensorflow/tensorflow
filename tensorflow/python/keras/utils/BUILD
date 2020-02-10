@@ -37,15 +37,22 @@ py_library(
 )
 
 py_library(
+    name = "data_utils",
+    srcs = ["data_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [":generic_utils"],
+)
+
+py_library(
     name = "engine_utils",
     srcs = [
         "conv_utils.py",
-        "data_utils.py",
         "io_utils.py",
         "losses_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":data_utils",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/ops/losses:loss_reduction",
     ],
@@ -156,7 +163,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -257,7 +264,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/layers",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

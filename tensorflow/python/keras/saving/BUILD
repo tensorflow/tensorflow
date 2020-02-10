@@ -38,9 +38,9 @@ py_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:input_spec",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
+        "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/saved_model",
@@ -151,6 +151,19 @@ tf_py_test(
     srcs = ["saving_utils_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "revive_test",
+    size = "medium",
+    srcs = ["saved_model/revive_test.py"],
+    python_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

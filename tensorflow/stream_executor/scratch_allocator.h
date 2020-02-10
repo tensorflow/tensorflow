@@ -31,8 +31,8 @@ class Stream;
 // buffers it has allocated at destruction. Returned memory pointers are not
 // owning.
 //
-// Used by stream operations (e.g. Stream::ThenConvolveWithScratch) to optonally
-// request scratch space to speed up the operation.
+// Used by stream operations (e.g. Stream::ThenConvolveWithScratch) to
+// optionally request scratch space to speed up the operation.
 class ScratchAllocator {
  public:
   virtual ~ScratchAllocator();

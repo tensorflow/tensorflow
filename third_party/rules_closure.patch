@@ -1,0 +1,26 @@
+From d68041ee6da4285108e407e18edd0decbccfe33b Mon Sep 17 00:00:00 2001
+From: Brian Zhao <bmzhao@google.com>
+Date: Wed, 15 Jan 2020 10:57:14 -0800
+Subject: [PATCH] Fixing https 501 error from maven that is blocking TF
+ presubmits.
+
+---
+ closure/repositories.bzl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/closure/repositories.bzl b/closure/repositories.bzl
+index f21ff2b..4514bc4 100644
+--- a/closure/repositories.bzl
++++ b/closure/repositories.bzl
+@@ -644,7 +644,7 @@ def com_google_javascript_closure_compiler():
+         licenses = ["reciprocal"],  # MPL v1.1 (Rhino AST), Apache 2.0 (JSCompiler)
+         jar_urls = [
+             "https://mirror.bazel.build/repo1.maven.org/maven2/com/google/javascript/closure-compiler-unshaded/%s/%s" % (version, jar),
+-            "http://repo1.maven.org/maven2/com/google/javascript/closure-compiler-unshaded/%s/%s" % (version, jar),
++            "https://repo1.maven.org/maven2/com/google/javascript/closure-compiler-unshaded/%s/%s" % (version, jar),
+         ],
+         jar_sha256 = "5e8262a9208e3acf22cf1109928355e6d6c0b4bfe44fbf42e3ef537084353fe5",
+         deps = [
+-- 
+2.25.0.rc1.283.g88dfdc4193-goog
+

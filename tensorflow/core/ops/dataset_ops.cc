@@ -212,6 +212,21 @@ REGISTER_OP("ParallelInterleaveDatasetV2")
     .Attr("sloppy: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ParallelInterleaveDatasetV3")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Input("num_parallel_calls: int64")
+    .Output("handle: variant")
+    .Attr("f: func")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("FilterDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")

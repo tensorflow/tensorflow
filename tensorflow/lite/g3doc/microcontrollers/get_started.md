@@ -20,6 +20,8 @@ application we'll be using has been tested on the following devices:
     IDE)
 *   [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317)
     (using Arduino IDE)
+*   [Adafruit Circuit Playground Bluefruit](https://learn.adafruit.com/tensorflow-lite-for-circuit-playground-bluefruit-quickstart?view=all)
+    (using Arduino IDE)
 
 Learn more about supported platforms in
 [TensorFlow Lite for Microcontrollers](index.md).

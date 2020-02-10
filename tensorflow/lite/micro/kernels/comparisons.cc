@@ -43,12 +43,14 @@ constexpr int kOutputTensor = 0;
                                                                                \
       int32 input1_multiplier;                                                 \
       int input1_shift;                                                        \
-      QuantizeMultiplierSmallerThanOneExp(input1->params.scale,                \
-                                          &input1_multiplier, &input1_shift);  \
+      QuantizeMultiplierSmallerThanOneExp(                                     \
+          static_cast<double>(input1->params.scale), &input1_multiplier,       \
+          &input1_shift);                                                      \
       int32 input2_multiplier;                                                 \
       int input2_shift;                                                        \
-      QuantizeMultiplierSmallerThanOneExp(input2->params.scale,                \
-                                          &input2_multiplier, &input2_shift);  \
+      QuantizeMultiplierSmallerThanOneExp(                                     \
+          static_cast<double>(input2->params.scale), &input2_multiplier,       \
+          &input2_shift);                                                      \
                                                                                \
       ComparisonParams op_params;                                              \
       op_params.left_shift = left_shift;                                       \
@@ -298,38 +300,38 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace comparisons
 
 TfLiteRegistration* Register_EQUAL() {
-  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
-                                 comparisons::EqualEval};
+  static TfLiteRegistration r = {};
+  r.invoke = comparisons::EqualEval;
   return &r;
 }
 
 TfLiteRegistration* Register_NOT_EQUAL() {
-  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
-                                 comparisons::NotEqualEval};
+  static TfLiteRegistration r = {};
+  r.invoke = comparisons::NotEqualEval;
   return &r;
 }
 
 TfLiteRegistration* Register_GREATER() {
-  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
-                                 comparisons::GreaterEval};
+  static TfLiteRegistration r = {};
+  r.invoke = comparisons::GreaterEval;
   return &r;
 }
 
 TfLiteRegistration* Register_GREATER_EQUAL() {
-  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
-                                 comparisons::GreaterEqualEval};
+  static TfLiteRegistration r = {};
+  r.invoke = comparisons::GreaterEqualEval;
   return &r;
 }
 
 TfLiteRegistration* Register_LESS() {
-  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
-                                 comparisons::LessEval};
+  static TfLiteRegistration r = {};
+  r.invoke = comparisons::LessEval;
   return &r;
 }
 
 TfLiteRegistration* Register_LESS_EQUAL() {
-  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
-                                 comparisons::LessEqualEval};
+  static TfLiteRegistration r = {};
+  r.invoke = comparisons::LessEqualEval;
   return &r;
 }
 

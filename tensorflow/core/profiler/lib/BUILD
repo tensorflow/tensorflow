@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 package(
@@ -10,9 +11,31 @@ package(
 
 cc_library(
     name = "profiler_session",
-    srcs = ["profiler_session.cc"],
     hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ] + if_static([
+        ":profiler_session_impl",
+    ]),
+)
+
+# Linked directly into ":tensorflow_framework".
+# Unlike other "_impl" targets in the profiler, this one depends on "core:framework" so linking it
+# to "core:framework_internal_impl" causes a circular dependency.
+cc_library(
+    name = "profiler_session_impl",
+    srcs = [
+        "profiler_session.cc",
+        "profiler_session.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         ":profiler_utils",
         "//tensorflow/core:lib",
@@ -27,9 +50,13 @@ cc_library(
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
-            "//tensorflow/core/profiler/convert:run_metadata_to_trace_events",
+            "//tensorflow/core/profiler/convert:xplane_to_trace_events",
+            "//tensorflow/core/profiler/utils:derived_timeline",
+            "//tensorflow/core/profiler/utils:group_events",
+            "//tensorflow/core/profiler/utils:xplane_utils",
         ],
     }),
+    alwayslink = True,
 )
 
 tf_cuda_library(
@@ -44,17 +71,6 @@ tf_cuda_library(
     alwayslink = True,
 )
 
-filegroup(
-    name = "pywrap_eager_hdrs",
-    srcs = [
-        "profiler_session.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-)
-
 cc_library(
     name = "traceme",
     hdrs = ["traceme.h"],
@@ -63,6 +79,18 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:traceme_recorder",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "annotated_traceme",
+    hdrs = ["annotated_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":scoped_annotation",
+        ":traceme",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -89,6 +117,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "annotated_traceme.h",
         "profiler_session.cc",
         "profiler_session.h",
         "scoped_annotation.h",

@@ -156,7 +156,7 @@ TEST(PrepackedCacheTest, TestCacheOnCacheable) {
   dst.data = dst_data;
 
   ruy::BasicSpec<float, float> spec;
-  // Perform the multiplication and confirm no caching occured.
+  // Perform the multiplication and confirm no caching occurred.
   ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, &context, &dst);
   EXPECT_EQ(cache->TotalSize(), 0);
 
@@ -165,6 +165,40 @@ TEST(PrepackedCacheTest, TestCacheOnCacheable) {
   lhs.cacheable = true;
   ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, &context, &dst);
   EXPECT_NE(cache->TotalSize(), 0);
+}
+
+TEST(PrepackedCacheTest, TestClearCache) {
+  // Create context and set the cache policy
+  ruy::Context context;
+  context.cache_policy = ruy::kCacheLHSOnGemV;
+  PrepackedCache* cache = context.GetPrepackedCache();
+  EXPECT_EQ(cache->TotalSize(), 0);
+
+  const float lhs_data[] = {1, 2, 3, 4};
+  const float rhs_data[] = {1, 2};
+  float dst_data[4];
+
+  ruy::Matrix<float> lhs;
+  ruy::MakeSimpleLayout(2, 2, ruy::Order::kRowMajor, &lhs.layout);
+  lhs.data = lhs_data;
+  ruy::Matrix<float> rhs;
+  ruy::MakeSimpleLayout(2, 1, ruy::Order::kColMajor, &rhs.layout);
+  rhs.data = rhs_data;
+  ruy::Matrix<float> dst;
+  ruy::MakeSimpleLayout(2, 1, ruy::Order::kColMajor, &dst.layout);
+  dst.data = dst_data;
+
+  ruy::BasicSpec<float, float> spec;
+  // Set cacheable for the LHS and see that caching occurs.
+  lhs.cacheable = true;
+  ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, &context, &dst);
+  EXPECT_NE(cache->TotalSize(), 0);
+
+  // Clear the cache via the Context.
+  context.ClearPrepackedCache();
+  // Verify that the cache is now empty.
+  cache = context.GetPrepackedCache();
+  EXPECT_EQ(cache->TotalSize(), 0);
 }
 
 }  // namespace

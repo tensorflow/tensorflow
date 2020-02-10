@@ -245,26 +245,26 @@ func @testReshape(tensor<*xf32>, tensor<*xf32>) -> (tensor<100x100xf32>) {
 // tf.Reshape with incorrect element number.
 func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<100> : tensor<2xi32>
-  // expected-error @+1 {{mismatch in tensor elements and shape implied elements}}
+  // expected-error @+1 {{number of output elements (10000) does not match expected number of elements (1000)}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
 // -----
 // tf.Reshape with more than one -1 in the shape.
-func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
+func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<-1> : tensor<2xi32>
   // expected-error @+1 {{more than one component of shape are -1}}
-  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
 // -----
 // tf.Reshape with -1 in the shape can't infer the dimension.
-func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
+func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<[101, -1]> : tensor<2xi32>
   // expected-error @+1 {{one component of shape is -1 but couldn't infer the dimension}}
-  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
@@ -853,6 +853,82 @@ func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 }
 
 // -----
+
+//===--------------------------------------------------------------------===//
+//  tf.{|Stateful}PartitionedCall
+//===--------------------------------------------------------------------===//
+
+// Test valid tf.PartitionedCall
+// CHECK-LABEL: func @testValidPartitionedCall
+func @testValidPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+// Test invalid tf.PartitionedCall
+func @testUndefinedPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{'f' attribute refers to an undefined function: nonexistant_pcall_func}}
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @nonexistant_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+// -----
+
+// Test invalid tf.PartitionedCall
+func @testInvalidPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{argument count mismatch: 'args' has 1 arguments, but 'pcall_func_2' expects 2}}
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func_2} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+// Test valid tf.StatefulPartitionedCall
+// CHECK-LABEL: func @testValidStatefulPartitionedCall
+func @testValidStatefulPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+func @testUndefinedCallee(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{'f' attribute refers to an undefined function: nonexistant_pcall_func}}
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @nonexistant_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testArgMismatch(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{argument count mismatch: 'args' has 1 arguments, but 'pcall_func_2' expects 2}}
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func_2} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.Softmax
+//===--------------------------------------------------------------------===//
 
 // Test valid tf.Softmax
 // CHECK-LABEL: func @testSoftmax

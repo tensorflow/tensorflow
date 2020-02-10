@@ -756,8 +756,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       @test_util.build_as_function_and_v1_graph
       def test_modes(inner_self):  # pylint: disable=no-self-argument
-        is_building_function = ops.get_default_graph().building_function
-        if is_building_function:
+        if ops.inside_function():
           self.assertFalse(inner_self.inside_function_tested)
           inner_self.inside_function_tested = True
         else:

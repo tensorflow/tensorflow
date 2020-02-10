@@ -4,7 +4,7 @@
 
 load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_avxvnni", "ruy_copts_base", "ruy_copts_skylake", "ruy_copts_sse42", "ruy_visibility")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
-load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
+load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -118,7 +118,7 @@ cc_library(
         ":opt_set",
         ":platform",
         ":time",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -196,7 +196,7 @@ cc_library(
         ":path",
         ":side_pair",
         ":size_util",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -205,7 +205,9 @@ cc_test(
     srcs = ["block_map_test.cc"],
     deps = [
         ":block_map",
+        ":cpu_cache_size",
         ":path",
+        ":side_pair",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -281,6 +283,17 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_cache_size",
+    hdrs = ["cpu_cache_size.h"],
+    copts = ruy_copts_base(),
+    visibility = ruy_visibility(),
+    deps = [
+        ":path",
+        ":platform",
+    ],
+)
+
+cc_library(
     name = "trace",
     srcs = [
         "trace.cc",
@@ -310,7 +323,10 @@ cc_library(
     hdrs = ["spec.h"],
     copts = ruy_copts_base(),
     visibility = ruy_visibility(),
-    deps = [":matrix"],
+    deps = [
+        ":cpu_cache_size",
+        ":matrix",
+    ],
 )
 
 cc_library(
@@ -361,8 +377,7 @@ cc_library(
         ":size_util",
         ":spec",
         ":tune",
-        "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -384,7 +399,7 @@ cc_library(
         ":path",
         ":platform",
         ":tune",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -400,7 +415,7 @@ cc_library(
         ":kernel_common",
         ":opt_set",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -415,7 +430,7 @@ cc_library(
         ":opt_set",
         ":pack_common",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -435,7 +450,7 @@ cc_library(
         ":kernel_common",
         ":opt_set",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -452,7 +467,7 @@ cc_library(
         ":pack_common",
         ":path",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -488,7 +503,7 @@ cc_library(
         ":kernel_common",
         ":opt_set",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -505,7 +520,7 @@ cc_library(
         ":pack_common",
         ":path",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -545,7 +560,7 @@ cc_library(
         ":kernel_common",
         ":opt_set",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -562,7 +577,7 @@ cc_library(
         ":pack_common",
         ":path",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -602,7 +617,7 @@ cc_library(
         ":kernel_common",
         ":opt_set",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -619,7 +634,7 @@ cc_library(
         ":pack_common",
         ":path",
         ":platform",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -664,8 +679,7 @@ cc_library(
         ":size_util",
         ":spec",
         ":tune",
-        "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -691,7 +705,7 @@ cc_library(
         ":path",
         ":platform",
         ":tune",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -777,7 +791,7 @@ cc_library(
         ":trace",
         ":trmul_params",
         ":tune",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -811,7 +825,7 @@ cc_library(
         ":trmul",
         ":trmul_params",
         ":tune",
-        "@gemmlowp//:profiler",
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -859,6 +873,7 @@ cc_library(
         ":time",
         "@com_google_googletest//:gtest",
         ":platform",
+        "//tensorflow/lite/experimental/ruy/profiler:profiler",
     ] + ruy_test_ext_deps(),
 )
 
@@ -876,7 +891,7 @@ ruy_benchmark(
     ],
     deps = [
         "//tensorflow/lite/experimental/ruy:test_lib",
-        "@gemmlowp//:profiler",  # Note also tagged as req_dep.
+        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )
 
@@ -931,32 +946,5 @@ ruy_test(
     deps = [
         "//tensorflow/lite/experimental/ruy:test_lib",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ruy_benchmark_opt_sets(
-    name = "benchmark_opt_set",
-    srcs = ["benchmark.cc"],
-    copts = ruy_copts_base(),
-    lhs_rhs_accum_dst = [
-        ("f32", "f32", "f32", "f32"),
-        ("u8", "u8", "i32", "u8"),
-    ],
-    opt_sets = [
-        "1",
-        "3",
-        "7",
-        "f",
-        "1f",
-        "3f",
-        "7f",
-        "ff",
-        "1ff",
-        "3ff",
-        "7ff",
-    ],
-    deps = [
-        "//tensorflow/lite/experimental/ruy:test_lib",
-        "@gemmlowp//:profiler",  # Note also tagged as req_dep.
     ],
 )

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for training_coordinator.py."""
+"""Tests for tensorflow.python.summary.writer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +21,7 @@ from __future__ import print_function
 import glob
 import os.path
 import shutil
+import threading
 import time
 import warnings
 
@@ -46,7 +47,7 @@ from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.util import compat
 
 
-class FileWriterTestCase(test.TestCase):
+class FileWriterTestBase(object):
 
   def _FileWriter(self, *args, **kwargs):
     return writer.FileWriter(*args, **kwargs)
@@ -459,7 +460,87 @@ class FileWriterTestCase(test.TestCase):
     self.assertEqual(content, "bar!")
 
 
-class SessionBasedFileWriterTestCase(FileWriterTestCase):
+class FakeWriteError(Exception):
+  pass
+
+
+class FileWriterTestCase(FileWriterTestBase, test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testWriterException_raisedFromFlush(self):
+    test_dir = self.get_temp_dir()
+    sw = self._FileWriter(test_dir)
+    writer_thread = sw.event_writer._worker
+    with test.mock.patch.object(
+        writer_thread, "_ev_writer", autospec=True) as mock_writer:
+      # Coordinate threads to ensure both events are added before the writer
+      # thread dies, to avoid the second add_event() failing instead of flush().
+      second_event_added = threading.Event()
+      def _FakeWriteEvent(event):
+        del event  # unused
+        second_event_added.wait()
+        raise FakeWriteError()
+      mock_writer.WriteEvent.side_effect = _FakeWriteEvent
+      sw.add_event(event_pb2.Event())
+      sw.add_event(event_pb2.Event())
+      second_event_added.set()
+      with self.assertRaises(FakeWriteError):
+        sw.flush()
+
+  @test_util.run_deprecated_v1
+  def testWriterException_raisedFromClose(self):
+    test_dir = self.get_temp_dir()
+    sw = self._FileWriter(test_dir)
+    writer_thread = sw.event_writer._worker
+    with test.mock.patch.object(
+        writer_thread, "_ev_writer", autospec=True) as mock_writer:
+      mock_writer.WriteEvent.side_effect = FakeWriteError()
+      sw.add_event(event_pb2.Event())
+      with self.assertRaises(FakeWriteError):
+        sw.close()
+
+  @test_util.run_deprecated_v1
+  def testWriterException_raisedFromAddEvent(self):
+    test_dir = self.get_temp_dir()
+    sw = self._FileWriter(test_dir)
+    writer_thread = sw.event_writer._worker
+    with test.mock.patch.object(
+        writer_thread, "_ev_writer", autospec=True) as mock_writer:
+      mock_writer.WriteEvent.side_effect = FakeWriteError()
+      sw.add_event(event_pb2.Event())
+      # Wait for writer thread to exit first, then try to add a new event.
+      writer_thread.join()
+      with self.assertRaises(FakeWriteError):
+        sw.add_event(event_pb2.Event())
+
+  @test_util.run_deprecated_v1
+  def testWriterException_raisedFromPendingAddEvent(self):
+    test_dir = self.get_temp_dir()
+    # Set max_queue=1 to allow the third add_event() call to block (first event
+    # is consumed immediately, the second fills the queue, the third blocks).
+    sw = self._FileWriter(test_dir, max_queue=1)
+    writer_thread = sw.event_writer._worker
+    with test.mock.patch.object(
+        writer_thread, "_ev_writer", autospec=True) as mock_writer:
+      # Coordinate threads to ensure the first two events are added and then
+      # the writer thread sleeps briefly before exiting, to maximize the chance
+      # that the third add_event() reaches the pending blocked state before the
+      # queue closes on writer thread exit, since that's what we want to test.
+      second_event_added = threading.Event()
+      def _FakeWriteEvent(event):
+        del event  # unused
+        second_event_added.wait()
+        time.sleep(0.1)
+        raise FakeWriteError()
+      mock_writer.WriteEvent.side_effect = _FakeWriteEvent
+      sw.add_event(event_pb2.Event())
+      sw.add_event(event_pb2.Event())
+      second_event_added.set()
+      with self.assertRaises(FakeWriteError):
+        sw.add_event(event_pb2.Event())
+
+
+class SessionBasedFileWriterTestCase(FileWriterTestBase, test.TestCase):
   """Tests for FileWriter behavior when passed a Session argument."""
 
   def _FileWriter(self, *args, **kwargs):

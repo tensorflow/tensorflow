@@ -140,7 +140,6 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     // The device tensor should always be fresh.
     TF_RET_CHECK(!xla_tensor->has_shaped_buffer());
 
-    xla_tensor->set_host_tensor(*cpu_tensor);
     TF_RETURN_IF_ERROR(
         xla_tensor->AllocateShapedBuffer(device_tensor->dtype(), shape, client_,
                                          stream_->parent()->device_ordinal()));

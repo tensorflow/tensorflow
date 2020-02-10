@@ -89,6 +89,9 @@ class MicroInterpreter {
     return nullptr;
   }
 
+  // Reset all variable tensors to the default value.
+  TfLiteStatus ResetVariableTensors();
+
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
   ErrorReporter* error_reporter() { return error_reporter_; }
@@ -114,6 +117,7 @@ class MicroInterpreter {
   TfLiteContext context_ = {};
   MicroAllocator allocator_;
   bool tensors_allocated_;
+  bool tensors_prepared_;
 
   TfLiteStatus initialization_status_;
   const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;

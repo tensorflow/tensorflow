@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -157,7 +158,8 @@ class DefaultTensorTie : public TensorTie {
         const TensorDescriptor desc{
             d.object_def.data_type,
             ToTensorStorageType(d.object_def.object_type,
-                                d.object_def.data_layout)};
+                                d.object_def.data_layout),
+            Layout::BHWC};
         RETURN_IF_ERROR(AllocateTensorMemory(env->context(), env->device(),
                                              shape, desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
@@ -518,11 +520,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
     create_info.storage_type = GetStorageType(options);
     if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
       create_info.hints.Add(ModelHints::kReduceKernelsCount);
-      // TODO(sorokin) temporary hack to speed up init time in some cases.
-      // TODO(sorokin): move this check to the place where hint is applied.
-      if (environment_->device().IsAdreno6xxOrHigher()) {
-        create_info.hints.Add(ModelHints::kFastTuning);
-      }
+      create_info.hints.Add(ModelHints::kFastTuning);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
@@ -705,10 +703,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     CLDevice device;
     if (options_.device) {
       cl_platform_id platform;
-      if (!FindPlatform(options_.device, &platform)) {
-        return NotFoundError(
-            "Unable to find cl_platform_id for the given cl_device");
-      }
+      RETURN_IF_ERROR(GetDeviceInfo<cl_platform_id>(
+          options_.device, CL_DEVICE_PLATFORM, &platform));
       device = CLDevice(options_.device, platform);
     } else {
       RETURN_IF_ERROR(CreateDefaultGPUDevice(&device));

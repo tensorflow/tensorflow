@@ -66,15 +66,11 @@ TfLiteStatus ObjectDetectionStage::Init() {
   }
 
   // ImagePreprocessingStage
-  EvaluationStageConfig preprocessing_config;
-  preprocessing_config.set_name("image_preprocessing");
-  auto* preprocess_params = preprocessing_config.mutable_specification()
-                                ->mutable_image_preprocessing_params();
-  preprocess_params->set_image_height(input_shape->data[1]);
-  preprocess_params->set_image_width(input_shape->data[2]);
-  preprocess_params->set_cropping_fraction(1.0);
-  preprocess_params->set_output_type(static_cast<int>(input_type));
-  preprocessing_stage_.reset(new ImagePreprocessingStage(preprocessing_config));
+  tflite::evaluation::ImagePreprocessingConfigBuilder builder(
+      "image_preprocessing", input_type);
+  builder.AddResizingStep(input_shape->data[2], input_shape->data[1], false);
+  builder.AddDefaultNormalizationStep();
+  preprocessing_stage_.reset(new ImagePreprocessingStage(builder.build()));
   TF_LITE_ENSURE_STATUS(preprocessing_stage_->Init());
 
   // ObjectDetectionAveragePrecisionStage

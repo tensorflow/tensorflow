@@ -263,6 +263,18 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     return this->matchSuccess();
   }
 
+  // Input dimensions must be defined. MatMulBCast does not support partial
+  // shapes.
+  for (auto dim : lhs_shape) {
+    if (dim == -1) {
+      return this->matchFailure();
+    }
+  }
+  for (auto dim : rhs_shape) {
+    if (dim == -1) {
+      return this->matchFailure();
+    }
+  }
   // Ensure that batch shapes are broadcastable.
   tensorflow::MatMulBCast bcast(absl::InlinedVector<tensorflow::int64, 4>(
                                     lhs_shape.begin(), lhs_shape.end()),

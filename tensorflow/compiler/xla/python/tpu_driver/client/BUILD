@@ -76,7 +76,21 @@ py_library(
     ],
 )
 
+filegroup(
+    name = "header_and_client",
+    srcs = glob([
+        "c_api*",
+        "libtpu*",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
-    name = "c_api",
-    hdrs = ["c_api.h"],
+    name = "libtpu",
+    hdrs = ["libtpu.h"],
+)
+
+cc_library(
+    name = "libtftpu",
+    hdrs = ["libtftpu.h"],
 )

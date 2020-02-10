@@ -54,20 +54,18 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // needed by this graph.
   //
   // tflite::ops::micro::AllOpsResolver resolver;
-  tflite::MicroMutableOpResolver micro_mutable_op_resolver;
-  micro_mutable_op_resolver.AddBuiltin(
+  tflite::MicroOpResolver<3> micro_op_resolver;
+  micro_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                                       tflite::ops::micro::Register_CONV_2D());
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_AVERAGE_POOL_2D,
-      tflite::ops::micro::Register_AVERAGE_POOL_2D());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
+                               tflite::ops::micro::Register_CONV_2D());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
+                               tflite::ops::micro::Register_AVERAGE_POOL_2D());
 
   // Build an interpreter to run the model with.
-  tflite::MicroInterpreter interpreter(model, micro_mutable_op_resolver,
-                                       tensor_arena, tensor_arena_size,
-                                       error_reporter);
+  tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
+                                       tensor_arena_size, error_reporter);
   interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.

@@ -11,6 +11,8 @@ import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/remote_tensor_handle.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+
 // A proto representation of an eager operation.
 message Operation {
   // A unique identifier for the operation. Set by the client so that the client
@@ -53,6 +55,10 @@ message QueueItem {
     // Takes a FunctionDef and makes it enqueable on the remote worker.
     RegisterFunctionOp register_function = 4;
     CleanupFunctionOp cleanup_function = 5;
+    // A remote executor is created to execute ops/functions asynchronously
+    // enqueued in streaming call. Request with this item type clears pending
+    // nodes and status of the executor on the remote worker.
+    ClearRemoteExecutorForStream clear_remote_executor_for_stream = 6;
   }
 }
 
@@ -109,7 +115,10 @@ message UpdateContextRequest {
   // Identifies the full cluster, and this particular worker's position within.
   ServerDef server_def = 1;
 
-  // Device attributes in the cluster
+  // Device attributes in the cluster.
+  // If this field is empty, it indicates that this is a simple update request
+  // that only increments the cluster view ID and does not require changes to
+  // the workers it connects to.
   repeated DeviceAttributes cluster_device_attributes = 2;
 
   // The ID of the context to be updated. A context with the specified ID must
@@ -187,6 +196,8 @@ message CleanupFunctionOp {
   int64 step_id = 1;
 }
 
+message ClearRemoteExecutorForStream {}
+
 message SendTensorOp {
   // All remote tensors are identified by <Op ID, Output num>. To mimic this
   // situation when directly sending tensors, we include an "artificial" op ID
@@ -248,7 +259,7 @@ service EagerService {
 
   // Contexts are always created with a deadline and no RPCs within a deadline
   // will trigger a context garbage collection. KeepAlive calls can be used to
-  // delay this. It can also be used to validate the existance of a context ID
+  // delay this. It can also be used to validate the existence of a context ID
   // on remote eager worker. If the context is on remote worker, return the same
   // ID and the current context view ID. This is useful for checking if the
   // remote worker (potentially with the same task name and hostname / port) is

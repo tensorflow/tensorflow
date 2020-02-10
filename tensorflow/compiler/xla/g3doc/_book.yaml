@@ -19,7 +19,7 @@ upper_tabs:
         path: /xla/architecture
       - title: Broadcasting semantics
         path: /xla/broadcasting
-      - title: Developing a new backend for XLA
+      - title: Develop a new backend for XLA
         path: /xla/developing_new_backend
       - title: Operation semantics
         path: /xla/operation_semantics
@@ -27,15 +27,15 @@ upper_tabs:
         path: /xla/shapes
       - title: Tiled layout
         path: /xla/tiled_layout
-      - title: Using AOT compilation
+      - title: Use AOT compilation
         path: /xla/tfcompile
       - title: Writing custom calls
         path: /xla/custom_call
       - heading: Tutorials
       - title: XLA autoclustering
         path: /xla/tutorials/autoclustering_xla
-      - title: XLA compile API
-        path: /xla/tutorials/xla_compile
+      - title: Use XLA with tf.function
+        path: /xla/tutorials/compile
         status: experimental
 
 - include: /_upper_tabs_right.yaml

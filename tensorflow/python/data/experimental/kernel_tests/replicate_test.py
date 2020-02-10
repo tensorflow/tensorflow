@@ -22,7 +22,7 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
@@ -220,7 +220,7 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
   def setUp(self):
     super(RemoteReplicateTest, self).setUp()
     # Start the local server.
-    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
+    local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
     context.set_server_def(
         server_def=_get_server_def(
             JOB_NAME,

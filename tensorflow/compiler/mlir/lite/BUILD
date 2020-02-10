@@ -26,9 +26,11 @@ package_group(
 filegroup(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
+        "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
     ],
 )
 
@@ -44,9 +46,28 @@ gentbl(
             "ir/tfl_ops.cc.inc",
         ),
         (
+            "-gen-struct-attr-decls",
+            "ir/tfl_structs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "ir/tfl_structs.cc.inc",
+        ),
+        (
             "-gen-op-doc",
             "g3doc/tfl_ops.md",
         ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "tensorflow_lite_op_interfaces_inc_gen",
+    tbl_outs = [
         (
             "-gen-op-interface-decls",
             "ir/tfl_ops_interface.h.inc",
@@ -57,7 +78,7 @@ gentbl(
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/tfl_ops.td",
+    td_file = "ir/tfl_op_interfaces.td",
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
     ],
@@ -191,7 +212,6 @@ cc_library(
     ],
     hdrs = [
         "ir/tfl_ops.h",
-        "ir/tfl_traits.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_traits.h",
@@ -200,8 +220,6 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/lite/schema:schema_fbs",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
@@ -210,6 +228,10 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        # TODO(jpienaar): Move this out after splitting out LoopLikeOpInterface.
+        "@llvm-project//mlir:Transforms",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
     alwayslink = 1,
 )
@@ -268,12 +290,14 @@ tf_cc_test(
 cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
+        "transforms/dilated_conv.cc",
         "transforms/extract_ophint.cc",
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
         "transforms/legalize_ophint_func_op.cc",
         "transforms/legalize_tf.cc",
+        "transforms/legalize_tf_while.cc",
         "transforms/lower_static_tensor_list.cc",
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
@@ -281,8 +305,10 @@ cc_library(
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/unroll_batch_matmul.cc",
+        "transforms/while_loop_outline.cc",
     ],
     hdrs = [
+        "transforms/dilated_conv.h",
         "transforms/passes.h",
         "transforms/unroll_batch_matmul.h",
     ],
@@ -292,15 +318,19 @@ cc_library(
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:tensor_list",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
@@ -326,6 +356,7 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
@@ -357,6 +388,7 @@ cc_library(
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
@@ -366,6 +398,24 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tensorflow_lite_d2s",
+    srcs = [
+        "transforms/dense_to_sparse.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
 )
@@ -381,6 +431,8 @@ genrule(
     name = "op_quant_spec_getters_inc",
     srcs = [
         "ir/tfl_ops.td",
+        "ir/tfl_op_interfaces.td",
+        "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
     outs = [
@@ -628,6 +680,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":tensorflow_lite_d2s",
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",
@@ -683,12 +736,16 @@ cc_library(
     ],
 )
 
-exports_files(
-    ["transforms/passes.h"],
+cc_library(
+    name = "empty_passes",
+    hdrs = ["transforms/passes.h"],
     visibility = [
         "//configs/devtools/hawkeye/tflite:__subpackages__",
         "//learning/brain/models/app_benchmarks:__subpackages__",
         "//tensorflow/compiler/mlir/lite:friends",
         "//tensorflow/lite/experimental/mlir:__subpackages__",
+    ],
+    deps = [
+        "@llvm-project//llvm:support",
     ],
 )

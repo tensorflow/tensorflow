@@ -472,6 +472,22 @@ class SaveTest(test.TestCase):
         for node in f.node_def:
           assert_correct_number_of_output_shapes(node)
 
+  def test_save_cached_variable(self):
+    with ops.Graph().as_default(), session_lib.Session() as session:
+      obj = tracking.AutoTrackable()
+      obj.v = variables.Variable(2., caching_device=lambda op: op.device)
+      obj.w = variables.Variable(3.)
+      session.run([obj.v.initializer, obj.w.initializer])
+
+      @def_function.function(input_signature=[])
+      def f():
+        return obj.v + obj.w
+
+      obj.f = f
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(obj, save_dir, signatures=obj.f)
+      self.assertAllClose({"output_0": 5}, _import_and_infer(save_dir, {}))
+
 
 class SavingOptionsTest(test.TestCase):
 
@@ -535,6 +551,24 @@ class SavingOptionsTest(test.TestCase):
     debug_info_file_name = os.path.join(save_dir, "debug",
                                         "saved_model_debug_info.pb")
     self.assertFalse(os.path.exists(debug_info_file_name))
+
+  def test_function_aliases(self):
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.f(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    function_cache = list(root.f._stateful_fn._function_cache.all_values())
+    function_aliases = loader_impl.parse_saved_model(
+        save_dir).meta_graphs[0].meta_info_def.function_aliases
+    self.assertLen(function_cache, 1)
+    self.assertEqual(function_cache[0].name.decode("utf-8"),
+                     list(function_aliases.keys())[0])
 
 
 class AssetTests(test.TestCase):

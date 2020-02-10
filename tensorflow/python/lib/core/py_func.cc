@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -94,9 +95,9 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
     if (call->eager) {
       TensorHandle* handle;
       TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-          t, ctx->CanonicalDevice(device), ctx, &handle));
-      arg = EagerTensorFromHandle(
-          new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)});
+          t, ctx->CanonicalDevice(device), nullptr, ctx, &handle));
+      arg = EagerTensorFromHandle(new TFE_TensorHandle{
+          std::make_unique<tensorflow::TensorHandleInterface>(handle)});
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
@@ -145,8 +146,14 @@ bool IsSingleNone(PyObject* obj) {
 tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
                                                 const Device* expected_device,
                                                 const Tensor** output_tensor) {
-  auto handle = EagerTensor_Handle(eager_tensor)->handle.Handle();
-  Device* actual_device = handle->device();
+  auto handle = down_cast<tensorflow::TensorHandleInterface*>(
+                    EagerTensor_Handle(eager_tensor)->handle.get())
+                    ->Handle();
+  if (VariantDeviceIsCustom(handle->device())) {
+    return errors::Unimplemented(
+        "Custom devices are currently not supported with PyFuncs.");
+  }
+  Device* actual_device = absl::get<Device*>(handle->device());
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.
   if (expected_device == actual_device) return Status::OK();

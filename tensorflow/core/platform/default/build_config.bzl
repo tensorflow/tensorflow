@@ -541,6 +541,7 @@ def tf_proto_library(
 
 def tf_additional_lib_hdrs():
     return [
+        "//tensorflow/core/platform/default:casts.h",
         "//tensorflow/core/platform/default:context.h",
         "//tensorflow/core/platform/default:cord.h",
         "//tensorflow/core/platform/default:dynamic_annotations.h",
@@ -714,7 +715,8 @@ def tf_fingerprint_deps():
         "@farmhash_archive//:farmhash",
     ]
 
-def tf_protobuf_deps():
+def tf_protobuf_deps(use_lite_protos = False):
+    _ignore = use_lite_protos
     return if_static(
         [
             clean_dep("@com_google_protobuf//:protobuf"),
@@ -752,5 +754,24 @@ def tf_logging_deps():
 def tf_monitoring_deps():
     return ["//tensorflow/core/platform/default:monitoring"]
 
-def tf_legacy_srcs_no_runtime_google():
+def tf_portable_deps_no_runtime(use_lite_protos = False):
+    return [
+        "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
+        "@nsync//:nsync_cpp",
+        "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/core:mobile_additional_lib_deps",
+        "//tensorflow/core:protos_all_cc_impl",
+        "@farmhash_archive//:farmhash",
+    ] + tf_protobuf_deps(use_lite_protos)
+
+def tf_google_mobile_srcs_no_runtime():
     return []
+
+def tf_google_mobile_srcs_only_runtime():
+    return []
+
+def if_llvm_aarch64_available(then, otherwise = []):
+    # TODO(b/...): The TF XLA build fails when adding a dependency on
+    # @llvm/llvm-project/llvm:aarch64_target.
+    return otherwise

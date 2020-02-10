@@ -305,7 +305,9 @@ void PortableApplyLayerNorm(const int16_t* input,
                             const int32_t* bias, int32_t layer_norm_scale_a,
                             int32_t layer_norm_scale_b, int32_t variance_limit,
                             int n_batch, int n_input, int16_t* output) {
-  static const int kOverflowGuard = 1 << 20;
+  // The square of std::pow(2, 10), which is the extra factor that makes sure
+  // normalized values has enough resolution.
+  static const int kTwoToPower20 = 1 << 20;
   for (int i = 0; i < n_batch; ++i) {
     int64_t sum = 0;
     int64_t sum_sq = 0;
@@ -318,10 +320,10 @@ void PortableApplyLayerNorm(const int16_t* input,
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
     // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
-    int32 temp = kOverflowGuard / n_input;
+    int32 temp = kTwoToPower20 / n_input;
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
-    int32_t variance2 = static_cast<int32>(variance / kOverflowGuard);
+    int32_t variance2 = static_cast<int32>(variance / kTwoToPower20);
     if (variance2 < 1) {
       variance2 = variance_limit;
     }
