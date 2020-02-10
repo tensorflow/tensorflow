@@ -726,9 +726,9 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
   }
 
   def gpu_gru_with_fallback(inputs, init_h, kernel, recurrent_kernel, bias,
-                              mask, time_major, go_backwards, activation,
-                              recurrent_activation, sequence_lengths,
-                              zero_output_for_mask):
+                            mask, time_major, go_backwards, activation,
+                            recurrent_activation, sequence_lengths,
+                            zero_output_for_mask):
     """Use CuDNN kernel when mask is none or strictly right padded."""
     if mask is None:
       return gpu_gru(
@@ -1371,6 +1371,7 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # CuDNN has an extra set of bias for inputs, we disable them (setting to 0),
   # so that mathematically it is same as the canonical LSTM implementation.
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
+
   if build_info.is_rocm_build:
     # ROCm MIOpen's weight sequence for LSTM is different from both canonical
     # and Cudnn format
@@ -1476,8 +1477,7 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
     sequence_lengths: The lengths of all sequences coming from a variable length
       input, such as ragged tensors. If the input has a fixed timestep size,
       this should be None.
-    
-    put_for_mask: Boolean, whether to output zero for masked timestep.
+    zero_output_for_mask: Boolean, whether to output zero for masked timestep.
 
   Returns:
     List of output tensors, same as standard_lstm.
@@ -1499,9 +1499,9 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
   }
 
   def gpu_lstm_with_fallback(inputs, init_h, init_c, kernel, recurrent_kernel,
-                               bias, mask, time_major, go_backwards, activation,
-                               recurrent_activation, sequence_lengths,
-                               zero_output_for_mask):
+                             bias, mask, time_major, go_backwards, activation,
+                             recurrent_activation, sequence_lengths,
+                             zero_output_for_mask):
     """Use CuDNN kernel when mask is none or strictly right padded."""
     if mask is None:
       return gpu_lstm(
