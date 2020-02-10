@@ -152,6 +152,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@llvm-project//mlir:AffineDialectRegistration",
+        "@llvm-project//mlir:AffineToStandardTransforms",
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUDialectRegistration",

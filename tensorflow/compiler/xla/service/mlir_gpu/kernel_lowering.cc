@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // TF:llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:llvm-project
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // TF:llvm-project
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // TF:llvm-project
@@ -330,7 +331,7 @@ class LowerToNVVMPass
     ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
                                                    &getContext());
     ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
-
+    ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
     target.addIllegalDialect<::mlir::gpu::GPUDialect>();
     target.addIllegalOp<::mlir::LLVM::ExpOp>();
@@ -339,7 +340,7 @@ class LowerToNVVMPass
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();
-    if (failed(applyPartialConversion(m, target, patterns, &converter))) {
+    if (failed(mlir::applyFullConversion(m, target, patterns, &converter))) {
       signalPassFailure();
     }
   }
