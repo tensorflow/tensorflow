@@ -888,6 +888,7 @@ bool AssertSameStructureHelper(
 
 bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
 bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
+bool IsMutableMapping(PyObject* o){ return IsMutableMappingHelper(o) == 1; }
 bool IsMappingView(PyObject* o) { return IsMappingViewHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }

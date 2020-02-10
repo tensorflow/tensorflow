@@ -117,7 +117,6 @@ def _is_namedtuple(instance, strict=False):
 
 
 # See the swig file (util.i) for documentation.
-_is_mapping = _pywrap_utils.IsMapping
 _is_mapping_view = _pywrap_utils.IsMappingView
 _is_attrs = _pywrap_utils.IsAttrs
 _is_composite_tensor = _pywrap_utils.IsCompositeTensor
@@ -146,15 +145,7 @@ def _sequence_like(instance, args):
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
     if instance_type == _collections.defaultdict:
-      d = instance_type()
-      for key in instance:
-        d[key] = result[key]
-      return d
-  elif _is_mapping(instance):
-    result = dict(zip(_sorted(instance), args))
-    instance_type = type(instance)
-    if instance_type == _collections.defaultdict:
-      d = _collections.defaultdict(instance.default_factory)
+      d = instance_type(_collections.defaultdict(instance.default_factory))
       for key in instance:
         d[key] = result[key]
       return d
@@ -1371,6 +1362,7 @@ list_to_tuple = _list_to_tuple
 
 
 _pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
+_pywrap_utils.RegisterType("MutableMapping", _collections_abc.MutableMapping)
 _pywrap_utils.RegisterType("Sequence", _collections_abc.Sequence)
 _pywrap_utils.RegisterType("MappingView", _collections_abc.MappingView)
 _pywrap_utils.RegisterType("ObjectProxy", _wrapt.ObjectProxy)
