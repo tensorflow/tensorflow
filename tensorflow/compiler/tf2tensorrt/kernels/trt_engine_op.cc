@@ -171,7 +171,11 @@ class TRTEngineOp : public AsyncOpKernel {
   // user-provided quantization ranges.
   bool use_calibration_;
 
-  // Array of all input shapes during graph construction set in an attribute.
+  // Array of all input shapes, collected from the input_shapes attribute when
+  // constructing the TRTEngineOp. The input_shapes attribute is set during
+  // graph conversion time. This data used to retrive which input dimensions
+  // could be unknown. During inference time this information is not available
+  // otherwise (all shapes are known (concrete) shapes when we run inference).
   std::vector<PartialTensorShape> input_partial_shapes_;
 };
 
@@ -313,21 +317,23 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 #endif
   if (use_implicit_batch_) {
     if (input_partial_shapes_.size() == 0) {
-      VLOG(1) << "Attribute input_shapes it not set. This happens probably "
+      VLOG(1) << "Attribute input_shapes is not set. This happens probably "
               << "because you are using a model that is already converted "
-              << "to TensorRT (i.e. includes TRTEngineOp in graph). If you "
-              << "convert the original model again to TensorRT, the "
-              << "attributes input_shapes will be set automatically.";
+              << "to TensorRT with a previous version of TF-TRT (i.e. includes "
+              << "TRTEngineOp in graph). This is not an error. If you convert "
+              << "the original model again to TensorRT, the attributes "
+              << "input_shapes will be set automatically.";
     }
   } else {
     OP_REQUIRES(
         context, input_partial_shapes_.size() > 0,
         errors::InvalidArgument(
-            "Explicit batch mode requires attribute input_shapes "
-            "to be set. If you are using a model that is already "
-            "converted to TensorRT (i.e. includes TRTEngineOp in graph), "
-            "then you need to convert the original model again to "
-            "TensorRT in order to set the attribute input_shapes."));
+            "Explicit batch mode requires attribute input_shapes to be set."
+            "If you are using a model that was converted to TensorRT by a "
+            "previous version of TF-TRT, (i.e. includes TRTEngineOp in graph "
+            "without the input_shapes attribute), then you need to convert the "
+            "original model again to TensorRT in order to set the attribute "
+            "input_shapes."));
     OP_REQUIRES(context, !calibration_mode_,
                 errors::InvalidArgument(
                     "Explicit batch mode does not support calibration"));
