@@ -207,7 +207,8 @@ class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
                          [TF_LogicalOrOp, HLO_OrOp],
-                         [TF_BitwiseOrOp, HLO_OrOp]] in
+                         [TF_BitwiseOrOp, HLO_OrOp],
+                         [TF_BitwiseAndOp, HLO_AndOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
