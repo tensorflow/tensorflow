@@ -147,7 +147,7 @@ class LSTMLayerTest(keras_parameterized.TestCase):
   def test_with_masking_layer_LSTM(self, unroll):
     if build_info.is_rocm_build:
       self.skipTest(
-        "Skipping the test as ROCm MIOpen does not support padded input yet.")
+          "Skipping the test as ROCm MIOpen does not support padded input.")
     layer_class = keras.layers.LSTM
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -389,7 +389,7 @@ class LSTMLayerTest(keras_parameterized.TestCase):
   def test_statefulness_LSTM(self):
     if build_info.is_rocm_build:
       self.skipTest(
-        "Skipping the test as ROCm MIOpen does not support padded input yet.")
+          "Skipping the test as ROCm MIOpen does not support padded input.")
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
