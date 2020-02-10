@@ -292,8 +292,12 @@ Status ValidateTensorProperties(const string& producer_node_type,
   }
 
   if (validation_only) return Status::OK();
-  // Following are validations for creating TRT network and engine.
 
+  // Following checks are only used during TRT engine creation time. In implicit
+  // batch mode we check that all inputs for the network has static shape (as
+  // required by the TensorRT). The only exception is the batch size, which
+  // could be unknown. In contrast, using explicit batch mode this test is not
+  // necessary, since any dimension could be unknown in explicit batch mode.
   if (use_implicit_batch) {
     for (int d = first_trt_dim; d < shape.dims(); ++d) {
       if (shape.dim_size(d) < 0) {
@@ -2393,16 +2397,17 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
                                 nvinfer1::ITensor** output) {
   const nvinfer1::Dims dims = input->getDimensions();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  const bool is_dynamic =
-      absl::c_any_of(input_dims, [](int i) { return i == -1; });
   // Mark axes to remove by setting them to 0.
   for (int axis : trt_axes) {
     input_dims[axis] = 0;
   }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // For dynamic input shapes, we need to use TRT ops to build the new shape.
-  if (is_dynamic) {
+  // If the remaining dimensions of squeeze operation have dynamic sizes, we
+  // need to use TRT ops to build the result shape for the squeeze operation.
+  // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
+  // value.
+  if (absl::c_any_of(input_dims, [](int i) { return i == -1; })) {
     nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
     std::vector<nvinfer1::ITensor const*> concat_inputs;
     for (int i = 0; i < input_dims.size(); i++) {
