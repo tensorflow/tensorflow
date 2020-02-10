@@ -456,7 +456,7 @@ reverse of SpaceToBatch.  See below for a precise description.
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect]> {
+def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = "Adds `bias` to `value`.";
 
   let description = [{
@@ -479,6 +479,12 @@ Broadcasting is supported, so `value` may have any number of dimensions.
 
   let verifier = [{
     return Verify(*this);
+  }];
+
+  let extraClassDeclaration = [{
+    // TF_LayoutSensitiveInterface:
+    SmallVector<int64_t, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<int64_t, 4> GetLayoutDependentResults() { return {0}; }
   }];
 }
 
@@ -2777,6 +2783,35 @@ tf.math.less_equal(x, y) ==> [True, True, True]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_LinSpaceOp : TF_Op<"LinSpace", [NoSideEffect]> {
+  let summary = "Generates values in an interval.";
+
+  let description = [{
+A sequence of `num` evenly-spaced values are generated beginning at `start`.
+If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
+so that the last one is exactly `stop`.
+
+For example:
+
+```
+tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$start,
+    TF_FpTensor:$stop,
+    TF_I32OrI64Tensor:$num
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_LogOp : TF_Op<"Log", [NoSideEffect, SameOperandsAndResultType]> {
@@ -6386,6 +6421,25 @@ occurred during compilation.
   );
 }
 
+def TF_TPUCopyWithLayoutOp : TF_Op<"TPUCopyWithLayout", [NoSideEffect]> {
+  let summary = "Op that copies host tensor to device with specified layout.";
+
+  let description = [{
+For internal use only.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    I64Tensor:$layout
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TPUExecuteOp : TF_Op<"TPUExecute", []> {
   let summary = "Op that loads and executes a TPU program on a TPU device.";
 
@@ -6435,6 +6489,27 @@ output. For the internal use of the distributed TPU compiler.
 
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_TPUGetLayoutOp : TF_Op<"TPUGetLayoutOp", [NoSideEffect]> {
+  let summary = [{
+Op that retrieves the layout of an input or output determined by TPUCompile.
+  }];
+
+  let description = [{
+For internal use only.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$cache_key,
+
+    I64Attr:$index,
+    BoolAttr:$is_output
+  );
+
+  let results = (outs
+    I64Tensor:$layout
+  );
 }
 
 def TF_TPUReplicatedInputOp : TF_Op<"TPUReplicatedInput", [NoSideEffect]> {
@@ -6868,6 +6943,43 @@ array([[1, 2, 3, 1, 2, 3],
   // TODO(parkers): Add folds for multiples = [1,...].
   // TODO(parkers): Add errors for negative multiples and multiples.size() !=
   // input.rank()
+}
+
+def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
+  let summary = "Converts a tensor to a scalar predicate.";
+
+  let description = [{
+Converts a tensor to a scalar predicate with the following rules:
+
+- For 0D tensors, truthiness is determined by comparing against a "zero"
+  value. For numerical types it is the obvious zero. For strings it is the
+  empty string.
+
+- For >0D tensors, truthiness is determined by looking at the number of
+  elements. If has zero elements, then the result is false. Otherwise the
+  result is true.
+
+This matches the behavior of If and While for determining if a tensor counts
+as true/false for a branch condition.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value value", [{
+      build(builder, result, RankedTensorType::get({}, builder->getI1Type()),
+            value);
+    }]>];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {

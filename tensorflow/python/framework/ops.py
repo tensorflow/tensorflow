@@ -569,8 +569,7 @@ class Tensor(_TensorLike):
     if shape[0] is None:
       raise TypeError(
           "Cannot iterate over a tensor with unknown first dimension.")
-    for i in xrange(shape[0]):
-      yield self[i]
+    return _TensorIterator(self, shape[0])
 
   def _shape_as_list(self):
     if self.shape.ndims is not None:
@@ -724,7 +723,7 @@ class Tensor(_TensorLike):
   def __hash__(self):
     g = getattr(self, "graph", None)
     if (Tensor._USE_EQUALITY and executing_eagerly_outside_functions() and
-        (g is None or g._building_function)):  # pylint: disable=protected-access
+        (g is None or g.building_function)):
       raise TypeError("Tensor is unhashable if Tensor equality is enabled. "
                       "Instead, use tensor.experimental_ref() as the key.")
     else:
@@ -6705,3 +6704,24 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
 
   assert i == len(inputs)
   return grouped_inputs
+
+
+class _TensorIterator(object):
+  """Iterates over the leading dim of a Tensor. Performs no error checks."""
+
+  def __init__(self, tensor, dim0):
+    self._tensor = tensor
+    self._index = 0
+    self._limit = dim0
+
+  def __iter__(self):
+    return self
+
+  def __next__(self):
+    if self._index == self._limit:
+      raise StopIteration
+    result = self._tensor[self._index]
+    self._index += 1
+    return result
+
+  next = __next__  # python2.x compatibility.

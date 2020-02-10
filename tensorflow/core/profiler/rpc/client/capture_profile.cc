@@ -156,23 +156,6 @@ Status NewSession(const string& service_addr,
   return Status::OK();
 }
 
-// Creates an empty event file if not already exists, which indicates that we
-// have a plugins/profile/ directory in the current logdir.
-Status MaybeCreateEmptyEventFile(const string& logdir) {
-  // Suffix for an empty event file.  it should be kept in sync with
-  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
-  constexpr char kProfileEmptySuffix[] = ".profile-empty";
-  std::vector<string> children;
-  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
-  for (const string& child : children) {
-    if (absl::EndsWith(child, kProfileEmptySuffix)) {
-      return Status::OK();
-    }
-  }
-  EventsWriter event_writer(io::JoinPath(logdir, "events"));
-  return event_writer.InitWithSuffix(kProfileEmptySuffix);
-}
-
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
                                       bool timestamp) {
   MonitorRequest request;
@@ -211,8 +194,6 @@ Status Trace(const string& service_addr, const string& logdir,
   if (!workers_list.empty()) {
     hostnames = absl::StrSplit(workers_list, ',');
   }
-
-  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
 
   Status status = Status::OK();
   int remaining_attempts = num_tracing_attempts;

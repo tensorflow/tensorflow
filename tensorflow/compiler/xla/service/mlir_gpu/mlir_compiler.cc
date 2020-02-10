@@ -478,8 +478,7 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
                           /*allocate_buffers_for_constants=*/true,
                           /*colorer=*/BufferAssigner::DefaultColorer(),
                           /*must_not_live_out=*/{}, &CanShareBufferHint));
-  DumpHloModuleIfEnabled(*module, *buffer_assignment, "",
-                         "after_optimizations");
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   EmissionContext emission_context(std::move(module));
   if (error_handler_) {

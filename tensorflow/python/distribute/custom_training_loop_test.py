@@ -689,6 +689,167 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
+  def test_single_keras_layer_experimental_run(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = keras.layers.Dense(4, name="dense")
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        return grads
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_keras_model_creation_experimental_run(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = self._get_model()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        return grads
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_keras_model_optimizer_experimental_run(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = self._get_model()
+      optimizer = keras.optimizer_v2.rmsprop.RMSprop()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        return loss
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_keras_subclass_model_optimizer_experimental_run(self, distribution):
+    def get_subclass_model():
+
+      class KerasSubclassModel(keras.Model):
+
+        def __init__(self):
+          super(KerasSubclassModel, self).__init__()
+          self.l = keras.layers.Dense(4, name="dense")
+
+        def call(self, x):
+          return self.l(x)
+
+      return KerasSubclassModel()
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = get_subclass_model()
+      optimizer = keras.optimizer_v2.rmsprop.RMSprop()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        return loss
+
+      outputs = distribution.experimental_run_v2(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_keras_model_optimizer_experimental_run_loop(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = self._get_model()
+      optimizer = keras.optimizer_v2.rmsprop.RMSprop()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        return loss
+
+      for _ in range(5):
+        distribution.experimental_run_v2(step_fn, args=(next(iterator),))
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
   def test_lstm(self, distribution):
 
     batch_size = 32
@@ -811,6 +972,70 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     # Make sure model and model2 variables are still in sync.
     for model_v, model2_v in zip(model.variables, model2.variables):
       self.assertAllClose(model_v.numpy(), model2_v.numpy())
+
+  def _get_dataset(self):
+    inputs = np.zeros((10, 3), dtype=np.float32)
+    targets = np.zeros((10, 4), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10, drop_remainder=True)
+    return dataset
+
+  def _get_model(self):
+    x = keras.layers.Input(shape=(3,), name="input")
+    y = keras.layers.Dense(4, name="dense")(x)
+    model = keras.Model(x, y)
+    return model
+
+
+class KerasMetricsTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_multiple_keras_metrics_experimental_run(self, distribution):
+    with distribution.scope():
+      loss_metric = keras.metrics.Mean("loss", dtype=np.float32)
+      loss_metric_2 = keras.metrics.Mean("loss_2", dtype=np.float32)
+
+    @def_function.function
+    def train_step():
+      def step_fn():
+        loss = constant_op.constant(5.0, dtype=np.float32)
+        loss_metric.update_state(loss)
+        loss_metric_2.update_state(loss)
+
+      distribution.experimental_run_v2(step_fn)
+
+    train_step()
+    self.assertEqual(loss_metric.result().numpy(),
+                     loss_metric_2.result().numpy())
+    self.assertEqual(loss_metric.result().numpy(), 5.0)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_update_keras_metric_declared_in_strategy_scope(self, distribution):
+    with distribution.scope():
+      metric = keras.metrics.Mean("test_metric", dtype=np.float32)
+
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = distribution.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(i):
+      metric.update_state(i)
+
+    for i in dataset:
+      distribution.experimental_run_v2(step_fn, args=(i,))
+
+    # This should be the mean of integers 0-9 which has a sum of 45 and a count
+    # of 10 resulting in mean of 4.5.
+    self.assertEqual(metric.result().numpy(), 4.5)
 
 
 if __name__ == "__main__":

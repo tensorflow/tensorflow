@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import regularizers
@@ -52,12 +51,17 @@ def create_identity_with_grad_check_fn(expected_gradient, expected_dtype=None):
     """Function that asserts it's gradient has a certain value."""
     x = array_ops.identity(x)
     def grad(dx):
+      """Gradient function that asserts the gradient has a certain value."""
       if expected_dtype:
         assert dx.dtype == expected_dtype, (
             'dx.dtype should be %s but is: %s' % (expected_dtype, dx.dtype))
       expected_tensor = ops.convert_to_tensor(expected_gradient, dtype=dx.dtype,
                                               name='expected_gradient')
-      assert_op = check_ops.assert_equal(dx, expected_tensor)
+      # Control dependency is to ensure input is available. It's possible the
+      # dataset will throw a StopIteration to indicate there is no more data, in
+      # which case we don't want to run the assertion.
+      with ops.control_dependencies([x]):
+        assert_op = check_ops.assert_equal(dx, expected_tensor)
       with ops.control_dependencies([assert_op]):
         dx = array_ops.identity(dx)
       return dx
@@ -90,15 +94,9 @@ def create_identity_with_nan_gradients_fn(have_nan_gradients):
     """Function whose gradient is NaN iff `have_nan_gradients` is True."""
     x = array_ops.identity(x)
     def grad(dx):
-      # We need this control dependency, because otherwise the NaN could be
-      # produced before `dx`. This in turn could cause the final gradient to be
-      # produced because `dx`, causing the loss scale to be updated before `dx`,
-      # which can cause `tf.assert_equal`s to fail.
-      with ops.control_dependencies([dx]):
-        nan_scalar = constant_op.constant(float('NaN'), dtype=dx.dtype)
       return control_flow_ops.cond(
           have_nan_gradients,
-          lambda: array_ops.fill(array_ops.shape(dx), nan_scalar),
+          lambda: dx * float('NaN'),
           lambda: dx
       )
     return x, grad

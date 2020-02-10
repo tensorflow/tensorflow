@@ -280,25 +280,6 @@ py_library(
 )
 
 tf_py_test(
-    name = "integration_test",
-    size = "medium",
-    srcs = ["integration_test.py"],
-    python_version = "PY3",
-    shard_count = 16,
-    tags = [
-        "no_rocm",
-        "notsan",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:nn_ops",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.py"],
@@ -381,20 +362,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "add_loss_correctness_test",
-    size = "medium",
-    srcs = ["add_loss_correctness_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "metrics_functional_test",
     size = "small",
     srcs = ["metrics_functional_test.py"],
@@ -449,19 +416,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "temporal_sample_weights_correctness_test",
-    size = "medium",
-    srcs = ["temporal_sample_weights_correctness_test.py"],
-    python_version = "PY3",
-    shard_count = 20,
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "callbacks_test",
     size = "medium",
     srcs = ["callbacks_test.py"],
@@ -485,68 +439,6 @@ tf_py_test(
     size = "medium",
     srcs = ["callbacks_v1_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_library(
-    name = "model_subclassing_test_util",
-    srcs = ["model_subclassing_test_util.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-    ],
-)
-
-tf_py_test(
-    name = "model_subclassing_test",
-    size = "medium",
-    srcs = ["model_subclassing_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_windows",
-        "notsan",
-    ],
-    deps = [
-        ":keras",
-        ":model_subclassing_test_util",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "model_subclassing_compiled_test",
-    size = "medium",
-    srcs = ["model_subclassing_compiled_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_windows",
-        "notsan",
-    ],
-    deps = [
-        ":keras",
-        ":model_subclassing_test_util",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "custom_training_loop_test",
-    size = "medium",
-    srcs = ["custom_training_loop_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
     tags = ["notsan"],
     deps = [
         ":keras",

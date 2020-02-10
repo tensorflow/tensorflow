@@ -496,6 +496,20 @@ REGISTER_KERNEL_BUILDER(Name("While").Device(DEVICE_GPU), WhileOp);
 REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_CPU), WhileOp);
 REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_GPU), WhileOp);
 
+class ToBoolOp : public OpKernel {
+ public:
+  explicit ToBoolOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    bool b;
+    OP_REQUIRES_OK(ctx, ToBool({ctx->input(0)}, &b));
+    Tensor* out;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
+    out->scalar<bool>()() = b;
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ToBool").Device(DEVICE_CPU), ToBoolOp);
+
 Status GetScalar(OpKernelContext* ctx, int index, int32* value,
                  const char* label) {
   Tensor t = ctx->input(index);

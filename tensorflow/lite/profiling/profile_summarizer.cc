@@ -85,23 +85,27 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
   return details;
 }
 
-tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
+tensorflow::StatSummarizerOptions GetProfileSummarizerOptions(
+    bool format_as_csv) {
   auto options = tensorflow::StatSummarizerOptions();
   // Summary will be manually handled per subgraphs in order to keep the
   // compatibility.
   options.show_summary = false;
   options.show_memory = false;
+  options.format_as_csv = format_as_csv;
   return options;
 }
 
 }  // namespace
 
-ProfileSummarizer::ProfileSummarizer()
-    : delegate_stats_calculator_(
-          new tensorflow::StatsCalculator(GetProfileSummarizerOptions())) {
+ProfileSummarizer::ProfileSummarizer(bool format_as_csv)
+    : delegate_stats_calculator_(new tensorflow::StatsCalculator(
+          GetProfileSummarizerOptions(format_as_csv))),
+      format_as_csv_(format_as_csv) {
   // Create stats calculator for the primary graph.
   stats_calculator_map_[0] = std::unique_ptr<tensorflow::StatsCalculator>(
-      new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
+      new tensorflow::StatsCalculator(
+          GetProfileSummarizerOptions(format_as_csv)));
 }
 
 void ProfileSummarizer::ProcessProfiles(
@@ -209,7 +213,8 @@ tensorflow::StatsCalculator* ProfileSummarizer::GetStatsCalculator(
   if (stats_calculator_map_.count(subgraph_index) == 0) {
     stats_calculator_map_[subgraph_index] =
         std::unique_ptr<tensorflow::StatsCalculator>(
-            new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
+            new tensorflow::StatsCalculator(
+                GetProfileSummarizerOptions(format_as_csv_)));
   }
   return stats_calculator_map_[subgraph_index].get();
 }

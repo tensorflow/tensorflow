@@ -255,6 +255,7 @@ namespace wrap {
 #endif
 
 // clang-format off
+<<<<<<< HEAD
 #define MIOPEN_DNN_ROUTINE_EACH(__macro)                   \
   __macro(miopenBatchNormalizationBackward)                \
   __macro(miopenBatchNormalizationForwardInference)        \
@@ -371,6 +372,116 @@ namespace wrap {
   __macro(miopenSetCTCLossDescriptor)					\
   __macro(miopenGetCTCLossWorkspaceSize)				\
   __macro(miopenCTCLoss)						\
+=======
+#define MIOPEN_DNN_ROUTINE_EACH(__macro)                             \
+  __macro(miopenBatchNormalizationBackward)                          \
+  __macro(miopenBatchNormalizationForwardInference)                  \
+  __macro(miopenBatchNormalizationForwardTraining)                   \
+  __macro(miopenGetConvolutionForwardOutputDim)                      \
+  __macro(miopenGetConvolutionNdForwardOutputDim)                    \
+  __macro(miopenFindConvolutionForwardAlgorithm)                     \
+  __macro(miopenCreateTensorDescriptor)                              \
+  __macro(miopenDestroyTensorDescriptor)                             \
+  __macro(miopenSet2dPoolingDescriptor)                              \
+  __macro(miopenSetLRNDescriptor)                                    \
+  __macro(miopenLRNGetWorkSpaceSize)                                 \
+  __macro(miopenCreateConvolutionDescriptor)                         \
+  __macro(miopenCreatePoolingDescriptor)                             \
+  __macro(miopenDestroyPoolingDescriptor)                            \
+  __macro(miopenCreateLRNDescriptor)                                 \
+  __macro(miopenDestroyLRNDescriptor)                                \
+  __macro(miopenDestroyConvolutionDescriptor)                        \
+  __macro(miopenCreateWithStream)                                    \
+  __macro(miopenDestroy)                                             \
+  __macro(miopenSetStream)                                           \
+  __macro(miopenSetAllocator)                                        \
+  __macro(miopenActivationForward)                                   \
+  __macro(miopenConvolutionForward)                                  \
+  __macro(miopenConvolutionBackwardBias)                             \
+  __macro(miopenConvolutionForwardGetWorkSpaceSize)                  \
+  __macro(miopenInitConvolutionDescriptor)                           \
+  __macro(miopenInitConvolutionNdDescriptor)                         \
+  __macro(miopenGetConvolutionDescriptor)                            \
+  __macro(miopenGetConvolutionNdDescriptor)                          \
+  __macro(miopenSetConvolutionGroupCount)                            \
+  __macro(miopenSet4dTensorDescriptor)                               \
+  __macro(miopenGetTensorDescriptor)                                 \
+  __macro(miopenSetTensorDescriptor)                                 \
+  __macro(miopenGetTensorDescriptorSize)                             \
+  __macro(miopenPoolingForward)                                      \
+  __macro(miopenPoolingGetWorkSpaceSize)                             \
+  __macro(miopenPoolingBackward)                                     \
+  __macro(miopenLRNForward)                                          \
+  __macro(miopenLRNBackward)                                         \
+  __macro(miopenOpTensor)                                            \
+  __macro(miopenConvolutionBackwardData)                             \
+  __macro(miopenConvolutionBackwardWeights)                          \
+  __macro(miopenConvolutionBackwardWeightsGetWorkSpaceSize)          \
+  __macro(miopenFindConvolutionBackwardDataAlgorithm)                \
+  __macro(miopenFindConvolutionBackwardWeightsAlgorithm)             \
+  __macro(miopenConvolutionBackwardDataGetWorkSpaceSize)             \
+  __macro(miopenCreateRNNDescriptor)                                 \
+  __macro(miopenSetRNNDescriptor)                                    \
+  __macro(miopenDestroyRNNDescriptor)                                \
+  __macro(miopenGetRNNParamsSize)                                    \
+  __macro(miopenGetRNNLayerParam)                                    \
+  __macro(miopenGetRNNLayerBias)                                     \
+  __macro(miopenGetRNNWorkspaceSize)                                 \
+  __macro(miopenGetRNNTrainingReserveSize)                           \
+  __macro(miopenRNNForwardInference)                                 \
+  __macro(miopenRNNForwardTraining)                                  \
+  __macro(miopenRNNBackwardData)                                     \
+  __macro(miopenRNNBackwardWeights)                                  \
+  __macro(miopenGetRNNLayerParamOffset)                              \
+  __macro(miopenGetRNNLayerParamSize)                                \
+  __macro(miopenGetRNNLayerBiasOffset)                               \
+  __macro(miopenGetRNNLayerBiasSize)                                 \
+  __macro(miopenGetRNNParamsDescriptor)                              \
+  __macro(miopenCreateActivationDescriptor)                          \
+  __macro(miopenSetActivationDescriptor)                             \
+  __macro(miopenGetActivationDescriptor)                             \
+  __macro(miopenDestroyActivationDescriptor)                         \
+  __macro(miopenCreateFusionPlan)                                    \
+  __macro(miopenCreateOpConvForward)                                 \
+  __macro(miopenCreateOpBiasForward)                                 \
+  __macro(miopenCreateOpActivationForward)                           \
+  __macro(miopenCreateOpActivationBackward)                          \
+  __macro(miopenCreateOpBatchNormInference)                          \
+  __macro(miopenCreateOpBatchNormForward)                            \
+  __macro(miopenCreateOpBatchNormBackward)                           \
+  __macro(miopenCompileFusionPlan)                                   \
+  __macro(miopenFusionPlanGetOp)                                     \
+  __macro(miopenCreateOperatorArgs)                                  \
+  __macro(miopenSetOpArgsConvForward)                                \
+  __macro(miopenSetOpArgsBiasForward)                                \
+  __macro(miopenSetOpArgsActivForward)                               \
+  __macro(miopenSetOpArgsActivBackward)                              \
+  __macro(miopenSetOpArgsBatchNormInference)                         \
+  __macro(miopenSetOpArgsBatchNormForward)                           \
+  __macro(miopenSetOpArgsBatchNormBackward)                          \
+  __macro(miopenExecuteFusionPlan)                                   \
+  __macro(miopenDestroyOperatorArgs)                                 \
+  __macro(miopenDestroyFusionPlan)                                   \
+  __macro(miopenConvolutionForwardGetSolutionCount)                  \
+  __macro(miopenConvolutionForwardGetSolution)                       \
+  __macro(miopenConvolutionForwardGetSolutionWorkspaceSize)          \
+  __macro(miopenConvolutionForwardCompileSolution)                   \
+  __macro(miopenConvolutionForwardImmediate)                         \
+  __macro(miopenConvolutionBackwardDataGetSolutionCount)             \
+  __macro(miopenConvolutionBackwardDataGetSolution)                  \
+  __macro(miopenConvolutionBackwardDataGetSolutionWorkspaceSize)     \
+  __macro(miopenConvolutionBackwardDataCompileSolution)              \
+  __macro(miopenConvolutionBackwardDataImmediate)                    \
+  __macro(miopenConvolutionBackwardWeightsGetSolutionCount)          \
+  __macro(miopenConvolutionBackwardWeightsGetSolution)               \
+  __macro(miopenConvolutionBackwardWeightsGetSolutionWorkspaceSize)  \
+  __macro(miopenConvolutionBackwardWeightsCompileSolution)           \
+  __macro(miopenConvolutionBackwardWeightsImmediate)		     \
+  __macro(miopenCreateCTCLossDescriptor)			     \
+  __macro(miopenSetCTCLossDescriptor)				     \
+  __macro(miopenGetCTCLossWorkspaceSize)			     \
+  __macro(miopenCTCLoss)					     \
+>>>>>>> google-upstream/master
   __macro(miopenDestroyCTCLossDescriptor)
 
 // clang-format on
@@ -3661,15 +3772,12 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<float>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationForwardImpl<Eigen::half, float>(
       stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
       estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
       epsilon, exponential_average_factor, activation_mode, y, batch_mean,
-      batch_var, saved_mean, saved_inv_var, is_training,
-      std::move(var_to_inv_var), std::move(inv_var_to_var));
+      batch_var, saved_mean, saved_inv_var, is_training);
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
@@ -3684,15 +3792,12 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<float>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationForwardImpl<float, float>(
       stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale, offset,
       estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
       epsilon, exponential_average_factor, activation_mode, y, batch_mean,
-      batch_var, saved_mean, saved_inv_var, is_training,
-      std::move(var_to_inv_var), std::move(inv_var_to_var));
+      batch_var, saved_mean, saved_inv_var, is_training);
 }
 
 template <class T, class U>
@@ -3708,8 +3813,7 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
     DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
-    bool is_training, std::function<const DeviceMemory<U>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    bool is_training) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   ScopedTensorDescriptor x_descriptor{x_desc,

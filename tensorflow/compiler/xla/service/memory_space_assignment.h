@@ -485,7 +485,7 @@ class MemorySpaceAssignment {
     HloInstruction* copy_done_;
   };
 
-  using AllocationSequence = std::list<std::unique_ptr<Allocation>>;
+  using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
   struct ValueAndAllocationSequence {
     const HloValue* value;
     AllocationSequence sequence;

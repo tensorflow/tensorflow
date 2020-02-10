@@ -158,70 +158,85 @@ void EagerContext::InitPrioritizedDeviceTypeList() {
 namespace {
 // Using absl::StrJoin with lambda does not work in tf-lite builds.
 // TODO(b/148160441): Replace with absl::StrJoin once DeviceBase has operator<<.
-std::vector<string> DevicesToString(const std::vector<Device*>& devices) {
+std::vector<string> DevicesToString(const PrioritizedDeviceVector& devices) {
   std::vector<string> v;
   v.reserve(devices.size());
-  for (Device* d : devices) {
-    v.push_back(d->name());
+  for (const auto& p : devices) {
+    v.push_back(p.first->name());
   }
   return v;
 }
+
+// Selects the "best" device that both exists and is supported.
+//
+// The `existing` argument specifies the available devices in the system, in
+// priority order. The `supported` argument specifies the supported device types
+// and their priorities, lower index types having higher priority.
+// Currently the type priority defined by the `supported` parameter takes
+// precedence over system device priorities from `existing`.
+//
+// TODO(b/148213212): Allow setting default device in eager context.
+Device* SelectBestMatchingDevice(const DeviceNameUtils::ParsedName& pattern,
+                                 const PrioritizedDeviceVector& existing,
+                                 const PrioritizedDeviceTypeVector& supported) {
+  for (const std::pair<DeviceType, int32>& prioritized_type : supported) {
+    for (const std::pair<Device*, int32>& prioritized_device : existing) {
+      Device* dev = prioritized_device.first;
+      if (DeviceType(dev->attributes().device_type()) ==
+              prioritized_type.first &&
+          DeviceNameUtils::IsCompleteSpecification(pattern,
+                                                   dev->parsed_name())) {
+        return dev;
+      }
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
-Status EagerContext::SelectDevice(const DeviceNameUtils::ParsedName& preferred,
+Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
                                   const PrioritizedDeviceTypeVector& supported,
-                                  Device** device) const {
-  std::vector<Device*> selected;
-  const DeviceSet& pflr_devices = *pflr()->device_set();
+                                  const DataType dtype, Device** out) const {
+  DCHECK(out != nullptr);
 
-  // If there are no preferred devices, select the first registered device from
-  // the supported device list.
-  if (!DeviceNameUtils::HasSomeDetails(preferred)) {
-    // TODO(b/148213212): Allow setting default device in eager context.
-    selected = ColocationGraph::FilterSupportedDevices(
-        pflr_devices.devices(), supported, /*default_local_device=*/nullptr);
-    if (selected.empty()) {
-      return errors::InvalidArgument(
-          "No supported device found in available devices [",
-          absl::StrJoin(DevicesToString(pflr_devices.devices()), ", "), "].");
-    }
-    *device = selected[0];
+  // We always place string tensors on the CPU device if we're allowed to.
+  if (dtype == DT_STRING && AllowSoftPlacement()) {
+    preferred = HostCPU()->parsed_name();
+  }
+
+  // Select the first matching registered device from the supported device
+  // list. If nothing matches and soft placement is enabled, pick a suitable
+  // device from the available ones.
+  const PrioritizedDeviceVector& existing =
+      pflr()->device_set()->prioritized_devices();
+  *out = SelectBestMatchingDevice(preferred, existing, supported);
+  if (*out != nullptr) {
     return Status::OK();
   }
 
-  // If the caller specified a preferred device, select the first matching
-  // registered device from the supported device list. If nothing matches and
-  // soft placement is enabled, pick a suitable device from the available ones.
-  pflr_devices.FindMatchingDevices(preferred, &selected);
-
-  if (!selected.empty()) {
-    selected = ColocationGraph::FilterSupportedDevices(
-        selected, supported, /*default_local_device=*/nullptr);
-  }
-
-  if (selected.empty() && AllowSoftPlacement()) {
+  if (AllowSoftPlacement()) {
     DeviceNameUtils::ParsedName soft_device_name = preferred;
     soft_device_name.type.clear();
     soft_device_name.has_type = false;
     soft_device_name.has_id = false;
     // TODO(b/148213746): Soft placement logic picks up another task if the
     // requested does not exist.
-    pflr_devices.FindMatchingDevices(soft_device_name, &selected);
-    if (!selected.empty()) {
-      selected = ColocationGraph::FilterSupportedDevices(
-          selected, supported, /*default_local_device=*/nullptr);
+    *out = SelectBestMatchingDevice(soft_device_name, existing, supported);
+    if (*out != nullptr) {
+      return Status::OK();
     }
   }
 
-  if (selected.empty()) {
+  if (DeviceNameUtils::HasSomeDetails(preferred)) {
     return errors::InvalidArgument(
         "Could not satisfy device specification '", preferred,
         "'. All available devices [",
-        absl::StrJoin(DevicesToString(pflr_devices.devices()), ", "), "].");
+        absl::StrJoin(DevicesToString(existing), ", "), "].");
   }
-
-  *device = selected[0];
-  return Status::OK();
+  return errors::InvalidArgument(
+      "No supported device found in available devices [",
+      absl::StrJoin(DevicesToString(existing), ", "), "].");
 }
 
 void EagerContext::ResetClusterFLR(
@@ -632,6 +647,36 @@ Status EagerContext::RemoveFunction(const string& func) {
   return Status::OK();
 }
 
+Status EagerContext::ClearRemoteExecutors() {
+#if !defined(IS_MOBILE_PLATFORM)
+  eager::EnqueueRequest request;
+  request.set_context_id(GetContextId());
+  request.add_queue()->mutable_clear_remote_executor_for_stream();
+  BlockingCounter counter(static_cast<int>(remote_contexts_.size()));
+
+  for (const auto& target : remote_contexts_) {
+    core::RefCountPtr<eager::EagerClient> eager_client;
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
+
+    eager::EnqueueResponse* response = new eager::EnqueueResponse();
+    eager_client->StreamingEnqueueAsync(
+        &request, response, [response, target, &counter](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Cleared remote executor on " << target
+                       << " with status: " << status.error_message();
+          }
+          delete response;
+          counter.DecrementCount();
+        });
+  }
+  // Currently we have to block since it appears that ops sent before the clear
+  // message returns can be cancelled unexpectedly.
+  // TODO(haoyuzhang): Remove the block.
+  counter.Wait();
+#endif  // !IS_MOBILE_PLATFORM
+  return Status::OK();
+}
+
 core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
     Fprint128 cache_key) {
   tf_shared_lock l(cache_mu_);
@@ -685,6 +730,21 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   }
 
   return status;
+}
+
+Status EagerContext::FindCustomDeviceFromName(const string& device_name,
+                                              CustomDevice** dev) const {
+  auto dev_it = custom_devices_.find(device_name);
+  if (dev_it == custom_devices_.end()) {
+    return errors::InvalidArgument(device_name, " unknown device.");
+  }
+  *dev = dev_it->second.get();
+  return Status::OK();
+}
+
+void EagerContext::RegisterCustomDevice(const string& device_name,
+                                        std::unique_ptr<CustomDevice> device) {
+  custom_devices_[device_name] = std::move(device);
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {

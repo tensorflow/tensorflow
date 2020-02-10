@@ -532,6 +532,7 @@ py_library(
         ":numpy_dataset",
         ":reduce_util",
         ":values",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -723,6 +724,9 @@ distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
     main = "checkpointing_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
@@ -739,6 +743,9 @@ distribute_py_test(
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
     shard_count = 10,
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
@@ -1197,7 +1204,13 @@ distribute_py_test(
     full_precision = True,
     main = "saved_model_save_load_test.py",
     shard_count = 5,
+<<<<<<< HEAD
     tags = ["no_rocm"],
+=======
+    tags = [
+        "multi_and_single_gpu",
+    ],
+>>>>>>> google-upstream/master
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/saved_model",
@@ -1212,7 +1225,11 @@ distribute_py_test(
     main = "keras_save_load_test.py",
     shard_count = 5,
     tags = [
+<<<<<<< HEAD
         "no_rocm",
+=======
+        "multi_and_single_gpu",
+>>>>>>> google-upstream/master
     ],
     deps = [
         ":saved_model_test_base",
@@ -1227,7 +1244,13 @@ distribute_py_test(
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
     shard_count = 5,
+<<<<<<< HEAD
     tags = ["no_rocm"],
+=======
+    tags = [
+        "multi_and_single_gpu",
+    ],
+>>>>>>> google-upstream/master
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras/saving",

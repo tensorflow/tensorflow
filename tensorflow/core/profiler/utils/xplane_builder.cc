@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
+#include "tensorflow/core/profiler/utils/time_utils.h"
+
 namespace tensorflow {
 namespace profiler {
 
@@ -87,6 +89,16 @@ XEventBuilder XLineBuilder::AddEvent(const XEventMetadata& metadata) {
   XEvent* event = line_->add_events();
   event->set_metadata_id(metadata.id());
   return XEventBuilder(line_, event);
+}
+
+void XLineBuilder::SetTimestampNsAndAdjustEventOffsets(int64 timestamp_ns) {
+  int64 offset_ps = NanosToPicos(line_->timestamp_ns() - timestamp_ns);
+  line_->set_timestamp_ns(timestamp_ns);
+  if (offset_ps) {
+    for (auto& event : *line_->mutable_events()) {
+      event.set_offset_ps(event.offset_ps() + offset_ps);
+    }
+  }
 }
 
 }  // namespace profiler

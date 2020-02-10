@@ -23,6 +23,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
@@ -95,10 +96,18 @@ default_strategy_fn = distribution_strategy_context.get_strategy
 
 
 def create_mirrored_strategy():
+  """Create a MirroredStrategy, using a GPU if it is available."""
   if context.num_gpus() >= 1:
     return mirrored_strategy.MirroredStrategy(['cpu:0', 'gpu:0'])
   else:
     return mirrored_strategy.MirroredStrategy(['cpu:0'])
+
+
+def create_central_storage_strategy():
+  """Create a CentralStorageStrategy, using a GPU if it is available."""
+  compute_devices = ['cpu:0', 'gpu:0'] if context.num_gpus() >= 1 else ['cpu:0']
+  return central_storage_strategy.CentralStorageStrategy(
+      compute_devices, parameter_device='cpu:0')
 
 
 TESTCASES = ({
@@ -485,6 +494,12 @@ class KerasModelTest(keras_parameterized.TestCase):
           'save_format': 'h5',
           'use_regularizer': True,
       }, {
+          # TODO(b/148874820): Test saving a model with CentralStorageStrategy.
+          # Currently this doesn't work even for float32.
+          'testcase_name': 'central_storage',
+          'strategy_fn': create_central_storage_strategy,
+          'use_regularizer': True,
+      }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,
           'experimental_run_tf_function': False
@@ -750,6 +765,10 @@ class KerasModelTest(keras_parameterized.TestCase):
           'strategy_fn': create_mirrored_strategy,
           'get_config': True,
           'pass_loss_scale_to_policy': True,
+      }, {
+          'testcase_name': 'central_storage',
+          'strategy_fn': create_central_storage_strategy,
+          'get_config': True,
       }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,

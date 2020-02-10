@@ -17,7 +17,7 @@
 set -e
 
 on_device_dir="/data/local/tmp/hexagon_delegate_test/"
-hexagon_libs_path=""
+hexagon_libs_path=third_party/hexagon_nn_sdk/src/libs/
 
 if [ "$1" != "" ]; then
   hexagon_libs_path=$1

@@ -29,21 +29,22 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+// Creates stat metadata for the stats which may be added by grouping.
+void CreateStatMetadata(XPlane* plane) {
+  XPlaneBuilder builder(plane);
+  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
+  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
+}
+
 // Returns event type if it is a KernelLaunch or KernelExecute event.
 absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
                                          const XEvent& event) {
-  bool found_correlation_id = false;
-  bool found_device_id = false;
   for (const auto& stat : event.stats()) {
     if (visitor.GetStatType(stat) == StatType::kCorrelationId) {
-      found_correlation_id = true;
-    } else if (visitor.GetStatType(stat) == StatType::kDeviceId) {
-      found_device_id = true;
+      // TODO(b/149095099): avoid string comparison.
+      return visitor.Name() == kHostThreads ? HostEventType::kKernelLaunch
+                                            : HostEventType::kKernelExecute;
     }
-  }
-  if (found_correlation_id) {
-    return found_device_id ? HostEventType::kKernelLaunch
-                           : HostEventType::kKernelExecute;
   }
   return absl::nullopt;
 }
@@ -74,12 +75,8 @@ const XStat* GetStat(const XPlaneVisitor& visitor, const XEvent& event,
 }
 
 void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
-  absl::optional<int64> maybe_group_id_stat_metadata_id =
-      visitor.GetStatMetadataId(StatType::kGroupId);
-  // TODO(jihochoi): Create stat metadata for group_id if not found.
-  if (maybe_group_id_stat_metadata_id) {
-    AddOrUpdateIntStat(*maybe_group_id_stat_metadata_id, group_id, event);
-  }
+  AddOrUpdateIntStat(*visitor.GetStatMetadataId(StatType::kGroupId), group_id,
+                     event);
 }
 
 }  // namespace
@@ -223,6 +220,7 @@ void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
   std::vector<XPlaneVisitor> visitors;
   visitors.reserve(space->planes_size());
   for (auto& plane : *space->mutable_planes()) {
+    CreateStatMetadata(&plane);
     visitors.push_back(CreateTfXPlaneVisitor(&plane));
     ConnectIntraThread(visitors.back(), &plane, &event_node_map);
   }
@@ -238,6 +236,9 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
        {HostEventType::kSessionRun,
         HostEventType::kExecutorStateProcess,
         {StatType::kStepId}},
+       {HostEventType::kExecutorStateProcess,
+        HostEventType::kIteratorGetNextOp,
+        {StatType::kStepId, kIterNum}},
        {HostEventType::kKernelLaunch,
         HostEventType::kKernelExecute,
         {StatType::kCorrelationId}}});

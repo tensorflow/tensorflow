@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -57,14 +57,11 @@ class FullyConnectedTexture : public GPUOperation {
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
 
-  template <DataType T>
-  void RearrangeWeightsFP16(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                            absl::Span<half4> dst);
-  template <DataType T>
-  void RearrangeWeightsFP32(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                            absl::Span<float4> dst);
+  template <DataType T, typename S>
+  void RearrangeWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                        absl::Span<S> dst);
 
-  Texture2D weights_;
+  Buffer weights_;
   LinearStorage biases_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(0, 0, 0);
@@ -73,79 +70,37 @@ class FullyConnectedTexture : public GPUOperation {
 template <DataType T>
 Status FullyConnectedTexture::UploadWeights(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int src_depth = AlignByN(IntegralDivideRoundUp(weights.shape.i, 4), 4);
+  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+
+  const int elements_count = src_depth * dst_depth * 4;
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+
+  const int float4_size = f32_weights ? 16 : 8;
 
   if (definition_.GetDataType() == DataType::FLOAT32) {
     std::vector<float4> gpu_data(dst_depth * src_depth * 4);
-    RearrangeWeightsFP32(weights, absl::MakeSpan(gpu_data));
-    return CreateTexture2DRGBA(DataType::FLOAT32, dst_depth * 4, src_depth,
-                               gpu_data.data(), context, &weights_);
+    RearrangeWeights(weights, absl::MakeSpan(gpu_data));
+    return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
+                                context, &weights_);
   } else {
     std::vector<half4> gpu_data(dst_depth * src_depth * 4);
-    RearrangeWeightsFP16(weights, absl::MakeSpan(gpu_data));
-    return CreateTexture2DRGBA(DataType::FLOAT32, dst_depth, src_depth * 2,
-                               gpu_data.data(), context, &weights_);
+    RearrangeWeights(weights, absl::MakeSpan(gpu_data));
+    return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
+                                context, &weights_);
   }
 }
 
-template <DataType T>
-void FullyConnectedTexture::RearrangeWeightsFP16(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<half4> dst) {
-  const int src_depth = AlignByN(IntegralDivideRoundUp(weights.shape.i, 4), 4);
+template <DataType T, typename S>
+void FullyConnectedTexture::RearrangeWeights(
+    const ::tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
+  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   int counter = 0;
 
   for (int s = 0; s < src_depth; ++s) {
     for (int d = 0; d < dst_depth; ++d) {
-      half4 filters[2];
-      for (int i = 0; i < 2; ++i) {
-        for (int j = 0; j < 4; ++j) {
-          const int dst_ch = d * 4 + i;
-          const int src_ch = s * 4 + j;
-          if (dst_ch < weights.shape.o && src_ch < weights.shape.i) {
-            const int f_index =
-                weights.shape.LinearIndex({dst_ch, 0, 0, src_ch});
-            filters[i][j] = weights.data[f_index];
-          } else {
-            filters[i][j] = 0.0;
-          }
-        }
-      }
-      dst[counter++] = filters[0];
-      dst[counter++] = filters[1];
-    }
-    for (int d = 0; d < dst_depth; ++d) {
-      half4 filters[2];
-      for (int i = 0; i < 2; ++i) {
-        for (int j = 0; j < 4; ++j) {
-          const int dst_ch = d * 4 + 2 + i;
-          const int src_ch = s * 4 + j;
-          if (dst_ch < weights.shape.o && src_ch < weights.shape.i) {
-            const int f_index =
-                weights.shape.LinearIndex({dst_ch, 0, 0, src_ch});
-            filters[i][j] = weights.data[f_index];
-          } else {
-            filters[i][j] = 0.0;
-          }
-        }
-      }
-      dst[counter++] = filters[0];
-      dst[counter++] = filters[1];
-    }
-  }
-}
-
-template <DataType T>
-void FullyConnectedTexture::RearrangeWeightsFP32(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<float4> dst) {
-  const int src_depth = AlignByN(IntegralDivideRoundUp(weights.shape.i, 4), 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  int counter = 0;
-
-  for (int s = 0; s < src_depth; ++s) {
-    for (int d = 0; d < dst_depth; ++d) {
-      float4 filters[4];
+      S filters[4];
       for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
           const int dst_ch = d * 4 + i;

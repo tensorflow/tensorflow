@@ -27,8 +27,10 @@ class FusionNodeIndexingEvaluation {
   explicit FusionNodeIndexingEvaluation(const HloInstruction* fusion);
 
   // Evaluate the average number of times an instruction is emitted inside the
-  // fusion node, if 'producer' is fused into 'fusion_'.
-  int64 EvaluateAverageDuplication(const HloInstruction* producer) const;
+  // fusion node, if 'producer' is fused into 'fusion_'. If this average
+  // duplication is "too high" (some arbitrary chosen constant), returns
+  // true.
+  bool AverageCodeDuplicationTooHigh(const HloInstruction* producer) const;
 
   // Evaluate the total number of times an instruction is emitted inside the
   // fusion node, if 'producer' is fused into 'fusion_'. An instruction may be
@@ -54,6 +56,17 @@ class FusionNodeIndexingEvaluation {
       HloInstruction* fusion_operand);
 
  private:
+  // Computes the 'indexing_users_' and 'index_usage_count_' maps based on the
+  // current instructions inside the fusion node. Also updates
+  // 'total_emitted_instructions_' accordingly.
+  void RecomputeCache();
+
+  // Computes the 'index_usage_count_' entry for 'instruction'.
+  void UpdateIndexUsageCount(const HloInstruction* instruction);
+
+  // Updates the 'indexing_users_' entry of the operands of 'instruction'.
+  void UpdateIndexingUsersOfOperands(const HloInstruction* instruction);
+
   // Collects for each instruction in a fusion node from which direct or
   // indirect users newly created index values are passed. Roughly speaking, we
   // reuse index values if the shapes are equal when ignoring the element type

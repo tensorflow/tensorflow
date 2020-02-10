@@ -27,7 +27,7 @@ extern "C" {
 // creating a new op every time. If `raw_device_name` is `NULL` or empty, it
 // does not set the device name. If it's not `NULL`, then it attempts to parse
 // and set the device name. It's effectively `TFE_OpSetDevice`, but it is faster
-// than seperately calling it because if the existing op has the same
+// than separately calling it because if the existing op has the same
 // `raw_device_name`, it skips parsing and just leave as it is.
 TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
                                        const char* op_or_function_name,
@@ -36,23 +36,6 @@ TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
 
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
-
-// A profiler which will start profiling when creating the object and will stop
-// when the object is destroyed. It will profile all operations run under the
-// given TFE_Context. Multiple instance of it can be created, but at most one
-// of them will profile for each TFE_Context.
-// Thread-safety: TFE_Profiler is thread-safe.
-typedef struct TFE_Profiler TFE_Profiler;
-
-TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler();
-TF_CAPI_EXPORT extern bool TFE_ProfilerIsOk(TFE_Profiler* profiler);
-TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
-
-// The output string is a binary string of tensorflow.tpu.Trace. User can write
-// the string to file for offline analysis by tensorboard.
-TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Profiler* profiler,
-                                                         TF_Buffer* buf,
-                                                         TF_Status* status);
 
 // Start a profiler grpc server which listens to specified port. It will start
 // the server on its own thread. It can be shutdown by terminating tensorflow.
@@ -434,6 +417,16 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
                                                  const char* worker_name,
                                                  TF_Status* status);
 
+// Clear pending streaming requests and error statuses on remote executors.
+TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
+                                                           TF_Status* status);
+
+// If the TensorHandle is copied to another device as part of an op execution,
+// the copy is destroyed after the op has executed. Enabling implicit mirroring
+// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
+TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
+    TFE_TensorHandle*, TF_Status*);
+
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer
 // returned will be on the device in which the TFE_TensorHandle resides (so e.g.
@@ -462,6 +455,57 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
 // saves it in the buffer.
 TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
                                                 TF_Buffer* buf);
+
+#define TFE_CUSTOM_DEVICE_VERSION 0
+
+// Struct to be filled in
+typedef struct TFE_CustomDevice {
+  int version = TFE_CUSTOM_DEVICE_VERSION;
+  // Method to copy a tensor to the custom device.
+  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_TensorHandle* tensor,
+                                             TF_Status* status,
+                                             void* device_info) = nullptr;
+
+  // Method to copy a tensor from the custom device to a target device.
+  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_TensorHandle* tensor,
+                                               const char* target_device_name,
+                                               TF_Status* status,
+                                               void* device_info);
+
+  // Method to execute an operation.
+  // TODO(allenl) figure out a generic way of passing attrs here
+  void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
+                  const char* operation_name, int* num_outputs,
+                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
+
+  // Method to delete a device.
+  void (*delete_device)(void* device_info);
+} TFE_CustomDevice;
+
+// Registers a custom device for use with eager execution.
+//
+// Eager operations may be placed on this device, e.g.  `with
+// tf.device("CUSTOM"):` from Python if `device_name` for this call is
+// "/job:localhost/replica:0/task:0/device:CUSTOM:0".
+//
+// The custom device defines copy operations for moving TensorHandles on and
+// off, and an an execution operation for named operations. Often execution will
+// simply wrap op execution on one or more physical devices.
+//
+// device_info is an opaque caller-defined type stored with the custom device
+// which is passed to the functions referenced in the TFE_CustomDevice struct
+// `device` (execute, delete_device, etc.). It can for example contain the
+// names of wrapped devices.
+//
+// There are currently no graph semantics implemented for registered custom
+// devices, so executing tf.functions which contain operations placed on custom
+// devices will fail.
+//
+// This API is highly experimental, and in particular is expected to change when
+// it starts supporting operations with attributes and when tf.function support
+// is added.
+void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
+                              const char* device_name, void* device_info);
 
 #ifdef __cplusplus
 } /* end extern "C" */

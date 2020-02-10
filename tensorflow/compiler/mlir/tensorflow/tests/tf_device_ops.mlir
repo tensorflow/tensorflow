@@ -87,13 +87,26 @@ func @replicate_with_return(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: t
 
 // CHECK-LABEL: func @replicate_with_devices
 func @replicate_with_devices() {
-  tf_device.replicate() {n = 2 : i32, devices = ["/DEVICE:0", "/DEVICE:1"]} {
+  tf_device.replicate() {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"]}} {
     tf_device.return
   }
   return
 
 // CHECK:      tf_device.replicate
-// CHECK-SAME: devices = ["/DEVICE:0", "/DEVICE:1"]
+// CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"]}
+// CHECK-SAME: n = 2
+// CHECK-NEXT:   tf_device.return
+}
+
+// CHECK-LABEL: func @replicate_with_multiple_devices
+func @replicate_with_multiple_devices() {
+  tf_device.replicate() {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"], TPU_REPLICATED_CORE_1 = ["/DEVICE:2", "/DEVICE:3"]}} {
+    tf_device.return
+  }
+  return
+
+// CHECK:      tf_device.replicate
+// CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"], TPU_REPLICATED_CORE_1 = ["/DEVICE:2", "/DEVICE:3"]}
 // CHECK-SAME: n = 2
 // CHECK-NEXT:   tf_device.return
 }
