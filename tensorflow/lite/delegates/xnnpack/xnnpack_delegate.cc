@@ -244,7 +244,7 @@ class Subgraph {
         *flags = 0;
         return kTfLiteOk;
       default:
-        if (context) {
+        if (context != nullptr) {
           context->ReportError(context, "invalid padding mode (%d) in node #%d",
                                static_cast<int>(padding), node_index);
         }
@@ -273,28 +273,28 @@ class Subgraph {
         *output_max = 6.0f;
         return kTfLiteOk;
       case kTfLiteActTanh:
-        if (context) {
+        if (context != nullptr) {
           context->ReportError(
               context, "unsupported fused activation (Tanh) in node #%d",
               node_index);
         }
         return kTfLiteError;
       case kTfLiteActSignBit:
-        if (context) {
+        if (context != nullptr) {
           context->ReportError(
               context, "unsupported fused activation (Sign) in node #%d",
               node_index);
         }
         return kTfLiteError;
       case kTfLiteActSigmoid:
-        if (context) {
+        if (context != nullptr) {
           context->ReportError(
               context, "unsupported fused activation (Sigmoid) in node #%d",
               node_index);
         }
         return kTfLiteError;
       default:
-        if (context) {
+        if (context != nullptr) {
           context->ReportError(context,
                                "invalid fused activation (%d) in node #%d",
                                static_cast<int>(activation), node_index);
@@ -307,14 +307,14 @@ class Subgraph {
                                              const TfLiteConvParams* params,
                                              int node_index) {
     if (params->stride_width <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context, "invalid stride width %d in node #%d",
                              params->stride_width, node_index);
       }
       return kTfLiteError;
     }
     if (params->stride_height <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context, "invalid stride height %d in node #%d",
                              params->stride_height, node_index);
       }
@@ -322,7 +322,7 @@ class Subgraph {
     }
 
     if (params->dilation_width_factor <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context,
                              "invalid dilation width factor %d in node #%d",
                              params->dilation_width_factor, node_index);
@@ -330,7 +330,7 @@ class Subgraph {
       return kTfLiteError;
     }
     if (params->dilation_height_factor <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context,
                              "invalid dilation height factor %d in node #%d",
                              params->dilation_height_factor, node_index);
@@ -345,14 +345,14 @@ class Subgraph {
       TfLiteContext* context, const TfLiteDepthwiseConvParams* params,
       int output_channels, int node_index) {
     if (params->stride_width <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context, "invalid stride width %d in node #%d",
                              params->stride_width, node_index);
       }
       return kTfLiteError;
     }
     if (params->stride_height <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context, "invalid stride height %d in node #%d",
                              params->stride_height, node_index);
       }
@@ -360,14 +360,14 @@ class Subgraph {
     }
 
     if (params->depth_multiplier <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context, "invalid depth multiplier %d in node #%d",
                              params->depth_multiplier, node_index);
       }
       return kTfLiteError;
     }
     if (output_channels % params->depth_multiplier != 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context,
                              "depth multiplier %d is incompatible with "
                              "number of output channels %d in node #%d",
@@ -378,7 +378,7 @@ class Subgraph {
     }
 
     if (params->dilation_width_factor <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context,
                              "invalid dilation width factor %d in node #%d",
                              params->dilation_width_factor, node_index);
@@ -386,7 +386,7 @@ class Subgraph {
       return kTfLiteError;
     }
     if (params->dilation_height_factor <= 0) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(context,
                              "invalid dilation height factor %d in node #%d",
                              params->dilation_height_factor, node_index);
@@ -403,7 +403,7 @@ class Subgraph {
                                                int expected_num_outputs,
                                                int node_index) {
     if (node->inputs->size != expected_num_inputs) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(
             context, "unexpected number of inputs (%d != %d) in node #%d",
             node->inputs->size, expected_num_inputs, node_index);
@@ -411,7 +411,7 @@ class Subgraph {
       return kTfLiteError;
     }
     if (node->outputs->size != expected_num_outputs) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(
             context, "unexpected number of output (%d != %d) in node #%d",
             node->outputs->size, expected_num_outputs, node_index);
@@ -425,7 +425,7 @@ class Subgraph {
                                            const TfLiteTensor& tensor,
                                            int tensor_index, int node_index) {
     if (tensor.type != kTfLiteFloat32) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(
             context, "unsupported type %s in tensor #%d in node #%d",
             TfLiteTypeGetName(tensor.type), tensor_index, node_index);
@@ -440,7 +440,7 @@ class Subgraph {
                                        int expected_num_dims,
                                        int tensor_index) {
     if (tensor.dims->size != expected_num_dims) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(
             context,
             "unexpected number of shape dimensions (%d != %d) in tensor #%d",
@@ -464,7 +464,7 @@ class Subgraph {
       int node_index) {
     // TODO(b/149120844): remove checks once dynamic tensors are supported
     if (tensor.allocation_type == kTfLiteDynamic) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(
             context,
             "invalid allocation type in tensor #%d in node #%d: "
@@ -482,7 +482,7 @@ class Subgraph {
                                                   int node_index) {
     if (tensor.allocation_type != kTfLiteMmapRo ||
         tensor.data.raw_const == nullptr) {
-      if (context) {
+      if (context != nullptr) {
         context->ReportError(
             context,
             "invalid allocation type in tensor #%d in node #%d: "
@@ -595,7 +595,7 @@ class Subgraph {
         logging_context, node_index, conv_params->activation, &output_min,
         &output_max));
 
-    if (subgraph) {
+    if (subgraph != nullptr) {
       const xnn_status status = xnn_define_convolution_2d(
           subgraph,
           /*input_padding_top=*/0,
@@ -693,7 +693,7 @@ class Subgraph {
         logging_context, node_index, dwconv_params->activation, &output_min,
         &output_max));
 
-    if (subgraph) {
+    if (subgraph != nullptr) {
       const xnn_status status = xnn_define_depthwise_convolution_2d(
           subgraph,
           /*input_padding_top=*/0,
