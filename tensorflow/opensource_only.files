@@ -149,7 +149,6 @@ tensorflow/third_party/python_runtime/BUILD
 tensorflow/third_party/remote_config/BUILD
 tensorflow/third_party/remote_config/common.bzl
 tensorflow/third_party/repo.bzl
-tensorflow/third_party/rules_closure.patch
 tensorflow/third_party/six.BUILD
 tensorflow/third_party/snappy.BUILD
 tensorflow/third_party/sqlite.BUILD
