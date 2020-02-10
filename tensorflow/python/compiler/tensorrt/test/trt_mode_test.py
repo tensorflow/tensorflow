@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from unittest import skip  # pylint: disable=g-importing-member
+from unittest import SkipTest  # pylint: disable=g-importing-member
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
@@ -27,7 +27,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@skip("TrtModeTestBase defines a common base class for other tests")
 class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
   """Test squeeze on batch dim and some unary operations in TF-TRT."""
 
@@ -65,6 +64,12 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
         conversion_params=conversion_params,
         use_implicit_batch=implicit_batch)
     return conversion_params._replace(rewriter_config_template=rewriter_config)
+
+  @classmethod
+  def setUpClass(cls):
+    if cls is TrtModeTestBase:
+      raise SkipTest("TrtModeTestBase defines base class for other test.")
+    super(TrtModeTestBase, cls).setUpClass()
 
 
 class ImplicitBatchTest(TrtModeTestBase):
@@ -121,10 +126,7 @@ class DynamicShapesTest(TrtModeTestBase):
   """ Test with dynamic input shape.
 
   The difference compered to ExplicitBatchTest is that we specify an input and
-  output mask with unknown shapes. Since shape optimization profiles are not
-  yet used in TRTEngineOp, the engine creation will fail and the inference is
-  done using the native segment. The trt_engine_op_test (C++) is more relevant
-  to test the dynamic shapes in its current status.
+  output mask with unknown shapes.
   """
 
   def GetParams(self):
