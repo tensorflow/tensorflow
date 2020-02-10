@@ -22,8 +22,10 @@ load(
 load(
     "//third_party/remote_config:common.bzl",
     "execute",
+    "files_exist",
     "get_cpu_value",
     "raw_exec",
+    "realpath",
     "which",
 )
 
@@ -387,47 +389,41 @@ def _lib_name(lib, version = "", static = False):
             version = ".%s" % version
         return "lib%s.so%s" % (lib, version)
 
-def _find_rocm_lib(
-        lib,
-        repository_ctx,
-        basedir,
-        version = "",
-        static = False):
-    """Finds the given ROCm libraries on the system.
+def _rocm_lib_paths(repository_ctx, lib, basedir):
+    file_name = _lib_name(lib, version = "", static = False)
+    return [
+        repository_ctx.path("%s/lib64/%s" % (basedir, file_name)),
+        repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name)),
+        repository_ctx.path("%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name)),
+        repository_ctx.path("%s/lib/%s" % (basedir, file_name)),
+        repository_ctx.path("%s/%s" % (basedir, file_name)),
+    ]
 
-    Args:
-      lib: The name of the library, such as "hip"
-      repository_ctx: The repository context.
-      basedir: The install directory of ROCm.
-      version: The version of the library.
-      static: True if static library, False if shared object.
+def _batch_files_exist(repository_ctx, libs_paths):
+    all_paths = []
+    for _, lib_paths in libs_paths:
+        for lib_path in lib_paths:
+            all_paths.append(lib_path)
+    return files_exist(repository_ctx, all_paths)
 
-    Returns:
-      Returns a struct with the following fields:
-        file_name: The basename of the library found on the system.
-        path: The full path to the library.
-    """
-    file_name = _lib_name(lib, version, static)
+def _select_rocm_lib_paths(repository_ctx, libs_paths):
+    test_results = _batch_files_exist(repository_ctx, libs_paths)
 
-    path = repository_ctx.path("%s/lib64/%s" % (basedir, file_name))
-    if path.exists:
-        return struct(file_name = file_name, path = str(path.realpath))
-    path = repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name))
-    if path.exists:
-        return struct(file_name = file_name, path = str(path.realpath))
-    path = repository_ctx.path(
-        "%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name),
-    )
-    if path.exists:
-        return struct(file_name = file_name, path = str(path.realpath))
-    path = repository_ctx.path("%s/lib/%s" % (basedir, file_name))
-    if path.exists:
-        return struct(file_name = file_name, path = str(path.realpath))
-    path = repository_ctx.path("%s/%s" % (basedir, file_name))
-    if path.exists:
-        return struct(file_name = file_name, path = str(path.realpath))
+    libs = {}
+    i = 0
+    for name, lib_paths in libs_paths:
+        selected_path = None
+        for path in lib_paths:
+            if test_results[i] and selected_path == None:
+                # For each lib select the first path that exists.
+                selected_path = path
+            i = i + 1
+        if selected_path == None:
+            auto_configure_fail("Cannot find rocm library %s" % name)
 
-    auto_configure_fail("Cannot find rocm library %s" % file_name)
+        libs[name] = struct(file_name = selected_path.basename, path = realpath(repository_ctx, selected_path))
+
+    return libs
 
 def _find_libs(repository_ctx, rocm_config):
     """Returns the ROCm libraries on the system.
@@ -437,46 +433,23 @@ def _find_libs(repository_ctx, rocm_config):
       rocm_config: The ROCm config as returned by _get_rocm_config
 
     Returns:
-      Map of library names to structs of filename and path as returned by
-      _find_rocm_lib.
+      Map of library names to structs of filename and path
     """
-    return {
-        "hip": _find_rocm_lib(
-            "hip_hcc",
-            repository_ctx,
-            rocm_config.rocm_toolkit_path,
-        ),
-        "rocblas": _find_rocm_lib(
-            "rocblas",
-            repository_ctx,
-            rocm_config.rocm_toolkit_path + "/rocblas",
-        ),
-        "rocfft": _find_rocm_lib(
-            "rocfft",
-            repository_ctx,
-            rocm_config.rocm_toolkit_path + "/rocfft",
-        ),
-        "hiprand": _find_rocm_lib(
-            "hiprand",
-            repository_ctx,
-            rocm_config.rocm_toolkit_path + "/hiprand",
-        ),
-        "miopen": _find_rocm_lib(
-            "MIOpen",
-            repository_ctx,
-            rocm_config.rocm_toolkit_path + "/miopen",
-        ),
-        "rccl": _find_rocm_lib(
-            "rccl",
-            repository_ctx,
-            rocm_config.rocm_toolkit_path + "/rccl",
-        ),
-        "hipsparse": _find_rocm_lib(
-            "hipsparse",
-            repository_ctx,
-            rocm_config.rocm_toolkit_path + "/hipsparse",
-        ),
-    }
+
+    libs_paths = [
+        (name, _rocm_lib_paths(repository_ctx, name, path))
+        for name, path in [
+            ("hip_hcc", rocm_config.rocm_toolkit_path),
+            ("rocblas", rocm_config.rocm_toolkit_path + "/rocblas"),
+            ("rocfft", rocm_config.rocm_toolkit_path + "/rocfft"),
+            ("hiprand", rocm_config.rocm_toolkit_path + "/hiprand"),
+            ("MIOpen", rocm_config.rocm_toolkit_path + "/miopen"),
+            ("rccl", rocm_config.rocm_toolkit_path + "/rccl"),
+            ("hipsparse", rocm_config.rocm_toolkit_path + "/hipsparse"),
+        ]
+    ]
+
+    return _select_rocm_lib_paths(repository_ctx, libs_paths)
 
 def _get_rocm_config(repository_ctx):
     """Detects and returns information about the ROCm installation on the system.
@@ -701,11 +674,11 @@ def _create_local_rocm_repository(repository_ctx):
         "rocm/BUILD",
         tpl_paths["rocm:BUILD"],
         {
-            "%{hip_lib}": rocm_libs["hip"].file_name,
+            "%{hip_lib}": rocm_libs["hip_hcc"].file_name,
             "%{rocblas_lib}": rocm_libs["rocblas"].file_name,
             "%{rocfft_lib}": rocm_libs["rocfft"].file_name,
             "%{hiprand_lib}": rocm_libs["hiprand"].file_name,
-            "%{miopen_lib}": rocm_libs["miopen"].file_name,
+            "%{miopen_lib}": rocm_libs["MIOpen"].file_name,
             "%{rccl_lib}": rocm_libs["rccl"].file_name,
             "%{hipsparse_lib}": rocm_libs["hipsparse"].file_name,
             "%{copy_rules}": "\n".join(copy_rules),
