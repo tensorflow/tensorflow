@@ -102,10 +102,10 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                             start_timestamp_ns);
   DerivedXLineBuilder tf_ops(&plane, kThreadIdTfOp, kDerivedLineTensorFlowOps,
                              start_timestamp_ns);
-  DerivedXLineBuilder hlo_ops(&plane, kThreadIdHloOp, kDerivedLineXlaModules,
+  DerivedXLineBuilder hlo_ops(&plane, kThreadIdHloOp, kDerivedLineXlaOps,
                               start_timestamp_ns);
   DerivedXLineBuilder hlo_modules(&plane, kThreadIdHloModule,
-                                  kDerivedLineXlaOps, start_timestamp_ns);
+                                  kDerivedLineXlaModules, start_timestamp_ns);
 
   // Process events in order by start time.
   for (const XEventVisitor& event : events) {
