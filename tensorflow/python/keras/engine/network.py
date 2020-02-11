@@ -244,7 +244,6 @@ class Network(base_layer.Layer):
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
-    self._build_input_shape = nest.map_structure(lambda x: x.shape, inputs)
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
     # `_expects_training_arg` is True since the `training` argument is always
@@ -357,7 +356,6 @@ class Network(base_layer.Layer):
     self.outputs = []
     self.inputs = []
     self.built = False
-    self._build_input_shape = None
 
   @property
   @trackable_layer_utils.cache_recursive_attribute('dynamic')
@@ -621,7 +619,7 @@ class Network(base_layer.Layer):
       on real tensor data.
     """
     if self._is_graph_network:
-      super(Network, self).build(input_shape)
+      self.built = True
       return
 
     # If subclass network
@@ -686,7 +684,7 @@ class Network(base_layer.Layer):
                            'model, `call` your model on real tensor data (of '
                            'the correct dtype).')
 
-    super(Network, self).build(input_shape)
+    self.built = True
 
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
