@@ -1224,7 +1224,11 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     if self._cached_nrows is not None:
       return math_ops.cast(self._cached_nrows, out_type)
     with ops.name_scope(name, "RaggedNRows", [self]):
-      return array_ops.shape(self.row_splits, out_type=out_type)[0] - 1
+      nsplits = tensor_shape.dimension_at_index(self.row_splits.shape, 0)
+      if nsplits.value is None:
+        return array_ops.shape(self.row_splits, out_type=out_type)[0] - 1
+      else:
+        return constant_op.constant(nsplits.value - 1, dtype=out_type)
 
   def row_starts(self, name=None):
     """Returns the start indices for rows in this ragged tensor.

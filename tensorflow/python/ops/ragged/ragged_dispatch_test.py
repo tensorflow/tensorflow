@@ -470,7 +470,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
   def testElementwiseOpShapeMismatch(self):
     x = ragged_factory_ops.constant([[1, 2, 3], [4, 5]])
     y = ragged_factory_ops.constant([[1, 2, 3], [4, 5, 6]])
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       self.evaluate(math_ops.add(x, y))
 
   def testBinaryOpSparseAndRagged(self):
