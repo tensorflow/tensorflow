@@ -1081,7 +1081,10 @@ tf_xla_py_test(
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
-    tags = ["config-cuda-only"],
+    tags = [
+        "config-cuda-only",
+        "v1only",
+    ],
     use_xla_device = False,
     deps = [
         ":xla_test",
