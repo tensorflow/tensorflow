@@ -170,6 +170,13 @@ class TRTEngineOp : public AsyncOpKernel {
   // If true, create calibration graph for INT8 mode. Otherwise, we are using
   // user-provided quantization ranges.
   bool use_calibration_;
+
+  // Array of all input shapes, collected from the input_shapes attribute when
+  // constructing the TRTEngineOp. The input_shapes attribute is set during
+  // graph conversion time. This data is used to retrieve which input dimensions
+  // could be unknown. During inference time this information is not available
+  // otherwise (all shapes are known (concrete) shapes when we run inference).
+  std::vector<PartialTensorShape> input_partial_shapes_;
 };
 
 #define TYPECASE(dt, X, Y)                                    \
@@ -272,6 +279,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  TrtPrecisionModeFromName(precision_string, &precision_mode_));
   OP_REQUIRES_OK(context,
                  context->GetAttr("use_calibration", &use_calibration_));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("input_shapes", &input_partial_shapes_));
   func_handle_ = kInvalidHandle;
   if (!static_engine_) {
     FunctionLibraryRuntime* lib = context->function_library();
@@ -306,7 +315,25 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     use_implicit_batch_ = true;
   }
 #endif
-  if (!use_implicit_batch_) {
+  if (use_implicit_batch_) {
+    if (input_partial_shapes_.empty()) {
+      VLOG(1) << "Attribute input_shapes is not set. This happens probably "
+              << "because you are using a model that is already converted "
+              << "to TensorRT with a previous version of TF-TRT (i.e. includes "
+              << "TRTEngineOp in graph). This is not an error. If you convert "
+              << "the original model again to TensorRT, the attributes "
+              << "input_shapes will be set automatically.";
+    }
+  } else {
+    OP_REQUIRES(
+        context, !input_partial_shapes_.empty(),
+        errors::InvalidArgument(
+            "Explicit batch mode requires attribute input_shapes to be set."
+            "If you are using a model that was converted to TensorRT by a "
+            "previous version of TF-TRT, (i.e. includes TRTEngineOp in graph "
+            "without the input_shapes attribute), then you need to convert the "
+            "original model again to TensorRT in order to set the attribute "
+            "input_shapes."));
     OP_REQUIRES(context, !calibration_mode_,
                 errors::InvalidArgument(
                     "Explicit batch mode does not support calibration"));
@@ -393,28 +420,68 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   ExecuteNativeSegment(ctx, helper);
 }
 
-Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& shapes) {
-  if (shapes.empty()) {
+Status TRTEngineOp::VerifyInputShapes(
+    const std::vector<TensorShape>& input_concrete_shapes) {
+  if (input_concrete_shapes.empty()) {
     return errors::InvalidArgument("Input shapes are empty, for ", name());
   }
-  if (shapes[0].dims() < 1) {
-    return errors::InvalidArgument("Input shapes contain scalar, for ", name(),
-                                   ": ",
-                                   TensorShapeUtils::ShapeListString(shapes));
+
+  if (input_partial_shapes_.empty()) {
+    if (!use_implicit_batch_) {
+      return errors::InvalidArgument(
+          "Explicit batch mode requires input_partial_shapes_ ",
+          "to contain the dynamic input shapes to TRTEngineOp");
+    }
+    // If the graph was converted with an earlier version of TF-TRT, it can
+    // happen that the input_partial_shapes_ vector is not set (see
+    // input_shapes attribute handling in the TRTEngineOp constructor).
+    // In implicit batch mode it is allowed to have empty input_partial_shapes_,
+    // since it is only required in explicit batch mode (see the input_shapes
+    // attribute of ConvertGraphDefToEngine in TRTEngineOp::GetEngine.
+  } else {
+    // Additional consistency checks if input_partial_shapes_ is present.
+    const string error_msg = StrCat(
+        "Input shapes do not match input partial shapes stored in graph, for ",
+        name(), ": ", DebugString(input_concrete_shapes),
+        " != ", DebugString(input_partial_shapes_));
+    if (input_concrete_shapes.size() != input_partial_shapes_.size()) {
+      return errors::InvalidArgument(error_msg);
+    }
+    for (int i = 0; i < input_concrete_shapes.size(); i++) {
+      if (input_concrete_shapes[i].dims() != input_partial_shapes_[i].dims()) {
+        return errors::InvalidArgument(error_msg);
+      }
+    }
+    for (int i = 0; i < input_concrete_shapes.size(); i++) {
+      for (int d = 0; d < input_concrete_shapes[i].dims(); d++) {
+        if (input_partial_shapes_[i].dim_size(d) != -1) {
+          if (input_concrete_shapes[i].dim_size(d) !=
+              input_partial_shapes_[i].dim_size(d)) {
+            return errors::InvalidArgument(error_msg);
+          }
+        }
+      }
+    }
   }
 
   if (use_implicit_batch_) {
-    const int batch_size = shapes[0].dim_size(0);
-    if (batch_size < 1) {
-      return errors::InvalidArgument("Incorrect batch dimension, for ", name(),
-                                     ": ",
-                                     TensorShapeUtils::ShapeListString(shapes));
+    if (input_concrete_shapes[0].dims() < 1) {
+      return errors::InvalidArgument(
+          "Input shapes contain scalar, for ", name(), ": ",
+          TensorShapeUtils::ShapeListString(input_concrete_shapes));
     }
-    for (const TensorShape& shape : shapes) {
+    const int batch_size = input_concrete_shapes[0].dim_size(0);
+    if (batch_size < 1) {
+      return errors::InvalidArgument(
+          "Incorrect batch dimension, for ", name(), ": ",
+          TensorShapeUtils::ShapeListString(input_concrete_shapes));
+    }
+    for (const TensorShape& shape : input_concrete_shapes) {
       if (batch_size != shape.dim_size(0)) {
         return errors::InvalidArgument(
             "Input shapes are inconsistent on the batch dimension, for ",
-            name(), ": ", TensorShapeUtils::ShapeListString(shapes));
+            name(), ": ",
+            TensorShapeUtils::ShapeListString(input_concrete_shapes));
       }
     }
   }
@@ -443,11 +510,17 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
   return true;
 }
 
+// This routine finds the engines with input shapes compatible with the
+// actual_input_shapes, and returns the input shapes of one of such engine that
+// has the smallest batch size.
 Status TRTEngineOp::GetEngineInputShapes(
     const CacheType& cache, const std::vector<TensorShape>& actual_input_shapes,
     std::vector<TensorShape>* engine_input_shapes) {
   // VerifyInputShapes() already ensured that all input shapes have same
-  // batch size, and are not scalars.
+  // batch size, and are not scalars, if we are in implicit batch mode.
+  //
+  // In explicit batch mode we plan to have single engine in the cache, and we
+  // return its shape if it is compatible.
   *engine_input_shapes = actual_input_shapes;
   int64 min_matched_batch_size = kint64max;
   for (const auto& pair : cache) {
@@ -513,19 +586,22 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 
   // Get shapes of inputs to engine.
-  std::vector<TensorShape> input_shapes;
-  input_shapes.reserve(ctx->num_inputs());
+  std::vector<TensorShape> input_concrete_shapes;
+  input_concrete_shapes.reserve(ctx->num_inputs());
   for (int i = 0; i < ctx->num_inputs(); ++i) {
-    input_shapes.push_back(ctx->input(i).shape());
+    input_concrete_shapes.push_back(ctx->input(i).shape());
   }
-  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_shapes), *helper);
-  StatusOr<EngineContext*> status = GetEngine(input_shapes, ctx, cache_res);
+
+  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_concrete_shapes), *helper);
+
+  StatusOr<EngineContext*> status =
+      GetEngine(input_concrete_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), *helper);
 
   EngineContext* engine_context = status.ValueOrDie();
   if (!engine_context->cuda_engine) {
     VLOG(1) << "Engine retrieval for input shapes: "
-            << TensorShapeUtils::ShapeListString(input_shapes)
+            << TensorShapeUtils::ShapeListString(input_concrete_shapes)
             << " failed. Running native segment for " << name();
     ExecuteNativeSegment(ctx, helper);
     return;
@@ -807,14 +883,17 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
 }
 
 StatusOr<EngineContext*> TRTEngineOp::GetEngine(
-    const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx,
+    const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
     TRTEngineCacheResource* cache_res) {
   static EngineContext empty_context;
 
   mutex_lock lock(engine_mutex_);
-  // Using first input to get batch size is reliable - VerifyInputShapes() has
-  // verified that.
-  const int batch_size = input_shapes[0].dim_size(0);
+  // Using first input to get batch size is reliable - VerifyInputShapes()
+  // guarantees that the first input is not a scalar. As such we can always use
+  // the first input to get the batch size for implicit batch mode. For explicit
+  // batch mode, this value is not used.
+  const int batch_size = input_concrete_shapes[0].dim_size(0);
+  // TODO(Tamas): remove the need for batch_size in explicit_batch mode
   auto& cache = cache_res->cache_;
   auto allocator = cache_res->allocator_.get();
   if (allocator == nullptr) {
@@ -828,7 +907,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
       // TODO(laigd): need a better shape compatibility check for the case where
       // implicit batch is disabled.
       if (!use_implicit_batch_ ||
-          AreShapesCompatible(input_shapes, cache.begin()->first)) {
+          AreShapesCompatible(input_concrete_shapes, cache.begin()->first)) {
         return cache.begin()->second.get();
       }
       return &empty_context;
@@ -846,11 +925,9 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
     // Static engine will have max_batch_size for batch size so that all inputs
     // will map to this single engine.
-    std::vector<TensorShape> engine_input_shapes(input_shapes);
-    if (use_implicit_batch_) {
-      for (int i = 0; i < engine_input_shapes.size(); i++) {
-        engine_input_shapes[i].set_dim(0, max_batch_size);
-      }
+    std::vector<TensorShape> engine_input_shapes(input_concrete_shapes);
+    for (int i = 0; i < engine_input_shapes.size(); i++) {
+      engine_input_shapes[i].set_dim(0, max_batch_size);
     }
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
@@ -874,7 +951,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // Handle the dynamic engine case. See if there is a compatible engine cached.
   std::vector<TensorShape> engine_input_shapes;
   TF_RETURN_IF_ERROR(
-      GetEngineInputShapes(cache, input_shapes, &engine_input_shapes));
+      GetEngineInputShapes(cache, input_concrete_shapes, &engine_input_shapes));
 
   // If matched, use that engine. Otherwise, we will look in cache for that
   // exact shape and possibly create a new engine if it is not in cache.
@@ -883,17 +960,21 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()
               << " with input shapes: "
-              << TensorShapeUtils::ShapeListString(engine_input_shapes);
+              << TensorShapeUtils::ShapeListString(input_concrete_shapes);
 
-    // Convert to partial shapes
-    std::vector<PartialTensorShape> partial_shapes(engine_input_shapes.begin(),
-                                                   engine_input_shapes.end());
+    // Use concrete shapes for implicit batch mode and partial shapes for
+    // explicit batch mode.
+    const std::vector<PartialTensorShape>& conversion_input_shapes =
+        use_implicit_batch_
+            ? std::vector<PartialTensorShape>(input_concrete_shapes.begin(),
+                                              input_concrete_shapes.end())
+            : input_partial_shapes_;
 
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
         segment_graph_def_, precision_mode_, batch_size, workspace_size_,
-        partial_shapes, &logger, allocator, calibrator_.get(), &engine,
+        conversion_input_shapes, &logger, allocator, calibrator_.get(), &engine,
         use_calibration_, use_implicit_batch_, &convert_successfully);
     if (!status.ok()) {
       LOG(WARNING) << "Engine creation for " << name() << " failed. "
@@ -901,12 +982,12 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
                    << "Reason: " << status;
       // Store an empty engine in the cache for these input shapes so we don't
       // try to build the same failing engine again.
-      cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
+      cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
       return &empty_context;
     }
     TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
         engine->createExecutionContext());
-    cache.emplace(engine_input_shapes,
+    cache.emplace(input_concrete_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_context)));
     VLOG(1) << "Added new engine to cache of " << name()

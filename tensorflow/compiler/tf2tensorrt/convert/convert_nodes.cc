@@ -292,13 +292,19 @@ Status ValidateTensorProperties(const string& producer_node_type,
   }
 
   if (validation_only) return Status::OK();
-  // Following are validations at runtime.
 
-  for (int d = first_trt_dim; d < shape.dims(); ++d) {
-    if (shape.dim_size(d) < 0) {
-      return errors::InvalidArgument(
-          "Input tensor with shape ", shape.DebugString(),
-          " has an unknown non-batch dimension at dim ", d);
+  // Following checks are only used during TRT engine creation time. In implicit
+  // batch mode we check that all inputs for the network has static shape (as
+  // required by the TensorRT). The only exception is the batch size, which
+  // could be unknown. In contrast, using explicit batch mode this test is not
+  // necessary, since any dimension could be unknown in explicit batch mode.
+  if (use_implicit_batch) {
+    for (int d = first_trt_dim; d < shape.dims(); ++d) {
+      if (shape.dim_size(d) < 0) {
+        return errors::InvalidArgument(
+            "Input tensor with shape ", shape.DebugString(),
+            " has an unknown non-batch dimension at dim ", d);
+      }
     }
   }
   return Status::OK();
@@ -2397,10 +2403,32 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
   }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // For dynamic input shapes, we need to use TRT ops to build the new shape.
+  // If the remaining dimensions of a squeeze operation have dynamic sizes, we
+  // need to use TRT ops to build the result shape for the squeeze operation.
+  // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
+  // value.
   if (absl::c_any_of(input_dims, [](int i) { return i == -1; })) {
-    return errors::Unimplemented(
-        "Squeeze is not implemented for dynamic input shapes");
+    nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
+    std::vector<nvinfer1::ITensor const*> concat_inputs;
+    for (int i = 0; i < input_dims.size(); i++) {
+      // If input dim wasn't set to 0 earlier, we include it in new shape.
+      if (input_dims[i] != 0) {
+        concat_inputs.push_back(
+            network()
+                ->addSlice(*shape, {1, {i}}, {1, {1}}, {1, {1}})
+                ->getOutput(0));
+      }
+    }
+    nvinfer1::IConcatenationLayer* concat_layer = network()->addConcatenation(
+        const_cast<nvinfer1::ITensor* const*>(concat_inputs.data()),
+        concat_inputs.size());
+    concat_layer->setAxis(0);
+    nvinfer1::ITensor* new_shape = concat_layer->getOutput(0);
+    // Reshape input using new shape
+    nvinfer1::IShuffleLayer* shuffle = network()->addShuffle(*input);
+    shuffle->setInput(1, *new_shape);
+    *output = shuffle->getOutput(0);
+    return Status::OK();
   }
 #endif
   // Remove all dims which are equal to 0.
