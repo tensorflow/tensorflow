@@ -110,7 +110,6 @@ class Sequential(training.Model):
     """
     super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
-    self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
 
     self._layer_call_argspecs = {}
@@ -263,8 +262,7 @@ class Sequential(training.Model):
       if input_shape is None:
         raise ValueError('You must provide an `input_shape` argument.')
       input_shape = tuple(input_shape)
-      self._build_input_shape = input_shape
-      super(Sequential, self).build(input_shape)
+    super(Sequential, self).build(input_shape)
     self.built = True
 
   def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
