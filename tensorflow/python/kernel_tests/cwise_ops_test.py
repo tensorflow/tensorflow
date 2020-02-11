@@ -1231,7 +1231,7 @@ class PolyvalTest(test.TestCase):
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = {}
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError, "Argument coeffs must be list"):
       math_ops.polyval(coeffs, x)
 
 
