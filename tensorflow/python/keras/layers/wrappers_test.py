@@ -905,6 +905,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
           [None, 2, 16])
 
   def test_Bidirectional_last_output_with_masking(self):
+    if test.is_built_with_rocm():
+      # testcase uses input and/or output sequences which require padding
+      # leading to the following error on ROCm platform
+      # ROCm MIOpen only supports packed input output
+      # Skip this subtest for now
+      self.skipTest("Test not supported on the ROCm platform")
     rnn = keras.layers.LSTM
     samples = 2
     dim = 5
@@ -932,6 +938,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
   def test_Bidirectional_sequence_output_with_masking(self, rnn):
+    if test.is_built_with_rocm():
+      # testcase uses input and/or output sequences which require padding
+      # leading to the following error on ROCm platform
+      # ROCm MIOpen only supports packed input output
+      # Skip this subtest for now
+      self.skipTest("Test not supported on the ROCm platform")
     samples = 2
     dim = 5
     timesteps = 3
@@ -1133,6 +1145,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['ave', 'concat', 'mul'])
   def test_Bidirectional_ragged_input(self, merge_mode):
+    if test.is_built_with_rocm():
+      # ragged tenors are not supported in ROCM RNN implementation
+      self.skipTest("Test not supported on the ROCm platform")
     np.random.seed(100)
     rnn = keras.layers.LSTM
     units = 3
