@@ -270,9 +270,9 @@ def _rocm_toolkit_path(repository_ctx):
     rocm_toolkit_path = _DEFAULT_ROCM_TOOLKIT_PATH
     if _ROCM_TOOLKIT_PATH in repository_ctx.os.environ:
         rocm_toolkit_path = repository_ctx.os.environ[_ROCM_TOOLKIT_PATH].strip()
-    if not repository_ctx.path(rocm_toolkit_path).exists:
+    if files_exist(repository_ctx, [rocm_toolkit_path]) != [True]:
         auto_configure_fail("Cannot find rocm toolkit path.")
-    return str(repository_ctx.path(rocm_toolkit_path).realpath)
+    return realpath(repository_ctx, rocm_toolkit_path)
 
 def _amdgpu_targets(repository_ctx):
     """Returns a list of strings representing AMDGPU targets."""
