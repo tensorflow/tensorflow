@@ -21,16 +21,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-bool IsAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
-  bool is_any_dynamic = false;
-  for (int i = 0; i < network->getNbInputs(); i++) {
-    auto input = network->getInput(i);
-    auto dims = input->getDimensions();
-    is_any_dynamic |= !HasStaticShape(dims);
-  }
-  return is_any_dynamic;
-}
-
 // Create optimization profiles for a list of input shapes. The list of input
 // shapes are stored in shapes_.
 void TrtShapeOptimizationProfile::InitProfiles() {
