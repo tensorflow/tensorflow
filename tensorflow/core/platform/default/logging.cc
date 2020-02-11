@@ -256,7 +256,7 @@ void LogMessage::GenerateLogMessage() {
              absl::base_internal::GetTID());
   }
   // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s.%06d: %c%s %s:%d] %s\n", time_buffer, micros_remainder,
+  fprintf(stderr, "[%s.%06d: %c%s %s:%d] %s\n", time_buffer, micros_remainder,
           "IWEF"[severity_], tid_buffer, fname_, line_, str().c_str());
 }
 #endif
