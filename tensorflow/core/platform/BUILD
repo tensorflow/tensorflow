@@ -1396,6 +1396,7 @@ filegroup(
         "protobuf_util.cc",
         "raw_coding.h",
         "refcount.h",
+        "regexp.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",

@@ -52,6 +52,8 @@ class WindowsFileSystem : public FileSystem {
   Status GetMatchingPaths(const string& pattern,
                           std::vector<string>* result) override;
 
+  bool Match(const string& filename, const string& pattern) override;
+
   Status Stat(const string& fname, FileStatistics* stat) override;
 
   Status DeleteFile(const string& fname) override;
