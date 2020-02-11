@@ -20,6 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import weakref
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
@@ -28,6 +30,8 @@ from tensorflow.python.util.tf_export import tf_export
 
 DEFAULT_GRAPH_SEED = 87654321
 _MAXINT32 = 2**31 - 1
+
+_graph_to_seed_dict = weakref.WeakKeyDictionary()
 
 
 def _truncate_seed(seed):
@@ -69,7 +73,8 @@ def get_seed(op_seed):
       if eager:
         op_seed = context.internal_operation_seed()
       else:
-        op_seed = ops.get_default_graph()._last_id
+        op_seed = _graph_to_seed_dict.setdefault(ops.get_default_graph(), 0)
+        _graph_to_seed_dict[ops.get_default_graph()] += 1
 
     seeds = _truncate_seed(global_seed), _truncate_seed(op_seed)
   else:
