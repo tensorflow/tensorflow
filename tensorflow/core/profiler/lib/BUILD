@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "if_not_mobile", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cuda_library")
 
 package(
     default_visibility = [
@@ -42,7 +42,7 @@ cc_library(
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/util:ptr_util",
-    ] + if_not_mobile([
+    ] + if_not_android([
         ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/convert:xplane_to_trace_events",
@@ -73,7 +73,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-    ] + if_not_mobile([
+    ] + if_not_android([
         "//tensorflow/core/profiler/internal:traceme_recorder",
     ]),
 )
@@ -98,7 +98,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-    ] + if_not_mobile([
+    ] + if_not_android([
         "//tensorflow/core/profiler/internal:annotation_stack",
     ]),
 )
