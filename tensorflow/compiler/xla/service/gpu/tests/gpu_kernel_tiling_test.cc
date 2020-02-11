@@ -375,10 +375,12 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ;
 ; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{.*}}:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
+; CHECK-LABEL: atomic_op_loop_body{{.*}}:
 ; CHECK-LABEL: atomic_op_loop_body{{.*}}:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
@@ -499,20 +501,24 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ;
 ; CHECK-LABEL: atomic_op_loop_body{{.*}}:
-; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
-; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
-; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
-;
 ; CHECK-LABEL: atomic_op_loop_body{{.*}}:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
 ; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{.*}}:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
+; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
+; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
+; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
+;
+; CHECK-LABEL: atomic_op_loop_body{{.*}}:
 ; CHECK-LABEL: atomic_op_loop_body{{.*}}:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
