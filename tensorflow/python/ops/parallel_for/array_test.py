@@ -121,13 +121,6 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
-  def test_fill(self):
-
-    def loop_fn(i):
-      return array_ops.fill((2, 3), i)
-
-    self._test_loop_fn(loop_fn, 3)
-
   def test_broadcast_to(self):
     x = random_ops.random_uniform([3, 2, 1, 3])
 
