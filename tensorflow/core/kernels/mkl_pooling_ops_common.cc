@@ -75,7 +75,7 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
   context_.dst_mem.reset(new MEMORY_CONSTRUCTOR(
       context_.fwd_pd.get()->PRIMITIVE_DESC_DST, cpu_engine_, DummyData));
 
-  // For max pooling, need to return workspace(ws) for backward computing.
+  // For max pooling, need to return workspace (ws) for backward computing.
   if (fwdParams.alg_kind == ALGORITHM::pooling_max &&
       fwdParams.prop_kind == prop_kind::forward_training) {
 #ifdef ENABLE_MKLDNN_V1
@@ -100,7 +100,7 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
     context_.fwd.reset(new pooling_forward(*context_.fwd_pd, *context_.src_mem,
                                            *context_.dst_mem,
                                            *context_.ws_mem));
-#endif
+#endif // ENABLE_MKLDNN_V1
   } else {
 #ifdef ENABLE_MKLDNN_V1
     context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
@@ -109,7 +109,7 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
 #else
     context_.fwd.reset(new pooling_forward(*context_.fwd_pd, *context_.src_mem,
                                            *context_.dst_mem));
-#endif
+#endif //ENABLE_MKLDNN_V1
   }
 
   context_.fwd_primitives.push_back(*context_.fwd);
@@ -185,11 +185,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   context_.bwd_pd.reset(new pooling_backward::primitive_desc(
       *context_.bwd_desc, cpu_engine_, *context_.fwd_pd));
 
-#ifdef ENABLE_MKLDNN_V1
-  // Store expected primitive format.
-  context_.diff_src_fmt = MEMORY_FORMAT::any;
-  context_.diff_dst_fmt = MEMORY_FORMAT::any;
-#else
+#ifndef ENABLE_MKLDNN_V1
   context_.diff_src_fmt = static_cast<MEMORY_FORMAT>(
       context_.bwd_pd.get()->PRIMITIVE_DESC_DIFF_SRC.desc().data.format);
   context_.diff_dst_fmt = bwdParams.src_format;
@@ -232,7 +228,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
     context_.bwd.reset(
         new pooling_backward(*context_.bwd_pd, *context_.diff_dst_mem,
                              *context_.ws_mem, *context_.diff_src_mem));
-#endif
+#endif //ENABLE_MKLDNN_V1
   } else {
 #ifdef ENABLE_MKLDNN_V1
     context_.net_args.push_back(
