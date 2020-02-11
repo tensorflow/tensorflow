@@ -773,7 +773,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "retrying_file_system_test",
     size = "small",
     srcs = ["retrying_file_system_test.cc"],
@@ -787,7 +787,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "retrying_utils_test",
     size = "small",
     srcs = ["retrying_utils_test.cc"],
