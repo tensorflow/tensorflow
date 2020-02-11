@@ -101,6 +101,11 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass();
 // Create a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 
+// Create a pass to inline calls to the nested TPU module, this reverses the
+// effect of the `TFExecutorTPUV1IslandOutlining` pass above.
+// This is a V1 backward compatibility.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTFExecutorTPUV1IslandInliningPass();
+
 // Create a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass();
 
