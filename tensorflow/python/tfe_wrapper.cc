@@ -582,11 +582,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_Py_RecordGradient",
         [](const py::handle& op_name, const py::handle& inputs,
-           const py::handle& attrs, const py::handle& results,
-           const py::handle& forward_pass_name_scope) {
+           const py::handle& attrs, const py::handle& results) {
           return tensorflow::pyo_or_throw(TFE_Py_RecordGradient(
-              op_name.ptr(), inputs.ptr(), attrs.ptr(), results.ptr(),
-              forward_pass_name_scope.ptr()));
+              op_name.ptr(), inputs.ptr(), attrs.ptr(), results.ptr()));
         });
   m.def("TFE_Py_UID", []() { return tensorflow::pyo_or_throw(TFE_Py_UID()); });
 

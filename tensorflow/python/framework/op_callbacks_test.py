@@ -794,7 +794,7 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     self.assertIn(_COS_OP, instrument.graph_op_types)
 
     # Check the ndarrays from runtime.
-    cos_op_outputs = instrument.graph_internal_ndarrays[b"gradients/" + _COS_OP]
+    cos_op_outputs = instrument.graph_internal_ndarrays[_COS_OP]
     self.assertEqual(len(cos_op_outputs), 1)
     self.assertAllClose(cos_op_outputs[0], np.cos(3.0 * 3.0))
 

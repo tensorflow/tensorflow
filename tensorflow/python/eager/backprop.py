@@ -123,7 +123,7 @@ class _MockOp(object):
 
 
 def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
-                       out_grads, skip_input_indices, forward_pass_name_scope):
+                       out_grads, skip_input_indices):
   """Calls the gradient function of the op.
 
   Args:
@@ -135,7 +135,6 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     out_grads: gradients of the operation wrt its outputs.
     skip_input_indices: a tuple that is passed to the gradient function,
       indicating which inputs to skip calculating the gradient for
-    forward_pass_name_scope: the namescope of the op in the forward pass.
 
   Returns:
     The gradients with respect to the inputs of the function, as a list.
@@ -145,12 +144,7 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   if grad_fn is None:
     return [None] * num_inputs
 
-  if forward_pass_name_scope:
-    gradient_name_scope = "gradients/" + forward_pass_name_scope
-  else:
-    gradient_name_scope = "gradients"
-  with ops.name_scope(gradient_name_scope):
-    return grad_fn(mock_op, *out_grads)
+  return grad_fn(mock_op, *out_grads)
 
 
 pywrap_tfe.TFE_Py_RegisterGradientFunction(_gradient_function)
@@ -161,8 +155,7 @@ def _must_record_gradient():
 
 
 def _record_gradient(op_name, inputs, attrs, results):
-  return pywrap_tfe.TFE_Py_RecordGradient(op_name, inputs, attrs, results,
-                                          ops.get_name_scope())
+  return pywrap_tfe.TFE_Py_RecordGradient(op_name, inputs, attrs, results)
 
 
 execute.must_record_gradient = _must_record_gradient
