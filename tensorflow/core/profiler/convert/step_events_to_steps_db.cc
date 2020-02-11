@@ -41,7 +41,8 @@ StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64 step_num,
     type_ps[UNKNOWN_TIME] += step_time.duration_ps() - total_event_duration;
   }
   // Determines if this particular step is a well-formed one.
-  bool well_formed_step = has_device ? type_ps.contains(DEVICE_COMPUTE)
+  bool well_formed_step = has_device ? (type_ps.contains(DEVICE_COMPUTE_16) ||
+                                        type_ps.contains(DEVICE_COMPUTE_32))
                                      : type_ps.contains(HOST_COMPUTE);
   StepInfoResult step_info;
   step_info.mutable_step_breakdown()->PackFrom(generic);
@@ -94,10 +95,8 @@ string DebugStepInfo(const StepInfoResult& step_info) {
 }  // namespace
 
 StepDatabaseResult ConvertStepEventsToStepDb(
-    bool has_device, const StepEvents& overlapped_step_events) {
+    bool has_device, const StepEvents& nonoverlapped_step_events) {
   StepDatabaseResult step_db;
-  StepEvents nonoverlapped_step_events =
-      ToNonOverlappedStepEvents(overlapped_step_events);
   // Gets sorted step numbers.
   std::vector<int64> step_numbers;
   step_numbers.reserve(nonoverlapped_step_events.size());
@@ -106,8 +105,10 @@ StepDatabaseResult ConvertStepEventsToStepDb(
   }
   absl::c_sort(step_numbers);
   for (const auto& step : step_numbers) {
-    StepInfoResult step_info = ConvertStepDetailsToStepInfo(
-        has_device, step, nonoverlapped_step_events[step]);
+    const auto* events = gtl::FindOrNull(nonoverlapped_step_events, step);
+    if (events == nullptr) continue;
+    StepInfoResult step_info =
+        ConvertStepDetailsToStepInfo(has_device, step, *events);
     if (step_info.duration_ps() == 0)
       continue;  // Do not include non-well-formed steps.
     PerCoreStepInfo per_core_step_info;

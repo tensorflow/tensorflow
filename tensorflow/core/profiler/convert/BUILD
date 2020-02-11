@@ -92,6 +92,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:time_utils",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -181,6 +182,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_builder",

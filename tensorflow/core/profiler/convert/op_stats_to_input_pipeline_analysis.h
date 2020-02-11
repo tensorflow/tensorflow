@@ -46,8 +46,8 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
     const OpStats& op_stats, const HardwareType& hardware_type);
 
-void InfeedAnalysis(double infeed_percent, int* observation_index,
-                    string* input_classification, string* input_statement);
+void InfeedAnalysis(double infeed_percent, string* input_classification,
+                    string* input_statement);
 
 string GetSummaryNextStep(absl::string_view input_classification,
                           const InputTimeBreakdown& breakdown);

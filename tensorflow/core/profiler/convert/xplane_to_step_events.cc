@@ -98,16 +98,20 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
+    absl::string_view tensor_shapes = "";
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
+      } else if (stat.Type() == StatType::kTensorShapes) {
+        tensor_shapes = stat.StrValue();
       }
     });
+
     if (correlation_id >= 0 && group_id >= 0) {
       EventTypeSpan event_type_span(
-          ClassifyGpuEvent(event.Name()),
+          ClassifyGpuEvent(event.Name(), tensor_shapes),
           Timespan(event.TimestampPs(), event.DurationPs()));
       result[group_id].AddEvent(event_type_span);
     }

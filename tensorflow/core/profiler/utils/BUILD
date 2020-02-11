@@ -20,6 +20,7 @@ cc_library(
         ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
