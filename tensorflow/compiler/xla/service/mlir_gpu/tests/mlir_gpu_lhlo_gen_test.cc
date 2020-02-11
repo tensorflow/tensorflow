@@ -185,65 +185,57 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
                      R"(
 ;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
 
-;CHECK: %[[DESC0:.*]] = llvm.alloca %1 x !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
-;CHECK: %[[CAST0:.*]] = llvm.bitcast %[[ARG0]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP0P:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %[[CAST0]], %[[GEP0P]]
-;CHECK: %[[CAST0:.*]] = llvm.bitcast %[[ARG0]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP0P:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %[[CAST0]], %[[GEP0P]]
-;CHECK: %[[GEP0O:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %{{.*}}, %[[GEP0O]]
-;CHECK: %[[GEP0S0:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: %[[CST0S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST0S0]], %[[GEP0S0]]
-;CHECK: %[[GEP0S1:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: %[[CST0S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST0S1]], %[[GEP0S1]]
-;CHECK: %[[GEP0ST0:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %{{.*}}, %[[GEP0ST0]]
-;CHECK: %[[GEP0ST1:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %{{.*}}, %[[GEP0ST1]]
+;
+; Check that relevant sizes and strides are emitted.
+;
+;CHECK: %[[CAST0:.*]] = llvm.bitcast %[[ARG0:.*]] : !llvm<"i8*"> to !llvm<"float*">
+;CHECK: %[[SIZE00:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: %[[SIZE01:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: %[[STRIDE01:.*]] = llvm.mlir.constant(1 : i64) : !llvm.i64
+;CHECK: %[[STRIDE00:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
 
-;CHECK: %[[DESC1:.*]] = llvm.alloca %1 x !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
-;CHECK: %[[CAST1:.*]] = llvm.bitcast %[[ARG1]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP1P:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %[[CAST1]], %[[GEP1P]]
-;CHECK: %[[CAST1:.*]] = llvm.bitcast %[[ARG1]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP1P:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %[[CAST1]], %[[GEP1P]]
-;CHECK: %[[GEP1O:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %{{.*}}, %[[GEP1O]]
-;CHECK: %[[GEP1S0:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: %[[CST1S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST1S0]], %[[GEP1S0]]
-;CHECK: %[[GEP1S1:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: %[[CST1S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST1S1]], %[[GEP1S1]]
-;CHECK: %[[GEP1ST0:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %{{.*}}, %[[GEP1ST0]]
-;CHECK: %[[GEP1ST1:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %{{.*}}, %[[GEP1ST1]]
+;CHECK: %[[CAST1:.*]] = llvm.bitcast %[[ARG1:.*]] : !llvm<"i8*"> to !llvm<"float*">
+;CHECK: %[[SIZE10:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: %[[SIZE11:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: %[[STRIDE11:.*]] = llvm.mlir.constant(1 : i64) : !llvm.i64
+;CHECK: %[[STRIDE10:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
 
-;CHECK: %[[DESC2:.*]] = llvm.alloca %1 x !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
-;CHECK: %[[CAST2:.*]] = llvm.bitcast %[[ARG2]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP2P:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %[[CAST2]], %[[GEP2P]]
-;CHECK: %[[CAST2:.*]] = llvm.bitcast %[[ARG2]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP2P:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %[[CAST2]], %[[GEP2P]]
-;CHECK: %[[GEP2O:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %{{.*}}, %[[GEP2O]]
-;CHECK: %[[GEP2S0:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: %[[CST2S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST2S0]], %[[GEP2S0]]
-;CHECK: %[[GEP2S1:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: %[[CST2S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST2S1]], %[[GEP2S1]]
-;CHECK: %[[GEP2ST0:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %{{.*}}, %[[GEP2ST0]]
-;CHECK: %[[GEP2ST1:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %{{.*}}, %[[GEP2ST1]]
+;CHECK: %[[CAST2:.*]] = llvm.bitcast %[[ARG2:.*]] : !llvm<"i8*"> to !llvm<"float*">
+;CHECK: %[[SIZE20:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: %[[SIZE21:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+;CHECK: %[[STRIDE21:.*]] = llvm.mlir.constant(1 : i64) : !llvm.i64
+;CHECK: %[[STRIDE20:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
+
+;
+; Check that the emitted sizes and strides, as well the pointers to HLO buffers,
+; are inserted into the memref descriptors.
+;
+;CHECK: %[[DESC0:.*]] = llvm.mlir.undef : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC01:.*]] = llvm.insertvalue %[[CAST0]], %[[DESC0]][0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC02:.*]] = llvm.insertvalue %[[CAST0]], %[[DESC01]][1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC03:.*]] = llvm.insertvalue %{{.*}}, %[[DESC02]][2] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC04:.*]] = llvm.insertvalue %[[SIZE00]], %[[DESC03]][3, 0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC05:.*]] = llvm.insertvalue %[[STRIDE00]], %[[DESC04]][4, 0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC06:.*]] = llvm.insertvalue %[[SIZE01]], %[[DESC05]][3, 1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %{{.*}} = llvm.insertvalue %[[STRIDE01]], %[[DESC06]][4, 1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+
+;CHECK: %[[DESC1:.*]] = llvm.mlir.undef : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC11:.*]] = llvm.insertvalue %[[CAST1]], %[[DESC1]][0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC12:.*]] = llvm.insertvalue %[[CAST1]], %[[DESC11]][1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC13:.*]] = llvm.insertvalue %{{.*}}, %[[DESC12]][2] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC14:.*]] = llvm.insertvalue %[[SIZE10]], %[[DESC13]][3, 0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC15:.*]] = llvm.insertvalue %[[STRIDE10]], %[[DESC14]][4, 0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC16:.*]] = llvm.insertvalue %[[SIZE11]], %[[DESC15]][3, 1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %{{.*}} = llvm.insertvalue %[[STRIDE11]], %[[DESC16]][4, 1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+
+;CHECK: %[[DESC2:.*]] = llvm.mlir.undef : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC21:.*]] = llvm.insertvalue %[[CAST2]], %[[DESC2]][0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC22:.*]] = llvm.insertvalue %[[CAST2]], %[[DESC21]][1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC23:.*]] = llvm.insertvalue %{{.*}}, %[[DESC22]][2] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC24:.*]] = llvm.insertvalue %[[SIZE20]], %[[DESC23]][3, 0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC25:.*]] = llvm.insertvalue %[[STRIDE20]], %[[DESC24]][4, 0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC26:.*]] = llvm.insertvalue %[[SIZE21]], %[[DESC25]][3, 1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %{{.*}} = llvm.insertvalue %[[STRIDE21]], %[[DESC26]][4, 1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
       )",
                      LoweringStage::KERNEL);
 }

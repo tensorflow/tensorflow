@@ -193,11 +193,11 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:LinalgDialectRegistration",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
