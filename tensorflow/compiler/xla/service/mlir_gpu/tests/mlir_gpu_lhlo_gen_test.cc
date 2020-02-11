@@ -130,6 +130,21 @@ ENTRY %Exp (x: f32[2,2]) -> f32[2,2] {
       )");
 }
 
+TEST_F(LhloGenTest, Log) {
+  CompileAndVerifyIr(R"(
+HloModule Log
+
+ENTRY %Log (x: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  ROOT %log = f32[2,2]{1,0} log(f32[2,2]{1,0} %x)
+})",
+                     R"(
+;CHECK: func @log(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.log"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
 TEST_F(LhloGenTest, AddInGPUDialect) {
   CompileAndVerifyIr(R"(
 HloModule Add
@@ -474,6 +489,21 @@ ENTRY %Rem(x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
                      R"(
 ;CHECK: func @remainder(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
 ;CHECK:   "xla_lhlo.remainder"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
+TEST_F(LhloGenTest, Rsqrt) {
+  CompileAndVerifyIr(R"(
+HloModule Rsqrt
+
+ENTRY %Rsqrt (x: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  ROOT %rsqrt = f32[2,2]{1,0} rsqrt(f32[2,2]{1,0} %x)
+})",
+                     R"(
+;CHECK: func @rsqrt(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.rsqrt"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
