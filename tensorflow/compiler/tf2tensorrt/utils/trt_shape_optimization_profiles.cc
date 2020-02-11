@@ -106,10 +106,9 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
     nvinfer1::ICudaEngine* engine,
     std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context) {
   int i = 0;
-  // The following loops runs once if we have static shapes, to create a single
-  // execution context without profiles.
-  // In dynamic mode we create one context for each profile and set the
-  // corresponding optimization profile.
+  // The following loop runs once if we have static shapes, to create a single
+  // execution context without profiles. In dynamic mode we create one context
+  // for each profile and set the corresponding optimization profile.
   do {
     VLOG(1) << "Creating execution context " << i;
     nvinfer1::IExecutionContext* ctx = engine->createExecutionContext();

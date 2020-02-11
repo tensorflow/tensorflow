@@ -37,7 +37,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-// Stores optimization profile parameters (min/opt/max of each input shape)
+// Stores optimization profile parameters (min/opt/max of each input shape).
 //
 // A TensorRT optimization profile describes the possible min/max values of
 // each dynamic input shape along with an optimum value. These values are used
@@ -112,10 +112,9 @@ struct OptimizationProfileConfig {
 // optimization.
 //
 // This class stores the list of input shapes that were seen during the
-// build/profile_generation_mode phase, and using them it creates a set
-// of OptimizationProfileConfigs. These configs will be added to
-// IBuilderConfig before the engine is created.
-//
+// build/profile_generation_mode phase, and using them it creates a set of
+// OptimizationProfileConfigs. These configs will be added to IBuilderConfig
+// before the engine is created.
 class TrtShapeOptimizationProfile {
  public:
   TrtShapeOptimizationProfile(){};
