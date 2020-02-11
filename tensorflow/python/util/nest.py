@@ -50,6 +50,7 @@ import wrapt as _wrapt
 from tensorflow.python import _pywrap_utils
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.platform import tf_logging
 
 
 _SHALLOW_TREE_HAS_INVALID_KEYS = (
@@ -122,6 +123,7 @@ _is_attrs = _pywrap_utils.IsAttrs
 _is_composite_tensor = _pywrap_utils.IsCompositeTensor
 _is_type_spec = _pywrap_utils.IsTypeSpec
 _is_mutable_mapping = _pywrap_utils.IsMutableMapping
+_is_mapping = _pywrap_utils.IsMapping
 
 
 def _sequence_like(instance, args):
@@ -145,12 +147,26 @@ def _sequence_like(instance, args):
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
     if instance_type == _collections.defaultdict:
-      d = instance_type(_collections.defaultdict(instance.default_factory))
+      d = _collections.defaultdict(instance.default_factory)
       for key in instance:
         d[key] = result[key]
       return d
     else:
-      return instance_type((key, result[key]) for key in instance)
+      d = instance_type()
+      for key in instance:
+        d[key] = instance[key]
+      return d
+  elif _is_mapping(instance):
+    result = dict(zip(_sorted(instance), args))
+    instance_type = type(instance)
+    tf_logging.log_first_n(
+      tf_logging.WARN, "Mapping types may not work well with tf.nest. Prefer using" 
+      "MutableMapping for {}".format(instance_type), 1
+    )
+    d = instance_type()
+    for key in instance:
+      d[key] = instance[key]
+    return d
   elif _is_mapping_view(instance):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
