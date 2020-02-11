@@ -21,10 +21,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -123,12 +123,21 @@ struct EngineContext {
   EngineContext(
       TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
       TrtUniquePtrType<nvinfer1::IExecutionContext>&& input_execution_context)
+      : cuda_engine(std::move(input_cuda_engine)) {
+    execution_context.push_back(std::move(input_execution_context));
+  }
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
+                std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>&&
+                    input_execution_context)
       : cuda_engine(std::move(input_cuda_engine)),
         execution_context(std::move(input_execution_context)) {}
 
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
-  TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context
+
+  // In explicit batch mode, we maintain a vector of contexts for each engine,
+  // where each context is created for a different profile.
+  std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
       GUARDED_BY(mu);
 };
 
@@ -172,6 +181,16 @@ class TRTEngineCacheResource : public ResourceBase {
 
   string DebugString() const override;
 
+  // Returns the EngineContext that is compatible with input_shapes.
+  // Returns nullptr if no compatible EngineContexts is found in cache.
+  EngineContext* GetEngineContext(const std::vector<TensorShape>& input_shapes);
+
+  // Returns the EngineContext that is compatible with profile_id.
+  // This function should be only called in explicit batch mode where
+  // cache size is expected to be at most one.
+  // Returns nullptr if no compatible EngineContexts is found in cache.
+  EngineContext* GetEngineContext(const int profile_id);
+
   // Keep device allocator for TRT.
   std::unique_ptr<TRTBaseAllocator> allocator_;
 
@@ -184,9 +203,9 @@ class TRTEngineCacheResource : public ResourceBase {
   // attach it to each item of the cache.
   std::unique_ptr<CalibrationContext> calib_ctx_;
 
-  // This object maintains all the optimization profiles during profile generation
-  // and engine build. We currently don't use this object during runtime, instead
-  // we deserialize the profiles out of the cached engines.
+  // This object maintains all the optimization profiles during profile
+  // generation and engine build. We currently don't use this object during
+  // runtime, instead we deserialize the profiles out of the cached engines.
   TrtShapeOptimizationProfile profiles_;
 };
 

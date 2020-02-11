@@ -106,6 +106,10 @@ string GetLinkedTensorRTVersion();
 // TensorRT library version information {Maj, Min, Patch}.
 string GetLoadedTensorRTVersion();
 
+// Return true if an engine built for cached_shapes can also run actual_shapes.
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes);
+
 // Returns the number of inputs for the engine, which also correspends to the
 // number of input tensors for the network. This can differ from the number of
 // input bindings, because each profile has a set of bindings.
