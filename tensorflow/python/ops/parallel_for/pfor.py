@@ -2914,6 +2914,24 @@ def _convert_log_matrix_determinant(pfor_input):
   return [wrap(x, True) for x in linalg_ops.log_matrix_determinant(t)]
 
 
+@RegisterPFor("MatrixInverse")
+def _convert_matrix_inverse(pfor_input):
+  t = pfor_input.stacked_input(0)
+  adjoint = pfor_input.get_attr("adjoint")
+  return wrap(gen_linalg_ops.matrix_inverse(t, adjoint=adjoint), True)
+
+
+@RegisterPFor("MatrixSolve")
+def _convert_matrix_solve(pfor_input):
+  pfor_input.stack_inputs()
+  matrix = pfor_input.stacked_input(0)
+  rhs = pfor_input.stacked_input(1)
+  adjoint = pfor_input.get_attr("adjoint")
+  output = gen_linalg_ops.matrix_solve(
+      matrix, rhs, adjoint=adjoint)
+  return wrap(output, True)
+
+
 @RegisterPFor("MatrixTriangularSolve")
 def _convert_matrix_triangular_solve(pfor_input):
   pfor_input.expanddim_inputs_for_broadcast()
