@@ -194,8 +194,11 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUVariableReformattingPass();
 
 // Populates the supplied passmanager with the passes required to run the
-// bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void CreateTPUBridge(OpPassManager& pm);
+void CreateTPUBridgePipeline(OpPassManager& pm);
+
+// Populates the supplied passmanager with the passes required to run the
+// bridge in V1 mode.
+void CreateTPUBridgePipelineV1(OpPassManager& pm);
 
 }  // namespace TFTPU
 
