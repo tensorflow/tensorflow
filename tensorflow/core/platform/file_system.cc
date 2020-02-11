@@ -26,11 +26,19 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/scanner.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
+
+bool FileSystem::Match(const string& filename, const string& pattern) {
+  string regexp(pattern);
+  RE2::GlobalReplace(&regexp, "\\*", "[^/]*");
+  RE2::GlobalReplace(&regexp, "\\?", ".");
+  return RE2::FullMatch(filename, regexp);
+}
 
 string FileSystem::TranslateName(const string& name) const {
   // If the name is empty, CleanPath returns "." which is incorrect and

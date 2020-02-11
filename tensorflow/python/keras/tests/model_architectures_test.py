@@ -81,15 +81,9 @@ class TestModelArchitectures(keras_parameterized.TestCase):
               model_architectures.MySubclassModel,
       }
       custom_objects.update(subclass_custom_objects)
-    elif ('subclassed' in model_fn.__name__ and
-          save_format in ['h5', 'hdf5', 'keras']):
+    elif ('subclassed' in model_fn.__name__ and save_format == 'h5'):
       self.skipTest('Saving the model to HDF5 format requires the model to be '
                     'a Functional model or a Sequential model.')
-
-    # TODO(b/147493902): Remove this skipTest once fixed.
-    if ('stacked_rnn' in model_fn.__name__
-        and save_format in ['h5', 'hdf5', 'keras']):
-      self.skipTest('Stacked RNN model is not compatible with h5 save format.')
 
     saved_model_dir = self._save_model_dir()
     model_data = model_fn()

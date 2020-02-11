@@ -73,6 +73,8 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
+class ProfilerServer;
+
 // LINT.IfChange
 // Note: Keep in sync with exported copy of enum in eager/c_api.h.
 enum ContextDevicePlacementPolicy {
@@ -104,6 +106,24 @@ class RunMetadataListener {
  public:
   virtual ~RunMetadataListener() {}
   virtual void BeforeClearRunMetadata() = 0;
+};
+
+class TensorHandle;
+class EagerOperation;
+
+class CustomDevice {
+ public:
+  virtual ~CustomDevice() {}
+  virtual const string& name() = 0;
+  virtual Status CopyTensorToDevice(TensorHandle* tensor,
+                                    TensorHandle** result) = 0;
+
+  virtual Status CopyTensorFromDevice(TensorHandle* tensor,
+                                      const string& target_device_name,
+                                      TensorHandle** result) = 0;
+
+  virtual Status Execute(EagerOperation* op, TensorHandle** retvals,
+                         int* num_retvals) = 0;
 };
 
 class EagerContext : public core::RefCounted {
@@ -215,6 +235,9 @@ class EagerContext : public core::RefCounted {
                         const bool add_to_local_only = false);
 
   Status RemoveFunction(const string& func);
+
+  // Clear remote executors on all worker targets in `remote_contexts_`.
+  Status ClearRemoteExecutors();
 
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
@@ -416,6 +439,12 @@ class EagerContext : public core::RefCounted {
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
+  Status FindCustomDeviceFromName(const string& device_name,
+                                  CustomDevice** dev) const;
+
+  void RegisterCustomDevice(const string& name,
+                            std::unique_ptr<CustomDevice> device);
+
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
@@ -492,6 +521,7 @@ class EagerContext : public core::RefCounted {
   std::vector<DeviceType> prioritized_device_type_list_;
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
+  std::unordered_map<string, std::unique_ptr<CustomDevice>> custom_devices_;
 
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
@@ -570,6 +600,9 @@ class EagerContext : public core::RefCounted {
   WorkerEnv* worker_env_ = nullptr;
   std::shared_ptr<WorkerSession> worker_session_;
   std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
+
+  // Starts a thread for profiling service.
+  std::unique_ptr<ProfilerServer> profiler_server_;
 
   mutex remote_state_mu_;
 

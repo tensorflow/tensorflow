@@ -66,6 +66,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kFusion:
+    case HloOpcode::kCustomCall:
       return CallContext::kParallel;
     default:
       return CallContext::kNone;

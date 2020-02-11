@@ -24,8 +24,11 @@ namespace profiler {
 
 const absl::string_view kHostThreads = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
+const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
+
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
+const int32 kCuptiDriverApiPlaneId = 50;
 
 namespace {
 
@@ -77,6 +80,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
       {"PartitionedCallOp", kPartitionedCallOp},
+      // tf.data related.
+      {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},

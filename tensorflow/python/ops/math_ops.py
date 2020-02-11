@@ -739,10 +739,9 @@ def cast(x, dtype, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([1.8, 2.2], dtype=tf.float32)
-  tf.dtypes.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
-  ```
+  >>> x = tf.constant([1.8, 2.2], dtype=tf.float32)
+  >>> tf.dtypes.cast(x, tf.int32)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], dtype=int32)>
 
   The operation supports data types (for `x` and `dtype`) of
   `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
@@ -1488,7 +1487,7 @@ def tensor_equals(self, other):
     return False
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
-      (g is None or g._building_function)):  # pylint: disable=protected-access
+      (g is None or g.building_function)):
     return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -2881,8 +2880,16 @@ def matmul(a,
       multiplication.
     adjoint_b: If `True`, `b` is conjugated and transposed before
       multiplication.
-    a_is_sparse: If `True`, `a` is treated as a sparse matrix.
-    b_is_sparse: If `True`, `b` is treated as a sparse matrix.
+    a_is_sparse: If `True`, `a` is treated as a sparse matrix. Notice, this
+      **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
+      that assume most values in `a` are zero.
+      See `tf.sparse.sparse_dense_matmul`
+      for some support for `tf.SparseTensor` multiplication.
+    b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
+      **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
+      that assume most values in `a` are zero.
+      See `tf.sparse.sparse_dense_matmul`
+      for some support for `tf.SparseTensor` multiplication.
     name: Name for the operation (optional).
 
   Returns:
@@ -4365,6 +4372,14 @@ def polyval(coeffs, x, name=None):
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0]))
+            
+  Usage Example:
+  
+  >>> coefficients = [1.0, 2.5, -4.2]
+  >>> x = 5.0
+  >>> y = tf.math.polyval(coefficients, x)
+  >>> y
+  <tf.Tensor: shape=(), dtype=float32, numpy=33.3>
 
   Usage Example:
 
@@ -4581,7 +4596,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
 @tf_export("math.exp", "exp")
 @dispatch.add_dispatch_support
 def exp(x, name=None):
-  """Computes exponential of x element-wise.  \\(y = e^x\\).
+  r"""Computes exponential of x element-wise.  \\(y = e^x\\).
 
   This function computes the exponential of the input tensor element-wise.
   i.e. `math.exp(x)` or \\(e^x\\), where `x` is the input tensor.

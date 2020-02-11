@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
@@ -84,8 +85,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   // Uses default options.
   StatefulNnApiDelegate();
 
+  explicit StatefulNnApiDelegate(const NnApi* nnapi);
+
   // The constructor that accepts options from user.
   explicit StatefulNnApiDelegate(Options options);
+
+  StatefulNnApiDelegate(const NnApi* nnapi, Options options);
 
   ~StatefulNnApiDelegate() = default;
 
@@ -141,6 +146,13 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   struct Data {
     // Preferred Power/perf trade-off.
     Options::ExecutionPreference execution_preference;
+    // Pointer to NNAPI implementation to be used by this delegate as
+    // set when building the StatefulNnApiDelegate instance.
+    // Will generally be the NnApiInstance() singleton but can be overridden
+    // for testing or for users needing to wrap or stub parts of NNAPI.
+    // The ownership of the nnapi instance is left to the caller of
+    // the StatefulNnApiDelegate constructor.
+    const NnApi* nnapi;
     // Selected NNAPI accelerator name.
     std::string accelerator_name;
     // The cache dir for NNAPI model.

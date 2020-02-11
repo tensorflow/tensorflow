@@ -113,6 +113,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
@@ -335,11 +336,6 @@ cc_library(
 cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
@@ -350,11 +346,7 @@ cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
     hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:stacktrace",

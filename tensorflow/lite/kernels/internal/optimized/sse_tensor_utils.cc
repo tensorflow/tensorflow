@@ -40,11 +40,15 @@ static inline __m128i DotProdInt8x4x4(__m128i a_8x16, __m128i b_8x16) {
 
 // Horizontally add 4 int32 values stored in a single XMM register to int32_t.
 static inline int32_t ReduceInt32x4(__m128i acc) {
-  acc = _mm_hadd_epi32(acc, acc);
-  // This second hadd could be only 64 bit, but 64 and 128 bit hadd has same
-  // latency on most CPUs, and it costs more to move. (Moving can be no-op, but
-  // nevertheless is an extra instruction occupying the decoder and I cache.)
-  acc = _mm_hadd_epi32(acc, acc);
+  // Shuffle to contain high half of acc (both in high and low halfs).
+  __m128i shuffle = _mm_unpackhi_epi64(acc, acc);
+  // Add shuffle and acc; low half is sums of twos (high half is ignored).
+  acc = _mm_add_epi32(acc, shuffle);
+  // Shuffle the two elements in low half (ignore high half).
+  shuffle = _mm_shuffle_epi32(acc, _MM_SHUFFLE(2, 3, 0, 1));
+  // Add shuffle and acc; lowest element is sum of all 4 input.
+  acc = _mm_add_epi32(acc, shuffle);
+  // Return lowest element as int32_t.
   return _mm_cvtsi128_si32(acc);
 }
 
@@ -52,15 +56,16 @@ static inline int32_t ReduceInt32x4(__m128i acc) {
 
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride) {
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride) {
   static constexpr int kBlockSize = 16;
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
     // Compute dot-product for every column.
     for (int row = 0; row < m_rows; ++row, result += result_stride) {
       // Get the address of the first element of the row.
-      const int8_t* row_ptr = matrix + row * m_cols;
+      const int8_t* __restrict__ row_ptr = matrix + row * m_cols;
 
       // Initialize the dot product sum for the row to 0.
       __m128i dotprod_32x4 = _mm_setzero_si128();
@@ -93,14 +98,16 @@ void SseMatrixBatchVectorMultiplyAccumulate(
 
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride,
-    const float* per_channel_scale, const int32_t* input_offset) {
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride,
+    const float* __restrict__ per_channel_scale,
+    const int32_t* __restrict__ input_offset) {
   static constexpr int kBlockSize = 16;
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
     for (int row = 0; row < m_rows; ++row, result += result_stride) {
-      const int8_t* row_ptr = matrix + row * m_cols;
+      const int8_t* __restrict__ row_ptr = matrix + row * m_cols;
       __m128i dotprod_32x4 = _mm_setzero_si128();
       __m128i row_sum_16x8 = _mm_setzero_si128();
       int col = 0;
@@ -137,17 +144,17 @@ void SseMatrixBatchVectorMultiplyAccumulate(
 }
 
 void SseSparseMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
-    const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride) {
+    const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride) {
   static const int kBlockSize = 16;
   TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
 
   for (int batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
     const float batch_scaling_factor = scaling_factors[batch];
-    const uint8_t* ledger_ptr = ledger;
-    const int8_t* row_ptr = matrix;
+    const uint8_t* __restrict__ ledger_ptr = ledger;
+    const int8_t* __restrict__ row_ptr = matrix;
     for (int row = 0; row < m_rows; ++row, result += result_stride) {
       // Initialize the dot product sum for the row to 0.
       __m128i dotprod_32x4 = _mm_setzero_si128();

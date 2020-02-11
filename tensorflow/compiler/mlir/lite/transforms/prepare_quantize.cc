@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
@@ -144,6 +145,13 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
                              int i) {
     if (auto shaped = input_type.dyn_cast<ShapedType>()) {
       if (shaped.getElementType().isa<FloatType>()) {
+        // If there are existing quantize ops, they are from training and we
+        // should respect them.
+        if (arg.hasOneUse() &&
+            llvm::isa<quant::QuantizeCastOp>(*arg.user_begin())) {
+          return;
+        }
+
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         TypeAttr params = quant::GetQuantizedTypeAttr(
             builder, input_type, builder.getF64FloatAttr(min_max.first),

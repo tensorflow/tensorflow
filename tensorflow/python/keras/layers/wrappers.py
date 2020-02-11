@@ -56,6 +56,7 @@ class Wrapper(Layer):
   def build(self, input_shape=None):
     if not self.layer.built:
       self.layer.build(input_shape)
+      self.layer.built = True
     self.built = True
 
   @property
@@ -352,21 +353,30 @@ class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
   Arguments:
-    layer: `Recurrent` instance.
-    merge_mode: Mode by which outputs of the
-      forward and backward RNNs will be combined.
-      One of {'sum', 'mul', 'concat', 'ave', None}.
-      If None, the outputs will not be combined,
-      they will be returned as a list.
-    backward_layer: Optional `Recurrent` instance to be used to handle
-      backwards input processing. If `backward_layer` is not provided,
-      the layer instance passed as the `layer` argument will be used to
-      generate the backward layer automatically.
+    layer: `keras.layers.RNN` instance, such as `keras.layers.LSTM` or
+      `keras.layers.GRU`. It could also be a `keras.layers.Layer` instance
+      that meets the following criteria:
+      1. Be a sequence-processing layer (accepts 3D+ inputs).
+      2. Have a `go_backwards`, `return_sequences` and `return_state`
+        attribute (with the same semantics as for the `RNN` class).
+      3. Have an `input_spec` attribute.
+      4. Implement serialization via `get_config()` and `from_config()`.
+      Note that the recommended way to create new RNN layers is to write a
+      custom RNN cell and use it with `keras.layers.RNN`, instead of
+      subclassing `keras.layers.Layer` directly.
+    merge_mode: Mode by which outputs of the forward and backward RNNs will be
+      combined. One of {'sum', 'mul', 'concat', 'ave', None}. If None, the
+      outputs will not be combined, they will be returned as a list. Default
+      value is 'concat'.
+    backward_layer: Optional `keras.layers.RNN`, or keras.layers.Layer` instance
+      to be used to handle backwards input processing. If `backward_layer` is
+      not provided, the layer instance passed as the `layer` argument will be
+      used to generate the backward layer automatically.
       Note that the provided `backward_layer` layer should have properties
       matching those of the `layer` argument, in particular it should have the
       same values for `stateful`, `return_states`, `return_sequence`, etc.
-      In addition, `backward_layer` and `layer` should have
-      different `go_backwards` argument values.
+      In addition, `backward_layer` and `layer` should have different
+      `go_backwards` argument values.
       A `ValueError` will be raised if these requirements are not met.
 
   Call arguments:

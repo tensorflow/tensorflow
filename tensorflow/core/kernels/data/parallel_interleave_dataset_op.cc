@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
@@ -129,7 +130,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         deterministic_(deterministic),
         output_types_(output_types),
         output_shapes_(output_shapes),
-        op_version_(op_version) {
+        op_version_(op_version),
+        traceme_metadata_(
+            {{"autotune",
+              num_parallel_calls == model::kAutotune ? "true" : "false"},
+             {"block_length", strings::Printf("%lld", block_length)},
+             {"cycle_length", strings::Printf("%lld", cycle_length)},
+             {"deterministic",
+              deterministic.IsNondeterministic() ? "false" : "true"}}) {
     input_->Ref();
   }
 
@@ -238,22 +246,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (deregister_fn_) deregister_fn_();
     }
 
-    string BuildTraceMeName() override {
-      int64 parallelism = -1;
-      // NOTE: We only set the parallelism value if the lock can be acquired
-      // right away to avoid introducing tracing overhead.
-      if (mu_->try_lock()) {
-        parallelism = num_parallel_calls_->value;
-        mu_->unlock();
-      }
-      return strings::StrCat(
-          prefix(), "#parallelism=", parallelism,
-          ",cycle_length=", dataset()->cycle_length_,
-          ",block_length=", dataset()->block_length_,
-          ",autotune=", dataset()->num_parallel_calls_ == model::kAutotune,
-          ",deterministic=", deterministic_, "#");
-    }
-
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       // Note that if `ctx->thread_pool()` is non-null, then instead of creating
@@ -279,7 +271,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // refactored not to hold mu_ while calling `GetNext` on the input.
       ctx_ = std::make_unique<IteratorContext>(*ctx);
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -410,6 +402,20 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       VLOG(2) << "Parallel interleave iterator restored";
       VLOG(4) << "State after restore:\n" << DebugString();
       return Status::OK();
+    }
+
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      int64 parallelism = -1;
+      // NOTE: We only set the parallelism value if the lock can be acquired
+      // right away to avoid introducing tracing overhead.
+      if (mu_->try_lock()) {
+        parallelism = num_parallel_calls_->value;
+        mu_->unlock();
+      }
+      auto result = dataset()->traceme_metadata_;
+      result.push_back(
+          std::make_pair("parallelism", strings::Printf("%lld", parallelism)));
+      return result;
     }
 
    private:
@@ -893,7 +899,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         element->inputs =
             absl::make_unique<std::vector<Tensor>>(std::move(inputs));
         status = MakeIteratorFromInputElement(
-            ctx_.get(), *element->inputs, element->id,
+            ctx_.get(), this, *element->inputs, element->id,
             *instantiated_captured_func_, prefix(), &element->iterator);
         if (!status.ok()) {
           element->inputs.reset();
@@ -1181,7 +1187,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(iterator_name, kIdSuffix, &element->id));
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-            ctx, *element->inputs, element->id,
+            ctx, this, *element->inputs, element->id,
             *instantiated_captured_func_.get(), prefix(), &iterator));
       }
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
@@ -1420,6 +1426,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
   const int op_version_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(

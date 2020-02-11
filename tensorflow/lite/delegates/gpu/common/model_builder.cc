@@ -2713,11 +2713,10 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
         // TODO(eignasheva): resolve sub operation support for metal delegate
         // registration->builtin_code != kTfLiteBuiltinSub &&
         IsAllFloatTensors(context, node->inputs) &&
-        IsAllFloatTensors(context, node->outputs)) {
-      if (errors.empty()) {
-        replace_node = true;
-        ops_to_replace.push_back(i);
-      }
+        IsAllFloatTensors(context, node->outputs) && errors.empty()) {
+      // Node is supported and there were no previous errors.
+      replace_node = true;
+      ops_to_replace.push_back(i);
     } else {
       // Unable to replace this node. Restore the inputs to the original
       // if they were modified.

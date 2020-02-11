@@ -161,7 +161,7 @@ Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
         // address-space-based AA in LLVM, it wouldn't help us much here.
         return b_->CreateLoad(
             b_->CreateGEP(param_tile_buffer, {index.GetConstantWithIndexType(0),
-                                              tile_param_x_, tile_param_y_}),
+                                              thread_id_x_, thread_id_y_}),
             "tiled_buffer");
       }
     }

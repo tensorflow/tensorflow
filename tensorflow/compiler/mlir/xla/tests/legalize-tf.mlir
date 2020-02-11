@@ -606,6 +606,27 @@ func @bitwise_or_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?
   return %0: tensor<?xi32>
 }
 
+// CHECK-LABEL: func @bitwise_and
+func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK-NEXT: xla_hlo.and
+  %0 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %0: tensor<4xi32>
+}
+
+// CHECK-LABEL: func @bitwise_and_broadcast
+func @bitwise_and_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
+  // CHECK-NEXT: xla_hlo.and
+  %0 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
+  return %0: tensor<1x4xi8>
+}
+
+// CHECK-LABEL: func @bitwise_and_dynamic
+func @bitwise_and_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi32> {
+  // CHECK-NEXT: xla_hlo.and
+  %0 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi32>
+  return %0: tensor<?xi32>
+}
+
 // CHECK-LABEL: func @pow
 func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK-NEXT:  xla_hlo.pow
@@ -1370,6 +1391,34 @@ func @unhandled_partitioned_call_2(%arg0: tensor<i32>, %arg1: tensor<*xi32>) -> 
   // CHECK: "tf.PartitionedCall"
   %0, %1 = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @pcall_multi_in_out} : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
   return %0, %1 : tensor<i32>, tensor<i32>
+}
+
+//===----------------------------------------------------------------------===//
+// StatefulPartitionedCall op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @stateful_partitioned_call
+// CHECK-SAME: [[ARG:%.+]]: tensor<i32>
+func @stateful_partitioned_call(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK: call @stateful_pcall_func([[ARG]]) : (tensor<i32>) -> tensor<i32>
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @stateful_partitioned_call_multi_in_out
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<i32>, [[ARG1:%.+]]: tensor<i32>)
+func @stateful_partitioned_call_multi_in_out(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  // CHECK: call @stateful_pcall_multi_in_out([[ARG0]], [[ARG1]]) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
+  %0, %1 = "tf.StatefulPartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @stateful_pcall_multi_in_out} : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
+  return %0, %1 : tensor<i32>, tensor<i32>
+}
+
+func @stateful_pcall_multi_in_out(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  return %arg1, %arg0 : tensor<i32>, tensor<i32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -2297,6 +2346,67 @@ func @strided_slice_shrink_axis_mask(%input: tensor<4x128x1024xf32>) {
 
   return
 }
+
+// CHECK-LABEL: strided_slice_ellipsis_mask
+// CHECK-SAME: %[[INPUT:[a-z0-9]+]]: tensor<2x4x8x16x32x64xf32>
+func @strided_slice_ellipsis_mask(%input: tensor<2x4x8x16x32x64xf32>) {
+  // For StridedSlice input[1, ..., 8:, :10, 2:6:2]
+  // The ellipsis mask is applied to dim #1, #2, i.e, we get canonicalized
+  // slice input[1, :, :, 8:, :10, 2:6:2]
+
+  // The start, limit indices and strides attributes of xla_hlo.slice would
+  // reflect the canonicalized slice.
+  // As output shape of StridedSlice differs, a reshape will follow.
+
+  %begin = "tf.Const"() {value = dense<[1, 0, 8, 1, 2]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+  %end = "tf.Const"() {value = dense<[2, 0, 10, 10, 6]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 1, 1, 1, 2]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+
+  // CHECK: %[[SLICE:.*]] = "xla_hlo.slice"(%[[INPUT]])
+  // CHECK-DAG-SAME: limit_indices = dense<[2, 4, 8, 16, 10, 6]> : tensor<6xi64>
+  // CHECK-DAG-SAME: start_indices = dense<[1, 0, 0, 8, 0, 2]> : tensor<6xi64>
+  // CHECK-DAG-SAME: strides = dense<[1, 1, 1, 1, 1, 2]> : tensoe<6xi64>
+  // CHECK-SAME: -> tensor<1x4x8x8x10x2xf32>
+  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {begin_mask = 8, end_mask = 4, shrink_axis_mask = 1, ellipsis_mask = 2} : (tensor<2x4x8x16x32x64xf32>, tensor<5xi32>, tensor<5xi32>, tensor<5xi32>) -> tensor<4x8x8x10x2xf32>
+
+  // CHECK: "xla_hlo.reshape"(%[[SLICE]])
+  // CHECK-SAME: -> tensor<4x8x8x10x2xf32>
+
+  return
+}
+
+// CHECK-LABEL: strided_slice_new_axis_mask
+// CHECK-SAME: %[[INPUT:[a-z0-9]+]]: tensor<2x4x8x16x32x64xf32>
+func @strided_slice_new_axis_mask(%input: tensor<2x4x8x16x32x64xf32>) {
+  // For StridedSlice input[1, tf.new_axis, ..., 8:, :10, 2:6:2, tf.new_axis]
+  // New axis mask is at index 1 and 6 of sparse spec, so
+  // new_axis_mask = 2^1 + 2^6 = 66
+  // The ellipsis mask is applied to dim #1, #2 of input i.e, we get
+  // canonicalized slice input[1, :, :, 8:, :10, 2:6:2]
+  // This is then reshaped to add the new axes.
+
+  // The start, limit indices and strides attributes of xla_hlo.slice would
+  // reflect the canonicalized slice.
+  // As output shape of StridedSlice differs, a reshape will follow to reflect
+  // new axes added.
+
+  %begin = "tf.Const"() {value = dense<[1, 0, 0, 8, 1, 2, 0]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+  %end = "tf.Const"() {value = dense<[2, 0, 0, 10, 10, 6, 0]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 1, 1, 1, 1, 2, 1]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+
+  // CHECK: %[[SLICE:.*]] = "xla_hlo.slice"(%[[INPUT]])
+  // CHECK-DAG-SAME: limit_indices = dense<[2, 4, 8, 16, 10, 6]> : tensor<6xi64>
+  // CHECK-DAG-SAME: start_indices = dense<[1, 0, 0, 8, 0, 2]> : tensor<6xi64>
+  // CHECK-DAG-SAME: strides = dense<[1, 1, 1, 1, 1, 2]> : tensoe<6xi64>
+  // CHECK-SAME: -> tensor<1x4x8x8x10x2xf32>
+  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {begin_mask = 16, end_mask = 8, shrink_axis_mask = 1, ellipsis_mask = 4, new_axis_mask = 66} : (tensor<2x4x8x16x32x64xf32>, tensor<7xi32>, tensor<7xi32>, tensor<7xi32>) -> tensor<1x4x8x8x10x2x1xf32>
+
+  // CHECK: "xla_hlo.reshape"(%[[SLICE]])
+  // CHECK-SAME: -> tensor<1x4x8x8x10x2x1xf32>
+
+  return
+}
+
 
 //===----------------------------------------------------------------------===//
 // Reduction op legalizations.
@@ -3297,4 +3407,11 @@ func @avgpool_same_padding(%arg0: tensor<2x13x25x7xf32>) -> tensor<2x4x7x7xf32> 
   // CHECK: tf.AvgPool
   %0 = "tf.AvgPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 4, 1]} : (tensor<2x13x25x7xf32>) -> tensor<2x4x7x7xf32>
   return %0 : tensor<2x4x7x7xf32>
+}
+
+// CHECK-LABEL: xla_sharding
+func @xla_sharding(%arg0: tensor<4x16xf32>) -> tensor<4x16xf32> {
+  // CHECK-NEXT: "xla_hlo.custom_call"(%arg0) {backend_config = "", call_target_name = "Sharding", has_side_effect = false, xla_hlo.sharding = ""}
+  %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = ""} : (tensor<4x16xf32>) -> tensor<4x16xf32>
+  return %0 : tensor<4x16xf32>
 }

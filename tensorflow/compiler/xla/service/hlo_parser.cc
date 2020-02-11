@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -203,7 +204,8 @@ class HloParserImpl : public HloParser {
     kDomain,
     kPrecisionList,
     kShapeList,
-    kEnum
+    kEnum,
+    kRandomAlgorithm,
   };
 
   struct AttrConfig {
@@ -322,6 +324,7 @@ class HloParserImpl : public HloParser {
   bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
+  bool ParseRandomAlgorithm(RandomAlgorithm* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
   bool ParseInt64(int64* result);
   bool ParseDouble(double* result);
@@ -1501,6 +1504,18 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           HloInstruction::CreateRngGetAndUpdateState(shape, *delta));
       break;
     }
+    case HloOpcode::kRngBitGenerator: {
+      optional<RandomAlgorithm> algorithm;
+      attrs["algorithm"] = {/*required=*/true, AttrTy::kRandomAlgorithm,
+                            &algorithm};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateRngBitGenerator(
+              shape, operands[0], *algorithm));
+      break;
+    }
     case HloOpcode::kReducePrecision: {
       optional<int64> exponent_bits;
       optional<int64> mantissa_bits;
@@ -1568,6 +1583,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64> batch_group_count;
       optional<std::vector<Shape>> operand_layout_constraints;
       optional<bool> custom_call_has_side_effect;
+      optional<HloComputation*> to_apply;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -1581,6 +1597,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           /*required=*/false, AttrTy::kShapeList, &operand_layout_constraints};
       attrs["custom_call_has_side_effect"] = {/*required=*/false, AttrTy::kBool,
                                               &custom_call_has_side_effect};
+      attrs["to_apply"] = {/*required=*/false, AttrTy::kHloComputation,
+                           &to_apply};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1621,9 +1639,17 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
             shape, operands, *custom_call_target, *operand_layout_constraints,
             backend_config ? *backend_config : ""));
       } else {
-        instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
-            shape, operands, *custom_call_target,
-            backend_config ? *backend_config : ""));
+        if (to_apply.has_value()) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCustomCall(
+                  shape, operands, *to_apply, *custom_call_target,
+                  backend_config ? *backend_config : ""));
+        } else {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCustomCall(
+                  shape, operands, *custom_call_target,
+                  backend_config ? *backend_config : ""));
+        }
       }
       auto custom_call_instr = Cast<HloCustomCallInstruction>(instruction);
       if (window.has_value()) {
@@ -2972,6 +2998,14 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kRandomAlgorithm: {
+        RandomAlgorithm result;
+        if (!ParseRandomAlgorithm(&result)) {
+          return false;
+        }
+        static_cast<optional<RandomAlgorithm>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
     }
   }();
   if (!success) {
@@ -3956,6 +3990,23 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects random distribution but sees: %s, error: %s", val,
+                  status_or_result.status().error_message()));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
+  VLOG(3) << "ParseRandomAlgorithm";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects random algorithm");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToRandomAlgorithm(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        StrFormat("expects random algorithm but sees: %s, error: %s", val,
                   status_or_result.status().error_message()));
   }
   *result = status_or_result.ValueOrDie();

@@ -43,8 +43,6 @@ package(
 
 exports_files(["LICENSE"])
 
-exports_files(["platform/base.i"])
-
 # Description:
 
 py_library(
@@ -240,8 +238,8 @@ py_library(
         ":pywrap_tfe",
         ":util",
         "//tensorflow/core:protos_all_py",
-        "@absl_py//absl:app",
         "@absl_py//absl/flags",
+        "@rules_python//python/runfiles",
         "@six_archive//:six",
     ],
 )
@@ -287,7 +285,14 @@ tf_py_test(
     name = "resource_loader_test",
     size = "small",
     srcs = ["platform/resource_loader_test.py"],
+    data = [
+        "platform/resource_loader.py",
+    ],
     python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":platform",
         ":platform_test",
@@ -5665,12 +5670,11 @@ py_library(
     deps = [":pywrap_tensorflow_internal"],
 )
 
+# TODO(b/137885063): This macro should be cleaned up to be just
+# a py_binary/library shared object. We have removed the source
+# SWIG file to prevent people from adding SWIG code.
 tf_py_wrap_cc(
     name = "pywrap_tensorflow_internal",
-    srcs = ["tensorflow.i"],
-    swig_includes = [
-        "platform/base.i",
-    ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
@@ -5712,6 +5716,7 @@ tf_py_wrap_cc(
         "//tensorflow/core:reader_base",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
@@ -5761,6 +5766,7 @@ filegroup(
         "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
         "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
         "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
+        "//tensorflow/core/grappler/costs:analytical_cost_estimator",  # cost analyzer
         "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
         "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
         "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
@@ -5769,8 +5775,10 @@ filegroup(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
+        "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/lib:profiler_session",  # tfe
+        "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
@@ -5778,7 +5786,11 @@ filegroup(
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-    ],
+    ] + if_xla_available([
+        "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
+        "//tensorflow/compiler/xla:status_macros",  # tfcompile
+        "//tensorflow/compiler/xla/service:hlo",  # tfcompile
+    ]),
     visibility = ["//visibility:private"],
 )
 
@@ -7950,8 +7962,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/framework:pywrap_required_hdrs",
-        "//tensorflow/core/profiler/internal:pywrap_required_hdrs",
-        "//tensorflow/core/profiler/lib:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
     ],
     module_name = "_pywrap_tfe",
@@ -7971,7 +7981,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:platform",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ] + if_static(
         extra_deps = [
             "//tensorflow/compiler/jit:flags",

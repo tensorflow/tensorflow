@@ -801,11 +801,6 @@ void MetaOptimizer::PrintResult() {
   }
 }
 
-void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                             const GraphDef& optimized_graph, double result) {
-  // Nothing to do for MetaOptimizer.
-}
-
 bool MetaOptimizerEnabled(const ConfigProto& cfg) {
   const auto& rewrite_cfg = cfg.graph_options().rewrite_options();
   if (rewrite_cfg.disable_meta_optimizer()) {

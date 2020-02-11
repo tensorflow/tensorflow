@@ -241,8 +241,6 @@ class Stream {
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
@@ -268,8 +266,6 @@ class Stream {
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 

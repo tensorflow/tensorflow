@@ -57,6 +57,8 @@ class Scope(object):
       the terminology of the Python 3 reference documentation, True roughly
       represents an actual scope, whereas False represents an ordinary code
       block.
+    isolated_names: Set[qual_names.QN], identifiers that are isolated to this
+      scope (even if the scope is not isolated).
     read: Set[qual_names.QN], identifiers read in this scope.
     modified: Set[qual_names.QN], identifiers modified in this scope.
     deleted: Set[qual_names.QN], identifiers deleted in this scope.
@@ -99,6 +101,8 @@ class Scope(object):
     self.parent = parent
     self.isolated = isolated
 
+    self.isolated_names = set()
+
     self.read = set()
     self.modified = set()
     self.deleted = set()
@@ -136,6 +140,7 @@ class Scope(object):
     if self.parent is not None:
       assert other.parent is not None
       self.parent.copy_from(other.parent)
+    self.isolated_names = copy.copy(other.isolated_names)
     self.modified = copy.copy(other.modified)
     self.read = copy.copy(other.read)
     self.deleted = copy.copy(other.deleted)
@@ -158,6 +163,7 @@ class Scope(object):
     if self.parent is not None:
       assert other.parent is not None
       self.parent.merge_from(other.parent)
+    self.isolated_names.update(other.isolated_names)
     self.read.update(other.read)
     self.modified.update(other.modified)
     self.bound.update(other.deleted)
@@ -170,9 +176,9 @@ class Scope(object):
     if self.parent is not None:
       assert not self.parent.is_final
       if not self.isolated:
-        self.parent.read.update(self.read)
-        self.parent.modified.update(self.modified)
-        self.parent.bound.update(self.bound)
+        self.parent.read.update(self.read - self.isolated_names)
+        self.parent.modified.update(self.modified - self.isolated_names)
+        self.parent.bound.update(self.bound - self.isolated_names)
         self.parent.globals.update(self.globals)
       else:
         # TODO(mdan): This is not accurate.
@@ -535,6 +541,16 @@ class ActivityAnalyzer(transformer.Base):
     node = self._process_parallel_blocks(node,
                                          ((node.body, NodeAnno.BODY_SCOPE),
                                           (node.orelse, NodeAnno.ORELSE_SCOPE)))
+    return node
+
+  def visit_ExceptHandler(self, node):
+    self._enter_scope(False)
+    # try/except oddity: as expected, it leaks any names you defined inside the
+    # except block, but not the name of the exception variable.
+    if node.name is not None:
+      self.scope.isolated_names.add(anno.getanno(node.name, anno.Basic.QN))
+    node = self.generic_visit(node)
+    self._exit_scope()
     return node
 
 

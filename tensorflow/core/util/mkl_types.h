@@ -77,6 +77,7 @@ namespace tensorflow {
   memory::desc({dims}, MklDnnType<type>(), fm)
 #define MEMORY_PD_WITHOUT_DATA(md, engine) md, engine
 #define MEMORY_PRIMITIVE_DESC memory::desc
+#define MEMORY_PD_CONSTRUCTOR_2_PARAMS(md, engine) MEMORY_PRIMITIVE_DESC(md)
 #define MKL_FMT_TAG mkl_fmt_tag
 #define MKL_TENSOR_FORMAT MklTensorFormat
 #define MKL_TENSOR_FORMAT_BLOCKED MklTensorFormat::FORMAT_BLOCKED
@@ -170,6 +171,8 @@ namespace tensorflow {
   memory::primitive_desc(GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm), engine)
 #define MEMORY_PD_WITHOUT_DATA(pd, engine) pd
 #define MEMORY_PRIMITIVE_DESC memory::primitive_desc
+#define MEMORY_PD_CONSTRUCTOR_2_PARAMS(md, engine) \
+  MEMORY_PRIMITIVE_DESC(md, engine)
 #define MKL_FMT_TAG tf_fmt
 #define MKL_TENSOR_FORMAT memory::format
 #define MKL_TENSOR_FORMAT_BLOCKED memory::format::blocked

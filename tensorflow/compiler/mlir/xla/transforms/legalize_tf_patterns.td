@@ -207,7 +207,8 @@ class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
                          [TF_LogicalOrOp, HLO_OrOp],
-                         [TF_BitwiseOrOp, HLO_OrOp]] in
+                         [TF_BitwiseOrOp, HLO_OrOp],
+                         [TF_BitwiseAndOp, HLO_AndOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -405,12 +406,15 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 // PartitionedCall op patterns.
 //===----------------------------------------------------------------------===//
 
-def ArgTypesMatchCallee : Constraint<CPred<"ArgTypesMatchCallee($0[0].getOwner(), $1, $2)">>;
+def ArgTypesMatchCallee : Constraint<
+    CPred<"ArgTypesMatchCallee($0[0].getOwner(), $1, $2)">>;
 
-def : Pat<(TF_PartitionedCallOp:$op $args, FlatSymbolRefAttr:$f,
-           $config, $config_proto, $executor_type),
-          (CallOp $f, $args),
+foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
+  def : Pat<(callOp:$op $args, FlatSymbolRefAttr:$f,
+             $config, $config_proto, $executor_type),
+            (CallOp $f, $args),
           [(ArgTypesMatchCallee $op, $args, $f)]>;
+}
 
 //===----------------------------------------------------------------------===//
 // Ternary op patterns.

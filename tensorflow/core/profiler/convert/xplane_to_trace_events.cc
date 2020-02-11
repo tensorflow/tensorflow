@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -37,9 +36,7 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
 }
 }  // namespace
 
-void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
-                                uint64 profile_end_time_ns,
-                                const XSpace& xspace, Trace* trace) {
+void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   auto* trace_devices = trace->mutable_devices();
 
   for (const auto& raw_plane : xspace.planes()) {
@@ -52,10 +49,6 @@ void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
     xplane.ForEachLine([&](const XLineVisitor& xline) {
       int64 resource_id = xline.Id();  // Either thread id or CUDA stream id.
       xline.ForEachEvent([&](const XEventVisitor& xevent) {
-        if (xevent.TimestampNs() < profile_start_time_ns ||
-            xevent.TimestampNs() + xevent.DurationNs() > profile_end_time_ns) {
-          return;
-        }
         auto* event = trace->add_trace_events();
         auto& args = *event->mutable_args();
         event->set_device_id(device_id);
@@ -63,9 +56,8 @@ void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
         event->set_name(string(xevent.DisplayName().empty()
                                    ? xevent.Name()
                                    : xevent.DisplayName()));
-        event->set_timestamp_ps((xevent.TimestampNs() - profile_start_time_ns) *
-                                EnvTime::kNanosToPicos);
-        event->set_duration_ps(xevent.DurationNs() * EnvTime::kNanosToPicos);
+        event->set_timestamp_ps(xevent.TimestampPs());
+        event->set_duration_ps(xevent.DurationPs());
 
         xevent.ForEachStat([&](const XStatVisitor& stat) {
           if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;

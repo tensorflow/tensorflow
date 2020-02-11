@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/* SWIG wrapper for all of TensorFlow native functionality.
- * The includes are intentionally not alphabetically sorted, as the order of
- * includes follows dependency order */
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTFTPU_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTFTPU_H_
 
-%include "tensorflow/python/platform/base.i"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-%{
-#include "tensorflow/core/lib/core/status.h"
-%}
+typedef struct TfTpuDriver_CompileOp TfTpuDriver_CompileOp;
 
-// TODO(slebedev): This is a temporary workaround for projects implicitly
-// relying on TensorFlow exposing tensorflow::Status.
-%unignoreall
+TfTpuDriver_CompileOp* TfTpuDriver_CompileOpConstructor(void* ctx);
 
-%ignore tensorflow::Status::operator=;
-%include "tensorflow/core/platform/status.h"
+void TfTpuDriver_CompileOpExecute(TfTpuDriver_CompileOp* op, void* ctx);
+
+void TfTpuDriver_CompileOpFree(TfTpuDriver_CompileOp* op);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTFTPU_H_
