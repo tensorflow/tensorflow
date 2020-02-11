@@ -312,11 +312,12 @@ public final class Tensor {
     }
     DataType oType = dataTypeOf(o);
 
-    // INT8 and UINT8 have the same string name, "byte"
-    if (oType.toStringName().equals(dtype.toStringName())) {
-      return;
-    }
     if (oType != dtype) {
+      // INT8 and UINT8 have the same string name, "byte"
+      if (oType.toStringName().equals(dtype.toStringName())) {
+        return;
+      }
+
       throw new IllegalArgumentException(
           String.format(
               "Cannot convert between a TensorFlowLite tensor with type %s and a Java "
