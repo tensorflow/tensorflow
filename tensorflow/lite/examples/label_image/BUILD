@@ -28,6 +28,7 @@ cc_binary(
     }),
     deps = [
         ":bitmap_helpers",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
@@ -76,6 +77,7 @@ cc_test(
     ],
     deps = [
         ":bitmap_helpers",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
