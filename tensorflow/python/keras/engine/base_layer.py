@@ -556,8 +556,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():
           input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
-          inputs = nest.map_structure(
-              base_layer_utils.generate_placeholders_from_shape, input_shape)
+          def _make_placeholder_like(shape):
+            ph = backend.placeholder(shape=shape, dtype=self.dtype)
+            ph._keras_mask = None
+            return ph
+          inputs = nest.map_structure(_make_placeholder_like, input_shape)
           try:
             outputs = self(inputs, training=False)
           except TypeError as e:
@@ -2219,12 +2222,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     output_shapes = self.compute_output_shape(input_shapes)
+    # Convert to TensorShape so that nest.map_structure will not map into
+    # individual dim of the shape.
+    output_shapes = tf_utils.convert_shapes(output_shapes, to_tuples=False)
 
     def _make_placeholder_like(shape):
       ph = backend.placeholder(shape=shape, dtype=self.dtype)
       ph._keras_mask = None
       return ph
-
     return nest.map_structure(_make_placeholder_like, output_shapes)
 
   def _get_trainable_state(self):

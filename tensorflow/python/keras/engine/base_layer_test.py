@@ -32,7 +32,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
@@ -206,8 +205,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
           return self.layer2(inputs)
 
       def compute_output_shape(self, input_shape):
-        return tensor_shape.TensorShape(
-            tuple(input_shape[:-1].as_list()) + (3,))
+        return tuple(input_shape[:-1].as_list()) + (3,)
 
     model = MyModel()
     self.assertEqual(model.dynamic, True)
