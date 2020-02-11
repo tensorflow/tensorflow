@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
@@ -44,17 +45,6 @@ Operation* FindInsertionPointForCopy(Value value) {
   for (const auto& user : value.getUsers()) {
     if (auto dealloc = dyn_cast<DeallocOp>(user)) {
       return user;
-    }
-  }
-  return nullptr;
-}
-
-Value GetTensorStore(Value value) {
-  for (const auto& user : value.getUsers()) {
-    if (auto tensor_store = dyn_cast<TensorStoreOp>(user)) {
-      if (tensor_store.getOperand(0) == value) {
-        return tensor_store.getOperand(1);
-      }
     }
   }
   return nullptr;
@@ -83,17 +73,6 @@ Value InsertAllocAndDealloc(Location loc, Value result,
   allocBuilder.create<DeallocOp>(loc, alloc);
 
   return alloc;
-}
-
-/// For every tensor-type value that is produced in the original function,
-/// this function returns the buffer that can be used in the converted
-/// function to store that values held in the tensor.
-Value GetBufferForResultValue(Location loc, Value result,
-                              ConversionPatternRewriter* rewriter) {
-  if (auto existing_memref = GetTensorStore(result)) {
-    return existing_memref;
-  }
-  return InsertAllocAndDealloc(loc, result, rewriter);
 }
 
 template <typename HloOpTy, typename LhloOpTy>
@@ -137,7 +116,7 @@ struct HloToLHloReduceOpConverter
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
-      buffer_args.push_back(GetBufferForResultValue(loc, result, &rewriter));
+      buffer_args.push_back(InsertAllocAndDealloc(loc, result, &rewriter));
     }
     auto new_op = rewriter.create<xla_lhlo::ReduceOp>(
         loc, llvm::None, buffer_args, op.getAttrs());
@@ -199,38 +178,6 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
     return matchSuccess();
   }
 };
-
-/// Removes Lhlo.CopyOp that copies from an allocated buffer to the block
-/// argument. All uses of the buffer are replaced with the block argument.
-void RemoveRedundantCopies(ModuleOp module) {
-  llvm::SmallVector<Operation*, 2> eraseList;
-  module.walk([&](xla_lhlo::CopyOp copyOp) {
-    auto arguments = copyOp.getOperation()->getBlock()->getArguments();
-    if (std::any_of(
-            arguments.begin(), arguments.end(),
-            [&](BlockArgument arg) { return copyOp.output() == arg; }) &&
-        std::none_of(
-            arguments.begin(), arguments.end(),
-            [&](BlockArgument arg) { return copyOp.operand() == arg; })) {
-      Value operand = copyOp.operand();
-      Value output = copyOp.output();
-      copyOp.erase();
-      for (auto op : operand.getUsers()) {
-        if (!isa<DeallocOp>(op)) {
-          op->replaceUsesOfWith(operand, output);
-        }
-      }
-      auto allocOp = operand.getDefiningOp();
-      if (auto deallocOp = dyn_cast<DeallocOp>(*allocOp->getUsers().begin())) {
-        eraseList.push_back(deallocOp);
-        eraseList.push_back(allocOp);
-      }
-    }
-  });
-  for (auto op : eraseList) {
-    op->erase();
-  }
-}
 
 // Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 // buffers if necessary.
@@ -321,8 +268,6 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
     if (failed(applyFullConversion(module, target, patterns, nullptr))) {
       signalPassFailure();
     }
-
-    RemoveRedundantCopies(module);
   }
 };
 
@@ -442,12 +387,57 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
+/// Removes Lhlo.CopyOp that copies from an allocated buffer to the block
+/// argument. All uses of the buffer are replaced with the block argument.
+struct RedundantCopiesRemoval : mlir::FunctionPass<RedundantCopiesRemoval> {
+  void runOnFunction() override {
+    llvm::SmallVector<mlir::Operation*, 2> eraseList;
+    getFunction().walk([&](mlir::xla_lhlo::CopyOp copyOp) {
+      auto arguments = copyOp.getOperation()->getBlock()->getArguments();
+      if (std::any_of(arguments.begin(), arguments.end(),
+                      [&](mlir::BlockArgument arg) {
+                        return copyOp.output() == arg;
+                      }) &&
+          std::none_of(arguments.begin(), arguments.end(),
+                       [&](mlir::BlockArgument arg) {
+                         return copyOp.operand() == arg;
+                       })) {
+        mlir::Value operand = copyOp.operand();
+        mlir::Value output = copyOp.output();
+        copyOp.erase();
+        for (auto op : operand.getUsers()) {
+          if (!mlir::isa<mlir::DeallocOp>(op)) {
+            op->replaceUsesOfWith(operand, output);
+          }
+        }
+        auto allocOp = operand.getDefiningOp();
+        if (auto deallocOp =
+                mlir::dyn_cast<mlir::DeallocOp>(*allocOp->getUsers().begin())) {
+          eraseList.push_back(deallocOp);
+          eraseList.push_back(allocOp);
+        }
+      }
+    });
+    for (auto op : eraseList) {
+      op->erase();
+    }
+  };
+};
+
 std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass() {
   return absl::make_unique<HloLegalizeToLhlo>();
 }
 
-static PassRegistration<HloLegalizeToLhlo> legalize_pass(
-    "hlo-legalize-to-lhlo", "Legalize from HLO dialect to LHLO dialect");
+std::unique_ptr<OpPassBase<FuncOp>> createLhloCopyRemovalPass() {
+  return absl::make_unique<RedundantCopiesRemoval>();
+}
+
+static PassPipelineRegistration<> legalize_pass(
+    "hlo-legalize-to-lhlo", "Legalize from HLO dialect to LHLO dialect",
+    [](mlir::OpPassManager& pm) {
+      pm.addPass(createLegalizeToLhloPass());
+      pm.addPass(createLhloCopyRemovalPass());
+    });
 
 }  // namespace xla_hlo
 }  // namespace mlir
