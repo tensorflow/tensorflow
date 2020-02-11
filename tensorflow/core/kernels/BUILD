@@ -3041,7 +3041,7 @@ tf_kernel_library(
     name = "generate_box_proposals_op",
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
     deps = [":gpu_prim_hdrs"]
-    + if_cuda_or_rocm([
+    + if_cuda([
         ":non_max_suppression_op_gpu",
     ]),
 )
@@ -4492,7 +4492,6 @@ tf_kernel_library(
     }) + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
-    ]) + if_cuda_or_rocm([
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",
