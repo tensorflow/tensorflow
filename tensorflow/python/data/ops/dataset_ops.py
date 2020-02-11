@@ -1212,7 +1212,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     the cache file is removed or the filename is changed.
 
     >>> dataset = tf.data.Dataset.range(5)
-    >>> dataset = dataset.cache("/path/to/file)  # doctest: +SKIP
+    >>> dataset = dataset.cache("/path/to/file")  # doctest: +SKIP
     >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
     [0, 1, 2, 3, 4]
     >>> dataset = tf.data.Dataset.range(10)
