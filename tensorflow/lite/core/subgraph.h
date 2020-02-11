@@ -345,6 +345,13 @@ class Subgraph {
       profiler_->EndEvent(event_handle);
     }
 
+    void AddEvent(const char* tag, EventType event_type,
+                  uint32_t event_metadata, uint64_t start,
+                  uint64_t end) override {
+      if (!profiler_) return;
+      profiler_->AddEvent(tag, event_type, event_metadata, start, end);
+    }
+
    private:
     // Not own the memory.
     Profiler* const profiler_;
